@@ -19,7 +19,11 @@
 import { somenteDigitosDoCpf } from "@/lib/cpf";
 import { supabase } from "@/lib/supabase";
 
-export type MotivoFalhaCpf = "sem_sessao" | "cpf_invalido" | "falha";
+export type MotivoFalhaCpf =
+  | "sem_sessao"
+  | "conta_trocada"
+  | "cpf_invalido"
+  | "falha";
 
 export type ResultadoLeituraCpf =
   | { ok: true; cpf: string | null }
@@ -61,6 +65,9 @@ export function mensagemFalhaCpf(
   if (motivo === "sem_sessao") {
     return "Entre na conta para salvar o CPF.";
   }
+  if (motivo === "conta_trocada") {
+    return "A conta mudou durante a operação: nada foi salvo. Confira a conta e tente de novo.";
+  }
   const onde = contexto ?? "Minha conta > Informações pessoais";
   return `Não foi possível salvar o CPF agora. Tente de novo em ${onde}.`;
 }
@@ -86,17 +93,53 @@ export async function lerCpfDaConta(): Promise<ResultadoLeituraCpf> {
 }
 
 /**
- * Grava (ou limpa, com `cpf` vazio) o CPF da conta logada. Normaliza para
+ * Grava (ou limpa, com `cpf` vazio) o CPF da conta esperada. Normaliza para
  * só dígitos antes de mandar — o mesmo contrato que `set_my_cpf` já impõe
  * no servidor.
  */
-export async function gravarCpfDaConta(
+export function gravarCpfDaConta(
   cpf: string,
+  contaEsperada: string,
+): Promise<ResultadoGravacaoCpf> {
+  return gravarNaConta(
+    "set_my_cpf",
+    { p_cpf: somenteDigitosDoCpf(cpf) },
+    contaEsperada,
+  );
+}
+
+export function gravarPerfilDaConta(
+  args: {
+    p_full_name?: string | null;
+    p_whatsapp?: string | null;
+    p_avatar_url?: string | null;
+    p_cover_url?: string | null;
+  },
+  contaEsperada: string,
+): Promise<ResultadoGravacaoCpf> {
+  return gravarNaConta("update_my_profile_secure", args, contaEsperada);
+}
+
+async function gravarNaConta(
+  nome: "set_my_cpf" | "update_my_profile_secure",
+  args: Parameters<typeof gravarPerfilDaConta>[0] | { p_cpf: string },
+  contaEsperada: string,
 ): Promise<ResultadoGravacaoCpf> {
   try {
-    const { error } = await supabase.rpc("set_my_cpf", {
-      p_cpf: somenteDigitosDoCpf(cpf),
-    });
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return { ok: false, motivo: "sem_sessao" };
+    if (session.user.id !== contaEsperada) {
+      return { ok: false, motivo: "conta_trocada" };
+    }
+    // Outra aba pode trocar o storage enquanto o SDK prepara o fetch. A
+    // conta conferida e o token fixado neste pedido vêm do MESMO retrato,
+    // sem await entre a comparação e a montagem do envio autenticado.
+    const { error } = await supabase
+      // Os tipos gerados omitem o null aceito pelo COALESCE do perfil.
+      .rpc(nome, args as any)
+      .setHeader("Authorization", `Bearer ${session.access_token}`);
     if (error) {
       return {
         ok: false,

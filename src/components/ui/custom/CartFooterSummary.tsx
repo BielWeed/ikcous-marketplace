@@ -73,10 +73,10 @@ export function CartFooterSummary({
         transition={{ duration: 0.25, ease: "easeOut" }}
         className="w-full border-t border-zinc-100 bg-white shadow-[0_-10px_40px_-5px_rgba(0,0,0,0.08)] md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
       >
-        <div className="mx-auto flex max-w-screen-xl items-center justify-between gap-2 p-4 xs:gap-4 xs:px-6 md:gap-3 md:px-4">
+        <div className="mx-auto flex max-w-screen-xl flex-wrap items-center justify-between gap-2 p-4 xs:gap-4 xs:px-6 md:gap-3 md:px-4">
           {/* Visual context */}
           <div className="hidden flex-shrink-0 flex-col md:flex">
-            <span className="mb-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <span className="mb-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Seu Carrinho
             </span>
             <span className="text-xs font-black text-zinc-900">
@@ -88,7 +88,7 @@ export function CartFooterSummary({
           {/* Total & Benefits */}
           <div className="flex min-w-0 flex-col md:flex-shrink-0">
             <div className="mb-1 flex items-center gap-1.5">
-              <span className="text-[10px] font-black uppercase leading-none tracking-widest text-zinc-400">
+              <span className="text-[10px] font-black uppercase leading-none tracking-widest text-zinc-500">
                 Total
               </span>
             </div>
@@ -105,9 +105,9 @@ export function CartFooterSummary({
           </div>
 
           {/* Main Action */}
-          <div className="flex items-center gap-2 xs:gap-3 md:flex-shrink-0 md:gap-2">
+          <div className="flex flex-wrap items-center gap-2 xs:gap-3 md:flex-shrink-0 md:gap-2">
             <div className="flex h-8 flex-shrink-0 flex-col items-end justify-center border-r border-zinc-100 pr-2 xs:pr-3 md:pr-2">
-              <span className="mb-1 text-[9px] font-black uppercase leading-none tracking-widest text-zinc-400">
+              <span className="mb-1 text-[9px] font-black uppercase leading-none tracking-widest text-zinc-500">
                 Frete
               </span>
               <span
@@ -130,14 +130,14 @@ export function CartFooterSummary({
 
             <button
               onClick={() => onNavigate("checkout")}
-              className="group relative flex h-12 flex-shrink-0 items-center gap-2 overflow-hidden rounded-2xl bg-primary px-4 text-white shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-[0.98] xs:h-14 xs:gap-3 xs:px-8 md:h-12 md:gap-2.5 md:px-5"
+              className="group relative flex h-12 flex-shrink-0 items-center gap-2 overflow-hidden rounded-2xl bg-primary px-4 text-primary-foreground shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-[0.98] xs:h-14 xs:gap-3 xs:px-8 md:h-12 md:gap-2.5 md:px-5"
             >
               <div className="relative z-10 flex items-center gap-3">
                 <span className="text-xs font-bold uppercase tracking-widest">
                   Finalizar
                 </span>
                 <div className="flex size-8 items-center justify-center rounded-xl bg-white/20 transition-colors group-hover:bg-white/30">
-                  <ArrowRight className="size-4 text-white transition-transform group-hover:translate-x-0.5" />
+                  <ArrowRight className="size-4 text-primary-foreground transition-transform group-hover:translate-x-0.5" />
                 </div>
               </div>
 

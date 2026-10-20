@@ -128,14 +128,14 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
   }
 
   describe("(a) AdminOrderCard", () => {
-    it("'Marcar como recebido' tem 44px de altura (h-11)", () => {
+    it("'Marcar como recebido' tem ao menos 56px de altura", () => {
       montarCartao({});
       const botao = botaoComTexto("Marcar como recebido");
       expect(
         botao,
         "o botão precisa existir no pedido em dinheiro",
       ).toBeDefined();
-      expect(botao?.className).toContain("h-11");
+      expect(botao?.className).toContain("min-h-14");
       expect(botao?.className).not.toContain("h-10");
     });
 
@@ -168,7 +168,7 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
 
   describe("(b) selos de status", () => {
     function rotulo(): Element | null {
-      return hospedeiro.querySelector("span.uppercase");
+      return hospedeiro.querySelector("div > span:not([aria-hidden])");
     }
 
     it.each(["padrao", "cartao"] as const)(
@@ -187,7 +187,7 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
     );
 
     it.each(["padrao", "cartao"] as const)(
-      "PaymentStatusBadge (%s): rótulo em 11px",
+      "PaymentStatusBadge (%s): rótulo de pelo menos 11px",
       (tamanho) => {
         act(() => {
           raiz.render(
@@ -200,7 +200,9 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
         });
         const span = rotulo();
         expect(span).not.toBeNull();
-        expect(span?.className).toContain("text-[11px]");
+        expect(span?.className).toContain(
+          tamanho === "cartao" ? "text-xs" : "text-[11px]",
+        );
         expect(span?.className).not.toMatch(TEXTO_MIUDO);
       },
     );
@@ -229,15 +231,29 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
     }
 
     it("'Desfazer' da ficha do pedido tem 44px (h-11)", () => {
-      const fonte = semComentarios(
+      // O botão mora em `DesfazerRecebimento` (mesmo botão da lista e da
+      // ficha); a ficha passa a altura pelo `className` e a peça aplica esse
+      // `className` em TODOS os botões "Desfazer" que renderiza.
+      const ficha = semComentarios(
         lerFonte("src/components/admin/orders/OrderDetail.tsx"),
       );
-      const texto = /\n\s*Desfazer\s*\n/.exec(fonte);
-      expect(texto, "o botão Desfazer precisa existir na ficha").not.toBeNull();
-      const abertura = fonte.lastIndexOf("<button", texto?.index ?? 0);
-      const tag = tagQueContem(fonte, abertura + 1);
+      const abertura = ficha.indexOf("<DesfazerRecebimento");
+      expect(
+        abertura,
+        "a ficha precisa usar o botão Desfazer",
+      ).toBeGreaterThanOrEqual(0);
+      const tag = tagQueContem(ficha, abertura + 1);
       expect(tag).toContain("h-11");
       expect(tag).not.toContain("h-10");
+
+      const peca = semComentarios(
+        lerFonte("src/components/admin/orders/DesfazerRecebimento.tsx"),
+      );
+      const botoes = peca.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+      expect(botoes.length).toBeGreaterThan(0);
+      for (const botao of botoes) {
+        expect(botao).toContain("className={className}");
+      }
     });
 
     it.each([

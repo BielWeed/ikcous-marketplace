@@ -63,8 +63,8 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -86,7 +86,7 @@ jobs:
       # restore e é idempotente, então "cache errado" não existe na prática.
       # Quando a expansão (#582) mergear, alinhar a chave dela (hoje hashFiles).
       - name: Cache dos navegadores do Playwright
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
@@ -112,7 +112,7 @@ jobs:
           CI: "true"
       - name: Relatório e traces de falha
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: relatorio-jornadas
           path: |

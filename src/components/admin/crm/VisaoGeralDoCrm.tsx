@@ -199,7 +199,7 @@ export function VisaoGeralDoCrm({
             corDoIcone="text-rose-400"
             carregando={esqueleto}
             valor={formatarPercentual(k?.taxaDevolucao)}
-            rodape="Dos pedidos do período"
+            rodape="Do valor vendido no período"
           />
         </div>
       </section>
@@ -258,6 +258,7 @@ export function VisaoGeralDoCrm({
               stats={stats}
               loading={carregandoClassico}
               active={active}
+              onNavigate={onNavigate}
               className="lg:col-span-3"
             />
           </LocalErrorBoundary>

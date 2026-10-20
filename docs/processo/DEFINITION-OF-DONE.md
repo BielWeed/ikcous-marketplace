@@ -67,7 +67,7 @@ template de PR, verbatim:
 - [ ] **1.** `npm run typecheck` passa localmente
 - [ ] **2.** `npm test` passa localmente
 - [ ] **3.** O CI está verde nos cinco jobs
-- [ ] **4.** Testei no preview deploy da Vercel, não só no localhost
+- [ ] **4.** Testei no preview deploy da Vercel, não só no localhost (PR sem preview automático: gere sob demanda com `npx vercel deploy` numa cópia limpa, ou escreva "N/A, sem mudança visual")
 - [ ] **5.** A mensagem de commit segue Conventional Commits e o escopo está em
       `.commitlintrc.json`
 - [ ] **6.** Não sobrou credencial, `console.log` de depuração nem código comentado
@@ -102,7 +102,16 @@ front estão testados: eles têm zero cobertura. Este item vira forte de verdade
 **"Bloqueia" aqui é acordo entre os dois, não trava do GitHub** — branch protection retorna
 403 neste plano (ver ⧗ [A trava que não existe](../../CONTRIBUTING.md#a-trava-que-não-existe)).
 
-**4. Preview da Vercel** — é o preview **do PR**, antes de pedir revisão. Não confundir com a
+**4. Preview da Vercel** — é o preview **do PR**, antes de pedir revisão. Desde 15/10/2026 o
+`vercel.json` (`git.deploymentEnabled`) **não gera mais preview automático** para as branches
+de PR: todo prefixo de branch de trabalho (`claude/`, `codex/`, `feat/`, `fix/`, `chore/`, `docs/`,
+`refactor/`, `dependabot/`, `infra/`, `ci/` e os demais listados lá) está desligado, e só a branch
+principal, `production`, `main`, `develop`, `release/*` e `hotfix/*` constroem. A lista completa
+é o `vercel.json`; branch com prefixo novo que não esteja lá volta a gerar preview. O plano
+gratuito da Vercel aceita 100 deploys a cada 24 h e as prévias automáticas comeram as vagas do
+candidato da release 1.5.29. Quando a mudança for visual ou depender do ambiente, gere o preview
+sob demanda (`npx vercel deploy` numa cópia limpa do PR, que gasta 1 vaga); sem mudança visual,
+escreva "N/A, sem mudança visual" no PR. Não confundir com a
 coluna `Em teste (preview)` do Kanban, que é o deploy da `develop` **depois** do merge (ver
 [`METODOLOGIA.md`, §4](METODOLOGIA.md#4-fluxo-de-uma-task-do-começo-ao-fim)).
 Por que o `localhost` não basta: qualquer `vercel env pull` regrava
@@ -216,7 +225,7 @@ divergiram e um dos dois está errado.
 | 1 | `npm run typecheck` passa localmente | Sim | Sim | Autor + job `Tipos` |
 | 2 | `npm test` passa localmente | Sim | Sim | Autor + job `Testes (Deno)` |
 | 3 | O CI está verde nos cinco jobs | Sim | Sim | GitHub Actions |
-| 4 | Testei no preview deploy da Vercel, não só no localhost | Sim | Sim | Autor; o revisor confere no "Como testar" |
+| 4 | Testei no preview deploy da Vercel, não só no localhost (PR sem preview automático: gere sob demanda com `npx vercel deploy` numa cópia limpa, ou escreva "N/A, sem mudança visual") | Sim | Sim | Autor; o revisor confere no "Como testar" |
 | 5 | A mensagem de commit segue Conventional Commits e o escopo está em `.commitlintrc.json` | Sim | Sim | Hook `commit-msg` |
 | 6 | Não sobrou credencial, `console.log` de depuração nem código comentado | Sim | Sim | Autor (o job `Varredura de segredo` cobre só a credencial, e só no diff) |
 | 7 | Se mudei comportamento documentado, atualizei o documento junto | Sim | Sim | Revisor |

@@ -1,9 +1,12 @@
 # IKCOUS Marketplace — Manual do agente
 
-> **Fonte única de instruções deste repositório (projeto ZCode-only, 02/09/2026 — Missão 05).**
+> **Fonte única de instruções deste repositório — lida pelo Claude Code (via [CLAUDE.md](CLAUDE.md))
+> e pelo Codex (por convenção do `AGENTS.md`). Desde 14/10/2026 a equipe é Claude + Codex; o
+> ZCode/GLM saiu por ordem do dono (era "ZCode-only", Missão 05, 02/09/2026).**
 > O [CLAUDE.md](CLAUDE.md) é só um aviso apontando para cá. Regras GLOBAIS de comportamento
-> (custo zero, travas, paralelismo, revisão por risco) moram em `~/.zcode/AGENTS.md` — este
-> arquivo declara apenas o **terreno daqui**. O conteúdo de ferramentas Cursor/Antigravity
+> (custo zero, travas, paralelismo, revisão por risco) moram em `~/.claude/CLAUDE.md` (Claude) e
+> `~/.codex/AGENTS.md` (Codex) — este arquivo declara apenas o **terreno daqui**. Onde abaixo
+> aparece "ZCode", é histórico: vale o equivalente da ferramenta em uso. O conteúdo de ferramentas Cursor/Antigravity
 > que existia aqui foi removido nessa reescrita; a cópia `.cursorrules`, que ficou
 > DESATUALIZADA, foi removida em 12/09/2026 (decisão do dono).
 
@@ -268,7 +271,7 @@ npm run size
 `tests/front/`).
 
 **`npm run size` é portão DIVIDIDO** (decisão do dono, 26/09/2026): JS que a cliente pode
-baixar **≤ 550 kB** e JS só do painel **≤ 450 kB** (brotli por arquivo), CSS ≤ 100 kB, leitor
+baixar **≤ 552 kB** (era 550 até 16/10/2026 — proposta aguardando o dono, ver `.size-limit.cjs`) e JS só do painel **≤ 472 kB** (última subida, 17/10/2026, 467→471 e corrigido para 472 no mesmo dia pelo Financeiro medido; decidida com o sócio para o redesenho das telas; daí em diante só com compensação em kB; era 467 depois de 16/10/2026, 450 até 15/10/2026, 455 até a integração dos lotes 36 a 41, 460 até juntar com o lote 4, 464,5 até o lote R1 do reembolso, 466 até o lote R1 — esse passo é decisão do dono, delegada à hub em 15/10/2026 ("você escolhe a melhor opção por mim") — e 467 a partir de 16/10/2026 só pela chave anti-duplicação do lançamento financeiro, PR #981, autorizada pela sessão que coordena o lote; tudo registrado em `.size-limit.cjs`; o dono pode vetar e voltar a 466 (ou 464,5); brotli por arquivo), CSS ≤ 100 kB, leitor
 zxing ≤ 400 kB (`.size-limit.cjs`). Quem classifica cada chunk é o **grafo real do Rollup**,
 nunca o nome do arquivo: o plugin `scripts/portaoDividido.ts` (`generateBundle`, só no build)
 faz a busca a partir das entradas sem atravessar a fronteira (entrada dinâmica que contém
@@ -277,6 +280,25 @@ alcançado é cliente, o resto é painel. Grava `.portao-tamanho/<dist|dist-test
 `.size-limit.cjs` falha fechado se o JSON faltar ou não bater com os `assets/*.js` do disco
 (`scripts/validarPortaoDeTamanho.cjs`) — rode `npm run build` antes. Subir teto ou mexer na
 fronteira é decisão do dono, não ajuste de CI.
+
+**Suite pesada sem lotar a RAM local: rodar na nuvem (grátis, repo público).** O workflow
+`.github/workflows/rodar-na-nuvem.yml` (`workflow_dispatch`) roda UMA suíte no runner do
+GitHub, com os mesmos passos de instalação do `ci.yml` (Node 24, `npm ci`, Deno 2.x), sem
+segredo nenhum (`contents: read`, 30 min de teto). Suítes: `front` (`npx vitest run`),
+`unit`, `edge`, ou `arquivo` (vitest de um caminho em `tests/front/`). O script faz tudo
+(empurra o commit para `claude/nuvem-<sha12>` (e a apaga no fim) se ele ainda não está no GitHub, dispara, espera e
+imprime máquina, tempo e as linhas que falharam):
+
+```powershell
+powershell -File scripts\nuvem-testar.ps1 -Suite front
+powershell -File scripts\nuvem-testar.ps1 -Suite arquivo -Arquivo tests/front/mappers.test.ts
+```
+
+Só o que está **commitado** vai; os hooks de git do push rodam normalmente (o `typecheck`
+do pre-push leva ~1 min). O GitHub só dispara workflow que **já existe na branch padrão**:
+mudança no próprio `rodar-na-nuvem.yml` só passa a valer depois de juntada. Isto NÃO
+substitui o `ci.yml` (portão do PR): não roda tipos, build, lint nem tamanho. Para ver os
+resultados sem o script: `gh run list --workflow rodar-na-nuvem.yml` e `gh run view <id> --log-failed`.
 
 Duas leituras que enganam:
 

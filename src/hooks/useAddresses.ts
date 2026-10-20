@@ -12,11 +12,17 @@ const LISTA_VAZIA: Address[] = [];
 // endereço) não existia para o carrinho, que seguia cotando o frete do
 // principal. Toda lista gravada (busca, inclusão, edição, remoção) é
 // publicada aqui; as outras instâncias DA MESMA CONTA adotam.
-type OuvinteDaLista = (dono: string, itens: Address[], origem: symbol) => void;
+interface PublicacaoDaLista {
+  dono: string;
+  itens: Address[];
+  origem: symbol;
+  leituraConfirmada: boolean;
+}
+type OuvinteDaLista = (publicacao: PublicacaoDaLista) => void;
 const ouvintesDaLista = new Set<OuvinteDaLista>();
 
-function publicarLista(dono: string, itens: Address[], origem: symbol) {
-  for (const ouvir of ouvintesDaLista) ouvir(dono, itens, origem);
+function publicarLista(publicacao: PublicacaoDaLista) {
+  for (const ouvir of ouvintesDaLista) ouvir(publicacao);
 }
 
 interface EstadoDaLista {
@@ -53,14 +59,19 @@ export function useAddresses() {
     itens: carregarCacheDoDisco(user?.id),
   }));
   const [loading, setLoading] = useState(false);
+  const [contaComErro, setContaComErro] = useState<string | null>(null);
   // Espelho síncrono do estado: as mutações calculam a lista nova a partir
   // DELE (e não num updater funcional), para gravar disco, estado e aviso às
   // outras telas com o MESMO valor.
   const estadoRef = useRef(estado);
   const [identidade] = useState(() => Symbol("useAddresses"));
+  const consultaRef = useRef(0);
 
   const gravarLista = useCallback(
-    (dono: string, itens: Address[]) => {
+    (dono: string, itens: Address[], leituraConfirmada = false) => {
+      // Uma gravação confirmada invalida buscas iniciadas antes dela.
+      consultaRef.current++;
+      setLoading(false);
       const novo = { dono, itens };
       estadoRef.current = novo;
       setEstado(novo);
@@ -72,19 +83,28 @@ export function useAddresses() {
       } catch {
         // cota/modo privado: a lista em memória continua valendo
       }
-      publicarLista(dono, itens, identidade);
+      publicarLista({ dono, itens, origem: identidade, leituraConfirmada });
     },
     [identidade],
   );
 
   useEffect(() => {
-    const ouvir: OuvinteDaLista = (dono, itens, origem) => {
+    const ouvir: OuvinteDaLista = ({
+      dono,
+      itens,
+      origem,
+      leituraConfirmada,
+    }) => {
       if (origem === identidade) return;
       // Lista de OUTRA conta nunca entra (troca de conta em voo).
       if (dono !== usuarioAtualRef.current) return;
+      consultaRef.current++;
+      setLoading(false);
       const novo = { dono, itens };
       estadoRef.current = novo;
       setEstado(novo);
+      // Mutação sobre o cache não confirma que a lista inteira foi lida.
+      if (leituraConfirmada) setContaComErro(null);
     };
     ouvintesDaLista.add(ouvir);
     return () => {
@@ -97,6 +117,9 @@ export function useAddresses() {
 
   useEffect(() => {
     usuarioAtualRef.current = user?.id;
+    consultaRef.current++;
+    setLoading(false);
+    setContaComErro(null);
   }, [user?.id]);
 
   // Troca de conta: recarrega o cache DA CONTA CORRENTE.
@@ -110,6 +133,9 @@ export function useAddresses() {
   const fetchAddresses = useCallback(async () => {
     if (!user) return;
     const idDaBusca = user.id;
+    const consulta = ++consultaRef.current;
+    const atual = () =>
+      usuarioAtualRef.current === idDaBusca && consulta === consultaRef.current;
     const cacheKey = `ikcous_addresses_cache_${idDaBusca}`;
     let hasCache = false;
     try {
@@ -132,10 +158,10 @@ export function useAddresses() {
         .order("is_default", { ascending: false })
         .order("created_at", { ascending: false });
 
+      if (!atual()) return;
       if (error) throw error;
-      // Resposta da conta anterior não grava nada.
-      if (usuarioAtualRef.current !== idDaBusca) return;
-      const mapped = (data || []).map((a) => ({
+      if (!data) throw new Error("consulta de endereços voltou sem dados");
+      const mapped = data.map((a) => ({
         id: a.id,
         user_id: a.user_id,
         name: a.name,
@@ -150,13 +176,15 @@ export function useAddresses() {
         reference: a.reference,
         is_default: a.is_default || false,
       }));
-      gravarLista(idDaBusca, mapped);
+      gravarLista(idDaBusca, mapped, true);
+      setContaComErro(null);
     } catch (error) {
-      if (usuarioAtualRef.current !== idDaBusca) return;
+      if (!atual()) return;
+      setContaComErro(idDaBusca);
       console.error("Error fetching addresses:", error);
       toast.error("Erro ao carregar endereços");
     } finally {
-      if (usuarioAtualRef.current === idDaBusca) {
+      if (atual()) {
         setLoading(false);
       }
     }
@@ -315,6 +343,7 @@ export function useAddresses() {
   return {
     addresses,
     loading,
+    erroAoCarregar: contaComErro !== null && contaComErro === user?.id,
     fetchAddresses,
     addAddress,
     updateAddress,

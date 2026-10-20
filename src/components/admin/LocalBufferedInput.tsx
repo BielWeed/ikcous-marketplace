@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { digitosDoTelefoneDoCampo } from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
@@ -16,10 +17,20 @@ interface LocalBufferedInputProps
   readonly delay?: number;
   readonly validate?: (val: string) => string | null;
   readonly mask?: "phone" | "currency";
+  /** Só com `mask="currency"`: preserva o sinal na exibição e no onFlush. */
+  readonly permiteNegativo?: boolean;
+  /**
+   * Só com `mask="currency"`: o zero DIGITADO vira campo vazio. A máscara nunca
+   * deixa o campo vazio sozinha (apagar o "0,05" com backspace dá "0,0", lido
+   * como "00" e mostrado como "0,00"), e onde vazio quer dizer "sem preço
+   * próprio" esse "0,00" virava preço zero. O valor que já veio salvo (prop
+   * `value`) continua sendo mostrado como está, zero inclusive.
+   */
+  readonly zeroVazio?: boolean;
 }
 
-const formatPhone = (val: string) => {
-  const clean = val.replace(/\D/g, "");
+const formatPhone = (val: string, anterior?: string) => {
+  const clean = digitosDoTelefoneDoCampo(val, anterior);
   if (clean.length === 0) return "";
   if (clean.length <= 2) return `(${clean}`;
   if (clean.length <= 6) return `(${clean.slice(0, 2)}) ${clean.slice(2)}`;
@@ -28,31 +39,46 @@ const formatPhone = (val: string) => {
   return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7, 11)}`;
 };
 
-const formatCurrency = (val: string) => {
-  const clean = val.replace(/\D/g, "");
-  if (clean.length === 0) return "";
-  const num = Number.parseFloat(clean) / 100;
-  return num.toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+const sinalDaMoeda = (val: string, permiteNegativo: boolean) => {
+  if (!permiteNegativo) return "";
+  const texto = val.replace(/R\$/gi, "").replace(/\s/g, "");
+  return /^[-−]|[-−]$/.test(texto) ||
+    (texto.startsWith("(") && texto.endsWith(")"))
+    ? "-"
+    : "";
 };
 
-const parseCurrencyToFloatString = (val: string) => {
+const formatCurrency = (val: string, permiteNegativo = false) => {
+  const sinal = sinalDaMoeda(val, permiteNegativo);
   const clean = val.replace(/\D/g, "");
-  if (clean.length === 0) return "";
+  if (clean.length === 0) return sinal;
   const num = Number.parseFloat(clean) / 100;
-  return num.toFixed(2);
+  return (
+    sinal +
+    num.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
+};
+
+const parseCurrencyToFloatString = (val: string, permiteNegativo = false) => {
+  const sinal = sinalDaMoeda(val, permiteNegativo);
+  const clean = val.replace(/\D/g, "");
+  if (clean.length === 0) return sinal;
+  const num = Number.parseFloat(clean) / 100;
+  return sinal + num.toFixed(2);
 };
 
 // O valor que chega pela prop `value` já está em reais (ex.: 100 ou "100.00"),
 // diferente do que o usuário digita, que é interpretado em centavos.
 // Converter para centavos antes de formatar, senão R$ 100,00 é exibido como R$ 1,00.
-const decimalToCurrencyDisplay = (val: string) => {
+const decimalToCurrencyDisplay = (val: string, permiteNegativo = false) => {
   if (val.trim() === "") return "";
+  if (permiteNegativo && val.trim() === "-") return "-";
   const floatVal = Number.parseFloat(val);
   if (Number.isNaN(floatVal)) return "";
-  return formatCurrency(Math.round(floatVal * 100).toString());
+  return formatCurrency(Math.round(floatVal * 100).toString(), permiteNegativo);
 };
 
 export const LocalBufferedInput = memo(function LocalBufferedInput({
@@ -63,6 +89,8 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   className,
   validate,
   mask,
+  permiteNegativo = false,
+  zeroVazio = false,
   ...props
 }: LocalBufferedInputProps) {
   const formatValue = useCallback(
@@ -72,11 +100,11 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         return formatPhone(str);
       }
       if (mask === "currency") {
-        return decimalToCurrencyDisplay(str);
+        return decimalToCurrencyDisplay(str, permiteNegativo);
       }
       return str;
     },
-    [mask],
+    [mask, permiteNegativo],
   );
 
   const [localVal, setLocalVal] = useState(() => formatValue(value));
@@ -119,11 +147,15 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     let rawVal = val;
 
     if (mask === "phone") {
-      val = formatPhone(val);
+      val = formatPhone(val, localVal.toString());
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
-      val = formatCurrency(val);
-      rawVal = parseCurrencyToFloatString(val);
+      val = formatCurrency(val, permiteNegativo);
+      rawVal = parseCurrencyToFloatString(val, permiteNegativo);
+      if (zeroVazio && Number.parseFloat(rawVal) === 0) {
+        val = "";
+        rawVal = "";
+      }
     }
 
     setLocalVal(val);
@@ -137,6 +169,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     }
 
     timerRef.current = setTimeout(() => {
+      timerRef.current = null;
       onFlushRef.current(rawVal);
     }, delay);
   };
@@ -148,10 +181,10 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     }
   };
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    isFocusedRef.current = false;
-    if (timerRef.current) {
+  const flushBufferedValue = () => {
+    if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
     const val =
       localVal !== undefined && localVal !== null ? localVal.toString() : "";
@@ -159,11 +192,29 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     if (mask === "phone") {
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
-      rawVal = parseCurrencyToFloatString(val);
+      rawVal = parseCurrencyToFloatString(val, permiteNegativo);
     }
     onFlushRef.current(rawVal);
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    isFocusedRef.current = false;
+    flushBufferedValue();
     if (props.onBlur) {
       props.onBlur(e);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (
+      e.key === "Enter" &&
+      !e.nativeEvent.isComposing &&
+      timerRef.current !== null
+    ) {
+      flushBufferedValue();
+    }
+    if (props.onKeyDown) {
+      props.onKeyDown(e);
     }
   };
 
@@ -180,6 +231,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
           className={cn(
             className,
             error &&
@@ -194,6 +246,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
           className={cn(
             className,
             error &&

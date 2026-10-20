@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 33a, 33b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b, 43a, 43b, 45a, 45b, 46a, 46b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1353,11 +1353,976 @@ const ROL_DA_17B = [
   "painel_inicio: sobrecargas",
   "produtos e product_variants: colunas que os corpos novos leem",
 ];
+/** O rol da 19a (a prova de objetos do lote da migration 20261215000000, a politica de devolucao nao
+ * mostra quem a editou — achado L): as 9 linhas que
+ * scripts/publicacao/consultas/19a-conferir-politica-devolucao-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (tabela ausente vira `AUSENTE` na propria linha, papel inexistente vira
+ * `papel ausente`, nunca some uma linha): o controle (16 colunas), a RLS com a politica publica de SELECT,
+ * `service_role` com SELECT da tabela inteira e, para `anon` e `authenticated`, SEM SELECT da tabela
+ * inteira, SEM SELECT em `updated_by` e 15 de 16 colunas legiveis. Como a 10a/11a/12a/14a/15a/16a/17a, NAO
+ * serve de pre-checagem de ledger (o lote nao tem backfill): o portao a le como `consulta` do lote e so a
+ * aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/politica-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_19A = [
+  "anon: SELECT da tabela inteira",
+  "anon: SELECT em updated_by",
+  "anon: colunas legiveis",
+  "authenticated: SELECT da tabela inteira",
+  "authenticated: SELECT em updated_by",
+  "authenticated: colunas legiveis",
+  "controle: colunas de politica_devolucao visiveis a este papel",
+  "politica_devolucao: RLS ligada com a politica publica de SELECT",
+  "service_role: SELECT da tabela inteira",
+];
+/** O rol da 19b (a consulta de AUSENCIA do lote da migration 20261215000000; `ausenciaConfirmadaPor`): as 9
+ * linhas que scripts/publicacao/consultas/19b-antes-politica-devolucao-grant-de-tabela.sql devolve, os MESMOS
+ * itens da 19a com o esperado de ANTES — `anon` e `authenticated` com SELECT da tabela inteira, com SELECT em
+ * `updated_by` e 16 de 16 colunas legiveis. Uma loja que ja tem a migration reprova aqui de proposito.
+ * tests/banco/politica-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_19B = [
+  "anon: SELECT da tabela inteira",
+  "anon: SELECT em updated_by",
+  "anon: colunas legiveis",
+  "authenticated: SELECT da tabela inteira",
+  "authenticated: SELECT em updated_by",
+  "authenticated: colunas legiveis",
+  "controle: colunas de politica_devolucao visiveis a este papel",
+  "politica_devolucao: RLS ligada com a politica publica de SELECT",
+  "service_role: SELECT da tabela inteira",
+];
 
+/** O rol da 20a (a prova de objetos do lote da migration 20261216000000, o cliente apaga a foto de
+ * devolucao que nao usou): as 6 linhas que
+ * scripts/publicacao/consultas/20a-conferir-fotos-da-devolucao-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (politica ausente vira `AUSENTE` na propria linha, nunca some uma
+ * linha): o controle do catalogo, a politica de DELETE do cliente (uma), so para `authenticated`, com as
+ * pecas que a fazem segura (bucket, pasta do cliente, foto fora de uso), nenhuma outra politica de DELETE/ALL
+ * alcancando o bucket, e as politicas de INSERT e SELECT do cliente no lugar. Como a 10a/11a/12a/14a/15a/16a/17a/19a, NAO serve de pre-checagem de ledger (o lote
+ * nao tem backfill): o portao a le como `consulta` do lote e so a aceita como POSITIVA ou NEGATIVA com
+ * ` rol=ok`. tests/banco/fotos-da-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_20A = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "devolucoes: DELETE so no bucket, na pasta do cliente e fora da foto em uso",
+  "devolucoes: DELETE so para authenticated",
+  "devolucoes: INSERT e SELECT do cliente seguem no lugar",
+  "devolucoes: nenhuma outra politica DELETE/ALL alcanca o bucket",
+  "devolucoes: politicas de DELETE do cliente",
+];
+/** O rol da 20b (a consulta de AUSENCIA do lote da migration 20261216000000; `ausenciaConfirmadaPor`): as 6
+ * linhas que scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql devolve, os MESMOS
+ * itens da 20a com o esperado de ANTES (nenhuma politica de DELETE do cliente; INSERT e SELECT presentes).
+ * Uma loja que ja tem a politica reprova aqui de proposito. tests/banco/fotos-da-devolucao-portao-viva.cjs
+ * prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_20B = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "devolucoes: DELETE so no bucket, na pasta do cliente e fora da foto em uso",
+  "devolucoes: DELETE so para authenticated",
+  "devolucoes: INSERT e SELECT do cliente seguem no lugar",
+  "devolucoes: nenhuma outra politica DELETE/ALL alcanca o bucket",
+  "devolucoes: politicas de DELETE do cliente",
+];
+/** O rol da 21a (a prova de objetos do lote da migration 20261217000000, o e-mail da loja tem teto e o
+ * codigo do convidado nao se queima): as 14 linhas que
+ * scripts/publicacao/consultas/21a-conferir-teto-de-email-aplicado.sql devolve, cada uma UMA vez, as mesmas
+ * em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha, nunca some uma linha): o
+ * controle do catalogo, corpo (sha256) e EXECUTE das seis funcoes do lote e a tabela de contadores com RLS e
+ * sem privilegio para anon/authenticated. Como a 17a/19a/20a, NAO serve de pre-checagem de ledger (o lote
+ * nao tem backfill): o portao a le como `consulta` do lote e so a aceita como POSITIVA ou NEGATIVA com
+ * ` rol=ok`. tests/banco/teto-de-email-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE
+ * o que a consulta devolve. */
+const ROL_DA_21A = [
+  "chave_do_destinatario: EXECUTE",
+  "chave_do_destinatario: corpo e o da 20261217000000 (sha256)",
+  "controle: funcoes de public visiveis a este papel",
+  "email_da_loja_contadores: RLS ligada e nada para anon/authenticated",
+  "generate_order_otp_v2: EXECUTE",
+  "generate_order_otp_v2: corpo e o da 20261217000000 (sha256)",
+  "get_orders_by_otp_v1: EXECUTE",
+  "get_orders_by_otp_v1: corpo e o da 20261217000000 (sha256)",
+  "get_orders_by_otp_v2: EXECUTE",
+  "get_orders_by_otp_v2: corpo e o da 20261217000000 (sha256)",
+  "reivindicar_email_de_confirmacao: EXECUTE",
+  "reivindicar_email_de_confirmacao: corpo e o da 20261217000000 (sha256)",
+  "reservar_vaga_de_email: EXECUTE",
+  "reservar_vaga_de_email: corpo e o da 20261217000000 (sha256)",
+];
+/** O rol da 21b (a consulta de AUSENCIA do lote da migration 20261217000000; `ausenciaConfirmadaPor`): as 8
+ * linhas que scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql devolve — como na 17b,
+ * o "antes" e o corpo VIGENTE das tres funcoes que o lote troca (com o EXECUTE de sempre) e as colunas que
+ * os corpos novos leem. Uma loja que ja tem a migration reprova aqui de proposito.
+ * tests/banco/teto-de-email-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_21B = [
+  "controle: funcoes de public visiveis a este papel",
+  "generate_order_otp_v2: EXECUTE",
+  "generate_order_otp_v2: corpo e o da 20260820000000 (sha256)",
+  "get_orders_by_otp_v1: EXECUTE",
+  "get_orders_by_otp_v1: corpo e o da 20261181000000 (sha256)",
+  "pedidos, codigos e contas: colunas que os corpos novos leem",
+  "reivindicar_email_de_confirmacao: EXECUTE",
+  "reivindicar_email_de_confirmacao: corpo e o da 20260821000000 (sha256)",
+];
+/** O rol da 22a (a prova de objetos do lote 20261218000000 + 20261218000100 + 20261219000000, as
+ * portas pequenas do banco): as 15 linhas que
+ * scripts/publicacao/consultas/22a-conferir-portas-do-banco-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): a politica de
+ * public_profiles so para authenticated com a condicao do lote, o gatilho do teto da imagem do perfil
+ * (definicao, corpo sha256 e EXECUTE fechado), o EXECUTE da contagem do push, a view do painel sem nada
+ * para PUBLIC/anon, configuracoes e codigos sem nada para PUBLIC/anon/authenticated com a service_role
+ * intacta, e anon/authenticated fora dos papeis predefinidos de leitura/escrita. Como a 21a, NAO serve
+ * de pre-checagem de ledger (o lote nao tem backfill). tests/banco/portas-do-banco-portao-viva.cjs prova,
+ * num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_22A = [
+  "anon e authenticated: fora de pg_read_all_data e pg_write_all_data",
+  "app_settings e otp_verifications: service_role le e grava",
+  "app_settings: RLS ligada e nada para PUBLIC/anon/authenticated",
+  "controle: funcoes de public visiveis a este papel",
+  "get_segmented_push_count: EXECUTE",
+  "get_segmented_push_count: corpo e o vigente (md5)",
+  "otp_verifications: RLS ligada e nada para PUBLIC/anon/authenticated",
+  "perfil_recusa_imagem_grande: EXECUTE fechado e sem SECURITY DEFINER",
+  "perfil_recusa_imagem_grande: corpo e o da 20261218000000 (sha256)",
+  "profiles: gatilho do teto da imagem ligado e com a definicao da 20261218000000",
+  "public_profiles: RLS ligada",
+  "public_profiles: condicao da politica e a da 20261219000000 (md5)",
+  "public_profiles: politicas",
+  "vw_produtos_admin: authenticated le e grava",
+  "vw_produtos_admin: nada para PUBLIC/anon",
+];
+/** O rol da 22b (a consulta de AUSENCIA do lote das portas pequenas do banco; `ausenciaConfirmadaPor`):
+ * as 11 linhas que scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql devolve — o
+ * estado VIGENTE medido nas duas lojas (a politica USING (true) para PUBLIC, sem o gatilho, a contagem do
+ * push aberta e a view lida pelo anon), a porta rls_admin_atual() e as colunas que o lote le. SEM linha
+ * de configuracoes e codigos: numa loja ja fechada o "antes" delas ja e o "depois". Uma loja que ja tem
+ * o lote reprova aqui de proposito. tests/banco/portas-do-banco-portao-viva.cjs prova, num Postgres
+ * real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_22B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_segmented_push_count: EXECUTE",
+  "get_segmented_push_count: corpo e o da 20261199000000 (md5)",
+  "perfil_recusa_imagem_grande: funcao",
+  "perfis, avaliacoes e perguntas: colunas que o lote le",
+  "profiles: gatilho do teto da imagem",
+  "public_profiles: RLS ligada",
+  "public_profiles: condicao da politica e a do baseline",
+  "public_profiles: politicas",
+  "rls_admin_atual: corpo da 20261197000000 (md5) e EXECUTE",
+  "vw_produtos_admin: anon le",
+];
+/** O rol da 23a (a prova de objetos do lote 20261220000000, a consulta antiga de pedido por codigo
+ * fecha para o visitante): as 5 linhas que
+ * scripts/publicacao/consultas/23a-conferir-consulta-antiga-de-pedido-fechada.sql devolve, cada uma UMA
+ * vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo
+ * e o EXECUTE da get_orders_by_otp_v1 (FECHADA para anon e authenticated, service_role sim) e da
+ * get_orders_by_otp_v2 (ABERTA). tests/banco/consulta-antiga-de-pedido-portao-viva.cjs prova, num
+ * Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_23A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_orders_by_otp_v1: corpo e o da 20261217000000 (md5)",
+  "get_orders_by_otp_v1: EXECUTE fechado para anon e authenticated",
+  "get_orders_by_otp_v2: corpo e o da 20261217000000 (md5)",
+  "get_orders_by_otp_v2: EXECUTE aberto para anon e authenticated",
+];
+/** O rol da 23b (a consulta de AUSENCIA do lote da consulta antiga de pedido; `ausenciaConfirmadaPor`):
+ * as 5 linhas que scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql devolve — a
+ * base de antes: a 20261217000000 aplicada (corpos), a v1 ABERTA como sempre e a v2 aberta. Uma loja que
+ * ja tem o corte reprova aqui de proposito, na linha de EXECUTE da v1. */
+const ROL_DA_23B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_orders_by_otp_v1: corpo e o da 20261217000000 (md5)",
+  "get_orders_by_otp_v1: EXECUTE aberto para anon e authenticated",
+  "get_orders_by_otp_v2: corpo e o da 20261217000000 (md5)",
+  "get_orders_by_otp_v2: EXECUTE aberto para anon e authenticated",
+];
+/** O rol da 24a (a prova de objetos do lote 20261221000000, a media de avaliacoes e o voto "util" fecham
+ * para o visitante): as 3 linhas que
+ * scripts/publicacao/consultas/24a-conferir-avaliacoes-fechadas-ao-visitante.sql devolve, cada uma UMA
+ * vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o EXECUTE
+ * de get_reviews_metrics e de increment_helpful FECHADO para anon (authenticated e service_role sim, PUBLIC
+ * nao). tests/banco/avaliacoes-fechadas-ao-visitante-portao-viva.cjs prova, num Postgres real, que este
+ * rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_24A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_reviews_metrics: EXECUTE fechado para anon (authenticated e service_role sim)",
+  "increment_helpful: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 24b (a consulta de AUSENCIA do lote das avaliacoes fechadas ao visitante;
+ * `ausenciaConfirmadaPor`): as 3 linhas que
+ * scripts/publicacao/consultas/24b-antes-avaliacoes-abertas-ao-visitante.sql devolve — a base de antes:
+ * as duas funcoes ABERTAS a anon e authenticated (PUBLIC nao). Uma loja que ja tem o corte reprova aqui
+ * de proposito, nas linhas de EXECUTE. */
+const ROL_DA_24B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_reviews_metrics: EXECUTE aberto para anon e authenticated",
+  "increment_helpful: EXECUTE aberto para anon e authenticated",
+];
+/** O rol da 25a (a prova de objetos do lote 20261222000000, a media de avaliacoes so responde ao
+ * administrador): as 5 linhas que scripts/publicacao/consultas/25a-conferir-media-de-avaliacoes-so-admin.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria
+ * linha): o corpo vivo e o NOVO (md5), ele exige is_admin() antes de ler as avaliacoes, os atributos de
+ * sempre e o EXECUTE seguem FECHADOS ao visitante. tests/banco/media-de-avaliacoes-so-admin-portao-viva.cjs
+ * prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_25A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_reviews_metrics: corpo e o da 20261222000000, com a guarda de admin (md5)",
+  "get_reviews_metrics: o corpo exige is_admin() antes de ler as avaliacoes",
+  "get_reviews_metrics: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "get_reviews_metrics: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 25b (a consulta de AUSENCIA do lote da media de avaliacoes so-admin; `ausenciaConfirmadaPor`):
+ * as 4 linhas que scripts/publicacao/consultas/25b-antes-media-de-avaliacoes-sem-guarda.sql devolve — a base
+ * de antes: o corpo e o da baseline (md5), sem a guarda, com os atributos de sempre. NAO mede a ACL (e' da 24a).
+ * Uma loja que ja tem a guarda reprova aqui de proposito, nas linhas do corpo. */
+const ROL_DA_25B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_reviews_metrics: corpo e o da baseline, sem a guarda de admin (md5)",
+  "get_reviews_metrics: o corpo ainda NAO exige is_admin()",
+  "get_reviews_metrics: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+];
+/** O rol da 26a (a prova de objetos do lote 20261223000000, o voto util so vale em avaliacao que o publico
+ * ve): as 5 linhas que scripts/publicacao/consultas/26a-conferir-voto-util-so-em-avaliacao-publica.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria
+ * linha): o corpo vivo e o NOVO (md5), ele exige avaliacao publicada antes de gravar o voto, os atributos de
+ * sempre e o EXECUTE seguem FECHADOS ao visitante.
+ * tests/banco/voto-util-so-em-avaliacao-publica-portao-viva.cjs prova, num Postgres real, que este rol e
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_26A = [
+  "controle: funcoes de public visiveis a este papel",
+  "increment_helpful: corpo e o da 20261223000000, com a guarda de status (md5)",
+  "increment_helpful: o corpo exige avaliacao publicada antes de gravar o voto",
+  "increment_helpful: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "increment_helpful: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 26b (a consulta de AUSENCIA do lote do voto util; `ausenciaConfirmadaPor`): as 4 linhas que
+ * scripts/publicacao/consultas/26b-antes-voto-util-sem-guarda-de-status.sql devolve — a base de antes: o corpo
+ * e o da 20261050000000 (md5), sem a guarda de status, com os atributos de sempre. NAO mede a ACL (e' da 24a).
+ * Uma loja que ja tem a guarda reprova aqui de proposito, nas linhas do corpo. */
+const ROL_DA_26B = [
+  "controle: funcoes de public visiveis a este papel",
+  "increment_helpful: corpo e o da 20261050000000, sem a guarda de status (md5)",
+  "increment_helpful: o corpo ainda NAO exige avaliacao publicada",
+  "increment_helpful: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+];
+/** O rol da 27a (a prova de objetos do lote 20261224000000, a avaliacao nasce sem a resposta da loja): as 6 linhas que
+ * scripts/publicacao/consultas/27a-conferir-avaliacao-nasce-sem-resposta-da-loja.sql devolve, cada uma UMA vez, as mesmas
+ * em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): a funcao do gatilho tem o corpo da
+ * migration (md5) e limpa as quatro colunas so fora do administrador, tem os atributos de sempre e esta FECHADA a
+ * PUBLIC/anon/authenticated/service_role; e o gatilho existe (BEFORE INSERT por linha em public.reviews, ligado).
+ * tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs prova, num Postgres real, que este rol e
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_27A = [
+  "controle: funcoes de public visiveis a este papel",
+  "avaliacao_nasce_sem_a_resposta_da_loja: corpo e o da 20261224000000 (md5)",
+  "avaliacao_nasce_sem_a_resposta_da_loja: o corpo limpa as quatro colunas, so fora do administrador e da sessao direta",
+  "avaliacao_nasce_sem_a_resposta_da_loja: atributos de sempre (SECURITY DEFINER, VOLATILE, retorna trigger, search_path=public)",
+  "avaliacao_nasce_sem_a_resposta_da_loja: EXECUTE fechado a PUBLIC, anon, authenticated e service_role",
+  "tr_avaliacao_nasce_sem_a_resposta_da_loja: BEFORE INSERT por linha em public.reviews, ligado, sem WHEN, chamando a funcao",
+];
+/** O rol da 27b (a consulta de AUSENCIA do lote da avaliacao sem resposta; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql devolve — a base de antes: a funcao e o
+ * gatilho ainda nao existem e as pecas de que o apply depende (as quatro colunas, rls_admin_atual, o gatilho irmao do
+ * selo) estao de pe. Uma loja que ja tem a funcao ou o gatilho reprova aqui de proposito. */
+const ROL_DA_27B = [
+  "controle: funcoes de public visiveis a este papel",
+  "avaliacao_nasce_sem_a_resposta_da_loja: a funcao ainda NAO existe",
+  "tr_avaliacao_nasce_sem_a_resposta_da_loja: o gatilho ainda NAO existe",
+  "reviews: as quatro colunas que o gatilho reescreve, com os tipos de sempre",
+  "rls_admin_atual(): existe e devolve boolean (20261197000000)",
+  "tr_avaliacao_nasce_verificada: o gatilho irmao do selo (AFTER INSERT por linha em reviews) esta de pe",
+];
+/** O rol da 30a (a prova de objetos do lote 20261227000000 + 20261228000000, os numeros do painel: a taxa de
+ * devolucao do CRM fala da mesma turma de vendas e o "Hoje" compara ate a mesma hora): as 9 linhas que
+ * scripts/publicacao/consultas/30a-conferir-numeros-do-painel-aplicado.sql devolve, cada uma UMA vez, as mesmas
+ * em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): para cada uma das duas funcoes
+ * (crm_visao e painel_inicio), o corpo vivo e o NOVO (md5), ele traz o corte na mesma hora, os atributos de
+ * sempre e o EXECUTE segue FECHADO ao visitante.
+ * tests/banco/numeros-do-painel-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_30A = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm_visao: corpo e o da 20261227000000, com a taxa da turma e o corte na mesma hora (md5)",
+  "crm_visao: o corpo traz a turma de vendas e o corte na mesma hora",
+  "crm_visao: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "crm_visao: EXECUTE fechado para anon (authenticated e service_role sim)",
+  "painel_inicio: corpo e o da 20261228000000, com a semana passada cortada na mesma hora (md5)",
+  "painel_inicio: o corpo traz o corte na mesma hora",
+  "painel_inicio: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "painel_inicio: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 30b (a consulta de AUSENCIA do lote dos numeros do painel; `ausenciaConfirmadaPor`): as 7 linhas
+ * que scripts/publicacao/consultas/30b-antes-numeros-do-painel-corpos-vigentes.sql devolve - a base de antes:
+ * crm_visao com o corpo da 20261199000000 e painel_inicio com o da 20261212000000 (md5), sem o corte na mesma
+ * hora, com os atributos de sempre. NAO mede a ACL. Uma loja que ja tem um dos cortes reprova aqui de
+ * proposito, nas linhas do corpo e do marcador daquela funcao. */
+const ROL_DA_30B = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm_visao: corpo e o da 20261199000000, sem o corte na mesma hora (md5)",
+  "crm_visao: o corpo ainda NAO corta o anterior na mesma hora",
+  "crm_visao: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "painel_inicio: corpo e o da 20261212000000, sem o corte na mesma hora (md5)",
+  "painel_inicio: o corpo ainda NAO corta a semana passada na mesma hora",
+  "painel_inicio: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+];
+/** O rol da 33a (a prova de objetos do lote 20261232000000, a grade do CRM mede a recencia do mesmo instante da lista):
+ * as 5 linhas que scripts/publicacao/consultas/33a-conferir-grade-do-crm-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de crm_visao e o
+ * NOVO (md5), ele mede o periodo ate agora (LEAST da meia-noite de amanha com now()), os atributos de sempre e o
+ * EXECUTE segue FECHADO ao visitante.
+ * tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que
+ * a consulta devolve. */
+const ROL_DA_33A = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm_visao: corpo e o da 20261232000000, com a ancora de agora (md5)",
+  "crm_visao: o corpo mede o periodo ate agora (LEAST da meia-noite de amanha com now())",
+  "crm_visao: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "crm_visao: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 33b (a consulta de AUSENCIA do lote da grade do CRM; `ausenciaConfirmadaPor`): as 4 linhas que
+ * scripts/publicacao/consultas/33b-antes-grade-do-crm-corpo-vigente.sql devolve - a base de antes: crm_visao com o
+ * corpo da 20261227000000 (md5), sem a ancora de agora, com os atributos de sempre. NAO mede a ACL. Uma loja que ja
+ * tem a ancora de agora (ou que ainda esta no corpo da 20261199000000, sem a 27) reprova aqui de proposito, nas
+ * linhas do corpo e do marcador. */
+const ROL_DA_33B = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm_visao: corpo e o da 20261227000000, sem a ancora de agora (md5)",
+  "crm_visao: o corpo ainda NAO mede o periodo ate agora",
+  "crm_visao: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+];
+/** O rol da 31a (a prova de objetos do lote 20261229000000, o endereco da compra fica no pedido): as 9 linhas que
+ * scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de create_
+ * marketplace_order_v23 e v24 e o NOVO (md5), cada um copia o endereco da conta antes de gravar o pedido, os
+ * atributos de sempre e o EXECUTE de sempre (PUBLIC nao; anon, authenticated e service_role sim).
+ * tests/banco/endereco-no-pedido-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_31A = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo e o da 20261229000000, com a copia do endereco (md5)",
+  "create_marketplace_order_v24: corpo e o da 20261229000000, com a copia do endereco (md5)",
+  "create_marketplace_order_v23: o corpo copia o endereco da conta antes de gravar o pedido",
+  "create_marketplace_order_v24: o corpo copia o endereco da conta antes de gravar o pedido",
+  "create_marketplace_order_v23: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "create_marketplace_order_v24: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "create_marketplace_order_v23: EXECUTE de sempre (anon, authenticated e service_role sim; PUBLIC nao)",
+  "create_marketplace_order_v24: EXECUTE de sempre (anon, authenticated e service_role sim; PUBLIC nao)",
+];
+/** O rol da 31b (a consulta de AUSENCIA do lote do endereco da compra; `ausenciaConfirmadaPor`): as 7 linhas que
+ * scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql devolve — a base de antes: os dois
+ * corpos sao os da 20261174000000 (md5), sem a copia do endereco, com os atributos de sempre. NAO mede a ACL (e' da
+ * 31a). Uma loja que ja tem a copia reprova aqui de proposito, nas linhas dos corpos. */
+const ROL_DA_31B = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo e o da 20261174000000, sem a copia do endereco (md5)",
+  "create_marketplace_order_v24: corpo e o da 20261174000000, sem a copia do endereco (md5)",
+  "create_marketplace_order_v23: o corpo ainda NAO copia o endereco da conta",
+  "create_marketplace_order_v24: o corpo ainda NAO copia o endereco da conta",
+  "create_marketplace_order_v23: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "create_marketplace_order_v24: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+];
+/** O rol da 28a (a prova de objetos do lote 20261225000000, o reembolso da devolucao so e' "liberado" quando o
+ * dinheiro sai): as 8 linhas que scripts/publicacao/consultas/28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria
+ * linha): os tres corpos vivos sao os NOVOS (md5), o aviso da conclusao segue o estado real do reembolso, os
+ * atributos de sempre, o EXECUTE fechado e o gatilho novo de order_refunds ligado.
+ * tests/banco/reembolso-da-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e'
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_28A = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_avisa_o_cliente: corpo e o da 20261225000000, com o aviso pelo estado real do reembolso (md5)",
+  "devolucao_avisa_o_cliente: o aviso da conclusao segue o estado real do reembolso",
+  "devolucao__avisar_reembolso: corpo e o da 20261225000000 (md5)",
+  "devolucao_avisa_reembolso_liberado: corpo e o da 20261225000000 (md5)",
+  "as tres funcoes: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "as tres funcoes: EXECUTE fechado (PUBLIC, anon e authenticated nao; a auxiliar nem service_role)",
+  "tr_order_refunds_avisa_reembolso_liberado: ligado so na virada para concluido (AFTER UPDATE OF status, WHEN)",
+];
+/** O rol da 28b (a consulta de AUSENCIA do lote do reembolso da devolucao; `ausenciaConfirmadaPor`): as 5 linhas
+ * que scripts/publicacao/consultas/28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao.sql devolve — a
+ * base de antes: o corpo de devolucao_avisa_o_cliente e' o da 20261175000000 (md5), que avisa "liberado" na
+ * conclusao, com os atributos de sempre, e as duas funcoes novas e o gatilho novo ainda NAO existem. Uma loja
+ * que ja tem a migration reprova aqui de proposito. */
+const ROL_DA_28B = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_avisa_o_cliente: corpo e o da 20261175000000, que avisa liberado na conclusao (md5)",
+  "devolucao_avisa_o_cliente: o aviso da conclusao ainda NAO le o estado real do reembolso",
+  "devolucao_avisa_o_cliente: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "as duas funcoes novas e o gatilho de order_refunds ainda NAO existem",
+];
+/** O rol da 29a (a prova de objetos do lote 20261226000000, a reemissao do reembolso consulta o Mercado Pago antes
+ * de pagar de novo): as 9 linhas que scripts/publicacao/consultas/29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria
+ * linha): os tres corpos vivos sao os da migration (md5), os atributos de sempre, o EXECUTE como deve (as duas de
+ * servidor so do service_role; a do lojista so do authenticated), a tabela de diagnostico so do servidor e a
+ * reemissao decidindo pelo diagnostico e pela consulta do MP, com o ator conferido nas duas fontes.
+ * tests/banco/reemissao-do-reembolso-portao-viva.cjs prova, num Postgres real, que este rol e' EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_29A = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_diagnostico_do_estorno: corpo e o da 20261226000000 (md5)",
+  "reemitir_reembolso_da_devolucao: corpo e o da 20261226000000 (md5)",
+  "admin_devolucao_reembolso_por_fora: corpo e o da 20261226000000 (md5)",
+  "as tres funcoes: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "as duas funcoes de servidor: EXECUTE so do service_role (PUBLIC, anon e authenticated nao)",
+  "admin_devolucao_reembolso_por_fora: EXECUTE so do authenticated (PUBLIC e anon nao)",
+  "order_refund_diagnostico: so do servidor (RLS ligada, nenhuma policy, nenhum acesso de anon e authenticated)",
+  "reemitir_reembolso_da_devolucao: decide pelo diagnostico e pela consulta do MP e confere o ator nas duas fontes",
+];
+/** O rol da 29b (a consulta de AUSENCIA do lote da reemissao do reembolso; `ausenciaConfirmadaPor`): as 5 linhas
+ * que scripts/publicacao/consultas/29b-antes-reemissao-do-reembolso-base-conhecida.sql devolve — a base de antes:
+ * as tres funcoes novas e a tabela ainda NAO existem e as tres funcoes que a migration chama (concluir_estorno,
+ * pedido__saldo_a_estornar, devolucao__avisar_reembolso da 20261225000000) tem o corpo conhecido. Uma loja que ja
+ * tem a migration, ou que ainda nao tem o lote 28, reprova aqui de proposito. */
+const ROL_DA_29B = [
+  "controle: funcoes de public visiveis a este papel",
+  "as tres funcoes novas e a tabela order_refund_diagnostico ainda NAO existem",
+  "concluir_estorno: corpo e o conhecido da 2026110000100 (md5)",
+  "pedido__saldo_a_estornar: corpo e o da 20261198000000 (md5)",
+  "devolucao__avisar_reembolso: corpo e o da 20261225000000 (md5; o lote 28 aplicado)",
+];
+/** O rol da 32a (a prova de objetos do lote 20261230000000 + 20261231000000, a busca de clientes: a tela Clientes, o balcao e o
+ * cupom exclusivo acham pelo numero do WhatsApp; a aba Clientes do CRM ignora acento): as 9 linhas que
+ * scripts/publicacao/consultas/32a-conferir-busca-de-clientes-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer
+ * estado do banco (funcao ausente vira `AUSENTE` na propria linha): para cada uma das duas funcoes (get_admin_customers_paged e
+ * crm_clientes), o corpo vivo e o NOVO (md5), ele traz a regra nova, os atributos de sempre e o EXECUTE segue FECHADO ao
+ * visitante.
+ * tests/banco/busca-de-clientes-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_32A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_customers_paged: corpo e o da 20261230000000, com a busca por digitos do WhatsApp (md5)",
+  "get_admin_customers_paged: o corpo traz os digitos do termo e o corte do 55",
+  "get_admin_customers_paged: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, extensions)",
+  "get_admin_customers_paged: EXECUTE fechado para anon (authenticated e service_role sim)",
+  "crm_clientes: corpo e o da 20261231000000, com nome e e-mail sem acento (md5)",
+  "crm_clientes: o corpo ignora o acento do nome",
+  "crm_clientes: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "crm_clientes: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 32b (a consulta de AUSENCIA do lote da busca de clientes; `ausenciaConfirmadaPor`): as 7 linhas que
+ * scripts/publicacao/consultas/32b-antes-busca-de-clientes-corpos-vigentes.sql devolve - a base de antes: as duas funcoes com o
+ * corpo da 20261199000000 (md5), sem a regra nova, com os atributos de sempre. NAO mede a ACL. Uma loja que ja tem uma das duas
+ * reprova aqui de proposito, nas linhas do corpo e do marcador daquela funcao. */
+const ROL_DA_32B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_customers_paged: corpo e o da 20261199000000, sem a busca por digitos (md5)",
+  "get_admin_customers_paged: o corpo ainda NAO calcula os digitos do termo",
+  "get_admin_customers_paged: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, extensions)",
+  "crm_clientes: corpo e o da 20261199000000, sem o acento ignorado (md5)",
+  "crm_clientes: o corpo ainda NAO ignora o acento do nome",
+  "crm_clientes: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+];
+/** O rol da 35a (a prova de objetos da migration 20261234000000, o lucro so conta produto com custo: o grafico "Lucro acumulado" e
+ * o "Top 5 produtos mais lucrativos" do CRM > Visao geral deixam de tratar produto sem custo como margem de 100%): as 6 linhas que
+ * scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado
+ * do banco (funcao ausente vira `AUSENTE` na propria linha): o controle, UMA so funcao, o corpo vivo e o NOVO (md5), ele traz a
+ * regra nova, os atributos de sempre e o EXECUTE segue FECHADO ao visitante.
+ * tests/banco/lucro-so-com-custo-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_35A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_analytics_v2: corpo e o da 20261234000000, com o lucro so de produto com custo (md5)",
+  "get_admin_analytics_v2: o corpo so soma lucro de produto com custo e conta os sem custo",
+  "get_admin_analytics_v2: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "get_admin_analytics_v2: EXECUTE fechado para anon (authenticated sim)",
+];
+/** O rol da 35b (a consulta de AUSENCIA do lote do lucro so com custo; `ausenciaConfirmadaPor`): as 5 linhas que
+ * scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql devolve - a base de antes: a funcao com o corpo da
+ * 20261214000000 (md5), sem a regra nova, com os atributos de sempre. NAO mede a ACL. Uma loja que ja tem o corpo novo (ou ainda
+ * esta no da 20261199000000) reprova aqui de proposito, nas linhas do corpo e do marcador. */
+const ROL_DA_35B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_analytics_v2: corpo e o da 20261214000000, sem o lucro so de produto com custo (md5)",
+  "get_admin_analytics_v2: o corpo ainda NAO conta os produtos sem custo",
+  "get_admin_analytics_v2: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+];
+/** O rol da 36a (a prova de objetos da migration 20261235000000, a venda repetida do balcao devolve a venda feita: a RPC do PDV
+ * `registrar_venda_presencial` toma uma trava consultiva pela chave de idempotencia antes de conferir a chave): as 6 linhas que
+ * scripts/publicacao/consultas/36a-conferir-venda-repetida-do-balcao-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer
+ * estado do banco (funcao ausente vira `AUSENTE` na propria linha): o controle, UMA so funcao, o corpo vivo e o NOVO (md5), ele toma
+ * a trava pela chave, os atributos de sempre e o EXECUTE so para authenticated (PUBLIC, anon e service_role sem).
+ * A 249 EXATA preserva a trava e tambem e aceita; o item e o esperado historico ficam estaveis.
+ * tests/banco/venda-balcao-mesma-chave-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_36A = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_venda_presencial: sobrecargas",
+  "registrar_venda_presencial: corpo e o da 20261235000000, com a trava pela chave (md5)",
+  "registrar_venda_presencial: o corpo toma a trava consultiva pela chave de idempotencia",
+  "registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)",
+  "registrar_venda_presencial: EXECUTE so para authenticated (PUBLIC, anon e service_role sem)",
+];
+/** O rol da 36b (a consulta de AUSENCIA do lote da venda repetida do balcao; `ausenciaConfirmadaPor`): as 5 linhas que
+ * scripts/publicacao/consultas/36b-antes-venda-repetida-do-balcao-corpo-vigente.sql devolve - a base de antes: a funcao com o corpo
+ * da 20261199000000 (md5), sem a trava pela chave, com os atributos de sempre. NAO mede a ACL (o pre-voo da migration a confere).
+ * Uma loja que ja tem o corpo novo (ou num corpo que ninguem mediu) reprova aqui de proposito, nas linhas do corpo e do marcador. */
+const ROL_DA_36B = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_venda_presencial: sobrecargas",
+  "registrar_venda_presencial: corpo e o da 20261199000000, sem a trava pela chave (md5)",
+  "registrar_venda_presencial: o corpo ainda NAO toma a trava pela chave de idempotencia",
+  "registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)",
+];
+/** O rol da 37a (a prova de objetos da migration 20261236000000, a compra que da R$ 0,00 nao se paga pelo app: a
+ * `create_marketplace_order_v24` recusa, antes de gravar o pedido, de baixar o estoque e de gastar a vaga do cupom, o pedido de
+ * pagamento pelo app cujo total calculado pelo servidor e zero): as 6 linhas que
+ * scripts/publicacao/consultas/37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o controle, UMA so funcao, o corpo vivo e o
+ * NOVO (md5), ele traz a recusa, os atributos de sempre e o EXECUTE de sempre (anon, authenticated e service_role sim; PUBLIC nao).
+ * tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE
+ * o que a consulta devolve. */
+const ROL_DA_37A = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v24: sobrecargas",
+  "create_marketplace_order_v24: corpo e o da 20261236000000, com a recusa do total zero pelo app (md5)",
+  "create_marketplace_order_v24: o corpo recusa o pedido pelo app cujo total do servidor e zero",
+  "create_marketplace_order_v24: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "create_marketplace_order_v24: EXECUTE de sempre (anon, authenticated e service_role sim; PUBLIC nao)",
+];
+/** O rol da 37b (a consulta de AUSENCIA do lote da compra de zero reais; `ausenciaConfirmadaPor`): as 5 linhas que
+ * scripts/publicacao/consultas/37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente.sql devolve - a base de antes: a
+ * funcao com o corpo da 20261229000000 (md5), sem a recusa, com os atributos de sempre. NAO mede a ACL (o pre-voo da migration a
+ * confere). Uma loja que ja tem o corpo novo (ou num corpo que ninguem mediu, p.ex. ainda no da 20261174000000) reprova aqui de
+ * proposito, nas linhas do corpo e do marcador. */
+const ROL_DA_37B = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v24: sobrecargas",
+  "create_marketplace_order_v24: corpo e o da 20261229000000, sem a recusa do total zero pelo app (md5)",
+  "create_marketplace_order_v24: o corpo ainda NAO recusa o pedido pelo app cujo total do servidor e zero",
+  "create_marketplace_order_v24: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+];
+/** O rol da 39a (a prova de objetos da migration 20261238000000, a cliente pede a exclusao da conta e a correcao do e-mail; DADO DE
+ * CLIENTE): as 19 linhas que scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql devolve, cada uma UMA
+ * vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): o controle, a tabela inteira (colunas,
+ * constraints e a regra de cada CHECK, a chave sem cascata, os dois indices), a RLS ligada com as tres politicas e a expressao delas,
+ * os privilegios (PUBLIC e anon nenhum; authenticated so le a tabela e so escreve as colunas do pedido; service_role le, grava e
+ * decide, NAO apaga), a funcao do gatilho (uma sobrecarga, corpo por md5, atributos, EXECUTE fechado ao visitante) e o gatilho.
+ * tests/banco/pedidos-de-privacidade-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_39A = [
+  "controle: funcoes de public visiveis a este papel",
+  "pedidos_de_privacidade: colunas (nome, tipo, NOT NULL, default)",
+  "pedidos_de_privacidade: as 8 constraints pelo nome",
+  "pedidos_de_privacidade: a regra de cada CHECK (tipo, situacao, e-mail, carimbo, observacao)",
+  "pedidos_de_privacidade: chave user_id -> auth.users, sem cascata",
+  "uq_pedidos_de_privacidade_um_aberto: unico parcial, um pedido aberto por cliente e tipo",
+  "idx_pedidos_de_privacidade_situacao_criado: a lista do painel",
+  "pedidos_de_privacidade: seguranca por linha (RLS)",
+  "pedidos_de_privacidade: as tres politicas (nome, comando, papel), nenhuma de DELETE",
+  "pedidos_de_privacidade: a expressao de cada politica (a cliente so o dela, o admin de agora)",
+  "pedidos_de_privacidade: PUBLIC e anon sem nenhum privilegio (tabela ou coluna)",
+  "pedidos_de_privacidade: authenticated, privilegios de tabela",
+  "pedidos_de_privacidade: authenticated, colunas que escreve",
+  "pedidos_de_privacidade: service_role le, grava e decide, e NAO apaga",
+  "pedidos_de_privacidade__carimbar: sobrecargas",
+  "pedidos_de_privacidade__carimbar: corpo e o da 20261238000000 (md5)",
+  "pedidos_de_privacidade__carimbar: atributos (SECURITY INVOKER, VOLATILE, search_path=public, trigger)",
+  "pedidos_de_privacidade__carimbar: EXECUTE fechado ao visitante (PUBLIC, anon, authenticated)",
+  "tr_pedidos_de_privacidade_carimbar: o unico gatilho, BEFORE UPDATE por linha, ligado",
+];
+/** O rol da 39b (a consulta de AUSENCIA do lote dos pedidos de privacidade; `ausenciaConfirmadaPor`): as 9 linhas que
+ * scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql devolve - a base de antes: a tabela, os dois
+ * indices, a funcao do gatilho e o gatilho AUSENTES; auth.users, auth.uid() e rls_admin_atual() presentes; e o papel `postgres`
+ * (o que aplica) com REFERENCES em auth.users (a chave estrangeira do pedido). Uma loja que ja tem a migration (inteira ou pela
+ * metade) reprova aqui de proposito: a migration NASCE o objeto e nao e reaplicavel. */
+const ROL_DA_39B = [
+  "controle: funcoes de public visiveis a este papel",
+  "pedidos_de_privacidade: tabela ausente",
+  "pedidos_de_privacidade: os dois indices ausentes",
+  "pedidos_de_privacidade__carimbar: funcao ausente (qualquer sobrecarga)",
+  "tr_pedidos_de_privacidade_carimbar: gatilho ausente (em qualquer tabela)",
+  "dependencia auth.users: existe",
+  "dependencia auth.uid(): existe",
+  "dependencia public.rls_admin_atual(): existe",
+  "auth.users: o papel postgres (que aplica a migration) tem REFERENCES",
+];
+/** O rol da 40a (a prova de objetos da migration 20261239000000, a identidade legal da loja: razao social, CNPJ/CPF e e-mail de
+ * atendimento, tres colunas novas e opcionais de store_config, lidas pela view v_store_config e gravadas por upsert_store_config): as 11
+ * linhas que scripts/publicacao/consultas/40a-conferir-identidade-legal-da-loja-aplicado.sql devolve, cada uma UMA vez, as mesmas em
+ * qualquer estado do banco (objeto ausente vira `AUSENTE` ou `nenhuma` na propria linha): o controle, UMA so funcao, o corpo vivo e o
+ * NOVO (md5), os tres CASE no corpo, os atributos e o EXECUTE de sempre, as tres colunas (text, nulas, sem default), as tres CHECK de
+ * forma, a view com as 45 colunas, as opcoes de sempre e o ACL de sempre (o que o rollback-manual so reproduz se for exatamente esse).
+ * tests/banco/loja-declara-quem-e-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_40A = [
+  "controle: funcoes de public visiveis a este papel",
+  "upsert_store_config: sobrecargas",
+  "upsert_store_config: corpo e o da 20261239000000, com razao social, documento e e-mail (md5)",
+  "upsert_store_config: o corpo so grava razao social, documento e e-mail quando a chave vem no payload",
+  "upsert_store_config: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "upsert_store_config: EXECUTE fechado para anon (authenticated sim)",
+  "store_config: razao social, documento e e-mail sao text, nulos e sem default",
+  "store_config: as tres CHECK de forma existem, validadas, cada uma na sua coluna",
+  "v_store_config: as 45 colunas, as tres novas no fim",
+  "v_store_config: opcoes de sempre (security_invoker=on)",
+  "v_store_config: ACL de sempre (anon, authenticated e service_role com ALL, dono postgres, ninguem mais)",
+];
+/** O rol da 40b (a consulta de AUSENCIA do lote da identidade legal; `ausenciaConfirmadaPor`): as 10 linhas que
+ * scripts/publicacao/consultas/40b-antes-identidade-legal-da-loja-base-vigente.sql devolve - a base de antes: a funcao com o corpo da
+ * 20261199000000 (md5), sem os tres CASE novos, com os atributos de sempre; as tres colunas e as tres CHECK ainda ausentes; a view com
+ * as 42 colunas, as opcoes de sempre e o ACL que o rollback-manual devolve (a FOTOGRAFIA do ACL vivo, antes do apply). NAO mede o EXECUTE
+ * da funcao. Uma loja que ja tem a migration reprova aqui de proposito, nas linhas do corpo, do marcador, das colunas, das CHECK e da
+ * lista de colunas da view. */
+const ROL_DA_40B = [
+  "controle: funcoes de public visiveis a este papel",
+  "upsert_store_config: sobrecargas",
+  "upsert_store_config: corpo e o da 20261199000000, sem razao social, documento e e-mail (md5)",
+  "upsert_store_config: o corpo ainda NAO grava razao social, documento e e-mail",
+  "upsert_store_config: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "store_config: razao social, documento e e-mail ainda NAO existem",
+  "store_config: as tres CHECK de forma ainda NAO existem",
+  "v_store_config: as 42 colunas de sempre",
+  "v_store_config: opcoes de sempre (security_invoker=on)",
+  "v_store_config: ACL que o rollback devolve (anon, authenticated e service_role com ALL, dono postgres, ninguem mais)",
+];
+/** O rol da 41a (a prova de objetos da migration 20261240000000, a cliente e avisada quando a loja responde a pergunta dela:
+ * `answer_question_atomic` cria UM aviso no sino `notificacoes` de quem perguntou e deixa de gravar a linha falsa em
+ * `push_notifications_log`): as 10 linhas que scripts/publicacao/consultas/41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o controle,
+ * as DUAS sobrecargas e, em CADA uma, o corpo vivo e o NOVO (md5), ele avisa no sino e nao grava mais no log de push, os atributos
+ * de sempre e o EXECUTE segue FECHADO ao visitante. `reply_review_atomic` NAO e medida (fica de fora da migration).
+ * tests/banco/pergunta-respondida-avisa-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_41A = [
+  "controle: funcoes de public visiveis a este papel",
+  "answer_question_atomic: sobrecargas",
+  "answer_question_atomic(uuid,text): corpo e o da 20261240000000, com o aviso no sino da cliente (md5)",
+  "answer_question_atomic(uuid,text): o corpo avisa no sino e nao grava mais no log de push",
+  "answer_question_atomic(uuid,text): atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, void)",
+  "answer_question_atomic(uuid,text): EXECUTE fechado para anon (authenticated sim)",
+  "answer_question_atomic(uuid,text,uuid): corpo e o da 20261240000000, com o aviso no sino da cliente (md5)",
+  "answer_question_atomic(uuid,text,uuid): o corpo avisa no sino e nao grava mais no log de push",
+  "answer_question_atomic(uuid,text,uuid): atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, void)",
+  "answer_question_atomic(uuid,text,uuid): EXECUTE fechado para anon (authenticated sim)",
+];
+/** O rol da 41b (a consulta de AUSENCIA do lote da pergunta respondida; `ausenciaConfirmadaPor`): as 8 linhas que
+ * scripts/publicacao/consultas/41b-antes-pergunta-respondida-corpos-vigentes.sql devolve - a base de antes: as DUAS sobrecargas, cada
+ * uma com o corpo vigente (md5: o da 20261065000000 na de 2 argumentos, o da 20261064000000 na de 3), sem gravar no sino da cliente e
+ * com os atributos de sempre. NAO mede a ACL. Uma loja que ja tem o aviso novo reprova aqui de proposito, nas linhas do corpo e do
+ * marcador da funcao. */
+const ROL_DA_41B = [
+  "controle: funcoes de public visiveis a este papel",
+  "answer_question_atomic: sobrecargas",
+  "answer_question_atomic(uuid,text): corpo e o da 20261065000000, sem o aviso no sino da cliente (md5)",
+  "answer_question_atomic(uuid,text): o corpo ainda NAO grava no sino da cliente",
+  "answer_question_atomic(uuid,text): atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, void)",
+  "answer_question_atomic(uuid,text,uuid): corpo e o da 20261064000000, sem o aviso no sino da cliente (md5)",
+  "answer_question_atomic(uuid,text,uuid): o corpo ainda NAO grava no sino da cliente",
+  "answer_question_atomic(uuid,text,uuid): atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, void)",
+];
+/** O rol da 43a (a prova de objetos da migration 20261241000000, o reembolso em duvida prende o saldo: a linha de
+ * reembolso que PODE ter saido no Mercado Pago passa a segurar o saldo, por UMA regra so; duas saidas de 7 dias para a
+ * lojista; a tela le um contrato unico): as 21 linhas que scripts/publicacao/consultas/43a-conferir-reembolso-em-duvida-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): o controle,
+ * o corpo NOVO (md5) das doze funcoes, os atributos delas, o EXECUTE de cada papel (as duas regras so do servidor, as tres portas
+ * novas so do logado, a antiga admin_devolucao_reemitir_reembolso fechada), a tabela de marcas so do servidor e com as tres
+ * colunas, o marcador de que o saldo desconta o em duvida e o de que as saidas dos 7 dias e o painel leem a MESMA espera.
+ * tests/banco/reembolso-em-duvida-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_43A = [
+  "controle: funcoes de public visiveis a este papel",
+  "order_refund__pode_ter_saido: corpo e o da 20261241000000, a regra unica (md5)",
+  "order_refund__liberavel_apos_espera: corpo e o da 20261241000000, a espera dos 7 dias (md5)",
+  "pedido__saldo_a_estornar: corpo e o da 20261241000000, com o em duvida (md5)",
+  "solicitar_estorno: corpo e o da 20261241000000, a conta pela funcao de saldo (md5)",
+  "admin_devolucao_concluir: corpo e o da 20261241000000, o ramo do app pela funcao de saldo (md5)",
+  "autorizar_post_do_estorno: corpo e o da 20261241000000, recusa a linha liberada por fora (md5)",
+  "reemitir_reembolso_da_devolucao: corpo e o da 20261241000000, pela regra unica (md5)",
+  "admin_devolucao_reembolso_por_fora: corpo e o da 20261241000000, pela regra unica e marcando a substituida (md5)",
+  "devolucao_avisa_o_cliente: corpo e o da 20261241000000, a loja esta confirmando com o Mercado Pago (md5)",
+  "admin_devolucao_reembolso_por_fora_apos_espera: corpo e o da 20261241000000 (md5)",
+  "registrar_estorno_manual_apos_espera: corpo e o da 20261241000000 (md5)",
+  "pedido_reembolsos_e_saldo: corpo e o da 20261241000000 (md5)",
+  "as doze funcoes: atributos do desenho (SECURITY DEFINER, search_path=public, linguagem e volatilidade de cada uma)",
+  "as duas regras do servidor (pode_ter_saido e liberavel_apos_espera): EXECUTE fechado a todos (PUBLIC, anon, authenticated e service_role)",
+  "as tres portas novas do lojista: EXECUTE so do authenticated (PUBLIC e anon nao)",
+  "admin_devolucao_reemitir_reembolso: EXECUTE fechado ao logado e ao visitante (a antiga, sem chamador)",
+  "order_refund_prova: so do servidor (RLS ligada, nenhuma policy, nenhum acesso de anon, authenticated e service_role)",
+  "order_refund_prova: as tres colunas do desenho (refund_id, substituida_por_manual_em, por_fora_liberado_em)",
+  "pedido__saldo_a_estornar: desconta o em duvida pela regra unica e respeita a substituida por manual",
+  "as duas saidas dos 7 dias e o painel: a mesma espera (order_refund__liberavel_apos_espera)",
+];
+/** O rol da 43b (a consulta de AUSENCIA do lote do reembolso em duvida; `ausenciaConfirmadaPor`): as 14 linhas que
+ * scripts/publicacao/consultas/43b-antes-reembolso-em-duvida-base-vigente.sql devolve - a base de antes: a tabela de marcas e as
+ * cinco funcoes novas ainda NAO existem; as SETE funcoes que a migration reescreve com o corpo vigente (md5) e os atributos de
+ * sempre; as duas funcoes de dinheiro que ela chama com o corpo conhecido; a antiga admin_devolucao_reemitir_reembolso existe; o
+ * gatilho do aviso da devolucao ligado. NAO mede a ACL. Uma loja que ja tem a migration reprova aqui de proposito. */
+const ROL_DA_43B = [
+  "controle: funcoes de public visiveis a este papel",
+  "order_refund_prova e as cinco funcoes novas ainda NAO existem",
+  "pedido__saldo_a_estornar: corpo e o vigente da 20261198000000, sem o em duvida (md5)",
+  "solicitar_estorno: corpo e o vigente da 20261197000000 (md5)",
+  "admin_devolucao_concluir: corpo e o vigente da 20261197000000 (md5)",
+  "autorizar_post_do_estorno: corpo e o vigente da 20261196000000 (md5)",
+  "reemitir_reembolso_da_devolucao: corpo e o vigente da 20261226000000 (md5)",
+  "admin_devolucao_reembolso_por_fora: corpo e o vigente da 20261226000000 (md5)",
+  "devolucao_avisa_o_cliente: corpo e o vigente da 20261225000000 (md5)",
+  "as sete funcoes: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, linguagem, volatilidade e retorno)",
+  "concluir_estorno: corpo e o conhecido da 2026110000100 (md5; a reemissao o chama)",
+  "devolucao__avisar_reembolso: corpo e o da 20261225000000 (md5; o por fora e a saida dos 7 dias o chamam)",
+  "admin_devolucao_reemitir_reembolso(uuid, boolean) existe (a migration fecha o EXECUTE dela ao logado)",
+  "tr_devolucao_avisa_o_cliente: ligado a devolucao_avisa_o_cliente",
+];
+/** O rol da 34a (a prova de objetos da migration 20261233000000, o sino do pedido de retirada fala de retirada): as 7 linhas que
+ * scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado do
+ * banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de notifica_cliente_de_mudanca_de_status e o NOVO (md5), ele traz
+ * o texto da retirada e ainda o da entrega, os atributos de sempre, a trigger segue ligada a ele e a ACL e a de hoje.
+ * tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_34A = [
+  "controle: funcoes de public visiveis a este papel",
+  "notifica_cliente_de_mudanca_de_status: corpo e o da 20261233000000, com o texto da retirada (md5)",
+  "notifica_cliente_de_mudanca_de_status: o corpo traz o texto da retirada",
+  "notifica_cliente_de_mudanca_de_status: o corpo ainda traz o texto da entrega",
+  "notifica_cliente_de_mudanca_de_status: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, trigger)",
+  "tr_pedido_avisa_o_cliente: segue ligada a funcao (AFTER UPDATE OF status, por linha)",
+  "notifica_cliente_de_mudanca_de_status: EXECUTE como hoje (aberto por heranca do PUBLIC)",
+];
+/** O rol da 34b (a consulta de AUSENCIA do lote do sino da retirada; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/34b-antes-sino-da-retirada-corpo-vigente.sql devolve - a base de antes: a funcao com o corpo da
+ * 20261026000000 (md5), sem o texto da retirada, com os atributos de sempre, a trigger ligada e a ACL de hoje. Uma loja que ja tem a
+ * migration reprova aqui de proposito, nas linhas do corpo e do marcador. */
+const ROL_DA_34B = [
+  "controle: funcoes de public visiveis a este papel",
+  "notifica_cliente_de_mudanca_de_status: corpo e o da 20261026000000, sem o texto da retirada (md5)",
+  "notifica_cliente_de_mudanca_de_status: o corpo ainda NAO traz o texto da retirada",
+  "notifica_cliente_de_mudanca_de_status: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, trigger)",
+  "tr_pedido_avisa_o_cliente: ligada a funcao (AFTER UPDATE OF status, por linha)",
+  "notifica_cliente_de_mudanca_de_status: EXECUTE como hoje (aberto por heranca do PUBLIC)",
+];
+/** O rol da 38a (a prova de objetos da migration 20261237000000, a lojista renomeia e apaga categoria sem deixar produto orfao): as 8
+ * linhas que scripts/publicacao/consultas/38a-conferir-gestao-de-categorias-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer
+ * estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de cada uma das TRES portas (renomear_categoria,
+ * apagar_categoria_vazia, categorias_com_uso) e o NOVO (md5), os atributos das tres, o EXECUTE so de authenticated e service_role, as
+ * oito auxiliares categoria__* existem e estao FECHADAS e o gatilho que avisa a vitrine do produto trocado segue ligado.
+ * tests/banco/categorias-gestao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_38A = [
+  "controle: funcoes de public visiveis a este papel",
+  "renomear_categoria: corpo e o da 20261237000000 (md5)",
+  "apagar_categoria_vazia: corpo e o da 20261237000000 (md5)",
+  "categorias_com_uso: corpo e o da 20261237000000 (md5)",
+  "as tres portas: atributos de sempre (SECURITY DEFINER, plpgsql, search_path=public, jsonb; apagar e renomear VOLATILE, categorias_com_uso STABLE)",
+  "as tres portas: EXECUTE so para authenticated e service_role (PUBLIC e anon nao)",
+  "as oito auxiliares categoria__*: existem e estao fechadas (nenhum papel de fora as executa)",
+  "produtos: o gatilho set_ultima_atualizacao (avisa a vitrine do produto trocado) segue ligado",
+];
+/** O rol da 38b (a consulta de AUSENCIA do lote da gestao de categorias; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/38b-antes-gestao-de-categorias-funcoes-ausentes.sql devolve - a base de antes: as tres portas e as oito
+ * auxiliares ainda ausentes, as tabelas e colunas de que a migration depende de pe, as funcoes de papel e de acento que ela chama
+ * existindo e o gatilho do produto ligado. Uma loja que ja tem a migration reprova aqui de proposito, nas linhas das portas e das
+ * auxiliares. */
+const ROL_DA_38B = [
+  "controle: funcoes de public visiveis a este papel",
+  "as tres portas (renomear_categoria, apagar_categoria_vazia, categorias_com_uso) ainda NAO existem",
+  "as oito auxiliares categoria__* ainda NAO existem",
+  "as tabelas e colunas de que a migration depende estao de pe (categorias, produtos, banners, politica_devolucao)",
+  "is_admin(), is_admin_atual() e f_unaccent(text) existem (a migration as chama)",
+  "produtos: o gatilho set_ultima_atualizacao (avisa a vitrine do produto trocado) esta ligado",
+];
+/** O rol da 45a (a prova de objetos da migration 20261242000000, o lucro usa o custo do dia da venda: a tabela lateral so do
+ * servidor, o gatilho que copia o custo do produto para cada item que nasce e os dois relatorios do lojista que passam a ler esse
+ * custo): as 13 linhas que scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql devolve, cada uma UMA vez, as mesmas
+ * em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): o controle, o corpo NOVO (md5) das tres funcoes, os
+ * atributos delas, o EXECUTE de cada papel (os dois relatorios so do authenticated, a funcao do gatilho fechada a todos), a tabela
+ * so do servidor com as tres colunas, a chave primaria e a estrangeira em cascata, o gatilho ligado AFTER INSERT por linha, o
+ * marcador de que os relatorios leem o custo do dia e caem no de hoje, e a tabela fora do realtime.
+ * tests/banco/custo-do-dia-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_45A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: corpo e o da 20261242000000, com o custo do dia da venda (md5)",
+  "fin_dre: corpo e o da 20261242000000, com o custo do dia da venda (md5)",
+  "marketplace_order_item__guarda_o_custo_do_dia: corpo e o da 20261242000000, o gatilho que nunca derruba a compra (md5)",
+  "as tres funcoes: atributos do desenho (SECURITY DEFINER, search_path=public, linguagem, volatilidade, retorno e uma assinatura so)",
+  "get_admin_analytics_v2 e fin_dre: EXECUTE so do authenticated (PUBLIC e anon nao)",
+  "marketplace_order_item__guarda_o_custo_do_dia: EXECUTE fechado a todos (PUBLIC, anon, authenticated e service_role)",
+  "marketplace_order_item_custo: so do servidor (RLS ligada, nenhuma policy, nenhum acesso de anon, authenticated e service_role)",
+  "marketplace_order_item_custo: as tres colunas do desenho (custo, item_id, registrado_em)",
+  "marketplace_order_item_custo: item_id e a chave primaria e acompanha o item (chave estrangeira com ON DELETE CASCADE)",
+  "tr_marketplace_order_items_guarda_o_custo_do_dia: ligado, AFTER INSERT por linha, apontando para a funcao do gatilho",
+  "get_admin_analytics_v2 e fin_dre: leem o custo do dia e caem no custo de hoje (COALESCE(oic.custo, p.custo))",
+  "marketplace_order_item_custo: fora da publicacao do realtime (o custo do lojista nunca vai ao navegador)",
+];
+/** O rol da 45b (a consulta de AUSENCIA do lote do custo do dia; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/45b-antes-custo-do-dia-base-vigente.sql devolve - a base de antes: a funcao do gatilho e o gatilho
+ * ainda NAO existem (a tabela lateral pode ficar de um rollback-manual); as DUAS funcoes que a migration reescreve existem com o
+ * corpo vigente (md5) e os atributos de sempre; as 12 colunas que os corpos novos leem existem. NAO mede a ACL. Uma loja que ja tem
+ * a migration reprova aqui de proposito. */
+const ROL_DA_45B = [
+  "controle: funcoes de public visiveis a este papel",
+  "a funcao do gatilho e o gatilho ainda NAO existem (a tabela lateral pode ficar de um rollback-manual)",
+  "get_admin_analytics_v2: corpo e o vigente da 20261234000000, sem o custo do dia (md5)",
+  "fin_dre: corpo e o vigente da 20261199000000, sem o custo do dia (md5)",
+  "as duas funcoes: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, linguagem, volatilidade e retorno)",
+  "as 12 colunas que os corpos novos leem existem (itens do pedido, produtos e itens da devolucao)",
+];
+/** O rol da 46a (a prova de objetos da migration 20261243000000, desfazer o recebimento recusa pedido com devolucao viva: SO o
+ * corpo de registrar_pagamento_recebido(uuid, boolean)): as 6 linhas que
+ * scripts/publicacao/consultas/46a-conferir-desfazer-recebimento-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado
+ * do banco (objeto ausente vira `AUSENTE` na propria linha): o controle, o corpo NOVO (md5), os atributos de sempre, o EXECUTE de
+ * cada papel (authenticated e service_role sim; PUBLIC e anon nao), a frase da recusa com o criterio da devolucao viva no corpo e a
+ * checagem depois da trava do pedido (FOR UPDATE) e antes do UPDATE que desfaz.
+ * tests/banco/desfazer-recebimento-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_46A = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_pagamento_recebido: corpo e o da 20261243000000, com a recusa da devolucao viva (md5)",
+  "registrar_pagamento_recebido: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb, dois argumentos)",
+  "registrar_pagamento_recebido: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
+  "registrar_pagamento_recebido: a frase da recusa e o criterio da devolucao viva (NOT IN recusada, cancelada, reprovada) estao no corpo",
+  "registrar_pagamento_recebido: a checagem vem depois da trava do pedido (FOR UPDATE) e antes do UPDATE que desfaz",
+];
+/** O rol da 46b (a consulta de AUSENCIA do lote do desfazer o recebimento; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql devolve - a base de antes: o corpo vigente da
+ * 20261197000000 (md5) sem a recusa, os atributos de sempre, o EXECUTE como hoje, is_admin() e is_admin_atual() de pe e as 14 colunas
+ * que o corpo le ou grava. Uma loja que ja tem a migration reprova aqui de proposito. */
+const ROL_DA_46B = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_pagamento_recebido: corpo e o vigente da 20261197000000, sem a recusa da devolucao viva (md5)",
+  "registrar_pagamento_recebido: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb, dois argumentos)",
+  "registrar_pagamento_recebido: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
+  "is_admin() e is_admin_atual() existem (o corpo as chama)",
+  "as 14 colunas que o corpo le ou grava existem (pedidos, historico de pagamento e devolucoes)",
+];
+/** O rol da 47a (a prova de objetos da migration 20261244000000, a loja escolhe como entrega na cidade e em quantos dias: os
+ * corpos de create_marketplace_order_v23, create_marketplace_order_v24 e upsert_store_config, as duas colunas novas de store_config
+ * com a CHECK do prazo, a trigger do So retiro e a view de 47 colunas): as 9 linhas que
+ * scripts/publicacao/consultas/47a-conferir-a-loja-escolhe-como-entrega-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer
+ * estado do banco (objeto ausente vira `AUSENTE` na propria linha): o controle, os tres corpos (md5), os atributos e o EXECUTE das
+ * tres funcoes, as colunas e a CHECK, a trigger com a funcao dela e a view.
+ * tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_47A = [
+  "controle: funcoes de public visiveis a este papel",
+  "as tres funcoes: EXECUTE como sempre (PUBLIC nunca; authenticated e service_role sim; anon sim nas duas compras e nao na upsert)",
+  "as tres funcoes: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno)",
+  "create_marketplace_order_v23: corpo e o da 20261244000000, com o So retiro e a retirada livre (md5)",
+  "create_marketplace_order_v24: corpo e o da 20261244000000, com o So retiro e a retirada livre (md5)",
+  "store_config: local_delivery_enabled boolean NOT NULL DEFAULT true, local_delivery_days integer NOT NULL DEFAULT 1 e a CHECK do prazo de 0 a 30",
+  "store_config_so_retirada_exige_retirada: trigger ligada (BEFORE INSERT OR UPDATE por linha), corpo da migration (md5) e a funcao dela sem EXECUTE para ninguem",
+  "upsert_store_config: corpo e o da 20261244000000, que grava as duas chaves novas (md5)",
+  "v_store_config: as 47 colunas na ordem (as 45 de antes + local_delivery_enabled e local_delivery_days no fim), legivel por anon, authenticated e service_role",
+];
+/** O rol da 47b (a consulta de AUSENCIA do lote da entrega na cidade; `ausenciaConfirmadaPor`): as 9 linhas que
+ * scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql devolve - a base de antes: os tres corpos
+ * vigentes (md5 da 20261229000000, da 20261236000000 e da 20261239000000), os atributos e o EXECUTE de sempre, as colunas, a CHECK,
+ * a trigger e a funcao dela ainda ausentes, a view de 45 colunas e o que os corpos novos leem de pe. Uma loja que ja tem a
+ * migration reprova aqui de proposito, nas linhas dos corpos, das colunas e da view. */
+const ROL_DA_47B = [
+  "controle: funcoes de public visiveis a este papel",
+  "as duas colunas novas, a CHECK do prazo, a trigger do So retiro e a funcao dela ainda nao existem",
+  "as tres funcoes: EXECUTE como sempre (PUBLIC nunca; authenticated e service_role sim; anon sim nas duas compras e nao na upsert)",
+  "as tres funcoes: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno)",
+  "create_marketplace_order_v23: corpo e o vigente da 20261229000000, sem o So retiro (md5)",
+  "create_marketplace_order_v24: corpo e o vigente da 20261236000000, sem o So retiro (md5)",
+  "store_config.enabled_shipping_methods, store_config.store_address e store_config.origin_cep existem (os corpos novos as leem) e is_local_cep(text, text, text) tambem",
+  "upsert_store_config: corpo e o vigente da 20261239000000, sem as duas chaves novas (md5)",
+  "v_store_config: as 45 colunas de hoje, na ordem (md5 da lista), sem as duas novas",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
  * 72..83 e as antigas (1a/2a/6a/7a…) ficam de fora de propósito. */
+// 48a/48b: só analytics, quatro linhas fixas; o corpo muda de 42 para 45, atributos e ACL iguais.
+const ROL_DA_48A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: corpo e o da 20261245000000, com o desconto proporcional (md5)",
+  "get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)",
+  "get_admin_analytics_v2: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
+];
+const ROL_DA_48B = ROL_DA_48A.map((item) =>
+  item.replace(
+    "20261245000000, com o desconto proporcional",
+    "20261242000000, antes do desconto proporcional",
+  ),
+);
+
+const ROL_DA_53A = ROL_DA_48A.map((item) =>
+  item.replace(
+    "20261245000000, com o desconto proporcional",
+    "20261250000000, com o faturamento potencial",
+  ),
+);
+const ROL_DA_53B = ROL_DA_53A.map((item) =>
+  item.replace(
+    "20261250000000, com o faturamento potencial",
+    "20261245000000, antes do faturamento potencial",
+  ),
+);
+
+const ROL_DA_54A = ROL_DA_53A.map((item) =>
+  item.replace(
+    "20261250000000, com o faturamento potencial",
+    "20261251000000, com o lucro do estoque por variante",
+  ),
+);
+const ROL_DA_54B = ROL_DA_54A.map((item) =>
+  item.replace(
+    "20261251000000, com o lucro do estoque por variante",
+    "20261250000000, antes do lucro do estoque por variante",
+  ),
+);
+
+// Lote 49: 20261246000000, catalogo apenas; os dois lados tem o mesmo rol fechado.
+const ROL_DA_49A = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_lancamento_salvar: corpo conhecido (md5)",
+  "fin_lancamento_salvar: atributos e dependencias de sempre",
+  "fin_lancamento_salvar: EXECUTE de authenticated e service_role, PUBLIC e anon sem",
+  "fin_lancamento_tentativas: forma conhecida",
+  "fin_lancamento_tentativas: so servidor, RLS e nenhuma politica",
+];
+const ROL_DA_49B = [...ROL_DA_49A];
+
+// Lote 50: 20261247000000, catalogo apenas; os dois lados tem o mesmo rol fechado.
+const ROL_DA_50A = [
+  "controle: funcoes de public visiveis a este papel",
+  "marketplace_order_internal_notes: forma conhecida (colunas, restricoes, valores padrao, gatilho)",
+  "marketplace_order_internal_notes: RLS ligada e uma unica politica, so do admin de agora",
+  "marketplace_order_internal_notes: ACL so authenticated (SELECT, INSERT, UPDATE, DELETE), nada a anon, PUBLIC e service_role",
+  "marketplace_order_internal_notes: dono certo, fora do realtime e sem ACL de coluna",
+  "dependencias: marketplace_orders, portas do admin de agora e funcao do carimbo",
+];
+const ROL_DA_50B = [...ROL_DA_50A];
+
+// Lote 51: 20261248000000 (so privilegio de coluna), catalogo apenas. Os dois lados tem rol proprio: a 51a
+// descreve o estado FECHADO, a 51b o de ANTES (authenticated ainda atualiza notes); a 51b nao prova ausencia.
+const ROL_DA_51A = [
+  "controle: funcoes de public visiveis a este papel",
+  "notes: sem UPDATE para authenticated, anon e PUBLIC (coluna, tabela inteira ou heranca)",
+  "tracking_code: authenticated atualiza so ele (sem GRANT OPTION), nenhuma outra coluna",
+  "anon e PUBLIC: sem UPDATE em coluna alguma de marketplace_orders",
+  "service_role: atualiza notes e tracking_code",
+  "dependencias: marketplace_orders (notes e tracking_code) e os papeis anon, authenticated e service_role",
+];
+const ROL_DA_51B = [
+  "controle: funcoes de public visiveis a este papel",
+  "authenticated: atualiza notes e tracking_code por coluna, sem GRANT OPTION e nenhuma outra coluna",
+  "authenticated e anon: sem UPDATE de tabela inteira em marketplace_orders (nem por PUBLIC ou heranca)",
+  "anon e PUBLIC: sem UPDATE em coluna alguma de marketplace_orders",
+  "service_role: atualiza notes e tracking_code",
+  "dependencias: marketplace_orders (notes e tracking_code) e os papeis anon, authenticated e service_role",
+];
+// Lote 52: corpo do PDV e nota privada OPERACIONAL nos dois lados; a 52b nao prova ausencia.
+const ROL_DA_52A = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_venda_presencial: sobrecargas",
+  "registrar_venda_presencial: corpo da 20261249000000 (motivo privado, md5)",
+  "registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)",
+  "registrar_venda_presencial: EXECUTE so authenticated, sem GRANT OPTION nem privilegio inesperado",
+  "marketplace_orders: indice unico valido da chave de idempotencia",
+  "marketplace_order_internal_notes: forma conhecida (colunas, restricoes, valores padrao, gatilho)",
+  "marketplace_order_internal_notes: RLS ligada e uma unica politica, so do admin de agora",
+  "marketplace_order_internal_notes: ACL so authenticated (SELECT, INSERT, UPDATE, DELETE), nada a anon, PUBLIC e service_role",
+  "marketplace_order_internal_notes: dono certo, fora do realtime e sem ACL de coluna",
+  "dependencias: marketplace_orders, portas do admin de agora e funcao do carimbo",
+];
+const ROL_DA_52B = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_venda_presencial: sobrecargas",
+  "registrar_venda_presencial: corpo conhecido da 20261235 ou 20261249 (md5)",
+  "registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)",
+  "registrar_venda_presencial: EXECUTE so authenticated, sem GRANT OPTION nem privilegio inesperado",
+  "marketplace_orders: indice unico valido da chave de idempotencia",
+  "marketplace_order_internal_notes: forma conhecida (colunas, restricoes, valores padrao, gatilho)",
+  "marketplace_order_internal_notes: RLS ligada e uma unica politica, so do admin de agora",
+  "marketplace_order_internal_notes: ACL so authenticated (SELECT, INSERT, UPDATE, DELETE), nada a anon, PUBLIC e service_role",
+  "marketplace_order_internal_notes: dono certo, fora do realtime e sem ACL de coluna",
+  "dependencias: marketplace_orders, portas do admin de agora e funcao do carimbo",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
@@ -1376,6 +2341,75 @@ const ROL_FECHADO_POR_CONSULTA = {
   "16b-antes-pix-anulado-foto-ausente": ROL_DA_16B,
   "17a-conferir-estoque-do-painel-aplicado": ROL_DA_17A,
   "17b-antes-estoque-do-painel-corpos-vigentes": ROL_DA_17B,
+  "19a-conferir-politica-devolucao-aplicado": ROL_DA_19A,
+  "19b-antes-politica-devolucao-grant-de-tabela": ROL_DA_19B,
+  "20a-conferir-fotos-da-devolucao-aplicado": ROL_DA_20A,
+  "20b-antes-fotos-da-devolucao-sem-delete": ROL_DA_20B,
+  "21a-conferir-teto-de-email-aplicado": ROL_DA_21A,
+  "21b-antes-teto-de-email-corpos-vigentes": ROL_DA_21B,
+  "22a-conferir-portas-do-banco-aplicado": ROL_DA_22A,
+  "22b-antes-portas-do-banco-estado-vigente": ROL_DA_22B,
+  "23a-conferir-consulta-antiga-de-pedido-fechada": ROL_DA_23A,
+  "23b-antes-consulta-antiga-de-pedido-aberta": ROL_DA_23B,
+  "24a-conferir-avaliacoes-fechadas-ao-visitante": ROL_DA_24A,
+  "24b-antes-avaliacoes-abertas-ao-visitante": ROL_DA_24B,
+  "25a-conferir-media-de-avaliacoes-so-admin": ROL_DA_25A,
+  "25b-antes-media-de-avaliacoes-sem-guarda": ROL_DA_25B,
+  "26a-conferir-voto-util-so-em-avaliacao-publica": ROL_DA_26A,
+  "26b-antes-voto-util-sem-guarda-de-status": ROL_DA_26B,
+  "27a-conferir-avaliacao-nasce-sem-resposta-da-loja": ROL_DA_27A,
+  "27b-antes-avaliacao-aceita-resposta-forjada": ROL_DA_27B,
+  "30a-conferir-numeros-do-painel-aplicado": ROL_DA_30A,
+  "30b-antes-numeros-do-painel-corpos-vigentes": ROL_DA_30B,
+  "33a-conferir-grade-do-crm-aplicado": ROL_DA_33A,
+  "33b-antes-grade-do-crm-corpo-vigente": ROL_DA_33B,
+  "31a-conferir-endereco-da-compra-fica-no-pedido": ROL_DA_31A,
+  "31b-antes-endereco-da-compra-so-no-ponteiro": ROL_DA_31B,
+  "28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro": ROL_DA_28A,
+  "28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao": ROL_DA_28B,
+  "29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes": ROL_DA_29A,
+  "29b-antes-reemissao-do-reembolso-base-conhecida": ROL_DA_29B,
+  "32a-conferir-busca-de-clientes-aplicado": ROL_DA_32A,
+  "32b-antes-busca-de-clientes-corpos-vigentes": ROL_DA_32B,
+  "34a-conferir-sino-da-retirada-aplicado": ROL_DA_34A,
+  "34b-antes-sino-da-retirada-corpo-vigente": ROL_DA_34B,
+  "35a-conferir-lucro-so-com-custo-aplicado": ROL_DA_35A,
+  "35b-antes-lucro-so-com-custo-corpo-vigente": ROL_DA_35B,
+  "36a-conferir-venda-repetida-do-balcao-aplicado": ROL_DA_36A,
+  "36b-antes-venda-repetida-do-balcao-corpo-vigente": ROL_DA_36B,
+  "37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado": ROL_DA_37A,
+  "37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente":
+    ROL_DA_37B,
+  "38a-conferir-gestao-de-categorias-aplicado": ROL_DA_38A,
+  "38b-antes-gestao-de-categorias-funcoes-ausentes": ROL_DA_38B,
+  "39a-conferir-pedidos-de-privacidade-aplicado": ROL_DA_39A,
+  "39b-antes-pedidos-de-privacidade-objetos-ausentes": ROL_DA_39B,
+  "40a-conferir-identidade-legal-da-loja-aplicado": ROL_DA_40A,
+  "40b-antes-identidade-legal-da-loja-base-vigente": ROL_DA_40B,
+  "41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado": ROL_DA_41A,
+  "41b-antes-pergunta-respondida-corpos-vigentes": ROL_DA_41B,
+  "43a-conferir-reembolso-em-duvida-aplicado": ROL_DA_43A,
+  "43b-antes-reembolso-em-duvida-base-vigente": ROL_DA_43B,
+  "45a-conferir-custo-do-dia-aplicado": ROL_DA_45A,
+  "45b-antes-custo-do-dia-base-vigente": ROL_DA_45B,
+  "46a-conferir-desfazer-recebimento-aplicado": ROL_DA_46A,
+  "46b-antes-desfazer-recebimento-base-vigente": ROL_DA_46B,
+  "47a-conferir-a-loja-escolhe-como-entrega-aplicado": ROL_DA_47A,
+  "47b-antes-a-loja-escolhe-como-entrega-base-vigente": ROL_DA_47B,
+  "48a-conferir-lucro-com-desconto-aplicado": ROL_DA_48A,
+  "48b-antes-lucro-com-desconto-base-vigente": ROL_DA_48B,
+  "49a-conferir-lancamento-idempotente-aplicado": ROL_DA_49A,
+  "49b-antes-lancamento-idempotente-base-vigente": ROL_DA_49B,
+  "50a-conferir-nota-interna-do-pedido-aplicado": ROL_DA_50A,
+  "50b-antes-nota-interna-do-pedido-base-vigente": ROL_DA_50B,
+  "51a-conferir-notes-do-pedido-fechada-aplicado": ROL_DA_51A,
+  "51b-antes-notes-do-pedido-base-vigente": ROL_DA_51B,
+  "52a-conferir-motivo-do-balcao-privado-aplicado": ROL_DA_52A,
+  "52b-antes-motivo-do-balcao-base-vigente": ROL_DA_52B,
+  "53a-conferir-faturamento-potencial-aplicado": ROL_DA_53A,
+  "53b-antes-faturamento-potencial-base-vigente": ROL_DA_53B,
+  "54a-conferir-lucro-do-estoque-aplicado": ROL_DA_54A,
+  "54b-antes-lucro-do-estoque-base-vigente": ROL_DA_54B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -1936,6 +2970,70 @@ module.exports = {
   ROL_DA_16B,
   ROL_DA_17A,
   ROL_DA_17B,
+  ROL_DA_19A,
+  ROL_DA_19B,
+  ROL_DA_20A,
+  ROL_DA_20B,
+  ROL_DA_21A,
+  ROL_DA_21B,
+  ROL_DA_22A,
+  ROL_DA_22B,
+  ROL_DA_23A,
+  ROL_DA_23B,
+  ROL_DA_24A,
+  ROL_DA_24B,
+  ROL_DA_25A,
+  ROL_DA_25B,
+  ROL_DA_26A,
+  ROL_DA_26B,
+  ROL_DA_27A,
+  ROL_DA_27B,
+  ROL_DA_30A,
+  ROL_DA_30B,
+  ROL_DA_33A,
+  ROL_DA_33B,
+  ROL_DA_31A,
+  ROL_DA_31B,
+  ROL_DA_28A,
+  ROL_DA_28B,
+  ROL_DA_29A,
+  ROL_DA_29B,
+  ROL_DA_32A,
+  ROL_DA_32B,
+  ROL_DA_34A,
+  ROL_DA_34B,
+  ROL_DA_35A,
+  ROL_DA_35B,
+  ROL_DA_36A,
+  ROL_DA_36B,
+  ROL_DA_37A,
+  ROL_DA_37B,
+  ROL_DA_38A,
+  ROL_DA_38B,
+  ROL_DA_39A,
+  ROL_DA_39B,
+  ROL_DA_40A,
+  ROL_DA_40B,
+  ROL_DA_41A,
+  ROL_DA_41B,
+  ROL_DA_43A,
+  ROL_DA_43B,
+  ROL_DA_45A,
+  ROL_DA_45B,
+  ROL_DA_46A,
+  ROL_DA_46B,
+  ROL_DA_47A,
+  ROL_DA_47B,
+  ROL_DA_48A,
+  ROL_DA_48B,
+  ROL_DA_49A,
+  ROL_DA_49B,
+  ROL_DA_50A,
+  ROL_DA_50B,
+  ROL_DA_51A,
+  ROL_DA_51B,
+  ROL_DA_52A,
+  ROL_DA_52B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

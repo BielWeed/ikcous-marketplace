@@ -1455,6 +1455,1049 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261223000000_o_voto_util_so_em_avaliacao_que_o_publico_ve.sql": [
+    {
+      // O voto útil só vale em avaliação que o público vê (14/10/2026): a guarda nova
+      // (`status = 'publicada'`) TROCA a antiga checagem de inexistente, no mesmo lugar. Sem esta
+      // entrada a migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO
+      // (pg_get_functiondef, comentários incluídos): a mensagem nova aparece UMA vez (a guarda é um
+      // `IF NOT EXISTS ... RAISE`, nunca `PERFORM` + `IF NOT FOUND`, que é o padrão do voto duplicado),
+      // o `ON CONFLICT` e o `IF NOT FOUND THEN` da deduplicação ficam UMA vez cada (a memória do voto não
+      // pode ter mudado), e o acesso negado de login segue UMA vez.
+      funcao: "increment_helpful",
+      esperado: [
+        { texto: "Avaliação não encontrada.", vezes: 1 },
+        {
+          texto:
+            "ON CONFLICT ON CONSTRAINT review_votes_um_voto_por_usuario DO NOTHING",
+          vezes: 1,
+        },
+        { texto: "IF NOT FOUND THEN", vezes: 1 },
+        { texto: "Acesso negado: usuário não autenticado.", vezes: 1 },
+      ],
+    },
+  ],
+  "20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql": [
+    {
+      // A avaliação nasce sem a resposta da loja (14/10/2026): a função de gatilho NOVA limpa as quatro colunas que só
+      // o servidor define. Sem esta entrada a migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores
+      // contam no corpo VIVO (pg_get_functiondef, comentários incluídos): cada limpeza aparece UMA vez (uma a
+      // menos é coluna que voltou a passar forjada; uma a mais, corpo divergente do desenhado) e a exceção do
+      // administrador (`AND NOT public.rls_admin_atual()`) também UMA vez — sem ela o servidor perderia o que grava.
+      // O gatilho em si (BEFORE INSERT, por linha, ligado) é conferido pelo bloco DO da própria migration.
+      funcao: "avaliacao_nasce_sem_a_resposta_da_loja",
+      esperado: [
+        { texto: "NEW.merchant_reply := NULL;", vezes: 1 },
+        { texto: "NEW.merchant_reply_at := NULL;", vezes: 1 },
+        { texto: "NEW.helpful := 0;", vezes: 1 },
+        { texto: "NEW.created_at := now();", vezes: 1 },
+        { texto: "AND NOT public.rls_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261227000000_o_crm_compara_o_que_e_comparavel.sql": [
+    {
+      // Os números do CRM (14/10/2026): a taxa de devolução fala da MESMA turma de vendas (as pagas no
+      // período, inclusive as estornadas e canceladas) e o anterior de um período que termina hoje é
+      // cortado na MESMA hora. Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários
+      // incluídos): o corte entra UMA vez na declaração e UMA vez no filtro do anterior; a turma lê só
+      // as vendas pagas/estornadas; o pedido estornado conta o total e o resto é limitado ao total
+      // (LEAST); o reembolso manual só vale na devolução concluída; a razão da taxa tem UM ponto. As duas
+      // travas de admin (is_admin e is_admin_atual, 20261199000000) seguem UMA vez cada.
+      funcao: "crm_visao",
+      esperado: [
+        {
+          texto:
+            "v_hora time := (now() AT TIME ZONE 'America/Sao_Paulo')::time;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "OR (v.pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
+          vezes: 1,
+        },
+        {
+          texto:
+            "WHERE o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+          vezes: 1,
+        },
+        { texto: "WHEN t.payment_status = 'estornado' THEN t.total", vezes: 1 },
+        { texto: "ELSE LEAST(t.total,", vezes: 1 },
+        {
+          texto: "AND d.status = 'concluida' AND d.reembolso_manual",
+          vezes: 1,
+        },
+        { texto: "ELSE round(sum(valor) / sum(total), 4) END", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql": [
+    {
+      // A semana passada do Início até a MESMA hora (14/10/2026): o corte entra UMA vez na declaração e
+      // UMA vez na base da semana passada; a regra de estoque baixo da 20261212000000 e as duas travas
+      // de admin da 20261199000000 sobrevivem à troca do corpo.
+      funcao: "painel_inicio",
+      esperado: [
+        {
+          texto:
+            "v_hora time := (now() AT TIME ZONE 'America/Sao_Paulo')::time;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "AND (pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
+          vezes: 1,
+        },
+        { texto: "<= COALESCE(p.estoque_minimo, 5))", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql":
+    [
+      {
+        // A grade do CRM mede a recência do mesmo instante da lista (14/10/2026): a âncora do período
+        // (`v_fim_ts`) passa a ser o MENOR entre a meia-noite de amanhã e agora, e as QUATRO chamadas que a
+        // recebem (crm__vendas, crm__clientes_rfm, crm__pedidos_nao_pagos, crm__nunca_comprou) seguem com ela.
+        // Sem esta entrada a migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo
+        // VIVO (pg_get_functiondef, comentários incluídos): a linha nova aparece UMA vez (a antiga, sem o
+        // LEAST, não casa com ela); cada uma das quatro chamadas aparece UMA vez com a âncora (uma a menos é
+        // chamada que voltou a usar outra âncora); a taxa da turma e as duas travas de admin da 20261227000000
+        // e da 20261199000000 sobrevivem à troca.
+        funcao: "crm_visao",
+        esperado: [
+          {
+            texto:
+              "v_fim_ts := LEAST(((p_fim + 1)::timestamp AT TIME ZONE 'America/Sao_Paulo'), now());",
+            vezes: 1,
+          },
+          { texto: "public.crm__vendas(v_fim_ts)", vezes: 1 },
+          { texto: "public.crm__clientes_rfm(v_fim_ts)", vezes: 1 },
+          { texto: "public.crm__pedidos_nao_pagos(v_fim_ts)", vezes: 1 },
+          { texto: "public.crm__nunca_comprou(v_fim_ts)", vezes: 1 },
+          { texto: "ELSE LEAST(t.total,", vezes: 1 },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
+  "20261229000000_o_endereco_da_compra_fica_no_pedido.sql": [
+    {
+      // O endereço da compra fica no pedido (14/10/2026): o bloco 6-bis copia o endereço da conta para
+      // `customer_data.address` no instante da compra (só quem tem conta, só com `p_address_id`, só sem
+      // endereço digitado, nunca na retirada). Sem esta entrada a migration saía PULADA (saída 2: "ninguém
+      // verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos): o
+      // `IF` do bloco com as quatro condições (a convidada e a retirada ficam de fora, o digitado não é
+      // trocado) e a leitura com o filtro de DONO. As duas funções (v23, na entrega; v24, online) levam o
+      // mesmo bloco; a que falta é a que o checkout ainda chama sem a cópia.
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto:
+            "IF v_address_data_sem_cpf IS NULL\n       AND v_user_id IS NOT NULL\n       AND p_address_id IS NOT NULL\n       AND p_shipping_option_id IS DISTINCT FROM 'store-pickup' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "FROM public.user_addresses ua\n         WHERE ua.id = p_address_id AND ua.user_id = v_user_id;",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "IF v_address_data_sem_cpf IS NULL\n       AND v_user_id IS NOT NULL\n       AND p_address_id IS NOT NULL\n       AND p_shipping_option_id IS DISTINCT FROM 'store-pickup' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "FROM public.user_addresses ua\n         WHERE ua.id = p_address_id AND ua.user_id = v_user_id;",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  "20261225000000_o_reembolso_da_devolucao_so_e_liberado_quando_o_dinheiro_sai.sql":
+    [
+      {
+        // O reembolso da devolução só é "liberado" quando o dinheiro sai (14/10/2026): o aviso da
+        // conclusão passa a ler o estado REAL do reembolso. Sem esta entrada a migration saía PULADA
+        // (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef,
+        // comentários incluídos); cada um aparece UMA vez.
+        funcao: "devolucao_avisa_o_cliente",
+        esperado: [
+          {
+            texto:
+              "SELECT r.status INTO v_estado FROM public.order_refunds r WHERE r.id = NEW.refund_id;",
+            vezes: 1,
+          },
+          { texto: "v_evento := 'reembolso_em_processamento';", vezes: 1 },
+          { texto: "v_evento := 'reembolso_nao_liberado';", vezes: 1 },
+          {
+            texto:
+              "PERFORM public.devolucao__avisar_reembolso(NEW.id, v_evento, v_tipo, v_titulo, v_msg);",
+            vezes: 1,
+          },
+        ],
+      },
+      {
+        // A auxiliar interna: um aviso por devolução e por tipo (trava + conferência em notificacoes).
+        funcao: "devolucao__avisar_reembolso",
+        esperado: [
+          { texto: "pg_advisory_xact_lock(", vezes: 1 },
+          { texto: "AND n.dados ->> 'evento' = p_evento", vezes: 1 },
+        ],
+      },
+      {
+        // O "liberado" nasce só na virada para 'concluido' (gatilho em order_refunds).
+        funcao: "devolucao_avisa_reembolso_liberado",
+        esperado: [
+          {
+            texto:
+              "IF NEW.status IS DISTINCT FROM 'concluido' OR OLD.status IS NOT DISTINCT FROM NEW.status THEN",
+            vezes: 1,
+          },
+          {
+            texto: "'reembolso_liberado', 'success', 'Reembolso liberado',",
+            vezes: 1,
+          },
+        ],
+      },
+    ],
+  "20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql":
+    [
+      {
+        // A reemissão do reembolso consulta o MP antes de pagar de novo (14/10/2026). Sem esta entrada a
+        // migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO
+        // (pg_get_functiondef, comentários incluídos); cada um aparece UMA vez.
+        funcao: "reemitir_reembolso_da_devolucao",
+        esperado: [
+          {
+            texto:
+              "FROM public.order_refund_diagnostico WHERE refund_id = v_r.id;",
+            vezes: 1,
+          },
+          { texto: "IF v_sem_post THEN", vezes: 1 },
+          {
+            texto:
+              "PERFORM public.concluir_estorno(v_r.id, v_mp_refund, v_mp_status, NULL);",
+            vezes: 1,
+          },
+          {
+            texto: "v_saldo := public.pedido__saldo_a_estornar(v_o.id);",
+            vezes: 1,
+          },
+        ],
+      },
+      {
+        // O diagnóstico: um UPSERT que incrementa no banco (duas conexões não perdem contagem).
+        funcao: "registrar_diagnostico_do_estorno",
+        esperado: [
+          {
+            texto: "transitorios = d.transitorios + EXCLUDED.transitorios,",
+            vezes: 1,
+          },
+          {
+            texto:
+              "post_incerto_em = COALESCE(d.post_incerto_em, EXCLUDED.post_incerto_em),",
+            vezes: 1,
+          },
+        ],
+      },
+      {
+        // "Já devolvi por fora": função própria do lojista logado; confere o admin ATUAL.
+        funcao: "admin_devolucao_reembolso_por_fora",
+        esperado: [
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          {
+            texto:
+              "PERFORM public.devolucao__avisar_reembolso(p_devolucao_id, 'reembolso_combinado', 'success',",
+            vezes: 1,
+          },
+        ],
+      },
+    ],
+  "20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql": [
+    {
+      // A busca de clientes acha pelo número do WhatsApp (14/10/2026): o termo ganha os dígitos (com o corte do
+      // 55 do +55) e a busca por dígitos entra como um OR a mais. Sem esta entrada a migration saía PULADA (saída
+      // 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos): a
+      // variável, o cálculo dos dígitos, o corte do 55 e a cláusula nova aparecem UMA vez cada; as duas travas de
+      // admin (is_admin e is_admin_atual, 20261199000000) seguem UMA vez cada.
+      funcao: "get_admin_customers_paged",
+      esperado: [
+        { texto: "v_search_digitos TEXT;", vezes: 1 },
+        {
+          texto:
+            "v_search_digitos := regexp_replace(COALESCE(v_clean_search, ''), '[^0-9]', '', 'g');",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF length(v_search_digitos) IN (12, 13) AND left(v_search_digitos, 2) = '55' THEN",
+          vezes: 1,
+        },
+        { texto: "(length(v_search_digitos) >= 4 AND (", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261231000000_a_busca_do_crm_ignora_acento.sql": [
+    {
+      // A busca do CRM ignora acento (14/10/2026): nome e e-mail passam por f_unaccent nos dois lados. Sem esta
+      // entrada a migration saía PULADA. Os marcadores contam no corpo VIVO (comentários incluídos): cada
+      // comparação sem acento aparece UMA vez; o ramo do número (4 ou mais dígitos) e as duas travas de admin
+      // seguem UMA vez cada.
+      funcao: "crm_clientes",
+      esperado: [
+        {
+          texto:
+            "OR public.f_unaccent(COALESCE(nome_exibido, '')) ILIKE public.f_unaccent('%' || v_busca || '%')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "OR public.f_unaccent(COALESCE(email, '')) ILIKE public.f_unaccent('%' || v_busca || '%')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "OR (v_digitos IS NOT NULL AND length(v_digitos) >= 4 AND COALESCE(whatsapp, '') LIKE '%' || v_digitos || '%'))",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261233000000_o_sino_do_pedido_de_retirada_fala_de_retirada.sql": [
+    {
+      // O sino do pedido de retirada fala de retirada (14/10/2026): o pedido de retirada na loja ganha o texto
+      // "pronto para retirar" e "retirado" e o resto fica como era. Sem esta entrada a migration saía PULADA (saída
+      // 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos):
+      // o texto novo, o marcador da retirada e as frases da entrega (a troca SÓ soma o ramo da retirada) aparecem
+      // UMA vez cada, e as duas guardas (convidado e mudança real de status) também.
+      funcao: "notifica_cliente_de_mudanca_de_status",
+      esperado: [
+        { texto: "Pedido pronto para retirar", vezes: 1 },
+        { texto: "Pedido retirado", vezes: 1 },
+        {
+          texto:
+            "COALESCE(NEW.customer_data ->> 'shipping_option_id', '') = 'store-pickup'",
+          vezes: 1,
+        },
+        { texto: "Pedido em preparo", vezes: 1 },
+        { texto: "Pedido a caminho", vezes: 1 },
+        { texto: "Pedido entregue", vezes: 1 },
+        { texto: "Pedido cancelado", vezes: 1 },
+        { texto: "NEW.user_id IS NULL", vezes: 1 },
+        { texto: "OLD.status IS NOT DISTINCT FROM NEW.status", vezes: 1 },
+      ],
+    },
+  ],
+  "20261234000000_o_lucro_so_conta_produto_com_custo.sql": [
+    {
+      // O lucro só conta produto com custo (14/10/2026): o lucro por dia e o top 5 do CRM deixam de tratar custo
+      // ausente (NULL) como margem de 100%, e o JSON ganha `productsWithoutCost`. Sem esta entrada a migration
+      // saía PULADA. Os marcadores contam no corpo VIVO (comentários incluídos): o filtro do lucro por dia, o
+      // filtro do ranking, a contagem do campo novo e a chave dele aparecem UMA vez cada; as duas travas de
+      // admin (is_admin e is_admin_atual, 20261199000000) seguem UMA vez cada.
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto: "FILTER (WHERE p.custo IS NOT NULL), 0) AS profit",
+          vezes: 1,
+        },
+        { texto: "AND p.custo IS NOT NULL", vezes: 1 },
+        { texto: "AND p.custo IS NULL;", vezes: 1 },
+        {
+          texto: "'productsWithoutCost', products_without_cost",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql": [
+    {
+      // A venda repetida do balcão devolve a venda feita (14/10/2026): registrar_venda_presencial toma uma trava
+      // consultiva pela chave de idempotência ANTES de conferir a chave (a repetição que chega antes de a primeira
+      // commitar espera a primeira e devolve `ja_existia` com o MESMO pedido, em vez de "Estoque insuficiente"
+      // quando a primeira levou a última unidade). Sem esta entrada a migration saía PULADA. Os marcadores contam
+      // no corpo VIVO (comentários incluídos): a trava pela chave, as duas travas de admin (is_admin e
+      // is_admin_atual, 20261199000000) e a resposta idempotente seguem UMA vez cada.
+      funcao: "registrar_venda_presencial",
+      esperado: [
+        {
+          texto:
+            "hashtextextended('venda_presencial:' || p_idempotency_key::text, 0)",
+          vezes: 1,
+        },
+        { texto: "IF public.is_admin() IS DISTINCT FROM true THEN", vezes: 1 },
+        {
+          texto: "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+          vezes: 1,
+        },
+        { texto: "'ja_existia', v_ja_existia,", vezes: 1 },
+      ],
+    },
+  ],
+  "20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql": [
+    {
+      // A compra que dá R$ 0,00 não se paga pelo app (14/10/2026): o bloco 6-ter da v24 recusa o total
+      // calculado zero quando o meio é 'online', ANTES de reservar estoque e cupom. Sem esta entrada a migration
+      // saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef,
+      // comentários incluídos): a condição (só 'online', só o total do servidor) e o identificador estável da
+      // recusa aparecem UMA vez cada.
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0 THEN",
+          vezes: 1,
+        },
+        { texto: "pedido_sem_valor_a_pagar_pelo_app: subtotal", vezes: 1 },
+      ],
+    },
+  ],
+  "20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql":
+    [
+      {
+        // A lojista renomeia e apaga categoria sem deixar produto órfão (14/10/2026): três funções NOVAS do painel.
+        // Sem esta entrada a migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO
+        // (pg_get_functiondef, comentários incluídos): as duas travas de admin (a do JWT e a do papel de agora) e cada
+        // lugar onde o nome é trocado aparecem UMA vez — tirar um deles é exatamente o produto órfão que a função evita.
+        funcao: "renomear_categoria",
+        esperado: [
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          {
+            texto: "pg_advisory_xact_lock(hashtext('categorias:gestao'))",
+            vezes: 1,
+          },
+          { texto: "UPDATE public.categorias SET nome = v_novo", vezes: 1 },
+          { texto: "UPDATE public.produtos", vezes: 1 },
+          {
+            texto: "já está na lista de produtos que não aceitam troca",
+            vezes: 1,
+          },
+          {
+            texto: "que não são desta categoria. Renomear os misturaria",
+            vezes: 1,
+          },
+          { texto: "UPDATE public.banners", vezes: 1 },
+          { texto: "UPDATE public.politica_devolucao", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "apagar_categoria_vazia",
+        esperado: [
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          { texto: "public.categoria__usos(p_id)", vezes: 1 },
+          { texto: "DELETE FROM public.categorias WHERE id = p_id", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "categorias_com_uso",
+        esperado: [
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          { texto: "public.categoria__usos(c.id)", vezes: 1 },
+        ],
+      },
+    ],
+  "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql": [
+    {
+      // A cliente pede a exclusão da conta e a correção do e-mail (14/10/2026; DADO DE CLIENTE, LGPD): a migration
+      // NASCE a tabela public.pedidos_de_privacidade e a função do gatilho que carimba quem decidiu o pedido
+      // (CREATE FUNCTION, não CREATE OR REPLACE: o pré-voo recusa se ela já existe). Sem esta entrada a migration
+      // saía PULADA. O que importa no corpo VIVO e aparece UMA vez cada: a identidade do pedido imutável (id,
+      // user_id, tipo, e-mail novo e criado_em), a decisão final (pedido já decidido não muda), e o carimbo
+      // (quem e quando decidiu, vindos do servidor; pedido aberto não tem carimbo). O resto da migration (tabela,
+      // políticas, privilégios, índice) o próprio DO de conferência dela aborta o apply se divergir.
+      funcao: "pedidos_de_privacidade__carimbar",
+      esperado: [
+        { texto: "IF NEW.id IS DISTINCT FROM OLD.id", vezes: 1 },
+        {
+          texto: "OR NEW.criado_em IS DISTINCT FROM OLD.criado_em THEN",
+          vezes: 1,
+        },
+        { texto: "IF OLD.situacao <> 'aberto' THEN", vezes: 1 },
+        { texto: "IF NEW.situacao <> 'aberto' THEN", vezes: 1 },
+        { texto: "NEW.atendido_em := now();", vezes: 1 },
+        { texto: "NEW.atendido_por := auth.uid();", vezes: 1 },
+        { texto: "NEW.atendido_em := NULL;", vezes: 1 },
+        { texto: "NEW.atendido_por := NULL;", vezes: 1 },
+        { texto: "RETURN NEW;", vezes: 1 },
+      ],
+    },
+  ],
+  "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql": [
+    {
+      // A loja PODE declarar razão social, CNPJ/CPF e e-mail de atendimento (14/10/2026): três colunas novas e
+      // opcionais, gravadas pela upsert_store_config. Sem esta entrada a migration saía PULADA (saída 2: "ninguém
+      // verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos): o CASE de cada
+      // coluna (o coração do aceite "salvar um campo não apaga os outros") aparece UMA vez, e cada chave aparece
+      // DUAS (uma no INSERT sem COALESCE, uma no THEN do CASE); as duas travas de admin (20261199000000) e o CASE do
+      // endereço (20261167000000) seguem UMA vez cada.
+      funcao: "upsert_store_config",
+      esperado: [
+        {
+          texto:
+            "store_legal_name = CASE WHEN config_json ? 'store_legal_name'",
+          vezes: 1,
+        },
+        {
+          texto:
+            "store_legal_document = CASE WHEN config_json ? 'store_legal_document'",
+          vezes: 1,
+        },
+        {
+          texto:
+            "store_support_email = CASE WHEN config_json ? 'store_support_email'",
+          vezes: 1,
+        },
+        { texto: "config_json->>'store_legal_name'", vezes: 2 },
+        { texto: "config_json->>'store_legal_document'", vezes: 2 },
+        { texto: "config_json->>'store_support_email'", vezes: 2 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto: "store_address = CASE WHEN config_json ? 'store_address'",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  "20261240000000_a_cliente_e_avisada_quando_a_loja_responde_sua_pergunta.sql":
+    [
+      {
+        // A cliente é avisada quando a loja responde a pergunta dela (14/10/2026): as DUAS sobrecargas de
+        // answer_question_atomic trocam a linha falsa do log de push por UM aviso no sino da cliente. Sem esta entrada a
+        // migration saía PULADA (saída 2: "ninguém verificou"). buscarDef lê UMA das duas sobrecargas (a primeira que o
+        // catálogo devolver), então só entram marcadores que existem UMA vez em AMBOS os corpos (medido nas duas):
+        // o passo novo (comentário com a versão), o título do aviso, o destino que abre o produto, o BEGIN/EXCEPTION do
+        // best-effort (a falha do aviso nunca perde a resposta), a recusa a quem não é admin e o upsert da resposta.
+        // As guardas de admin DIFEREM entre as sobrecargas (auth.uid() contra is_admin()) e por isso só a mensagem de
+        // recusa, comum às duas, é conferida aqui; o ato de recusar é de tests/banco/pergunta-respondida-avisa-viva.cjs.
+        // NÃO reaplique a 20261064 nem a 20261065: elas recriam o corpo antigo e o marcador "A10: log honesto" delas
+        // deixou de existir em answer_question_atomic (segue valendo em reply_review_atomic).
+        funcao: "answer_question_atomic",
+        esperado: [
+          {
+            texto:
+              "-- 3. Aviso no sino da cliente que perguntou (20261240000000).",
+            vezes: 1,
+          },
+          { texto: "Sua pergunta foi respondida", vezes: 1 },
+          {
+            texto: "'/product-detail?id=' || v_product_id",
+            vezes: 1,
+          },
+          { texto: "EXCEPTION WHEN OTHERS THEN", vezes: 1 },
+          {
+            texto: "Unauthorized: Only admins can answer questions.",
+            vezes: 1,
+          },
+          { texto: "ON CONFLICT (question_id) DO UPDATE", vezes: 1 },
+        ],
+      },
+    ],
+  // O reembolso em dúvida prende o saldo (15/10/2026, lote R1 do plano reembolso-ab; DINHEIRO). Sem esta entrada a
+  // migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef,
+  // comentários incluídos), exatos: a regra ÚNICA com a ordem que decide (substituída antes do legado, legado antes do
+  // recusado/falhou, a lista fechada "nada saiu" e o lado seguro), o saldo descontando o em dúvida pela regra e
+  // respeitando a substituída, cada chamador trocado para a função de saldo ou para a regra, a recusa do POST da linha
+  // liberada por fora, o texto novo do aviso ao cliente e, nas duas saídas de 7 dias, a frase de confirmação, a espera
+  // e o risco_de_dobro. O resto (tabela, EXECUTE, atributos) o DO de conferência da migration aborta o apply se divergir.
+  "20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql": [
+    {
+      funcao: "order_refund__pode_ter_saido",
+      esperado: [
+        { texto: "WHEN r.mp_refund_id IS NOT NULL THEN true", vezes: 1 },
+        {
+          texto: "WHEN pv.substituida_por_manual_em IS NOT NULL THEN false",
+          vezes: 1,
+        },
+        {
+          texto:
+            "WHEN r.criada_sob_autorizacao IS NOT TRUE AND r.tentativas > 1 THEN true",
+          vezes: 1,
+        },
+        {
+          texto:
+            "WHEN r.status = 'recusado' AND r.post_autorizado_em IS NULL THEN false",
+          vezes: 1,
+        },
+        { texto: "AND dg.post_incerto_em IS NULL", vezes: 1 },
+        {
+          texto:
+            "AND dg.mp_codigo IN ('insufficient_money_for_refund', 'order_payment_not_yet_enabled_for_refund') THEN false",
+          vezes: 1,
+        },
+        { texto: "ELSE true", vezes: 1 },
+      ],
+    },
+    {
+      // A espera dos 7 dias: UMA regra para as duas portas e para o botão do painel.
+      funcao: "order_refund__liberavel_apos_espera",
+      esperado: [
+        {
+          texto:
+            "OR (r.status = 'falhou' AND public.order_refund__pode_ter_saido(r.id)))",
+          vezes: 1,
+        },
+        { texto: "AND pv.substituida_por_manual_em IS NULL", vezes: 1 },
+        { texto: "AND pv.por_fora_liberado_em IS NULL", vezes: 1 },
+        {
+          texto:
+            "AND now() - COALESCE(r.post_autorizado_em, r.created_at) >= interval '7 days'",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "pedido__saldo_a_estornar",
+      esperado: [
+        { texto: "AND r.status IN ('falhou', 'recusado')", vezes: 1 },
+        {
+          texto: "AND pv.substituida_por_manual_em IS NOT NULL)",
+          vezes: 1,
+        },
+        {
+          texto: "AND public.order_refund__pode_ter_saido(r.id)), 0)",
+          vezes: 1,
+        },
+        { texto: "AND d.reembolso_manual), 0)", vezes: 1 },
+        // o POR FORA PARCIAL do pedido cancelado conta no saldo em qualquer status da linha
+        {
+          texto: "AND pf.substituida_por_manual_em IS NULL), 0)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "solicitar_estorno",
+      esperado: [
+        {
+          texto: "v_saldo := public.pedido__saldo_a_estornar(p_order_id);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        {
+          texto: "v_disponivel := public.pedido__saldo_a_estornar(v_o.id);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "autorizar_post_do_estorno",
+      esperado: [
+        { texto: "AND pv.por_fora_liberado_em IS NOT NULL) THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "reemitir_reembolso_da_devolucao",
+      esperado: [
+        {
+          texto:
+            "v_sem_post := NOT public.order_refund__pode_ter_saido(v_r.id);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_reembolso_por_fora",
+      esperado: [
+        {
+          texto: "v_risco := public.order_refund__pode_ter_saido(v_r.id);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "devolucao_avisa_o_cliente",
+      esperado: [
+        {
+          texto: "A loja está confirmando sua devolução com o Mercado Pago.",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_reembolso_por_fora_apos_espera",
+      esperado: [
+        {
+          texto:
+            "IF upper(btrim(COALESCE(p_confirmacao, ''))) <> 'DEVOLVI POR FORA' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF NOT public.order_refund__liberavel_apos_espera(v_r.id) THEN",
+          vezes: 1,
+        },
+        { texto: "'risco_de_dobro', true", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "registrar_estorno_manual_apos_espera",
+      esperado: [
+        {
+          texto:
+            "IF upper(btrim(COALESCE(p_confirmacao, ''))) <> 'DEVOLVI POR FORA' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF NOT public.order_refund__liberavel_apos_espera(v_r.id) THEN",
+          vezes: 1,
+        },
+        { texto: "'risco_de_dobro', true", vezes: 2 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        // a linha que nasceu enquanto a trava do pedido era esperada é travada antes das checagens
+        {
+          texto:
+            "PERFORM 1 FROM public.order_refunds releitura WHERE releitura.order_id = p_order_id ORDER BY releitura.id FOR UPDATE;",
+          vezes: 1,
+        },
+        // só a linha que cobre TODO o saldo ainda a devolver estorna o pedido; a parcial só marca por fora
+        {
+          texto: "IF round(v_r.amount, 2) < round(v_resta, 2) THEN",
+          vezes: 1,
+        },
+        { texto: "'detalhe', 'parcial'", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "pedido_reembolsos_e_saldo",
+      esperado: [
+        {
+          texto: "IF auth.uid() IS NULL OR NOT public.is_admin_atual() THEN",
+          vezes: 1,
+        },
+        {
+          texto: "'pode_ter_saido', public.order_refund__pode_ter_saido(r.id),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'por_fora_apos_espera_liberado', public.order_refund__liberavel_apos_espera(r.id),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'disponivel', GREATEST(public.pedido__saldo_a_estornar(p_order_id), 0),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'substituida_por_manual', pv.substituida_por_manual_em IS NOT NULL,",
+          vezes: 1,
+        },
+        // o valor reservado (linha resolvida por fora ainda viva no MP) que a tela mostra
+        { texto: "'reservado_por_fora', v_reservado,", vezes: 1 },
+      ],
+    },
+  ],
+  // O lucro usa o custo do dia da venda (15/10/2026; DINHEIRO e dado de cliente). Sem esta entrada a migration saia
+  // PULADA. Os marcadores contam no corpo VIVO (pg_get_functiondef, comentarios incluidos), exatos: nos dois relatorios a
+  // juncao com a tabela lateral e o COALESCE do custo do dia com o de hoje nos lugares que decidem (lucro por dia, ranking,
+  // contador de sem custo; CMV da venda e da devolucao, e o cmv_estimado calculado), as duas travas de admin intactas, e,
+  // no gatilho, o INSERT idempotente, o tratamento de erro e o filtro de custo ausente. O resto (tabela, EXECUTE,
+  // atributos, gatilho ligado) o DO de conferencia da migration aborta o apply se divergir.
+  "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "LEFT JOIN public.marketplace_order_item_custo oic ON oic.item_id = oi.id",
+          vezes: 3,
+        },
+        {
+          texto:
+            "FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit",
+          vezes: 1,
+        },
+        { texto: "AND COALESCE(oic.custo, p.custo) IS NOT NULL", vezes: 1 },
+        { texto: "AND COALESCE(oic.custo, p.custo) IS NULL;", vezes: 1 },
+        {
+          texto: "'productsWithoutCost', products_without_cost",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_dre",
+      esperado: [
+        {
+          texto:
+            "LEFT JOIN public.marketplace_order_item_custo oic ON oic.item_id = oi.id",
+          vezes: 2,
+        },
+        {
+          texto:
+            "LEFT JOIN public.marketplace_order_item_custo oic ON oic.item_id = di.order_item_id",
+          vezes: 2,
+        },
+        { texto: "COALESCE(oic.custo, p.custo, 0)", vezes: 2 },
+        { texto: "'cmv_estimado', v_cmv_estimado,", vezes: 1 },
+        { texto: "AND oic.item_id IS NULL", vezes: 2 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "marketplace_order_item__guarda_o_custo_do_dia",
+      esperado: [
+        { texto: "ON CONFLICT (item_id) DO NOTHING", vezes: 1 },
+        { texto: "EXCEPTION WHEN OTHERS THEN", vezes: 1 },
+        { texto: "AND p.custo IS NOT NULL", vezes: 1 },
+        { texto: "IF NEW.product_id IS NULL THEN", vezes: 1 },
+      ],
+    },
+  ],
+  // Desfazer o recebimento recusa pedido com devolução viva (15/10/2026; DINHEIRO). Sem esta entrada a migration saía
+  // PULADA. Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos), exatos: a frase da recusa e o
+  // critério da devolução viva (tudo que não é recusada, cancelada nem reprovada), mais as três recusas que vêm antes
+  // (as duas travas de admin e o NULL) intactas. O resto (atributos, ACL, hash do corpo) o DO de conferência da migration
+  // aborta o apply se divergir.
+  "20261243000000_desfazer_recebimento_recusa_com_devolucao.sql": [
+    {
+      funcao: "registrar_pagamento_recebido",
+      esperado: [
+        {
+          texto:
+            "RAISE EXCEPTION 'Este pedido tem devolução em andamento ou concluída. O recebimento só pode ser desfeito se a devolução for recusada, cancelada ou reprovada na inspeção; devolução concluída não permite desfazer.';",
+          vezes: 1,
+        },
+        {
+          texto: "AND d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+          vezes: 1,
+        },
+        { texto: "SELECT 1 FROM public.devolucoes d", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "IF p_recebido IS NULL THEN", vezes: 1 },
+      ],
+    },
+  ],
+  // A loja escolhe como entrega na cidade dela (15/10/2026; DINHEIRO e DADO DE CLIENTE). Sem esta entrada a migration saia
+  // PULADA. Os marcadores contam no corpo VIVO (pg_get_functiondef, comentarios incluidos), exatos: as duas portas de compra
+  // com o So retiro (a declaracao, as duas travas que deixam de exigir CEP local, a recusa do local-delivery e a retirada
+  // livre) e a upsert com as duas chaves. O resto (atributos, ACL, hash do corpo, colunas, trigger, view) o DO de conferencia
+  // da migration aborta o apply se divergir.
+  "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        { texto: "WHEN COALESCE(o.discount, 0) <= 0 THEN 0", vezes: 2 },
+        {
+          texto:
+            "ELSE oi.price * LEAST(1, GREATEST(0, COALESCE(o.discount, 0)) / NULLIF(",
+          vezes: 2,
+        },
+        {
+          texto: "SELECT SUM(desconto_item.quantity * desconto_item.price)",
+          vezes: 2,
+        },
+        { texto: "WHERE desconto_item.order_id = o.id", vezes: 2 },
+        {
+          texto:
+            "FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto:
+            "v_so_retirada := (COALESCE(v_store_config.local_delivery_enabled, true) = false);",
+          vezes: 1,
+        },
+        {
+          texto:
+            "v_retirada_livre := (v_so_retirada AND p_shipping_option_id IS NOT DISTINCT FROM 'store-pickup');",
+          vezes: 1,
+        },
+        {
+          texto: "IF NOT v_retirada_livre AND NOT public.is_local_cep(",
+          vezes: 2,
+        },
+        { texto: "USING DETAIL = 'entrega_propria_desligada';", vezes: 1 },
+        {
+          texto: "OR (NOT v_retirada_livre AND COALESCE(public.is_local_cep(",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "v_so_retirada := (COALESCE(v_store_config.local_delivery_enabled, true) = false);",
+          vezes: 1,
+        },
+        {
+          texto:
+            "v_retirada_livre := (v_so_retirada AND p_shipping_option_id IS NOT DISTINCT FROM 'store-pickup');",
+          vezes: 1,
+        },
+        {
+          texto: "IF NOT v_retirada_livre AND NOT public.is_local_cep(",
+          vezes: 2,
+        },
+        { texto: "USING DETAIL = 'entrega_propria_desligada';", vezes: 1 },
+        {
+          texto: "OR (NOT v_retirada_livre AND COALESCE(public.is_local_cep(",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        {
+          texto:
+            "COALESCE((config_json->>'local_delivery_enabled')::boolean, true)",
+          vezes: 1,
+        },
+        {
+          texto: "COALESCE((config_json->>'local_delivery_days')::integer, 1)",
+          vezes: 1,
+        },
+        { texto: "CASE WHEN config_json ? 'local_delivery_enabled'", vezes: 1 },
+        { texto: "CASE WHEN config_json ? 'local_delivery_days'", vezes: 1 },
+      ],
+    },
+  ],
+  // Uma tentativa cria o conjunto de parcelas uma única vez (20261246).
+  "20261246000000_o_lancamento_repetido_nao_duplica.sql": [
+    {
+      funcao: "fin_lancamento_salvar",
+      esperado: [
+        {
+          texto:
+            "INSERT INTO public.fin_lancamento_tentativas (chave, conteudo_hash, ids)",
+          vezes: 1,
+        },
+        { texto: "ON CONFLICT (chave) DO NOTHING;", vezes: 1 },
+        {
+          texto: "IF v_hash_gravado IS DISTINCT FROM v_conteudo_hash THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "UPDATE public.fin_lancamento_tentativas SET ids = v_ids WHERE chave = v_chave;",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  // O motivo do desconto do balcão fica na anotação privada da loja (20261249): a RPC recusa motivo acima de
+  // 2000 caracteres, grava o motivo em marketplace_order_internal_notes (uma vez, só venda nova) e mantém a
+  // trava pela chave (20261235), os dois gates de admin e a resposta idempotente.
+  "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "COALESCE(SUM(faturamento) FILTER (WHERE custo IS NOT NULL), 0)",
+          vezes: 1,
+        },
+        { texto: "COALESCE(SUM(custo * estoque), 0)", vezes: 1 },
+        { texto: "COALESCE(SUM(faturamento), 0)", vezes: 1 },
+        {
+          texto: "COALESCE(SUM(faturamento) FILTER (WHERE custo IS NULL), 0)",
+          vezes: 1,
+        },
+        {
+          texto: "COUNT(*) FILTER (WHERE custo IS NULL AND estoque > 0)",
+          vezes: 1,
+        },
+        {
+          texto: "COUNT(*) FILTER (WHERE custo IS NOT NULL AND estoque > 0)",
+          vezes: 1,
+        },
+        { texto: "'revenueWithoutCost', inv_revenue_without_cost", vezes: 1 },
+        { texto: "'productsWithoutCost', inv_products_without_cost", vezes: 1 },
+        { texto: "'productsWithCost', inv_products_with_cost", vezes: 1 },
+        { texto: "COALESCE(pv.price_override, p.preco_venda)", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        { texto: "'totalRevenue', inv_revenue_total", vezes: 1 },
+        { texto: "COALESCE(SUM(faturamento), 0)", vezes: 1 },
+        { texto: "COALESCE(pv.price_override, p.preco_venda)", vezes: 1 },
+        {
+          texto:
+            "COALESCE(SUM(preco_venda * estoque) FILTER (WHERE custo IS NOT NULL), 0)",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql": [
+    {
+      funcao: "registrar_venda_presencial",
+      esperado: [
+        {
+          texto:
+            "INSERT INTO public.marketplace_order_internal_notes (order_id, note)",
+          vezes: 1,
+        },
+        {
+          texto: "O motivo do desconto pode ter até 2000 caracteres.",
+          vezes: 1,
+        },
+        {
+          texto:
+            "hashtextextended('venda_presencial:' || p_idempotency_key::text, 0)",
+          vezes: 1,
+        },
+        { texto: "IF public.is_admin() IS DISTINCT FROM true THEN", vezes: 1 },
+        {
+          texto: "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+          vezes: 1,
+        },
+        { texto: "'ja_existia', v_ja_existia,", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

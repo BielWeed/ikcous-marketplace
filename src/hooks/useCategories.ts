@@ -1,5 +1,15 @@
 import { useSyncListener } from "@/hooks/useDataVault";
+import { publicarMudancaDeCategoria } from "@/lib/avisos-de-categoria";
 import { DataVault } from "@/lib/dataVault";
+import {
+  ErroDeCategoria,
+  type ResultadoDoApagar,
+  type ResultadoDoRenome,
+  erroDoNomeReservado,
+  lerResultadoDoApagar,
+  lerResultadoDoRenome,
+  mensagemDaFalhaDeCategoria,
+} from "@/lib/gestao-de-categorias";
 import { supabase } from "@/lib/supabase";
 import type { Category } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -10,6 +20,106 @@ let categoriesFetchPromise: Promise<Category[]> | null = null;
 let lastCategoriesFetchTime = 0;
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
 
+// Cada tela que lê as categorias tem a SUA cópia (a lista de produtos, o
+// formulário do produto, banners, devolução). Renomear, esconder ou apagar numa
+// delas precisa chegar nas outras NA HORA, sem esperar o Realtime nem o
+// minuto de espera da releitura: as telas ficam montadas por baixo uma da outra.
+const ouvintesDeMudanca = new Set<() => void>();
+function avisarMudancaDeCategorias() {
+  for (const ouvinte of [...ouvintesDeMudanca]) ouvinte();
+}
+
+// ── Rede ruim na PRIMEIRA carga ──
+// Sem nada na tela (nem cópia do aparelho), uma falha de rede deixava a
+// vitrine sem filtros até a cliente recarregar a página. Agora: até
+// ESPERAS_DAS_CATEGORIAS_MS.length novas tentativas automáticas (o tamanho da
+// lista É o teto, não há laço), nova tentativa quando a rede volta (`online`)
+// ou a aba volta a ficar visível, e SEMPRE um pedido em voo por vez. O estado
+// de erro continua: o aviso sai quando as tentativas acabam. O estado fica no
+// módulo (como o cache) porque várias telas podem usar o hook ao mesmo tempo
+// e a nova tentativa tem de ser uma só.
+const ESPERAS_DAS_CATEGORIAS_MS: readonly number[] = [1000, 2000, 4000];
+// Rajada de eventos de rede (sinal piscando, aba trocando) não vira rajada de pedidos.
+const MINIMO_ENTRE_RETOMADAS_MS = 3000;
+
+interface InstanciaDoHook {
+  receber: (lista: Category[]) => void;
+  buscar: () => Promise<void>;
+}
+
+const instanciasMontadas = new Set<InstanciaDoHook>();
+let tentativasAutomaticas = 0;
+let timerDaNovaTentativa: ReturnType<typeof setTimeout> | null = null;
+let falhouSemNadaNaTela = false;
+let ultimaConsultaEm = 0;
+
+function cancelarNovaTentativa() {
+  if (timerDaNovaTentativa) {
+    clearTimeout(timerDaNovaTentativa);
+    timerDaNovaTentativa = null;
+  }
+}
+
+// Uma consulta de retomada: só uma tela pergunta, e as outras recebem a lista.
+async function consultarPelaPrimeiraInstancia() {
+  if (globalCategoriesCache !== null || categoriesFetchPromise) return;
+  const [primeira] = instanciasMontadas;
+  if (!primeira) return;
+  await primeira.buscar();
+  const lista = globalCategoriesCache;
+  if (lista !== null) {
+    for (const instancia of instanciasMontadas) instancia.receber(lista);
+  }
+}
+
+// Devolve `true` se há (ou já havia) uma nova tentativa agendada.
+function agendarNovaTentativa(): boolean {
+  const espera = ESPERAS_DAS_CATEGORIAS_MS.at(tentativasAutomaticas);
+  if (espera === undefined || instanciasMontadas.size === 0) return false;
+  if (timerDaNovaTentativa) return true;
+  tentativasAutomaticas += 1;
+  timerDaNovaTentativa = setTimeout(() => {
+    timerDaNovaTentativa = null;
+    void consultarPelaPrimeiraInstancia();
+  }, espera);
+  return true;
+}
+
+// A rede voltou ou a aba voltou a ficar visível: tenta já, com fôlego novo.
+function retomarSeAindaFalta() {
+  if (!falhouSemNadaNaTela || globalCategoriesCache !== null) return;
+  if (document.visibilityState === "hidden") return;
+  if (categoriesFetchPromise) return;
+  if (Date.now() - ultimaConsultaEm < MINIMO_ENTRE_RETOMADAS_MS) return;
+  cancelarNovaTentativa();
+  tentativasAutomaticas = 0;
+  void consultarPelaPrimeiraInstancia();
+}
+
+function registrarInstancia(instancia: InstanciaDoHook) {
+  if (instanciasMontadas.size === 0) {
+    window.addEventListener("online", retomarSeAindaFalta);
+    document.addEventListener("visibilitychange", retomarSeAindaFalta);
+  }
+  instanciasMontadas.add(instancia);
+}
+
+function removerInstancia(instancia: InstanciaDoHook) {
+  instanciasMontadas.delete(instancia);
+  if (instanciasMontadas.size === 0) {
+    window.removeEventListener("online", retomarSeAindaFalta);
+    document.removeEventListener("visibilitychange", retomarSeAindaFalta);
+    cancelarNovaTentativa();
+    tentativasAutomaticas = 0;
+  }
+}
+
+/** Conexão do cofre fechada (saída cancelada, outra aba)? Dublês de teste não
+ * implementam `isClosed` e contam como abertos. */
+function cofreFechado(vault: DataVault): boolean {
+  return typeof vault.isClosed === "function" && vault.isClosed();
+}
+
 export function useCategories() {
   const vaultRef = useRef<DataVault | null>(null);
   const [categories, setCategories] = useState<Category[]>(
@@ -19,6 +129,19 @@ export function useCategories() {
 
   // Persist to DataVault (non-blocking helper)
   const persistToVault = useCallback((items: Category[]) => {
+    // Cofre fechado (saída da página cancelada, outra aba subiu a versão):
+    // a conexão que o mount guardou está morta — reabre antes de gravar.
+    if (vaultRef.current && cofreFechado(vaultRef.current)) {
+      DataVault.init()
+        .then((vault) => {
+          vaultRef.current = vault;
+          return vault.replaceAll("categories", items).then(() => {
+            vault.setLastSync("categories");
+          });
+        })
+        .catch(() => {});
+      return;
+    }
     vaultRef.current
       ?.replaceAll("categories", items)
       .then(() => {
@@ -61,6 +184,9 @@ export function useCategories() {
           setIsLoading(false);
         } catch {
           /* fallback */
+          // A consulta que esta tela pegou carona falhou: sem isto o
+          // "carregando" ficava ligado para sempre.
+          setIsLoading(false);
         }
         return;
       }
@@ -71,6 +197,7 @@ export function useCategories() {
         }
 
         const queryPromise = (async () => {
+          ultimaConsultaEm = Date.now();
           const { data, error } = await supabase
             .from("categorias")
             .select("*")
@@ -88,6 +215,10 @@ export function useCategories() {
           }));
           globalCategoriesCache = adaptedCategories;
           lastCategoriesFetchTime = Date.now();
+          // Resposta de verdade (lista vazia inclusive): a falha acabou.
+          falhouSemNadaNaTela = false;
+          tentativasAutomaticas = 0;
+          cancelarNovaTentativa();
           persistToVault(adaptedCategories);
           return adaptedCategories;
         })();
@@ -97,7 +228,12 @@ export function useCategories() {
         setCategories(data);
       } catch (error) {
         console.error("Error fetching categories:", error);
-        toast.error("Erro ao carregar categorias");
+        // Sem nada na tela, ainda há nova tentativa automática? Então o aviso
+        // espera (um toast por tentativa seria barulho); quando as tentativas
+        // acabam, ou quando já há lista na tela, o aviso sai como sempre.
+        falhouSemNadaNaTela = globalCategoriesCache === null;
+        const vaiTentarDeNovo = falhouSemNadaNaTela && agendarNovaTentativa();
+        if (!vaiTentarDeNovo) toast.error("Erro ao carregar categorias");
       } finally {
         setIsLoading(false);
         categoriesFetchPromise = null;
@@ -105,6 +241,20 @@ export function useCategories() {
     },
     [persistToVault],
   );
+
+  // Entra na lista de telas que a nova tentativa automática atende (e sai ao
+  // desmontar, soltando o relógio e os ouvidos de rede quando é a última).
+  useEffect(() => {
+    const instancia: InstanciaDoHook = {
+      receber: (lista) => {
+        setCategories(lista);
+        setIsLoading(false);
+      },
+      buscar: () => fetchCategories(true),
+    };
+    registrarInstancia(instancia);
+    return () => removerInstancia(instancia);
+  }, [fetchCategories]);
 
   useEffect(() => {
     const hasCache = categories.length > 0;
@@ -114,6 +264,17 @@ export function useCategories() {
       fetchCategories(true, true);
     }
   }, [fetchCategories, categories.length]);
+
+  // Outra tela renomeou, escondeu ou apagou uma categoria: relê já.
+  useEffect(() => {
+    const ouvinte = () => {
+      void fetchCategories(true, true);
+    };
+    ouvintesDeMudanca.add(ouvinte);
+    return () => {
+      ouvintesDeMudanca.delete(ouvinte);
+    };
+  }, [fetchCategories]);
 
   const generateSlug = (name: string) => {
     return name
@@ -129,6 +290,13 @@ export function useCategories() {
       category: Omit<Category, "id" | "createdAt" | "slug">,
       silent?: boolean,
     ) => {
+      // "Todas" e "all" são do filtro da vitrine e do painel: criar categoria com
+      // esse nome a deixaria sem filtro. (Só a tela protege; o INSERT direto não.)
+      const reservado = erroDoNomeReservado(category.name);
+      if (reservado) {
+        if (!silent) toast.error(reservado);
+        throw new ErroDeCategoria(reservado);
+      }
       const tempId = `temp-${Date.now()}`;
       const slug = generateSlug(category.name);
       const newCategory: Category = {
@@ -193,85 +361,148 @@ export function useCategories() {
     [persistToVault],
   );
 
+  // O NOME da categoria é a chave de produtos, banners e da regra de devolução
+  // (texto, sem chave estrangeira). Trocar `categorias.nome` direto na tabela
+  // deixava o produto órfão da vitrine, o banner apontando para página vazia e
+  // a regra de "sem troca" apontando para um nome que não existe. Por isso
+  // renomear e apagar passam SÓ pelas portas do banco (migration
+  // 20261237000000), que trocam os quatro lugares numa transação e recusam o
+  // que deixaria órfão. Nenhuma das duas mostra toast: quem chama decide o texto.
+  const aplicarNaLista = useCallback(
+    (trocar: (lista: Category[]) => Category[]) => {
+      if (globalCategoriesCache) {
+        globalCategoriesCache = trocar(globalCategoriesCache);
+      }
+      setCategories((prev) => {
+        const next = trocar(prev);
+        persistToVault(next);
+        return next;
+      });
+    },
+    [persistToVault],
+  );
+
+  const renameCategory = useCallback(
+    async (id: string, novoNome: string): Promise<ResultadoDoRenome> => {
+      const reservado = erroDoNomeReservado(novoNome);
+      if (reservado) throw new ErroDeCategoria(reservado, "22023");
+      const { data, error } = await supabase.rpc("renomear_categoria", {
+        p_id: id,
+        p_novo_nome: novoNome,
+      });
+      if (error) {
+        throw new ErroDeCategoria(
+          mensagemDaFalhaDeCategoria(error),
+          error.code,
+        );
+      }
+      const resultado = lerResultadoDoRenome(data);
+      aplicarNaLista((lista) =>
+        lista.map((c) =>
+          c.id === id
+            ? { ...c, name: resultado.nome, slug: resultado.slug }
+            : c,
+        ),
+      );
+      avisarMudancaDeCategorias();
+      if (resultado.mudou) {
+        publicarMudancaDeCategoria({
+          tipo: "renomeada",
+          de: resultado.nomeAntigo,
+          para: resultado.nome,
+        });
+      }
+      return resultado;
+    },
+    [aplicarNaLista],
+  );
+
+  const deleteCategory = useCallback(
+    async (id: string): Promise<ResultadoDoApagar> => {
+      const { data, error } = await supabase.rpc("apagar_categoria_vazia", {
+        p_id: id,
+      });
+      if (error) {
+        throw new ErroDeCategoria(
+          mensagemDaFalhaDeCategoria(error),
+          error.code,
+        );
+      }
+      const resultado = lerResultadoDoApagar(data);
+      aplicarNaLista((lista) => lista.filter((c) => c.id !== id));
+      avisarMudancaDeCategorias();
+      publicarMudancaDeCategoria({ tipo: "apagada", nome: resultado.nome });
+      return resultado;
+    },
+    [aplicarNaLista],
+  );
+
+  // Esconder da vitrine é a coluna `ativo`, que já existia e que a vitrine já
+  // respeita: não mexe em nome nem em produto.
+  const setCategoryActive = useCallback(
+    async (id: string, ativa: boolean) => {
+      // `.select("id")` porque o PostgREST responde sucesso mesmo quando a
+      // política de acesso não deixa nenhuma linha passar (0 linhas, sem erro).
+      const { data, error } = await supabase
+        .from("categorias")
+        .update({ ativo: ativa })
+        .eq("id", id)
+        .select("id");
+      if (error) {
+        throw new ErroDeCategoria(
+          mensagemDaFalhaDeCategoria(error),
+          error.code,
+        );
+      }
+      if (!data || data.length === 0) {
+        throw new ErroDeCategoria(
+          "Não foi possível mudar a categoria. Atualize a tela e tente de novo.",
+        );
+      }
+      aplicarNaLista((lista) =>
+        lista.map((c) => (c.id === id ? { ...c, isActive: ativa } : c)),
+      );
+      avisarMudancaDeCategorias();
+      publicarMudancaDeCategoria({ tipo: "visibilidade" });
+    },
+    [aplicarNaLista],
+  );
+
   const updateCategory = useCallback(
     async (
       id: string,
       updates: Partial<Omit<Category, "id" | "createdAt" | "slug">>,
     ) => {
-      let previousCategories: Category[] = [];
-      setCategories((prev) => {
-        previousCategories = [...prev];
-        const next = prev.map((c) => {
-          if (c.id === id) {
-            const nextItem = { ...c, ...updates };
-            if (updates.name) nextItem.slug = generateSlug(updates.name);
-            return nextItem;
-          }
-          return c;
-        });
-        persistToVault(next);
-        return next;
-      });
-
       try {
-        const updateData: any = {};
-        if (updates.name) {
-          updateData.nome = updates.name;
-          updateData.slug = generateSlug(updates.name);
+        // O nome só muda pela porta do banco (veja acima); o slug é dela.
+        if (updates.name !== undefined) await renameCategory(id, updates.name);
+        if (updates.isActive !== undefined) {
+          await setCategoryActive(id, updates.isActive);
         }
-        if (updates.description !== undefined)
-          updateData.descricao = updates.description;
-        if (updates.isActive !== undefined) updateData.ativo = updates.isActive;
-
-        const { error } = await supabase
-          .from("categorias")
-          .update(updateData)
-          .eq("id", id);
-
-        if (error) throw error;
+        if (updates.description !== undefined) {
+          const { error } = await supabase
+            .from("categorias")
+            .update({ descricao: updates.description })
+            .eq("id", id);
+          if (error) throw error;
+          aplicarNaLista((lista) =>
+            lista.map((c) =>
+              c.id === id ? { ...c, description: updates.description } : c,
+            ),
+          );
+        }
         toast.success("Categoria atualizada com sucesso!");
       } catch (error) {
-        setCategories(() => {
-          persistToVault(previousCategories);
-          return previousCategories;
-        });
         console.error("Error updating category:", error);
-        toast.error("Erro ao atualizar categoria");
+        toast.error(
+          error instanceof ErroDeCategoria
+            ? error.message
+            : "Erro ao atualizar categoria",
+        );
         throw error;
       }
     },
-    [persistToVault],
-  );
-
-  const deleteCategory = useCallback(
-    async (id: string) => {
-      let previousCategories: Category[] = [];
-      setCategories((prev) => {
-        previousCategories = [...prev];
-        const next = prev.filter((c) => c.id !== id);
-        persistToVault(next);
-        return next;
-      });
-
-      try {
-        const { error } = await supabase
-          .from("categorias")
-          .delete()
-          .eq("id", id);
-
-        if (error) throw error;
-        toast.success("Categoria removida com sucesso!");
-      } catch (error) {
-        setCategories(() => {
-          persistToVault(previousCategories);
-          return previousCategories;
-        });
-        console.error("Error deleting category:", error);
-        toast.error("Erro ao remover categoria");
-        throw error;
-      }
-    },
-    [persistToVault],
+    [renameCategory, setCategoryActive, aplicarNaLista],
   );
 
   // Realtime sync: re-read from DataVault when RealtimeSyncEngine updates categories
@@ -290,6 +521,9 @@ export function useCategories() {
         // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
         // REJEITA em vez de mascarar a falha como "vazio de verdade".
         try {
+          if (cofreFechado(vaultRef.current)) {
+            vaultRef.current = await DataVault.init();
+          }
           const fresh =
             await vaultRef.current.getAllOrThrow<Category>("categories");
           setCategories(fresh);
@@ -311,6 +545,8 @@ export function useCategories() {
     fetchCategories,
     addCategory,
     updateCategory,
+    renameCategory,
+    setCategoryActive,
     deleteCategory,
   };
 }

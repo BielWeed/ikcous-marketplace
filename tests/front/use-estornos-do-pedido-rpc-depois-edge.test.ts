@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 //
 // T6 do plano-mãe de estorno pelo app — o hook `useEstornosDoPedido`, que
-// lê `order_refunds` + `marketplace_orders.valor_estornado` e expõe
+// lê `order_refunds` + o saldo do servidor (`pedido_reembolsos_e_saldo`,
+// lote R1) e expõe
 // `solicitarEstorno`. A regra que este arquivo prende: a linha nasce no
 // ledger PRIMEIRO (RPC `solicitar_estorno`), e só DEPOIS o clique tenta
 // executar no Mercado Pago (edge `estornar-pagamento`) — nessa ordem,
@@ -12,18 +13,24 @@
 // Mesmo padrão de `use-avisos-do-lojista.test.ts`: `@/lib/supabase`
 // mockado com um builder thenable inspecionável, sonda montada com
 // `createRoot`/`act` (react-dom/client + jsdom).
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let RESPOSTA_LINHAS: unknown = { data: [], error: null };
-let RESPOSTA_PEDIDO: unknown = {
-  data: { total: 100, valor_estornado: 0, payment_status: "pago" },
-  error: null,
+// Lote R1: o saldo vem PRONTO do servidor (`pedido_reembolsos_e_saldo`).
+const SALDO_PADRAO = {
+  total: 100,
+  valor_estornado: 0,
+  em_voo: 0,
+  em_duvida: 0,
+  manual: 0,
+  disponivel: 100,
+  reservado_por_fora: 0,
+  linhas: [],
 };
-// Achado A3 (rodada 3, baixa prioridade): reembolso manual de devolução já
-// concluída do mesmo pedido — mesmo desconto que solicitar_estorno já faz.
-let RESPOSTA_DEVOLUCOES_MANUAIS: unknown = { data: [], error: null };
+let RESPOSTA_SALDO: unknown = { data: SALDO_PADRAO, error: null };
 let RESPOSTA_RPC: unknown = {
   data: { refund_id: "refund-1", amount: 50 },
   error: null,
@@ -48,36 +55,18 @@ function criarBuilderLinhas() {
   return builder;
 }
 
-function criarBuilderPedido() {
-  const builder: Record<string, unknown> = {};
-  builder.select = vi.fn(() => builder);
-  builder.eq = vi.fn(() => builder);
-  builder.single = vi.fn(() => Promise.resolve(RESPOSTA_PEDIDO));
-  return builder;
-}
-
-function criarBuilderDevolucoesManuais() {
-  const builder: Record<string, unknown> = {};
-  builder.select = vi.fn(() => builder);
-  builder.eq = vi.fn(() => builder);
-  // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase.
-  builder.then = (resolve: unknown, reject?: unknown) =>
-    Promise.resolve(RESPOSTA_DEVOLUCOES_MANUAIS).then(
-      resolve as never,
-      reject as never,
-    );
-  return builder;
-}
-
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: vi.fn((tabela: string) => {
       tabelasConsultadas.push(tabela);
-      if (tabela === "order_refunds") return criarBuilderLinhas();
-      if (tabela === "devolucoes") return criarBuilderDevolucoesManuais();
-      return criarBuilderPedido();
+      return criarBuilderLinhas();
     }),
     rpc: vi.fn((nome: string, argumentos: unknown) => {
+      // A leitura do saldo é contada à parte (é leitura, não ação).
+      if (nome === "pedido_reembolsos_e_saldo") {
+        tabelasConsultadas.push(nome);
+        return Promise.resolve(RESPOSTA_SALDO);
+      }
       CHAMADAS.push({ tipo: "rpc", nome, argumentos });
       return Promise.resolve(RESPOSTA_RPC);
     }),
@@ -90,7 +79,12 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 
-const toastMock = { success: vi.fn(), error: vi.fn(), info: vi.fn() };
+const toastMock = {
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  warning: vi.fn(),
+};
 vi.mock("sonner", () => ({ toast: toastMock }));
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -142,11 +136,7 @@ beforeEach(() => {
   CHAMADAS = [];
   tabelasConsultadas = [];
   RESPOSTA_LINHAS = { data: [], error: null };
-  RESPOSTA_PEDIDO = {
-    data: { total: 100, valor_estornado: 0, payment_status: "pago" },
-    error: null,
-  };
-  RESPOSTA_DEVOLUCOES_MANUAIS = { data: [], error: null };
+  RESPOSTA_SALDO = { data: SALDO_PADRAO, error: null };
   RESPOSTA_RPC = { data: { refund_id: "refund-1", amount: 50 }, error: null };
   RESPOSTA_INVOKE = { data: { status: "concluido" }, error: null };
 });
@@ -199,8 +189,10 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
 
     expect(CHAMADAS).toHaveLength(1);
     expect(CHAMADAS[0].tipo).toBe("rpc");
+    // O toast é global: se o lojista trocar de ficha antes da resposta, o
+    // aviso do pedido anterior não pode parecer do aberto — leva o número.
     expect(toastMock.error).toHaveBeenCalledWith(
-      "o valor pedido é maior que o disponível",
+      `Devolução do pedido #${numeroDoPedido("pedido-1")}: o valor pedido é maior que o disponível`,
     );
     // AC 3 do laudo 08/09: a recusa da RPC prova que o snapshot está velho
     // — `carregar()` roda de novo mesmo no ramo de erro.
@@ -218,7 +210,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(CHAMADAS).toHaveLength(1);
     expect(CHAMADAS[0].tipo).toBe("rpc");
     expect(toastMock.error).toHaveBeenCalledWith(
-      "Não consegui registrar o pedido de devolução.",
+      `Não consegui registrar a devolução do pedido #${numeroDoPedido("pedido-1")}.`,
     );
   });
 
@@ -249,27 +241,17 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     ).resolves.not.toThrow();
 
     expect(toastMock.info).toHaveBeenCalledWith(
-      "Pedido de devolução registrado; o Mercado Pago é acionado em até 10 minutos.",
+      `Devolução do pedido #${numeroDoPedido("pedido-1")} registrada; o Mercado Pago é acionado em até 10 minutos.`,
     );
     // Recarregou: houve uma nova rodada de leitura de order_refunds +
     // marketplace_orders depois da montagem inicial.
     expect(tabelasConsultadas.length).toBeGreaterThan(consultasAntes);
   });
 
-  it("H4: disponível em centavos — 50 pago, 4.23 devolvido, dá 45.77 exato", async () => {
-    RESPOSTA_PEDIDO = {
-      data: { total: 50, valor_estornado: 4.23, payment_status: "pago" },
-      error: null,
-    };
-
-    const { atual } = await montarSonda();
-
-    expect(atual().pago).toBe(50);
-    expect(atual().devolvido).toBe(4.23);
-    expect(atual().disponivel).toBe(45.77);
-  });
-
-  it("CONTROLE — emCurso soma as linhas solicitado/em_processamento, inclusive sistema, e disponivel desconta isso", async () => {
+  // Lote R1: a conta do saldo é DO SERVIDOR. Estes testes mudam só a
+  // resposta da RPC e provam que a tela segue a RPC — mesmo quando as linhas
+  // de `order_refunds` diriam outra coisa se a tela ainda somasse.
+  it("R1: os números vêm do servidor tal como chegam — nada é somado na tela", async () => {
     RESPOSTA_LINHAS = {
       data: [
         {
@@ -278,48 +260,316 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
           status: "solicitado",
           solicitado_por: "cliente",
         },
-        {
-          id: "r2",
-          amount: 10,
-          status: "em_processamento",
-          solicitado_por: "sistema",
-        },
-        {
-          id: "r3",
-          amount: 15,
-          status: "concluido",
-          solicitado_por: "lojista",
-        },
+        { id: "r2", amount: 10, status: "falhou", solicitado_por: "lojista" },
       ],
       error: null,
     };
-    RESPOSTA_PEDIDO = {
-      data: { total: 100, valor_estornado: 15, payment_status: "pago" },
-      error: null,
-    };
-
-    const { atual } = await montarSonda();
-
-    expect(atual().emCurso).toBe(30);
-    expect(atual().disponivel).toBe(55);
-  });
-
-  it("achado A3 (rodada 3): disponível desconta reembolso manual de devolução já concluída do mesmo pedido", async () => {
-    RESPOSTA_PEDIDO = {
-      data: { total: 100, valor_estornado: 0, payment_status: "pago" },
-      error: null,
-    };
-    RESPOSTA_DEVOLUCOES_MANUAIS = {
-      data: [{ valor_reembolso: 40 }],
+    // Valores que NENHUMA conta da tela daria a partir das linhas acima
+    // (100 - 0 - 20 = 80): só podem ter vindo da RPC.
+    RESPOSTA_SALDO = {
+      data: {
+        total: 100,
+        valor_estornado: 4.23,
+        em_voo: 20,
+        em_duvida: 10,
+        manual: 7,
+        disponivel: 58.77,
+        reservado_por_fora: 0,
+        linhas: [
+          {
+            id: "r1",
+            status: "solicitado",
+            amount: 20,
+            pode_ter_saido: true,
+            por_fora_liberado_em: null,
+            por_fora_apos_espera_liberado: false,
+            substituida_por_manual: false,
+            eh_pix: false,
+          },
+          {
+            id: "r2",
+            status: "falhou",
+            amount: 10,
+            pode_ter_saido: true,
+            por_fora_liberado_em: null,
+            por_fora_apos_espera_liberado: false,
+            substituida_por_manual: false,
+            eh_pix: true,
+          },
+        ],
+      },
       error: null,
     };
 
     const { atual } = await montarSonda();
 
     expect(atual().pago).toBe(100);
-    // Sem o desconto, a tela prometeria 100 — mais do que solicitar_estorno
-    // de verdade aceitaria (achado 3, rodada 2).
-    expect(atual().disponivel).toBe(60);
+    expect(atual().devolvido).toBe(4.23);
+    expect(atual().emCurso).toBe(20);
+    expect((atual() as unknown as { emDuvida: number }).emDuvida).toBe(10);
+    expect(atual().disponivel).toBe(58.77);
+    expect(tabelasConsultadas).toContain("pedido_reembolsos_e_saldo");
+    expect(tabelasConsultadas).not.toContain("marketplace_orders");
+    expect(tabelasConsultadas).not.toContain("devolucoes");
+  });
+
+  it("R1: mudar SÓ a RPC muda o disponível — a tela segue o servidor", async () => {
+    RESPOSTA_SALDO = {
+      data: { ...SALDO_PADRAO, disponivel: 12.34 },
+      error: null,
+    };
+    const primeira = await montarSonda("pedido-a");
+    expect(primeira.atual().disponivel).toBe(12.34);
+
+    RESPOSTA_SALDO = {
+      data: { ...SALDO_PADRAO, disponivel: 0, em_duvida: 100 },
+      error: null,
+    };
+    const segunda = await montarSonda("pedido-b");
+    expect(segunda.atual().disponivel).toBe(0);
+  });
+
+  it("R1: disponível NEGATIVO do servidor nunca chega à tela (vira 0)", async () => {
+    RESPOSTA_SALDO = {
+      data: { ...SALDO_PADRAO, disponivel: -100 },
+      error: null,
+    };
+    const { atual } = await montarSonda("pedido-negativo");
+    expect(atual().erro).toBe(false);
+    expect(atual().disponivel).toBe(0);
+  });
+
+  it("R1: o veredito (pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado) chega em cada linha", async () => {
+    RESPOSTA_LINHAS = {
+      data: [
+        { id: "r1", amount: 10, status: "falhou", solicitado_por: "lojista" },
+        { id: "r2", amount: 15, status: "falhou", solicitado_por: "lojista" },
+        // Linha que a RPC ainda não julgou (leituras em instantes diferentes).
+        { id: "r3", amount: 5, status: "falhou", solicitado_por: "lojista" },
+      ],
+      error: null,
+    };
+    RESPOSTA_SALDO = {
+      data: {
+        ...SALDO_PADRAO,
+        linhas: [
+          {
+            id: "r1",
+            status: "falhou",
+            amount: 10,
+            pode_ter_saido: false,
+            por_fora_liberado_em: null,
+            por_fora_apos_espera_liberado: false,
+            substituida_por_manual: true,
+            eh_pix: false,
+          },
+          {
+            id: "r2",
+            status: "falhou",
+            amount: 15,
+            pode_ter_saido: true,
+            por_fora_liberado_em: "2026-10-20T10:00:00Z",
+            por_fora_apos_espera_liberado: true,
+            substituida_por_manual: false,
+            eh_pix: true,
+          },
+        ],
+      },
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+    const linhas = atual().linhas as Array<{
+      id: string;
+      pode_ter_saido: boolean;
+      por_fora_liberado_em: string | null;
+      por_fora_apos_espera_liberado: boolean;
+      substituida_por_manual: boolean;
+    }>;
+
+    expect(linhas.find((l) => l.id === "r1")?.pode_ter_saido).toBe(false);
+    expect(linhas.find((l) => l.id === "r1")?.substituida_por_manual).toBe(
+      true,
+    );
+    expect(linhas.find((l) => l.id === "r2")?.substituida_por_manual).toBe(
+      false,
+    );
+    expect(linhas.find((l) => l.id === "r2")?.por_fora_liberado_em).toBe(
+      "2026-10-20T10:00:00Z",
+    );
+    expect(
+      linhas.find((l) => l.id === "r2")?.por_fora_apos_espera_liberado,
+    ).toBe(true);
+    // Sem veredito, fica do lado seguro: pode ter saído (nenhum "repetir") e
+    // a saída dos 7 dias não está liberada.
+    const semVeredito = linhas.find((l) => l.id === "r3");
+    expect(semVeredito?.pode_ter_saido).toBe(true);
+    expect(semVeredito?.por_fora_apos_espera_liberado).toBe(false);
+  });
+
+  it("R1: RPC do saldo com forma inesperada vira erro — nunca um número inventado", async () => {
+    RESPOSTA_SALDO = {
+      data: { ...SALDO_PADRAO, disponivel: undefined },
+      error: null,
+    };
+    const { atual } = await montarSonda();
+    expect(atual().erro).toBe(true);
+    expect(atual().pedidoCarregado).toBe(false);
+  });
+
+  it("R1: RPC do saldo com erro vira erro de leitura", async () => {
+    RESPOSTA_SALDO = { data: null, error: { message: "acesso negado" } };
+    const { atual } = await montarSonda();
+    expect(atual().erro).toBe(true);
+  });
+
+  it("R1: saída dos 7 dias chama a RPC com a frase fixa e a linha esperada", async () => {
+    // Retorno REAL de registrar_estorno_manual_apos_espera (migration 20261241).
+    RESPOSTA_RPC = {
+      data: {
+        resultado: "registrado",
+        detalhe: "apos_espera",
+        risco_de_dobro: true,
+        payment_status: "estornado",
+        refund_id: "refund-9",
+      },
+      error: null,
+    };
+    const { atual } = await montarSonda();
+
+    let ok = false;
+    await act(async () => {
+      ok = await (
+        atual() as unknown as {
+          registrarPorForaAposEspera: (id: string) => Promise<boolean>;
+        }
+      ).registrarPorForaAposEspera("refund-9");
+    });
+
+    expect(ok).toBe(true);
+    expect(CHAMADAS).toEqual([
+      {
+        tipo: "rpc",
+        nome: "registrar_estorno_manual_apos_espera",
+        argumentos: {
+          p_order_id: "pedido-1",
+          p_refund_esperado: "refund-9",
+          p_confirmacao: "DEVOLVI POR FORA",
+        },
+      },
+    ]);
+    // Nada de Mercado Pago: a saída por fora não move dinheiro no MP.
+    expect(CHAMADAS.some((c) => c.tipo === "invoke")).toBe(false);
+    expect(toastMock.warning).toHaveBeenCalledWith(
+      expect.stringContaining("o cliente recebe em dobro"),
+    );
+  });
+
+  it("R1: saída PARCIAL numa linha viva — o aviso diz quanto devolveu, quanto ainda falta e que o valor fica reservado", async () => {
+    RESPOSTA_LINHAS = {
+      data: [
+        {
+          id: "refund-9",
+          amount: 60,
+          status: "em_processamento",
+          solicitado_por: "lojista",
+        },
+      ],
+      error: null,
+    };
+    RESPOSTA_SALDO = {
+      data: {
+        ...SALDO_PADRAO,
+        em_voo: 60,
+        disponivel: 40,
+        linhas: [
+          {
+            id: "refund-9",
+            status: "em_processamento",
+            amount: 60,
+            pode_ter_saido: true,
+            por_fora_liberado_em: null,
+            por_fora_apos_espera_liberado: true,
+            substituida_por_manual: false,
+            eh_pix: false,
+          },
+        ],
+      },
+      error: null,
+    };
+    // Retorno REAL da saída parcial (migration 20261241): o pedido segue pago.
+    RESPOSTA_RPC = {
+      data: {
+        resultado: "registrado",
+        detalhe: "parcial",
+        risco_de_dobro: true,
+        payment_status: "pago",
+        refund_id: "refund-9",
+        ainda_a_devolver: "40.00",
+      },
+      error: null,
+    };
+    const { atual } = await montarSonda();
+    const { formatCurrency } = await import("@/lib/utils");
+
+    let ok = false;
+    await act(async () => {
+      ok = await (
+        atual() as unknown as {
+          registrarPorForaAposEspera: (id: string) => Promise<boolean>;
+        }
+      ).registrarPorForaAposEspera("refund-9");
+    });
+
+    expect(ok).toBe(true);
+    expect(toastMock.warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `Você devolveu ${formatCurrency(60)} por fora; ainda falta ${formatCurrency(40)} a devolver ao cliente; o app mantém ${formatCurrency(60)} reservado até o Mercado Pago responder.`,
+      ),
+    );
+    expect(toastMock.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining("registrado como devolvido por fora"),
+    );
+  });
+
+  it("R1: o reservado por fora vem do servidor, sem conta da tela", async () => {
+    RESPOSTA_SALDO = {
+      data: { ...SALDO_PADRAO, disponivel: 0, reservado_por_fora: "60.00" },
+      error: null,
+    };
+    const { atual } = await montarSonda("pedido-reservado");
+    expect(
+      (atual() as unknown as { reservadoPorFora: number }).reservadoPorFora,
+    ).toBe(60);
+  });
+
+  it("R1: saída dos 7 dias RECUSADA pelo servidor (sem erro, `resultado: aguarde`) não diz 'registrado'", async () => {
+    // O servidor recusa devolvendo jsonb, NÃO erro (migration 20261241).
+    RESPOSTA_RPC = {
+      data: {
+        resultado: "aguarde",
+        detalhe: "antes_de_7_dias",
+        refund_id: "refund-9",
+        liberado_a_partir_de: "2026-10-22T10:00:00Z",
+      },
+      error: null,
+    };
+    const { atual } = await montarSonda();
+
+    let ok = true;
+    await act(async () => {
+      ok = await (
+        atual() as unknown as {
+          registrarPorForaAposEspera: (id: string) => Promise<boolean>;
+        }
+      ).registrarPorForaAposEspera("refund-9");
+    });
+
+    expect(ok).toBe(false);
+    expect(toastMock.warning).not.toHaveBeenCalled();
+    expect(toastMock.info).toHaveBeenCalledWith(
+      expect.stringContaining("Ainda não passaram 7 dias"),
+    );
   });
 
   it("a leitura falhando marca `erro` e não derruba com exceção", async () => {

@@ -620,6 +620,36 @@ function clienteFalso(opts: {
             };
           },
           update(valores: Record<string, unknown>) {
+            // UPDATE condicional da identidade tardia: espelha os filtros e
+            // o RETURNING do PostgREST, sem passar por concluir_estorno.
+            if (Object.keys(valores).length === 1 && "mp_refund_id" in valores) {
+              const filtros: Array<(r: Record<string, unknown>) => boolean> = [];
+              let id = "";
+              const cadeia = {
+                eq(coluna: string, valor: unknown) {
+                  if (coluna === "id") id = String(valor);
+                  filtros.push((r) => Reflect.get(r, coluna) === valor);
+                  return cadeia;
+                },
+                is(coluna: string, valor: null) {
+                  filtros.push((r) => (Reflect.get(r, coluna) ?? null) === valor);
+                  return cadeia;
+                },
+                select(_colunas: string) { return cadeia; },
+                async maybeSingle() {
+                  opts.registro?.updatesOrderRefunds?.push({ id, valores, statusFiltro: ["identidade_tardia"] });
+                  if (opts.erroOrderRefundsUpdate) return { data: null, error: opts.erroOrderRefundsUpdate };
+                  const linha = filaOrderRefunds.find((r) => filtros.every((f) => f(r)));
+                  if (!linha) return { data: null, error: null };
+                  if (opts.indicesUnicosDoLedger && filaOrderRefunds.some((r) =>
+                    r !== linha && r.order_id === linha.order_id && r.mp_refund_id === valores.mp_refund_id
+                  )) return { data: null, error: { code: "23505" } };
+                  Object.assign(linha, valores);
+                  return { data: { id: linha.id }, error: null };
+                },
+              };
+              return cadeia;
+            }
             return {
               eq(_coluna: string, id: string) {
                 return {
@@ -787,6 +817,98 @@ Deno.test("assinatura inválida -> 401, e confirmar_pagamento NÃO é chamada", 
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
+// Auditoria L3 (12/10/2026): os logs que rodam ANTES da assinatura valer (a
+// entrada e a falha) levam `ts`, `x-request-id` e `v1` truncados em 64
+// caracteres, como já levavam o `data.id` — quem descobre a URL não escreve
+// conteúdo próprio sem limite no log. A decisão (401) não muda.
+Deno.test("log da entrada e da assinatura inválida: ts, x-request-id e v1 truncados em 64 caracteres; a resposta continua 401", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response("{}", { status: 200 });
+  };
+  const tsLongo = "1".repeat(300);
+  const v1Longo = "ab".repeat(150);
+  const requestIdLongo = "r".repeat(300);
+  const req = requisicao(
+    { data: { id: "999" } },
+    { "x-signature": `ts=${tsLongo},v1=${v1Longo}`, "x-request-id": requestIdLongo },
+  );
+
+  const linhas: unknown[][] = [];
+  const reais = { log: console.log, warn: console.warn, error: console.error };
+  console.log = (...args: unknown[]) => void linhas.push(args);
+  console.warn = (...args: unknown[]) => void linhas.push(args);
+  console.error = (...args: unknown[]) => void linhas.push(args);
+  let resposta: Response;
+  try {
+    resposta = await handler(req, { supabase, fetchImpl });
+  } finally {
+    console.log = reais.log;
+    console.warn = reais.warn;
+    console.error = reais.error;
+  }
+
+  assertEquals(resposta.status, 401);
+  assertEquals(await resposta.json(), { error: "Assinatura inválida." });
+  assertEquals(chamouFetch, false);
+  assertEquals(registro.chamadasRpc.length, 0);
+
+  const entrada = linhas.find((l) => l[0] === "webhook-mercadopago: notificação recebida")?.[1] as
+    | Record<string, unknown>
+    | undefined;
+  assertEquals(entrada?.ts, tsLongo.slice(0, 64));
+  const falha = linhas.find((l) => l[0] === "webhook-mercadopago: assinatura inválida")?.[1] as
+    | Record<string, unknown>
+    | undefined;
+  assertEquals(falha?.ts, tsLongo.slice(0, 64));
+  assertEquals(falha?.v1Recebido, v1Longo.slice(0, 64));
+  assertEquals(falha?.xRequestId, requestIdLongo.slice(0, 64));
+  // Nenhuma linha de log carrega os valores inteiros.
+  const texto = JSON.stringify(linhas);
+  assertEquals(texto.includes(tsLongo.slice(0, 65)), false);
+  assertEquals(texto.includes(v1Longo.slice(0, 65)), false);
+  assertEquals(texto.includes(requestIdLongo.slice(0, 65)), false);
+});
+
+Deno.test("log truncado, CONTROLE: valores curtos de verdade entram inteiros e a assinatura válida continua passando", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const ts = Math.floor(Date.now() / 1000);
+  const req = await requisicaoAssinada("999", { ts });
+  // O MP fora do ar depois da assinatura: o que se prova aqui é só que a
+  // assinatura VÁLIDA passou (a consulta foi tentada) — o resto do caminho
+  // tem os testes dele.
+  const fetchImpl = fetchConsulta(500, { message: "erro interno" });
+
+  const linhas: unknown[][] = [];
+  const reais = { log: console.log, warn: console.warn, error: console.error };
+  console.log = (...args: unknown[]) => void linhas.push(args);
+  console.warn = (...args: unknown[]) => void linhas.push(args);
+  console.error = (...args: unknown[]) => void linhas.push(args);
+  let resposta: Response;
+  try {
+    resposta = await handler(req, { supabase, fetchImpl });
+  } finally {
+    console.log = reais.log;
+    console.warn = reais.warn;
+    console.error = reais.error;
+  }
+
+  assertEquals(resposta.status, 500, "passou da assinatura e chegou à consulta do MP");
+  assertEquals(
+    linhas.some((l) => String(l[0]).startsWith("webhook-mercadopago: assinatura válida")),
+    true,
+  );
+  assertEquals(linhas.some((l) => l[0] === "webhook-mercadopago: assinatura inválida"), false);
+  const entrada = linhas.find((l) => l[0] === "webhook-mercadopago: notificação recebida")?.[1] as
+    | Record<string, unknown>
+    | undefined;
+  assertEquals(entrada?.ts, String(ts));
+});
+
 // --- 2. MP responde 500 -----------------------------------------------------
 
 Deno.test("MP responde 500 ao consultar o pagamento -> a função responde 500", async () => {
@@ -812,106 +934,48 @@ Deno.test("MP responde 500 ao consultar o pagamento -> a função responde 500",
 // receber ESSE valor — não o que a rota `payment` do MP devolveu — senão
 // `confirmar_pagamento` cai em 'divergente' e nada é gravado.
 
-Deno.test("MP diz approved, gateway_payment_id gravado é ORD (Orders API) -> RPC recebe o valor do BANCO, com aviso logado", async () => {
-  const registro = { chamadasRpc: [], chamadasFrom: [] };
+Deno.test("MP diz approved SEM valor, gateway_payment_id gravado é ORD -> NÃO confirma, registra alerta ao admin", async () => {
+  const registro = { chamadasRpc: [], chamadasFrom: [], chamadasAviso: [] };
   const pedido = {
     id: UUID_PEDIDO,
-    customer_name: "Maria",
     total: 149.9,
     total_amount: null,
     gateway_payment_id: ID_GRAVADO_NO_BANCO,
   };
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
-  const req = await requisicaoAssinada("999");
-  // Achado A3 (revisão de risco, 26/09/2026): a substituição do id GRAVADO
-  // agora reconsulta ELE MESMO antes de confirmar — este teste passa a mockar
-  // as DUAS chamadas: a consulta clássica (`/v1/payments/999`, o que a
-  // notificação falou) e a consulta do id GRAVADO (`/v1/orders/{ORD...}`),
-  // que aqui CONFIRMA o mesmo desfecho 'pago' (o caso feliz — a cobrança
-  // gravada é mesmo a que foi paga).
-  const { fn: fetchImpl } = fetchInspecionavel({
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
     pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO } },
-    order: {
-      status: 200,
-      corpo: { id: ID_GRAVADO_NO_BANCO, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
-    },
   });
-  const chamadasPush: unknown[] = [];
-  const enviarPush = async (args: unknown) => {
-    chamadasPush.push(args);
-  };
-  const chamadasAviso: unknown[][] = [];
-  const console_warn = console.warn;
-  console.warn = (...args: unknown[]) => {
-    chamadasAviso.push(args);
-  };
-
+  const erros: unknown[][] = [];
+  const erroReal = console.error;
+  console.error = (...args: unknown[]) => { erros.push(args); };
+  const alertas: unknown[] = [];
+  const pushes: unknown[] = [];
+  const comprovantes: unknown[] = [];
   let resposta: Response;
   try {
-    resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+    resposta = await handler(await requisicaoAssinada("999"), {
+      supabase,
+      fetchImpl,
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+      enviarPush: async (args) => { pushes.push(args); },
+      enviarComprovante: async (args) => { comprovantes.push(args); },
+    });
   } finally {
-    console.warn = console_warn;
+    console.error = erroReal;
   }
-
   assertEquals(resposta.status, 200);
-  assertEquals(chamadasPush.length, 1);
-  // Achado de revisão, 22/08/2026: esta é a ÚNICA asserção sobre o CONTEÚDO
-  // do push em todo o arquivo, e ela existe para provar a outra metade do
-  // projetor de colunas do `clienteFalso` — a leitura multi-coluna do push.
-  // Sem ela, quebrar o projetor (basta tirar o `.trim()` de `colunas.split`)
-  // deixa a suíte 35/0 enquanto `total` some do objeto lido, `formatarBRL`
-  // recebe `undefined` e devolve "R$ 0,00" (index.ts:128, `Number(valor ?? 0)`
-  // — não estoura, só mente): o lojista receberia "Pedido pago · #1234 ·
-  // R$ 0,00". Medida nas duas pontas antes de entrar: 35/0 com o projetor
-  // são, 34/1 com ele quebrado.
-  assertStringIncludes(
-    String((chamadasPush[0] as { aviso: { body: string } }).aviso.body),
-    "149,90",
-  );
-  assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
-  assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
-  assertEquals(chamadasAviso.length, 2, "deveria logar DOIS avisos: conferência de valor sem número (a resposta do mock não traz transaction_amount) e a substituição do id pelo valor do banco");
-  // Achado de revisão (mutação "M12"): a versão anterior desta asserção
-  // juntava TODOS os argumentos numa string só e perguntava se ela CONTINHA
-  // os valores — trocar os dois campos do objeto logado entre si
-  // (`idDevolvidoPeloMp: idGravadoNoBanco, idGravadoNoBanco: idParaRpc`)
-  // continuava satisfazendo essa busca, porque os dois valores apareciam em
-  // algum lugar da string, na ordem que fosse. E
-  // `assertStringIncludes(texto, "gateway_payment_id")` era satisfeita pela
-  // MENSAGEM ESTÁTICA (que já contém esse literal), não pelo objeto — não
-  // provava nada. Asserção POR CAMPO no objeto logado prova que cada valor
-  // foi para o rótulo certo. (O aviso [0] é da conferência de valor sem
-  // número — laudo 31/08; o swap é o [1].)
-  const [, campos] = chamadasAviso[1] as [string, Record<string, unknown>];
-  assertEquals(campos.orderId, UUID_PEDIDO);
-  assertEquals(campos.idDevolvidoPeloMp, String(ID_PAGAMENTO_DO_MP));
-  assertEquals(campos.idGravadoNoBanco, ID_GRAVADO_NO_BANCO);
-  // Achado de revisão (mutação "M8"): prova que as DUAS leituras de
-  // `marketplace_orders` (a da conferência — valor + gateway_payment_id na
-  // mesma leitura única, laudo 31/08 — e a do push) apontam para `orderId`
-  // (vindo da resposta autenticada do MP) — não para `dataIdStr` ("999", o
-  // id cru e forjável do corpo do webhook).
-  assertEquals(registro.chamadasFrom.length, 2, "deveria ter lido o pedido duas vezes: a conferência única e o push");
-  // Achado de revisão (mutação "M10"): as duas leituras pedem COLUNAS
-  // diferentes (a nova, "total, total_amount, gateway_payment_id"; a do
-  // push, que já existia, "id, customer_name, total, total_amount") — por
-  // isso a asserção é POR LEITURA, não um laço uniforme. Trocar o select da
-  // conferência por `.select("id")` sobrevivia a todos os testes: o laço
-  // antigo conferia tabela/coluna/valor mas nunca `colunas`, e o PostgREST
-  // devolveria só `{ id }` — `?.gateway_payment_id` viraria `undefined`, a
-  // correção nunca dispararia, em silêncio, com os testes desta correção
-  // continuando verdes.
-  const [leituraConferencia, leituraPush] = registro.chamadasFrom;
-  assertEquals(leituraConferencia.tabela, "marketplace_orders");
-  assertEquals(leituraConferencia.colunas, "total, total_amount, gateway_payment_id");
-  assertEquals(leituraConferencia.coluna, "id");
-  assertEquals(leituraConferencia.valor, UUID_PEDIDO);
-  assertEquals(leituraPush.tabela, "marketplace_orders");
-  assertEquals(leituraPush.colunas, "id, customer_name, total, total_amount");
-  assertEquals(leituraPush.coluna, "id");
-  assertEquals(leituraPush.valor, UUID_PEDIDO);
+  assertEquals((await resposta.json()).ignorado, "valor ausente ou ilegível");
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(pushes.length, 0);
+  assertEquals(comprovantes.length, 0);
+  assertEquals(alertas.length, 1);
+  assertEquals(registro.chamadasAviso.map((c) => c.nome), ["reservar_aviso_ao_lojista", "confirmar_aviso_ao_lojista"]);
+  assertEquals(registro.chamadasAviso[0].args.p_chave, `valor_nao_conferido:${UUID_PEDIDO}:${ID_GRAVADO_NO_BANCO}`);
+  assertEquals(erros.some((a) => (a[1] as Record<string, unknown>)?.motivo === "valor_ausente"), true);
+  assertEquals(chamadas.length, 1, "para antes de substituir o id e reconsultar a order");
+  assertEquals(registro.chamadasFrom.length, 1);
+  assertEquals(registro.chamadasFrom[0].valor, UUID_PEDIDO);
 });
 
 // --- 3.5 CONFERÊNCIA DE VALOR (laudo caça-bugs 31/08, achado A3) -----------
@@ -919,9 +983,106 @@ Deno.test("MP diz approved, gateway_payment_id gravado é ORD (Orders API) -> RP
 // O que se prova aqui: o valor que o MP APROVOU (na resposta autenticada)
 // tem que bater com o total do pedido — PIX parcial deixa de virar "pedido
 // pago". Os mocks desta seção trazem `transaction_amount`/`total_amount`,
-// que os mocks ANTIGOS não traziam: ausência de valor = "não deu para
-// conferir" (comportamento anterior, com warn), e é justamente o que os
-// testes antigos acima exercitam sem saber.
+// e ausência/ilegibilidade bloqueiam a confirmação e avisam o admin.
+
+for (const rota of ["payment", "order"] as const) {
+  for (const caso of [
+    { nome: "ausente", valor: undefined },
+    { nome: "nulo", valor: null },
+    { nome: "NaN (JSON nulo)", valor: NaN },
+    { nome: "infinito (JSON nulo)", valor: Infinity },
+    { nome: "string NaN", valor: "NaN" },
+    { nome: "string ilegível", valor: "sem valor" },
+    { nome: "string vazia", valor: "" },
+    { nome: "zero", valor: 0 },
+  ]) {
+    Deno.test(`valor estrito — webhook ${rota}: MP ${caso.nome} -> não confirma, alerta registrado`, async () => {
+      const registro = { chamadasRpc: [], chamadasAviso: [] };
+      const id = rota === "payment" ? String(ID_PAGAMENTO_DO_MP) : ID_ORDER_DO_MP;
+      const supabase = clienteFalso({ pedido: { total: 149.9, gateway_payment_id: id }, registro });
+      const req = await requisicaoAssinada(rota === "payment" ? "999" : ID_ORDER_TESTE, { corpoExtra: { type: rota } });
+      const corpoMp = rota === "payment"
+        ? { id: ID_PAGAMENTO_DO_MP, status: "approved", transaction_amount: caso.valor }
+        : { id, status: "processed", status_detail: "accredited", total_amount: caso.valor };
+      const alertas: unknown[] = [];
+      const resposta = await handler(req, {
+        supabase,
+        fetchImpl: fetchConsulta(200, { ...corpoMp, external_reference: UUID_PEDIDO }),
+        enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+      });
+      assertEquals(resposta.status, 200);
+      assertEquals((await resposta.json()).ignorado, "valor ausente ou ilegível");
+      assertEquals(registro.chamadasRpc.length, 0);
+      assertEquals(alertas.length, 1);
+      assertEquals(registro.chamadasAviso.map((c) => c.nome), ["reservar_aviso_ao_lojista", "confirmar_aviso_ao_lojista"]);
+    });
+  }
+
+  for (const total of [0, null, NaN, Infinity, -1, "ilegível", "", true, {}]) {
+    Deno.test(`valor estrito — webhook ${rota}: total do pedido ${String(total)} -> não confirma, alerta registrado`, async () => {
+      const registro = { chamadasRpc: [], chamadasAviso: [] };
+      const id = rota === "payment" ? String(ID_PAGAMENTO_DO_MP) : ID_ORDER_DO_MP;
+      const supabase = clienteFalso({ pedido: { total, total_amount: null, gateway_payment_id: id }, registro });
+      const req = await requisicaoAssinada(rota === "payment" ? "999" : ID_ORDER_TESTE, { corpoExtra: { type: rota } });
+      const corpoMp = rota === "payment"
+        ? { id: ID_PAGAMENTO_DO_MP, status: "approved", transaction_amount: 149.9 }
+        : { id, status: "processed", status_detail: "accredited", total_amount: "149.90" };
+      const alertas: unknown[] = [];
+      const resposta = await handler(req, {
+        supabase,
+        fetchImpl: fetchConsulta(200, { ...corpoMp, external_reference: UUID_PEDIDO }),
+        enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+      });
+      assertEquals(resposta.status, 200);
+      assertEquals((await resposta.json()).ignorado, "total do pedido inválido");
+      assertEquals(registro.chamadasRpc.length, 0);
+      assertEquals(alertas.length, 1);
+      assertEquals(registro.chamadasAviso[0].args.p_chave, `valor_nao_conferido:${UUID_PEDIDO}:${id}`);
+    });
+  }
+
+  Deno.test(`valor estrito — webhook ${rota}: pedido zero e MP zero nunca confirmam pagamento`, async () => {
+    const registro = { chamadasRpc: [], chamadasAviso: [] };
+    const id = rota === "payment" ? String(ID_PAGAMENTO_DO_MP) : ID_ORDER_DO_MP;
+    const supabase = clienteFalso({ pedido: { total: 0, gateway_payment_id: id }, registro });
+    const corpoMp = rota === "payment"
+      ? { id: ID_PAGAMENTO_DO_MP, status: "approved", transaction_amount: 0 }
+      : { id, status: "processed", status_detail: "accredited", total_amount: "0.00" };
+    const alertas: unknown[] = [];
+    const resposta = await handler(await requisicaoAssinada(rota === "payment" ? "999" : ID_ORDER_TESTE, { corpoExtra: { type: rota } }), {
+      supabase,
+      fetchImpl: fetchConsulta(200, { ...corpoMp, external_reference: UUID_PEDIDO }),
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+    });
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.chamadasRpc.length, 0);
+    assertEquals(alertas.length, 1);
+  });
+
+  Deno.test(`valor estrito — webhook ${rota}: reentrega sem valor deduplica alerta; consulta corrigida confirma`, async () => {
+    const registro = { chamadasRpc: [], chamadasAviso: [] };
+    const id = rota === "payment" ? String(ID_PAGAMENTO_DO_MP) : ID_ORDER_DO_MP;
+    const supabase = clienteFalso({ pedido: { total: 149.9, gateway_payment_id: id }, registro });
+    const alertas: unknown[] = [];
+    for (const valor of [undefined, undefined, 149.9]) {
+      const req = await requisicaoAssinada(rota === "payment" ? "999" : ID_ORDER_TESTE, { corpoExtra: { type: rota } });
+      const corpoMp = rota === "payment"
+        ? { id: ID_PAGAMENTO_DO_MP, status: "approved", transaction_amount: valor }
+        : { id, status: "processed", status_detail: "accredited", total_amount: valor };
+      const resposta = await handler(req, {
+        supabase,
+        fetchImpl: fetchConsulta(200, { ...corpoMp, external_reference: UUID_PEDIDO }),
+        enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+        enviarPush: async () => {},
+        enviarComprovante: async () => {},
+      });
+      assertEquals(resposta.status, 200);
+      assertEquals(registro.chamadasRpc.length, valor === undefined ? 0 : 1);
+    }
+    assertEquals(alertas.length, 1);
+    assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  });
+}
 
 Deno.test("rota payment: MP aprovou R$ 100 de um pedido de R$ 149,90 -> NÃO confirma, sem push, 200 'valor divergente'", async () => {
   const registro = { chamadasRpc: [], chamadasFrom: [] };
@@ -986,6 +1147,7 @@ Deno.test("rota payment: valor aprovado bate o total -> confirma (controle posit
   assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
   assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
   assertEquals(chamadasPush.length, 1);
+  assertStringIncludes(String((chamadasPush[0] as { aviso: { body: string } }).aviso.body), "149,90");
 });
 
 Deno.test("rota payment: diferença de 4 centavos é arredondamento, não divergência (tolerância da criação do pedido)", async () => {
@@ -1159,6 +1321,7 @@ Deno.test("RPC devolve 'ja_pago' -> 200 e NENHUM push — é a prova da idempot�
   const fetchImpl = fetchConsulta(200, {
     id: 999,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
   const chamadasPush: unknown[] = [];
@@ -1182,6 +1345,7 @@ Deno.test("RPC devolve 'pago_apos_expirar' -> 200 e push com texto diferente", a
   const fetchImpl = fetchConsulta(200, {
     id: 999,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
   const chamadasPush: any[] = [];
@@ -1301,6 +1465,7 @@ Deno.test("corpo hostil não decide o pedido — p_order_id vem SEMPRE da respos
   const fetchImpl = fetchConsulta(200, {
     id: 999,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
   const chamadasPush: unknown[] = [];
@@ -1344,6 +1509,7 @@ Deno.test("push dispara em exatamente 2 dos 9 retornos possíveis da RPC", async
     const fetchImpl = fetchConsulta(200, {
       id: 999,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const chamadasPush: unknown[] = [];
@@ -1375,6 +1541,7 @@ Deno.test("ts de 1h atrás é ACEITO — o webhook nunca confia no que chega, s�
   const fetchImpl = fetchConsulta(200, {
     id: 999,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
   const chamadasPush: unknown[] = [];
@@ -1416,11 +1583,12 @@ Deno.test("type diferente de 'payment' não consulta o MP nem chama a RPC", asyn
 
 Deno.test("RPC devolve erro de banco -> 500, para o MP reenviar", async () => {
   const registro = { chamadasRpc: [] };
-  const supabase = clienteFalso({ rpcError: { message: "connection reset" }, registro });
+  const supabase = clienteFalso({ rpcError: { message: "connection reset" }, pedido: { total: 149.9 }, registro });
   const req = await requisicaoAssinada("999");
   const fetchImpl = fetchConsulta(200, {
     id: 999,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
 
@@ -1488,6 +1656,7 @@ Deno.test("type 'order' aprovada -> RPC recebe p_order_id do external_reference 
     id: ID_ORDER_DO_MP,
     external_reference: UUID_PEDIDO,
     status: "processed",
+    total_amount: "149.90",
     status_detail: "accredited",
     transactions: {
       payments: [{ id: "PAY01KZZXXXXXXXXXXXXXXXXXXXXX", status: "action_required", status_detail: "waiting_transfer" }],
@@ -1545,10 +1714,10 @@ Deno.test("type 'payment' explícito continua no caminho clássico, e ainda assi
   // Achado A3: segunda rota mockada para a reconsulta do id GRAVADO — ver o
   // teste "MP diz approved..." acima para o comentário completo.
   const { fn: fetchImpl } = fetchInspecionavel({
-    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO } },
+    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", transaction_amount: 149.9, external_reference: UUID_PEDIDO } },
     order: {
       status: 200,
-      corpo: { id: ID_GRAVADO_NO_BANCO, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+      corpo: { id: ID_GRAVADO_NO_BANCO, external_reference: UUID_PEDIDO, status: "processed", total_amount: "149.90", status_detail: "accredited" },
     },
   });
   const chamadasPush: unknown[] = [];
@@ -1573,7 +1742,7 @@ Deno.test("type ausente + id em forma de ULID -> caminho de ORDER (consulta /v1/
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
     order: {
       status: 200,
-      corpo: { id: ID_ORDER_DO_MP, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+      corpo: { id: ID_ORDER_DO_MP, external_reference: UUID_PEDIDO, status: "processed", total_amount: "149.90", status_detail: "accredited" },
     },
   });
 
@@ -1598,10 +1767,10 @@ Deno.test("type ausente + id numérico -> caminho CLÁSSICO (consulta /v1/paymen
   const req = await requisicaoAssinada("999"); // sem `type`
   // Achado A3: segunda rota mockada para a reconsulta do id GRAVADO.
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
-    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO } },
+    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", transaction_amount: 149.9, external_reference: UUID_PEDIDO } },
     order: {
       status: 200,
-      corpo: { id: ID_GRAVADO_NO_BANCO, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+      corpo: { id: ID_GRAVADO_NO_BANCO, external_reference: UUID_PEDIDO, status: "processed", total_amount: "149.90", status_detail: "accredited" },
     },
   });
 
@@ -1668,7 +1837,7 @@ Deno.test("type DESCONHECIDO + id em forma de order -> consulta a Orders API (n�
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
     order: {
       status: 200,
-      corpo: { id: ID_ORDER_DO_MP, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+      corpo: { id: ID_ORDER_DO_MP, external_reference: UUID_PEDIDO, status: "processed", total_amount: "149.90", status_detail: "accredited" },
     },
   });
   const chamadasErro: unknown[][] = [];
@@ -1711,10 +1880,10 @@ Deno.test("type DESCONHECIDO + id numérico -> caminho CLÁSSICO (consulta /v1/p
   const req = await requisicaoAssinada("999", { corpoExtra: { type: "order.updated" } });
   // Achado A3: segunda rota mockada para a reconsulta do id GRAVADO.
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
-    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO } },
+    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", transaction_amount: 149.9, external_reference: UUID_PEDIDO } },
     order: {
       status: 200,
-      corpo: { id: ID_GRAVADO_NO_BANCO, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+      corpo: { id: ID_GRAVADO_NO_BANCO, external_reference: UUID_PEDIDO, status: "processed", total_amount: "149.90", status_detail: "accredited" },
     },
   });
 
@@ -1812,6 +1981,7 @@ Deno.test("data.id da query com valor DIFERENTE do corpo não atrapalha o caminh
   const fetchImpl = fetchConsulta(200, {
     id: 999,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
   const chamadasPush: unknown[] = [];
@@ -1850,6 +2020,7 @@ Deno.test("grafia minuscula do helper assinar valida via candidato corpo-minuscu
     id: ID_MISTO,
     external_reference: UUID_PEDIDO,
     status: "processed",
+    total_amount: "149.90",
     status_detail: "accredited",
   });
   const chamadasPush: unknown[] = [];
@@ -1873,6 +2044,7 @@ Deno.test("RPC devolve 'divergente' ou 'inexistente' -> 200 e console.error acus
     const fetchImpl = fetchConsulta(200, {
       id: 999,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const chamadasErro: unknown[][] = [];
@@ -1922,6 +2094,7 @@ async function entregaComResultado(statusMp: string, resultadoRpc: string) {
   const fetchImpl = fetchConsulta(200, {
     id: 123456789012,
     status: statusMp,
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
     payer: { email: "maria@example.com" },
   });
@@ -2012,6 +2185,7 @@ Deno.test("rota payment: gateway_payment_id gravado é clássico (e DIFERENTE do
   const fetchImpl = fetchConsulta(200, {
     id: ID_PAGAMENTO_DO_MP,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
   const chamadasPush: unknown[] = [];
@@ -2037,7 +2211,7 @@ Deno.test("rota payment: gateway_payment_id gravado é clássico (e DIFERENTE do
   assertEquals(
     chamadasAviso.filter((a) => String(a[0]).includes("gateway_payment_id gravado")).length,
     0,
-    "não deveria logar o aviso do SWAP quando os dois lados já falam a mesma língua. (Desde o laudo 31/08 existe OUTRO warn nesta rota — a conferência de valor avisando que o mock não trouxe transaction_amount; filtrar pelo aviso do swap, não por silêncio total.)",
+    "não deveria logar o aviso do SWAP quando os dois lados já falam a mesma língua.",
   );
 });
 
@@ -2069,6 +2243,7 @@ Deno.test("rota payment: falha ao ler gateway_payment_id do pedido -> 500, RPC N
   const fetchImpl = fetchConsulta(200, {
     id: ID_PAGAMENTO_DO_MP,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
 
@@ -2107,6 +2282,7 @@ Deno.test("rota order: gateway_payment_id gravado (ORD do banco) NÃO substitui 
     id: ID_ORDER_DO_MP,
     external_reference: UUID_PEDIDO,
     status: "processed",
+    total_amount: "149.90",
     status_detail: "accredited",
   });
   const chamadasPush: unknown[] = [];
@@ -2140,6 +2316,7 @@ Deno.test("rota payment: gateway_payment_id gravado é string vazia -> não subs
   const fetchImpl = fetchConsulta(200, {
     id: ID_PAGAMENTO_DO_MP,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
 
@@ -2222,7 +2399,7 @@ Deno.test("rota payment: 'estornado' é sobre uma cobrança DIFERENTE da gravada
     pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "refunded", external_reference: UUID_PEDIDO } },
     order: {
       status: 200,
-      corpo: { id: ID_GRAVADO_NO_BANCO, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+      corpo: { id: ID_GRAVADO_NO_BANCO, external_reference: UUID_PEDIDO, status: "processed", total_amount: "149.90", status_detail: "accredited" },
     },
   });
 
@@ -2255,7 +2432,7 @@ Deno.test("rota payment: reconsulta do id GRAVADO falha (500) antes de aplicar '
   const erroReal = console.error;
   console.error = () => {};
   const { fn: fetchImpl } = fetchInspecionavel({
-    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO } },
+    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", transaction_amount: 149.9, external_reference: UUID_PEDIDO } },
     order: { status: 500, corpo: { message: "erro interno" } },
   });
 
@@ -2285,7 +2462,7 @@ Deno.test("rota payment: id gravado é CLÁSSICO (PIX legado) -> NUNCA reconsult
   // aqui (não deveria — o id gravado é CLÁSSICO, o bloco de substituição
   // nem entra), `fetchInspecionavel` devolveria 404 e o teste acusaria.
   const { fn: fetchImpl } = fetchInspecionavel({
-    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO } },
+    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", transaction_amount: 149.9, external_reference: UUID_PEDIDO } },
   });
 
   const resposta = await handler(req, { supabase, fetchImpl });
@@ -2461,6 +2638,7 @@ Deno.test("resultado 'pago' -> dispara TAMBÉM o comprovante ao cliente, com o o
   const fetchImpl = fetchConsulta(200, {
     id: ID_PAGAMENTO_DO_MP,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
   const enviarPush = async (_args: unknown) => {};
@@ -2484,6 +2662,7 @@ Deno.test("resultado 'pago_apos_expirar' -> NÃO dispara o comprovante padrão, 
   const fetchImpl = fetchConsulta(200, {
     id: ID_PAGAMENTO_DO_MP,
     status: "approved",
+    transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
   const enviarPush = async (_args: unknown) => {};
@@ -2541,6 +2720,7 @@ Deno.test("comprovante e aviso atrasado disparam em exatamente 1 dos 9 retornos 
     const fetchImpl = fetchConsulta(200, {
       id: 999,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const enviarPush = async (_args: unknown) => {};
@@ -2626,6 +2806,7 @@ Deno.test("enviarComprovantePedido lança -> webhook ainda responde 200, e loga 
     const fetchImpl = fetchConsulta(200, {
       id: ID_PAGAMENTO_DO_MP,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const enviarPush = async (_args: unknown) => {};
@@ -2667,7 +2848,7 @@ Deno.test("enviarComprovantePedido devolve { ok: false } SEM lançar (ex.: SMTP 
   // log diria por que o cliente não recebeu o comprovante.
   //
   // SMTP_USER/SMTP_PASSWORD ficam DELETADOS de propósito (não setados): é
-  // o que faz `remetenteConfigurado()` real devolver `false` e
+  // o que faz o `resolverRemetente()` real devolver origem "nenhum" (sem cofre e sem SMTP) e
   // `enviarComprovantePedido` devolver `{ ok: false, motivo: 'sem_remetente' }`
   // SEM tocar rede nenhuma — nem o `supabase` fake precisa implementar nada
   // além do necessário para `confirmar_pagamento`.
@@ -2683,6 +2864,7 @@ Deno.test("enviarComprovantePedido devolve { ok: false } SEM lançar (ex.: SMTP 
     const fetchImpl = fetchConsulta(200, {
       id: ID_PAGAMENTO_DO_MP,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const enviarPush = async (_args: unknown) => {};
@@ -2750,6 +2932,7 @@ Deno.test("por padrão (sem deps.enviarComprovante), chama enviarComprovantePedi
     const fetchImpl = fetchConsulta(200, {
       id: ID_PAGAMENTO_DO_MP,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const enviarPush = async (_args: unknown) => {};
@@ -2819,6 +3002,7 @@ Deno.test("comprovante chama DIRETO a reserva no supabase do webhook — não de
     const fetchImpl = fetchConsulta(200, {
       id: ID_PAGAMENTO_DO_MP,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const enviarPush = async (_args: unknown) => {};
@@ -4526,6 +4710,260 @@ Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada
   assertEquals((registro as any).valorEstornadoAcumulado, valorApos1a);
 });
 
+// W5a–W5p: o fallback clássico (E27/E39) já contou o dinheiro antes de
+// refunds[] materializar a identidade. Exercita o handler REAL entre entregas.
+function cenarioDeIdentidadeTardia(opts: {
+  linhas?: Array<Record<string, unknown>>;
+  estornado?: number;
+  erroUpdate?: unknown;
+  aposLer?: (fila: Array<Record<string, unknown>>) => void;
+} = {}) {
+  const registro = registroDoLedger();
+  const pedido = { ...pedidoPago(), gateway_payment_id: "999", valor_estornado: opts.estornado ?? 0 };
+  const linha = (id: string, amount = 30, status = "concluido") => ({
+    id, order_id: UUID_PEDIDO, amount, status, solicitado_por: "lojista",
+    mp_refund_id: null, mp_chargeback_id: null, tentativas: 1,
+    mp_status: "approved", concluido_em: status === "concluido" ? "2026-10-01T00:00:00.000Z" : null,
+    created_at: "2026-10-01T00:00:00.000Z",
+  });
+  const supabase = clienteFalso({
+    pedido, registro, concluirSomaNoPedido: true, indicesUnicosDoLedger: true,
+    orderRefundsRows: opts.linhas ?? [linha("legado-30", 30, "em_processamento")],
+    erroOrderRefundsUpdate: opts.erroUpdate, aposLerOrderRefunds: opts.aposLer,
+  });
+  const logs: unknown[][] = [];
+  const entregar = (acumulado: unknown, refunds?: unknown[]) => semLogs(async () => {
+    console.error = (...args: unknown[]) => { logs.push(args); };
+    return await handler(await requisicaoAssinada("999", { corpoExtra: { type: "payment" } }), {
+      supabase,
+      fetchImpl: fetchConsulta(200, {
+        id: 999, external_reference: UUID_PEDIDO, status: "approved",
+        status_detail: "partially_refunded", transaction_amount: 100,
+        transaction_amount_refunded: acumulado, ...(refunds === undefined ? {} : { refunds }),
+      }),
+      enviarPushContado: async () => 1,
+    });
+  });
+  return { registro, pedido, linha, logs, entregar };
+}
+
+const refundTardio = (id = "refund-30", amount = 30) => ({ id, amount, status: "approved" });
+
+Deno.test("W5a - acumulado 30 sem refunds[] conclui sem ID; entrega seguinte adota o ID e mantém 30; replay mantém uma linha", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  assertEquals((await c.entregar(30)).status, 200);
+  const fila = (c.registro as any).filaOrderRefunds;
+  assertEquals(fila[0].status, "concluido");
+  assertEquals(fila[0].mp_refund_id, null);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 30, "o mesmo dinheiro não pode virar 60");
+  assertEquals(fila[0].mp_refund_id, "refund-30");
+  assertEquals(c.registro.updatesOrderRefunds.map((r) => r.valores), [{ mp_refund_id: "refund-30" }]);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 0);
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals(fila.length, 1);
+  assertEquals(c.registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(c.registro.updatesOrderRefunds.length, 1);
+});
+
+Deno.test("W5b - externo de outro valor continua externo; replay não soma de novo e divergência deixa sinal", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  assertEquals((await c.entregar(50, [refundTardio("externo-20", 20)])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 50);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado"));
+  await c.entregar(50, [refundTardio("externo-20", 20)]);
+  assertEquals(c.pedido.valor_estornado, 50);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+});
+
+Deno.test("W5c - externo sem candidato continua registrado normalmente", async () => {
+  const c = cenarioDeIdentidadeTardia({ linhas: [] });
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+});
+
+Deno.test("W5d - dois candidatos de 30: não adota, registra como antes e sinaliza ambiguidade; replay não duplica", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  const c = cenarioDeIdentidadeTardia({ linhas: [base.linha("antigo-a"), base.linha("antigo-b")], estornado: 60 });
+  assertEquals((await c.entregar(60, [refundTardio()])).status, 200);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+  assertEquals(c.pedido.valor_estornado, 90, "conserva a regra anterior nos ambíguos, para conferência manual");
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado" &&
+    (l[1] as any)?.motivo === "multiplos_candidatos"));
+  await c.entregar(60, [refundTardio()]);
+  assertEquals(c.pedido.valor_estornado, 90);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+});
+
+Deno.test("W5e - externo novo do MESMO valor: acumulado 60 não permite adotar a linha antiga de 30", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  assertEquals((await c.entregar(60, [refundTardio("externo-novo-30")])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 60);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+});
+
+Deno.test("W5f - ID tardio e externo de 20 no mesmo GET: adota só os 30 antigos e registra só os 20 novos", async () => {
+  for (const refunds of [[refundTardio(), refundTardio("externo-20", 20)], [refundTardio("externo-20", 20), refundTardio()]]) {
+    const c = cenarioDeIdentidadeTardia();
+    await c.entregar(30);
+    assertEquals((await c.entregar(50, refunds)).status, 200);
+    assertEquals(c.pedido.valor_estornado, 50);
+    assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_mp_refund_id), ["externo-20"]);
+    assertEquals(linhasDoRefund(c.registro, "refund-30")[0].id, "legado-30");
+    assertEquals(c.logs.length, 0, "adoção coerente e externo legítimo não exigem reconciliação manual");
+  }
+});
+
+Deno.test("W5g - falha ao adotar ID devolve 500 sem registrar externo; não confirma dinheiro em duplicidade", async () => {
+  const c = cenarioDeIdentidadeTardia({ erroUpdate: { message: "falha de escrita (dublê)" } });
+  await c.entregar(30);
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 500);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 0);
+});
+
+Deno.test("W5h - adoção concorrente após a leitura: UPDATE sem linha devolve 500; reentrega lê o ID e não soma", async () => {
+  let disputar = false;
+  const c = cenarioDeIdentidadeTardia({ aposLer: (fila) => {
+    if (disputar) { fila[0].mp_refund_id = "refund-30"; disputar = false; }
+  } });
+  await c.entregar(30);
+  disputar = true;
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 500);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 0);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 30);
+});
+
+Deno.test("W5i - uma linha mas dois refunds de mesmo valor: identidade ambígua, não escolhe pela ordem", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  assertEquals((await c.entregar(60, [refundTardio("r-a"), refundTardio("r-b")])).status, 200);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 2);
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado"));
+});
+
+Deno.test("W5j - acumulado ilegível: não adota por coincidência de valor, sinaliza e conserva a RPC externa", async () => {
+  for (const acumulado of [undefined, null, "", " ", "ilegível"]) {
+    const c = cenarioDeIdentidadeTardia();
+    await c.entregar(30);
+    assertEquals((await c.entregar(acumulado, [refundTardio()])).status, 200);
+    assertEquals(c.registro.updatesOrderRefunds.length, 0);
+    assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+    assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado"));
+  }
+});
+
+// Cada cenário abaixo deixa valor, conclusão e acumulado aptos à adoção
+// se SOMENTE a guarda nomeada for retirada (prova por mutantes).
+Deno.test("W5k - pagamento muda antes da leitura fresca: refund da cobrança antiga não adota a linha", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  const c = cenarioDeIdentidadeTardia({
+    linhas: [base.linha("legado-outro-pagamento")], estornado: 30,
+    // A guarda externa já leu '999'. A leitura fresca do desfecho vê
+    // '777777': sem esta corrida, a guarda externa esconderia o mutante M4.
+    aposLer: () => { c.pedido.gateway_payment_id = "777777"; },
+  });
+  const resposta = await c.entregar(30, [refundTardio()]);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(resposta.status, 200);
+  assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [30]);
+  assertEquals(c.pedido.valor_estornado, 60);
+  assertEquals(c.logs.length, 0, "a cobrança diferente não fornece candidato sem identidade");
+});
+
+Deno.test("W5l - linha concluída de contestação não recebe identidade de refund regular", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  const c = cenarioDeIdentidadeTardia({
+    linhas: [{ ...base.linha("legado-contestacao"), mp_chargeback_id: "CBK-antigo" }], estornado: 30,
+  });
+  const resposta = await c.entregar(30, [refundTardio()]);
+  // Sem o filtro, tenta UPDATE e o compare-and-set de mp_chargeback_id
+  // ainda recusa: 500 também é regressão, mesmo sem identidade persistida.
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(resposta.status, 200);
+  assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [30]);
+  assertEquals(c.pedido.valor_estornado, 60);
+  assertEquals(c.logs.length, 0, "contestação não é candidata à adoção de refund");
+});
+
+Deno.test("W5m - linha concluída do sistema sem ID não é candidata à adoção do app", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  const c = cenarioDeIdentidadeTardia({
+    linhas: [{ ...base.linha("legado-sistema"), solicitado_por: "sistema" }], estornado: 30,
+  });
+  const resposta = await c.entregar(30, [refundTardio()]);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(resposta.status, 200);
+  assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [30]);
+  assertEquals(c.pedido.valor_estornado, 60);
+  assertEquals(c.logs.length, 0, "linha do sistema não é candidata do app");
+});
+
+Deno.test("W5n - conclusão local com mp_status sem prova de aprovação não autoriza adoção", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  for (const mpStatus of [null, "in_process", "rejected"]) {
+    const c = cenarioDeIdentidadeTardia({
+      linhas: [{ ...base.linha("legado-sem-aprovacao"), mp_status: mpStatus }], estornado: 30,
+    });
+    const resposta = await c.entregar(30, [refundTardio()]);
+    assertEquals(c.registro.updatesOrderRefunds.length, 0);
+    assertEquals(resposta.status, 200);
+    assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+    assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [30]);
+    assertEquals(c.pedido.valor_estornado, 60);
+    assertEquals(c.logs.length, 0, "mp_status sem aprovação não fornece candidato");
+  }
+});
+
+Deno.test("W5o - mesmo refund ID com valores 20 e 30 não prova identidade mesmo com acumulado 30", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  // O Map termina com 30, igual à linha antiga. Sem a guarda de valores
+  // conflitantes, o acumulado fecha e o handler adota ao percorrer os 20.
+  assertEquals((await c.entregar(30, [refundTardio("refund-30", 20), refundTardio()])).status, 200);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [20]);
+  assertEquals(c.pedido.valor_estornado, 50, "conserva a RPC externa antiga e deduplica o ID");
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado" &&
+    (l[1] as any)?.motivo === "valor_divergente" && (l[1] as any)?.valorRefund === 20));
+});
+
+Deno.test("W5p - dois refunds livres de 30 para uma linha: acumulado 30 isola unicidade do lado MP", async () => {
+  for (const refunds of [[refundTardio("r-a"), refundTardio("r-b")], [refundTardio("r-b"), refundTardio("r-a")]]) {
+    const c = cenarioDeIdentidadeTardia();
+    await c.entregar(30);
+    // Sem refundsDoValor.length === 1, as duas propostas descontariam a
+    // MESMA linha duas vezes: 30 + 30 + 30 - 30 - 30 = 30. W5i usa 60 e
+    // barrava também pelo acumulado, escondendo a falta desta guarda.
+    const resposta = await c.entregar(30, refunds);
+    assertEquals(c.registro.updatesOrderRefunds.length, 0);
+    assertEquals(resposta.status, 200);
+    assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_mp_refund_id), refunds.map((r) => r.id));
+    assertEquals(linhasDoRefund(c.registro, "r-a").map((r) => r.id), [refunds[0].id === "r-a" ? "sistema-1" : "sistema-2"]);
+    assertEquals(linhasDoRefund(c.registro, "r-b").map((r) => r.id), [refunds[0].id === "r-b" ? "sistema-1" : "sistema-2"]);
+    assertEquals(c.pedido.valor_estornado, 90);
+    assertEquals(c.logs.filter((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado" &&
+      (l[1] as any)?.motivo === "identidade_ou_acumulado_ambiguo").length, 2);
+  }
+});
+
 Deno.test("W6 - linha 'sistema' concluida com concluido_em NULO (crash entre INSERT e RPC) -> o passo chama concluir_estorno para ela ANTES de tudo", async () => {
   const registro = {
     chamadasRpc: [] as any[],
@@ -5316,6 +5754,7 @@ Deno.test("aviso de pagamento atrasado: reserva NÃO concedida (reservou=false) 
       id: UUID_PEDIDO,
       user_id: null,
       customer_data: { email: "cliente@exemplo.com" },
+      total: 149.9,
     };
     const supabase = {
       rpc: async (nome: string, args: Record<string, unknown>) => {
@@ -5344,6 +5783,7 @@ Deno.test("aviso de pagamento atrasado: reserva NÃO concedida (reservou=false) 
     const fetchImpl = fetchConsulta(200, {
       id: ID_PAGAMENTO_DO_MP,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const enviarPush = async (_args: unknown) => {};
@@ -5368,6 +5808,7 @@ Deno.test("aviso de pagamento atrasado: RPC de reserva lança -> webhook ainda r
       id: UUID_PEDIDO,
       user_id: null,
       customer_data: { email: "cliente@exemplo.com" },
+      total: 149.9,
     };
     const supabase = {
       rpc: async (nome: string) => {
@@ -5393,6 +5834,7 @@ Deno.test("aviso de pagamento atrasado: RPC de reserva lança -> webhook ainda r
     const fetchImpl = fetchConsulta(200, {
       id: ID_PAGAMENTO_DO_MP,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const enviarPush = async (_args: unknown) => {};
@@ -5430,7 +5872,7 @@ Deno.test("aviso de pagamento atrasado: SMTP não configurado -> não chega a ch
   Deno.env.delete("SMTP_PASSWORD");
   try {
     const chamadasRpc: string[] = [];
-    const pedido = { id: UUID_PEDIDO, user_id: null, customer_data: { email: "cliente@exemplo.com" } };
+    const pedido = { id: UUID_PEDIDO, user_id: null, customer_data: { email: "cliente@exemplo.com" }, total: 149.9 };
     const supabase = {
       rpc: async (nome: string) => {
         chamadasRpc.push(nome);
@@ -5453,6 +5895,7 @@ Deno.test("aviso de pagamento atrasado: SMTP não configurado -> não chega a ch
     const fetchImpl = fetchConsulta(200, {
       id: ID_PAGAMENTO_DO_MP,
       status: "approved",
+      transaction_amount: 149.9,
       external_reference: UUID_PEDIDO,
     });
     const enviarPush = async (_args: unknown) => {};
@@ -5854,7 +6297,15 @@ Deno.test("MP-W7 — notificação processada do começo ao fim resolve as crede
       transaction_amount: 149.9,
     });
 
-    const resposta = await handler(req, { supabase, fetchImpl });
+    // O e-mail do comprovante entra como dublê: ele resolve o REMETENTE em
+    // app_settings (outra linha, a do e-mail da loja) e este teste conta só as
+    // leituras das credenciais do Mercado Pago.
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl,
+      enviarComprovante: async () => {},
+      enviarAvisoAtrasado: async () => {},
+    });
 
     // O caminho completo: HMAC validado, MP consultado, RPC chamada.
     assertEquals(resposta.status, 200);
@@ -7474,4 +7925,115 @@ Deno.test("cartão parcelado 3x — CONTROLE: o MESMO parcelado com total_amount
   assertEquals(resposta.status, 200);
   assertEquals(corpo.ignorado, "valor divergente");
   assertEquals(registro.chamadasRpc.length, 0);
+});
+
+// --- EST-EDGE-DIN-3 (16/10/2026): a reentrega 'ja_pago' do pagamento atrasado ---
+// O pedido virou 'pago_apos_expirar' e o aviso ao cliente não saiu (SMTP fora
+// do ar; a reserva do e-mail foi devolvida). A notificação seguinte do MP
+// recebe 'ja_pago': antes pulava TODOS os efeitos e o cliente ficava sem o
+// aviso para sempre. Agora a reentrega repete SÓ o aviso pendente, e só com a
+// reserva livre; push ao lojista nunca (já foi avisado na transição).
+
+function webhookComJaPago(pedidoNoBanco: Record<string, unknown>) {
+  const chamadasRpc: string[] = [];
+  const supabase = {
+    rpc: async (nome: string) => {
+      chamadasRpc.push(nome);
+      if (nome === "confirmar_pagamento") return { data: "ja_pago", error: null };
+      return { data: null, error: null };
+    },
+    from(tabela: string) {
+      return {
+        select(_cols: string) {
+          return {
+            eq(_col: string, _val: unknown) {
+              return { maybeSingle: async () => ({ data: tabela === "marketplace_orders" ? pedidoNoBanco : null, error: null }) };
+            },
+          };
+        },
+      };
+    },
+  };
+  return { supabase, chamadasRpc };
+}
+
+async function entregarJaPago(pedidoNoBanco: Record<string, unknown>) {
+  const { supabase, chamadasRpc } = webhookComJaPago(pedidoNoBanco);
+  const avisosAtrasados: unknown[] = [];
+  const comprovantes: unknown[] = [];
+  const pushes: unknown[] = [];
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    transaction_amount: 149.9,
+    external_reference: UUID_PEDIDO,
+  });
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl,
+    enviarPush: async (a: unknown) => void pushes.push(a),
+    enviarComprovante: async (a: unknown) => void comprovantes.push(a),
+    enviarAvisoAtrasado: async (a: unknown) => void avisosAtrasados.push(a),
+  });
+  return { resposta, avisosAtrasados, comprovantes, pushes, chamadasRpc };
+}
+
+const PEDIDO_PAGO_APOS_EXPIRAR = {
+  id: UUID_PEDIDO,
+  customer_name: "Maria",
+  customer_data: { email: "cliente@exemplo.com" },
+  total: 149.9,
+  total_amount: null,
+  payment_status: "pago_apos_expirar",
+  confirmation_email_sent_at: null,
+};
+
+Deno.test("EST-EDGE-DIN-3 - 'ja_pago' num pedido 'pago_apos_expirar' com a reserva LIVRE reenvia o aviso atrasado UMA vez, sem push e sem comprovante", async () => {
+  const r = await entregarJaPago(PEDIDO_PAGO_APOS_EXPIRAR);
+  assertEquals(r.resposta.status, 200);
+  assertEquals((await r.resposta.json()).resultado, "ja_pago");
+  assertEquals(r.avisosAtrasados.length, 1);
+  assertEquals(r.pushes.length, 0);
+  assertEquals(r.comprovantes.length, 0);
+});
+
+Deno.test("EST-EDGE-DIN-3 - 'ja_pago' com o e-mail JÁ enviado (reserva presa) não reenvia nada", async () => {
+  const r = await entregarJaPago({ ...PEDIDO_PAGO_APOS_EXPIRAR, confirmation_email_sent_at: "2026-10-16T10:00:00Z" });
+  assertEquals(r.resposta.status, 200);
+  assertEquals(r.avisosAtrasados.length, 0);
+  assertEquals(r.pushes.length, 0);
+});
+
+Deno.test("EST-EDGE-DIN-3 - 'ja_pago' num pedido 'pago' comum não dispara aviso atrasado nem comprovante (fora do escopo desta frente)", async () => {
+  const r = await entregarJaPago({ ...PEDIDO_PAGO_APOS_EXPIRAR, payment_status: "pago" });
+  assertEquals(r.resposta.status, 200);
+  assertEquals(r.avisosAtrasados.length, 0);
+  assertEquals(r.comprovantes.length, 0);
+});
+
+Deno.test("EST-EDGE-DIN-3 - o reenvio que LANÇA não derruba o webhook: 200 e o evento sai da fila do MP", async () => {
+  const { supabase } = webhookComJaPago(PEDIDO_PAGO_APOS_EXPIRAR);
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    transaction_amount: 149.9,
+    external_reference: UUID_PEDIDO,
+  });
+  const erro = console.error;
+  console.error = () => {};
+  try {
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl,
+      enviarPush: async () => {},
+      enviarAvisoAtrasado: async () => {
+        throw new Error("SMTP fora do ar");
+      },
+    });
+    assertEquals(resposta.status, 200);
+  } finally {
+    console.error = erro;
+  }
 });

@@ -107,7 +107,7 @@ export const BottomNav = memo(function BottomNav({
                 "flex flex-col items-center justify-center py-1 px-3.5 rounded-xl relative group active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 transition-[color,background-color,transform] duration-150",
                 isActive
                   ? "text-zinc-950 bg-zinc-100/80"
-                  : "text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50",
+                  : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50",
               )}
             >
               <div className="relative transition-transform duration-300 group-hover:scale-110">
@@ -121,7 +121,7 @@ export const BottomNav = memo(function BottomNav({
                 )}
               </div>
               <span
-                className={`mt-1.5 text-[10px] font-bold tracking-tight transition-[opacity,transform,font-weight] duration-300 sm:text-[11px] ${isActive ? "scale-105 font-black text-zinc-950 opacity-100" : "opacity-60 grayscale-[0.5]"}`}
+                className={`mt-1.5 text-[10px] font-bold tracking-tight transition-[opacity,transform,font-weight] duration-300 sm:text-[11px] ${isActive ? "scale-105 font-black text-zinc-950 opacity-100" : ""}`}
               >
                 {item.label}
               </span>

@@ -483,9 +483,7 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
       });
 
     await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
-    expect(hospedeiro.textContent).toContain(
-      "Pagamento em análise pelo banco.",
-    );
+    expect(hospedeiro.textContent).toContain("Seu banco está analisando.");
     expect(props.onCartaoEmCurso).toHaveBeenLastCalledWith({
       orderId: PEDIDO,
       paymentId: ORDER,
@@ -589,9 +587,7 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
       .mockResolvedValueOnce({ verificacao: "pago", paymentId: ORDER });
 
     await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
-    expect(hospedeiro.textContent).toContain(
-      "Pagamento em análise pelo banco.",
-    );
+    expect(hospedeiro.textContent).toContain("Seu banco está analisando.");
     await avancar(ESPERAS_DA_CONFIRMACAO_MS[1] + 1);
     expect(hospedeiro.textContent).toContain(APROVADO);
     expect(chamadasVerificar()).toBe(2);

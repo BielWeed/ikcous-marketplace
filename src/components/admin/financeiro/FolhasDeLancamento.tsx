@@ -1,4 +1,12 @@
-import { ExternalLink, Lock } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  ExternalLink,
+  Lock,
+  ReceiptText,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { LocalBufferedTextarea } from "@/components/admin/LocalBufferedInput";
@@ -11,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { baixarLancamento, cancelarLancamento } from "@/hooks/useFinanceiro";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   ehDataIso,
   formatarData,
@@ -40,6 +49,7 @@ import {
   EstadoDeErro,
   Etiqueta,
   corDoValor,
+  useConfirmacaoFinanceira,
 } from "./partes";
 
 /** Detalhe de uma linha do extrato, com as ações que ela permite. */
@@ -66,13 +76,12 @@ export function DetalheDoLancamentoFolha({
     ...(linha.vencimento
       ? [{ rotulo: "Vencimento", valor: formatarData(linha.vencimento) }]
       : []),
-    {
-      rotulo: linha.tipo === "transferencia" ? "De → para" : "Conta",
-      valor:
-        linha.tipo === "transferencia"
-          ? `${linha.contaNome ?? "—"} → ${linha.contaDestinoNome ?? "—"}`
-          : (linha.contaNome ?? "—"),
-    },
+    ...(linha.tipo === "transferencia"
+      ? [
+          { rotulo: "De", valor: linha.contaNome ?? "—" },
+          { rotulo: "Para", valor: linha.contaDestinoNome ?? "—" },
+        ]
+      : [{ rotulo: "Conta", valor: linha.contaNome ?? "—" }]),
     ...(linha.tipo === "transferencia"
       ? []
       : [
@@ -91,16 +100,18 @@ export function DetalheDoLancamentoFolha({
   return (
     <FolhaFinanceira
       titulo={linha.descricao}
+      icone={linha.tipo === "transferencia" ? ArrowLeftRight : ReceiptText}
+      matiz={linha.tipo === "transferencia" ? "#BA9AFF" : "#FF9F5A"}
       descricao={rotuloDaOrigem(linha.origem)}
       aoFechar={aoFechar}
       rodape={
         podeMexer || linha.pedidoId ? (
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-3">
             {linha.pedidoId ? (
               <button
                 type="button"
                 onClick={() => aoAbrirPedido(linha.pedidoId ?? "")}
-                className={`${CLASSE_BOTAO_SECUNDARIO} flex-1`}
+                className={`${CLASSE_BOTAO_PRIMARIO} flex-1`}
               >
                 <ExternalLink aria-hidden="true" className="size-4" />
                 Abrir pedido #{numeroDoPedido(linha.pedidoId)}
@@ -158,7 +169,7 @@ export function DetalheDoLancamentoFolha({
               sentido={sentido}
               className={`text-3xl font-black ${
                 cancelado
-                  ? "text-zinc-500 line-through"
+                  ? "text-zinc-400 line-through"
                   : sentido === 0
                     ? "text-zinc-200"
                     : corDoValor(sentido)
@@ -168,19 +179,22 @@ export function DetalheDoLancamentoFolha({
               {linha.status === "previsto" ? (
                 <Etiqueta tom="aviso">Previsto</Etiqueta>
               ) : null}
-              {cancelado ? <Etiqueta tom="perigo">Cancelado</Etiqueta> : null}
+              {cancelado ? <Etiqueta>Cancelado</Etiqueta> : null}
+              {linha.status === "realizado" ? (
+                <Etiqueta>Realizado</Etiqueta>
+              ) : null}
             </div>
           </div>
         </div>
 
-        <dl className="divide-y divide-white/5 rounded-2xl border border-white/5 bg-white/[0.02]">
+        <dl className="flex flex-col gap-1">
           {itens.map((item) => (
             <div
               key={item.rotulo}
-              className="flex items-start justify-between gap-4 px-4 py-3 text-sm"
+              className="flex flex-wrap items-start justify-between gap-3 py-3 text-sm"
             >
-              <dt className="text-zinc-500">{item.rotulo}</dt>
-              <dd className="text-right font-bold text-zinc-100">
+              <dt className="text-zinc-400">{item.rotulo}</dt>
+              <dd className="max-w-full break-words text-right font-bold text-zinc-100">
                 {item.valor}
               </dd>
             </div>
@@ -194,8 +208,20 @@ export function DetalheDoLancamentoFolha({
             pedido (pagamento, estorno ou devolução).
           </p>
         ) : null}
+        {cancelado ? (
+          <p className="rounded-2xl bg-white/5 p-3 text-xs leading-relaxed text-zinc-400">
+            O registro fica guardado, sem contar nos totais. Nenhuma baixa ou
+            edição está disponível.
+          </p>
+        ) : null}
+        {linha.tipo === "transferencia" ? (
+          <p className="rounded-2xl bg-violet-400/5 p-3 text-xs leading-relaxed text-zinc-400">
+            No extrato de todas as contas, aparece sem sinal. Na conta de origem
+            é saída (−); na de destino, entrada (+). Fora do resultado.
+          </p>
+        ) : null}
         {linha.status === "realizado" && linha.editavel ? (
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             Lançamento realizado não se edita: cancele e lance de novo — assim
             fica a trilha do que aconteceu.
           </p>
@@ -221,6 +247,7 @@ export function BaixarLancamentoFolha({
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
+  const confirmarVisualmente = useConfirmacaoFinanceira();
   const [data, setData] = useState<string>(hoje);
   const [contaId, setContaId] = useState<string>(alvo.contaId ?? "");
   const [erroData, setErroData] = useState<string | null>(null);
@@ -249,8 +276,31 @@ export function BaixarLancamentoFolha({
     enviandoRef.current = true;
     setEnviando(true);
     setErroDoServidor(null);
+    const fim = marcarOperacaoSensivel("baixa-financeira");
     try {
       await baixarLancamento({ id: alvo.id, data, contaId: contaId || null });
+      confirmarVisualmente({
+        titulo:
+          alvo.lado === "entrada"
+            ? "Recebimento registrado."
+            : "Pagamento registrado.",
+        descricao: alvo.descricao,
+        valor: alvo.valor,
+        sentido: alvo.lado === "entrada" ? 1 : -1,
+        linhas: [
+          {
+            rotulo: alvo.lado === "entrada" ? "Recebido em" : "Pago em",
+            texto: formatarData(data),
+          },
+          {
+            rotulo: alvo.lado === "entrada" ? "Entrou em" : "Saiu de",
+            texto:
+              contas.find((c) => c.id === (contaId || alvo.contaId))?.nome ??
+              "A conta do lançamento",
+          },
+          { rotulo: "Situação", texto: "Realizado" },
+        ],
+      });
       aoSalvar(
         alvo.lado === "entrada"
           ? "Recebimento registrado."
@@ -259,6 +309,7 @@ export function BaixarLancamentoFolha({
     } catch (erro) {
       setErroDoServidor(mensagemDeErroFinanceiro(erro));
     } finally {
+      fim();
       enviandoRef.current = false;
       setEnviando(false);
     }
@@ -274,11 +325,13 @@ export function BaixarLancamentoFolha({
           : "Registrar pagamento"
       }
       descricao={alvo.descricao}
+      icone={alvo.lado === "entrada" ? ArrowDownLeft : ArrowUpRight}
+      matiz={alvo.lado === "entrada" ? "#2DD4BF" : "#FF9F5A"}
       aoFechar={aoFechar}
       rodape={
         <div className="flex flex-col gap-3">
           {erroDoServidor ? <EstadoDeErro mensagem={erroDoServidor} /> : null}
-          <div className="flex gap-3">
+          <div className="flex flex-col-reverse gap-3">
             <button
               type="button"
               onClick={aoFechar}
@@ -300,8 +353,8 @@ export function BaixarLancamentoFolha({
     >
       <div className="flex flex-col gap-4">
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-4">
-          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-            Valor
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
+            Valor · baixa integral
           </p>
           <Dinheiro
             valor={alvo.valor}
@@ -309,7 +362,7 @@ export function BaixarLancamentoFolha({
             className={`text-2xl font-black ${alvo.lado === "entrada" ? "text-emerald-400" : "text-red-400"}`}
           />
           {alvo.vencimento ? (
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-zinc-400">
               Vencimento {formatarData(alvo.vencimento)}
             </p>
           ) : null}
@@ -318,9 +371,11 @@ export function BaixarLancamentoFolha({
           id="fin-baixa-data"
           rotulo={alvo.lado === "entrada" ? "Recebido em" : "Pago em"}
           erro={erroData ?? undefined}
+          ajuda="A baixa é do que já aconteceu. A data não pode ser futura."
         >
           <input
             id="fin-baixa-data"
+            disabled={enviando}
             type="date"
             value={data}
             max={hoje}
@@ -331,9 +386,11 @@ export function BaixarLancamentoFolha({
         <Campo
           id="fin-baixa-conta"
           rotulo={alvo.lado === "entrada" ? "Entrou em" : "Saiu de"}
+          ajuda="A conta do lançamento ou outra conta ativa. A original continua disponível mesmo inativa."
         >
           <select
             id="fin-baixa-conta"
+            disabled={enviando}
             value={contaId}
             onChange={(e) => setContaId(e.target.value)}
             className={CLASSE_CAMPO}
@@ -346,6 +403,10 @@ export function BaixarLancamentoFolha({
             ))}
           </select>
         </Campo>
+        <p className="rounded-2xl bg-teal-400/5 p-3 text-xs leading-relaxed text-zinc-400">
+          O valor é fixo, integral. Não pode ser alterado e não há baixa
+          parcial.
+        </p>
       </div>
     </FolhaFinanceira>
   );
@@ -363,6 +424,7 @@ export function CancelarLancamentoDialogo({
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
+  const confirmarVisualmente = useConfirmacaoFinanceira();
   const [motivo, setMotivo] = useState("");
   const [tentou, setTentou] = useState(false);
   const [erroDoServidor, setErroDoServidor] = useState<string | null>(null);
@@ -388,6 +450,13 @@ export function CancelarLancamentoDialogo({
     setErroDoServidor(null);
     try {
       await cancelarLancamento({ id: alvo.id, motivo: motivoLimpo });
+      confirmarVisualmente({
+        titulo: "Lançamento cancelado.",
+        descricao: alvo.descricao,
+        valor: alvo.valor,
+        linhas: [{ rotulo: "Motivo", texto: motivoLimpo }],
+        nota: "O registro continua guardado e não conta no saldo nem no resultado.",
+      });
       aoSalvar("Lançamento cancelado.");
     } catch (erro) {
       setErroDoServidor(mensagemDeErroFinanceiro(erro));
@@ -404,9 +473,10 @@ export function CancelarLancamentoDialogo({
         if (!aberto) aoFechar();
       }}
     >
-      <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950 text-white">
+      <AlertDialogContent className="z-[130] max-w-md rounded-3xl border border-white/10 bg-[#17171C] p-5 text-white">
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-white">
+          <AlertDialogTitle className="flex items-center gap-3 text-xl font-bold text-white">
+            <X aria-hidden="true" className="size-7 shrink-0 text-red-400" />
             Cancelar lançamento?
           </AlertDialogTitle>
           <AlertDialogDescription className="text-zinc-400">
@@ -418,6 +488,7 @@ export function CancelarLancamentoDialogo({
         <Campo id="fin-cancelar-motivo" rotulo="Motivo" erro={erroMotivo}>
           <LocalBufferedTextarea
             id="fin-cancelar-motivo"
+            disabled={enviando}
             value={motivo}
             maxLength={300}
             rows={3}

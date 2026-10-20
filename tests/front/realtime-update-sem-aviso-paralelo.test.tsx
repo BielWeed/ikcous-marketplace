@@ -3,8 +3,10 @@
 // PEÇA 22/09 — FIM DOS AVISOS PARALELOS: o useRealtimeUpdate emitia toast.info
 // PRÓPRIO ("Nova atualização disponível (Realtime)", no líder e na aba
 // secundária) com a versão CRUA do payload ("1.5.1-sha.abc1234..."). Eram
-// avisos concorrentes do gate único (UpdateNotification) — e ignoravam
-// "Depois"/soneca, telas de compra e admin dirty, que só o gate respeita.
+// avisos concorrentes do gate único. Desde 16/10/2026 o gate (PWAUpdateGate)
+// nem desenha aviso: só instala em ponto de parada seguro, e quem MOSTRA é a
+// ilha. Um toast do realtime seria, de novo, um segundo aviso — e ignoraria as
+// telas de compra e o trabalho não salvo, que só o gate respeita.
 //
 // Contrato preso aqui: o ping ACIONA (deep checkUpdate via callback) e o
 // líder PROPAGA às abas secundárias — mas NENHUM dos dois caminhos emite

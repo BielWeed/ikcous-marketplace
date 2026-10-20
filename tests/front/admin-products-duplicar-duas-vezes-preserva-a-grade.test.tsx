@@ -133,11 +133,13 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   AlertDialogAction: ({
     children,
     onClick,
+    "aria-label": ariaLabel,
   }: {
     children: ReactNode;
     onClick?: () => void;
+    "aria-label"?: string;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} aria-label={ariaLabel}>
       {children}
     </button>
   ),
@@ -186,8 +188,9 @@ function localizarBotaoPorTexto(
   raizDom: ParentNode,
   texto: string,
 ): HTMLButtonElement | undefined {
-  return [...raizDom.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+  return [...raizDom.querySelectorAll("button")].find(
+    (b) =>
+      b.getAttribute("aria-label") === texto || b.textContent?.includes(texto),
   ) as HTMLButtonElement | undefined;
 }
 
@@ -253,6 +256,7 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
   }
 
   async function duplicar() {
+    const chamadasAntes = addProduct.mock.calls.length;
     const botaoDuplicar = localizarBotaoPorTexto(
       hospedeiro,
       "Duplicar Produto",
@@ -261,10 +265,11 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
     await act(async () => {
       botaoDuplicar.click();
     });
+    expect(addProduct).toHaveBeenCalledTimes(chamadasAntes);
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Confirmar Duplicação",
+      "Duplicar Produto: confirmar duplicação",
     )!;
     expect(botaoConfirmar).toBeDefined();
     await act(async () => {
@@ -288,6 +293,22 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
     for (const sku of skusDasVariantes) {
       expect(sku).toBeFalsy();
     }
+  });
+
+  it("duplicar produto sem foto (a exibição o chama de 'Sem Imagem') não grava o marcador na cópia", async () => {
+    const fotosDeOrigem = produtoTeste.images;
+    // O que o mapper entrega para produto sem foto.
+    produtoTeste.images = ["https://placehold.co/600x400?text=Sem+Imagem"];
+    try {
+      await montar();
+      await duplicar();
+    } finally {
+      produtoTeste.images = fotosDeOrigem;
+    }
+
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    expect(addProduct.mock.calls[0][0].images).toEqual([]);
+    expect(copiarImagemParaDuplicacao).not.toHaveBeenCalled();
   });
 
   it("duplicar o MESMO produto duas vezes: os SKUs de variante enviados nas duas duplicações nunca colidem", async () => {

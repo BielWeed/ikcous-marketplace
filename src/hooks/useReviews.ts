@@ -1,9 +1,15 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import {
+  geracaoAtualDoCache,
+  getReviewsCache,
+  updateReviewsCacheSeMesmaGeracao,
+} from "@/lib/cache-de-avaliacoes";
 import { supabase } from "@/lib/supabase";
 import type { Review } from "@/types";
 import { cachedReviewsData, setCachedReviewsData } from "@/utils/admin_cache";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export interface AdminReview extends Review {
@@ -12,44 +18,8 @@ export interface AdminReview extends Review {
   merchantReply?: string;
 }
 
-const REVIEWS_CACHE_KEY_PREFIX = "ikcous_reviews_cache_";
-const memoryReviewsCache = new Map<string, Review[]>();
-
-const getReviewsCache = (productId: string): Review[] | null => {
-  if (memoryReviewsCache.has(productId)) {
-    return memoryReviewsCache.get(productId)!;
-  }
-  if (typeof window !== "undefined") {
-    try {
-      const stored = localStorage.getItem(
-        `${REVIEWS_CACHE_KEY_PREFIX}${productId}`,
-      );
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        memoryReviewsCache.set(productId, parsed);
-        return parsed;
-      }
-    } catch (e) {
-      console.error("Failed to parse reviews cache", e);
-    }
-  }
-  return null;
-};
-
-const updateReviewsCache = (productId: string, newReviews: Review[]) => {
-  memoryReviewsCache.set(productId, newReviews);
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(
-        `${REVIEWS_CACHE_KEY_PREFIX}${productId}`,
-        JSON.stringify(newReviews),
-      );
-    } catch (e) {
-      console.error("Failed to update reviews cache", e);
-    }
-  }
-};
-
+// O cache de avaliações por produto mora em `@/lib/cache-de-avaliacoes` (o
+// `AuthContext` o esvazia no logout sem importar este hook).
 const bc =
   typeof window !== "undefined"
     ? new BroadcastChannel("ikcous_reviews_sync")
@@ -134,15 +104,53 @@ export function useReviews() {
   const { user, isAdmin } = useAuth();
   const { isLeader } = useLeaderElection();
   const [reviews, setReviews] = useState<Review[]>([]);
+  // Voto é da pessoa, não do produto: não vai para o cache compartilhado.
+  const [votosUteis, setVotosUteis] = useState<Set<string>>(() => new Set());
+  const votosEmVooRef = useRef(new Set<string>());
   const [adminReviews, setAdminReviews] = useState<AdminReview[]>(() => {
     return isAdmin && cachedReviewsData ? cachedReviewsData : [];
   });
   const [loading, setLoading] = useState(() => isAdmin && !cachedReviewsData);
+  const [erroDaListagemAdmin, setErroDaListagemAdmin] = useState<string | null>(
+    null,
+  );
+  const [erroDaListagemProduto, setErroDaListagemProduto] = useState<
+    string | null
+  >(null);
   const latestProductIdRef = useRef<string | null>(null);
+  const rodadaAdminRef = useRef(0);
+  const consultaDoProdutoRef = useRef(0);
+  const usuarioAtualRef = useRef(user?.id);
+  const [donoDasAvaliacoes, setDonoDasAvaliacoes] = useState(user?.id);
+
+  useEffect(() => {
+    if (usuarioAtualRef.current === user?.id) return;
+    usuarioAtualRef.current = user?.id;
+    consultaDoProdutoRef.current++;
+    latestProductIdRef.current = null;
+    setReviews([]);
+    setVotosUteis(new Set());
+    setAdminReviews([]);
+    setErroDaListagemAdmin(null);
+    setErroDaListagemProduto(null);
+    setLoading(false);
+    setDonoDasAvaliacoes(user?.id);
+  }, [user?.id]);
 
   const getReviewsByProduct = useCallback(
     async (productId: string) => {
+      if (usuarioAtualRef.current !== user?.id) return;
+      if (latestProductIdRef.current !== productId) setVotosUteis(new Set());
       latestProductIdRef.current = productId;
+      const consulta = ++consultaDoProdutoRef.current;
+      setErroDaListagemProduto(null);
+      // Geração do cache ao COMEÇAR: se uma limpeza (Sair, troca de conta)
+      // acontecer enquanto a resposta viaja, ela não pode regravar a lista.
+      const geracao = geracaoAtualDoCache();
+      const atual = () =>
+        consulta === consultaDoProdutoRef.current &&
+        geracao === geracaoAtualDoCache() &&
+        usuarioAtualRef.current === user?.id;
 
       // 1. SWR Cache Sync
       const cached = getReviewsCache(productId);
@@ -177,6 +185,7 @@ export function useReviews() {
               .eq("product_id", productId)
               .order("created_at", { ascending: false });
 
+        if (!atual()) return;
         if (error) throw error;
 
         const formattedReviews: Review[] = data.map((item: any) =>
@@ -211,13 +220,47 @@ export function useReviews() {
 
         if (latestProductIdRef.current === productId) {
           setReviews(formattedReviews);
+          setErroDaListagemProduto(null);
         }
-        updateReviewsCache(productId, formattedReviews);
+        updateReviewsCacheSeMesmaGeracao(productId, formattedReviews, geracao);
+        // A lista já chegou: o "Carregando" não espera a leitura dos votos.
+        if (latestProductIdRef.current === productId) setLoading(false);
+
+        // A RPC é void inclusive no voto repetido. Só os próprios registros
+        // dizem quais botões já devem nascer marcados, numa consulta em lote.
+        if (user && formattedReviews.length > 0) {
+          try {
+            const { data: votos, error: erroDosVotos } = await supabase
+              .from("review_votes")
+              .select("review_id")
+              .eq("user_id", user.id)
+              .in(
+                "review_id",
+                formattedReviews.map((review) => review.id),
+              );
+            if (!atual()) return;
+            if (erroDosVotos) throw erroDosVotos;
+            setVotosUteis((atuais) => {
+              if (!atual()) return atuais;
+              // Não existe desvoto: uma leitura iniciada antes do clique não
+              // pode apagar o voto que a RPC acabou de confirmar nesta tela.
+              return new Set([
+                ...atuais,
+                ...(votos || []).map((voto) => voto.review_id),
+              ]);
+            });
+          } catch (erroDosVotos) {
+            if (atual())
+              console.error("Error fetching review votes:", erroDosVotos);
+          }
+        }
       } catch (error: any) {
+        if (!atual()) return;
         console.error("Error fetching reviews:", error);
+        setErroDaListagemProduto("Não foi possível carregar as avaliações.");
         toast.error("Erro ao carregar avaliações.");
       } finally {
-        if (latestProductIdRef.current === productId) {
+        if (atual() && latestProductIdRef.current === productId) {
           setLoading(false);
         }
       }
@@ -235,6 +278,7 @@ export function useReviews() {
 
   const addReview = useCallback(
     async (review: { productId: string; rating: number; comment: string }) => {
+      const desmarcar = marcarOperacaoSensivel("envio-de-avaliacao");
       try {
         // ZENITH v21.7: Rely on AuthContext's verified user
         if (!user) {
@@ -289,6 +333,8 @@ export function useReviews() {
         console.error("Error adding review:", error);
         toast.error(mensagemAmigavelErroAvaliacao(error));
         return null;
+      } finally {
+        desmarcar();
       }
     },
     [getReviewsByProduct, user],
@@ -296,58 +342,65 @@ export function useReviews() {
 
   const markHelpful = useCallback(
     async (reviewId: string): Promise<boolean> => {
+      if (!user) {
+        toast.error("Faça login para marcar como útil.");
+        return false;
+      }
+      const productId = latestProductIdRef.current;
+      const geracao = geracaoAtualDoCache();
+      const atual = () =>
+        geracao === geracaoAtualDoCache() &&
+        usuarioAtualRef.current === user.id &&
+        latestProductIdRef.current === productId;
+      const chave = `${geracao}:${user.id}:${productId}:${reviewId}`;
+      if (!productId || !atual() || votosEmVooRef.current.has(chave))
+        return false;
+      votosEmVooRef.current.add(chave);
       try {
-        // ZENITH v21.7: Rely on AuthContext's verified user
-        if (!user) {
-          toast.error("Faça login para marcar como útil.");
-          return false;
-        }
-
-        // Optimistic update
-        let pId: string | undefined;
-        setReviews((current) => {
-          const reviewObj = current.find((r) => r.id === reviewId);
-          pId = reviewObj?.productId;
-          const updated = current.map((review) =>
-            review.id === reviewId
-              ? { ...review, helpful: review.helpful + 1 }
-              : review,
-          );
-          if (pId) {
-            updateReviewsCache(pId, updated);
-          }
-          return updated;
-        });
-
         const { error } = await supabase.rpc("increment_helpful" as any, {
           review_id: reviewId,
         });
+        if (!atual()) return false;
+        if (error) throw error;
+        setVotosUteis((atuais) =>
+          atual() ? new Set([...atuais, reviewId]) : atuais,
+        );
 
-        if (error) {
-          // Revert on error
+        // Sucesso void também significa "já votou". Persistir local + 1
+        // inventava um voto; o contador confirmado vem sempre do servidor.
+        try {
+          const { data, error: erroDaReleitura } = await supabase
+            .from("reviews")
+            .select("helpful")
+            .eq("id", reviewId)
+            .single();
+          if (!atual()) return false;
+          if (erroDaReleitura) throw erroDaReleitura;
+          if (!data) throw new Error("Avaliação indisponível na releitura.");
           setReviews((current) => {
-            const reviewObj = current.find((r) => r.id === reviewId);
-            const productId = reviewObj?.productId;
-            const reverted = current.map((review) =>
+            if (!atual()) return current;
+            const updated = current.map((review) =>
               review.id === reviewId
-                ? { ...review, helpful: review.helpful - 1 }
+                ? { ...review, helpful: data.helpful ?? 0 }
                 : review,
             );
-            if (productId) {
-              updateReviewsCache(productId, reverted);
-            }
-            return reverted;
+            updateReviewsCacheSeMesmaGeracao(productId, updated, geracao);
+            return updated;
           });
-          throw error;
+        } catch (erroDaReleitura) {
+          if (!atual()) return false;
+          // O voto já foi aceito: falha de leitura mantém o último número
+          // confirmado, sem anunciar recusa nem destravar um voto já dado.
+          console.error("Error refreshing helpful count:", erroDaReleitura);
         }
-        // O retorno diz ao card se o voto VALEU: quem chama só trava o
-        // botão quando o banco gravou de verdade — travar no erro deixava o
-        // contador revertido e o botão morto até remontar a tela.
         return true;
       } catch (error) {
+        if (!atual()) return false;
         console.error("Error marking helpful:", error);
         toast.error("Erro ao marcar como útil.");
         return false;
+      } finally {
+        votosEmVooRef.current.delete(chave);
       }
     },
     [user],
@@ -359,6 +412,13 @@ export function useReviews() {
       pageSize = 20,
       filters?: { rating?: number | "all"; search?: string; silent?: boolean },
     ) => {
+      const rodada = ++rodadaAdminRef.current;
+      const geracao = geracaoAtualDoCache();
+      const atual = () =>
+        rodada === rodadaAdminRef.current &&
+        geracao === geracaoAtualDoCache() &&
+        usuarioAtualRef.current === user?.id;
+      if (!atual()) return;
       try {
         if (!filters?.silent) {
           setLoading(true);
@@ -379,6 +439,7 @@ export function useReviews() {
             },
           );
 
+          if (rodada !== rodadaAdminRef.current) return;
           if (error) throw error;
 
           const rpcData = data as any;
@@ -417,10 +478,12 @@ export function useReviews() {
             merchantReply: item.merchant_reply,
           }));
 
+          if (!atual()) return;
           if (isAdmin) {
             setCachedReviewsData(formatted);
           }
           setAdminReviews(formatted);
+          setErroDaListagemAdmin(null);
           return {
             reviews: formatted,
             total: totalCount,
@@ -546,7 +609,9 @@ export function useReviews() {
           merchantReply: item.merchant_reply,
         }));
 
+        if (!atual()) return;
         setAdminReviews(formatted);
+        setErroDaListagemAdmin(null);
         return {
           reviews: formatted,
           total: count || 0,
@@ -555,14 +620,20 @@ export function useReviews() {
           globalRepliedCount,
         };
       } catch (error) {
+        if (!atual()) return;
         console.error("Error fetching all reviews:", error);
         toast.error("Erro ao carregar avaliações.");
-        return { reviews: [], total: 0, averageRating: 0 };
+        // Contrato da B2: a lista e o cache da leitura anterior saem, para a
+        // falha não parecer o resultado de outro filtro/busca.
+        setAdminReviews([]);
+        if (isAdmin) setCachedReviewsData([]);
+        setErroDaListagemAdmin("Não foi possível carregar as avaliações.");
+        return;
       } finally {
-        setLoading(false);
+        if (atual()) setLoading(false);
       }
     },
-    [isAdmin],
+    [isAdmin, user?.id],
   );
 
   const deleteReview = useCallback(
@@ -772,9 +843,13 @@ export function useReviews() {
   );
 
   return {
-    reviews,
-    adminReviews,
+    reviews: donoDasAvaliacoes === user?.id ? reviews : [],
+    votosUteis:
+      donoDasAvaliacoes === user?.id && user ? votosUteis : new Set<string>(),
+    adminReviews: donoDasAvaliacoes === user?.id && isAdmin ? adminReviews : [],
     loading,
+    erroDaListagemAdmin,
+    erroDaListagemProduto,
     getReviewsByProduct,
     addReview,
     markHelpful,

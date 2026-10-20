@@ -168,10 +168,17 @@ Deno.test("nenhuma migration POSTERIOR redefine as duas funções (esta não res
   // tests/migration_dinheiro_exige_admin_atual_test.ts). Aqui basta que ela
   // não ressuscite o corpo velho: a recusa do NULL desta continua lá.
   const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
+  // A 20261243000000 (desfazer o recebimento recusa pedido com devolução) redefine a função
+  // DEPOIS da 97, de propósito: é o corpo da 97 byte a byte + UM bloco no ramo de desfazer
+  // (provado em tests/migration_desfazer_recebimento_recusa_com_devolucao_test.ts), então a
+  // recusa do NULL continua lá (conferida logo abaixo também no arquivo dela).
+  const NOME_1243 =
+    "20261243000000_desfazer_recebimento_recusa_com_devolucao.sql";
   assertEquals(definem("registrar_pagamento_recebido"), [
     NOME_1020,
     NOME,
     NOME_1197,
+    NOME_1243,
   ]);
   const recusaDoNulo =
     "    IF p_recebido IS NULL THEN\n" +
@@ -180,6 +187,7 @@ Deno.test("nenhuma migration POSTERIOR redefine as duas funções (esta não res
     "    END IF;\n";
   assertStringIncludes(migration, recusaDoNulo);
   assertStringIncludes(ler(NOME_1197), recusaDoNulo);
+  assertStringIncludes(ler(NOME_1243), recusaDoNulo);
 });
 
 // --- A1: confirmar_pagamento ------------------------------------------------

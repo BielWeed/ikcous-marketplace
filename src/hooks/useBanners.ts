@@ -3,6 +3,7 @@ import { useSyncListener } from "@/hooks/useDataVault";
 import { DataVault } from "@/lib/dataVault";
 import { atributosDeImagem } from "@/lib/imageUrl";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
+import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Banner } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -73,6 +74,12 @@ export async function normalizeBannersOrder(
   }
 }
 
+/** Conexão do cofre fechada (saída cancelada, outra aba)? Dublês de teste não
+ * implementam `isClosed` e contam como abertos. */
+function cofreFechado(vault: DataVault): boolean {
+  return typeof vault.isClosed === "function" && vault.isClosed();
+}
+
 export function useBanners(adminMode = false) {
   const { isAdmin } = useAuth();
   const vaultRef = useRef<DataVault | null>(null);
@@ -82,6 +89,19 @@ export function useBanners(adminMode = false) {
 
   // Persist to DataVault (non-blocking helper)
   const persistToVault = useCallback((items: Banner[]) => {
+    // Cofre fechado (saída da página cancelada, outra aba subiu a versão):
+    // a conexão que o mount guardou está morta — reabre antes de gravar.
+    if (vaultRef.current && cofreFechado(vaultRef.current)) {
+      DataVault.init()
+        .then((vault) => {
+          vaultRef.current = vault;
+          return vault.replaceAll("banners", items).then(() => {
+            vault.setLastSync("banners");
+          });
+        })
+        .catch(() => {});
+      return;
+    }
     vaultRef.current
       ?.replaceAll("banners", items)
       .then(() => {
@@ -152,7 +172,8 @@ export function useBanners(adminMode = false) {
         vaultRef.current = vault;
         if (!globalBannersCache) {
           const cached = await vault.getAll<Banner>("banners");
-          if (cached.length > 0 && !cancelled) {
+          // A rede pode ter confirmado uma lista vazia durante a leitura.
+          if (cached.length > 0 && !cancelled && !globalBannersCache) {
             globalBannersCache = cached;
             preloadTopBanner(cached);
             setBanners(cached);
@@ -302,13 +323,18 @@ export function useBanners(adminMode = false) {
       );
     }
     try {
-      const fileExt = file.name.split(".").pop();
+      // A loja IKCOUS não tem redimensionamento no servidor (imageUrl.ts):
+      // a foto crua do celular (vários MB) iria inteira a toda cliente na
+      // tela inicial. Reduz ANTES do envio, como a foto de produto — o
+      // utilitário é fail-open (falha ou formato intocável = o original).
+      const pronto = await redimensionarImagem(file);
+      const fileExt = pronto.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("banners")
-        .upload(filePath, file);
+        .upload(filePath, pronto);
 
       if (uploadError) throw uploadError;
 
@@ -640,6 +666,9 @@ export function useBanners(adminMode = false) {
         // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
         // REJEITA em vez de mascarar a falha como "vazio de verdade".
         try {
+          if (cofreFechado(vaultRef.current)) {
+            vaultRef.current = await DataVault.init();
+          }
           const fresh = await vaultRef.current.getAllOrThrow<Banner>("banners");
           setBanners(fresh);
         } catch (err) {

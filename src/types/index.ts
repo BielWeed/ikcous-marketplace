@@ -33,6 +33,13 @@ export interface Product {
   reviewCount?: number;
   tags?: string[];
   variants?: ProductVariant[];
+  /**
+   * `true` quando a leitura das variações FALHOU ao montar este produto (faixa
+   * de recomendações): `variants` vazio aí quer dizer "não sei", não "não
+   * tem". O card não adiciona ao carrinho — abre a página do produto, onde a
+   * escolha é obrigatória. Ausente = a lista de variações é confiável.
+   */
+  variantsUnavailable?: boolean;
   metaTitle?: string;
   metaDescription?: string;
   /** `null` = limpar o codigo; `undefined` = nao mexer. Ver [ADMIN-050, #96]. */
@@ -338,11 +345,32 @@ export interface StoreConfig {
    * inventa.
    */
   storeDescription?: string | null;
+  /**
+   * Quem é a loja para a cliente (migration 20261239), tudo OPCIONAL: razão
+   * social (ou nome do titular), CNPJ ou CPF (só dígitos/letras, sem máscara,
+   * DV conferido pelo app) e e-mail de atendimento. Ausente/`null` = a loja
+   * não disse — nenhuma tela inventa nem mostra no lugar.
+   */
+  storeLegalName?: string | null;
+  storeLegalDocument?: string | null;
+  storeSupportEmail?: string | null;
   originCep?: string;
   shippingProvider?: "flat_fee" | "melhor_envio" | "frenet" | "superfrete";
   enabledShippingMethods?: string[];
   shippingCoverage?: "local" | "national";
   localDeliveryFee?: number;
+  /**
+   * "Como entrego na minha cidade" (16/10/2026, colunas
+   * `store_config.local_delivery_enabled` e `local_delivery_days`): a entrega
+   * própria está ligada (padrão `true`) e em quantos dias ela chega (0 a 30,
+   * padrão 1). Desligada = "Só retiro": a retirada vale para qualquer CEP
+   * (o modo sai de `modoDaEntregaNaCidade`, em `src/lib/guarda-de-frete.ts`
+   * — nunca recombine estes campos com a lista de métodos por conta
+   * própria). OPCIONAIS: banco sem as colunas (ou sem a migration) lê como
+   * o padrão de hoje, e o StoreContext preenche sempre.
+   */
+  localDeliveryEnabled?: boolean;
+  localDeliveryDays?: number;
   localCepRange?: string;
   /**
    * ESTRATÉGIAS DE FRETE NACIONAL (23/09/2026, migration
@@ -514,9 +542,12 @@ export type View =
   | "product-detail"
   | "address-form"
   | "user-profile"
-  | "about-store";
+  | "about-store"
+  | "terms"
+  | "privacy"
+  | "returns-policy";
 
-export type SortOption = "default" | "price-asc" | "price-desc" | "sold";
+export type SortOption = "default" | "price-asc" | "price-desc";
 
 export interface DashboardSummary {
   today: {
@@ -563,6 +594,10 @@ export interface DashboardSummary {
   inventory?: {
     totalCost: number;
     totalValue: number;
+    totalRevenue?: number;
+    revenueWithoutCost?: number;
+    productsWithoutCost?: number;
+    productsWithCost?: number;
   };
 }
 

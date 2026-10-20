@@ -22,22 +22,41 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Linha do pedido que o EtiquetaDoPedidoCard lê (`marketplace_orders`). Cada
 // teste de etiqueta escolhe o que o "banco" devolve; os demais ficam em
 // `null` (card mostra "Pedido não encontrado", sem ruído).
-const { linhaDaEtiqueta } = vi.hoisted(() => ({
-  linhaDaEtiqueta: { data: null as Record<string, unknown> | null },
-}));
+const { linhaDaEtiqueta, notaInterna, gravarNota, atualizarPedido } =
+  vi.hoisted(() => ({
+    linhaDaEtiqueta: { data: null as Record<string, unknown> | null },
+    notaInterna: { texto: null as string | null },
+    gravarNota: vi.fn(),
+    atualizarPedido: vi.fn(),
+  }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: vi.fn(),
-    from: () => ({
+    from: (tabela: string) => ({
       select: () => ({
         eq: () => ({
           maybeSingle: () =>
-            Promise.resolve({ data: linhaDaEtiqueta.data, error: null }),
+            Promise.resolve({
+              data:
+                tabela === "marketplace_order_internal_notes"
+                  ? notaInterna.texto === null
+                    ? null
+                    : { note: notaInterna.texto }
+                  : linhaDaEtiqueta.data,
+              error: null,
+            }),
         }),
       }),
-      // Salvar anotação/rastreio da ficha (`update(...).eq("id", ...)`).
-      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      upsert: (valores: unknown, opcoes: unknown) => {
+        gravarNota(tabela, valores, opcoes);
+        return Promise.resolve({ error: null });
+      },
+      // Só rastreio continua no pedido; anotações têm tabela privada.
+      update: (valores: unknown) => {
+        atualizarPedido(tabela, valores);
+        return { eq: () => Promise.resolve({ error: null }) };
+      },
     }),
     functions: { invoke: vi.fn() },
     channel: vi.fn(),
@@ -45,52 +64,91 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 
-vi.mock("@/components/ui/alert-dialog", () => ({
-  AlertDialog: ({
-    open,
-    children,
-  }: {
-    open: boolean;
-    children: ReactNode;
-  }) => (open ? <div>{children}</div> : null),
-  AlertDialogContent: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogHeader: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogFooter: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogTitle: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogDescription: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogAction: ({
-    children,
-    onClick,
-  }: {
-    children: ReactNode;
-    onClick?: () => void;
-  }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
-  AlertDialogCancel: ({
-    children,
-    onClick,
-  }: {
-    children: ReactNode;
-    onClick?: () => void;
-  }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
-}));
+vi.mock("@/components/ui/alert-dialog", async () => {
+  const { cloneElement, createContext, useContext, useState } = await import(
+    "react"
+  );
+  // 15/10/2026: `DesfazerRecebimento` usa o AlertDialog SEM `open` (aberto
+  // pelo `AlertDialogTrigger`); o das trocas de status é controlado por
+  // `open`. O mock atende os dois: com `open`, igual a antes; sem `open`, o
+  // gatilho abre e o conteúdo só aparece depois do toque.
+  const Estado = createContext<{
+    aberto: boolean;
+    abrir: () => void;
+  } | null>(null);
+  return {
+    AlertDialog: ({
+      open,
+      children,
+    }: {
+      open?: boolean;
+      children: ReactNode;
+    }) => {
+      const [interno, setInterno] = useState(false);
+      if (open !== undefined) return open ? <div>{children}</div> : null;
+      return (
+        <Estado.Provider
+          value={{ aberto: interno, abrir: () => setInterno(true) }}
+        >
+          {children}
+        </Estado.Provider>
+      );
+    },
+    AlertDialogTrigger: ({
+      children,
+    }: {
+      asChild?: boolean;
+      children: React.ReactElement<{ onClick?: (e: unknown) => void }>;
+    }) => {
+      const estado = useContext(Estado);
+      return cloneElement(children, {
+        onClick: (e: unknown) => {
+          children.props.onClick?.(e);
+          estado?.abrir();
+        },
+      });
+    },
+    AlertDialogContent: ({ children }: { children: ReactNode }) => {
+      const estado = useContext(Estado);
+      if (estado && !estado.aberto) return null;
+      return <div>{children}</div>;
+    },
+    AlertDialogHeader: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    AlertDialogFooter: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    AlertDialogTitle: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    AlertDialogDescription: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    AlertDialogAction: ({
+      children,
+      onClick,
+    }: {
+      children: ReactNode;
+      onClick?: () => void;
+    }) => (
+      <button type="button" onClick={onClick}>
+        {children}
+      </button>
+    ),
+    AlertDialogCancel: ({
+      children,
+      onClick,
+    }: {
+      children: ReactNode;
+      onClick?: () => void;
+    }) => (
+      <button type="button" onClick={onClick}>
+        {children}
+      </button>
+    ),
+  };
+});
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -152,6 +210,8 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
 
   beforeEach(() => {
     linhaDaEtiqueta.data = null;
+    notaInterna.texto = null;
+    vi.clearAllMocks();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -402,6 +462,16 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       await act(async () => {
         desfazer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
+      // 15/10/2026: "Desfazer" só pergunta; quem desfaz é o botão de confirmar.
+      expect(onRegistrar).not.toHaveBeenCalled();
+      const confirmar = [...document.body.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Desfazer recebimento",
+      );
+      expect(confirmar).toBeTruthy();
+      await act(async () => {
+        confirmar?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(onRegistrar).toHaveBeenCalledTimes(1);
       expect(onRegistrar).toHaveBeenCalledWith("ped-redesenho-123456", false);
     });
 
@@ -650,6 +720,17 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       ).not.toBeNull();
     });
 
+    it("rastreio: o botão de rastrear leva ao Melhor Rastreio, código sem espaços", async () => {
+      await renderizar(pedidoFake({ trackingCode: "br 123 456 789 br" }));
+
+      const link = porId("envio-lista")?.querySelector(
+        'a[title="Rastrear nos Correios"]',
+      );
+      expect(link?.getAttribute("href")).toBe(
+        "https://www.melhorrastreio.com.br/rastreio/BR123456789BR",
+      );
+    });
+
     it("anotação vazia: linha com 'Adicionar'; tocar abre o campo ali mesmo (mesmo id)", async () => {
       await renderizar(pedidoFake());
 
@@ -664,7 +745,7 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       expect(lista?.querySelector("#notes-textarea")).not.toBeNull();
     });
 
-    it("anotação preenchida: o texto aparece INTEIRO (observação + variante + frete), sem aspas nem itálico, com as quebras de linha, e 'Editar'", async () => {
+    it("observação da cliente, variante e frete aparecem inteiros e somente leitura", async () => {
       const nota =
         "Entregar depois das 18h\nProduto: Tamanho G\nFrete Escolhido: Correios — SEDEX (Prazo: 2 dias)";
       await renderizar(pedidoFake({ notes: nota }));
@@ -677,10 +758,16 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       expect(texto?.textContent).toBe(nota);
       expect(texto?.className).toContain("whitespace-pre-line");
       expect(texto?.className).not.toMatch(/italic|truncate|line-clamp/);
-      expect(botao("Editar")).toBeDefined();
+      expect(
+        texto?.parentElement?.querySelector("button, textarea"),
+      ).toBeNull();
+      expect(texto?.parentElement?.textContent).toContain(
+        "Observações do pedido",
+      );
+      expect(botao("Adicionar anotação")).toBeDefined();
     });
 
-    it("a linha 'Como vai' lê as anotações LOCAIS: depois de salvar uma anotação sem a frase do frete, ela some em vez de ficar velha", async () => {
+    it("salvar uma anotação interna preserva a observação original e a linha 'Como vai'", async () => {
       await renderizar(
         pedidoFake({
           notes: "Frete Escolhido: Correios — SEDEX (Prazo: 2 dias)",
@@ -689,7 +776,7 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       expect(porId("forma-de-entrega")).not.toBeNull();
 
       await act(async () => {
-        botao("Editar")?.dispatchEvent(
+        botao("Adicionar anotação")?.dispatchEvent(
           new MouseEvent("click", { bubbles: true }),
         );
       });
@@ -714,7 +801,18 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       });
 
       expect(hospedeiro.textContent).toContain("Só uma observação nova");
-      expect(porId("forma-de-entrega")).toBeNull();
+      expect(porId("forma-de-entrega")?.textContent).toContain(
+        "Correios — SEDEX",
+      );
+      expect(hospedeiro.textContent).toContain(
+        "Frete Escolhido: Correios — SEDEX (Prazo: 2 dias)",
+      );
+      expect(gravarNota).toHaveBeenCalledWith(
+        "marketplace_order_internal_notes",
+        { order_id: "ped-redesenho-123456", note: "Só uma observação nova" },
+        { onConflict: "order_id" },
+      );
+      expect(atualizarPedido).not.toHaveBeenCalled();
     });
   });
 
@@ -920,9 +1018,14 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       }
 
       // Com texto.
-      await renderizar(
-        pedidoFake({ trackingCode: "BR123456789BR", notes: "Combinado 18h" }),
-      );
+      notaInterna.texto = "Combinado 18h";
+      await renderizar({
+        ...pedidoFake({
+          trackingCode: "BR123456789BR",
+          notes: "Combinado 18h",
+        }),
+        id: "pedido-com-anotacao-interna",
+      });
       for (const nome of ["Código de rastreio", "Anotações internas"]) {
         expect(temEstilo(nome)).toBe(true);
       }

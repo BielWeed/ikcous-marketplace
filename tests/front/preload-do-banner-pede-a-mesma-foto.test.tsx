@@ -308,7 +308,9 @@ describe("LazyImage preserva os atributos anteriores", () => {
     expect(imagem.getAttribute("srcset")).toBeNull();
     expect(imagem.getAttribute("sizes")).toBeNull();
     expect(hospedeiro.textContent).not.toContain("Erro ao carregar");
+    // A falha da original agenda nova tentativa automatica (rede fraca) em vez
+    // de desistir de cara -- ver lazy-image-tenta-de-novo-na-rede-fraca.test.tsx.
     act(() => imagem.dispatchEvent(new Event("error")));
-    expect(hospedeiro.textContent).toContain("Erro ao carregar");
+    expect(hospedeiro.textContent).not.toContain("Toque para tentar de novo");
   });
 });

@@ -1,7 +1,7 @@
 import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { useStore } from "@/contexts/StoreContext";
 import { precoVendido } from "@/lib/preco-vendido";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AnimatePresence, motion } from "framer-motion";
@@ -106,7 +106,7 @@ const CartItemCard = memo(function CartItemCard({
                   haptic.medium();
                   onRemove(item.product.id, item.variantId);
                 }}
-                className="-mr-1 flex size-7 flex-shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-all duration-300 hover:bg-red-50/50 hover:text-red-500 active:scale-90"
+                className="relative -mr-1 flex size-7 flex-shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-all duration-300 before:absolute before:-inset-2 before:content-[''] hover:bg-red-50/50 hover:text-red-500 active:scale-90"
                 aria-label="Remover item"
               >
                 <Trash2 className="size-3.5" />
@@ -131,10 +131,7 @@ const CartItemCard = memo(function CartItemCard({
                     {hasDiscount && (
                       <div className="mb-0.5 flex items-center gap-1.5">
                         <span className="text-[9px] font-bold text-zinc-400 line-through">
-                          R${" "}
-                          {item.product.originalPrice
-                            ?.toFixed(2)
-                            .replace(".", ",")}
+                          {formatCurrency(item.product.originalPrice ?? 0)}
                         </span>
                         <span className="py-0.25 rounded bg-emerald-50 px-1 text-[8px] font-black uppercase text-emerald-700">
                           -
@@ -148,7 +145,7 @@ const CartItemCard = memo(function CartItemCard({
                       </div>
                     )}
                     <p className="text-sm font-black leading-none tracking-tight text-zinc-900 xs:text-base">
-                      R$ {price.toFixed(2).replace(".", ",")}
+                      {formatCurrency(price)}
                     </p>
                   </>
                 );

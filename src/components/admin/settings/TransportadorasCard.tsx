@@ -14,7 +14,7 @@ import {
   Mail,
   RefreshCw,
   Save,
-  ShieldCheck,
+  Truck,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -1151,7 +1151,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       {/* Bloco separado (R2-1): liga/desliga não mexe em nenhuma credencial. */}
       <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-3.5">
         <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-          <ShieldCheck className="size-3.5 text-admin-gold" />
+          <Truck aria-hidden="true" className="size-3.5 text-admin-gold" />
           <span>Provedores ligados na loja</span>
         </div>
         <p className="text-[11px] leading-snug text-zinc-400">
@@ -1439,7 +1439,7 @@ function CartaoDoProvedor({
             {rascunho.testando ? (
               <RefreshCw className="size-3 animate-spin" />
             ) : (
-              <CheckCircle2 className="size-3" />
+              <RefreshCw aria-hidden="true" className="size-3" />
             )}
             <span>Testar</span>
           </button>

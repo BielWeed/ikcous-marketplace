@@ -69,7 +69,14 @@ export type AcaoDeRecusa =
   | "remover_cupom"
   | "entrar_na_conta"
   | "tentar_de_novo"
-  | "conferir_antes";
+  | "conferir_antes"
+  // Só a tela decide (`decidirSaidaDoCheckout`, quem compra SEM CONTA): é o
+  // `conferir_antes` de quem não tem onde conferir. Reenvia a MESMA compra que
+  // ficou sem resposta (mesma chave de idempotência, payload congelado) — o
+  // banco devolve o pedido que já nasceu em vez de criar outro. NUNCA sai de
+  // `classificarRecusaDoPedido`: a regra do cabeçalho deste arquivo continua
+  // valendo para o texto que veio do banco.
+  | "reenviar_mesma_compra";
 
 export interface RecusaDoPedido {
   acao: AcaoDeRecusa;
@@ -290,6 +297,21 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
   {
     padrao:
       /^Esta forma de pagamento não está disponível nesta loja\. Escolha outra\.$/,
+    acao: "trocar_pagamento",
+  },
+  // A COMPRA QUE DÁ R$ 0,00 NÃO SE PAGA PELO APP (14/10/2026 — migration
+  // 20261236000000, só a `create_marketplace_order_v24`): um cupom que zera a
+  // compra (com frete zero) deixava o pedido nascer "aguardando" pelo app, mas
+  // `criar-pagamento` não cobra R$ 0,00 — beco sem saída que segurava estoque e
+  // a vaga do cupom por 30 minutos. A RPC agora recusa ANTES de reservar nada
+  // (o identificador estável `pedido_sem_valor_a_pagar_pelo_app` vai no DETAIL;
+  // o `message` é a frase em português, sem prefixo, como as demais recusas).
+  // A saída é a MESMA de "forma de pagamento desligada": o pedido provadamente
+  // não nasceu e a pessoa precisa escolher OUTRA forma (a retirada/entrega, que
+  // aceita total zero), nunca "tentar de novo" o mesmo pagamento pelo app.
+  {
+    padrao:
+      /^Este pedido não tem valor a pagar pelo app\. Escolha pagar na retirada ou na entrega, ou fale com a loja\.$/,
     acao: "trocar_pagamento",
   },
   {

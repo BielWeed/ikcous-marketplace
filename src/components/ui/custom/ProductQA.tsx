@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Check, Lock, MessageSquare, Reply, Send } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Question } from "@/hooks/useQuestions";
 import type { View } from "@/types";
@@ -31,6 +31,9 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
   const [newQuestion, setNewQuestion] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+  // Cada edição/abertura é uma intenção nova, mesmo voltando ao mesmo texto.
+  const perguntaVersaoRef = useRef(0);
+  const respostaVersaoRef = useRef(0);
 
   useEffect(() => {
     getQuestionsByProduct(productId);
@@ -51,11 +54,13 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     // texto que a cliente acabou de escrever — em rede fraca ela perdia a
     // pergunta junto com o toast que some em segundos. Só limpa em sucesso,
     // o mesmo contrato que ReviewForm já usa.
+    const versaoEnviada = perguntaVersaoRef.current;
     const enviada = await addQuestion({
       productId,
       question: newQuestion,
     });
-    if (enviada) {
+    if (enviada && perguntaVersaoRef.current === versaoEnviada) {
+      perguntaVersaoRef.current += 1;
       setNewQuestion("");
     }
   };
@@ -64,11 +69,13 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     if (!replyText.trim()) return;
     // Mesma regra do handleAsk: addAnswer devolve false na falha — fechar
     // a caixa e limpar a resposta aí seria jogar fora o texto digitado.
+    const versaoEnviada = respostaVersaoRef.current;
     const respondida = await addAnswer({
       questionId,
       answer: replyText,
     });
-    if (respondida) {
+    if (respondida && respostaVersaoRef.current === versaoEnviada) {
+      respostaVersaoRef.current += 1;
       setReplyText("");
       setReplyingTo(null);
     }
@@ -86,17 +93,21 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     // answers vem ordenado ascendente por createdAt (useQuestions.ts) -- a
     // mais recente é a última posição, não a primeira. Ver correção #2 da
     // revisão da Trilha 3 (issue #100).
+    respostaVersaoRef.current += 1;
     setReplyText(q.answers.at(-1)?.answer ?? "");
     setReplyingTo(q.id);
   };
 
+  // Nome só com espaços não tem inicial (cai no "U"), e `Array.from` pega o
+  // caractere inteiro — `charAt` partia emoji/símbolo astral ao meio.
   const getInitials = (name: string) => {
-    if (!name) return "U";
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-    return (
-      parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
-    ).toUpperCase();
+    const trimmed = name?.trim();
+    if (!trimmed) return "U";
+    const parts = trimmed.split(/\s+/);
+    const primeira = Array.from(parts[0])[0];
+    if (parts.length === 1) return primeira.toUpperCase();
+    const ultima = Array.from(parts[parts.length - 1])[0];
+    return (primeira + ultima).toUpperCase();
   };
 
   const handleNavigateToAuth = () => {
@@ -154,15 +165,20 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
               name="newQuestion"
               type="text"
               value={newQuestion}
-              onChange={(e) => setNewQuestion(e.target.value)}
+              onChange={(e) => {
+                perguntaVersaoRef.current += 1;
+                setNewQuestion(e.target.value);
+              }}
               placeholder="Escreva sua dúvida sobre o produto..."
+              aria-label="Sua dúvida sobre o produto"
               className="w-full rounded-2xl border border-zinc-200 bg-zinc-50/50 px-4 py-3.5 pr-12 text-sm transition-all duration-300 placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/10"
             />
             <button
               onClick={handleAsk}
               disabled={!newQuestion.trim()}
-              className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-xl bg-primary text-white shadow-sm transition-all duration-300 hover:opacity-90 hover:shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-20"
+              className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-all duration-300 hover:opacity-90 hover:shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-20"
               title="Enviar pergunta"
+              aria-label="Enviar pergunta"
             >
               <Send className="size-3.5" />
             </button>
@@ -187,7 +203,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
           </p>
           <button
             onClick={handleNavigateToAuth}
-            className="rounded-full bg-primary px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
+            className="rounded-full bg-primary px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-95"
           >
             Entrar na Conta
           </button>
@@ -347,7 +363,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                     >
                       <div className="flex-shrink-0">
                         <Avatar className="size-7 border border-zinc-950/10 shadow-sm">
-                          <AvatarFallback className="flex select-none items-center justify-center bg-primary text-[9px] font-black text-white">
+                          <AvatarFallback className="flex select-none items-center justify-center bg-primary text-[9px] font-black text-primary-foreground">
                             IK
                           </AvatarFallback>
                         </Avatar>
@@ -358,7 +374,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                             <span className="text-[9px] font-black uppercase tracking-wider text-zinc-900">
                               Resposta da Equipe
                             </span>
-                            <span className="flex size-3 select-none items-center justify-center rounded-full bg-primary text-[7px] font-bold text-white">
+                            <span className="flex size-3 select-none items-center justify-center rounded-full bg-primary text-[7px] font-bold text-primary-foreground">
                               ✓
                             </span>
                           </div>
@@ -394,8 +410,12 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                           name="replyText"
                           type="text"
                           value={replyText}
-                          onChange={(e) => setReplyText(e.target.value)}
+                          onChange={(e) => {
+                            respostaVersaoRef.current += 1;
+                            setReplyText(e.target.value);
+                          }}
                           placeholder="Escreva sua resposta oficial..."
+                          aria-label="Resposta oficial da loja"
                           className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 pr-10 text-xs transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <button
@@ -406,7 +426,12 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                               ? "Salvar edição"
                               : "Enviar resposta"
                           }
-                          className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-lg bg-primary text-white transition-all hover:bg-primary/90 active:scale-95 disabled:opacity-20"
+                          aria-label={
+                            q.answers.length > 0
+                              ? "Salvar edição"
+                              : "Enviar resposta"
+                          }
+                          className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-all hover:bg-primary/90 active:scale-95 disabled:opacity-20"
                         >
                           <Send className="size-3" />
                         </button>
@@ -414,6 +439,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                       <div className="flex justify-end">
                         <button
                           onClick={() => {
+                            respostaVersaoRef.current += 1;
                             setReplyingTo(null);
                             setReplyText("");
                           }}

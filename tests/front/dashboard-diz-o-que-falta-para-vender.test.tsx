@@ -3,9 +3,9 @@
 // Início do painel: o bloco que diz, sem a lojista ter de adivinhar, quantos
 // produtos estão acabando (com atalho para a lista) e se a loja já está
 // pronta para vender. O cartão da loja pronta é GUIADO (E3 do painel simples):
-// "4 de 6 prontos", UM botão grande "Próximo passo: …" que leva ao destino do
+// "4 de 6 passos concluídos", UM botão grande "Próximo passo: …" que leva ao destino do
 // primeiro passo pendente, a lista dos seis recolhida (botão com
-// `aria-expanded`) e, com 6/6, só a linha "Loja pronta para vender". O horário
+// `aria-expanded`) e, com 6/6, só a linha "Cadastro completo". O horário
 // de atendimento NÃO conta.
 //
 // O componente é PURO (mesma escolha de StatusPagamentoPix.tsx): recebe tudo
@@ -38,13 +38,19 @@ const ENDERECO_PRONTO = montarEnderecoDaLoja({
 });
 
 /** Loja toda pronta (6/6); cada teste estraga só o que quer provar. Repare:
- * nenhum horário de atendimento aqui — ele não faz parte da contagem. */
+ * nenhum horário de atendimento aqui — ele não faz parte da contagem.
+ *
+ * O "Alcance por CEP" cobre a cidade (São Paulo, 01000 a 05999): desde
+ * 15/10/2026 CEP de rua com alcance vazio deixa a entrega pendente (alcance
+ * curto) e a loja deixa de contar como 6/6 — esse caso é provado em
+ * loja-pronta-entrega-alcance-curto.test.tsx. */
 const CONFIG_PRONTA: Props["config"] = {
   storeName: "Ateliê da Serra",
   logoUrl: "https://exemplo.test/logo.png",
   originCep: ENDERECO_PRONTO.originCep,
   storeAddress: ENDERECO_PRONTO.storeAddress,
   whatsappNumber: "(34) 99999-9999",
+  localCepRange: "01000-000, 05999-999",
 };
 
 function propsDoCartao(parcial: Partial<Props> = {}): Props {
@@ -216,14 +222,14 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
 
   // ── E3: o cartão guiado, nos seis passos ──
 
-  it("faltando WhatsApp e produto: diz '4 de 6 prontos'", async () => {
+  it("faltando WhatsApp e produto: diz '4 de 6 passos concluídos'", async () => {
     await montar({
       config: { ...CONFIG_PRONTA, whatsappNumber: "" },
       produtos: [{ isActive: false }],
     });
 
-    expect(hospedeiro.textContent).toContain("4 de 6 prontos");
-    expect(hospedeiro.textContent).not.toMatch(/loja pronta para vender/i);
+    expect(hospedeiro.textContent).toContain("4 de 6 passos concluídos");
+    expect(hospedeiro.textContent).not.toMatch(/cadastro completo/i);
   });
 
   it("UM botão grande 'Próximo passo: <primeiro pendente>' leva ao destino do passo", async () => {
@@ -347,16 +353,16 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     expect(await destinoDe(5)).toBe("admin-products");
   });
 
-  it("6 de 6: vira só a linha 'Loja pronta para vender' — sem contagem, sem próximo passo, sem lista", async () => {
+  it("6 de 6: mostra cadastro completo, sem próximo passo, com os seis passos recolhidos", async () => {
     await montar();
 
-    expect(hospedeiro.textContent).toContain("Loja pronta para vender");
-    expect(hospedeiro.textContent).not.toContain("de 6 prontos");
+    expect(hospedeiro.textContent).toContain("Cadastro completo");
+    expect(hospedeiro.textContent).toContain("6 de 6 passos concluídos");
     expect(hospedeiro.textContent).not.toContain("Próximo passo");
-    expect(hospedeiro.textContent).not.toContain(
+    expect(hospedeiro.textContent).toContain(
       "Sua loja está pronta para vender?",
     );
-    expect(botaoDaLista()).toBeUndefined();
+    expect(botaoDaLista()?.getAttribute("aria-expanded")).toBe("false");
     expect(linhasDaLista()).toHaveLength(0);
     // O card de estoque continua ao lado.
     expect(hospedeiro.textContent).toMatch(/estoque baixo/i);
@@ -367,14 +373,26 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
       config: { ...CONFIG_PRONTA, businessHours: "" } as Props["config"],
     });
 
-    expect(hospedeiro.textContent).toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).toContain("Cadastro completo");
     expect(hospedeiro.textContent).not.toMatch(/hor[áa]rio/i);
+  });
+
+  it("o cadastro completo deixa reabrir os seis passos e recolhe ao concluir um cadastro pendente", async () => {
+    await montar();
+    await abrirALista();
+    expect(linhasDaLista()).toHaveLength(6);
+    expect(botaoDaLista()?.getAttribute("aria-expanded")).toBe("true");
+    await montar({ produtos: [] });
+    expect(hospedeiro.textContent).toContain("5 de 6 passos concluídos");
+    await montar();
+    expect(botaoDaLista()?.getAttribute("aria-expanded")).toBe("false");
+    expect(linhasDaLista()).toHaveLength(0);
   });
 
   it("loja só com pagamento na entrega (sem PIX): 'Como você recebe' está feito e a loja pronta", async () => {
     await montar({ ligado: false, chaveOk: false, formasNaEntrega: ["cash"] });
 
-    expect(hospedeiro.textContent).toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).toContain("Cadastro completo");
     expect(hospedeiro.textContent).not.toContain("Configurar como você recebe");
   });
 
@@ -408,15 +426,15 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     expect(pendente).toBeTruthy();
     await clicar(pendente!);
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
-    expect(hospedeiro.textContent).not.toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).not.toContain("Cadastro completo");
   });
 
   it("produto: só um INATIVO na lista conta como pendente; com um ativo, feito (isActive, não o tamanho da lista)", async () => {
     await montar({ produtos: [{ isActive: false }] });
-    expect(hospedeiro.textContent).toContain("5 de 6 prontos");
+    expect(hospedeiro.textContent).toContain("5 de 6 passos concluídos");
 
     await montar({ produtos: [{ isActive: false }, { isActive: true }] });
-    expect(hospedeiro.textContent).toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).toContain("Cadastro completo");
   });
 
   // ── "Entrega" no Início: só o que já está na config (sem chamada de rede) ──
@@ -446,8 +464,8 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
 
     expect(hospedeiro.textContent).toMatch(/conferindo/i);
     expect(hospedeiro.textContent).not.toContain("Próximo passo");
-    expect(hospedeiro.textContent).not.toContain("de 6 prontos");
-    expect(hospedeiro.textContent).not.toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).not.toMatch(/\d de 6 passos concluídos/);
+    expect(hospedeiro.textContent).not.toContain("Cadastro completo");
 
     await abrirALista();
     // Nenhum botão de pendência enquanto carrega.
@@ -472,7 +490,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
 
     expect(hospedeiro.textContent).toMatch(/conferindo/i);
     expect(hospedeiro.textContent).not.toContain("Próximo passo");
-    expect(hospedeiro.textContent).not.toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).not.toContain("Cadastro completo");
   });
 
   // ── Acessibilidade ──
@@ -594,9 +612,9 @@ describe("equivalência: o limiar do front é o MESMO literal gravado na migrati
     ).toEqual([]);
   });
 
-  it("a definição VIVA é a de maior carimbo — hoje, 20261214000000", () => {
+  it("a definição VIVA é a de maior carimbo — hoje, 20261251000000", () => {
     expect(CAMINHO_DA_VIVA).toContain(
-      "20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql",
+      "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql",
     );
   });
 

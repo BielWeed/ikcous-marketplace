@@ -21,6 +21,7 @@
 // defeito que `src/lib/preco-vendido.ts` existe para fechar (override zero
 // tratado como ausência de preço).
 
+import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { JANELA_DE_REPETICAO_MS } from "@/lib/leitor/debounce-de-leitura";
 import {
   useCallback,
@@ -425,15 +426,28 @@ export function podeIrPara(
   return true;
 }
 
+/** Soma em CENTAVOS inteiros: 3 × 19,90 em ponto flutuante dá 59,699999…, e a
+ * tela mostrava R$ 59,70 mas recusava um desconto de R$ 59,70 como "maior
+ * que o subtotal". */
 export function subtotalDaVenda(itens: readonly ItemDoCupom[]): number {
-  return itens.reduce((soma, item) => soma + item.preco * item.quantidade, 0);
+  const centavos = itens.reduce(
+    (soma, item) => soma + Math.round(item.preco * 100) * item.quantidade,
+    0,
+  );
+  return centavos / 100;
 }
 
 /** `subtotal - desconto`, nunca negativo — o clamp é só de exibição; quem
  * RECUSA desconto maior que o subtotal é `vendaPodeSerRegistrada` (e,
  * atrás dela, a RPC). */
 export function totalDaVenda(estado: EstadoDaVenda): number {
-  return Math.max(0, subtotalDaVenda(estado.itens) - estado.desconto);
+  return (
+    Math.max(
+      0,
+      Math.round(subtotalDaVenda(estado.itens) * 100) -
+        Math.round(estado.desconto * 100),
+    ) / 100
+  );
 }
 
 /**
@@ -478,7 +492,10 @@ export function vendaPodeSerRegistrada(
     // migration 20261162000000:286
     return { ok: false, motivo: "Informe o motivo do desconto." };
   }
-  if (estado.desconto > subtotalDaVenda(estado.itens)) {
+  if (
+    Math.round(estado.desconto * 100) >
+    Math.round(subtotalDaVenda(estado.itens) * 100)
+  ) {
     // migration 20261162000000:360
     return {
       ok: false,
@@ -537,10 +554,26 @@ function entrarItemNoCupom(
   };
 }
 
+/** O que muda o conteúdo da venda. Com o envio pendente o cupom já foi
+ * copiado para a requisição: aceitar mais uma edição agora mostraria R$ 40
+ * na tela enquanto o servidor grava R$ 20, e a confirmação apagaria a
+ * edição junto com o rascunho. */
+const EDICOES_DO_CUPOM = new Set<AcaoDaVenda["tipo"]>([
+  "codigo_resolvido",
+  "variacao_escolhida",
+  "item_adicionado_manualmente",
+  "quantidade_alterada",
+  "item_removido",
+  "cliente_definido",
+  "pagamento_escolhido",
+  "desconto_alterado",
+]);
+
 export function reducerDaVenda(
   estado: EstadoDaVenda,
   acao: AcaoDaVenda,
 ): EstadoDaVenda {
+  if (estado.enviando && EDICOES_DO_CUPOM.has(acao.tipo)) return estado;
   switch (acao.tipo) {
     case "codigo_resolvido": {
       // A guarda da leitura repetida vem PRIMEIRO: nenhum dos cinco
@@ -962,6 +995,13 @@ interface ArmazenamentoDoRascunho {
 export interface OpcoesDoVendaPresencial {
   /** Injetável para teste; padrão `window.localStorage`. */
   readonly armazenamento?: ArmazenamentoDoRascunho;
+  /**
+   * L10 — uid de quem está no caixa. O rascunho (com nome e WhatsApp de
+   * cliente) vive em `admin_pdv_venda_draft:<uid>`: cada admin só lê, grava e
+   * apaga o DELE. Sem uid o hook não lê nem grava rascunho nenhum (o cupom
+   * continua vivo em memória) — nunca cai numa chave compartilhada.
+   */
+  readonly userId?: string;
   readonly gerarChave?: () => string;
   readonly agora?: () => number;
   /** Debounce da gravação do rascunho — padrão 300ms (mesma ordem de
@@ -1027,6 +1067,16 @@ export function useVendaPresencial(
     estadoInicialDaVenda(gerarChave),
   );
   const [restaurado, setRestaurado] = useState(false);
+  // L10 — a chave do rascunho é DO USUÁRIO (`admin_pdv_venda_draft:<uid>`).
+  // Sem uid não há chave: o hook não lê nem grava rascunho (o cupom vive em
+  // memória) e jamais cai numa chave compartilhada entre admins.
+  const chaveDoRascunho = opcoes.userId
+    ? chaveDoUsuario(CHAVE_DO_RASCUNHO_DA_VENDA, opcoes.userId)
+    : null;
+  const chaveDoRascunhoRef = useRef(chaveDoRascunho);
+  useEffect(() => {
+    chaveDoRascunhoRef.current = chaveDoRascunho;
+  });
   // Achado BLOQUEIA da rodada de correção: sinaliza para o efeito de
   // gravar/apagar (logo abaixo) que o commit de LEITURA do rascunho já
   // aconteceu. Um `useRef` marcado aqui dentro NÃO resolveria — o efeito de
@@ -1036,22 +1086,43 @@ export function useVendaPresencial(
   // verdade no PRÓXIMO commit). Só um sinal que force um RE-RENDER —
   // `useState` — garante que o efeito de gravação só comece a agir a
   // partir do commit em que `estado` já é o estado restaurado.
-  const [prontoParaGravar, setProntoParaGravar] = useState(false);
+  //
+  // L10 — o sinal agora diz QUAL chave foi lida (e não só "já li"): quando o
+  // dono muda com a tela montada, a chave nova ainda não foi lida e a gravação
+  // fica parada até a leitura dela — senão o cupom do dono anterior, ainda em
+  // memória, era gravado (ou o rascunho do novo dono era apagado) no mesmo
+  // flush da troca.
+  const [chaveLida, setChaveLida] = useState<string | null | undefined>(
+    undefined,
+  );
+  const prontoParaGravar = chaveLida === chaveDoRascunho;
 
-  // Lê o rascunho UMA vez, na montagem — um cupom em curso sobrevive ao F5.
+  // Lê o rascunho do usuário ao montar (e quando o dono troca) — um cupom em
+  // curso sobrevive ao F5.
+  const chaveAnteriorRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
+    const anterior = chaveAnteriorRef.current;
+    chaveAnteriorRef.current = chaveDoRascunho;
+    if (typeof anterior === "string" && anterior !== chaveDoRascunho) {
+      // O dono mudou com a tela montada: o cupom em memória (itens, nome e
+      // WhatsApp de cliente) era do anterior e NÃO passa para o novo — nova
+      // chave de idempotência incluída.
+      despachar({ tipo: "cupom_limpo", novaChave: gerarChaveRef.current() });
+      setRestaurado(false);
+    }
+
     const armazenamento = armazenamentoRef.current;
-    if (!armazenamento) {
-      // Sem armazenamento (SSR/teste sem DOM) não há rascunho para esperar:
-      // libera a gravação já no primeiro commit (ela também vai encontrar
-      // `armazenamento` nulo e não fazer nada).
-      setProntoParaGravar(true);
+    if (!armazenamento || !chaveDoRascunho) {
+      // Sem armazenamento (SSR/teste sem DOM) ou sem usuário não há rascunho
+      // para esperar: libera a gravação já neste commit (ela também vai
+      // encontrar `armazenamento`/chave nulos e não fazer nada).
+      setChaveLida(chaveDoRascunho);
       return;
     }
 
     let bruto: string | null = null;
     try {
-      bruto = armazenamento.getItem(CHAVE_DO_RASCUNHO_DA_VENDA);
+      bruto = armazenamento.getItem(chaveDoRascunho);
     } catch (erro) {
       console.error("Erro ao ler rascunho da venda no balcão:", erro);
     }
@@ -1061,10 +1132,10 @@ export function useVendaPresencial(
       despachar({ tipo: "rascunho_restaurado", estado: estadoRestaurado });
       setRestaurado(true);
     }
-    setProntoParaGravar(true);
-    // `despachar` do useReducer é estável entre renders — a lista vazia é
-    // mesmo "só na montagem", não uma dependência esquecida.
-  }, []);
+    setChaveLida(chaveDoRascunho);
+    // `despachar` do useReducer é estável entre renders e `gerarChaveRef` é um
+    // ref — só a chave do dono dispara uma nova leitura.
+  }, [chaveDoRascunho]);
 
   // Grava no debounce a cada mudança de estado — OU apaga, quando não há
   // nada que mereça sobreviver a um F5. `serializarRascunho` já recorta o
@@ -1092,7 +1163,7 @@ export function useVendaPresencial(
   // toca no armazenamento até o PRÓXIMO commit, o que garante que `estado`
   // já é o estado restaurado quando ele decide gravar ou apagar.
   useEffect(() => {
-    if (!prontoParaGravar) return;
+    if (!prontoParaGravar || !chaveDoRascunho) return;
 
     const armazenamento = armazenamentoRef.current;
     if (!armazenamento) return;
@@ -1105,7 +1176,7 @@ export function useVendaPresencial(
 
     if (estado.recibo !== null || cupomSemNadaAGuardar) {
       try {
-        armazenamento.removeItem(CHAVE_DO_RASCUNHO_DA_VENDA);
+        armazenamento.removeItem(chaveDoRascunho);
       } catch (erro) {
         console.error("Erro ao apagar rascunho da venda no balcão:", erro);
       }
@@ -1114,10 +1185,7 @@ export function useVendaPresencial(
 
     const identificador = setTimeout(() => {
       try {
-        armazenamento.setItem(
-          CHAVE_DO_RASCUNHO_DA_VENDA,
-          serializarRascunho(estado),
-        );
+        armazenamento.setItem(chaveDoRascunho, serializarRascunho(estado));
       } catch (erro) {
         // QuotaExceededError não pode derrubar a venda em curso — mesmo
         // cuidado de src/hooks/useOrders.ts:1291-1302. O cupom continua
@@ -1127,14 +1195,15 @@ export function useVendaPresencial(
     }, atrasoDeGravacaoMs);
 
     return () => clearTimeout(identificador);
-  }, [estado, atrasoDeGravacaoMs, prontoParaGravar]);
+  }, [estado, atrasoDeGravacaoMs, prontoParaGravar, chaveDoRascunho]);
 
   const limparCupom = useCallback(() => {
     despachar({ tipo: "cupom_limpo", novaChave: gerarChaveRef.current() });
     const armazenamento = armazenamentoRef.current;
-    if (!armazenamento) return;
+    const chave = chaveDoRascunhoRef.current;
+    if (!armazenamento || !chave) return;
     try {
-      armazenamento.removeItem(CHAVE_DO_RASCUNHO_DA_VENDA);
+      armazenamento.removeItem(chave);
     } catch (erro) {
       console.error("Erro ao apagar rascunho da venda no balcão:", erro);
     }

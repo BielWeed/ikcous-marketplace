@@ -7,7 +7,8 @@ import type { Address } from "@/types";
 //
 // Mapa por cartão de endereço no Perfil (pedido do dono, 21/09/2026): ao
 // expandir "Ver mais detalhes", cada cartão ganha o embed do Google com a
-// query de LOCAL — rua+número, bairro, cidade, UF, CEP e Brasil. Dados
+// query de LOCAL — rua+número, cidade, UF e o CEP de rua no fim (o bairro só
+// entra quando faltam cidade ou UF; ver AddressList.tsx). Dados
 // privados (destinatário, complemento, referência, apelido) NUNCA vão na
 // query; o ramo compacto NUNCA monta iframe; o checkout (selectable, uso
 // compartilhado) não passa showMaps e não muda nada.
@@ -111,13 +112,15 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
     const mapas = iframes(hospedeiro);
     expect(mapas).toHaveLength(2);
 
-    // Rua+cidade+UF completos: o CEP SAI da query — bairro+CEP juntos
-    // podem virar busca ambígua no embed clássico (POIs da região, sem pin).
+    // Rua+cidade+UF completos: bairro e "Brasil" SAEM da query — um nome de
+    // bairro que lembra comércio faz o Google listar dezenas de comércios
+    // (vários pinos) em vez de um endereço só. O CEP de rua fica no fim.
     const esperado = `https://maps.google.com/maps?q=${encodeURIComponent(
-      "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, Brasil",
+      "Rua das Acácias, 120, Paracatu, MG, 38600-123",
     )}&z=15&output=embed`;
     expect(mapas[0]!.getAttribute("src")).toBe(esperado);
-    expect(mapas[0]!.getAttribute("src")).not.toContain("38600");
+    expect(mapas[0]!.getAttribute("src")).not.toContain("Primavera");
+    expect(mapas[0]!.getAttribute("src")).not.toContain("Brasil");
 
     // Privacidade: destinatário, complemento, referência e apelido ficam fora.
     expect(mapas[0]!.getAttribute("src")).not.toContain("Maria");
@@ -147,7 +150,7 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
     expect(link!.getAttribute("rel")).toBe("noopener noreferrer");
     expect(link!.getAttribute("href")).toBe(
       `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, Brasil",
+        "Rua das Acácias, 120, Paracatu, MG, 38600-123",
       )}`,
     );
   });
@@ -178,24 +181,68 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
         .click();
     });
     expect(onEdit).toHaveBeenCalledWith(CASA);
+    // Desde 14/10/2026 a lixeira só ABRE a pergunta "Apagar este endereço?"; quem apaga é o botão dela
+    // (tests/front/address-list-apagar-pede-confirmacao.test.tsx cobre a pergunta inteira).
+    expect(onDelete).not.toHaveBeenCalled();
+    await act(async () => {
+      [...document.body.querySelectorAll<HTMLButtonElement>("button")]
+        .find((b) => b.textContent?.trim() === "Apagar")!
+        .click();
+    });
     expect(onDelete).toHaveBeenCalledWith("addr-1");
   });
 });
 
 describe("queryMapsDoEndereco — a query nasce limpa ou não nasce", () => {
-  it("rua+cidade+UF completos: o CEP sai da query (bairro+CEP juntos podem virar busca ambígua)", () => {
+  it("rua+cidade+UF completos: bairro e Brasil saem; o CEP de rua fica no fim", () => {
     expect(queryMapsDoEndereco(CASA)).toBe(
-      encodeURIComponent(
-        "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, Brasil",
-      ),
+      encodeURIComponent("Rua das Acácias, 120, Paracatu, MG, 38600-123"),
     );
+  });
+
+  it("rua sem tipo de via, bairro e complemento: nenhum dos dois vai, e o CEP geral da cidade (000) também não", () => {
+    // Endereço inventado. Com o bairro na query o embed pode virar busca de
+    // comércios (vários pinos); sem ele aponta um endereço só.
+    const semTipoDeVia: Address = {
+      ...CASA,
+      cep: "38999-000",
+      street: "Palmeiras",
+      number: "123",
+      complement: "Loja de exemplo",
+      neighborhood: "Centro Exemplo",
+      city: "Cidade Exemplo",
+      state: "MG",
+    };
+    const query = queryMapsDoEndereco(semTipoDeVia);
+    expect(query).toBe(
+      encodeURIComponent("Palmeiras, 123, Cidade Exemplo, MG"),
+    );
+    expect(decodeURIComponent(query!)).not.toContain("Centro");
+    expect(decodeURIComponent(query!)).not.toContain("Loja");
+  });
+
+  it("CEP de rua entra no fim formatado; sem hífen na entrada também", () => {
+    expect(queryMapsDoEndereco({ ...CASA, cep: "38600123" })).toBe(
+      encodeURIComponent("Rua das Acácias, 120, Paracatu, MG, 38600-123"),
+    );
+  });
+
+  it("CEP terminado em 000 (geral da cidade) não entra", () => {
+    expect(queryMapsDoEndereco({ ...CASA, cep: "38600-000" })).toBe(
+      encodeURIComponent("Rua das Acácias, 120, Paracatu, MG"),
+    );
+  });
+
+  it("CEP vazio ou malformado não entra", () => {
+    const sem = encodeURIComponent("Rua das Acácias, 120, Paracatu, MG");
+    for (const cep of ["", "   ", "3860-123", "386001234", "abcdefgh"]) {
+      expect(queryMapsDoEndereco({ ...CASA, cep })).toBe(sem);
+    }
   });
 
   it("número ausente não deixa vírgula órfã", () => {
     expect(queryMapsDoEndereco({ ...CASA, number: "" })).toBe(
-      encodeURIComponent(
-        "Rua das Acácias, Jardim Primavera, Paracatu, MG, Brasil",
-      ),
+      encodeURIComponent("Rua das Acácias, Paracatu, MG, 38600-123"),
     );
   });
 

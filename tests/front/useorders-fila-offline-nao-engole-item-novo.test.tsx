@@ -45,6 +45,12 @@ const { authState, fromMock, adminOrdersMock, channelMock } = vi.hoisted(() => {
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    // L10: a sessão é conferida antes de cada envio.
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "cliente-1" } } },
+      }),
+    },
     rpc: (nome: string, parametros: unknown) =>
       nome === "get_admin_orders_paged"
         ? adminOrdersMock(parametros)
@@ -73,7 +79,7 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público — padrão do projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const chave = "orders_offline_updates_queue";
+const chave = "orders_offline_updates_queue:cliente-1";
 const toastId = "sincronizacao-fila-offline";
 const item1 = {
   orderId: "pedido-1",
@@ -179,6 +185,9 @@ describe("useOrders — a fila offline não engole item novo", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    // L10: itens com mais de 72 h não são enviados — o relógio dos testes
+    // fica perto dos `timestamp` pequenos das fixtures.
+    vi.setSystemTime(1_000);
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     vi.spyOn(console, "error").mockImplementation(() => {});
     const armazenamento = new Map<string, string>();
@@ -189,7 +198,9 @@ describe("useOrders — a fila offline não engole item novo", () => {
       clear: () => armazenamento.clear(),
     });
     localStorage.clear();
-    authState.user = null;
+    // L10: a fila offline é por usuário — sem sessão nada é enviado. Os
+    // testes de reenvio partem de uma sessão.
+    authState.user = { id: "cliente-1" };
     authState.isAdmin = false;
     rpcMock.mockReset();
     rpcMock.mockResolvedValue({ data: null, error: null });
@@ -517,11 +528,6 @@ describe("useOrders — a fila offline não engole item novo", () => {
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
     authState.user = null;
     localStorage.setItem(chave, JSON.stringify([item1]));
-    // Falha transitória (não é RLS de verdade neste mock, mas o mesmo
-    // balde: "não sei" não pode descartar o item) — o item continua na
-    // fila depois desta primeira passada, exatamente como ficaria com uma
-    // sessão ainda não pronta.
-    rpcMock.mockResolvedValueOnce({ data: null, error: { status: 500 } });
 
     await act(async () => {
       raiz.render(<Sonda />);
@@ -530,7 +536,9 @@ describe("useOrders — a fila offline não engole item novo", () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
 
-    expect(rpcMock).toHaveBeenCalledTimes(1);
+    // L10: sem sessão não há de quem enviar — nenhuma RPC sai e a fila fica
+    // exatamente como estava.
+    expect(rpcMock).not.toHaveBeenCalled();
     expect(JSON.parse(localStorage.getItem(chave) ?? "null")).toEqual([item1]);
 
     // A sessão termina de autenticar — mesmo componente, sem nenhum evento
@@ -543,7 +551,7 @@ describe("useOrders — a fila offline não engole item novo", () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
 
-    expect(rpcMock).toHaveBeenCalledTimes(2);
+    expect(rpcMock).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem(chave)).toBeNull();
   });
 });

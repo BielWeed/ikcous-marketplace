@@ -157,7 +157,7 @@ export function SecondaryViewMotionShell({
             duration,
             y: { duration: 0 },
           }}
-          className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none"
+          className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none [&>*]:shrink-0"
         >
           {children}
         </motion.div>

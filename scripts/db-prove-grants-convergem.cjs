@@ -296,10 +296,15 @@ const ALVO = {
     anon: false,
     authenticated: true,
   },
+  // Corrigido pela 20261220000000 (achado A-1, lote L1 etapa 2, 14/10/2026): a consulta antiga de
+  // pedido por codigo perdeu EXECUTE de anon e authenticated (a v2 e' a porta do convidado). Valia
+  // `anon: true, authenticated: true` desde 08/09 (a fotografia da 20261090500000), e continua
+  // sendo o estado de uma loja SEM a 20261220000000; o ALVO descreve o banco DEPOIS dela. Como o
+  // ALVO de v3 abaixo, e' o que `--verificar` mede num banco ja corrigido.
   "get_orders_by_otp_v1(text,text)": {
     PUBLIC: false,
-    anon: true,
-    authenticated: true,
+    anon: false,
+    authenticated: false,
   },
   // Corrigido pela 20261181000000 (achado LGPD, 26/09/2026): a função não
   // tem mais consumidor legítimo (nem convidado, nem conta logada) e perdeu
@@ -333,9 +338,14 @@ const ALVO = {
     authenticated: false,
   },
   "get_retention_rate()": { PUBLIC: false, anon: false, authenticated: true },
+  // Corrigido pela 20261221000000 (menor privilegio, 14/10/2026): o visitante sem login perdeu
+  // EXECUTE (so o painel de avaliacoes, logado, a usa). Valia `anon: true` desde 08/09 (a fotografia
+  // da 20261090500000, que so revoga PUBLIC), e continua sendo o estado de uma loja SEM a 20261221000000;
+  // o ALVO descreve o banco DEPOIS dela. Como o de get_orders_by_otp_v1, e o que `--verificar` mede
+  // num banco ja corrigido.
   "get_reviews_metrics(text,integer)": {
     PUBLIC: false,
-    anon: true,
+    anon: false,
     authenticated: true,
   },
   "get_sales_analytics(timestamp with time zone,timestamp with time zone)": {
@@ -370,7 +380,14 @@ const ALVO = {
     authenticated: false,
   },
   "handle_updated_at()": { PUBLIC: false, anon: false, authenticated: false },
-  "increment_helpful(uuid)": { PUBLIC: false, anon: true, authenticated: true },
+  // Corrigido pela 20261221000000 (menor privilegio, 14/10/2026): o visitante perdeu EXECUTE (o
+  // front barra quem nao esta logado e o corpo recusa auth.uid() nulo). Mesma nota de
+  // get_reviews_metrics acima: o ALVO descreve o banco DEPOIS dela.
+  "increment_helpful(uuid)": {
+    PUBLIC: false,
+    anon: false,
+    authenticated: true,
+  },
   "is_admin()": { PUBLIC: false, anon: true, authenticated: true },
   "prevent_role_change()": { PUBLIC: false, anon: false, authenticated: false },
   "record_vor_action(text,jsonb,jsonb,text)": {

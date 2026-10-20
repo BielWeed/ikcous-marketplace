@@ -111,6 +111,10 @@ export const AdminQAView = memo(function AdminQAView({
     useState<Question | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formularioAtual = useRef({ selectedQuestion, answer });
+  useEffect(() => {
+    formularioAtual.current = { selectedQuestion, answer };
+  }, [selectedQuestion, answer]);
   const [filter, setFilter] = useLocalStorage<"pending" | "all">(
     "admin_qa_filter",
     "pending",
@@ -308,7 +312,7 @@ export const AdminQAView = memo(function AdminQAView({
       });
       return;
     }
-    if (!selectedQuestion) return;
+    if (!selectedQuestion || isSubmitting) return;
 
     const cleanAnswer = answer.replace(/<[^>]*>/g, "").trim();
     if (!cleanAnswer) {
@@ -335,10 +339,16 @@ export const AdminQAView = memo(function AdminQAView({
       }
 
       toast.success("Resposta enviada com sucesso!");
-      setSelectedQuestion(null);
-      setAnswer("");
       setRefreshTrigger((prev) => prev + 1);
       getAllQuestions(page, pageSize, filter, searchQuery);
+      // O sucesso pertence ao texto enviado, não a outro diálogo ou rascunho.
+      if (
+        formularioAtual.current.selectedQuestion === selectedQuestion &&
+        formularioAtual.current.answer === answer
+      ) {
+        setSelectedQuestion(null);
+        setAnswer("");
+      }
     } catch (error) {
       console.error("Error answering:", error);
       toast.error("Erro ao processar resposta");
@@ -1286,7 +1296,7 @@ export const AdminQAView = memo(function AdminQAView({
                       autoComplete="off"
                       value={answer}
                       onChange={(e) => setAnswer(e.target.value)}
-                      disabled={isOffline}
+                      disabled={isOffline || isSubmitting}
                       placeholder={
                         isOffline
                           ? "Você está offline. Não é possível responder no momento."
@@ -1297,7 +1307,7 @@ export const AdminQAView = memo(function AdminQAView({
                     <div className="pointer-events-none absolute bottom-4 right-6 flex items-center gap-2 opacity-40">
                       <Send className="size-4 text-emerald-400" />
                       <span className="text-[11px] font-bold uppercase tracking-widest text-white">
-                        Notificar Cliente
+                        Avisa a cliente no app
                       </span>
                     </div>
                   </div>

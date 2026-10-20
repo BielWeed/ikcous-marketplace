@@ -23,6 +23,12 @@ import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
+import {
+  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+  JANELA_DE_RECEBIMENTO_DIAS,
+  TETO_DE_RECEBIMENTOS,
+  inicioDaJanelaDeRecebimento,
+} from "@/lib/recebimentos-por-marcar";
 
 // Reatribuiveis e lidos no momento da consulta: e assim que um caso troca
 // uma fonte por uma que falha sem remontar o dible inteiro.
@@ -35,6 +41,24 @@ let RESPOSTA_DEVOLUCOES: unknown = {
   error: null,
 };
 let RESPOSTA_AVALIACOES: unknown = { data: [], error: null };
+// Sexta fonte (14/10/2026): cancelamentos do CLIENTE, lidos do historico do
+// pedido (so o administrador le a linha dos outros), mais os papeis dos
+// autores (`profiles`) para excluir o admin.
+let RESPOSTA_CANCELAMENTOS: unknown = { data: [], error: null };
+let RESPOSTA_PERFIS: unknown = { data: [], error: null };
+const FILTROS_DO_HISTORICO: Array<[string, ...unknown[]]> = [];
+// Setima fonte (14/10/2026): quantos pedidos de privacidade seguem abertos —
+// uma consulta `head` que so devolve `count`.
+let RESPOSTA_PRIVACIDADE: unknown = { data: null, count: 0, error: null };
+// Setima fonte (14/10/2026): pedidos entregues, pagos na entrega, sem
+// recebimento marcado. Lidos de `marketplace_orders` (a mesma tabela dos
+// pedidos pendentes), distinguidos pelo `.eq("status", "delivered")`.
+let RESPOSTA_RECEBIMENTOS: unknown = { data: [], error: null };
+// A janela do sino segue `politica_devolucao` (15/10/2026). `null` = a leitura
+// da configuracao nao trouxe nada (o hook tem de cair em 90 dias).
+let RESPOSTA_POLITICA: unknown = { data: null, error: null };
+let POLITICA_LANCA = false;
+const CONSULTAS_DE_PEDIDOS: Array<Array<[string, ...unknown[]]>> = [];
 
 // `loadProducts` do useProducts engole o erro e devolve `null`. `null` aqui
 // NAO e "zero produtos", e "nao sei" — e o hook tem de tratar como falha.
@@ -54,18 +78,51 @@ const { loadProductsFalso } = vi.hoisted(() => ({
 
 function criarBuilder(tabela: string) {
   const builder: Record<string, unknown> = {};
+  // Setima fonte (14/10/2026): pedidos ENTREGUES, pagos na entrega, sem
+  // recebimento marcado. E' uma consulta a `marketplace_orders` como a dos
+  // pedidos pendentes; o que a distingue e' o `.eq("status", "delivered")`.
+  // `calls` guarda todos os filtros DESTA consulta, na ordem.
+  const calls: Array<[string, ...unknown[]]> = [];
+  if (tabela === "marketplace_orders") CONSULTAS_DE_PEDIDOS.push(calls);
+  const ehRecebimento = () =>
+    calls.some(
+      (c) => c[0] === "eq" && c[1] === "status" && c[2] === "delivered",
+    );
   builder.select = vi.fn(() => builder);
+  builder.maybeSingle = vi.fn(() =>
+    POLITICA_LANCA
+      ? Promise.reject(new Error("rede caiu"))
+      : Promise.resolve(RESPOSTA_POLITICA),
+  );
   builder.in = vi.fn((coluna: string, valores: readonly string[]) => {
+    calls.push(["in", coluna, valores]);
     CHAMADAS_DE_IN.push([coluna, [...valores]]);
     return builder;
   });
   let filtrouOPagamento = false;
   builder.or = vi.fn((filtro: string) => {
+    calls.push(["or", filtro]);
     CHAMADAS_DE_OR.push(filtro);
     if (filtro === FILTRO_POSTGREST_PARA_PREPARAR) filtrouOPagamento = true;
     return builder;
   });
-  builder.is = vi.fn(() => builder);
+  builder.is = vi.fn((...argumentos: unknown[]) => {
+    calls.push(["is", ...argumentos]);
+    return builder;
+  });
+  const registrar = (nome: string) =>
+    vi.fn((...argumentos: unknown[]) => {
+      calls.push([nome, ...argumentos]);
+      if (tabela === "marketplace_order_history") {
+        FILTROS_DO_HISTORICO.push([nome, ...argumentos]);
+      }
+      return builder;
+    });
+  builder.eq = registrar("eq");
+  builder.not = registrar("not");
+  builder.gte = registrar("gte");
+  builder.order = registrar("order");
+  builder.limit = registrar("limit");
   const respostaDosPedidos = () => {
     const resposta = RESPOSTA_PEDIDOS as { data: unknown; error: unknown };
     if (filtrouOPagamento || !Array.isArray(resposta.data)) return resposta;
@@ -77,7 +134,17 @@ function criarBuilder(tabela: string) {
   // biome-ignore lint/suspicious/noThenProperty: dible do query builder thenable do Supabase — mesmo padrao de sino-do-painel-leva-onde-o-alerta-aponta.
   builder.then = (resolve: unknown, reject?: unknown) =>
     Promise.resolve(
-      tabela === "reviews" ? RESPOSTA_AVALIACOES : respostaDosPedidos(),
+      tabela === "reviews"
+        ? RESPOSTA_AVALIACOES
+        : tabela === "marketplace_order_history"
+          ? RESPOSTA_CANCELAMENTOS
+          : tabela === "profiles"
+            ? RESPOSTA_PERFIS
+            : tabela === "pedidos_de_privacidade"
+              ? RESPOSTA_PRIVACIDADE
+              : ehRecebimento()
+                ? RESPOSTA_RECEBIMENTOS
+                : respostaDosPedidos(),
     ).then(resolve as never, reject as never);
   return builder;
 }
@@ -188,6 +255,14 @@ beforeEach(() => {
   CHAMADAS_DE_OR.length = 0;
   PIX_AGUARDANDO_NO_BANCO = [];
   tabelasConsultadas = [];
+  FILTROS_DO_HISTORICO.length = 0;
+  CONSULTAS_DE_PEDIDOS.length = 0;
+  RESPOSTA_RECEBIMENTOS = { data: [], error: null };
+  RESPOSTA_POLITICA = { data: null, error: null };
+  POLITICA_LANCA = false;
+  RESPOSTA_CANCELAMENTOS = { data: [], error: null };
+  RESPOSTA_PERFIS = { data: [], error: null };
+  RESPOSTA_PRIVACIDADE = { data: null, count: 0, error: null };
   RESPOSTA_PEDIDOS = { data: [pedidoDeExemplo()], error: null };
   RESPOSTA_PERGUNTAS = { data: { total_count: 3 }, error: null };
   RESPOSTA_AVALIACOES = { data: [avaliacaoDeExemplo()], error: null };
@@ -290,6 +365,8 @@ describe("useAvisosDoLojista", () => {
     RESPOSTA_AVALIACOES = { data: null, error: { message: "caiu" } };
     RESPOSTA_PRODUTOS = null;
     RESPOSTA_DEVOLUCOES = { data: null, error: { message: "caiu" } };
+    RESPOSTA_CANCELAMENTOS = { data: null, error: { message: "caiu" } };
+    RESPOSTA_PRIVACIDADE = { data: null, count: null, error: { message: "x" } };
 
     const { atual } = await montarSonda();
 
@@ -297,8 +374,56 @@ describe("useAvisosDoLojista", () => {
     expect(atual().quantidadeNoCracha).toBe(0);
     expect(atual().carregando).toBe(false);
     expect(new Set(atual().fontesComFalha)).toEqual(
-      new Set(["pedido", "pergunta", "avaliacao", "estoque", "devolucao"]),
+      new Set([
+        "pedido",
+        "pergunta",
+        "avaliacao",
+        "estoque",
+        "devolucao",
+        "cancelamento",
+        "privacidade",
+      ]),
     );
+  });
+
+  it("pedido de privacidade aberto vira aviso que conta no cracha", async () => {
+    RESPOSTA_PRIVACIDADE = { data: null, count: 2, error: null };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "privacidade");
+    expect(aviso).toBeDefined();
+    expect(aviso?.contaNoCracha).toBe(true);
+    expect(aviso?.titulo).toContain("2");
+    expect(tabelasConsultadas).toContain("pedidos_de_privacidade");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("sem pedido de privacidade aberto nao ha aviso, e a fonte nao falha", async () => {
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("privacidade");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("so a fonte de privacidade cai: as outras seguem e ela entra em fontesComFalha", async () => {
+    RESPOSTA_PRIVACIDADE = { data: null, count: null, error: { message: "x" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["privacidade"]);
+    expect(new Set(atual().avisos.map((a) => a.tipo))).toEqual(
+      new Set(["pedido", "pergunta", "avaliacao", "estoque"]),
+    );
+  });
+
+  it("resposta sem numero na privacidade e falha da fonte, nunca 'zero pedido'", async () => {
+    RESPOSTA_PRIVACIDADE = { data: null, count: null, error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["privacidade"]);
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("privacidade");
   });
 
   it("devolucao solicitada vira aviso que conta no cracha e abre a tela de Devolucoes", async () => {
@@ -423,5 +548,291 @@ describe("useAvisosDoLojista", () => {
     expect(loadProductsFalso.mock.calls.length).toBeGreaterThan(
       chamadasDeProdutoAntes,
     );
+  });
+});
+
+// O lojista fica sabendo quando o CLIENTE cancela (14/10/2026): a sexta fonte.
+describe("useAvisosDoLojista — cancelamento do cliente", () => {
+  const CLIENTE = "c1111111-1111-4111-8111-111111111111";
+  const ADMIN = "a1111111-1111-4111-8111-111111111111";
+  const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
+
+  function linhaDoHistorico(extra: Record<string, unknown> = {}) {
+    return {
+      id: "h1",
+      order_id: PEDIDO,
+      old_status: "pending",
+      created_by: CLIENTE,
+      created_at: "2026-10-14T11:57:00.000Z",
+      marketplace_orders: {
+        id: PEDIDO,
+        user_id: CLIENTE,
+        customer_name: "Maria Silva",
+        total: 149.9,
+        payment_status: "pago",
+        status: "cancelled",
+        cancelled_after_shipping: false,
+      },
+      ...extra,
+    };
+  }
+
+  it("cliente cancelou pedido pago: o sino ganha o item, que abre AQUELE pedido e nao conta no cracha", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: [linhaDoHistorico()], error: null };
+    RESPOSTA_PERFIS = {
+      data: [{ id: CLIENTE, role: "customer" }],
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "cancelamento") as
+      | (AvisoLido & { destino?: { view: string; id?: string } })
+      | undefined;
+    expect(aviso?.titulo).toBe("Maria Silva cancelou o pedido #4F5A6B");
+    expect(aviso?.destino).toEqual({ view: "admin-orders", id: PEDIDO });
+    expect(aviso?.contaNoCracha).toBe(false);
+    expect(atual().fontesComFalha).toEqual([]);
+    // O cracha segue sendo so o que conta: pedido, pergunta, avaliacao.
+    expect(atual().quantidadeNoCracha).toBe(3);
+  });
+
+  it("cliente cancelou pedido a pagar na entrega (sem pagamento online): o sino avisa 'Nao precisa separar nem enviar', sem consulta extra", async () => {
+    RESPOSTA_CANCELAMENTOS = {
+      data: [
+        linhaDoHistorico({
+          marketplace_orders: {
+            id: PEDIDO,
+            user_id: CLIENTE,
+            customer_name: "Maria Silva",
+            total: 149.9,
+            payment_status: null,
+            status: "cancelled",
+            cancelled_after_shipping: false,
+          },
+        }),
+      ],
+      error: null,
+    };
+    RESPOSTA_PERFIS = {
+      data: [{ id: CLIENTE, role: "customer" }],
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "cancelamento") as
+      | (AvisoLido & { detalhe?: string })
+      | undefined;
+    expect(aviso?.titulo).toBe("Pedido #4F5A6B cancelado pela cliente");
+    expect(aviso?.detalhe).toBe("Não precisa separar nem enviar.");
+    expect(atual().fontesComFalha).toEqual([]);
+    // A mesma leitura do historico serve aos dois ramos: nada de tabela nova.
+    expect(
+      tabelasConsultadas.filter((t) => t === "marketplace_order_history"),
+    ).toHaveLength(1);
+  });
+
+  it("a consulta le SO cancelamentos das ultimas 24 h, com autor, e os papeis dos autores", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: [linhaDoHistorico()], error: null };
+    RESPOSTA_PERFIS = {
+      data: [{ id: CLIENTE, role: "customer" }],
+      error: null,
+    };
+    const antes = Date.now();
+
+    await montarSonda();
+
+    expect(FILTROS_DO_HISTORICO).toContainEqual([
+      "eq",
+      "new_status",
+      "cancelled",
+    ]);
+    expect(FILTROS_DO_HISTORICO).toContainEqual([
+      "not",
+      "created_by",
+      "is",
+      null,
+    ]);
+    const gte = FILTROS_DO_HISTORICO.find((f) => f[0] === "gte");
+    expect(gte?.[1]).toBe("created_at");
+    const desde = Date.parse(String(gte?.[2]));
+    // 24 h antes de "agora", com folga de alguns segundos de relogio de teste.
+    expect(Math.abs(antes - 24 * 3600 * 1000 - desde)).toBeLessThan(10_000);
+    expect(tabelasConsultadas).toContain("profiles");
+  });
+
+  it("ADMIN cancelando nao vira item (o papel vem de profiles)", async () => {
+    RESPOSTA_CANCELAMENTOS = {
+      data: [linhaDoHistorico({ created_by: ADMIN })],
+      error: null,
+    };
+    RESPOSTA_PERFIS = { data: [{ id: ADMIN, role: "admin" }], error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("cancelamento");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("papeis ilegiveis: a fonte cai (falha honesta) e NINGUEM entra sem saber quem e admin", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: [linhaDoHistorico()], error: null };
+    RESPOSTA_PERFIS = { data: null, error: { message: "profiles caiu" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["cancelamento"]);
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("cancelamento");
+  });
+
+  it("historico fora do ar: so a fonte de cancelamento cai, as outras seguem", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: null, error: { message: "caiu" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["cancelamento"]);
+    expect(new Set(atual().avisos.map((a) => a.tipo))).toEqual(
+      new Set(["pedido", "pergunta", "avaliacao", "estoque"]),
+    );
+  });
+
+  it("sem cancelamento nenhum a loja nao consulta os papeis", async () => {
+    await montarSonda();
+
+    expect(tabelasConsultadas).not.toContain("profiles");
+  });
+});
+
+describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () => {
+  const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
+
+  function entregueSemRecebimento(extra: Record<string, unknown> = {}) {
+    return {
+      id: PEDIDO,
+      customer_name: "Maria Silva",
+      total: 90,
+      updated_at: "2026-10-12T15:00:00.000Z",
+      ...extra,
+    };
+  }
+
+  function consultaDeRecebimentos() {
+    return CONSULTAS_DE_PEDIDOS.find((calls) =>
+      calls.some((c) => c[0] === "eq" && c[2] === "delivered"),
+    );
+  }
+
+  it("entregue, pago na entrega, sem recebimento: o sino ganha o item, abre AQUELE pedido e CONTA no cracha", async () => {
+    RESPOSTA_RECEBIMENTOS = { data: [entregueSemRecebimento()], error: null };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "recebimento") as
+      | (AvisoLido & { destino?: { view: string; id?: string } })
+      | undefined;
+    expect(aviso?.titulo).toBe(
+      "Pedido #4F5A6B de Maria Silva entregue: você já recebeu o pagamento?",
+    );
+    expect(aviso?.destino).toEqual({ view: "admin-orders", id: PEDIDO });
+    expect(aviso?.contaNoCracha).toBe(true);
+    expect(atual().fontesComFalha).toEqual([]);
+    // Pedido, pergunta, avaliacao e este: 4 no cracha (estoque fica de fora).
+    expect(atual().quantidadeNoCracha).toBe(4);
+  });
+
+  it("a consulta le SO entregue, nao-online, pagamento em branco, dos ultimos 90 dias (sem configuracao), no maximo 100", async () => {
+    await montarSonda();
+
+    const calls = consultaDeRecebimentos();
+    expect(calls).toBeDefined();
+    // Entregue.
+    expect(calls).toContainEqual(["eq", "status", "delivered"]);
+    // Nao pago pelo site (a mesma definicao de `podeRegistrarPagamento`).
+    expect(calls).toContainEqual(["or", FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA]);
+    // Pagamento em branco.
+    expect(calls).toContainEqual(["is", "payment_status", null]);
+    // Janela de 90 dias (a configuracao nao chegou), pela data da entrega.
+    const gte = calls?.find((c) => c[0] === "gte");
+    expect(gte?.[1]).toBe("updated_at");
+    expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 90));
+    // Teto de 100.
+    expect(calls).toContainEqual(["limit", 100]);
+  });
+
+  it("o filtro de 'nao e online' e o do arquivo compartilhado, e a janela padrao e de 90 dias", () => {
+    expect(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA).toBe(
+      "payment_method.is.null,payment_method.neq.online",
+    );
+    expect(JANELA_DE_RECEBIMENTO_DIAS).toBe(90);
+    expect(TETO_DE_RECEBIMENTOS).toBe(100);
+  });
+
+  /** O corte da consulta de recebimentos, para um prazo em dias. */
+  function corteDe(dias: number): string {
+    return inicioDaJanelaDeRecebimento(Date.now(), dias);
+  }
+  const corteDaConsulta = () =>
+    consultaDeRecebimentos()?.find((c) => c[0] === "gte")?.[2];
+
+  it.each([
+    ["30 (o minimo do banco)", 30],
+    ["180", 180],
+  ])("a janela segue o prazo de vicio da loja: %s dias", async (_n, vicio) => {
+    RESPOSTA_POLITICA = { data: { prazo_vicio_dias: vicio }, error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(tabelasConsultadas).toContain("politica_devolucao");
+    expect(corteDaConsulta()).toBe(corteDe(vicio));
+    // O teto e o resto da consulta nao mudam.
+    expect(consultaDeRecebimentos()).toContainEqual(["limit", 100]);
+    // Ler a configuracao nao e uma fonte de aviso: nada de "falha".
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a leitura da configuracao devolve erro",
+      { data: null, error: { message: "caiu" } },
+      false,
+    ],
+    ["a configuracao nao existe", { data: null, error: null }, false],
+    [
+      "a leitura da configuracao lanca (rede)",
+      { data: null, error: null },
+      true,
+    ],
+  ])(
+    "%s: a janela cai em 90 dias e o aviso aparece",
+    async (_n, resposta, lanca) => {
+      RESPOSTA_POLITICA = resposta;
+      POLITICA_LANCA = lanca;
+      RESPOSTA_RECEBIMENTOS = { data: [entregueSemRecebimento()], error: null };
+
+      const { atual } = await montarSonda();
+
+      expect(corteDaConsulta()).toBe(corteDe(90));
+      expect(atual().avisos.map((a) => a.tipo)).toContain("recebimento");
+      expect(atual().fontesComFalha).toEqual([]);
+    },
+  );
+
+  it("leitura que falha marca a fonte como falha, nao vira lista vazia, e as outras seguem", async () => {
+    RESPOSTA_RECEBIMENTOS = { data: null, error: { message: "caiu" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["recebimento"]);
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("recebimento");
+    expect(new Set(atual().avisos.map((a) => a.tipo))).toEqual(
+      new Set(["pedido", "pergunta", "avaliacao", "estoque"]),
+    );
+  });
+
+  it("sem pedido nesse estado, nenhum aviso de recebimento", async () => {
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("recebimento");
+    expect(atual().fontesComFalha).toEqual([]);
   });
 });

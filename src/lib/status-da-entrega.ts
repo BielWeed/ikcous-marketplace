@@ -1,8 +1,11 @@
 import type { StatusDaFaixaFrete } from "@/components/admin/shipping/FreteResumoFaixa";
+import { lerEnderecoConferido } from "@/lib/endereco-da-loja";
 import {
   type ConfigDeFreteNacional,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
+import { modoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
+import { alcanceSemNumeros, resumoDoAlcance } from "@/lib/loja-pronta";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import type { StoreConfig } from "@/types";
 
@@ -21,11 +24,15 @@ import type { StoreConfig } from "@/types";
 export type ConfigDaEntrega = Pick<
   StoreConfig,
   | "originCep"
+  | "localCepRange"
   | "freeShippingMin"
   | "localDeliveryFee"
   | "shippingCoverage"
   | "storeCity"
   | "storeState"
+  | "storeAddress"
+  | "localDeliveryEnabled"
+  | "enabledShippingMethods"
 > &
   ConfigDeFreteNacional;
 
@@ -58,10 +65,14 @@ export function statusDaEntrega({
   const minSalvo = Number(config?.freeShippingMin ?? 0);
   const presetSalvo = presetDoConfig(minSalvo);
   const localFee = Number(config?.localDeliveryFee ?? 10);
-  const cidade = config?.storeCity;
-  const uf = config?.storeState;
-  const ondeCidade =
-    cidade && uf ? `${cidade}/${uf}` : cidade ? cidade : "sua cidade";
+
+  // "Só retiro": a loja não entrega nem manda por transportadora; a cliente
+  // retira e quem é de fora também. Só falta o endereço para saber onde. O
+  // critério é o MESMO do passo "entrega" da loja pronta: endereço conferido
+  // (formato novo, com o CEP da loja), não qualquer texto.
+  const soRetiro = modoDaEntregaNaCidade(config) === "so_retiro";
+  const temEndereco =
+    lerEnderecoConferido(config?.storeAddress, config?.originCep) !== null;
 
   const local: StatusDaFaixaFrete = !config?.originCep
     ? {
@@ -70,23 +81,43 @@ export function statusDaEntrega({
         detalhe: "Cadastre o CEP em Minha loja para abrir as vendas",
         tom: "atencao",
       }
-    : {
-        rotulo: "Na sua cidade",
-        valor:
-          localFee > 0
-            ? `R$ ${reais(localFee)} por entrega`
-            : "Grátis na cidade",
-        detalhe: `Entrega própria em ${ondeCidade}`,
-        tom: "positivo",
-      };
+    : soRetiro
+      ? {
+          rotulo: "Na sua cidade",
+          valor: "Só retiro",
+          detalhe: temEndereco
+            ? "o cliente retira na loja"
+            : "falta confirmar o endereço da loja em Minha loja",
+          tom: temEndereco ? "positivo" : "atencao",
+        }
+      : {
+          rotulo: "Na sua cidade",
+          valor:
+            localFee > 0
+              ? `R$ ${reais(localFee)} por entrega`
+              : "Grátis na cidade",
+          // A abrangência REAL, nunca o nome da cidade: com o alcance vazio a
+          // entrega própria vale só para os CEPs que começam com os 5 números
+          // do CEP da loja (um pedaço de bairro), e "em Uberlândia/MG" prometia
+          // a cidade inteira.
+          detalhe: `Entrega própria em ${resumoDoAlcance(config.originCep, config.localCepRange)}`,
+          // Texto escrito sem número nenhum: o servidor não entrega para ninguém.
+          tom: alcanceSemNumeros(config.localCepRange) ? "atencao" : "positivo",
+        };
 
   const resumoNacional =
     config != null ? resumoDaEstrategiaNacional(config) : "desligado";
   const detalheNacional = (base: string): string =>
     resumoNacional === "desligado" ? base : `${base} · ${resumoNacional}`;
 
-  const nacional: StatusDaFaixaFrete =
-    (config?.shippingCoverage || "national") === "local"
+  const nacional: StatusDaFaixaFrete = soRetiro
+    ? {
+        rotulo: "Fora da cidade",
+        valor: "Só retirada",
+        detalhe: "quem é de fora também pode retirar na loja",
+        tom: "neutro",
+      }
+    : (config?.shippingCoverage || "national") === "local"
       ? {
           rotulo: "Fora da cidade",
           valor: "Só na sua cidade",
@@ -117,8 +148,16 @@ export function statusDaEntrega({
               tom: "atencao",
             };
 
-  const gratis: StatusDaFaixaFrete =
-    presetSalvo === "acima_de_valor"
+  // "Só retiro" vale sobre qualquer regra de grátis: não há entrega para dar
+  // desconto, e a retirada nunca tem custo.
+  const gratis: StatusDaFaixaFrete = soRetiro
+    ? {
+        rotulo: "Frete grátis local",
+        valor: "Retirada grátis",
+        detalhe: "a retirada na loja não tem custo",
+        tom: "positivo",
+      }
+    : presetSalvo === "acima_de_valor"
       ? {
           rotulo: "Frete grátis local",
           valor: `Acima de R$ ${reais(minSalvo)}`,

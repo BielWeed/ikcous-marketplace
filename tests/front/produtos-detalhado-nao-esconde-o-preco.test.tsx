@@ -1,11 +1,9 @@
-/* eslint-disable security/detect-non-literal-regexp --
-   padrões construídos só de constantes do próprio teste (breakpoints fixos), nunca de entrada externa */
 // @vitest-environment jsdom
 //
 // PAINEL SIMPLES, onda J2, frente J2-A ("produtos-detalhado-sem-corte").
 // Render num celular simulado mediu que o cartão do modo DETALHADO de Produtos
 // (altura fixa `h-[440px]`, posta por causa do `content-visibility`) cortava o
-// que passava: o "Preço de Venda" e o "Potencial" ficavam escondidos — 45 a
+// que passava: o "Preço de Venda" e o "Lucro bruto do estoque" ficavam escondidos — 45 a
 // 114px a 360/412, 90 a 143px a 768 e 173 a 280px a 1280. O jsdom não aplica
 // CSS, então a prova é sobre as classes; a medida real fica para o render.
 //
@@ -13,8 +11,8 @@
 //      o cartão cresce com o conteúdo;
 //   b. o `content-visibility: auto` continua (a classe do cartão segue lá, com
 //      o `contain-intrinsic-size` dela) — a rolagem da lista não pesa;
-//   c. preço de venda, custo parado, estoque e "Potencial" estão no cartão e o
-//      preço e o "Potencial" dividem o mesmo contêiner (a mesma linha);
+//   c. preço de venda, custo parado, estoque e "Lucro bruto do estoque" estão no cartão e o
+//      preço e o "Lucro bruto do estoque" dividem o mesmo contêiner (a mesma linha);
 //   d. nenhum ancestral do preço corta o excesso por altura fixa;
 //   e. nome longo continua em até 2 linhas (`line-clamp-2`, sem `truncate`).
 //
@@ -115,10 +113,6 @@ const RESERVA_NO_CELULAR = /^!\[contain-intrinsic-size:auto_(\d+)px\]$/;
 const ESQUELETO_NO_CELULAR = /^h-\[(\d+)px\]$/;
 /** Breakpoints em que a altura do cartão muda (colunas da grade e caixas das
  * métricas mudam de largura): md 2 colunas, lg 3, 2xl 4 com 280px. */
-const BREAKPOINTS_DA_RESERVA = ["md", "lg", "2xl"] as const;
-const reservaNo = (bp: string) =>
-  new RegExp(`^${bp}:!\\[contain-intrinsic-size:auto_(\\d+)px\\]$`);
-const esqueletoNo = (bp: string) => new RegExp(`^${bp}:h-\\[(\\d+)px\\]$`);
 
 /** Primeiro número (px) da primeira classe que casa, ou undefined. */
 function pxDaClasse(classes: string[], padrao: RegExp): number | undefined {
@@ -263,7 +257,7 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
   });
 
   describe("c. preço, custo, estoque e Potencial no cartão", () => {
-    it("mostra os quatro e põe preço e Potencial no mesmo contêiner", async () => {
+    it("mantém os quatro dados, preço sempre visível e Potencial expansível", async () => {
       await montar();
 
       const texto = cartao().textContent ?? "";
@@ -272,14 +266,23 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
       expect(texto).toContain("Dinheiro parado em estoque");
       expect(texto).toContain("R$ 20,00");
       expect(texto).toContain("Unidades em Estoque");
-      expect(texto).toContain("Potencial");
+      expect(texto).toContain("Lucro bruto do estoque");
       expect(texto).toContain("+ R$ 10,00");
 
-      const linhaDoPreco = rotulo("Preço de Venda").parentElement
-        ?.parentElement as HTMLElement;
-      const linhaDoPotencial = rotulo("Potencial").parentElement
-        ?.parentElement as HTMLElement;
-      expect(linhaDoPreco).toBe(linhaDoPotencial);
+      const preco = rotulo("Preço de Venda");
+      const potencial = rotulo("Lucro bruto do estoque");
+      const detalhes = potencial.closest<HTMLElement>(
+        "[data-metricas-do-produto]",
+      );
+      expect(preco.closest("[data-metricas-do-produto]")).toBeNull();
+      expect(detalhes?.hidden).toBe(true);
+      const abrir = cartao().querySelector<HTMLButtonElement>(
+        'button[aria-controls="metricas-produto-prod-1"]',
+      );
+      expect(abrir).not.toBeNull();
+      await act(async () => abrir?.click());
+      expect(detalhes?.hidden).toBe(false);
+      expect(detalhes?.textContent).toContain("+ R$ 10,00");
     });
   });
 
@@ -287,27 +290,32 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
     it("o conteúdo principal ocupa o que sobra (flex-1), sem h-full fixo ao cartão", async () => {
       await montar();
 
-      const conteudo = rotulo("Preço de Venda").closest(
-        "div.flex.flex-col.p-5",
-      ) as HTMLElement | null;
-      expect(conteudo, "contêiner principal do cartão ausente").not.toBeNull();
-      expect(classesDe(conteudo as HTMLElement)).toContain("flex-1");
-      expect(classesDe(conteudo as HTMLElement)).not.toContain("h-full");
+      const conteudo = cartao();
+      expect(classesDe(conteudo)).toContain("p-3");
+      expect(classesDe(conteudo)).not.toContain("h-full");
+      expect(classesDe(conteudo).filter((c) => ALTURA_FIXA.test(c))).toEqual(
+        [],
+      );
     });
   });
 
-  describe("e. nome longo em até 2 linhas", () => {
-    it("o nome mantém line-clamp-2, quebra palavra e não vira truncate", async () => {
+  describe("e. nome longo completo", () => {
+    it("o nome quebra palavra sem limitar linhas nem ficar sob o menu", async () => {
       await montar();
 
-      const nome = [...cartao().querySelectorAll("h4")].find(
+      const nome = [...cartao().querySelectorAll("[data-produto-nome]")].find(
         (el) => el.textContent === produtosMock[0].name,
       );
       expect(nome, "nome do produto ausente").toBeDefined();
       const classes = classesDe(nome as HTMLElement);
-      expect(classes).toContain("line-clamp-2");
+      expect(classes.some((c) => c.includes("line-clamp"))).toBe(false);
       expect(classes).toContain("break-words");
-      expect(classes).toContain("pr-12");
+      expect(nome?.parentElement?.className).toContain("min-w-0");
+      const gatilho = nome?.closest("button");
+      expect(gatilho?.getAttribute("aria-label")).toBe(
+        `Ações de ${produtosMock[0].name}`,
+      );
+      expect(gatilho?.querySelector("button")).toBeNull();
       expect(classes).not.toContain("truncate");
     });
   });
@@ -340,61 +348,39 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
     });
   });
 
-  describe("g. o preço fica embaixo e alinhado entre cartões de alturas diferentes", () => {
-    it("o contêiner do preço é flex-col com gap (não space-y) e a linha do preço tem mt-auto", async () => {
+  describe("g. o preço fica no resumo inicial", () => {
+    it("preço aparece antes das métricas secundárias sem altura fixa", async () => {
       await montar();
-
-      const linha = rotulo("Preço de Venda").parentElement
-        ?.parentElement as HTMLElement;
-      const conteiner = linha.parentElement as HTMLElement;
-      const classesDoConteiner = classesDe(conteiner);
-      expect(classesDoConteiner).toContain("flex");
-      expect(classesDoConteiner).toContain("flex-col");
-      expect(classesDoConteiner).toContain("flex-1");
-      expect(classesDoConteiner).toContain("gap-4");
-      // `space-y-*` põe margem no filho e vence o `mt-auto`.
-      expect(classesDoConteiner.some((c) => c.startsWith("space-y"))).toBe(
-        false,
-      );
-      expect(classesDe(linha)).toContain("mt-auto");
+      const resumo = rotulo("Preço de Venda").closest(".produto-resumo");
+      expect(resumo).not.toBeNull();
+      expect(resumo?.className).toContain("grid-cols-3");
+      expect(resumo?.hasAttribute("hidden")).toBe(false);
+      expect(
+        resumo?.nextElementSibling?.hasAttribute("data-metricas-do-produto"),
+      ).toBe(true);
+      expect(
+        classesDe(resumo as HTMLElement).filter((c) => ALTURA_FIXA.test(c)),
+      ).toEqual([]);
     });
   });
 
   describe("h. reserva do content-visibility e esqueleto usam os mesmos números", () => {
-    it("o cartão sobrescreve o contain-intrinsic-size do index.css (com !) por breakpoint", async () => {
+    it("a reserva do cartão recolhido acompanha o novo resumo compacto", async () => {
       await montar();
-
       const classes = classesDe(cartao());
-      const celular = pxDaClasse(classes, RESERVA_NO_CELULAR);
-      expect(celular, "reserva do celular ausente").toBeDefined();
-      // O cartão real mede de ~490 a ~830px: a reserva não pode ficar nos 440
-      // antigos em nenhum breakpoint.
-      expect(celular).toBeGreaterThan(440);
-      for (const bp of BREAKPOINTS_DA_RESERVA) {
-        const reserva = pxDaClasse(classes, reservaNo(bp));
-        expect(reserva, `reserva do ${bp} ausente`).toBeDefined();
-        expect(reserva as number).toBeGreaterThan(440);
-      }
-      // De lg em diante a grade tem 3-4 colunas estreitas e as 2 caixas de
-      // métrica empilham: o cartão fica mais alto que no celular e no md.
-      expect(pxDaClasse(classes, reservaNo("lg")) as number).toBeGreaterThan(
-        pxDaClasse(classes, reservaNo("md")) as number,
-      );
-      expect(pxDaClasse(classes, reservaNo("md")) as number).toBeGreaterThan(
-        celular as number,
-      );
-      // nenhum resto da reserva antiga de xl (660px, de antes das caixas
-      // empilharem), que deixava 1280-1535px com ~150px a menos
-      expect(classes.some((c) => c.startsWith("xl:!["))).toBe(false);
+      expect(pxDaClasse(classes, RESERVA_NO_CELULAR)).toBe(210);
       expect(classes).toContain("content-visibility-detailed-card");
+      expect(classes.some((c) => /(?:md|lg|2xl):!\[contain/.test(c))).toBe(
+        false,
+      );
     });
 
-    it("o esqueleto de carregamento tem a mesma altura da reserva, no celular, md, lg e 2xl", async () => {
+    it("o esqueleto tem a mesma reserva do cartão recolhido em todas as larguras", async () => {
       carregandoMock = true;
       produtosMock = [];
       await montar();
       const esqueleto = hospedeiro.querySelector(
-        ".admin-glass.animate-pulse",
+        ".produto-esqueleto.animate-pulse",
       ) as HTMLElement | null;
       expect(esqueleto, "esqueleto do modo detalhado ausente").not.toBeNull();
       const classesDoEsqueleto = classesDe(esqueleto as HTMLElement);
@@ -425,12 +411,7 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
       expect(pxDaClasse(classesDoEsqueleto, ESQUELETO_NO_CELULAR)).toBe(
         pxDaClasse(classesDoCartao, RESERVA_NO_CELULAR),
       );
-      for (const bp of BREAKPOINTS_DA_RESERVA) {
-        expect(pxDaClasse(classesDoEsqueleto, esqueletoNo(bp))).toBe(
-          pxDaClasse(classesDoCartao, reservaNo(bp)),
-        );
-        expect(pxDaClasse(classesDoEsqueleto, esqueletoNo(bp))).toBeDefined();
-      }
+      expect(pxDaClasse(classesDoEsqueleto, ESQUELETO_NO_CELULAR)).toBe(210);
       expect(
         pxDaClasse(classesDoEsqueleto, ESQUELETO_NO_CELULAR),
       ).toBeDefined();

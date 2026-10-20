@@ -53,6 +53,13 @@ const {
   anexarAoSummary,
 } = require("./efemero.cjs");
 const { desfazerSucessorasDa99 } = require("./sucessoras-da-99.cjs");
+const {
+  desfazerReembolsoEmDuvidaNaTransacao,
+} = require("./reembolso-em-duvida-posterior.cjs");
+const {
+  DESFAZER_RECEBIMENTO,
+  desfazerDesfazerRecebimentoNaTransacao,
+} = require("./desfazer-recebimento-posterior.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(
@@ -225,6 +232,11 @@ async function desfazer98NaTransacao(cliente) {
     HASH_98_REEMITIR,
     "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
+  // A 20261241000000 redefine o saldo que a 98 criou: com ela no ar o rollback da 98 recusa. Sai antes.
+  await desfazerReembolsoEmDuvidaNaTransacao(cliente);
+  // A 20261243000000 redefine registrar_pagamento_recebido (o corpo da 97): os passos que reaplicam a 97 por cima de si
+  // mesma ou a desfazem partem do corpo dela, e o pre-voo da 97 recusa o corpo desta. Sai antes.
+  await desfazerDesfazerRecebimentoNaTransacao(cliente);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_ROLLBACK_98 é constante do próprio teste (path.join de literais).
   await cliente.query(fs.readFileSync(CAMINHO_ROLLBACK_98, "utf8"));
   assert.equal(
@@ -283,6 +295,69 @@ const POSTERIORES_A_97 = [
     nome: "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql",
     noAr: `SELECT to_regprocedure('public.admin_cupom_clientes(uuid)') IS NOT NULL AS sim`,
   },
+  // 20261219000000: a lista de perfis publicos so para quem esta logado. A politica de
+  // public_profiles usa rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). No FIM da lista de proposito.
+  {
+    nome: "20261219000000_perfil_publico_so_de_quem_escreveu.sql",
+    noAr: `SELECT EXISTS (
+       SELECT 1 FROM pg_policy
+        WHERE polname = 'public_profiles_select_policy'
+          AND polrelid = to_regclass('public.public_profiles')
+          AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%') AS sim`,
+  },
+  // 20261224000000: a avaliacao nasce sem a resposta da loja. A funcao do gatilho chama
+  // rls_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "funcoes
+  // fora da 20261197000000 ainda usam ..."). Ela nao depende de nenhuma outra da lista; so tem de
+  // sair ANTES da 97. No FIM da lista de proposito (as provas enderecam 202/200/99/98 por indice).
+  {
+    nome: "20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql",
+    noAr: `SELECT to_regprocedure('public.avaliacao_nasce_sem_a_resposta_da_loja()') IS NOT NULL AS sim`,
+  },
+  // 20261226000000: a reemissao do reembolso consulta o MP antes de pagar de novo. A porta do
+  // painel admin_devolucao_reembolso_por_fora usa is_admin_atual(): sem esta entrada o
+  // rollback da 97 recusa (B1_BASELINE_DIVERGENT). No FIM da lista de proposito.
+  {
+    nome: "20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql",
+    noAr: `SELECT to_regprocedure('public.admin_devolucao_reembolso_por_fora(uuid,uuid)') IS NOT NULL AS sim`,
+  },
+  // 20261237000000: a lojista renomeia e apaga categoria sem deixar produto orfao. As tres
+  // portas do painel (categorias_com_uso, renomear_categoria, apagar_categoria_vazia) usam
+  // is_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT:
+  // "funcoes fora da 20261197000000 ainda usam ..."). No FIM da lista de proposito.
+  {
+    nome: "20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql",
+    noAr: `SELECT to_regprocedure('public.renomear_categoria(uuid,text)') IS NOT NULL AS sim`,
+  },
+  // 20261238000000: a cliente pede exclusao da conta e correcao do e-mail. As tres politicas de
+  // public.pedidos_de_privacidade (dono_ou_admin_select, dono_insert, admin_update) usam
+  // is_admin_atual()/rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT: "politicas fora da 20261197000000 ainda usam ..."). O rollback dela
+  // recusa se a tabela tiver linha ou ja tiver guardado alguma (pg_relation_size > 0): num banco
+  // de prova recem-migrado ela esta vazia. Independe da 237; no FIM da lista de proposito, como as demais.
+  {
+    nome: "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql",
+    noAr: `SELECT to_regclass('public.pedidos_de_privacidade') IS NOT NULL AS sim`,
+  },
+  // 20261247000000: a anotacao interna do pedido. A politica FOR ALL de
+  // public.marketplace_order_internal_notes usa rls_admin_atual(): sem esta entrada o rollback da 97
+  // recusa (B1_BASELINE_DIVERGENT: "politicas fora da 20261197000000 ainda usam ..."). O rollback comum
+  // dela so' fecha a porta (tira a politica e os grants) e preserva tabela e linhas. Independe das outras
+  // da lista; no FIM de proposito, como as demais.
+  {
+    nome: "20261247000000_a_nota_interna_do_pedido_nao_chega_a_cliente.sql",
+    noAr: `SELECT EXISTS (
+       SELECT 1 FROM pg_policy
+        WHERE polname = 'nota_interna_so_admin_atual'
+          AND polrelid = to_regclass('public.marketplace_order_internal_notes')) AS sim`,
+  },
+  // 20261243000000: desfazer o recebimento recusa pedido com devolucao. Redefine o corpo de
+  // registrar_pagamento_recebido que a 97 deixa (e que a 95 e a 97 conferem por hash): com ela no ar
+  // os rollbacks da 95 e da 97 recusam (B1_BASELINE_DIVERGENT: "corpo vivo de ...
+  // registrar_pagamento_recebido ... nao e o que a 20261197000000 deixou"). So' mexe nessa funcao e
+  // nao depende de nenhuma outra da lista; tem de sair ANTES da 97. No FIM da lista de proposito.
+  // Definicao unica em tests/banco/desfazer-recebimento-posterior.cjs.
+  DESFAZER_RECEBIMENTO,
 ];
 
 async function desfazerPosterioresNaTransacao(cliente) {
@@ -291,6 +366,8 @@ async function desfazerPosterioresNaTransacao(cliente) {
     HASH_98_REEMITIR,
     "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
+  // A 20261241000000 (a mais nova; redefine corpos da 1196/1198/1201/1225/1226) sai primeiro de todas.
+  await desfazerReembolsoEmDuvidaNaTransacao(cliente);
   // As sucessoras da 99 (20261212, 20261214: redefinem corpos dela) saem
   // primeiro — sem isso o rollback da 99 recusa (B1_BASELINE_DIVERGENT).
   await desfazerSucessorasDa99(cliente);
@@ -491,6 +568,11 @@ const CASOS = [
       [alvo],
     ],
     servicePassa: true,
+    // 20261241000000 (o reembolso em duvida prende o saldo) FECHA o EXECUTE do logado nesta porta antiga
+    // (ela dobrava o reembolso; nenhum chamador no front). Com ela no ar, o logado — admin atual inclusive —
+    // recebe "permission denied"; a guarda do admin atual segue no corpo e e medida com o EXECUTE devolvido
+    // SO dentro da transacao do controle (desfeita no ROLLBACK).
+    fechadaAoLogadoPela1241: true,
   },
   {
     assinatura: "public.admin_devolucao_liberar_vinculo_reverso(uuid,boolean)",
@@ -840,12 +922,78 @@ for (const caso of CASOS) {
       assert.match(anon.message, /permission denied for function/);
       assert.equal(await foto(cliente), antesAnon);
 
+      // A porta que a 20261241000000 fechou ao logado (o EXECUTE do authenticated revogado).
+      const fechada =
+        caso.fechadaAoLogadoPela1241 === true &&
+        (
+          await cliente.query(
+            "SELECT has_function_privilege('authenticated', $1, 'EXECUTE') AS pode",
+            [caso.assinatura],
+          )
+        ).rows[0].pode === false;
+      const reabrirSoNaTransacao = async () => {
+        if (fechada)
+          await cliente.query(
+            `GRANT EXECUTE ON FUNCTION ${caso.assinatura} TO authenticated`,
+          );
+      };
+
+      // Com a porta fechada, a recusa de (1)/(2) acima veio do EXECUTE; aqui, com o EXECUTE devolvido só na
+      // transação, a recusa tem de vir da GUARDA (42501 sem "permission denied for function").
+      if (fechada) {
+        for (const quem of [
+          "rebaixadoPerfil",
+          "rebaixadoAuth",
+          "rebaixadoAmbos",
+          "soAuthSemPerfil",
+          "cliente",
+        ]) {
+          await cliente.query("BEGIN");
+          try {
+            await reabrirSoNaTransacao();
+            await cliente.query("SAVEPOINT guarda");
+            const antes = await foto(cliente);
+            await cliente.query("SET LOCAL ROLE authenticated");
+            await cliente.query(
+              "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
+              [QUEM[quem].uid, QUEM[quem].jwt],
+            );
+            let erro = null;
+            try {
+              await cliente.query(sql, params);
+            } catch (e) {
+              erro = e;
+              await cliente.query("ROLLBACK TO SAVEPOINT guarda");
+            }
+            await cliente.query("RESET ROLE");
+            assert.ok(
+              erro,
+              `${quem} passou pela guarda com o EXECUTE devolvido`,
+            );
+            assert.equal(
+              erro.code,
+              "42501",
+              `${quem}: ${erro.code} ${erro.message}`,
+            );
+            assert.doesNotMatch(
+              erro.message,
+              /permission denied for function/,
+              `${quem}: a recusa não veio da guarda`,
+            );
+            assert.equal(await foto(cliente), antes, `${quem} escreveu algo`);
+          } finally {
+            await cliente.query("ROLLBACK");
+          }
+        }
+      }
+
       // (3) CONTROLE: o corpo vivo sem a guarda deixa o rebaixado escrever —
       // nas DUAS direções da contradição.
       const vivo = await catalogo(cliente, caso.assinatura);
       for (const uid of [U_REBAIXADO_PERFIL, U_REBAIXADO_AUTH]) {
         await cliente.query("BEGIN");
         try {
+          await reabrirSoNaTransacao();
           await cliente.query(semGuarda(vivo.def));
           await cliente.query("SAVEPOINT controle");
           const antes = await foto(cliente);
@@ -885,16 +1033,48 @@ for (const caso of CASOS) {
       // (4) admin atual passa e escreve.
       const antesAdmin = await foto(cliente);
       const adm = await comoQuem(cliente, "admin", sql, params);
-      assert.equal(
-        adm.ok,
-        true,
-        `admin atual recusado: ${adm.code} ${adm.message}`,
-      );
-      assert.notEqual(
-        await foto(cliente),
-        antesAdmin,
-        "admin atual não escreveu",
-      );
+      if (fechada) {
+        // A porta fechada pela 1241: nem o admin atual entra pelo logado (sem escrita)...
+        assert.equal(
+          adm.ok,
+          false,
+          "a porta fechada pela 20261241 deixou o logado entrar",
+        );
+        assert.equal(adm.code, "42501");
+        assert.match(adm.message, /permission denied for function/);
+        assert.equal(await foto(cliente), antesAdmin);
+        // ...e a guarda do corpo ainda deixa o admin atual passar (EXECUTE devolvido só na transação).
+        await cliente.query("BEGIN");
+        try {
+          await reabrirSoNaTransacao();
+          const antes = await foto(cliente);
+          await cliente.query("SET LOCAL ROLE authenticated");
+          await cliente.query(
+            "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
+            [QUEM.admin.uid, QUEM.admin.jwt],
+          );
+          await cliente.query(sql, params);
+          await cliente.query("RESET ROLE");
+          assert.notEqual(
+            await foto(cliente),
+            antes,
+            "admin atual não escreveu (EXECUTE devolvido)",
+          );
+        } finally {
+          await cliente.query("ROLLBACK");
+        }
+      } else {
+        assert.equal(
+          adm.ok,
+          true,
+          `admin atual recusado: ${adm.code} ${adm.message}`,
+        );
+        assert.notEqual(
+          await foto(cliente),
+          antesAdmin,
+          "admin atual não escreveu",
+        );
+      }
 
       // (4) service_role sem login, num alvo novo.
       const alvo2 = await caso.alvo(cliente);
@@ -996,7 +1176,7 @@ PROVAS.push({
       const up = await comoQuem(
         cliente,
         quem,
-        "UPDATE public.marketplace_orders SET notes = notes WHERE user_id IS DISTINCT FROM auth.uid()",
+        "UPDATE public.marketplace_orders SET tracking_code = tracking_code WHERE user_id IS DISTINCT FROM auth.uid()",
         [],
         { desfazer: true },
       );
@@ -1031,7 +1211,7 @@ PROVAS.push({
     const upAdm = await comoQuem(
       cliente,
       "admin",
-      "UPDATE public.marketplace_orders SET notes = notes WHERE user_id IS DISTINCT FROM auth.uid()",
+      "UPDATE public.marketplace_orders SET tracking_code = tracking_code WHERE user_id IS DISTINCT FROM auth.uid()",
       [],
       { desfazer: true },
     );
@@ -1339,6 +1519,11 @@ PROVAS.push({
     };
     const desfazer = async (i) => {
       const nome = POSTERIORES_A_97[i].nome;
+      // A 20261241000000 (a mais nova de todas) sai antes de qualquer uma desta pilha (só se no ar).
+      await desfazerReembolsoEmDuvidaNaTransacao(cliente);
+      // A 20261243000000 (redefine o corpo de registrar_pagamento_recebido que a 97 confere por hash) também sai antes
+      // (só se no ar): sem isso a recusa por hash dela vem ANTES da recusa por dependentes que esta prova mede.
+      await desfazerDesfazerRecebimentoNaTransacao(cliente);
       // Índice 2 = a 99: as sucessoras dela (tests/banco/sucessoras-da-99.cjs)
       // saem antes, senão o rollback da 99 recusa.
       if (i === 2) await desfazerSucessorasDa99(cliente);
@@ -1367,6 +1552,25 @@ PROVAS.push({
       //     escrever. Com a 98 no ar a PRIMEIRA guarda a pegar é a do hash do
       //     reemitir (a 98 redefine o corpo da 97); a dos dependentes vem logo
       //     depois e é medida em (1b), sem a 98.
+      // (0) Com a 20261241000000 no ar (ela redefine solicitar_estorno, um dos corpos que a 97 confere),
+      //     a recusa vem ANTES, pelo corpo dela, também sem escrever. Desfeita, segue a pilha de sempre.
+      const com1241 = await digitalDoRollback(cliente);
+      await cliente.query("SAVEPOINT com1241");
+      await assert.rejects(
+        cliente.query(rollback),
+        /B1_BASELINE_DIVERGENT: corpo vivo de public\.solicitar_estorno/,
+      );
+      await cliente.query("ROLLBACK TO SAVEPOINT com1241");
+      assert.equal(
+        await digitalDoRollback(cliente),
+        com1241,
+        "a recusa (com a 1241) escreveu algo",
+      );
+      assert.equal(
+        await desfazerReembolsoEmDuvidaNaTransacao(cliente),
+        true,
+        "a 20261241000000 devia estar no ar nesta árvore",
+      );
       const antes = await digitalDoRollback(cliente);
       await cliente.query("SAVEPOINT todas");
       await assert.rejects(

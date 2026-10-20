@@ -44,9 +44,24 @@ const TEXTO_PAGO_JA_ENVIADO =
 const TEXTO_PAGO_NA_ENTREGA =
   "Você pagou este pedido na entrega. Se cancelar, combine a devolução do dinheiro diretamente com a loja. Tem certeza?";
 
+// Retirada na loja, já "Pronto para retirar" (gravado como `shipping`): a
+// cliente nunca levou produto nenhum, então não há o que "devolver". O banco
+// também não estorna sozinho nesse estado (cancelar em `shipping` não grava
+// linha em `order_refunds`; a loja confirma o reembolso à mão) — por isso o
+// texto não promete estorno automático nem prazo, só diz quem cuida.
+const TEXTO_PAGO_RETIRADA_PRONTA =
+  "Este pedido já está pronto para retirar na loja. Se cancelar, a loja cuida do reembolso do seu dinheiro e pode entrar em contato com você. Tem certeza?";
+
 interface ParametrosConfirmarCancelamento {
   pagamentoJaEntrou: boolean;
   jaFoiEnviado: boolean;
+  /**
+   * Pedido de RETIRADA NA LOJA já pronto para retirar
+   * (`retiradaNaLoja && status === "shipping"`). Opcional e aditivo: quem não
+   * passa continua com o comportamento de antes. Quando verdadeiro, vence
+   * `jaFoiEnviado` — "enviado" e "devolver o produto" não existem aqui.
+   */
+  retiradaPronta?: boolean;
   /**
    * `payment_status === 'recebido_na_entrega'` — pago na mão, nunca passou
    * pelo Mercado Pago (Task 3b de
@@ -72,9 +87,18 @@ interface ParametrosConfirmarCancelamento {
 export function textoConfirmarCancelamento({
   pagamentoJaEntrou,
   jaFoiEnviado,
+  retiradaPronta = false,
   pagamentoNaEntrega = false,
 }: ParametrosConfirmarCancelamento): string {
   if (!pagamentoJaEntrou) return TEXTO_NAO_PAGO;
+  // Retirada pronta vem ANTES de `jaFoiEnviado` (e, portanto, também antes do
+  // texto de "já enviado" que mandaria devolver um produto que a cliente
+  // nunca levou). Pago na entrega mantém o texto de combinar com a loja.
+  if (retiradaPronta) {
+    return pagamentoNaEntrega
+      ? TEXTO_PAGO_NA_ENTREGA
+      : TEXTO_PAGO_RETIRADA_PRONTA;
+  }
   // Rodada 2 (laudo Opus PR#457, BLOQUEIA 2): `jaFoiEnviado` vem ANTES de
   // `pagamentoNaEntrega`. O estado é alcançável hoje pela interface
   // (`podeRegistrarPagamento` não exige `delivered`, e o botão "Marcar como
@@ -99,6 +123,13 @@ const TEXTO_LOJA_JA_RECEBEU =
 
 const TEXTO_LOJA_CUIDANDO =
   "Devolução: a loja está cuidando disso — fale com ela se demorar.";
+
+// Retirada na loja cancelada depois de pronta, sem linha de estorno: não há
+// produto que a cliente tenha levado e precise voltar. Neutro de propósito
+// (vale também se a loja marcou o "produto voltou" ou se a retirada foi
+// cancelada depois de entregue — não dá para distinguir os dois pelo dado).
+const TEXTO_LOJA_CUIDA_DA_RETIRADA =
+  "Devolução do dinheiro: a loja cuida disso e pode entrar em contato com você.";
 
 const ESTADOS_EM_CURSO: readonly StatusDevolucaoDoCliente[] = [
   "solicitado",
@@ -134,6 +165,9 @@ interface ParametrosTextoDevolucao {
   linhas: LinhaDevolucaoDoCliente[];
   cancelledAfterShipping: boolean;
   returnedToSellerAt?: string | null;
+  /** `Order.retiradaNaLoja`: a cliente buscaria na loja — não há produto de
+   * volta a esperar. Opcional e aditivo (ausente = entrega, como antes). */
+  retiradaNaLoja?: boolean;
 }
 
 /**
@@ -149,6 +183,7 @@ export function textoDevolucao({
   linhas,
   cancelledAfterShipping,
   returnedToSellerAt,
+  retiradaNaLoja = false,
 }: ParametrosTextoDevolucao): string | null {
   const desfecho = desfechoDaDevolucao(linhas);
 
@@ -169,6 +204,7 @@ export function textoDevolucao({
   // duas frases mostrar.
   if (linhas.length === 0) {
     if (!cancelledAfterShipping) return null;
+    if (retiradaNaLoja) return TEXTO_LOJA_CUIDA_DA_RETIRADA;
     return returnedToSellerAt ? TEXTO_LOJA_JA_RECEBEU : TEXTO_LOJA_FAZ_DEPOIS;
   }
 

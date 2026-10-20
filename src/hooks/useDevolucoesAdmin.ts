@@ -29,6 +29,8 @@ import type {
 } from "@/types/devolucao";
 
 const PAGINA = 50;
+/** Teto de `p_limite` na RPC (LEAST(..., 200)). */
+const LIMITE_MAXIMO = 200;
 const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
 
 /** Mesmo texto do estorno do pedido (useEstornosDoPedido): a linha já existe
@@ -65,13 +67,24 @@ export function useDevolucoesAdmin(args: {
   const [itens, setItens] = useState<LinhaDevolucaoAdmin[]>([]);
   const [total, setTotal] = useState(0);
   const [contagem, setContagem] = useState<ContagemPorStatus | null>(null);
-  const [carregando, setCarregando] = useState(false);
+  // Começa carregando quando ativo: o primeiro render não pode afirmar
+  // "Nenhuma devolução ainda" antes de o efeito disparar a busca.
+  const [carregando, setCarregando] = useState(ativo);
   const [erro, setErro] = useState(false);
   const ativoRef = useRef(true);
   const rodadaRef = useRef(0);
+  // Offset do SERVIDOR: soma das linhas cruas recebidas. `itens.length` fica
+  // menor depois do dedupe e faria "Mostrar mais" repetir a mesma página.
+  const [lidas, setLidas] = useState(0);
+  const lidasRef = useRef(0);
+  // Total visto na última leitura aceita: se ele muda durante o "Mostrar
+  // mais", entrou/saiu devolução no servidor e o offset já não aponta onde
+  // apontava (a página repete uma linha e a nova nunca seria alcançada).
+  const totalRef = useRef(0);
+  const chaveRef = useRef(`${status ?? ""}|${busca}`);
 
   const buscar = useCallback(
-    async (offset: number) => {
+    async (offset: number, limite = PAGINA) => {
       const rodada = ++rodadaRef.current;
       const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
       setCarregando(true);
@@ -79,7 +92,7 @@ export function useDevolucoesAdmin(args: {
         const { data, error } = await supabase.rpc("admin_devolucoes_listar", {
           p_status: status,
           p_busca: busca.trim() || null,
-          p_limite: PAGINA,
+          p_limite: limite,
           p_offset: offset,
         });
         if (!valeAinda()) return;
@@ -88,9 +101,24 @@ export function useDevolucoesAdmin(args: {
           setErro(true);
           return;
         }
-        setItens((antes) =>
-          offset === 0 ? lista.itens : [...antes, ...lista.itens],
-        );
+        if (offset > 0 && lista.total !== totalRef.current) {
+          // A lista andou sob nós: relê do início, com o que já estava na
+          // tela mais uma página, em vez de anexar a um offset deslocado.
+          void buscar(0, Math.min(LIMITE_MAXIMO, lidasRef.current + PAGINA));
+          return;
+        }
+        setItens((antes) => {
+          if (offset === 0) return lista.itens;
+          // Item novo no servidor desloca a paginação: não repete id.
+          const vistos = new Set(antes.map((i) => i.id));
+          return [...antes, ...lista.itens.filter((i) => !vistos.has(i.id))];
+        });
+        lidasRef.current =
+          offset === 0
+            ? lista.itens.length
+            : lidasRef.current + lista.itens.length;
+        setLidas(lidasRef.current);
+        totalRef.current = lista.total;
         setTotal(lista.total);
         setContagem(lista.contagem);
         setErro(false);
@@ -105,11 +133,28 @@ export function useDevolucoesAdmin(args: {
 
   useEffect(() => {
     ativoRef.current = true;
-    if (ativo) void buscar(0);
+    if (ativo) {
+      // Filtro novo: as linhas do filtro anterior não ficam à mostra (nem
+      // clicáveis) e o "Mostrar mais" dele não anexaria página errada.
+      const chave = `${status ?? ""}|${busca}`;
+      if (chave !== chaveRef.current) {
+        chaveRef.current = chave;
+        setItens([]);
+        setTotal(0);
+        setLidas(0);
+        lidasRef.current = 0;
+        totalRef.current = 0;
+      }
+      // Volta a ativa com a lista paginada: relê tudo, não encolhe a 50.
+      void buscar(
+        0,
+        Math.min(LIMITE_MAXIMO, Math.max(PAGINA, lidasRef.current)),
+      );
+    }
     return () => {
       ativoRef.current = false;
     };
-  }, [ativo, buscar]);
+  }, [ativo, buscar, status, busca]);
 
   return {
     itens,
@@ -117,9 +162,11 @@ export function useDevolucoesAdmin(args: {
     contagem,
     carregando,
     erro,
-    temMais: itens.length < total,
-    carregarMais: () => void buscar(itens.length),
-    recarregar: () => void buscar(0),
+    temMais: lidas < total,
+    carregarMais: () => void buscar(lidas),
+    // Releitura no lugar: mantém o que já foi paginado (até o teto da RPC).
+    recarregar: () =>
+      void buscar(0, Math.min(LIMITE_MAXIMO, Math.max(PAGINA, lidas))),
   };
 }
 
@@ -292,6 +339,7 @@ export function useDevolucaoAdmin(
   const emVooRef = useRef(false);
   const idRef = useRef(id);
   const aoMudarRef = useRef(aoMudar);
+  const rodadaRef = useRef(0);
 
   useEffect(() => {
     idRef.current = id;
@@ -299,13 +347,16 @@ export function useDevolucaoAdmin(
   }, [id, aoMudar]);
 
   const carregar = useCallback(async () => {
-    if (!id) return;
+    if (!id || idRef.current !== id) return;
+    const rodada = ++rodadaRef.current;
+    const valeAinda = () =>
+      idRef.current === id && rodada === rodadaRef.current;
     setCarregando(true);
     try {
       const { data, error } = await supabase.rpc("devolucao_detalhe", {
         p_id: id,
       });
-      if (idRef.current !== id) return;
+      if (!valeAinda()) return;
       const lida = error ? null : lerDevolucaoDetalhe(data);
       if (!lida) {
         setErro(true);
@@ -314,11 +365,11 @@ export function useDevolucaoAdmin(
       setDetalhe(lida);
       setErro(false);
       const assinadas = await assinarFotos(lida.fotos);
-      if (idRef.current === id) setFotos(assinadas);
+      if (valeAinda()) setFotos(assinadas);
     } catch {
-      if (idRef.current === id) setErro(true);
+      if (valeAinda()) setErro(true);
     } finally {
-      if (idRef.current === id) setCarregando(false);
+      if (valeAinda()) setCarregando(false);
     }
   }, [id]);
 
@@ -326,7 +377,11 @@ export function useDevolucaoAdmin(
     setDetalhe(null);
     setFotos(new Map());
     setErro(false);
+    setCarregando(false);
     if (id) void carregar();
+    return () => {
+      rodadaRef.current += 1;
+    };
   }, [id, carregar]);
 
   /** Envelope comum: trava, RPC, aviso, releitura. */
@@ -366,7 +421,10 @@ export function useDevolucaoAdmin(
     async ({
       mensagem,
       coletaEm,
-    }: { mensagem: string; coletaEm: string | null }) => {
+    }: {
+      mensagem: string;
+      coletaEm: string | null;
+    }) => {
       if (!id) return false;
       const r = await executar(
         "decidir",

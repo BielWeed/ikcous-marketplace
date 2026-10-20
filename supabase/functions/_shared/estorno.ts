@@ -73,13 +73,50 @@ export type ResultadoEstorno =
     mp_status_detail: string | null;
     valor: number;
   }
-  | { tipo: "em_processamento"; mp_refund_id: string | null; mp_status: string }
+  | {
+    tipo: "em_processamento";
+    mp_refund_id: string | null;
+    mp_status: string;
+    diagnostico?: DiagnosticoDoPost;
+  }
   // Definitivo: não tentar de novo com esta linha (novo pedido = nova linha).
-  | { tipo: "falhou"; motivo: string; codigo: string }
+  | { tipo: "falhou"; motivo: string; codigo: string; diagnostico?: DiagnosticoDoPost }
   // Guarda recusou ANTES de qualquer chamada ao MP: nada foi gasto.
   | { tipo: "recusado"; motivo: string }
   // 429/5xx/rede/resposta não reconhecida: o cron re-tenta com a MESMA chave.
-  | { tipo: "tentar_depois"; motivo: string; retryAfterS?: number };
+  // `semEnvioPorPrevoo` (P1 do Codex no #888): o ÚNICO desfecho do ciclo foi a
+  // consulta antes do reenvio sem resposta clara — nada foi enviado e a
+  // tentativa marcada para este ciclo NÃO deve contar (ver `conferirAntesDoReenvio`).
+  | {
+    tipo: "tentar_depois";
+    motivo: string;
+    retryAfterS?: number;
+    diagnostico?: DiagnosticoDoPost;
+    semEnvioPorPrevoo?: true;
+  };
+
+/**
+ * O que o POST de refund de UMA linha deixou para o diagnóstico (tabela
+ * `order_refund_diagnostico`, só servidor — migration 20261226000000). Só existe
+ * quando um POST SAIU; guarda recusada, autorização indisponível e consulta não
+ * têm diagnóstico (nada foi enviado para ficar incerto).
+ *
+ *   * `mpCodigo`: o código do MP (`errors[]`/`cause[]`/`error_messages[]`/`code`),
+ *     ou `http_NNN` quando a resposta não traz nenhum, ou null sem resposta.
+ *   * `postIncerto`: o POST pode ter chegado ao MP sem uma resposta que PROVE o
+ *     contrário (rede, timeout, 5xx, 429, 423, 401/403, 2xx não reconhecido, corpo
+ *     ilegível, código fora das listas) ou o MP disse que há dinheiro em
+ *     movimento. É o carimbo que nunca se apaga: linha carimbada nunca recebe
+ *     chave nova (só ADOÇÃO do reembolso que o MP já fez, ou "por fora").
+ *   * `transitorio`: o MP respondeu, com um código da lista fechada
+ *     `CODIGOS_NADA_SAIU`, que NÃO devolveu nada (sem saldo / ainda não liberado).
+ *     Conta para o limite `LIMITE_DE_FALHAS_TRANSITORIAS`.
+ */
+export type DiagnosticoDoPost = {
+  mpCodigo: string | null;
+  postIncerto: boolean;
+  transitorio: boolean;
+};
 
 /**
  * A AUTORIZAÇÃO IMEDIATAMENTE ANTES DO POST (Lote A, 04/10/2026 — achado
@@ -159,6 +196,36 @@ export function linhaPodeJaTerChegadoAoMp(linha: LinhaEstorno): boolean {
   return linha.criada_sob_autorizacao !== true && Number(linha.tentativas ?? 0) > 1;
 }
 
+/**
+ * O teto de `tentativas` a partir do qual a linha é TRAVADA: o robô
+ * (`reconciliar-pagamentos`) para de POSTar e só consulta o MP, e o clique do
+ * lojista (`estornar-pagamento`) recusa reenviar. Um número, dois chamadores.
+ */
+export const TETO_DE_TENTATIVAS_DO_POST = 5;
+
+/**
+ * A linha JÁ TEVE ENVIO? (A1 do crítico do reembolso A/B, 15/10/2026.) Recebe a
+ * linha COMO O EXECUTOR A RECEBE — os dois chamadores (clique e robô) somam a
+ * marca DESTE ciclo em `tentativas` antes de chamar `executarEstorno`. Já teve
+ * envio se pode ter chegado ao MP (`linhaPodeJaTerChegadoAoMp`: carimbo de POST
+ * autorizado, id do MP, legado) OU se houve marca de um ciclo ANTERIOR
+ * (`tentativas > 1`), mesmo sem carimbo: mais conservador que o critério de
+ * incerteza — o preço é um GET a mais, nunca um POST a mais.
+ */
+export function linhaJaTeveEnvio(linha: LinhaEstorno): boolean {
+  return linhaPodeJaTerChegadoAoMp(linha) || Number(linha.tentativas ?? 0) > 1;
+}
+
+/** Texto leigo (`ultimo_erro`, a cliente lê) quando a consulta antes do reenvio
+ * não respondeu com clareza: nada novo saiu. */
+export const MOTIVO_REENVIO_SEM_CONSULTA =
+  "uma tentativa anterior desta devolução pode já ter chegado ao Mercado Pago e a conferência com ele não respondeu com clareza — nada novo foi enviado e o valor segue reservado; a loja confere de novo em instantes";
+
+/** Texto leigo quando o MP já mostra o reembolso desta devolução, mas a
+ * confirmação ainda não fechou: nada novo saiu. */
+export const MOTIVO_REENVIO_JA_NO_MP =
+  "o Mercado Pago já mostra esta devolução — nada novo foi enviado; a confirmação é registrada na próxima conferência";
+
 type ChamarRpc = (
   nome: string,
   args: Record<string, unknown>,
@@ -230,6 +297,134 @@ export function autorizacaoPeloBanco(
     console.error("estorno: autorizar_post_do_estorno devolveu forma desconhecida");
     return { decisao: "indisponivel" };
   };
+}
+
+/**
+ * Grava o diagnóstico do POST ANTES de a linha ser tocada (RPC
+ * `registrar_diagnostico_do_estorno`, 20261226000000: UPSERT atômico, só
+ * servidor) e devolve o que a linha tem AGORA (contador de falhas "nada saiu" e
+ * carimbo de incerteza acumulados). Uma nova tentativa se a primeira falhar.
+ * Resposta que não tem a forma esperada conta como gravação que falhou — nunca
+ * se chuta "sem carimbo". Nunca lança.
+ */
+async function gravarDiagnostico(
+  rpc: ChamarRpc,
+  refundId: string,
+  d: DiagnosticoDoPost,
+): Promise<{ transitorios: number; postIncerto: boolean; mpCodigo: string | null } | null> {
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    try {
+      const resposta = await rpc("registrar_diagnostico_do_estorno", {
+        p_refund_id: refundId,
+        p_mp_codigo: d.mpCodigo,
+        p_post_incerto: d.postIncerto,
+        p_transitorio: d.transitorio,
+      });
+      const dados = resposta.data && typeof resposta.data === "object"
+        ? resposta.data as Record<string, unknown>
+        : null;
+      const transitorios = numeroFinito(dados?.transitorios);
+      if (!resposta.error && transitorios !== null && typeof dados?.post_incerto === "boolean") {
+        return {
+          transitorios,
+          postIncerto: dados.post_incerto,
+          mpCodigo: typeof dados.mp_codigo === "string" ? dados.mp_codigo : null,
+        };
+      }
+      console.error("estorno: registrar_diagnostico_do_estorno falhou ou veio ilegível", resposta.error ?? "forma desconhecida");
+    } catch (err) {
+      console.error("estorno: registrar_diagnostico_do_estorno lançou", nomeDoErro(err));
+    }
+  }
+  return null;
+}
+
+/**
+ * D4 (14/10/2026): o ÚNICO ponto em que o servidor decide o que o diagnóstico de
+ * um POST faz com o resultado — edge do clique e cron chamam esta função, uma
+ * decisão, dois chamadores.
+ *   * resultado sem diagnóstico (nada foi enviado, concluído, recusado): igual;
+ *   * o diagnóstico é gravado ANTES de qualquer `falhou`: se a gravação falha, a
+ *     linha NÃO vira `falhou` (sem carimbo gravado, "falhou" seria lido como
+ *     "nada saiu" pelo banco) — fica `tentar_depois`;
+ *   * `tentar_depois` "nada saiu" na `LIMITE_DE_FALHAS_TRANSITORIAS`-ésima vez
+ *     SEM carimbo de incerteza vira `falhou` (as saídas — reemitir com prova ou
+ *     "por fora" — ficam abertas no banco). Com carimbo, fica em consulta para
+ *     sempre e NUNCA recebe chave nova.
+ */
+export async function aplicarDiagnosticoDoPost(
+  rpc: ChamarRpc,
+  refundId: string,
+  resultado: ResultadoEstorno,
+): Promise<ResultadoEstorno> {
+  if (resultado.tipo === "concluido" || resultado.tipo === "recusado") return resultado;
+  const d = resultado.diagnostico;
+  if (!d) return resultado;
+  const gravado = await gravarDiagnostico(rpc, refundId, d);
+  if (!gravado) {
+    return resultado.tipo === "falhou"
+      ? { tipo: "tentar_depois", motivo: MOTIVO_SEM_DIAGNOSTICO, diagnostico: d }
+      : resultado;
+  }
+  if (
+    resultado.tipo === "tentar_depois" && d.transitorio && !gravado.postIncerto &&
+    gravado.transitorios >= LIMITE_DE_FALHAS_TRANSITORIAS
+  ) {
+    return {
+      tipo: "falhou",
+      motivo: MOTIVO_NAO_LIBERADA_NO_LIMITE,
+      codigo: d.mpCodigo ?? "nada_saiu",
+      diagnostico: d,
+    };
+  }
+  return resultado;
+}
+
+/**
+ * Correção da revisão Opus do #855 (14/10/2026): o robô para de POSTar com
+ * `tentativas >= 5` (a tentativa sobe em TODO ciclo, até no que nem chega ao MP)
+ * e a linha só vira `falhou` na `LIMITE_DE_FALHAS_TRANSITORIAS`-ésima recusa
+ * "nada saiu" (sobe só quando o MP respondeu). Os dois contadores descasam — uma
+ * consulta que falha no meio basta — e a linha ficava `em_processamento` para
+ * sempre, sem saída. Por isso a decisão também vive no ramo "só consulta", por
+ * onde TODA linha travada passa, com o MESMO critério do banco (`v_sem_post`,
+ * migration 20261226000000): sem id do MP, SEM carimbo de incerteza e o último
+ * código gravado na lista fechada "nada saiu" => `falhou`.
+ *
+ * O diagnóstico só é legível pelo servidor através da RPC; chamá-la sem
+ * código, sem carimbo e sem incremento devolve o que a linha tem e não muda
+ * nada que importe (cria a linha de diagnóstico vazia se não havia: sem código,
+ * o banco continua tratando a linha como incerta). Linha sem diagnóstico
+ * (legado), com carimbo, com id do MP ou com outro código segue em consulta.
+ * Falha ao ler: segue em consulta (lado seguro). Nunca lança.
+ *
+ * 2ª revisão Opus do #855: a memória do banco não diz o que o MP está fazendo
+ * AGORA (o saldo pode ter entrado e o reembolso desta linha estar em
+ * `processing`, sem carimbo e com a gravação do id perdida). Por isso, passados
+ * os guardas, `consultar` (um GET: `consultarReembolsoDoPedido`) é a palavra
+ * final: SÓ `nao_achou` — 200 legível, nenhum reembolso vivo sem dono — vira
+ * `falhou`. `achou`, `indeterminado` ou consulta que lança: segue em consulta
+ * (o caminho que adota o reembolso concluído é o da própria consulta do robô).
+ */
+export async function decidirLinhaTravada(
+  rpc: ChamarRpc,
+  linha: LinhaEstorno,
+  consultar: () => Promise<ConsultaDoReembolso>,
+): Promise<ResultadoEstorno | null> {
+  if (typeof linha.mp_refund_id === "string" && linha.mp_refund_id !== "") return null;
+  const lido = await gravarDiagnostico(rpc, linha.id, { mpCodigo: null, postIncerto: false, transitorio: false });
+  if (!lido || lido.postIncerto || lido.mpCodigo === null || !CODIGOS_NADA_SAIU.has(lido.mpCodigo)) {
+    return null;
+  }
+  let consulta: ConsultaDoReembolso;
+  try {
+    consulta = await consultar();
+  } catch (err) {
+    console.error("estorno: consulta da linha travada lançou", nomeDoErro(err));
+    return null;
+  }
+  if (consulta.resultado !== "nao_achou") return null;
+  return { tipo: "falhou", motivo: MOTIVO_NAO_LIBERADA_NO_LIMITE, codigo: lido.mpCodigo };
 }
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
@@ -371,29 +566,93 @@ export function montarRequisicao(
 }
 
 /**
- * Extrai o código de erro do corpo, nas DUAS grafias que as APIs do MP usam:
- * Payments clássica (`cause[].code`, número) e Orders API
- * (`error_messages[].code`, nome). Tolerante de propósito — a taxonomia
- * exata de cada endpoint não é contrato estável; o NOME do código é.
+ * TODOS os códigos de erro do corpo, nas TRÊS grafias que as APIs do MP usam:
+ * Payments clássica (`cause[].code`, número), Orders API (`errors[].code`, o
+ * que o resto do repo lê em `mercadopago.ts`) e Orders refund
+ * (`error_messages[].code`, nome), mais o `code` de topo. Tolerante de
+ * propósito — a taxonomia exata de cada endpoint não é contrato estável; o NOME
+ * do código é. Ordem: a de `cause`, `errors`, `error_messages`, `code`.
  */
-function acharCodigo(corpo: unknown): string | null {
-  if (!corpo || typeof corpo !== "object") return null;
+function acharCodigos(corpo: unknown): string[] {
+  if (!corpo || typeof corpo !== "object") return [];
   const c = corpo as Record<string, unknown>;
-  const deLista = (lista: unknown): string | null => {
-    if (!Array.isArray(lista)) return null;
+  const deLista = (lista: unknown): string[] => {
+    if (!Array.isArray(lista)) return [];
+    const codigos: string[] = [];
     for (const item of lista) {
       const code = (item as Record<string, unknown> | null)?.code;
       if (typeof code === "string" || typeof code === "number") {
-        return String(code);
+        codigos.push(String(code));
       }
     }
-    return null;
+    return codigos;
   };
-  return deLista(c.cause) ?? deLista(c.error_messages) ??
-    ((typeof c.code === "string" || typeof c.code === "number")
-      ? String(c.code)
-      : null);
+  const doTopo = typeof c.code === "string" || typeof c.code === "number" ? [String(c.code)] : [];
+  return [...deLista(c.cause), ...deLista(c.errors), ...deLista(c.error_messages), ...doTopo];
 }
+
+/** O primeiro código do corpo — o que as tabelas fechadas de interpretação leem. */
+function acharCodigo(corpo: unknown): string | null {
+  return acharCodigos(corpo)[0] ?? null;
+}
+
+/**
+ * Códigos do MP que PROVAM que nada saiu: o MP recusou o refund por falta de
+ * saldo na conta ou porque o pagamento ainda não foi liberado. LISTA FECHADA — a
+ * migration 20261226000000 só aceita estes dois como prova de "sem POST"
+ * (`v_sem_post`); qualquer outro código, e todo código desconhecido, é INCERTO.
+ * Os nomes vêm do contrato do banco: não constam da documentação pública do MP
+ * (medido em 14/10/2026) e nunca foram vistos na API real. Se o MP usar outro
+ * nome, nada passa a ser "nada saiu" por engano: o resultado é só mais linhas
+ * incertas (o lado seguro), nunca menos.
+ */
+const CODIGOS_NADA_SAIU = new Set([
+  "insufficient_money_for_refund",
+  "order_payment_not_yet_enabled_for_refund",
+]);
+
+/**
+ * Códigos do MP que dizem que há dinheiro EM MOVIMENTO (um refund em curso ou
+ * movimentações pendentes). A linha continua `em_processamento`: nunca vira
+ * `falhou` por causa deles e não gasta o limite de falhas "nada saiu".
+ * `idempotency_key_already_used` fica de fora de propósito: ele manda CONSULTAR
+ * (`CODIGOS_QUE_EXIGEM_CONFIRMACAO`) e, se a consulta não fechar, vira
+ * `tentar_depois`, nunca `falhou` (a chave existe no MP).
+ */
+const CODIGOS_EM_ANDAMENTO = new Set([
+  "refund_in_progress",
+  "order_refund_already_in_process",
+  "movement_operations_pending",
+]);
+
+export type ClasseDoErroDoMp = "nada_saiu" | "em_andamento" | "desconhecido";
+
+/**
+ * "Nada saiu" só se TODOS os códigos da resposta estão na lista fechada (e há
+ * pelo menos um); "em andamento" se QUALQUER um está (dinheiro em movimento
+ * vence); o resto — inclusive resposta sem código — é desconhecido = INCERTO.
+ */
+function classificarCodigosDoMp(codigos: string[]): ClasseDoErroDoMp {
+  if (codigos.some((c) => CODIGOS_EM_ANDAMENTO.has(c))) return "em_andamento";
+  if (codigos.length > 0 && codigos.every((c) => CODIGOS_NADA_SAIU.has(c))) return "nada_saiu";
+  return "desconhecido";
+}
+
+/**
+ * Textos que vão para `order_refunds.ultimo_erro` — coluna que a CLIENTE lê (a
+ * política `order_refunds_cliente_le` devolve a linha inteira). Nada de saldo,
+ * de conta do lojista nem de código do MP: o motivo interno mora só em
+ * `order_refund_diagnostico`.
+ */
+export const MOTIVO_AINDA_NAO_LIBERADA =
+  "o Mercado Pago ainda não liberou esta devolução; a loja confere de novo em instantes";
+export const MOTIVO_NAO_LIBERADA_NO_LIMITE =
+  "o Mercado Pago não liberou esta devolução depois de várias tentativas; a loja vai resolver";
+export const MOTIVO_SEM_DIAGNOSTICO =
+  "não consegui registrar o que o Mercado Pago respondeu; a loja confere de novo em instantes";
+
+/** Quantas respostas "nada saiu" seguidas (sem nenhuma incerteza) esgotam a linha. */
+export const LIMITE_DE_FALHAS_TRANSITORIAS = 5;
 
 /** R9: o que do erro de parse pode ir ao log — o NOME (`SyntaxError`),
  * nunca a mensagem (o V8 cola nela o começo do corpo recebido). */
@@ -635,12 +894,6 @@ function interpretarOrders(
   const codigo = acharCodigo(corpo);
 
   switch (codigo) {
-    case "order_refund_already_in_process":
-      return {
-        tipo: "em_processamento",
-        mp_refund_id: null,
-        mp_status: "order_refund_already_in_process",
-      };
     // Os três abaixo mandam CONSULTAR a order (pré-veredito puro; o GET é
     // do executor — E16/E18):
     case "order_already_refunded":
@@ -803,6 +1056,24 @@ export function interpretarResposta(
   // `refundDaLinhaNaResposta`. Opcional: sem a lista, o contrato de antes.
   idsJaReivindicados: string[] = [],
 ): ResultadoEstorno {
+  // Código NOMEADO tem prioridade sobre o status HTTP (mesma regra de
+  // `interpretarOrders`), nas duas APIs: dinheiro em movimento continua
+  // `em_processamento`; "nada saiu" (lista fechada) fica para a próxima tentativa
+  // com a mesma chave. Texto leigo e neutro — ver `MOTIVO_AINDA_NAO_LIBERADA`.
+  if (status >= 400) {
+    const codigos = acharCodigos(corpo);
+    const classe = classificarCodigosDoMp(codigos);
+    if (classe === "em_andamento") {
+      return {
+        tipo: "em_processamento",
+        mp_refund_id: null,
+        mp_status: codigos.find((c) => CODIGOS_EM_ANDAMENTO.has(c)) ?? "",
+      };
+    }
+    if (classe === "nada_saiu") {
+      return { tipo: "tentar_depois", motivo: MOTIVO_AINDA_NAO_LIBERADA };
+    }
+  }
   if (idEhClassico(pedido.gateway_payment_id)) {
     return interpretarPayments(status, corpo, linha);
   }
@@ -1305,6 +1576,132 @@ export async function confirmarPorConsulta(args: {
 }
 
 /**
+ * A resposta da consulta "o MP já devolveu este dinheiro?" — TRÊS respostas, e
+ * só as duas primeiras chegam ao banco (`reemitir_reembolso_da_devolucao`).
+ * `indeterminado` NUNCA vira `nao_achou`: quem não sabe não cria chave nova.
+ */
+export type ConsultaDoReembolso =
+  | { resultado: "achou"; mp_refund_id: string; mp_status: "processed" | "approved"; valor: number }
+  | { resultado: "nao_achou" }
+  | { resultado: "indeterminado"; motivo: string };
+
+/** Status de refund que provam que o refund MORREU (nada saiu por ele). Só estes. */
+const STATUS_REFUND_MORTO = new Set(["rejected", "cancelled", "canceled", "failed"]);
+
+/**
+ * D2 (14/10/2026): consulta o MP (GET, nunca POST) e responde se existe um
+ * reembolso do VALOR desta linha que nenhuma outra linha do pedido reivindicou.
+ *   * `achou` — exatamente um candidato terminal (`processed`/`approved`) do
+ *     valor, de ninguém, e NENHUM outro reembolso sem explicação;
+ *   * `nao_achou` — SÓ com GET 200 de corpo legível que parece uma cobrança paga
+ *     e nenhum reembolso vivo sem dono (os mortos e os que o ledger já
+ *     reivindicou não contam);
+ *   * `indeterminado` — todo o resto: GET falhou, rede, corpo ilegível, forma
+ *     estranha, reembolso em andamento, reembolso de outro valor (a devolução
+ *     do painel em parcelas: o dinheiro saiu e ninguém o explica).
+ * `idsJaReivindicados` = `mp_refund_id` das OUTRAS linhas do pedido.
+ *
+ * `idProprio` (opcional; B1 da revisão Opus do #888, 15/10/2026): o
+ * `mp_refund_id` que ESTA linha já tem gravado. Com ele, a lista do MP só prova
+ * alguma coisa se esse id APARECER nela: ausente é `indeterminado` (o reembolso
+ * PIX em contingência, por exemplo, pode não ser listado na consulta do
+ * pagamento). Presente e morto, segue a regra normal (pode dar `nao_achou`);
+ * presente e vivo, a regra normal já dá `achou` ou `indeterminado`. Quem não
+ * passa o parâmetro tem o comportamento de antes.
+ */
+export async function consultarReembolsoDoPedido(args: {
+  buscar: typeof fetch;
+  token: string;
+  pedido: PedidoParaEstorno;
+  valor: number;
+  idsJaReivindicados: string[];
+  idProprio?: string | null;
+}): Promise<ConsultaDoReembolso> {
+  const { buscar, token, pedido } = args;
+  const indeterminado = (motivo: string): ConsultaDoReembolso => ({ resultado: "indeterminado", motivo });
+  const ehPayments = idEhClassico(pedido.gateway_payment_id);
+  const url = `${BASE_URL_PADRAO}/v1/${ehPayments ? "payments" : "orders"}/${pedido.gateway_payment_id}`;
+
+  let corpo: Record<string, unknown>;
+  try {
+    const resposta = await buscar(url, { method: "GET", headers: { Authorization: `Bearer ${token}` } });
+    if (resposta.status !== 200) {
+      console.error("estorno: consulta do reembolso recusada", resposta.status);
+      return indeterminado("o Mercado Pago não respondeu a consulta");
+    }
+    const bruto: unknown = await resposta.json();
+    if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) return indeterminado("resposta ilegível");
+    corpo = bruto as Record<string, unknown>;
+  } catch (err) {
+    console.error("estorno: consulta do reembolso falhou", nomeDoErro(err));
+    return indeterminado("falha ao consultar o Mercado Pago");
+  }
+
+  const centavosDaLinha = emCentavos(args.valor);
+  const reivindicados = new Set(args.idsJaReivindicados);
+  let refunds: Array<Record<string, unknown>>;
+  let statusTerminal: string;
+  if (ehPayments) {
+    statusTerminal = STATUS_REFUND_APROVADO_PAYMENTS;
+    refunds = Array.isArray(corpo.refunds)
+      ? corpo.refunds.filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+      : [];
+    // O acumulado do MP tem de bater com a soma dos aprovados que a lista mostra:
+    // senão há dinheiro fora da lista (ou a lista é incompleta) e não se sabe.
+    const acumulado = numeroFinito(corpo.transaction_amount_refunded);
+    const visiveis = refunds
+      .filter((r) => r.status === statusTerminal)
+      .reduce((soma, r) => soma + emCentavos(Number(r.amount)), 0);
+    if (acumulado === null || !Number.isFinite(visiveis) || emCentavos(acumulado) !== visiveis) {
+      return indeterminado("o total devolvido não bate com a lista de reembolsos");
+    }
+  } else {
+    statusTerminal = STATUS_REFUND_CONCLUIDO;
+    const pagamentos = comoObjeto(corpo.transactions).payments;
+    if (!Array.isArray(pagamentos) || pagamentos.length === 0) {
+      return indeterminado("a cobrança não parece uma cobrança paga");
+    }
+    refunds = refundsDaOrder(corpo);
+    const dizReembolsada = corpo.status === "refunded" || corpo.status_detail === "partially_refunded";
+    if (dizReembolsada && !refunds.some((r) => r.status === statusTerminal)) {
+      return indeterminado("a cobrança consta como devolvida, mas nenhum reembolso aparece");
+    }
+  }
+
+  // B1 (revisão Opus do #888): a linha já tem id do MP — a lista só vale como
+  // prova se mostrar esse id (e ele não puder ser de outra linha).
+  const idProprio = typeof args.idProprio === "string" ? args.idProprio.trim() : "";
+  if (idProprio !== "") {
+    if (!refunds.some((r) => idComoString(r.id) === idProprio)) {
+      return indeterminado("o reembolso já registrado desta devolução não aparece na consulta");
+    }
+    if (reivindicados.has(idProprio)) {
+      return indeterminado("o reembolso desta devolução consta também em outra devolução do pedido");
+    }
+  }
+
+  // O que NINGUÉM explica: reembolso vivo que nenhuma linha do pedido reivindicou.
+  const semDono = refunds.filter((r) => {
+    const id = idComoString(r.id);
+    return !(id !== "" && reivindicados.has(id)) && !STATUS_REFUND_MORTO.has(String(r.status ?? ""));
+  });
+  const candidato = refundQueCobreALinha(semDono, { amount: args.valor } as LinhaEstorno, statusTerminal, []);
+  const inexplicados = semDono.filter((r) => {
+    const doValor = r.status === statusTerminal && emCentavos(Number(r.amount)) === centavosDaLinha &&
+      r.id !== undefined && r.id !== null;
+    return !doValor;
+  });
+  if (inexplicados.length > 0) return indeterminado("há reembolso do pedido que não é desta devolução");
+  if (!candidato) return { resultado: "nao_achou" };
+  return {
+    resultado: "achou",
+    mp_refund_id: idComoString(candidato.id),
+    mp_status: ehPayments ? "approved" : "processed",
+    valor: args.valor,
+  };
+}
+
+/**
  * Alternativa B do I-A (laudo do PR #438 rodada 2): um único ponto de
  * decisão para os dois desfechos de "o MP ainda não confirma o valor
  * inteiro" — com pré-veredito DEFINITIVO do MP (4296/`order_already_refunded`)
@@ -1424,6 +1821,84 @@ export async function consultarTransacaoDaOrder(args: {
 }
 
 /**
+ * A PERGUNTA ANTES DO REENVIO (A1 do crítico do reembolso A/B, 15/10/2026).
+ *
+ * A chave de idempotência (`X-Idempotency-Key` = id da linha) só vale 24 h no
+ * MP. Uma linha que já teve envio (`linhaJaTeveEnvio`) pode ter criado o
+ * reembolso sem a resposta chegar; repetir o POST depois de 24 h cria um
+ * SEGUNDO reembolso e a cliente recebe em dobro. Por isso o POST de reenvio só
+ * sai quando `consultarReembolsoDoPedido` (um GET, nunca POST) responde
+ * `nao_achou`. Devolve `null` = pode enviar; qualquer outro valor é o desfecho,
+ * SEM POST:
+ *   * `achou` — o MP já fez o reembolso desta linha: adota pela confirmação de
+ *     sempre (`confirmarPorConsulta`, o único produtor de `concluido` por
+ *     consulta, com a guarda do acumulado); se ela ainda não fechar,
+ *     `tentar_depois` — nunca POST;
+ *   * `indeterminado`, consulta que lança, ou `idsJaReivindicados` ausente (sem
+ *     ele não se sabe de quem é cada reembolso do pedido) — `tentar_depois`.
+ * Nenhum desfecho aqui leva diagnóstico de POST: nada foi enviado.
+ *
+ * Fica ANTES do GET da transação e da autorização do banco: consulta que não
+ * libera não gasta a pergunta ao banco nem renova o carimbo `post_autorizado_em`.
+ * A janela entre esta consulta e o POST é de segundos — muito dentro das 24 h da
+ * chave, então um envio concorrente (clique × robô) é deduplicado pelo MP.
+ */
+async function conferirAntesDoReenvio(args: {
+  buscar: typeof fetch;
+  token: string;
+  linha: LinhaEstorno;
+  pedido: PedidoParaEstorno;
+  idsJaReivindicados: string[] | undefined;
+}): Promise<ResultadoEstorno | null> {
+  const { buscar, token, linha, pedido, idsJaReivindicados } = args;
+  if (!Array.isArray(idsJaReivindicados)) {
+    console.error("estorno: reenvio sem a lista de ids já reivindicados — nada enviado", linha.id);
+    return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_SEM_CONSULTA };
+  }
+  let consulta: ConsultaDoReembolso;
+  try {
+    consulta = await consultarReembolsoDoPedido({
+      buscar,
+      token,
+      pedido,
+      valor: linha.amount,
+      idsJaReivindicados,
+      // B1 (revisão Opus do #888): linha com id do MP só reenvia se a lista
+      // mostrar esse id morto.
+      idProprio: linha.mp_refund_id,
+    });
+  } catch (err) {
+    console.error("estorno: a consulta antes do reenvio lançou", nomeDoErro(err));
+    consulta = { resultado: "indeterminado", motivo: "a consulta lançou" };
+  }
+  if (consulta.resultado === "nao_achou") return null;
+  // P1 do Codex no #888: daqui para baixo o ciclo termina SÓ por causa da
+  // consulta (nada saiu, nada foi perguntado ao banco) — `semEnvioPorPrevoo`
+  // avisa os chamadores para não contarem a tentativa deste ciclo. Sem isso,
+  // quatro ciclos de MP confuso levavam a linha ao teto sem envio nenhum, e o
+  // ramo travado do robô nunca mais a devolvia ao executor. Consultar para
+  // sempre sem contar é inofensivo (só GET). A lista de ids ausente (acima) NÃO
+  // leva o sinal: é defeito do chamador, não resposta do MP, e deve travar.
+  if (consulta.resultado === "achou") {
+    const confirmacao = await confirmarPorConsulta({ buscar, token, linha, pedido, idsJaReivindicados });
+    if (confirmacao.tipo === "concluido") return confirmacao;
+    console.error("estorno: o MP mostra o reembolso desta linha, mas a confirmação não fechou — nada enviado", linha.id);
+    return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_JA_NO_MP, semEnvioPorPrevoo: true };
+  }
+  console.error("estorno: consulta antes do reenvio sem resposta clara — nada enviado", linha.id, consulta.motivo);
+  return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_SEM_CONSULTA, semEnvioPorPrevoo: true };
+}
+
+/**
+ * P1 do Codex no #888: o ciclo terminou só pela consulta antes do reenvio (nada
+ * saiu)? Os chamadores (clique e robô) desfazem então a marca de `tentativas`
+ * deste ciclo, com UPDATE condicionado ao valor que eles mesmos gravaram.
+ */
+export function cicloSemEnvioPorPrevoo(resultado: ResultadoEstorno): boolean {
+  return resultado.tipo === "tentar_depois" && resultado.semEnvioPorPrevoo === true;
+}
+
+/**
  * Fluxo completo: guarda → (Orders: acha a transação) → POST → interpreta →
  * (se a tabela manda consultar) GET de confirmação. NUNCA lança: toda falha
  * de rede/timeout/ilegível vira `tentar_depois` (E19), e guarda recusada não
@@ -1468,6 +1943,19 @@ export async function executarEstorno(args: {
       return { tipo: "tentar_depois", motivo: `${guarda.motivo}; ${MOTIVO_LINHA_INCERTA}` };
     }
     return { tipo: "recusado", motivo: guarda.motivo };
+  }
+
+  // A1 do crítico do reembolso A/B (15/10/2026): o REENVIO só sai depois de
+  // perguntar ao MP. Ver `conferirAntesDoReenvio`. Linha nova não passa aqui.
+  if (linhaJaTeveEnvio(linha)) {
+    const bloqueio = await conferirAntesDoReenvio({
+      buscar,
+      token,
+      linha,
+      pedido,
+      idsJaReivindicados: args.idsJaReivindicados,
+    });
+    if (bloqueio) return bloqueio;
   }
 
   let transacaoDaOrder: string | null | undefined;
@@ -1572,6 +2060,8 @@ export async function executarEstorno(args: {
     return {
       tipo: "tentar_depois",
       motivo: "falha de rede ao falar com o Mercado Pago",
+      // Pode ter saído e a resposta se perdido: INCERTO (nunca "nada saiu").
+      diagnostico: { mpCodigo: null, postIncerto: true, transitorio: false },
     };
   }
 
@@ -1616,20 +2106,69 @@ export async function executarEstorno(args: {
     }
   }
 
+  const diagnostico = diagnosticoDoPost(resposta.status, resposta.ok, corpo, resultado);
   if (
     resultado.tipo === "falhou" &&
     CODIGOS_QUE_EXIGEM_CONFIRMACAO.has(resultado.codigo)
   ) {
     // I1 do laudo: a MESMA decisão que a T4 chama direto (sem POST) para
     // linhas `em_processamento` — uma função, dois chamadores.
-    return confirmarPorConsulta({
-      buscar,
-      token,
-      linha,
-      pedido: pedidoRelido,
-      codigo: resultado.codigo,
-      idsJaReivindicados: args.idsJaReivindicados,
-    });
+    // D5 (14/10/2026): `idempotency_key_already_used` diz que ESTA chave já
+    // foi usada no MP — o refund existe ou está nascendo. Sem pré-veredito
+    // (`codigo` ausente) a consulta que não fecha é `tentar_depois`, nunca
+    // `falhou`: `falhou` solta o saldo reservado e a chave "usada" ficaria sem
+    // dono. `order_already_refunded` continua com veredito (o MP afirmou).
+    return comDiagnostico(
+      await confirmarPorConsulta({
+        buscar,
+        token,
+        linha,
+        pedido: pedidoRelido,
+        codigo: resultado.codigo === "idempotency_key_already_used" ? undefined : resultado.codigo,
+        idsJaReivindicados: args.idsJaReivindicados,
+      }),
+      diagnostico,
+    );
+  }
+  return comDiagnostico(resultado, diagnostico);
+}
+
+/**
+ * O diagnóstico que o POST deixa (ver `DiagnosticoDoPost`). Resposta 2xx
+ * reconhecida (`concluido`/`em_processamento`) não deixa nada. 2xx NÃO
+ * reconhecida é incerta. Erro HTTP: só os códigos da lista fechada
+ * `CODIGOS_NADA_SAIU` (todos eles) provam que nada saiu; todo o resto — 401/403,
+ * 423, 429, 5xx, corpo ilegível, código desconhecido, "em andamento" — carimba.
+ */
+function diagnosticoDoPost(
+  status: number,
+  ok: boolean,
+  corpo: unknown,
+  resultado: ResultadoEstorno,
+): DiagnosticoDoPost | undefined {
+  const codigos = acharCodigos(corpo);
+  const mpCodigo = codigos[0] ?? `http_${status}`;
+  if (ok) {
+    return resultado.tipo === "tentar_depois"
+      ? { mpCodigo, postIncerto: true, transitorio: false }
+      : undefined;
+  }
+  if (classificarCodigosDoMp(codigos) === "nada_saiu") {
+    return { mpCodigo, postIncerto: false, transitorio: true };
+  }
+  return { mpCodigo, postIncerto: true, transitorio: false };
+}
+
+function comDiagnostico(
+  resultado: ResultadoEstorno,
+  diagnostico: DiagnosticoDoPost | undefined,
+): ResultadoEstorno {
+  if (!diagnostico) return resultado;
+  if (
+    resultado.tipo === "falhou" || resultado.tipo === "tentar_depois" ||
+    resultado.tipo === "em_processamento"
+  ) {
+    return { ...resultado, diagnostico };
   }
   return resultado;
 }

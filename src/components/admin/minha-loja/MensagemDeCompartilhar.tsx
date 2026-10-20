@@ -3,12 +3,12 @@ import { Label } from "@/components/ui/label";
 import { useStore } from "@/contexts/StoreContext";
 import {
   Check,
+  Copy,
   ExternalLink,
   MoreVertical,
   Phone,
   Plus,
   Share2,
-  Sparkles,
   Video,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -437,7 +437,7 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
         }}
         className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-purple-500/20 bg-purple-500/5 px-4 text-sm font-bold text-purple-400 shadow-sm transition-all hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
       >
-        <Sparkles aria-hidden="true" className="size-4 text-purple-400" />
+        <Copy aria-hidden="true" className="size-4 text-purple-400" />
         <span>Modelos prontos ({PRESETS.length} disponíveis)</span>
       </button>
 
@@ -445,7 +445,7 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
         aberta={folhaAberta}
         onFechar={fecharFolha}
         titulo="Modelos prontos de mensagem"
-        icone={Sparkles}
+        icone={Copy}
       >
         <p className="text-xs text-zinc-400">
           Selecione um dos {PRESETS.length} modelos prontos de compartilhamento

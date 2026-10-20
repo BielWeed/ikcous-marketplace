@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { supabase } from "@/lib/supabase";
 import {
   cachedQuestionsData,
@@ -210,7 +211,8 @@ export function useQuestions() {
               .select("id, question_id, answer, created_at")
               .in("question_id", questionIds)
               .abortSignal(signal);
-            if (!answersError && answersData) {
+            if (answersError) throw answersError;
+            if (answersData) {
               for (const ans of answersData as any[]) {
                 const lista = answersByQuestion.get(ans.question_id) || [];
                 lista.push(ans);
@@ -416,6 +418,7 @@ export function useQuestions() {
 
   const addQuestion = useCallback(
     async (question: { productId: string; question: string }) => {
+      const desmarcar = marcarOperacaoSensivel("envio-de-pergunta");
       try {
         // ZENITH v21.7: Rely on AuthContext's verified user
         if (!user) {
@@ -442,6 +445,8 @@ export function useQuestions() {
         console.error("Error adding question:", error);
         toast.error("Erro ao enviar pergunta.");
         return null;
+      } finally {
+        desmarcar();
       }
     },
     [getQuestionsByProduct, user],

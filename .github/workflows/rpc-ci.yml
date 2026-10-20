@@ -39,6 +39,8 @@ on:
       - "tests/banco/**"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
+      # O ensaio da anonimizacao le o SQL direto deste roteiro: mudar o roteiro dispara a prova.
+      - "docs/runbooks/atender-pedido-de-privacidade.md"
       # A prova viva do lote 60-66 (abaixo) roda estes três: mudar a consulta
       # 9a, o INSERT do backfill ou o script que os executa dispara a prova.
       - "scripts/publicacao/conferir-banco.cjs"
@@ -60,6 +62,82 @@ on:
       - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
       - "scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql"
       - "scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/19a-conferir-politica-devolucao-aplicado.sql"
+      - "scripts/publicacao/consultas/19b-antes-politica-devolucao-grant-de-tabela.sql"
+      - "scripts/publicacao/consultas/20a-conferir-fotos-da-devolucao-aplicado.sql"
+      - "scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql"
+      - "scripts/publicacao/consultas/21a-conferir-teto-de-email-aplicado.sql"
+      - "scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/22a-conferir-portas-do-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql"
+      - "scripts/publicacao/consultas/23a-conferir-consulta-antiga-de-pedido-fechada.sql"
+      - "scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql"
+      - "scripts/publicacao/consultas/24a-conferir-avaliacoes-fechadas-ao-visitante.sql"
+      - "scripts/publicacao/consultas/24b-antes-avaliacoes-abertas-ao-visitante.sql"
+      - "scripts/publicacao/consultas/25a-conferir-media-de-avaliacoes-so-admin.sql"
+      - "scripts/publicacao/consultas/25b-antes-media-de-avaliacoes-sem-guarda.sql"
+      - "scripts/publicacao/consultas/26a-conferir-voto-util-so-em-avaliacao-publica.sql"
+      - "scripts/publicacao/consultas/26b-antes-voto-util-sem-guarda-de-status.sql"
+      - "scripts/publicacao/consultas/27a-conferir-avaliacao-nasce-sem-resposta-da-loja.sql"
+      - "scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql"
+      - "scripts/publicacao/consultas/30a-conferir-numeros-do-painel-aplicado.sql"
+      - "scripts/publicacao/consultas/30b-antes-numeros-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/33a-conferir-grade-do-crm-aplicado.sql"
+      - "scripts/publicacao/consultas/33b-antes-grade-do-crm-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/33m-medir-grade-do-crm.sql"
+      - "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql"
+      - "scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql"
+      - "scripts/publicacao/consultas/28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro.sql"
+      - "scripts/publicacao/consultas/28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao.sql"
+      - "scripts/publicacao/consultas/29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes.sql"
+      - "scripts/publicacao/consultas/29b-antes-reemissao-do-reembolso-base-conhecida.sql"
+      - "scripts/publicacao/consultas/32a-conferir-busca-de-clientes-aplicado.sql"
+      - "scripts/publicacao/consultas/32b-antes-busca-de-clientes-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/32m-medir-busca-de-clientes.sql"
+      - "scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql"
+      - "scripts/publicacao/consultas/34b-antes-sino-da-retirada-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/34m-medir-sino-da-retirada.sql"
+      - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
+      - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
+      - "scripts/publicacao/consultas/36a-conferir-venda-repetida-do-balcao-aplicado.sql"
+      - "scripts/publicacao/consultas/36b-antes-venda-repetida-do-balcao-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado.sql"
+      - "scripts/publicacao/consultas/37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/38a-conferir-gestao-de-categorias-aplicado.sql"
+      - "scripts/publicacao/consultas/38b-antes-gestao-de-categorias-funcoes-ausentes.sql"
+      - "scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql"
+      - "scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql"
+      - "scripts/publicacao/consultas/39m-medir-privilegios-do-roteiro-de-privacidade.sql"
+      - "scripts/publicacao/consultas/40a-conferir-identidade-legal-da-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/40b-antes-identidade-legal-da-loja-base-vigente.sql"
+      - "scripts/publicacao/consultas/40m-medir-identidade-legal-da-loja.sql"
+      - "scripts/publicacao/consultas/41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado.sql"
+      - "scripts/publicacao/consultas/41b-antes-pergunta-respondida-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/41m-medir-pergunta-respondida.sql"
+      - "scripts/publicacao/consultas/43a-conferir-reembolso-em-duvida-aplicado.sql"
+      - "scripts/publicacao/consultas/43b-antes-reembolso-em-duvida-base-vigente.sql"
+      - "scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql"
+      - "scripts/publicacao/consultas/45b-antes-custo-do-dia-base-vigente.sql"
+      - "scripts/publicacao/consultas/45m-medir-itens-sem-custo-do-dia.sql"
+      - "scripts/publicacao/consultas/46a-conferir-desfazer-recebimento-aplicado.sql"
+      - "scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql"
+      - "scripts/publicacao/consultas/47a-conferir-a-loja-escolhe-como-entrega-aplicado.sql"
+      - "scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql"
+      - "scripts/publicacao/consultas/48a-conferir-lucro-com-desconto-aplicado.sql"
+      - "scripts/publicacao/consultas/48b-antes-lucro-com-desconto-base-vigente.sql"
+      - "scripts/publicacao/consultas/49a-conferir-lancamento-idempotente-aplicado.sql"
+      - "scripts/publicacao/consultas/49b-antes-lancamento-idempotente-base-vigente.sql"
+      - "scripts/publicacao/consultas/50a-conferir-nota-interna-do-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/50b-antes-nota-interna-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/51a-conferir-notes-do-pedido-fechada-aplicado.sql"
+      - "scripts/publicacao/consultas/51b-antes-notes-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/52a-conferir-motivo-do-balcao-privado-aplicado.sql"
+      - "scripts/publicacao/consultas/52b-antes-motivo-do-balcao-base-vigente.sql"
+      - "scripts/publicacao/consultas/53a-conferir-faturamento-potencial-aplicado.sql"
+      - "scripts/publicacao/consultas/53b-antes-faturamento-potencial-base-vigente.sql"
+      - "scripts/publicacao/consultas/54a-conferir-lucro-do-estoque-aplicado.sql"
+      - "scripts/publicacao/consultas/54b-antes-lucro-do-estoque-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -71,6 +149,7 @@ on:
       - "tests/banco/**"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
+      - "docs/runbooks/atender-pedido-de-privacidade.md"
       - "scripts/publicacao/conferir-banco.cjs"
       - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-60-66.sql"
@@ -90,6 +169,82 @@ on:
       - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
       - "scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql"
       - "scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/19a-conferir-politica-devolucao-aplicado.sql"
+      - "scripts/publicacao/consultas/19b-antes-politica-devolucao-grant-de-tabela.sql"
+      - "scripts/publicacao/consultas/20a-conferir-fotos-da-devolucao-aplicado.sql"
+      - "scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql"
+      - "scripts/publicacao/consultas/21a-conferir-teto-de-email-aplicado.sql"
+      - "scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/22a-conferir-portas-do-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql"
+      - "scripts/publicacao/consultas/23a-conferir-consulta-antiga-de-pedido-fechada.sql"
+      - "scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql"
+      - "scripts/publicacao/consultas/24a-conferir-avaliacoes-fechadas-ao-visitante.sql"
+      - "scripts/publicacao/consultas/24b-antes-avaliacoes-abertas-ao-visitante.sql"
+      - "scripts/publicacao/consultas/25a-conferir-media-de-avaliacoes-so-admin.sql"
+      - "scripts/publicacao/consultas/25b-antes-media-de-avaliacoes-sem-guarda.sql"
+      - "scripts/publicacao/consultas/26a-conferir-voto-util-so-em-avaliacao-publica.sql"
+      - "scripts/publicacao/consultas/26b-antes-voto-util-sem-guarda-de-status.sql"
+      - "scripts/publicacao/consultas/27a-conferir-avaliacao-nasce-sem-resposta-da-loja.sql"
+      - "scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql"
+      - "scripts/publicacao/consultas/30a-conferir-numeros-do-painel-aplicado.sql"
+      - "scripts/publicacao/consultas/30b-antes-numeros-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/33a-conferir-grade-do-crm-aplicado.sql"
+      - "scripts/publicacao/consultas/33b-antes-grade-do-crm-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/33m-medir-grade-do-crm.sql"
+      - "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql"
+      - "scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql"
+      - "scripts/publicacao/consultas/28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro.sql"
+      - "scripts/publicacao/consultas/28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao.sql"
+      - "scripts/publicacao/consultas/29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes.sql"
+      - "scripts/publicacao/consultas/29b-antes-reemissao-do-reembolso-base-conhecida.sql"
+      - "scripts/publicacao/consultas/32a-conferir-busca-de-clientes-aplicado.sql"
+      - "scripts/publicacao/consultas/32b-antes-busca-de-clientes-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/32m-medir-busca-de-clientes.sql"
+      - "scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql"
+      - "scripts/publicacao/consultas/34b-antes-sino-da-retirada-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/34m-medir-sino-da-retirada.sql"
+      - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
+      - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
+      - "scripts/publicacao/consultas/36a-conferir-venda-repetida-do-balcao-aplicado.sql"
+      - "scripts/publicacao/consultas/36b-antes-venda-repetida-do-balcao-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado.sql"
+      - "scripts/publicacao/consultas/37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/38a-conferir-gestao-de-categorias-aplicado.sql"
+      - "scripts/publicacao/consultas/38b-antes-gestao-de-categorias-funcoes-ausentes.sql"
+      - "scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql"
+      - "scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql"
+      - "scripts/publicacao/consultas/39m-medir-privilegios-do-roteiro-de-privacidade.sql"
+      - "scripts/publicacao/consultas/40a-conferir-identidade-legal-da-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/40b-antes-identidade-legal-da-loja-base-vigente.sql"
+      - "scripts/publicacao/consultas/40m-medir-identidade-legal-da-loja.sql"
+      - "scripts/publicacao/consultas/41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado.sql"
+      - "scripts/publicacao/consultas/41b-antes-pergunta-respondida-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/41m-medir-pergunta-respondida.sql"
+      - "scripts/publicacao/consultas/43a-conferir-reembolso-em-duvida-aplicado.sql"
+      - "scripts/publicacao/consultas/43b-antes-reembolso-em-duvida-base-vigente.sql"
+      - "scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql"
+      - "scripts/publicacao/consultas/45b-antes-custo-do-dia-base-vigente.sql"
+      - "scripts/publicacao/consultas/45m-medir-itens-sem-custo-do-dia.sql"
+      - "scripts/publicacao/consultas/46a-conferir-desfazer-recebimento-aplicado.sql"
+      - "scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql"
+      - "scripts/publicacao/consultas/47a-conferir-a-loja-escolhe-como-entrega-aplicado.sql"
+      - "scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql"
+      - "scripts/publicacao/consultas/48a-conferir-lucro-com-desconto-aplicado.sql"
+      - "scripts/publicacao/consultas/48b-antes-lucro-com-desconto-base-vigente.sql"
+      - "scripts/publicacao/consultas/49a-conferir-lancamento-idempotente-aplicado.sql"
+      - "scripts/publicacao/consultas/49b-antes-lancamento-idempotente-base-vigente.sql"
+      - "scripts/publicacao/consultas/50a-conferir-nota-interna-do-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/50b-antes-nota-interna-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/51a-conferir-notes-do-pedido-fechada-aplicado.sql"
+      - "scripts/publicacao/consultas/51b-antes-notes-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/52a-conferir-motivo-do-balcao-privado-aplicado.sql"
+      - "scripts/publicacao/consultas/52b-antes-motivo-do-balcao-base-vigente.sql"
+      - "scripts/publicacao/consultas/53a-conferir-faturamento-potencial-aplicado.sql"
+      - "scripts/publicacao/consultas/53b-antes-faturamento-potencial-base-vigente.sql"
+      - "scripts/publicacao/consultas/54a-conferir-lucro-do-estoque-aplicado.sql"
+      - "scripts/publicacao/consultas/54b-antes-lucro-do-estoque-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -137,8 +292,8 @@ jobs:
       CI_BANCO_EFEMERO: "1"
 
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -158,6 +313,15 @@ jobs:
       # `!cancelled()` só troca o "pare no primeiro erro" por "rode todas e
       # reprove no fim". Sem as migrations aplicadas, nenhuma prova roda (o
       # passo `aplica` já reprovou o job).
+      # Receita com custo usa preco efetivo por variante (251): cobertura, zero legitimo,
+      # prejuizo, contrato historico, portoes oficiais, rollback e mutantes. CLONE proprio.
+      - name: Prova viva do lucro do estoque (migration 20261251)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-do-estoque-viva.cjs
+      # A prova nova roda primeiro em clone próprio; não depende das fixtures das demais.
+      - name: Prova viva do faturamento potencial (migration 20261250)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/faturamento-potencial-viva.cjs
       # Provas vivas de 26/09 (devoluções, cartão, Financeiro, CRM/Início):
       # cada uma num CLONE do banco recém-migrado (rodar-isolado.cjs) — as do
       # Financeiro e do CRM medem totais da loja e não podem enxergar as
@@ -448,6 +612,382 @@ jobs:
       - name: Prova viva do portao do estoque do painel (consultas 17a e 17b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-do-painel-portao-viva.cjs
+      # Achado L (politica de devolucao): as consultas 19a (DEPOIS) e 19b (ANTES) do portao da release para a
+      # migration 20261215000000, num Postgres efemero. Cada consulta devolve exatamente o rol de 9 linhas
+      # (conferir-banco.cjs) em qualquer estado; 19a positiva depois do apply (tambem aplicado 2x e depois de
+      # ida e volta) e 19b positiva depois do rollback; os defeitos (GRANT da tabela, GRANT de updated_by,
+      # service_role sem SELECT, RLS desligada, politica apagada, tabela ausente) reprovam SO as suas linhas;
+      # o papel minimo de leitura da o mesmo resultado do dono. BLOQUEANTE: o portao de CADA loja depende
+      # dela. CLONE proprio.
+      - name: Prova viva do portao da politica de devolucao (consultas 19a e 19b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/politica-devolucao-portao-viva.cjs
+      # Fotos da devolucao (migration 20261216000000): as consultas 20a (DEPOIS) e 20b (ANTES) do portao da
+      # release, num Postgres efemero. Cada consulta devolve exatamente o rol de 5 linhas (conferir-banco.cjs)
+      # em qualquer estado; 20a positiva depois do apply (tambem 2x e depois de ida e volta) e 20b positiva
+      # depois do rollback; os defeitos (DELETE para anon, DELETE sem a pasta ou sem a foto em uso, sem a
+      # politica de INSERT) reprovam SO as suas linhas; o papel minimo de leitura da o mesmo resultado do dono.
+      # BLOQUEANTE: o portao de CADA loja depende dela. CLONE proprio.
+      - name: Prova viva do portao das fotos da devolucao (consultas 20a e 20b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/fotos-da-devolucao-portao-viva.cjs
+      # Teto de e-mail e codigo do convidado (migration 20261217000000). A primeira prova e o
+      # COMPORTAMENTO: o fluxo legitimo (codigo, verificacao, comprovante) passa; os tetos por pedido,
+      # por destinatario (com a chave normalizada) e da loja recusam sem gravar codigo; duas chamadas
+      # simultaneas nao passam do teto; pedido pago nunca e recusado; a v2 so conta tentativa quando o
+      # trio confere; a v1 segue sem `restantes`; reaplicar e o rollback (corpos de antes byte a byte).
+      # A segunda e o PORTAO: as consultas 21a (DEPOIS, 14 linhas) e 21b (ANTES, 8 linhas) devolvem o
+      # rol exato em qualquer estado e cada defeito reprova SO a sua linha. BLOQUEANTES. CLONE proprio.
+      - name: Prova viva do teto de e-mail e do codigo do convidado (migration 20261217)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/teto-de-email-viva.cjs
+      - name: Prova viva do portao do teto de e-mail (consultas 21a e 21b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/teto-de-email-portao-viva.cjs
+      # Portas pequenas do banco (migrations 20261218000000, 20261218000100 e 20261219000000). A primeira
+      # prova e o COMPORTAMENTO com os papeis reais: a lista de perfis so para quem esta logado (o
+      # visitante recebe zero linhas e a vitrine segue com o autor), o teto da foto e da capa do perfil
+      # (imagem antiga grande continua editavel), a contagem do push e a view do painel fechadas ao
+      # visitante, configuracoes e codigos so pelo servidor; o ANTES (os rollback-manual) e o controle de
+      # cada recusa. A segunda e o PORTAO: as consultas 22a (DEPOIS, 15 linhas) e 22b (ANTES, 11 linhas)
+      # devolvem o rol exato em qualquer estado e cada defeito reprova SO a sua linha. BLOQUEANTES. CLONE proprio.
+      - name: Prova viva das portas pequenas do banco (migrations 20261218 e 20261219)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-do-banco-viva.cjs
+      - name: Prova viva do portao das portas pequenas do banco (consultas 22a e 22b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-do-banco-portao-viva.cjs
+      # A consulta antiga de pedido por codigo fecha para o visitante (migration 20261220, etapa 2 do L1). A
+      # primeira prova e o COMPORTAMENTO com os papeis reais (anon e authenticated recebem 42501 na v1, a v2
+      # segue aberta, o achado A-1 reproduz ANTES e nao DEPOIS, so a ACL da v1 muda, dados intactos, rollback
+      # identico, pre-voo, conferencia, concorrencia); a segunda e o PORTAO: as consultas 23a (DEPOIS) e 23b
+      # (ANTES), 5 linhas cada. BLOQUEANTES. CLONE proprio. As provas do lote 21 (teto de e-mail) montam o
+      # estado de ANTES da 20261220 dentro da transacao.
+      - name: Prova viva da consulta antiga de pedido por codigo (migration 20261220)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-antiga-de-pedido-viva.cjs
+      - name: Prova viva do portao da consulta antiga de pedido (consultas 23a e 23b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-antiga-de-pedido-portao-viva.cjs
+      # A media de avaliacoes e o voto "util" fecham para o visitante (migration 20261221, menor privilegio, ordem do dono de
+      # 14/10/2026). COMPORTAMENTO com os papeis reais: anon recebe 42501 nas duas, authenticated chega ao corpo, so a ACL das
+      # duas muda, dados intactos, rollback identico, pre-voo, conferencia, atomicidade entre as duas, concorrencia.
+      # BLOQUEANTE. CLONE proprio.
+      - name: Prova viva das avaliacoes fechadas ao visitante (migration 20261221)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacoes-fechadas-ao-visitante-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 24a (DEPOIS) e 24b (ANTES), 3 linhas cada. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao das avaliacoes fechadas ao visitante (consultas 24a e 24b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacoes-fechadas-ao-visitante-portao-viva.cjs
+      # A media de avaliacoes so responde ao administrador (migration 20261222, permissao; ordem do dono de 14/10/2026).
+      # COMPORTAMENTO com os papeis reais: anon recebe 42501, authenticated NAO-admin recebe a excecao da guarda, admin
+      # (JWT ou auth.users) e service_role recebem a MESMA linha de antes sobre avaliacoes que ja existiam, so o corpo dessa
+      # funcao muda (ACL e dados intactos), rollback com o mesmo md5 do baseline, pre-voo, conferencia, concorrencia.
+      # BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da media de avaliacoes so para o admin (migration 20261222)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/media-de-avaliacoes-so-admin-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 25a (DEPOIS, 5 linhas) e 25b (ANTES, 4 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da media de avaliacoes so-admin (consultas 25a e 25b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/media-de-avaliacoes-so-admin-portao-viva.cjs
+      # O voto "util" so vale em avaliacao que o publico ve (migration 20261223, permissao; decisao do dono de 14/10/2026).
+      # COMPORTAMENTO com os papeis reais: anon recebe 42501, authenticated em avaliacao PUBLICADA vota (o contador sobe 1,
+      # o segundo voto do mesmo usuario e no-op), em avaliacao PENDENTE ou inexistente recebe a MESMA excecao e nada e
+      # gravado, so o corpo dessa funcao muda (ACL e dados intactos), rollback com o mesmo md5 do corpo da 20261050,
+      # pre-voo, conferencia, concorrencia. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do voto util so em avaliacao publica (migration 20261223)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/voto-util-so-em-avaliacao-publica-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 26a (DEPOIS, 5 linhas) e 26b (ANTES, 4 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do voto util so em avaliacao publica (consultas 26a e 26b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/voto-util-so-em-avaliacao-publica-portao-viva.cjs
+      # A avaliacao nasce sem a resposta da loja (migration 20261224, permissao / dado publico; achado da cacada Opus de
+      # 14/10/2026). Gatilho BEFORE INSERT em reviews: a cliente que forja merchant_reply, merchant_reply_at, helpful e
+      # created_at pela API entra LIMPA; admin (rls_admin_atual), service_role, postgres e a sessao direta gravam como
+      # vierem; a normal do app, o selo pela compra e reply_review_atomic seguem; mutantes, pre-voo, conferencia,
+      # rollback, concorrencia e a consulta de leitura 27m (conta o que ja foi forjado). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da avaliacao que nasce sem a resposta da loja (migration 20261224)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 27a (DEPOIS, 6 linhas) e 27b (ANTES, 6 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da avaliacao que nasce sem a resposta da loja (consultas 27a e 27b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs
+      # O endereco da compra fica no pedido (migration 20261229, dado de cliente; cacada de 14/10/2026).
+      # COMPORTAMENTO pelo caminho real do checkout, nas DUAS funcoes (v23 na entrega, v24 online): quem tem conta
+      # grava a copia do endereco no pedido (8 chaves, sem chave nula), editar ou apagar o endereco depois nao mexe no
+      # pedido, endereco de OUTRO usuario recusado antes de escrever, a convidada nunca dispara a copia, a retirada
+      # na loja segue sem endereco, o digitado nao e trocado, dinheiro/estoque/cupom identicos ao antes, pedido antigo
+      # intacto (sem backfill), so o corpo das duas funcoes muda (ACL e dados intactos), rollback com o mesmo md5,
+      # pre-voo, conferencia, trocas atomicas, concorrencia e mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do endereco da compra no pedido (migration 20261229)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/endereco-no-pedido-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 31a (DEPOIS, 9 linhas) e 31b (ANTES, 7 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do endereco da compra no pedido (consultas 31a e 31b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/endereco-no-pedido-portao-viva.cjs
+      # A grade do CRM mede a recencia do MESMO instante da lista (migration 20261232, numeros; cacada de 14/10/2026): a grade de
+      # segmentos (crm_visao) media cada cliente ate a meia-noite de amanha e a lista (crm_clientes) ate agora; a ancora passa a
+      # ser o menor entre as duas. COMPORTAMENTO com os papeis reais: cada virada (29/30/31, 59/60/61, 119/120/121, 239/240/241
+      # dias) cai no mesmo segmento nas duas telas, o conjunto de 12 compras bate (novos 2, promissores 3, quase dormindo 3,
+      # hibernando 4), as outras tres chamadas (vendas, pedidos nao pagos, perfis sem compra) recebem o mesmo instante, periodo
+      # que NAO termina hoje com o JSON identico ao do corpo antigo, resto do corpo igual byte a byte, ACL e atributos intactos,
+      # rollback com o md5 da 20261227, pre-voo que recusa sem escrever, dois aplicadores ao mesmo tempo e mutantes.
+      # BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da grade do CRM (migration 20261232)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-grade-do-crm-mede-a-recencia-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 33a (DEPOIS, 5 linhas), 33b (ANTES, 4 linhas) e a medicao 33m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da grade do CRM (consultas 33a e 33b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs
+      # A compra que da R$ 0,00 nao se paga pelo app (migration 20261236, dinheiro + estoque + cupom; decisao do dono de
+      # 14/10/2026): a create_marketplace_order_v24 recusa, ANTES de reservar estoque e de gastar a vaga do cupom, o
+      # pedido de pagamento pelo app cujo total calculado pelo servidor e' zero. COMPORTAMENTO pelo caminho real do
+      # checkout (conta, convidada, retirada, cupom de 100%, cupom de uso unico), a ORDEM provada por uma sequencia movida
+      # por gatilhos (o rollback nao a desfaz), zero na retirada/entrega nascendo como hoje, positivo pelo app como hoje
+      # (R$ 0,01 e o total do servidor R$ 0,04), so o corpo da v24 muda, rollback com o mesmo md5, pre-voo, conferencia
+      # atomica e 6 mutantes. As provas da 20261229 desfazem esta sucessora antes de medir. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da compra que da R$ 0,00 nao se paga pelo app (migration 20261236)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 37a (DEPOIS, 6 linhas) e 37b (ANTES, 5 linhas). Nao ha medicao 37m: nenhuma contagem de loja e prova do que o lote muda. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da compra que da R$ 0,00 nao se paga pelo app (consultas 37a e 37b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs
+      # Os numeros do painel (migrations 20261227 e 20261228, numeros; ordem do dono de 14/10/2026): a taxa de devolucao
+      # do CRM nunca passa de 100% (a turma de vendas pagas do periodo, as estornadas e canceladas dentro) e o "Hoje" do
+      # Inicio e o "vs. ontem" do CRM comparam ate a MESMA hora do dia (relogio fixo de Sao Paulo). COMPORTAMENTO com os
+      # papeis reais: cada cenario da taxa (parcial, parcial mais total, 3 vendas com 2 devolvidas, pago-cancela-estorna,
+      # balcao anulado, devolucao manual), o corte na mesma hora das duas telas, o formato do JSON, a ACL e as travas de
+      # admin intactas, rollback com o mesmo md5, pre-voo que recusa sem escrever e mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva dos numeros do painel (migrations 20261227 e 20261228)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/numeros-do-painel-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 30a (DEPOIS, 9 linhas) e 30b (ANTES, 7 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao dos numeros do painel (consultas 30a e 30b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/numeros-do-painel-portao-viva.cjs
+      # O reembolso da devolucao so e' "liberado" quando o dinheiro sai (migration 20261225, dinheiro; decisao do dono de
+      # 14/10/2026). COMPORTAMENTO com os papeis reais e o fluxo REAL do painel (admin_devolucao_concluir, concluir_estorno):
+      # concluir com reembolso avisa "em processamento", nunca "liberado"; o "liberado" nasce so quando concluir_estorno
+      # confirma o dinheiro, UMA vez (inclusive com duas conexoes em corrida); linha falhou/recusado/sem linha = "ainda nao
+      # foi liberado"; um aviso que falha nunca desfaz o dinheiro; a auxiliar interna nao e' executavel por ninguem; so o
+      # corpo do gatilho de aviso muda, rollback com o mesmo md5, pre-voo, conferencia e mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do reembolso da devolucao so liberado com o dinheiro (migration 20261225)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-da-devolucao-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 28a (DEPOIS, 8 linhas) e 28b (ANTES, 5 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do reembolso da devolucao (consultas 28a e 28b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-da-devolucao-portao-viva.cjs
+      # A reemissao do reembolso consulta o Mercado Pago antes de pagar de novo (migration 20261226, dinheiro; decisao do dono
+      # de 14/10/2026). COMPORTAMENTO com os papeis reais e o fluxo REAL do painel (admin_devolucao_concluir, concluir_estorno):
+      # so cria chave nova quando o MP PROVOU que nada saiu; so adota a linha incerta; nunca cria depois de devolucao pelo
+      # painel do MP; o saldo e' o da funcao unica; duplo clique e dois lojistas (conexoes reais) nao criam duas linhas; o ator
+      # e' admin ATUAL nas duas fontes; ACL fechada; "Ja devolvi por fora" propria do lojista; diagnostico sem perder contagem;
+      # pre-voo, conferencia, rollback e mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da reemissao do reembolso que consulta o MP antes (migration 20261226)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reemissao-do-reembolso-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 29a (DEPOIS, 9 linhas) e 29b (ANTES, 5 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da reemissao do reembolso (consultas 29a e 29b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reemissao-do-reembolso-portao-viva.cjs
+      # A busca de clientes (migrations 20261230 e 20261231, dado de cliente; cacada de 14/10/2026): a tela Clientes, o balcao e
+      # o cupom exclusivo acham a cliente pelos DIGITOS do WhatsApp (o cadastro e mascarado), com o corte do 55 do +55, e a aba
+      # Clientes do CRM ignora acento. COMPORTAMENTO com os papeis reais: as sete formas de digitar o mesmo numero, o termo curto
+      # que NAO vira busca por digitos, o DDD 55 e o 12 digitos fora do 55 que NAO se cortam, nome e e-mail com e sem acento nos
+      # tres grupos do CRM com o filtro de segmento, o JSON de antes e de depois IGUAL nas buscas que o conserto nao toca,
+      # comum, rebaixado e visitante recusados, ACL e atributos intactos, rollback com o mesmo md5, pre-voo que recusa sem
+      # escrever, troca interrompida, leitura concorrente, mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da busca de clientes (migrations 20261230 e 20261231)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/busca-de-clientes-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 32a (DEPOIS, 9 linhas), 32b (ANTES, 7 linhas) e a medicao 32m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da busca de clientes (consultas 32a e 32b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/busca-de-clientes-portao-viva.cjs
+      # O lucro so conta produto com custo (migration 20261234, o numero que a lojista le; cacada de 14/10/2026): o grafico
+      # "Lucro acumulado" e o "Top 5 produtos mais lucrativos" do CRM > Visao geral deixam de tratar produto SEM custo como margem
+      # de 100%, e o JSON ganha `productsWithoutCost`. COMPORTAMENTO numa loja limpa com cinco produtos (com custo, sem custo, custo
+      # ZERO medido que CONTA, apagado sem custo, so em pedido que nao conta): lucro por dia e ranking antes (bug) e depois, a RECEITA
+      # igual, o produto com custo igual byte a byte, dia sem venda, pedido de 22h de Sao Paulo no dia certo, cancelado e estornado
+      # fora, comum e rebaixado recusados, nenhuma linha de dado muda, pre-voo que recusa sem escrever, rollback com o md5 da
+      # 20261214, leitura concorrente, mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do lucro so com custo (migration 20261234)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-so-com-custo-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 35a (DEPOIS, 6 linhas), 35b (ANTES, 5 linhas) e a medicao 35m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do lucro so com custo (consultas 35a e 35b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-so-com-custo-portao-viva.cjs
+      # A cliente e avisada quando a loja responde a pergunta dela (migration 20261240, dado de cliente; cacada de 14/10/2026):
+      # answer_question_atomic (as DUAS sobrecargas) cria UM aviso no sino `notificacoes` de quem perguntou e deixa de gravar a linha
+      # falsa em push_notifications_log. COMPORTAMENTO com as funcoes reais: o corpo de antes reproduz o defeito (resposta gravada, nenhum
+      # aviso, uma linha falsa no log), depois o aviso nasce so para quem perguntou (tipo, titulo, nome do produto, destino que abre o
+      # produto, nao lido) nas duas sobrecargas, resposta repetida ou editada nao duplica, dispensado o aviso a edicao avisa de novo,
+      # pergunta antiga nao ganha aviso em massa, nao-admin recusado sem escrever, ACL e atributos iguais, o aviso que falha nunca perde
+      # a resposta, corrida de duas conexoes gera um aviso so, aplicar 2x e em CRLF = mesmo estado, rollback devolve o corpo de antes
+      # byte a byte, pre-voo que recusa sem escrever, mutantes, ensaio DO. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da pergunta respondida que avisa a cliente (migration 20261240)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pergunta-respondida-avisa-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 41a (DEPOIS, 10 linhas), 41b (ANTES, 8 linhas) e a medicao 41m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da pergunta respondida (consultas 41a e 41b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pergunta-respondida-avisa-portao-viva.cjs
+      # O reembolso em duvida prende o saldo (migration 20261241, DINHEIRO; lote R1 do plano reembolso-ab de 15/10/2026): a
+      # linha de reembolso que PODE ter saido no Mercado Pago segura o saldo pela regra UNICA order_refund__pode_ter_saido (com a
+      # regra do legado), a linha substituida por manual o solta, as duas saidas de 7 dias (devolucao e pedido cancelado) leem a
+      # MESMA espera do painel (order_refund__liberavel_apos_espera), o autorizar_post_do_estorno recusa a linha liberada por fora,
+      # pedido_reembolsos_e_saldo entrega o contrato fixo. COMPORTAMENTO com as funcoes reais: saldo igual ao de antes em pedido
+      # sem linha em duvida, a falhou legada prende, a substituida solta, 7 dias antes e depois, corrida de duas conexoes (saida
+      # contra autorizar), aplicar 2x, rollback byte a byte, mutantes que TEM de cair. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do reembolso em duvida que prende o saldo (migration 20261241)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-em-duvida-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 43a (DEPOIS, 21 linhas) e 43b (ANTES, 14 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do reembolso em duvida (consultas 43a e 43b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-em-duvida-portao-viva.cjs
+      # O lucro usa o custo do dia da venda (migration 20261242, DINHEIRO e dado de cliente; decisao do dono de 15/10/2026): cada item que
+      # nasce guarda o custo que o produto tinha naquele dia numa tabela lateral SO do servidor (gatilho AFTER INSERT; nunca derruba a
+      # compra) e o lucro do CRM (get_admin_analytics_v2) e o CMV da DRE (fin_dre) leem esse custo, com o de hoje como reserva.
+      # COMPORTAMENTO com as funcoes reais: a venda da loja (v24) e a do balcao gravam, a venda antiga segue o custo de hoje, o custo
+      # nao vaza (RLS, ACL por aclexplode, nenhuma funcao de cliente a cita), o gatilho com falha simulada nao derruba a compra, mesmas
+      # chaves e mesmos numeros sem registros, devolucao com o custo trocado (mesmo periodo e periodo diferente), cmv_estimado
+      # calculado, rollback em dois degraus, aplicar 2x, a trava do apply (sem fila), venda de 200 itens, mutantes que TEM de cair e
+      # corrida de duas conexoes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do custo do dia da venda (migration 20261242)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/custo-do-dia-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 45a (DEPOIS, 13 linhas), 45b (ANTES, 6 linhas) e a medicao 45m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do custo do dia (consultas 45a, 45b e 45m)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/custo-do-dia-portao-viva.cjs
+      # O lucro desconta o cupom (20261245, dinheiro): vendas v24 e balcão, rateio proporcional, teto,
+      # legado sem subtotal/custo do dia, igualdade sem desconto, ACL, rollback e mutantes. CLONE próprio.
+      - name: Prova viva do lucro com desconto (migration 20261245)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-com-desconto-viva.cjs
+      # O sino do pedido de retirada (migration 20261233, dado de cliente; cacada de 14/10/2026): o pedido de RETIRADA na loja
+      # (customer_data->>'shipping_option_id' = 'store-pickup') avisa "Pedido pronto para retirar" e "Pedido retirado" no sino, e
+      # o resto fica byte a byte como era. COMPORTAMENTO com a trigger real: o fluxo de entrega e o de retirada, o cancelamento
+      # nos dois, 19 formas de customer_data que NAO sao retirada, o mesmo status de novo que nao duplica, convidado, UPDATE de
+      # varias linhas, status e dados mudando juntos, o aviso antigo que fica, falha de aviso que nao derruba o pedido, ACL e
+      # atributos intactos, rollback com o mesmo md5, pre-voo que recusa sem escrever, troca interrompida, leitura concorrente,
+      # mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do sino do pedido de retirada (migration 20261233)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-de-retirada-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 34a (DEPOIS, 7 linhas), 34b (ANTES, 6 linhas) e a medicao 34m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do sino do pedido de retirada (consultas 34a e 34b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs
+      # A venda repetida do balcao devolve a venda feita (migration 20261235, dinheiro + estoque; cacada de 14/10/2026): a chamada de
+      # registrar_venda_presencial com a MESMA chave de idempotencia que chega antes de a primeira commitar espera a primeira (trava
+      # consultiva pela chave) e devolve ja_existia com o MESMO pedido, em vez de "Estoque insuficiente" quando a primeira levou a
+      # ultima unidade. COMPORTAMENTO com 2 conexoes reais: a corrida na ultima unidade, estoque sobrando, chaves diferentes e venda
+      # sem chave que nao se serializam, outro balconista e outro canal (23505), permissao e gate antes da trava, CONTROLE com o corpo
+      # antigo que reproduz o defeito, rollback com o mesmo md5, pre-voo que recusa sem escrever, mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da venda repetida do balcao (migration 20261235)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/venda-balcao-mesma-chave-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 36a (DEPOIS, 6 linhas) e 36b (ANTES, 5 linhas). Nao ha medicao 36m: o lote muda concorrencia, nao o que a lojista le. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da venda repetida do balcao (consultas 36a e 36b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/venda-balcao-mesma-chave-portao-viva.cjs
+      # Desfazer o recebimento recusa pedido com devolucao (migration 20261243, dinheiro; 15/10/2026): registrar_pagamento_recebido(id, false)
+      # recusa, com a frase exata, o pedido que tem devolucao viva (qualquer status fora recusada/cancelada/reprovada, o criterio da anulacao
+      # do balcao) e nada muda; devolucao morta libera; "Recebi" e o desfazer que ja e no-op seguem iguais; a devolucao REAL
+      # (solicitar_devolucao) recusa e o Financeiro mantem a venda; a CORRIDA com duas conexoes reais nos dois sentidos (a devolucao que chega
+      # primeiro / o desfazer que chega primeiro: nunca devolucao viva com pagamento desfeito); CONTROLE com o corpo antigo (a venda some do
+      # Financeiro), rollback com o mesmo md5, pre-voo que recusa sem escrever, mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do desfazer recebimento que recusa devolucao viva (migration 20261243)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/desfazer-recebimento-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 46a (DEPOIS, 6 linhas) e 46b (ANTES, 6 linhas). Nao ha medicao 46m: o lote nao le nem reescreve dado. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do desfazer recebimento (consultas 46a e 46b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/desfazer-recebimento-portao-viva.cjs
+      # A loja escolhe como entrega na cidade dela e em quantos dias (migration 20261244, 15/10/2026; DINHEIRO e DADO DE CLIENTE:
+      # as duas portas de compra v23/v24 e a upsert_store_config trocam de corpo). A matriz das duas compras x convidado/logado x
+      # CEP local/fora x tres modos, a equivalencia com o padrao, a trigger do So retiro, as duas chaves da upsert, o pre-voo, o
+      # rollback nos dois degraus e os mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da entrega na cidade (migration 20261244)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-escolhe-como-entrega-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 47a (DEPOIS, 9 linhas) e 47b (ANTES, 9 linhas). Nao ha medicao 47m: o lote
+      # so acrescenta colunas com default (nao le nem reescreve dado). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da entrega na cidade (consultas 47a e 47b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs
+      # A lojista renomeia e apaga categoria sem deixar produto orfao (migration 20261237, 14/10/2026; permissao + regra de
+      # devolucao). A categoria do produto e' guardada pelo NOME: renomear_categoria troca o nome nos QUATRO lugares (a linha, os
+      # produtos, os links de banner nos dois formatos e a lista "sem troca" da politica de devolucao) numa transacao so e conta
+      # cada um; falha no meio nao deixa nada trocado; nome repetido (maiuscula, acento, pontuacao) e vazio recusam;
+      # apagar_categoria_vazia recusa com o motivo enquanto houver produto, banner ou regra apontando; anon sem EXECUTE, logado
+      # comum e admin rebaixado (JWT velho) recusados sem escrever; a codificacao do link e' a de encodeURIComponent; o rollback
+      # apaga as onze funcoes e so elas. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da gestao de categorias sem produto orfao (migration 20261237)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-gestao-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 38a (DEPOIS, 8 linhas) e 38b (ANTES, 6 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da gestao de categorias (consultas 38a e 38b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-gestao-portao-viva.cjs
+      # Pedidos de privacidade da cliente (migration 20261238, dado de cliente + permissao): exclusao de conta e correcao de
+      # e-mail pedidas pelo app e atendidas a mao. COMPORTAMENTO com a RLS real: a cliente le e insere so o dela, nao decide,
+      # um aberto por (cliente, tipo), anon fechado, admin atual atende com carimbo do servidor, rebaixado nao, NINGUEM apaga
+      # (DELETE e TRUNCATE recusados ate para o service_role), forma do e-mail, chave estrangeira sem cascata, rollback que
+      # recusa apagar com pedido registrado. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva dos pedidos de privacidade da cliente (migration 20261238)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pedidos-de-privacidade-viva.cjs
+      # ENSAIO do roteiro de anonimizacao de conta (docs/runbooks/atender-pedido-de-privacidade.md): o SQL e LIDO do proprio
+      # roteiro e roda contra uma cliente de mentira + uma vizinha. Prova: o ensaio nao grava; valendo, o dado pessoal sai e os
+      # pedidos continuam com os mesmos valores; o login NAO e apagado (fica bloqueado e sem identidade); a vizinha fica
+      # intacta; varredura independente nao acha mais nome/e-mail/telefone/CPF; as travas recusam. O esquema auth e emulado
+      # (o roteiro marca o que so um Supabase real prova). BLOQUEANTE. CLONE proprio.
+      - name: Ensaio do roteiro de anonimizacao de conta (privacidade)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/anonimizar-conta-ensaio-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 39a (DEPOIS, 19 linhas), 39b (ANTES, 9 linhas, com o REFERENCES do papel que aplica
+      # em auth.users) e a medicao 39m (rol aberto, so catalogo: o que o postgres da loja pode fazer nas tabelas de login do roteiro
+      # manual; o roteiro NAO roda aqui nem no lote). Rol exato em todos os estados, um defeito por vez reprovando SO a sua linha,
+      # o veredito do conferir-banco.cjs. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao dos pedidos de privacidade (consultas 39a e 39b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pedidos-de-privacidade-portao-viva.cjs
+      # A loja PODE declarar razao social, CNPJ/CPF e e-mail de atendimento (migration 20261239, aditiva e opcional; decisao do
+      # dono de 14/10/2026). COMPORTAMENTO com os papeis reais: salvar um dos tres nao apaga horario, endereco, descricao nem os
+      # outros dois (e salvar qualquer outro campo nao apaga os tres); null limpa so o campo pedido; a CHECK de forma recusa
+      # vazio, 201 caracteres, documento com mascara ou minusculo e e-mail sem forma (o digito verificador e' do app); so o admin
+      # ATUAL grava (cliente, visitante e admin rebaixado recusados sem escrever); o visitante le pela view e pela tabela e nao
+      # escreve; a view publica so ganha as 3 colunas; ida e volta com o corpo da 20261199 byte a byte e o ACL da view igual; o
+      # rollback recusa se a loja ja preencheu algum campo; pre-voo que recusa sem escrever; mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da identidade legal da loja (migration 20261239)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/loja-declara-quem-e-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 40a (DEPOIS, 11 linhas), 40b (ANTES, 10 linhas, com o ACL da view que o rollback recria) e a medicao 40m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da identidade legal da loja (consultas 40a e 40b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/loja-declara-quem-e-portao-viva.cjs
+      # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
+      # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
+      # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que
+      # bate com as duas lojas reais), se uma da lista mudou QUEM executa, o tipo ou o SECURITY DEFINER, se a lista
+      # repete linha ou aponta funcao que nao existe mais. Um autoteste prova que o detector enxerga a funcao sem
+      # REVOKE, a com REVOKE so de PUBLIC, a que deixou o authenticated aberto e a de extensao. So le o catalogo.
+      # O job reprova (nao e check obrigatorio do ruleset). CLONE proprio.
+      - name: Prova viva de que funcao nova nao nasce aberta (lista de portas de funcao permitidas)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs
       # Onda I do painel simples (20261212 a 20261214): o estoque baixo e uma regua so (Inicio, lista, analytics),
       # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (sem migration) e o estoque
       # minimo e editavel so pelo admin. Cada prova clona o banco.
@@ -466,6 +1006,38 @@ jobs:
       - name: Prova viva do estoque minimo editavel so pelo admin (sem migration, transacao desfeita)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-minimo-editavel-viva.cjs
+      # AUDITORIA DE PAGAMENTO E SEGURANCA, fase A (10/10/2026): MEDICAO de "o que um estranho faz com as
+      # portas abertas". Cada script reabre, de proposito, o EXECUTE do visitante sem login (GRANT ... TO
+      # anon) para cada funcao da lista, chama como anon com dados SINTETICOS criados na propria
+      # transacao (controle legitimo antes, para provar a fixture) e registra a linha
+      # `PORTA <recurso> -> escreveu|vazou|recusou|executou|inconclusivo|AUSENTE <detalhe>`; tudo termina
+      # em ROLLBACK. NAO sao portao: saem sempre 0 (o resultado e a tabela no log e no resumo do job);
+      # um AUTOTESTE no inicio prova que o classificador enxerga escrita, vazamento e recusa, e sem ele a
+      # tabela vem marcada "MEDICAO INVALIDA". Para ler: `gh run view <id> --log` e procurar `PORTA`. Na
+      # fase B (correcao) viram teste de regressao: o esperado muda de "escreveu/vazou" para "recusou"
+      # SO nas portas com aberta_no_repo=nao; as de convidado (v23/v24, OTP) continuam abertas por desenho.
+      # CLONE proprio (rodar-isolado.cjs), antes da prova que escreve no banco base.
+      - name: Medicao das portas do anonimo - dinheiro (A5a, nao e portao)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-anon-exploracao-dinheiro.cjs
+      - name: Medicao das portas do anonimo - dados pessoais (A5b, nao e portao)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-anon-exploracao-dados.cjs
+      - name: Medicao das portas do anonimo - estoque, OTP e servico (A5c, nao e portao)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-anon-exploracao-estoque-otp.cjs
+      - name: Prova viva do lancamento idempotente (20261246000000, concorrencia e mutantes)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lancamento-idempotente-viva.cjs
+      - name: Prova viva da anotacao interna do pedido (20261247000000, papeis reais e mutantes)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/nota-interna-do-pedido-viva.cjs
+      - name: Prova viva da coluna notes do pedido fechada ao painel (20261248000000, papeis reais e mutantes)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/notes-do-pedido-fechada-viva.cjs
+      - name: Prova viva do motivo privado do desconto do balcao (20261249000000, papeis reais e mutantes)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pdv-motivo-privado-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
@@ -506,8 +1078,8 @@ jobs:
       CI_BANCO_EFEMERO: "1"
 
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm

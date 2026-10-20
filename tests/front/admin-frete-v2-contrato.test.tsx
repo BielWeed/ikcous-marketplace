@@ -286,7 +286,10 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     expect(textoDaFaixa()).toContain("R$ 10 por entrega");
-    expect(textoDaFaixa()).toContain("Uberlândia/MG");
+    // A promessa é a abrangência REAL (alcance vazio = os 5 primeiros números
+    // do CEP da loja), nunca o nome da cidade.
+    expect(textoDaFaixa()).toContain("CEPs que começam com 38400");
+    expect(textoDaFaixa()).not.toContain("Uberlândia/MG");
     expect(textoDaFaixa()).toContain("Melhor Envio ligado");
     expect(textoDaFaixa()).toContain("Acima de R$ 100");
     // Nada foi mexido: o botão do cabeçalho mostra "Salvo", desabilitado.
@@ -312,13 +315,12 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
 
     // A credencial da transportadora NÃO tem chave clicável (é de Ajustes —
     // aqui é exibição). As chaves interativas são SÓ as que têm campo
-    // gravável real por trás: a cobertura e, desde a release 1.5.3, a
-    // retirada na loja (chave `store-pickup` em enabledShippingMethods —
-    // provada em admin-frete-retirada-na-loja.test.tsx).
+    // gravável real por trás: a cobertura. A retirada deixou de ser chave
+    // (16/10/2026): são as três respostas "Como você entrega" — provadas em
+    // admin-frete-retirada-na-loja.test.tsx.
     const chaves = [...hospedeiro.querySelectorAll('[role="switch"]')];
     expect(chaves.map((c) => c.getAttribute("aria-label"))).toEqual([
       "Só entregar na cidade",
-      "Permitir retirada na loja",
     ]);
     const cobertura = chaves[0] as HTMLElement;
     expect(cobertura.getAttribute("aria-checked")).toBe("false");
@@ -400,7 +402,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     const campoValor = hospedeiro.querySelector(
       "#frete-gratis-acima-de",
     ) as HTMLInputElement;
-    expect(campoValor).toBeDefined();
+    expect(campoValor).not.toBeNull();
     // Semente de R$ 100 (a mesma que a tela antiga usava ao ligar o
     // interruptor) — visível e editável ANTES de salvar, nunca gravada às
     // escondidas.

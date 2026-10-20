@@ -62,7 +62,16 @@ vi.mock("@/hooks/useProducts", () => ({
 
 vi.mock("@/hooks/useAnalytics", () => ({
   useAnalytics: () => ({
-    stats: { inventory: { totalCost: 500, totalValue: 900 } },
+    stats: {
+      inventory: {
+        totalCost: 500,
+        totalValue: 900,
+        totalRevenue: 900,
+        revenueWithoutCost: 0,
+        productsWithoutCost: 0,
+        productsWithCost: 1,
+      },
+    },
     fetchExecutiveSummary,
   }),
 }));
@@ -128,11 +137,13 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   AlertDialogAction: ({
     children,
     onClick,
+    "aria-label": ariaLabel,
   }: {
     children: ReactNode;
     onClick?: () => void;
+    "aria-label"?: string;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} aria-label={ariaLabel}>
       {children}
     </button>
   ),
@@ -263,6 +274,11 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     await act(async () => {
       await esperarMicrotarefas();
     });
+    const abrir = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-controls="metricas-produto-prod-1"]',
+    );
+    expect(abrir).not.toBeNull();
+    await act(async () => abrir?.click());
   }
 
   /** Raiz do cartão detalhado de UM produto — classe exclusiva
@@ -301,7 +317,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
   }
 
   /** Acha o valor pelo RÓTULO vizinho ("Dinheiro parado em estoque" /
-   * "Potencial"),
+   * "Lucro bruto do estoque"),
    * escopado ao cartão do produto — em vez de por classe Tailwind com
    * barra (`text-white/80`), que exigiria escapar "/" no seletor CSS. */
   function lerValorPeloRotulo(rotulo: string): string | null {
@@ -315,7 +331,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
   function lerCapitalEPotencial() {
     return {
       capitalTexto: lerValorPeloRotulo("Dinheiro parado em estoque"),
-      potencialTexto: lerValorPeloRotulo("Potencial"),
+      potencialTexto: lerValorPeloRotulo("Lucro bruto do estoque"),
     };
   }
 
@@ -405,7 +421,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     const { capitalTexto, potencialTexto } = lerCapitalEPotencial();
     // invested = 10 * 20 = 200 ; totalProfit = 15*20 - 200 = 100
     expect(capitalTexto).toBe("R$ 200,00");
-    // Achado 14 da auditoria de 20/08/2026: "Potencial" passou a usar
+    // Achado 14 da auditoria de 20/08/2026: "Lucro bruto do estoque" passou a usar
     // `minimumFractionDigits: 2`, como os vizinhos — "+ R$ 100", sem casas
     // decimais, deixou de ser um jeito válido de escrever dinheiro aqui.
     expect(potencialTexto).toBe("+ R$ 100,00");
@@ -417,7 +433,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     // ajuda falam a língua da loja; o número continua o mesmo.
     const tela = hospedeiro.textContent ?? "";
     expect(tela).toContain("Dinheiro parado em estoque");
-    expect(tela).toContain("Lucro se vender tudo");
+    expect(tela).toContain("Lucro bruto potencial");
     // O KPI do topo é markup ((Preço−Custo)÷Custo): "Margem" é só a do
     // produto, calculada sobre o preço. Os dois não podem ter o mesmo nome.
     // Onda J: o CARTÃO do topo se chama "Lucro sobre o custo" (sem
@@ -438,7 +454,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
       cartaoDoKpi = cartaoDoKpi.parentElement;
     }
     expect(cartaoDoKpi?.textContent).toContain("80,0%");
-    expect(cartaoDoKpi?.textContent).not.toContain("Lucro se vender tudo");
+    expect(cartaoDoKpi?.textContent).not.toContain("Lucro bruto potencial");
     expect(cartaoDoKpi?.textContent).not.toContain("Margem de Lucro");
     expect(tela).not.toContain("Margem %");
     expect(tela).not.toContain("Retorno sobre o custo");
@@ -475,8 +491,10 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
       item.click();
       await esperarMicrotarefas();
     });
-    const confirmar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Confirmar Duplicação"),
+    const confirmar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) =>
+        b.getAttribute("aria-label") ===
+        "Duplicar Produto: confirmar duplicação",
     ) as HTMLButtonElement;
     expect(confirmar).toBeDefined();
     await act(async () => {

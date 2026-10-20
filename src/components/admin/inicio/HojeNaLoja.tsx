@@ -1,12 +1,9 @@
-import { ChipDeVariacao } from "@/components/admin/crm/ChipDeVariacao";
-import {
-  formatarInteiro,
-  formatarMoeda,
-  formatarPercentual,
-  variacaoPercentual,
-} from "@/lib/crm";
+import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
+import { formatarInteiro, formatarMoeda, variacaoPercentual } from "@/lib/crm";
 import type { PainelInicio } from "@/types/painel";
 import { Smartphone, Store } from "lucide-react";
+import type { ReactNode } from "react";
+import { VALOR_INICIO, VariacaoDoInicio } from "./visualDoInicio";
 
 const DIA_DE_HOJE = new Intl.DateTimeFormat("pt-BR", {
   weekday: "long",
@@ -16,7 +13,7 @@ const DIA_DE_HOJE = new Intl.DateTimeFormat("pt-BR", {
 });
 
 /** Cores de canal — as MESMAS da aba Canais do CRM (identidade fixa). */
-const COR_DO_APP = "bg-sky-400";
+const COR_DO_APP = "bg-blue-300";
 const COR_DO_BALCAO = "bg-violet-400";
 
 function DivisaoAppBalcao({
@@ -53,35 +50,21 @@ function DivisaoAppBalcao({
           </>
         ) : null}
       </div>
-      <dl className="grid grid-cols-2 gap-3 text-xs">
+      <dl className="grid grid-cols-2 gap-3 text-sm">
         <div className="min-w-0">
           <dt className="flex items-center gap-1.5 text-zinc-400">
-            <span className={`size-2 shrink-0 rounded-full ${COR_DO_APP}`} />
-            <Smartphone className="size-3.5" aria-hidden="true" />
+            <Smartphone className="size-4 text-blue-300" aria-hidden="true" />
             App
           </dt>
-          <dd className="mt-0.5 truncate font-bold tabular-nums text-white">
-            {formatarMoeda(online)}
-            {total > 0 ? (
-              <span className="ml-1 font-semibold text-zinc-400">
-                {formatarPercentual(pctApp, 0)}
-              </span>
-            ) : null}
-          </dd>
+          <dd className={`mt-1 ${VALOR_INICIO}`}>{formatarMoeda(online)}</dd>
         </div>
         <div className="min-w-0">
           <dt className="flex items-center gap-1.5 text-zinc-400">
-            <span className={`size-2 shrink-0 rounded-full ${COR_DO_BALCAO}`} />
-            <Store className="size-3.5" aria-hidden="true" />
+            <Store className="size-4 text-violet-300" aria-hidden="true" />
             Balcão
           </dt>
-          <dd className="mt-0.5 truncate font-bold tabular-nums text-white">
+          <dd className={`mt-1 ${VALOR_INICIO}`}>
             {formatarMoeda(presencial)}
-            {total > 0 ? (
-              <span className="ml-1 font-semibold text-zinc-400">
-                {formatarPercentual(pctBalcao, 0)}
-              </span>
-            ) : null}
           </dd>
         </div>
       </dl>
@@ -93,29 +76,38 @@ function DivisaoAppBalcao({
 export function HojeNaLoja({
   hoje,
   carregando,
-}: Readonly<{ hoje: PainelInicio["hoje"] | null; carregando: boolean }>) {
+  acaoPrincipal,
+}: Readonly<{
+  hoje: PainelInicio["hoje"] | null;
+  carregando: boolean;
+  acaoPrincipal?: ReactNode;
+}>) {
   const pedidos = hoje?.pedidos ?? null;
+  // A data acompanha o relógio: o Início fica aberto (ou congelado em segundo
+  // plano) de um dia para o outro, e "Hoje" não pode ficar preso em ontem.
+  const dia = useDiaDeSaoPaulo();
   return (
     <section
       aria-labelledby="inicio-hoje-titulo"
       aria-busy={carregando && !hoje}
-      className="admin-glass relative h-full overflow-hidden rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6"
+      className="min-w-0 rounded-[22px] border border-white/10 bg-gradient-to-br from-slate-800/90 to-zinc-900/80 p-4"
     >
-      <div className="pointer-events-none absolute -left-20 -top-20 size-56 rounded-full bg-emerald-500/[0.05] blur-3xl" />
       <div className="relative flex items-baseline justify-between gap-3">
         <h2
           id="inicio-hoje-titulo"
-          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
+          className="text-xs font-bold uppercase tracking-widest text-zinc-400"
         >
           Hoje
         </h2>
-        <p className="truncate text-[11px] capitalize text-zinc-400">
-          {DIA_DE_HOJE.format(new Date())}
+        <p className="min-w-0 text-right text-xs capitalize text-zinc-400">
+          {DIA_DE_HOJE.format(instanteDoDia(dia))}
         </p>
       </div>
 
       {carregando && !hoje ? (
         <div className="relative mt-4 space-y-3" aria-hidden="true">
+          <p className="text-sm text-zinc-300">Vendas pagas hoje</p>
+          <p className="text-4xl font-bold text-white">—</p>
           <div className="premium-shimmer h-10 w-2/3 rounded-xl" />
           <div className="premium-shimmer h-4 w-1/2 rounded-md" />
           <div className="premium-shimmer h-2.5 w-full rounded-full" />
@@ -123,28 +115,30 @@ export function HojeNaLoja({
       ) : (
         <div className="relative mt-3 space-y-4">
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-zinc-300">
+            <p className="text-sm font-medium text-zinc-300">
               Vendas pagas hoje
             </p>
-            <p className="text-4xl font-black tracking-tight text-white sm:text-5xl">
+            <p
+              className={`text-[clamp(1.75rem,8vw,2.5rem)] leading-tight ${VALOR_INICIO}`}
+            >
               {formatarMoeda(hoje?.receita)}
             </p>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <ChipDeVariacao
-                pct={variacaoPercentual(
-                  hoje?.receita,
-                  hoje?.receitaSemanaPassada,
-                )}
-                comparacao="vs. mesmo dia da semana passada"
-              />
-              <span className="text-xs text-zinc-400">
+            <VariacaoDoInicio
+              pct={variacaoPercentual(
+                hoje?.receita,
+                hoje?.receitaSemanaPassada,
+              )}
+              comparacao="vs. mesmo dia da semana passada, até esta hora"
+            >
+              <span className="text-sm text-zinc-400">
                 <strong className="font-bold tabular-nums text-white">
                   {formatarInteiro(pedidos)}
                 </strong>{" "}
                 {pedidos === 1 ? "venda" : "vendas"}
               </span>
-            </div>
+            </VariacaoDoInicio>
           </div>
+          {acaoPrincipal}
           <DivisaoAppBalcao
             online={hoje?.online ?? null}
             presencial={hoje?.presencial ?? null}

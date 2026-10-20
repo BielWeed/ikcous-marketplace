@@ -1,3 +1,4 @@
+import { FraseDeAceite } from "@/components/politicas/LinksDasPoliticas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { branding } from "@/config/branding";
@@ -5,6 +6,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
 import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
+import { mascaraTelefoneDoCadastro } from "@/lib/telefone-br";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
 import {
@@ -20,7 +22,7 @@ import {
   Sparkles,
   User,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AuthViewProps {
@@ -78,10 +80,37 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     resendConfirmationEmail,
     isPasswordRecovery,
     setIsPasswordRecovery,
+    linkDeRecuperacaoVencido,
+    limparLinkDeRecuperacaoVencido,
   } = useAuth();
-  const [viewMode, setViewMode] = useState<
+  // Link de "esqueci a senha" vencido ou já usado: em vez de "Nova Senha" (que
+  // sem sessão nunca funciona), abre "Recuperar" com o aviso. O aviso é
+  // guardado AQUI (e a flag do contexto é devolvida logo abaixo) para
+  // sobreviver à digitação do e-mail e a um novo desmontar da tela.
+  const [avisoDoLink, setAvisoDoLink] = useState<string | null>(
+    linkDeRecuperacaoVencido && !isPasswordRecovery
+      ? "Este link expirou ou já foi usado. Peça um novo abaixo."
+      : null,
+  );
+  const [viewMode, setViewModeAtual] = useState<
     "login" | "signup" | "forgot" | "reset-prompt" | "new-password"
-  >(isPasswordRecovery ? "new-password" : "login");
+  >(
+    isPasswordRecovery
+      ? "new-password"
+      : linkDeRecuperacaoVencido
+        ? "forgot"
+        : "login",
+  );
+  // Sair e voltar ao mesmo modo também começa outro fluxo.
+  const fluxoDaTela = useRef(0);
+  const setViewMode = useCallback((modo: typeof viewMode) => {
+    fluxoDaTela.current += 1;
+    setViewModeAtual(modo);
+  }, []);
+
+  useEffect(() => {
+    if (linkDeRecuperacaoVencido) limparLinkDeRecuperacaoVencido();
+  }, [linkDeRecuperacaoVencido, limparLinkDeRecuperacaoVencido]);
 
   // Sync viewMode if password recovery mode is detected asynchronously
   useEffect(() => {
@@ -91,7 +120,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       );
       setViewMode("new-password");
     }
-  }, [isPasswordRecovery]);
+  }, [isPasswordRecovery, setViewMode]);
 
   const isLogin = viewMode === "login";
   const [email, setEmail] = useState("");
@@ -116,6 +145,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [emailDaConfirmacao, setEmailDaConfirmacao] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   // #200 — distingue, dentro do erro de login, o caso "e-mail ainda não
   // confirmado" (ver handleSubmit) para exibir o botão de reenvio SÓ nele.
@@ -125,27 +155,17 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const [reenviandoConfirmacao, setReenviandoConfirmacao] = useState(false);
   const reenvioConfirmacaoEmCurso = useRef(false);
 
-  const formatPhone = (value: string) => {
-    const numbers = value.replace(/\D/g, "");
-    if (numbers.length <= 11) {
-      let formatted = numbers;
-      if (numbers.length > 2)
-        formatted = `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
-      if (numbers.length > 7)
-        formatted = `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
-      return formatted;
-    }
-    return value.slice(0, 15);
-  };
-
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPhone(formatPhone(e.target.value));
+    setPhone(mascaraTelefoneDoCadastro(e.target.value, phone));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const emailEnviado = email.trim();
+    const fluxoEnviado = fluxoDaTela.current;
     setLoginError(null);
     setEmailNaoConfirmado(false);
+    setAvisoDoLink(null);
 
     // Auditoria do Payload
     if (viewMode === "login") {
@@ -281,6 +301,14 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           setIsLoading(false);
           return;
         }
+        // O GoTrue exige 8 (a mesma regra da troca de senha, abaixo). Sem esta
+        // conferência a pessoa enviava "123456", lia "Senha muito fraca" sem
+        // saber o mínimo e repetia com outra de 6.
+        if (password.length < 8) {
+          toast.error("A senha deve ter pelo menos 8 caracteres.");
+          setIsLoading(false);
+          return;
+        }
         // CPF vazio = cadastro normal (opcional). Preenchido e inválido:
         // erro NO CAMPO (não no toast genérico) e não envia — mesmo
         // padrão do campo de CPF do checkout.
@@ -290,14 +318,21 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           return;
         }
         const success = await signUp(
-          email.trim(),
+          emailEnviado,
           password,
           fullName.trim(),
           phone.trim(),
           cpf.trim() ? cpf : undefined,
         );
         if (success) {
-          setShowConfirmation(true);
+          if (fluxoDaTela.current === fluxoEnviado) {
+            setEmailDaConfirmacao(emailEnviado);
+            setShowConfirmation(true);
+          } else {
+            toast.success(
+              `Se ${emailEnviado} ainda não tinha conta, enviamos um link de confirmação. Se já tem conta, entre ou recupere sua senha.`,
+            );
+          }
         }
       } else if (viewMode === "forgot") {
         if (!email.trim()) {
@@ -309,10 +344,13 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         // cadastrado de não cadastrado (é assim que a enumeração se fecha):
         // só resta o caminho de sucesso, que sempre leva à mesma tela de
         // confirmação, e o de erro genuíno (rede, rate limit).
-        const res = await resetPassword(email.trim());
+        const res = await resetPassword(emailEnviado);
         if (res.success) {
           toast.success(res.message);
-          setViewMode("reset-prompt");
+          if (fluxoDaTela.current === fluxoEnviado) {
+            setEmailDaConfirmacao(emailEnviado);
+            setViewMode("reset-prompt");
+          }
         } else {
           toast.error(res.message || "Erro ao solicitar link de recuperação.");
         }
@@ -348,7 +386,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     reenvioConfirmacaoEmCurso.current = true;
     setReenviandoConfirmacao(true);
     try {
-      await resendConfirmationEmail(email.trim());
+      await resendConfirmationEmail(
+        showConfirmation ? emailDaConfirmacao : email.trim(),
+      );
     } catch (err) {
       console.error(err);
       const message =
@@ -393,8 +433,21 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               variants={itemVariants}
               className="mx-auto mb-8 max-w-[240px] text-xs font-medium leading-relaxed text-zinc-500 sm:mb-10 sm:max-w-none sm:text-sm"
             >
-              Um link de acesso exclusivo foi enviado para <br />
-              <span className="font-bold text-zinc-900">{email}</span>.
+              {/* O servidor responde SUCESSO sem mandar e-mail quando o endereço
+              já tem conta confirmada (quem já é cliente e clicou em
+              "Cadastro" no checkout ficava esperando para sempre). O texto
+              fala dos DOIS casos e é o mesmo para qualquer endereço — não
+              revela se há conta (a #120 fechou esse vazamento). */}
+              Se este e-mail ainda não tinha conta, enviamos um link de
+              confirmação para:
+              <br />
+              <span className="font-bold text-zinc-900">
+                {emailDaConfirmacao}
+              </span>
+              <br />
+              <br />
+              Se você já tem conta, não precisa esperar: toque em "Retornar ao
+              Login" e entre. Se não lembra a senha, use "Esqueceu?".
             </motion.p>
 
             <motion.div
@@ -484,7 +537,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               Se este e-mail estiver cadastrado, enviamos um link de recuperação
               para:
               <br />
-              <span className="font-bold text-zinc-900">{email}</span>
+              <span className="font-bold text-zinc-900">
+                {emailDaConfirmacao}
+              </span>
               <br />
               <br />
               Se você recebeu o e-mail, clique no link para definir sua nova
@@ -614,6 +669,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         id="phone"
                         name="phone"
                         type="text"
+                        inputMode="numeric"
                         autoComplete="tel"
                         placeholder="(34) 99999-9999"
                         value={phone}
@@ -736,6 +792,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     <Input
                       id="password"
                       name="password"
+                      aria-describedby={
+                        viewMode === "signup" ? "password-dica" : undefined
+                      }
                       type={showPassword ? "text" : "password"}
                       autoComplete={
                         viewMode === "login"
@@ -766,7 +825,24 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       )}
                     </button>
                   </div>
+                  {viewMode === "signup" && (
+                    <p
+                      id="password-dica"
+                      className="ml-1 text-[10px] font-bold uppercase tracking-widest text-zinc-400"
+                    >
+                      Mínimo 8 caracteres
+                    </p>
+                  )}
                 </motion.div>
+              )}
+
+              {avisoDoLink && viewMode === "forgot" && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-amber-800"
+                >
+                  {avisoDoLink}
+                </div>
               )}
 
               {loginError && (
@@ -803,6 +879,17 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     </div>
                   )}
                 </motion.div>
+              )}
+
+              {/* Termos e Privacidade junto de quem entra ou cria conta
+                  (LGPD/CDC). Só texto e links — não é caixa de marcar e não
+                  trava o botão. Os links abrem uma FOLHA por cima: o que a
+                  pessoa já digitou no cadastro continua no formulário. */}
+              {(viewMode === "login" || viewMode === "signup") && (
+                <FraseDeAceite
+                  acao={viewMode === "signup" ? "criar sua conta" : "entrar"}
+                  className="mt-2 text-center"
+                />
               )}
 
               <motion.button
@@ -843,6 +930,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               onClick={() => {
                 if (loginError) setLoginError(null);
                 if (emailNaoConfirmado) setEmailNaoConfirmado(false);
+                setAvisoDoLink(null);
                 if (viewMode === "forgot" || viewMode === "new-password") {
                   setViewMode("login");
                   setIsPasswordRecovery(false);

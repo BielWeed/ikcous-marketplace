@@ -35,6 +35,13 @@ vi.mock("sonner", () => ({
 vi.mock("@/hooks/useOnlineStatus", () => ({
   useOnlineStatus: () => false,
 }));
+// O formulário lê as formas de pagamento da loja (aviso do cupom que cobre a
+// compra inteira): sem provedor de loja nos testes, o dublê entra aqui.
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { formasPagamentoEntrega: ["pix", "card", "cash"] },
+  }),
+}));
 
 const addCoupon = vi.fn();
 const updateCoupon = vi.fn();
@@ -81,6 +88,49 @@ async function montar(couponId?: string) {
   });
   await act(async () => {});
 }
+
+it("prévia recolhível e limpar validade mantêm os demais campos", async () => {
+  estadoCoupons = {
+    coupons: [{ ...cupomReal, validUntil: "2026-10-31T23:59:59.999Z" }],
+    loading: false,
+  };
+  await montar("cupom-1");
+  const previa = container?.querySelector(
+    '[aria-controls="coupon-preview"]',
+  ) as HTMLButtonElement;
+  expect(previa.getAttribute("aria-expanded")).toBe("false");
+  expect(container?.querySelector("#coupon-preview")).toBeNull();
+  await act(async () => previa.click());
+  expect(previa.getAttribute("aria-expanded")).toBe("true");
+  expect(container?.querySelector("#coupon-preview")?.textContent).toContain(
+    "25% OFF",
+  );
+  const recolher = acharBotao("Recolher prévia")!;
+  recolher.focus();
+  await act(async () => recolher.click());
+  expect(document.activeElement).toBe(previa);
+  expect(container?.querySelector("#coupon-preview")).toBeNull();
+  const codigo = container?.querySelector("#coupon-code") as HTMLInputElement;
+  const validade = container?.querySelector(
+    "#coupon-valid-until",
+  ) as HTMLInputElement;
+  expect(
+    codigo.compareDocumentPosition(validade) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  await act(async () => acharBotao("Limpar validade")?.click());
+  expect(validade.value).toBe("");
+  await act(async () => acharBotao("Salvar Cupom")?.click());
+  expect(updateCoupon).toHaveBeenCalledWith(
+    "cupom-1",
+    expect.objectContaining({
+      code: "NATAL",
+      value: 25,
+      minPurchase: 50,
+      usageLimit: 10,
+      validUntil: undefined,
+    }),
+  );
+});
 
 async function redimir() {
   await act(async () => {
@@ -201,7 +251,7 @@ describe("form de cupom — A5: a chegada tardia da carga não apaga o digitado"
     // O lojista muda o tipo para R$ (fixo) com a carga ainda em voo —
     // formulário sujo, estado de partida.
     await act(async () => {
-      acharBotao("R$")?.click();
+      acharBotao("R$ Fixo")?.click();
     });
 
     // A resposta do fetch chega: cupom REAL é percentual, R$ 25, mínimo 50,

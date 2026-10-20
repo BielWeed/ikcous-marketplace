@@ -17,6 +17,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import { comTempoLimite } from "../_shared/webpush.ts";
 import {
   base64UrlParaBytes,
   bytesParaBase64Url,
@@ -25,6 +26,7 @@ import {
   endpointResumido,
   enviarComOrcamentoDeTempo,
   enviarParaInscritos,
+  handler,
   jwkDoParVapidCru,
   paginarTudo,
   resumir,
@@ -440,6 +442,64 @@ Deno.test("lote não perde nem embaralha inscrição", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Urgência e TTL no fio (RFC 8030) — aviso ao lojista × campanha para clientes
+// ---------------------------------------------------------------------------
+
+Deno.test("enviarParaInscritos sem opcoesDeEnvio (o padrão da FUNÇÃO): Urgency normal e TTL de 28 dias", async () => {
+  // Prova só o PADRÃO de `enviarParaInscritos`: chamada direta, sem passar pelo
+  // handler da `send-push`. Que a campanha de verdade o use sem opções é
+  // provado pelo teste do handler, no fim deste arquivo.
+  const service = pushServiceFalso({ "/p/ok": 201 });
+  try {
+    const servidor = await servidorDeAplicacao();
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes: [await inscricaoDeTeste(`${service.base}/p/ok`)],
+      mensagem: "{}",
+    });
+
+    assertEquals(itens[0].ok, true);
+    assertEquals(service.recebidas[0].headers.get("urgency"), "normal");
+    assertEquals(service.recebidas[0].headers.get("ttl"), "2419200");
+  } finally {
+    await service.encerrar();
+  }
+});
+
+Deno.test("opcoesDeEnvio chega ao push service como cabeçalhos Urgency e TTL; 410 continua apagando", async () => {
+  const service = pushServiceFalso({ "/p/ok": 201, "/p/morta": 410 });
+  const apagadas: string[] = [];
+  try {
+    const servidor = await servidorDeAplicacao();
+    const inscricoes = [
+      await inscricaoDeTeste(`${service.base}/p/ok`),
+      await inscricaoDeTeste(`${service.base}/p/morta`),
+    ];
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes,
+      mensagem: "{}",
+      opcoesDeEnvio: { urgency: webpush.Urgency.High, ttl: 3600 },
+      aoDetectarMorta: (endpoint: string) => {
+        apagadas.push(endpoint);
+        return Promise.resolve();
+      },
+    });
+
+    assertEquals(itens.map((i: any) => i.ok), [true, false]);
+    assertEquals(itens[1].status, 410);
+    assertEquals(apagadas, [inscricoes[1].endpoint]);
+    for (const recebida of service.recebidas) {
+      assertEquals(recebida.headers.get("urgency"), "high");
+      assertEquals(recebida.headers.get("ttl"), "3600");
+    }
+    assertEquals(service.recebidas.length, 2);
+  } finally {
+    await service.encerrar();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Paginação e orçamento de tempo (index-133)
 //
 // Sem isto, o broadcast fazia um `select('*')` sem `.limit()` e mandava TODOS
@@ -564,6 +624,70 @@ Deno.test("enviarComOrcamentoDeTempo corta quando o tempo estoura e reporta os n
   assertEquals(naoTentados, 3);
 });
 
+Deno.test("enviarComOrcamentoDeTempo limita lote pendurado ao orçamento e conta os não tentados", async () => {
+  const tentadas: string[] = [];
+  const inscricoes = ["pendurada", "rapida", "sem-tentativa-1", "sem-tentativa-2"].map((id) => ({
+    endpoint: `https://push.example/${id}`,
+    p256dh: "x",
+    auth: "y",
+  }));
+  const resultado = await comTempoLimite(enviarComOrcamentoDeTempo({
+    servidor: {
+      subscribe: ({ endpoint }: { endpoint: string }) => ({
+        pushTextMessage: () => {
+          tentadas.push(endpoint);
+          return endpoint.endsWith("/pendurada")
+            ? new Promise<void>(() => {})
+            : Promise.resolve();
+        },
+      }),
+    },
+    inscricoes,
+    mensagem: "{}",
+    tamanhoDoLote: 2,
+    tempoLimitePorEnvioMs: 10_000,
+    orcamentoMs: 20,
+  }), 1_000);
+
+  assert(resultado, "o orçamento limita a espera mesmo com envio pendurado");
+  assertEquals(tentadas, inscricoes.slice(0, 2).map((sub) => sub.endpoint));
+  assertEquals(resultado.itens.map((item: { ok: boolean }) => item.ok), [false, true]);
+  assertEquals(resultado.naoTentados, 2);
+});
+
+Deno.test("enviarComOrcamentoDeTempo limita DELETE pendurado e preserva contagens", async () => {
+  const consoleError = console.error;
+  console.error = () => {};
+  try {
+    const resultado = await comTempoLimite(enviarComOrcamentoDeTempo({
+      servidor: {
+        subscribe: ({ endpoint }: { endpoint: string }) => ({
+          pushTextMessage: () => endpoint.endsWith("/morta")
+            ? Promise.reject({ response: new Response(null, { status: 410 }) })
+            : Promise.resolve(),
+        }),
+      },
+      inscricoes: ["morta", "rapida", "sem-tentativa"].map((id) => ({
+        endpoint: `https://push.example/${id}`,
+        p256dh: "x",
+        auth: "y",
+      })),
+      mensagem: "{}",
+      tamanhoDoLote: 2,
+      orcamentoMs: 20,
+      aoDetectarMorta: () => new Promise<void>(() => {}),
+    }), 1_000);
+
+    assert(resultado, "a limpeza de inscrições também respeita o orçamento");
+    assertEquals(resumir(resultado.itens).enviados, 1);
+    assertEquals(resumir(resultado.itens).falharam, 1);
+    assertEquals(resumir(resultado.itens).removidas, 0);
+    assertEquals(resultado.naoTentados, 1);
+  } finally {
+    console.error = consoleError;
+  }
+});
+
 Deno.test("enviarComOrcamentoDeTempo com orçamento já estourado não tenta nenhuma", async () => {
   const inscricoes = [
     { endpoint: "https://a.example/p/0", p256dh: "x", auth: "y" },
@@ -579,4 +703,184 @@ Deno.test("enviarComOrcamentoDeTempo com orçamento já estourado não tenta nen
 
   assertEquals(itens.length, 0);
   assertEquals(naoTentados, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Porta de admin: o admin de AGORA nas duas fontes (auditoria L3, 12/10/2026)
+//
+// A mesma regra de `estornar-pagamento` e do `cancelar` da `criar-pagamento`
+// (`_shared/admin-atual.ts`): papel 'admin' em `profiles.role` E em
+// `app_metadata.role` do usuário que o Auth carrega do banco. Papéis
+// contraditórios (rebaixado em uma fonte só) recebem a MESMA recusa de quem
+// não é admin — 400 `{ ok: false, error }`, o contrato que o painel já lê —
+// sem ler inscrição nenhuma e sem disparar push.
+// ---------------------------------------------------------------------------
+
+const URL_SUPA_TESTE = "https://supa-fake.local";
+const ID_USUARIO = "admin-1111-2222";
+
+function fetchDePapeis(papelNoAuth: string, papelNoPerfil: string) {
+  const urls: string[] = [];
+  const fn = (input: any) => {
+    const url = String(input instanceof Request ? input.url : input);
+    urls.push(url);
+    if (url.includes("/auth/v1/user")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: ID_USUARIO,
+            aud: "authenticated",
+            role: "authenticated",
+            app_metadata: { provider: "email", role: papelNoAuth },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+    if (url.includes("/rest/v1/profiles")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: ID_USUARIO, role: papelNoPerfil }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ message: "fora do roteiro" }), { status: 404 }),
+    );
+  };
+  return { fn, urls };
+}
+
+async function chamarComPapeis(
+  papelNoAuth: string,
+  papelNoPerfil: string,
+  corpo: Record<string, unknown>,
+  authorization: string | null = "Bearer jwt-de-teste",
+) {
+  const anteriores = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_SECRET_KEYS"]
+    .map((chave) => [chave, Deno.env.get(chave)] as const);
+  Deno.env.set("SUPABASE_URL", URL_SUPA_TESTE);
+  Deno.env.set("SUPABASE_PUBLISHABLE_KEYS", JSON.stringify({ default: "anon-de-teste" }));
+  Deno.env.set("SUPABASE_SECRET_KEYS", JSON.stringify({ default: "service-role-de-teste" }));
+  const rede = fetchDePapeis(papelNoAuth, papelNoPerfil);
+  const fetchAnterior = globalThis.fetch;
+  globalThis.fetch = rede.fn as any;
+  try {
+    const resposta = await handler(
+      new Request("http://local/send-push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authorization ? { Authorization: authorization } : {}),
+        },
+        body: JSON.stringify(corpo),
+      }),
+    );
+    return { resposta, urls: rede.urls };
+  } finally {
+    globalThis.fetch = fetchAnterior;
+    for (const [chave, valor] of anteriores) {
+      if (valor === undefined) Deno.env.delete(chave);
+      else Deno.env.set(chave, valor);
+    }
+  }
+}
+
+for (
+  const [rotulo, papelNoAuth, papelNoPerfil] of [
+    ["só o Auth rebaixado (profiles ainda admin)", "customer", "admin"],
+    ["só o profiles rebaixado (Auth ainda admin)", "admin", "customer"],
+  ] as const
+) {
+  Deno.test(`porta de admin: papéis contraditórios, ${rotulo} -> recusa sem ler inscrição`, async () => {
+    const { resposta, urls } = await chamarComPapeis(papelNoAuth, papelNoPerfil, {
+      title: "Oi",
+      body: "texto",
+    });
+    assertEquals(resposta.status, 400);
+    assertEquals(await resposta.json(), {
+      ok: false,
+      error: "Unauthorized: Admin access required",
+    });
+    assertEquals(urls.some((u) => u.includes("push_subscriptions")), false);
+  });
+}
+
+Deno.test("porta de admin, CONTROLE: admin nas duas fontes passa (lista vazia de destinos responde ok com total 0)", async () => {
+  const { resposta } = await chamarComPapeis("admin", "admin", {
+    title: "Oi",
+    body: "texto",
+    tokens: [],
+  });
+  assertEquals(resposta.status, 200);
+  const corpo = await resposta.json();
+  assertEquals(corpo.ok, true);
+  assertEquals(corpo.total, 0);
+});
+
+Deno.test("porta de admin: sem Authorization -> a mesma recusa de sempre, sem chamada de rede", async () => {
+  const { resposta, urls } = await chamarComPapeis("admin", "admin", { title: "Oi" }, null);
+  assertEquals(resposta.status, 400);
+  assertEquals(await resposta.json(), { ok: false, error: "Missing Authorization header" });
+  assertEquals(urls.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Campanha de verdade: o HANDLER, de ponta a ponta até o fio
+// ---------------------------------------------------------------------------
+
+Deno.test("handler da send-push: a campanha para clientes sai com Urgency normal e TTL de 28 dias (a urgência alta é só do aviso ao lojista)", async () => {
+  const service = pushServiceFalso({ "/p/ok": 201 });
+  const { base64url } = await parVapidDeTeste();
+  const anteriores = [
+    "SUPABASE_URL",
+    "SUPABASE_PUBLISHABLE_KEYS",
+    "SUPABASE_SECRET_KEYS",
+    "VAPID_PUBLIC_KEY",
+    "VAPID_PRIVATE_KEY",
+  ].map((chave) => [chave, Deno.env.get(chave)] as const);
+  Deno.env.set("SUPABASE_URL", URL_SUPA_TESTE);
+  Deno.env.set("SUPABASE_PUBLISHABLE_KEYS", JSON.stringify({ default: "anon-de-teste" }));
+  Deno.env.set("SUPABASE_SECRET_KEYS", JSON.stringify({ default: "service-role-de-teste" }));
+  Deno.env.set("VAPID_PUBLIC_KEY", base64url.publica);
+  Deno.env.set("VAPID_PRIVATE_KEY", base64url.privada);
+  // O Auth/profiles são falsos; só o que vai para o push service local passa
+  // para o `fetch` de verdade.
+  const rede = fetchDePapeis("admin", "admin");
+  const fetchReal = globalThis.fetch;
+  globalThis.fetch = ((entrada: any, opcoes?: any) => {
+    const url = String(entrada instanceof Request ? entrada.url : entrada);
+    return url.startsWith(service.base) ? fetchReal(entrada, opcoes) : rede.fn(entrada);
+  }) as any;
+  try {
+    const inscricao = await inscricaoDeTeste(`${service.base}/p/ok`);
+    const resposta = await handler(
+      new Request("http://local/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-de-teste" },
+        body: JSON.stringify({
+          title: "Promoção",
+          body: "texto",
+          tokens: [
+            { endpoint: inscricao.endpoint, keys: { p256dh: inscricao.p256dh, auth: inscricao.auth } },
+          ],
+        }),
+      }),
+    );
+
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.enviados, 1);
+    assertEquals(service.recebidas.length, 1);
+    assertEquals(service.recebidas[0].headers.get("urgency"), "normal");
+    assertEquals(service.recebidas[0].headers.get("ttl"), "2419200");
+  } finally {
+    globalThis.fetch = fetchReal;
+    for (const [chave, valor] of anteriores) {
+      if (valor === undefined) Deno.env.delete(chave);
+      else Deno.env.set(chave, valor);
+    }
+    await service.encerrar();
+  }
 });

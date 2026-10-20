@@ -29,6 +29,13 @@ vi.mock("sonner", () => ({
 vi.mock("@/hooks/useOnlineStatus", () => ({
   useOnlineStatus: () => false,
 }));
+// O formulário lê as formas de pagamento da loja (aviso do cupom que cobre a
+// compra inteira): sem provedor de loja nos testes, o dublê entra aqui.
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { formasPagamentoEntrega: ["pix", "card", "cash"] },
+  }),
+}));
 
 const addCoupon = vi.fn();
 const updateCoupon = vi.fn();
@@ -39,6 +46,8 @@ const onNavigate = vi.fn();
 
 // O que a sonda do hook respondeu: o banco da loja já tem a coluna `alcance`?
 let alcanceSuportado = true;
+// A sonda já respondeu? Antes disso `alcanceSuportado=false` só quer dizer "ainda não sei".
+let alcanceSondado = true;
 
 let estadoCoupons: { coupons: Record<string, unknown>[]; loading: boolean } = {
   coupons: [],
@@ -49,6 +58,7 @@ vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({
     ...estadoCoupons,
     alcanceSuportado,
+    alcanceSondado,
     addCoupon,
     updateCoupon,
     listarClientesDoCupom,
@@ -120,6 +130,7 @@ beforeEach(() => {
   onNavigate.mockClear();
   estadoCoupons = { coupons: [], loading: false };
   alcanceSuportado = true;
+  alcanceSondado = true;
 });
 
 afterEach(() => {
@@ -297,7 +308,8 @@ describe("formulário de cupom — Quem pode usar", () => {
     await digitar("#coupon-clientes-busca", "ca", 400);
     await clicar(botao("Caio Novo"));
     await clicar(botao("Salvar Cupom"));
-    expect(definirClientesDoCupom).toHaveBeenCalledWith("cupom-2", [
+    // A edição leva a lista junto: o hook só confirma depois das duas gravações.
+    expect(updateCoupon).toHaveBeenCalledWith("cupom-2", expect.any(Object), [
       "u-bia",
       "u-caio",
       "u-duda",
@@ -413,10 +425,18 @@ describe("formulário de cupom — Quem pode usar", () => {
       alcanceSuportado = false;
     });
 
+    it("enquanto a sonda não respondeu, o aviso 'Somente os campos básicos' não aparece", async () => {
+      alcanceSondado = false;
+      await montar();
+      expect(container?.textContent).not.toContain("Somente os campos básicos");
+      expect(container?.textContent).not.toContain("Quem pode usar");
+    });
+
     it("o bloco 'Quem pode usar' não aparece", async () => {
       await montar();
       expect(container?.textContent).not.toContain("Quem pode usar");
       expect(container?.textContent).not.toContain("Clientes escolhidos");
+      expect(container?.textContent).toContain("Somente os campos básicos");
     });
 
     it("criar cupom salva como sempre: sem alcance e sem lista", async () => {

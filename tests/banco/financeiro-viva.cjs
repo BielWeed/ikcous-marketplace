@@ -507,7 +507,10 @@ PROVAS.push({
     assert.equal(num(dre.deducoes), 45);
     // CMV: 2 x 20 (O1) + 1 x 10 (O2) + 1 x 10 (O8)
     assert.equal(num(dre.cmv), 60);
-    assert.equal(dre.cmv_estimado, true);
+    // Desde a 20261242 `cmv_estimado` e CALCULADO: os itens desta fixture nasceram com o gatilho ligado e o produto
+    // tinha custo, entao todos tem o custo do dia gravado e nenhum usou o custo de hoje (o caso VERDADEIRO, item sem
+    // linha lateral, e provado em tests/banco/custo-do-dia-viva.cjs).
+    assert.equal(dre.cmv_estimado, false);
     // Aluguel 30; a parcela de sistema do mês foi cancelada e as outras duas
     // têm competência nos meses seguintes.
     assert.equal(num(dre.despesas_fixas), 30);

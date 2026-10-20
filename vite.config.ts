@@ -6,6 +6,8 @@ import { defineConfig, loadEnv } from "vite";
 import type { UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
+import { escalasEnxutasDoGrafico } from "./scripts/escalasEnxutasDoGrafico";
+import { helpersCompartilhadosDoGrafico } from "./scripts/helpersCompartilhadosDoGrafico";
 import { portaoDividido } from "./scripts/portaoDividido";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
 // Endereço público de CADA loja — MESMO corpo de `resolverEnderecoPublico`
@@ -107,10 +109,7 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       ],
       ["src/lib/prepareIdentityImage.ts", "AdminIdentityPrepare"],
       ["src/lib/uploadIdentityImage.ts", "AdminIdentityUpload"],
-      [
-        "node_modules/tus-js-client/lib.esm/browser/index.js",
-        "AdminIdentityTus",
-      ],
+      ["node_modules/tus-js-client/lib/browser/index.js", "AdminIdentityTus"],
       ["node_modules/image-dimensions/index.js", "AdminIdentityDimensions"],
       // A tela do balcão precisa estar no precache (vender offline é o
       // ponto): com o nome padrão ela nasceria `assets/AdminPdvView-<hash>.js`
@@ -136,6 +135,13 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     },
     plugins: [
       identity.plugin,
+      // O recharts mantém o d3-scale INTEIRO por um acesso dinâmico; os gráficos
+      // do painel só usam 3 escalas (~6 kB brotli). Detalhes e a trava que
+      // protege o caso `scale="time"` em scripts/escalasEnxutasDoGrafico.ts.
+      escalasEnxutasDoGrafico(),
+      // Helpers Babel com AST e bindings aprovados passam a uma definição
+      // compartilhada, só dentro do Recharts, antes da minificação.
+      helpersCompartilhadosDoGrafico(),
       ...(process.env.ANALYZE === "true"
         ? [
             visualizer({
@@ -161,6 +167,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     resolve: {
       alias: [
         { find: "@", replacement: path.resolve(__dirname, "./src") },
+        // O tus-js-client resolve, pelo campo `module`, a build `lib.esm`, que o
+        // Babel desce para ES5 e enche de helpers. A pasta `lib` do MESMO
+        // pacote (4.3.1) e o codigo-fonte moderno: o alvo do build ja e atual,
+        // entao o comportamento e o mesmo e o painel sai mais leve.
+        {
+          find: /^tus-js-client$/,
+          replacement: "tus-js-client/lib/browser/index.js",
+        },
         // O recharts importa 29 funções `lodash/<nome>` na versão CommonJS:
         // 263 módulos, cada um embrulhado pelo plugin commonjs. A MESMA versão
         // em ES module (lodash-es, mesma 4.18.1 do lodash que o recharts
@@ -205,8 +219,34 @@ export default defineConfig(async (context): Promise<UserConfig> => {
           },
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
+            // O cn() já faz parte do boot. Fixá-lo aqui impede que o Rollup
+            // o absorva no chunk do painel e leve esse chunk para a vitrine.
+            if (normalizedId.endsWith("/src/lib/utils.ts")) {
+              return "vendor-inicio";
+            }
+            // Peças pequenas compartilham imports, minificação e dicionário
+            // Brotli. Lista fechada: não absorver telas ou dependências novas
+            // por uma regra genérica de diretório. O nome sem Admin* mantém
+            // esta dependência estática do PDV no precache existente.
+            if (
+              /\/src\/components\/admin\/(AdminPageHeader|AdminHelpModal)\.tsx$/.test(
+                normalizedId,
+              ) ||
+              /\/src\/components\/admin\/primitivos\/(AcaoDoPainel|AlternadorDeTelas|AtalhosDaAba|EsqueletoDaLista|EstadoVazio|FolhaDoPainel|SecaoRecolhivel|SeloDeStatus)\.tsx$/.test(
+                normalizedId,
+              ) ||
+              /\/src\/components\/ui\/(select|tabs|badge|card|dropdown-menu)\.tsx$/.test(
+                normalizedId,
+              ) ||
+              normalizedId.endsWith("/src/hooks/useScrollRestoration.ts")
+            ) {
+              return "painel-ui";
+            }
+            // Estes vendors já eram dependências estáticas do início da loja.
+            // Juntos compartilham minificação e dicionário Brotli, sem
+            // antecipar código que antes fosse lazy.
             if (normalizedId.includes("commonjsHelpers")) {
-              return "vendor-react";
+              return "vendor-inicio";
             }
             if (id.includes("node_modules")) {
               if (normalizedId.includes("zxing-wasm")) {
@@ -251,29 +291,29 @@ export default defineConfig(async (context): Promise<UserConfig> => {
                 // brotli de biblioteca de gráfico para o boot de todo
                 // cliente da vitrine (modulepreload no index.html). Este
                 // vendor já é estático na entrada: zero requisição nova.
-                return "vendor-ui-helpers";
+                return "vendor-inicio";
               }
               if (normalizedId.includes("react-resizable-panels")) {
                 return "vendor-panels";
               }
               if (normalizedId.includes("lucide-react")) {
-                return "vendor-lucide";
+                return "vendor-inicio";
               }
               if (
                 normalizedId.includes("react-hook-form") ||
                 normalizedId.includes("zod") ||
                 normalizedId.includes("@hookform")
               ) {
-                return "vendor-form";
+                return "vendor-inicio";
               }
               if (normalizedId.includes("@radix-ui")) {
-                return "vendor-radix";
+                return "vendor-inicio";
               }
               if (normalizedId.includes("framer-motion")) {
                 return "vendor-motion";
               }
               if (normalizedId.includes("@supabase")) {
-                return "vendor-supabase";
+                return "vendor-inicio";
               }
               if (
                 normalizedId.includes("recharts") ||
@@ -286,7 +326,7 @@ export default defineConfig(async (context): Promise<UserConfig> => {
                 normalizedId.includes("/node_modules/react-dom/") ||
                 normalizedId.includes("/node_modules/scheduler/")
               ) {
-                return "vendor-react";
+                return "vendor-inicio";
               }
             }
           },

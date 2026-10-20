@@ -127,7 +127,12 @@ export function mapProductFromDB(
       createdAt,
       updatedAt,
       createdTime,
-      rating: row.rating ? Number(row.rating) : 5,
+      // Sem avaliação nenhuma o padrão é 5 estrelas; mas nota 0 de quem JÁ
+      // tem avaliações é nota real e não pode virar 5.
+      rating:
+        row.rating != null && (row.rating || Number(row.review_count) > 0)
+          ? Number(row.rating)
+          : 5,
       reviewCount: row.review_count ? Number(row.review_count) : 0,
       tags: Array.isArray(row.tags) ? row.tags : [],
       metaTitle: row.meta_title || undefined,
@@ -198,6 +203,19 @@ function semCpf(dados: Record<string, unknown>): Record<string, unknown> {
 }
 
 /**
+ * Endereço da loja gravado no pedido de RETIRADA NA LOJA (aparado), ou "" se
+ * o pedido é de entrega. Fonte única da regra "este pedido é retirada": o
+ * mapper e quem lê a linha crua do banco (realtime do painel) usam esta.
+ */
+export function enderecoDeRetiradaDoCustomerData(
+  customerData: unknown,
+): string {
+  const pickup = (customerData as { pickup_address?: unknown } | null)
+    ?.pickup_address;
+  return typeof pickup === "string" ? pickup.trim() : "";
+}
+
+/**
  * Maps a database order row to the application Order interface
  */
 export function mapOrderFromDB(
@@ -220,10 +238,7 @@ export function mapOrderFromDB(
   // `store-pickup` (e só aceita a retirada com endereço preenchido). É o
   // único marcador persistido — vale o retrato, nunca o endereço atual da
   // loja (a loja pode mudar de endereço depois).
-  const enderecoDeRetirada =
-    typeof customerData.pickup_address === "string"
-      ? customerData.pickup_address.trim()
-      : "";
+  const enderecoDeRetirada = enderecoDeRetiradaDoCustomerData(customerData);
 
   const addressSource =
     customerData.addressData ||

@@ -377,6 +377,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    // 20261251: lucro por variante e cobertura do custo do estoque.
+    "tests/banco/lucro-do-estoque-viva.cjs",
+    // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.
+    "tests/banco/faturamento-potencial-viva.cjs",
     "tests/banco/devolucoes-viva.cjs",
     "tests/banco/cartao-online-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
@@ -434,9 +438,109 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/portao-8e-aceita-sucessoras-viva.cjs",
     // 20261212000000 a 20261214000000: o portao da release (consultas 17a e 17b do lote) decide certo.
     "tests/banco/estoque-do-painel-portao-viva.cjs",
+    // 20261215000000: o portao da release (consultas 19a e 19b do lote) decide certo.
+    "tests/banco/politica-devolucao-portao-viva.cjs",
+    // 20261216000000: o portao da release (consultas 20a e 20b do lote) decide certo.
+    "tests/banco/fotos-da-devolucao-portao-viva.cjs",
+    // 20261217000000: os tetos de e-mail e o codigo do convidado (comportamento) e o portao da
+    // release (consultas 21a e 21b do lote) decide certo.
+    "tests/banco/teto-de-email-viva.cjs",
+    "tests/banco/teto-de-email-portao-viva.cjs",
+    // 20261218000000, 20261218000100 e 20261219000000: as portas pequenas do banco (comportamento) e
+    // o portao da release (consultas 22a e 22b do lote) decide certo.
+    "tests/banco/portas-do-banco-viva.cjs",
+    "tests/banco/portas-do-banco-portao-viva.cjs",
+    // 20261220000000: a consulta antiga de pedido por codigo fecha para o visitante (comportamento) e o
+    // portao da release (consultas 23a e 23b do lote) decide certo.
+    "tests/banco/consulta-antiga-de-pedido-viva.cjs",
+    "tests/banco/consulta-antiga-de-pedido-portao-viva.cjs",
+    // 20261221000000: a media de avaliacoes e o voto "util" fecham para o visitante (comportamento).
+    "tests/banco/avaliacoes-fechadas-ao-visitante-viva.cjs",
+    "tests/banco/avaliacoes-fechadas-ao-visitante-portao-viva.cjs",
+    // 20261222000000: a media de avaliacoes so responde ao administrador (corpo com is_admin(); comportamento e portao 25a/25b).
+    "tests/banco/media-de-avaliacoes-so-admin-viva.cjs",
+    "tests/banco/media-de-avaliacoes-so-admin-portao-viva.cjs",
+    // 20261223000000: o voto util so vale em avaliacao que o publico ve (corpo com status = 'publicada'; comportamento e portao 26a/26b).
+    "tests/banco/voto-util-so-em-avaliacao-publica-viva.cjs",
+    "tests/banco/voto-util-so-em-avaliacao-publica-portao-viva.cjs",
+    // 20261224000000: a avaliacao nasce sem a resposta da loja (gatilho BEFORE INSERT; comportamento e portao 27a/27b).
+    "tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs",
+    "tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs",
+    // 20261227000000 e 20261228000000: os numeros do painel (a taxa de devolucao da mesma turma de vendas e o corte
+    // na mesma hora; comportamento e portao 30a/30b).
+    "tests/banco/numeros-do-painel-viva.cjs",
+    "tests/banco/numeros-do-painel-portao-viva.cjs",
+    // 20261232000000: a grade do CRM mede a recencia do mesmo instante da lista (so depois da 20261227; comportamento e portao 33a/33b).
+    "tests/banco/a-grade-do-crm-mede-a-recencia-viva.cjs",
+    "tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs",
+    // 20261229000000: o endereco da compra fica no pedido (v23 e v24 copiam o endereco da conta; comportamento e portao 31a/31b).
+    "tests/banco/endereco-no-pedido-viva.cjs",
+    "tests/banco/endereco-no-pedido-portao-viva.cjs",
+    // 20261225000000: o reembolso da devolucao so e liberado quando o dinheiro sai (gatilho de aviso pelo estado real; comportamento e portao 28a/28b).
+    "tests/banco/reembolso-da-devolucao-viva.cjs",
+    "tests/banco/reembolso-da-devolucao-portao-viva.cjs",
+    // 20261226000000: a reemissao do reembolso consulta o MP antes de pagar de novo (gate de "nada saiu", adotar so linha incerta, devolucao pelo painel do MP, ator admin atual, ACL; comportamento e portao 29a/29b).
+    "tests/banco/reemissao-do-reembolso-viva.cjs",
+    "tests/banco/reemissao-do-reembolso-portao-viva.cjs",
+    // 20261230000000 e 20261231000000: a busca de clientes (get_admin_customers_paged acha pelo numero do WhatsApp; crm_clientes ignora acento; comportamento e portao 32a/32b).
+    "tests/banco/busca-de-clientes-viva.cjs",
+    "tests/banco/busca-de-clientes-portao-viva.cjs",
+    // 20261233000000: o sino do pedido de retirada fala de retirada (corpo da funcao de gatilho com o ramo da retirada; comportamento e portao 34a/34b).
+    "tests/banco/o-sino-do-pedido-de-retirada-viva.cjs",
+    "tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs",
+    // 20261234000000: o lucro so conta produto com custo (get_admin_analytics_v2: lucro por dia e top 5 sem a margem inventada de produto sem custo; comportamento e portao 35a/35b).
+    "tests/banco/lucro-so-com-custo-viva.cjs",
+    "tests/banco/lucro-so-com-custo-portao-viva.cjs",
+    // 20261242000000: o lucro usa o custo do dia da venda (tabela lateral so do servidor, gatilho que nunca derruba a compra, get_admin_analytics_v2 e fin_dre leem o custo do dia; comportamento e portao 45a/45b/45m).
+    "tests/banco/custo-do-dia-viva.cjs",
+    "tests/banco/custo-do-dia-portao-viva.cjs",
+    // 20261245: o cupom desconta do lucro diário e do ranking; mantém a cadeia de custo do dia.
+    "tests/banco/lucro-com-desconto-viva.cjs",
+    // 20261235000000: a venda repetida do balcao devolve a venda feita (trava consultiva pela chave de idempotencia; comportamento com 2 conexoes e portao 36a/36b).
+    "tests/banco/venda-balcao-mesma-chave-viva.cjs",
+    "tests/banco/venda-balcao-mesma-chave-portao-viva.cjs",
+    // 20261243000000: desfazer o recebimento recusa pedido com devolucao viva (registrar_pagamento_recebido; comportamento com 2 conexoes, corrida nos dois sentidos, rollback e mutantes; o portao da release desta migration ainda nao existe).
+    "tests/banco/desfazer-recebimento-viva.cjs",
+    "tests/banco/desfazer-recebimento-portao-viva.cjs",
+    // 20261244000000: a loja escolhe como entrega na cidade e em quantos dias (v23, v24 e upsert_store_config; matriz das duas compras, trigger, rollbacks nos dois degraus e mutantes; e o portao 47a/47b).
+    "tests/banco/a-loja-escolhe-como-entrega-viva.cjs",
+    "tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs",
+    // 20261246000000: o lancamento repetido nao duplica (chave de tentativa em fin_lancamento_salvar; corrida real, atomicidade, mutantes e o portao 49a/49b).
+    "tests/banco/lancamento-idempotente-viva.cjs",
+    // 20261247000000: a anotacao interna do pedido nao chega a cliente (tabela so do admin de agora; papeis reais, pre-voo, rollbacks, mutantes e o portao 50a/50b).
+    "tests/banco/nota-interna-do-pedido-viva.cjs",
+    // 20261248000000: a coluna notes do pedido fecha para a gravacao do painel (REVOKE UPDATE (notes) do authenticated; ACL de antes e de depois, pre-voo, conferencia final, atomicidade, mutantes e o portao 51a/51b).
+    "tests/banco/notes-do-pedido-fechada-viva.cjs",
+    // 20261249000000: o motivo do desconto fica na nota privada, preservando trava e idempotencia.
+    "tests/banco/pdv-motivo-privado-viva.cjs",
+    // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
+    "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
+    "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",
+    // 20261237000000: a lojista renomeia e apaga categoria sem deixar produto orfao (permissao e regra de devolucao; comportamento e portao 38a/38b).
+    "tests/banco/categorias-gestao-viva.cjs",
+    "tests/banco/categorias-gestao-portao-viva.cjs",
+    // 20261238000000: a cliente pede a exclusao da conta e a correcao do e-mail (tabela pedidos_de_privacidade, dado de cliente; comportamento, ensaio do roteiro de anonimizacao e portao 39a/39b).
+    "tests/banco/pedidos-de-privacidade-viva.cjs",
+    "tests/banco/anonimizar-conta-ensaio-viva.cjs",
+    "tests/banco/pedidos-de-privacidade-portao-viva.cjs",
+    // 20261239000000: a loja declara razao social, CNPJ/CPF e e-mail de atendimento (upsert_store_config, as tres colunas e a v_store_config; comportamento e portao 40a/40b).
+    "tests/banco/loja-declara-quem-e-viva.cjs",
+    "tests/banco/loja-declara-quem-e-portao-viva.cjs",
+    // 20261240000000: a cliente e avisada quando a loja responde a pergunta dela (answer_question_atomic, as duas sobrecargas: aviso no sino em vez da linha falsa no log de push; comportamento e portao 41a/41b).
+    "tests/banco/pergunta-respondida-avisa-viva.cjs",
+    "tests/banco/pergunta-respondida-avisa-portao-viva.cjs",
+    // 20261241000000: o reembolso em duvida prende o saldo (regra unica pode_ter_saido, saldo com o em duvida, as duas saidas de 7 dias pela mesma espera do painel, autorizar recusa a linha liberada por fora; comportamento com 2 conexoes e mutantes, e portao 43a/43b).
+    "tests/banco/reembolso-em-duvida-viva.cjs",
+    "tests/banco/reembolso-em-duvida-portao-viva.cjs",
+    // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
+    "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
     "tests/banco/receita-uma-regua-viva.cjs",
     "tests/banco/estoque-minimo-editavel-viva.cjs",
+    // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
+    "tests/banco/portas-anon-exploracao-dinheiro.cjs",
+    "tests/banco/portas-anon-exploracao-dados.cjs",
+    "tests/banco/portas-anon-exploracao-estoque-otp.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

@@ -2,7 +2,7 @@
 // promoção usava vermelho/rosa (`text-rose-600`/`text-rose-500`) -- a MESMA
 // cor que o resto da loja usa pra "negativo" (estoque baixo, erro,
 // cancelado). Verde é o sinal certo pra promoção. O alerta de estoque baixo
-// ("Apenas N restam!") continua vermelho de propósito -- é alerta de
+// ("Resta apenas 1!" / "Restam apenas N!") continua vermelho de propósito -- é alerta de
 // verdade, não desconto.
 //
 // Três variantes pelo mesmo motivo do laudo de product-card-estoque-

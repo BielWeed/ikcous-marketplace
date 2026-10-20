@@ -157,11 +157,12 @@ describe("AdminPushView — cabeçalho e prévia não travam largura fixa no mob
     const previa = hospedeiro.querySelector('[data-testid="previa-celular"]');
     expect(previa).toBeTruthy();
 
-    // Primeiro filho da prévia é o "shell" do aparelho — o que carregava o
-    // `w-[300px]` fixo.
+    // O cartão v4 ocupa a largura disponível e pode encolher;
+    // a largura fixa de 300px continua proibida.
     const shell = previa!.firstElementChild as HTMLElement | null;
     expect(shell).toBeTruthy();
-    expect(shell!.className).toContain("max-w-[300px]");
+    expect(shell!.className).toContain("min-w-0");
+    expect(shell!.className).not.toMatch(/(?:^|\s)w-\[300px\]/);
     expect(shell!.className).toContain("w-full");
   });
 });

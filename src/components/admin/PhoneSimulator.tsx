@@ -4,6 +4,7 @@ import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
   CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
+import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
@@ -240,7 +241,11 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                               <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-75" />
                               <span className="relative inline-flex size-1 rounded-full bg-amber-500" />
                             </span>
-                            <span>Só restam {formData.stock}</span>
+                            <span>
+                              {textoEstoqueBaixo(
+                                Number.parseInt(formData.stock),
+                              )}
+                            </span>
                           </div>
                         )
                       ) : (
@@ -682,7 +687,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                           ) : isLowStock ? (
                             <>
                               <Flame className="size-3.5" />
-                              <span>Apenas {currentStock} un. restantes!</span>
+                              <span>{textoEstoqueBaixo(currentStock)}</span>
                             </>
                           ) : (
                             <>

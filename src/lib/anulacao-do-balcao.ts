@@ -80,15 +80,59 @@ const FRASE_SEM_CONEXAO =
   "Não consegui confirmar com o servidor. Confira a venda antes de tentar de novo: se ela já foi anulada, o app avisa.";
 const FRASE_GENERICA = "Não consegui anular agora. Tente de novo.";
 
+// F7 do painel simples — venda do balcão não se CANCELA (nasce entregue, e
+// "Cancelar pedido" não existe para entregue): o caminho é ANULAR, e só no
+// mesmo dia. A 1ª frase é a da recusa do banco (migration 20261204000000,
+// `anular_venda_presencial`); a 2ª da recusa ("registre uma devolução") NÃO
+// vale aqui: o lojista não abre devolução de balcão no painel
+// (`solicitar_devolucao` exige o cliente logado, `user_id = auth.uid()`).
+// No balcão não há arrependimento (ele exige canal 'online'): sobra troca ou
+// vício, pedidos pelo cliente — e só se a venda nasceu na conta dele
+// (`registrar_venda_presencial(p_cliente_user_id)`; não há vínculo depois).
+// A ficha do pedido e o recibo da tela Vender dizem a MESMA coisa: a frase
+// mora aqui, num lugar só.
+export const FRASE_ANULAR_SO_NO_MESMO_DIA =
+  "Só dá para anular no mesmo dia da venda.";
+export const DEPOIS_DO_DIA_COM_CLIENTE =
+  "Depois disso, a troca ou o reparo de defeito só podem ser pedidos pelo cliente, no app, dentro do prazo da loja.";
+export const DEPOIS_DO_DIA_SEM_CLIENTE =
+  "Esta venda não está na conta de nenhum cliente: o app não abre devolução para ela.";
+
+/** O pedido de "registre uma devolução" que o banco acrescenta às recusas do
+ * dia ("Para outro dia, registre uma devolução.") e do recebimento refeito
+ * ("... Registre uma devolução."). */
+const PEDIDO_DE_DEVOLUCAO =
+  /\s*(?:Para outro dia, )?registre uma devolu(?:ç|c)(?:ã|a)o\.?/i;
+
+/**
+ * Tira da frase do banco o "registre uma devolução", que a lojista não tem
+ * como fazer. Na recusa do dia, no lugar dele entra o que de fato resta (a
+ * mesma frase da ficha do pedido); nas demais, só some o pedido impossível.
+ */
+function semPedidoDeDevolucao(frase: string, clienteComConta: boolean): string {
+  if (!PEDIDO_DE_DEVOLUCAO.test(frase)) return frase;
+  const resto = frase.replace(PEDIDO_DE_DEVOLUCAO, "").trim();
+  if (resto === FRASE_ANULAR_SO_NO_MESMO_DIA) {
+    return `${resto} ${
+      clienteComConta ? DEPOIS_DO_DIA_COM_CLIENTE : DEPOIS_DO_DIA_SEM_CLIENTE
+    }`;
+  }
+  return resto;
+}
+
 /**
  * Traduz a falha de `anular_venda_presencial`. As frases do banco (22023 e
- * 42501) já são em português e escritas para o lojista — inclusive a do dia
- * que passou ("Só dá para anular no mesmo dia da venda. Para outro dia,
- * registre uma devolução.") —, então só são repassadas. O que o banco NÃO
- * escreve (função inexistente no servidor, rede) vira frase daqui. Nunca
+ * 42501) já são em português e escritas para o lojista, então são repassadas
+ * — com uma exceção: o "registre uma devolução" do fim das recusas do dia e
+ * do recebimento refeito vira o que resta de verdade (ver
+ * `semPedidoDeDevolucao`; `clienteComConta` escolhe a frase). O que o banco
+ * NÃO escreve (função inexistente no servidor, rede) vira frase daqui. Nunca
  * mostra código, nome de função nem stack.
  */
-export function mensagemDaFalhaDaAnulacao(erro: unknown): string {
+export function mensagemDaFalhaDaAnulacao(
+  erro: unknown,
+  clienteComConta = false,
+): string {
   const codigo = codigoDoErro(erro);
   const doBanco = mensagemDoErro(erro);
 
@@ -105,7 +149,9 @@ export function mensagemDaFalhaDaAnulacao(erro: unknown): string {
     return doBanco ?? "Só quem é da loja pode anular uma venda.";
   }
   if (codigo === "22023") {
-    return doBanco ?? "Esta venda não pode ser anulada aqui.";
+    return doBanco
+      ? semPedidoDeDevolucao(doBanco, clienteComConta)
+      : "Esta venda não pode ser anulada aqui.";
   }
   return doBanco ?? FRASE_GENERICA;
 }

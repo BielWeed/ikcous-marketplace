@@ -17,6 +17,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    // L10: a sessão é conferida antes de cada envio.
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "cliente-1" } } },
+      }),
+    },
     functions: { invoke: vi.fn() },
     rpc: vi.fn(() => Promise.resolve({ data: null, error: null })),
     from: () => ({
@@ -50,7 +56,7 @@ vi.mock("@/hooks/useAnalytics", () => ({ clearAnalyticsCache: () => {} }));
 // dos outros testes de componente deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const CHAVE_DA_FILA = "orders_offline_updates_queue";
+const CHAVE_DA_FILA = "orders_offline_updates_queue:cliente-1";
 
 let host: HTMLDivElement;
 let raiz: Root;
@@ -75,6 +81,9 @@ async function montar(): Promise<void> {
 describe("useOrders — o timer da sincronização offline não sobrevive ao desmonte", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // L10: itens com mais de 72 h não são enviados — o relógio dos testes
+    // fica perto dos `timestamp` pequenos das fixtures.
+    vi.setSystemTime(1_000);
     getItem = vi.fn(() => null);
     vi.stubGlobal("localStorage", {
       getItem,

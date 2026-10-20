@@ -17,9 +17,13 @@ import {
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada } from "@/lib/imageUrl";
 import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
+import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant } from "@/types";
-import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
+import {
+  pontoDeSaidaVisivel,
+  triggerFlyingCartAnimation,
+} from "@/utils/cartAnimation";
 import {
   Check,
   Flame,
@@ -99,6 +103,23 @@ interface ProductCardProps {
   promessasDeFrete?: PromessasDeFrete;
 }
 
+/**
+ * Solta a bolinha do voo até o carrinho a partir da foto do CARD (14/10/2026).
+ * Só voa com algo anotado (`imgSrc`), a foto ainda no DOM e `pontoDeSaidaVisivel`
+ * (à vista e sem nada por cima): sem ponto de partida confiável a bolinha não
+ * voa e fica o "Salvo!". Fora do componente de propósito: não lê nem escreve
+ * estado, só medidas do DOM.
+ */
+function soltarVooDoCard(
+  imgSrc: string | null,
+  foto: HTMLElement | null,
+  card: HTMLElement | null,
+) {
+  if (imgSrc === null || !foto?.isConnected || !card) return;
+  if (!pontoDeSaidaVisivel(foto, card)) return;
+  triggerFlyingCartAnimation(foto, imgSrc);
+}
+
 // Global trackers for view transitions to prevent duplicate view-transition-names
 let activeTransitionCardId: string | null = null;
 
@@ -125,6 +146,7 @@ export const ProductCard = memo(function ProductCard({
   // O `ref` do card inteiro é o que garante achar a foto DESTE card, venha o
   // clique de onde vier.
   const cardRef = useRef<HTMLDivElement>(null);
+  const fotoDoCardRef = useRef<HTMLDivElement>(null);
   // Timers do fluxo "Salvando... -> Salvo!" (dois setTimeout encadeados, ver
   // handleAddToCartClick/handleAdicionarComOpcoes) -- o card pode desmontar
   // no MEIO dessa janela (a vitrine repagina, favoritos remove item com
@@ -136,11 +158,16 @@ export const ProductCard = memo(function ProductCard({
       timersRef.current.forEach((id) => window.clearTimeout(id));
     };
   }, []);
-  // Foco: quem gerencia agora é o próprio diálogo da folha (Radix) -- foco
-  // entra no conteúdo ao abrir, fica preso dentro (focus trap) e volta ao
-  // elemento que abriu ao fechar (13/09). O foco manual do painel antigo
-  // (refs + useEffect com guarda de primeira renderização, laudos de
-  // acessibilidade 03/09 e 08/09) foi embora junto com o painel.
+  // Foco: o diálogo da folha (Radix) leva o foco para dentro ao abrir e o
+  // prende lá (focus trap) -- isso é dele (13/09). A DEVOLUÇÃO ao fechar NÃO
+  // é: o Radix só devolve ao `Trigger`, e esta folha abre por ESTADO, sem
+  // SheetTrigger (o gatilho é o botão do card, com handler próprio). Medido
+  // em 14/10/2026: ao fechar, o foco caía no <body> e o leitor de tela
+  // recomeçava do topo da página. Por isso o botão do card guarda um ref e a
+  // folha o devolve em `onCloseAutoFocus` (mesmo padrão do seletor de
+  // endereço do carrinho, CartView). O foco manual do painel antigo (laudos
+  // de acessibilidade 03/09 e 08/09) foi embora junto com o painel.
+  const botaoDeAcaoRef = useRef<HTMLButtonElement>(null);
 
   const discount = product.originalPrice
     ? Math.round(
@@ -183,12 +210,16 @@ export const ProductCard = memo(function ProductCard({
   // anunciam. O seletor da casa (QuantitySelector, o da página do produto)
   // já desabilita "+" na borda.
   const [quantidade, setQuantidade] = useState(1);
-  // Foto grande da folha: é dela que a bolinha do voo até o carrinho parte
-  // (pedido do dono: "arrasta aquela bolinha do ícone do produto"). A folha
-  // já disparava o MESMO trigger do card, mas a partir do CTA do rodapé —
-  // que fica colado no carrinho na base da tela, um pulo curto que o olho
-  // não pega. Partir da foto devolve o voo inteiro, igual ao caminho do card.
-  const imagemDaFolhaRef = useRef<HTMLDivElement>(null);
+  // Bolinha do voo até o carrinho quando a escolha vem da FOLHA (14/10/2026).
+  // A peça 18 (14/09) soltava a bolinha NO TOQUE do "Adicionar", partindo da
+  // foto da folha. Medido no Chromium (375x812): ela boiava sobre o conteúdo
+  // da folha (45 de 45 amostras do voo dentro da folha aberta) e ia para um
+  // carrinho que a própria folha cobre (folha z-130 acima da barra z-120) —
+  // o relato do dono: "fica passando em cima da aba sem sentido". Agora o
+  // toque só ANOTA a foto a voar aqui; a bolinha sai quando a folha já foi
+  // embora (`soltarVooDoCard`), partindo da foto do CARD, que está visível
+  // ao fundo. `null` = nada a voar.
+  const vooPendenteRef = useRef<string | null>(null);
 
   // ── Arrasto da alça da folha (peça 03, 13/09 — pedido do dono ao vivo) ──
   // Puxar a barrinha para baixo arrasta a folha junto; soltar além de 64px
@@ -310,8 +341,53 @@ export const ProductCard = memo(function ProductCard({
   // `produtos.estoque`, nunca a variação escolhida.
   const hasActiveVariant = product.variants?.some((v) => v.active) ?? false;
 
+  // Defesa (caçada de 14/10/2026): sem `onAddToCart` não há ninguém para
+  // adicionar. Antes o botão rodava o ciclo inteiro ("Salvando..." -> "Salvo!"
+  // verde, bolinha voando) e NADA entrava no carrinho — Busca e Favoritos
+  // montavam o card assim. Sem como adicionar, o botão não confirma em falso:
+  // faz o que faz a peça que "pode ter tamanho/cor" — abre a página do
+  // produto, onde a compra acontece de verdade.
+  const soAbreAPagina =
+    !hasActiveVariant && (!!product.variantsUnavailable || !onAddToCart);
+
+  // Nome acessível do botão do card (leitor de tela). Na vitrine são dezenas
+  // de botões; o rótulo visível ("Carrinho", "Escolher opções"...) sozinho os
+  // deixava IGUAIS. Cada nome CONTÉM o rótulo visível (WCAG 2.5.3, "rótulo no
+  // nome" -- quem comanda por voz diz o que lê) e acrescenta o produto.
+  // Só no estado parado: durante "Salvando..."/"Salvo!" o próprio texto do
+  // botão é o nome (e o aviso falado diz qual produto entrou).
+  const rotuloAcessivelDoBotao =
+    cartStatus !== "idle"
+      ? undefined
+      : estoqueAtual <= 0
+        ? `${product.name} esgotado`
+        : hasActiveVariant
+          ? `Escolher opções de ${product.name}`
+          : soAbreAPagina
+            ? `Ver produto ${product.name}`
+            : `Adicionar ${product.name} ao carrinho`;
+
+  // Aviso falado de "entrou no carrinho" (região `role="status"` abaixo).
+  // Espelha EXATAMENTE o "Salvo!" que quem enxerga vê -- mesmo gatilho, mesmo
+  // momento -- e nasce VAZIO: leitor de tela só anuncia mudança de conteúdo em
+  // região que já estava na árvore. Card com folha de opções (variação) tem a
+  // região DENTRO da folha; o card sem folha, no próprio card (ver
+  // `temFolhaDeOpcoes`). Uma região viva FORA da folha, num card que tem
+  // folha, ainda faria o Radix poupar o card do `aria-hidden` da folha modal
+  // (a biblioteca preserva o caminho até qualquer `aria-live`) -- por isso só
+  // um dos dois lugares existe em cada card.
+  const temFolhaDeOpcoes = hasActiveVariant && !!onAddToCartWithVariants;
+  const avisoDeAdicionado =
+    cartStatus === "success" ? `Adicionado ao carrinho: ${product.name}` : "";
+
   const handleAddToCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    // Durante "Salvando..."/"Salvo!" o botão fica `aria-disabled` (não
+    // `disabled`, para o leitor de tela não perder o foco) -- e `aria-disabled`
+    // NÃO bloqueia clique. Quem bloqueia é esta guarda: o `disabled` de antes
+    // calava TODOS os caminhos abaixo, inclusive o que abre o produto.
+    if (cartStatus !== "idle") return;
 
     // Card inteligente (folha, 13/09): o botão do card SÓ ABRE a folha — a
     // escolha e o "Adicionar" moram no rodapé dela. O rótulo do botão do
@@ -322,7 +398,11 @@ export const ProductCard = memo(function ProductCard({
       return;
     }
 
-    if (hasActiveVariant) {
+    // `variantsUnavailable`: a leitura das variações falhou (faixa de
+    // recomendações) — não se sabe se a peça tem tamanho/cor, então ela
+    // também só abre a página, onde a escolha é obrigatória. Sem
+    // `onAddToCart` (ver `soAbreAPagina`) também: nada a confirmar.
+    if (hasActiveVariant || soAbreAPagina) {
       onClick(product.id);
       return;
     }
@@ -331,9 +411,7 @@ export const ProductCard = memo(function ProductCard({
 
     setCartStatus("loading");
 
-    if (onAddToCart) {
-      onAddToCart(product, e);
-    }
+    onAddToCart?.(product, e);
 
     const startEl = (e.currentTarget as HTMLElement) || document.body;
     triggerFlyingCartAnimation(startEl, product.images[0]);
@@ -348,7 +426,7 @@ export const ProductCard = memo(function ProductCard({
     timersRef.current.push(idLoading);
   };
 
-  const handleAdicionarComOpcoes = (e: React.MouseEvent) => {
+  const handleAdicionarComOpcoes = () => {
     if (cartStatus !== "idle") return;
     if (estoqueAtual <= 0) return;
 
@@ -374,14 +452,10 @@ export const ProductCard = memo(function ProductCard({
     const imgSrc = imagemDaVariante || product.images?.[0] || "";
 
     setCartStatus("loading");
-    // Peça 18 (14/09): o MESMO trigger de voo do caminho do card, agora
-    // partindo da FOTO da folha (o "ícone do produto" do pedido do dono) —
-    // antes partia do CTA do rodapé, colado no carrinho, e o voo era um
-    // pulo invisível na base da tela. Fallback: sem foto medida, o CTA.
-    triggerFlyingCartAnimation(
-      imagemDaFolhaRef.current ?? (e.currentTarget as HTMLElement),
-      imgSrc,
-    );
+    // A bolinha NÃO voa agora: com a folha aberta ela cruzaria o conteúdo
+    // dela rumo a um carrinho coberto. Fica anotada e sai quando a folha
+    // terminar de fechar (ver `vooPendenteRef` e `soltarVooDoCard`).
+    vooPendenteRef.current = imgSrc;
     onAddToCartWithVariants?.(
       product,
       variantId,
@@ -399,8 +473,9 @@ export const ProductCard = memo(function ProductCard({
     // quantidade volta a 1 — pedido novo começa do um.
     const idLoading = window.setTimeout(() => {
       setCartStatus("success");
-      // 700 ms de "Salvo!" visível: o voo (750 ms) já aterrissou e o olho
-      // registra a confirmação antes da folha deslizar para fora.
+      // 700 ms de "Salvo!" visível: o olho registra a confirmação antes da
+      // folha deslizar para fora — e é quando ela termina de sair que a
+      // bolinha voa (`soltarVooDoCard`).
       const idFechar = window.setTimeout(() => {
         setCartStatus("idle");
         setQuantidade(1);
@@ -504,8 +579,14 @@ export const ProductCard = memo(function ProductCard({
           continuam no bloco seguinte, fora daqui. O `relative` ancora o
           botão de favoritar (absolute) a esta caixa de foto. */}
       <div className="relative">
-        {/* Image Container */}
-        <div className="relative aspect-[4/5] overflow-hidden bg-slate-50">
+        {/* Image Container. O `ref` é o ponto de partida da bolinha do voo
+            até o carrinho quando a escolha vem da folha (ver
+            `soltarVooDoCard`). */}
+        <div
+          ref={fotoDoCardRef}
+          data-testid="product-card-photo"
+          className="relative aspect-[4/5] overflow-hidden bg-slate-50"
+        >
           <LazyImage
             src={srcImagem}
             alt={product.name}
@@ -630,7 +711,7 @@ export const ProductCard = memo(function ProductCard({
                 {estoqueAtual <= 0
                   ? "Esgotado"
                   : estoqueAtual <= 5
-                    ? `Apenas ${estoqueAtual} restam!`
+                    ? textoEstoqueBaixo(estoqueAtual)
                     : `Estoque: ${estoqueAtual}`}
               </span>
             </div>
@@ -704,11 +785,24 @@ export const ProductCard = memo(function ProductCard({
             do dono; o estado aberto/fechado é visível na própria folha. */}
         <div className="mt-1.5">
           <button
+            ref={botaoDeAcaoRef}
             data-testid="product-card-action"
             onClick={handleAddToCartClick}
-            disabled={estoqueAtual <= 0 || cartStatus !== "idle"}
+            // Esgotado é estado PERMANENTE: `disabled` de verdade. "Salvando..."/
+            // "Salvo!" é passageiro: `aria-disabled` mantém o botão na ordem de
+            // foco (com `disabled` o foco caía no body e o leitor de tela
+            // ficava mudo); o bloqueio do clique é a guarda de `cartStatus` no
+            // handler.
+            disabled={estoqueAtual <= 0}
+            aria-disabled={
+              estoqueAtual > 0 && cartStatus !== "idle" ? true : undefined
+            }
+            aria-label={rotuloAcessivelDoBotao}
             className={cn(
-              "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
+              // `aria-disabled:active:scale-100`: o botão `disabled` não
+              // encolhia ao toque; aria-disabled não o desliga sozinho -- a
+              // classe mantém o visual de antes.
+              "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 aria-disabled:active:scale-100 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
               estoqueAtual <= 0
                 ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
                 : cartStatus === "success"
@@ -728,13 +822,23 @@ export const ProductCard = memo(function ProductCard({
                 ? "Esgotado"
                 : hasActiveVariant
                   ? "Escolher opções"
-                  : cartStatus === "idle"
-                    ? "Carrinho"
-                    : cartStatus === "loading"
-                      ? "Salvando..."
-                      : "Salvo!"}
+                  : soAbreAPagina
+                    ? "Ver produto"
+                    : cartStatus === "idle"
+                      ? "Carrinho"
+                      : cartStatus === "loading"
+                        ? "Salvando..."
+                        : "Salvo!"}
             </span>
           </button>
+          {/* Região viva SEMPRE montada e invisível (sr-only): fala o
+              "Adicionado ao carrinho" que o leitor de tela não ouvia
+              (remover já era falado, pelo toast). Quem enxerga não vê nada. */}
+          {!temFolhaDeOpcoes && (
+            <span role="status" aria-live="polite" className="sr-only">
+              {avisoDeAdicionado}
+            </span>
+          )}
         </div>
       </div>
 
@@ -749,8 +853,10 @@ export const ProductCard = memo(function ProductCard({
           que reage à escolha, categoria, título, selos, preço, grupos de
           opção) -- RODAPÉ fixo com o CTA. A rolagem mora no FILHO dedicado
           (overflow-y-auto + overscroll-contain + min-h-0, o mesmo padrão do
-          painel antigo), nunca na folha inteira. Foco, Escape, clique fora
-          e devolução de foco são do Radix (ver comentário no topo). */}
+          painel antigo), nunca na folha inteira. Foco para dentro, Escape e
+          clique fora são do Radix; a DEVOLUÇÃO do foco ao fechar NÃO (sem
+          SheetTrigger o Radix não tem para onde devolver) -- é o
+          `onCloseAutoFocus` abaixo (ver comentário no topo). */}
       {hasActiveVariant && onAddToCartWithVariants && (
         <Sheet open={folhaOpcoesAberta} onOpenChange={setFolhaOpcoesAberta}>
           {/* stopPropagation OBRIGATÓRIO (prova no teste "Adicionar ... sem
@@ -768,6 +874,27 @@ export const ProductCard = memo(function ProductCard({
             onClick={(e) => e.stopPropagation()}
             showCloseButton={false}
             className="mx-auto max-h-[88dvh] gap-0 border-t-0 sm:max-w-md sm:rounded-t-3xl"
+            // Devolve o foco ao botão do card (o Radix só devolve ao Trigger,
+            // e aqui não há: cairia no body). Sem a guarda `isConnected`, o
+            // card que saiu da vitrine com a folha aberta (repaginou, o item
+            // foi removido) tentaria focar um nó que já não existe.
+            onCloseAutoFocus={(evento) => {
+              evento.preventDefault();
+              // A folha TERMINOU de sair (o Radix só avisa depois da animação
+              // de saída, com a folha já fora do DOM): é a hora da bolinha
+              // anotada no "Adicionar". Vale uma vez — o anotado é limpo
+              // antes de qualquer saída, e reabrir/fechar depois não repete.
+              // A bolinha sai ANTES de devolver o foco: `focus()` rola a
+              // página até o botão (no pé do card) e, em grade larga com foto
+              // alta, o centro da foto já teria saído da tela quando
+              // `pontoDeSaidaVisivel` perguntasse (medido no Chromium,
+              // 15/10/2026) — sobrava só o "Salvo!".
+              const imgSrc = vooPendenteRef.current;
+              vooPendenteRef.current = null;
+              soltarVooDoCard(imgSrc, fotoDoCardRef.current, cardRef.current);
+              const botao = botaoDeAcaoRef.current;
+              if (botao?.isConnected) botao.focus();
+            }}
           >
             {/* Alça que FECHA (peça 03, 13/09 — pedido do dono ao vivo):
                 clicar nela fecha a folha; arrastar para baixo também
@@ -807,14 +934,9 @@ export const ProductCard = memo(function ProductCard({
               {/* Banda de FOTO grande (a promessa da direção B: a foto da
                   folha era MENOR que a do card atrás no thumbnail antigo e
                   viciava a comparação -- 104x130 vs 165x206, medido 13/09).
-                  Reage à variante escolhida via `srcImagem`. Peça 18 (14/09):
-                  o wrapper com ref é a âncora do VOO até o carrinho — é daqui
-                  que a bolinha parte quando o CTA entrega (mesmo trigger do
-                  caminho do card, triggerFlyingCartAnimation). */}
-              <div
-                ref={imagemDaFolhaRef}
-                data-testid="product-card-options-image"
-              >
+                  Reage à variante escolhida via `srcImagem`. (A bolinha do
+                  voo NÃO parte daqui: ver `vooPendenteRef`, 14/10.) */}
+              <div data-testid="product-card-options-image">
                 <LazyImage
                   src={srcImagem}
                   alt={product.name}
@@ -880,7 +1002,7 @@ export const ProductCard = memo(function ProductCard({
                     {estoqueAtual <= 0
                       ? "Esgotado"
                       : estoqueAtual <= 5
-                        ? `Apenas ${estoqueAtual} restam!`
+                        ? textoEstoqueBaixo(estoqueAtual)
                         : `Estoque: ${estoqueAtual}`}
                   </span>
                 </div>
@@ -993,9 +1115,13 @@ export const ProductCard = memo(function ProductCard({
                 type="button"
                 data-testid="product-card-options-add"
                 onClick={handleAdicionarComOpcoes}
-                disabled={cartStatus !== "idle"}
+                // `aria-disabled` e não `disabled`: com `disabled` o botão saía
+                // da ordem de foco no "Salvando..." e o leitor de tela ficava
+                // mudo. O bloqueio do clique duplo é a guarda de `cartStatus`
+                // em `handleAdicionarComOpcoes`.
+                aria-disabled={cartStatus !== "idle" ? true : undefined}
                 className={cn(
-                  "flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-150 active:scale-[0.98] shadow-[0_4px_10px_rgba(24,24,27,0.1)]",
+                  "flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-150 active:scale-[0.98] aria-disabled:active:scale-100 shadow-[0_4px_10px_rgba(24,24,27,0.1)]",
                   cartStatus === "success"
                     ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                     : "bg-primary hover:opacity-90 text-primary-foreground",
@@ -1018,6 +1144,12 @@ export const ProductCard = memo(function ProductCard({
                         : "Adicionar"}
                 </span>
               </button>
+              {/* Aviso falado DENTRO da folha: ela é modal e o Radix esconde o
+                  card do leitor de tela enquanto está aberta -- a região do
+                  card não seria ouvida. Sempre montada, invisível, nasce vazia. */}
+              <span role="status" aria-live="polite" className="sr-only">
+                {avisoDeAdicionado}
+              </span>
             </div>
           </SheetContent>
         </Sheet>

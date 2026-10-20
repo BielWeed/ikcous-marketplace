@@ -60,7 +60,17 @@ import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts"
 // Lote A (04/10/2026): a pergunta ao banco IMEDIATAMENTE antes do POST de
 // refund (RPC autorizar_post_do_estorno, 20261196000000) — uma leitura da
 // resposta, dois chamadores (esta edge e o cron reconciliar-pagamentos).
-import { autorizacaoPeloBanco, type AutorizacaoDoPost } from "../_shared/estorno.ts"
+import {
+    aplicarDiagnosticoDoPost,
+    autorizacaoPeloBanco,
+    cicloSemEnvioPorPrevoo,
+    type AutorizacaoDoPost,
+    type DiagnosticoDoPost,
+    // A1 (15/10/2026): o MESMO teto que o robô usa para travar a linha.
+    TETO_DE_TENTATIVAS_DO_POST,
+} from "../_shared/estorno.ts"
+// 14/10/2026: a ação `reemitir` (consulta o MP e entrega ao banco, que decide).
+import { reemitirReembolsoDaDevolucao } from "../_shared/reemissao-do-reembolso.ts"
 // A regra do admin de AGORA mora num lugar só (a mesma de is_admin_atual(),
 // 20261197000000) — a ação `cancelar` da criar-pagamento usa a mesma.
 import { adminAtualDaSessao } from "../_shared/admin-atual.ts"
@@ -97,10 +107,10 @@ export type PedidoParaEstorno = {
 
 export type ResultadoEstorno =
     | { tipo: 'concluido'; mp_refund_id: string; mp_status: string; mp_status_detail: string | null; valor: number }
-    | { tipo: 'em_processamento'; mp_refund_id: string | null; mp_status: string }
-    | { tipo: 'falhou'; motivo: string; codigo: string }
+    | { tipo: 'em_processamento'; mp_refund_id: string | null; mp_status: string; diagnostico?: DiagnosticoDoPost }
+    | { tipo: 'falhou'; motivo: string; codigo: string; diagnostico?: DiagnosticoDoPost }
     | { tipo: 'recusado'; motivo: string }
-    | { tipo: 'tentar_depois'; motivo: string; retryAfterS?: number }
+    | { tipo: 'tentar_depois'; motivo: string; retryAfterS?: number; diagnostico?: DiagnosticoDoPost; semEnvioPorPrevoo?: true }
 
 export type ExecutorEstorno = (args: {
     linha: LinhaEstorno
@@ -119,6 +129,9 @@ export type ExecutorEstorno = (args: {
 
 /** Texto EXATO do plano (T3) para 202 — o lojista sabe quem confere e quando. */
 const TEXTO_EM_PROCESSAMENTO = 'O Mercado Pago ainda está processando; eu confiro de novo em até 10 minutos.'
+
+/** 409 da linha travada (A1, 15/10/2026): o que a lojista lê. */
+export const TEXTO_LINHA_TRAVADA = 'Esta devolução está sendo conferida com o Mercado Pago; não dá para reenviar agora.'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -188,12 +201,14 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         return json({ erro: 'Use POST com { refund_id }.' }, 405)
     }
 
-    let body: { refund_id?: unknown }
+    let body: { refund_id?: unknown; acao?: unknown; devolucao_id?: unknown; refund_esperado?: unknown }
     try {
         body = await req.json()
     } catch {
         return json({ erro: 'Corpo inválido: esperado JSON { refund_id }.' }, 400)
     }
+
+    if (body.acao === 'reemitir') return await reemitir(req, body, deps)
 
     const refundId = typeof body.refund_id === 'string' ? body.refund_id.trim() : ''
     if (!UUID_RE.test(refundId)) {
@@ -250,6 +265,15 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         //     (Missão pagamentos, 29/09/2026 — achado de dupla saída.)
         if (linha.solicitado_por === 'sistema') {
             return json({ erro: 'estorno_de_sistema', status: linha.status }, 409)
+        }
+
+        // 2c. Linha TRAVADA (A1 do crítico do reembolso A/B, 15/10/2026): com
+        //     `tentativas` no teto o robô parou de reenviar e só CONSULTA o MP
+        //     (pode haver um reembolso feito lá cuja resposta se perdeu, e a
+        //     chave de idempotência só vale 24 h). O clique não fura essa
+        //     trava: nada é marcado, nada é lido do MP, nenhum POST.
+        if (Number(linha.tentativas ?? 0) >= TETO_DE_TENTATIVAS_DO_POST) {
+            return json({ erro: 'estorno_em_conferencia', status: linha.status, texto: TEXTO_LINHA_TRAVADA }, 409)
         }
 
         // 3. O pedido da linha (o executor valida pagamento/prazo/saldo).
@@ -356,7 +380,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             ? null
             : await import('../_shared/estorno.ts')
         const executar = deps.executarEstorno ?? moduloEstorno!.executarEstorno
-        const resultado = await executar({
+        const resultadoDoExecutor = await executar({
             linha: {
                 id: linha.id,
                 order_id: linha.order_id,
@@ -414,6 +438,17 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             // ultimo_erro (ramo tentar_depois abaixo).
             autorizarAntesDoPost: autorizacaoPeloBanco((nome, argumentos) => supabase.rpc(nome, argumentos)),
         })
+
+        // 6b. O DIAGNÓSTICO do POST (código do MP + carimbo de incerteza) é
+        //     gravado ANTES de qualquer desfecho, e é ele quem decide o limite
+        //     das falhas "nada saiu" (5 -> falhou; com carimbo, nunca). Se não
+        //     der para gravar, a linha NÃO vira `falhou`. O motivo interno só
+        //     mora na tabela de diagnóstico: `ultimo_erro` a cliente lê.
+        const resultado = await aplicarDiagnosticoDoPost(
+            (nome, argumentos) => supabase.rpc(nome, argumentos),
+            refundId,
+            resultadoDoExecutor as any,
+        ) as ResultadoEstorno
 
         // 7. O resultado vira estado + resposta. Nenhum texto carrega
         //    mp_refund_id ou jargão (Restrição Global); valor é NÚMERO cru —
@@ -485,6 +520,21 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                 .eq('id', refundId)
                 .in('status', ['em_processamento'])
             if (erroAdio) console.error('[estornar-pagamento] Falha ao gravar o adiamento (suave):', erroAdio)
+            // P1 do Codex no #888: o clique parou só na consulta antes do
+            // reenvio (nada saiu) — a marca deste clique não conta. Volta
+            // `tentativas` ao valor lido, CONDICIONADO ao que a marca gravou
+            // (outro executor no meio = 0 linhas, nada desfeito). Sem isso,
+            // cliques com o MP confuso levavam a linha à trava sem envio nenhum.
+            if (cicloSemEnvioPorPrevoo(resultado as any)) {
+                const tentativaAnterior = Number(linha.tentativas ?? 0)
+                const { error: erroDesfazer } = await supabase
+                    .from('order_refunds')
+                    .update({ tentativas: tentativaAnterior })
+                    .eq('id', refundId)
+                    .in('status', ['em_processamento'])
+                    .eq('tentativas', tentativaAnterior + 1)
+                if (erroDesfazer) console.error('[estornar-pagamento] Falha ao desfazer a tentativa sem envio (suave):', erroDesfazer)
+            }
             return json({ status: 'em_processamento', texto: TEXTO_EM_PROCESSAMENTO }, 202)
         }
 
@@ -547,6 +597,71 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
     } catch (err) {
         console.error('[estornar-pagamento] Erro de topo:', err)
         return json({ erro: 'Não foi possível processar a devolução agora. Tente novamente em instantes.' }, 500)
+    }
+}
+
+/**
+ * A ação `reemitir` (14/10/2026): `{ acao: 'reemitir', devolucao_id, refund_esperado }`.
+ * Mesma porta de admin da execução; o ator que o banco confere é o admin
+ * AUTENTICADO desta requisição. Sem credencial do MP a ação recusa ANTES de ler
+ * ou criar qualquer coisa (nenhuma linha nasce sem poder consultar o MP).
+ * Devolve `{ resultado, detalhe, ... }` do banco, ou `indeterminado` quando o MP
+ * não deixou saber. NÃO executa a tentativa nova: ela nasce `solicitado` e vai
+ * pela ação normal `{ refund_id }` (ou pelo cron), com a chave dela.
+ */
+async function reemitir(
+    req: Request,
+    body: { devolucao_id?: unknown; refund_esperado?: unknown },
+    deps: EstornoDeps,
+): Promise<Response> {
+    const devolucaoId = typeof body.devolucao_id === 'string' ? body.devolucao_id.trim() : ''
+    const refundEsperado = typeof body.refund_esperado === 'string' ? body.refund_esperado.trim() : ''
+    if (!UUID_RE.test(devolucaoId) || !UUID_RE.test(refundEsperado)) {
+        return json({ erro: 'Informe devolucao_id e refund_esperado (uuid): a devolução e a linha que a tela mostrava.' }, 400)
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const serviceRoleKey = readKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
+    const adminId = await adminAtualDaSessao(req.headers.get('Authorization'), {
+        url: supabaseUrl,
+        chavePublica: readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY'),
+        chaveDeServico: serviceRoleKey,
+        rotulo: '[estornar-pagamento]',
+    })
+    if (adminId === null) {
+        return json({ erro: 'Não autorizado: apenas administradores devolvem dinheiro pelo painel.' }, 401)
+    }
+
+    const supabase = deps.supabase ?? createClient(supabaseUrl, serviceRoleKey)
+    try {
+        const credenciaisMp = await resolverCredenciaisMp(supabase)
+        const token = credenciaisMp.token ?? ''
+        if (!token) {
+            console.error(
+                `[estornar-pagamento] reemitir sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? 'sem_token'}).`,
+            )
+            return json(
+                { erro: 'A devolução não pôde ser reemitida agora (integração com o Mercado Pago sem credencial). Tente novamente em instantes; se persistir, contate o suporte.' },
+                500,
+            )
+        }
+        const resposta = await reemitirReembolsoDaDevolucao({
+            supabase,
+            devolucaoId,
+            refundEsperado,
+            ator: adminId,
+            token,
+            buscar: (input: URL | RequestInfo, init?: RequestInit) =>
+                fetchComTempo(
+                    deps.buscar ?? fetch,
+                    input instanceof Request ? input.url : String(input),
+                    init,
+                ),
+        })
+        return json(resposta.corpo, resposta.http)
+    } catch (err) {
+        console.error('[estornar-pagamento] Erro de topo ao reemitir:', err)
+        return json({ erro: 'Não foi possível reemitir o reembolso agora. Tente novamente em instantes.' }, 500)
     }
 }
 

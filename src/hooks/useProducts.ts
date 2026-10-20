@@ -1,14 +1,23 @@
 import { useStore } from "@/contexts/StoreContext";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   caminhoDaCopia,
   caminhoDaImagemDoProduto,
 } from "@/lib/copiar-imagem-para-duplicacao";
+import {
+  CHAVE_BASE_DA_FILA_DE_PRODUTOS,
+  chaveDoUsuario,
+  migrarFilaLegada,
+  separarItensVencidos,
+} from "@/lib/fila-offline-por-usuario";
 import { mapProductFromDB } from "@/lib/mappers";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import type { Product, ProductVariant } from "@/types";
+import type { Database } from "@/types/database.types";
 import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
 import { TruthGate } from "@/utils/truth_gate";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -31,19 +40,24 @@ export async function copiarImagemParaDuplicacao(url: string): Promise<string> {
   const caminho = caminhoDaImagemDoProduto(url);
   if (!caminho) return url;
 
-  const novoCaminho = caminhoDaCopia(caminho);
-  const { error } = await supabase.storage
-    .from("products")
-    .copy(caminho, novoCaminho);
-  if (error) {
-    throw new Error(
-      `Não foi possível copiar a imagem do produto no storage: ${error.message}`,
-    );
+  const desmarcar = marcarOperacaoSensivel("copia-de-imagem-do-produto");
+  try {
+    const novoCaminho = caminhoDaCopia(caminho);
+    const { error } = await supabase.storage
+      .from("products")
+      .copy(caminho, novoCaminho);
+    if (error) {
+      throw new Error(
+        `Não foi possível copiar a imagem do produto no storage: ${error.message}`,
+      );
+    }
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("products").getPublicUrl(novoCaminho);
+    return publicUrl;
+  } finally {
+    desmarcar();
   }
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("products").getPublicUrl(novoCaminho);
-  return publicUrl;
 }
 
 async function callRpcWithRetry<T>(
@@ -97,23 +111,69 @@ async function callRpcWithRetry<T>(
 let cachedAdminProducts: Product[] | null = null;
 let cachedAdminProductsTotal = 0;
 
-async function syncOfflineUpdates(): Promise<boolean> {
+/** Só para teste: o sync é privado e não tem outro ponto de entrada sem montar
+ *  o hook inteiro e esperar o `setTimeout` do evento `online`. */
+export function _syncOfflineUpdatesParaTeste(userId: string): Promise<boolean> {
+  return syncOfflineUpdates(userId);
+}
+
+/**
+ * L10 — envia a fila offline do DONO `userId` (chave `<fila>:<uid>`): nunca
+ * olha a fila de outro usuário. Antes de CADA envio confere que a sessão do
+ * cliente Supabase ainda é a dele; se não for, encerra a passada — o que já
+ * saiu sai da fila dele, o resto fica, e nada é gravado em chave de outro
+ * usuário. Item com mais de 72 h não é enviado: produto grava valor ABSOLUTO
+ * (`estoque`, `preco_venda`), e o estoque de 30 dias atrás por cima do de
+ * hoje o corrompe. Mesmo dentro do prazo, só grava se `ultima_atualizacao`
+ * ainda é a versão-base guardada na primeira edição offline.
+ */
+/** Versões que o servidor devolveu ao gravar a fila offline (id → versão). */
+const versoesAposSincronizar = new Map<string, string>();
+
+async function syncOfflineUpdates(userId: string): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
-  const queueStr = localStorage.getItem("products_offline_updates_queue");
+  const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
+  const queueStr = localStorage.getItem(chaveDaFila);
   if (!queueStr) return false;
 
+  const desmarcar = marcarOperacaoSensivel("fila-offline-de-produtos");
   try {
-    const queue = JSON.parse(queueStr);
-    if (!Array.isArray(queue) || queue.length === 0) return false;
+    const filaBruta = JSON.parse(queueStr);
+    if (!Array.isArray(filaBruta) || filaBruta.length === 0) return false;
+
+    // Sem timestamp numérico o item não prova a própria idade: valor absoluto
+    // de idade desconhecida não se envia. Leitura e gravação síncronas
+    // (nenhuma gravação da aba se intercala).
+    const { validos: queue, vencidos } = separarItensVencidos(
+      filaBruta,
+      Date.now(),
+      "vencido",
+    );
+    if (vencidos.length > 0) {
+      if (queue.length > 0) {
+        localStorage.setItem(chaveDaFila, JSON.stringify(queue));
+      } else {
+        localStorage.removeItem(chaveDaFila);
+      }
+      toast.warning(
+        vencidos.length === 1
+          ? "1 alteração offline antiga foi descartada (mais de 72 horas na fila)."
+          : `${vencidos.length} alterações offline antigas foram descartadas (mais de 72 horas na fila).`,
+      );
+    }
+    if (queue.length === 0) return false;
 
     const remainingQueue: any[] = [];
     const discarded: string[] = [];
+    let conflitos = 0;
     let syncedCount = 0;
+    let interrompida = false;
+    let naoTentados: any[] = [];
     const toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações pendentes offline...`,
     );
 
-    for (const item of queue) {
+    for (const [indice, item] of queue.entries()) {
       const { id, updates } = item;
 
       // TruthGate: a fila vive no localStorage e pode ter sido adulterada entre
@@ -133,8 +193,34 @@ async function syncOfflineUpdates(): Promise<boolean> {
         continue;
       }
 
+      // L10 — a sessão é conferida imediatamente antes de CADA envio: a
+      // passada começou com o dono da fila e a tela pode ter trocado de conta
+      // no meio (tablet de balcão). Se já não é a dele, o envio NÃO sai: o
+      // resto fica na fila dele (entra na fila final abaixo, sem contar como
+      // falha) e nada é gravado em outra chave.
+      if (!(await sessaoAindaEhDoDono(userId))) {
+        interrompida = true;
+        naoTentados = queue.slice(indice);
+        break;
+      }
+
       try {
-        const dbUpdates: any = {};
+        const nomeDoProduto = item.productName || updates.name || id;
+        // Item legado sem base não prova frescor. Nunca adota a versão de
+        // agora: isso autorizaria uma edição antiga a sobrescrever a nova.
+        if (
+          typeof item.baseUpdatedAt !== "string" ||
+          !Number.isFinite(Date.parse(item.baseUpdatedAt))
+        ) {
+          conflitos += 1;
+          toast.warning(
+            `A edição offline do produto ${nomeDoProduto} não foi aplicada: não foi possível confirmar a versão original. Confira o produto e edite novamente.`,
+          );
+          continue;
+        }
+
+        const dbUpdates: Database["public"]["Tables"]["produtos"]["Update"] =
+          {};
         if (updates.name !== undefined) dbUpdates.nome = updates.name;
         if (updates.description !== undefined)
           dbUpdates.descricao = updates.description;
@@ -168,33 +254,103 @@ async function syncOfflineUpdates(): Promise<boolean> {
         if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
         if (updates.codigoBarras !== undefined)
           dbUpdates.codigo_barras = updates.codigoBarras || null;
+        if (updates.weightKg !== undefined)
+          dbUpdates.peso_kg = updates.weightKg;
+        if (updates.widthCm !== undefined)
+          dbUpdates.largura_cm = updates.widthCm;
+        if (updates.heightCm !== undefined)
+          dbUpdates.altura_cm = updates.heightCm;
+        if (updates.lengthCm !== undefined)
+          dbUpdates.comprimento_cm = updates.lengthCm;
 
-        const { error } = await supabase
+        // Compara e grava na mesma operação: uma leitura antes do UPDATE
+        // deixaria outra aba alterar o produto no intervalo. Não converte a
+        // data para ISO/Date: isso perderia os microssegundos do Postgres.
+        const { data, error } = await supabase
           .from("produtos")
           .update(dbUpdates)
-          .eq("id", id);
+          .eq("id", id)
+          .eq("ultima_atualizacao", item.baseUpdatedAt)
+          .is("deleted_at", null)
+          .select("id, ultima_atualizacao");
 
         if (error) throw error;
+        if (!data?.length) {
+          conflitos += 1;
+          toast.warning(
+            `O produto ${nomeDoProduto} foi alterado em outro lugar; sua edição offline não foi aplicada.`,
+          );
+          continue;
+        }
         syncedCount += 1;
+        // A versão nova vira a base da PRÓXIMA edição offline deste produto:
+        // sem isto, a lista (só a página 0 é recarregada) guardaria a versão
+        // velha e a segunda edição seria descartada como "alterada em outro
+        // lugar" por causa da própria sincronização.
+        const novaVersao = (data[0] as { ultima_atualizacao?: unknown })
+          .ultima_atualizacao;
+        if (typeof novaVersao === "string") {
+          versoesAposSincronizar.set(id, novaVersao);
+        }
       } catch (err) {
         console.error("[Offline Sync] Failed to sync product %s:", id, err);
         remainingQueue.push(item);
       }
     }
 
+    // Edição enfileirada DURANTE o sync (a conexão oscilou e o lojista mexeu
+    // em outro produto) não está em `queue`: relê a fila fresca e preserva o
+    // que é novo ou foi reeditado depois do envio, em vez de apagá-lo.
+    const idsEnviados = new Map<string, number>(
+      queue.map((i: any) => [i.id, Number(i.timestamp) || 0]),
+    );
+    let filaFresca: any[] = [];
+    try {
+      const bruta = JSON.parse(localStorage.getItem(chaveDaFila) || "[]");
+      if (Array.isArray(bruta)) filaFresca = bruta;
+    } catch {
+      filaFresca = [];
+    }
+    const novos = filaFresca.filter((i: any) => {
+      const enviado = idsEnviados.get(i?.id);
+      return enviado === undefined || (Number(i.timestamp) || 0) > enviado;
+    });
+    const idsNovos = new Set(novos.map((i: any) => i.id));
+    // `naoTentados` (passada interrompida por troca de sessão) volta para a
+    // fila do dono como o que falhou volta: sem eles, `idsEnviados` os daria
+    // por enviados. Fora isso, a conta é a de sempre.
+    const filaFinal = [
+      ...[...remainingQueue, ...naoTentados].filter(
+        (i: any) => !idsNovos.has(i.id),
+      ),
+      ...novos,
+    ];
+
+    if (filaFinal.length > 0) {
+      localStorage.setItem(chaveDaFila, JSON.stringify(filaFinal));
+    }
+    if (interrompida) {
+      // A sessão trocou no meio: sem toast de sucesso nem de falha — a
+      // passada não terminou e o dono a refaz quando voltar.
+      toast.dismiss(toastId);
+      if (discarded.length > 0) {
+        toast.warning(
+          `${discarded.length} alteração(ões) offline foram descartadas por violarem os axiomas do produto.`,
+        );
+      }
+      return syncedCount > 0;
+    }
     if (remainingQueue.length > 0) {
-      localStorage.setItem(
-        "products_offline_updates_queue",
-        JSON.stringify(remainingQueue),
-      );
       toast.error(
         `Falha ao sincronizar ${remainingQueue.length} alterações. Tentando novamente mais tarde.`,
         { id: toastId },
       );
     } else {
-      localStorage.removeItem("products_offline_updates_queue");
+      if (filaFinal.length === 0) {
+        localStorage.removeItem(chaveDaFila);
+      }
       if (syncedCount > 0) clearAnalyticsCache();
-      if (discarded.length > 0) {
+      if (discarded.length > 0 || conflitos > 0) {
         toast.dismiss(toastId);
       } else {
         toast.success(
@@ -216,6 +372,8 @@ async function syncOfflineUpdates(): Promise<boolean> {
   } catch (e) {
     console.error("[Offline Sync] Error parsing offline updates queue:", e);
     return false;
+  } finally {
+    desmarcar();
   }
 }
 
@@ -331,6 +489,21 @@ const INDICE_SKU_DA_VARIACAO = /product_variants_sku_key|Key \(sku\)=/;
 const MSG_SKU_REPETIDO_NO_BANCO =
   "Este SKU já está em outra variação da loja. Cada variação precisa de um SKU diferente.";
 
+/**
+ * Apagar variação que já está num pedido: `marketplace_order_items.variant_id`
+ * tem chave estrangeira para `product_variants` SEM regra de exclusão
+ * (baseline do schema), então o Postgres recusa com 23503. Citar o nome da
+ * constraint E a frase da tabela pelo mesmo motivo dos índices acima: se o
+ * Postgres só devolver um dos dois, o outro ainda pega. O 23503 de OUTRA
+ * chave (ex.: gravar variação de produto que não existe) não casa com
+ * nenhum dos dois e segue para o genérico.
+ */
+const CHAVE_DA_VARIACAO_VENDIDA =
+  /marketplace_order_items_variant_id_fkey|update or delete on table "product_variants"/;
+
+const MSG_VARIACAO_JA_VENDIDA =
+  "Esta variação já tem vendas e não pode ser excluída. Desligue-a (botão de ligar/desligar na linha da variação) em vez de excluir: ela some da loja e o histórico dos pedidos fica guardado.";
+
 const MSG_SESSAO_OU_PERMISSAO =
   "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.";
 
@@ -355,7 +528,8 @@ class RecusaDoCadastroDeProduto extends Error {
  *
  * Só entra aqui causa que a lojista consegue resolver sozinha e cujo sinal é
  * inequívoco: o texto do TruthGate, o 23505 de dois índices únicos
- * (código de barras, SKU da variação), sessão vencida/sem permissão
+ * (código de barras, SKU da variação), o 23503 de variação que já tem
+ * vendas, sessão vencida/sem permissão
  * (42501 = RLS ou grant recusado, PGRST301/303 = JWT inválido) e a falha do
  * `fetch` sem resposta do servidor.
  */
@@ -388,6 +562,13 @@ function traduzirRecusaConhecida(error: unknown): string | null {
     INDICE_SKU_DA_VARIACAO.test(`${textoOriginal} ${textoDetalhe}`)
   ) {
     return MSG_SKU_REPETIDO_NO_BANCO;
+  }
+
+  if (
+    detalhes.code === "23503" &&
+    CHAVE_DA_VARIACAO_VENDIDA.test(`${textoOriginal} ${textoDetalhe}`)
+  ) {
+    return MSG_VARIACAO_JA_VENDIDA;
   }
 
   if (
@@ -512,7 +693,10 @@ export function useProducts({ autoFetch = true } = {}) {
     return !autoFetch && cachedAdminProducts ? cachedAdminProducts : [];
   });
   const [loading, setLoading] = useState(false);
-  const { isAdmin } = useAuth();
+  // L10 — `user?.id` é o uid de GUARDAR a fila offline (continua certo no
+  // tablet offline; `supabase.auth.getSession()` não serviria: sem rede e com
+  // o token vencido devolve sessão nula).
+  const { isAdmin, user } = useAuth();
   const lastLoadId = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -525,6 +709,7 @@ export function useProducts({ autoFetch = true } = {}) {
 
   const backupStorageFile = useCallback(
     async (url: string): Promise<string | null> => {
+      const desmarcar = marcarOperacaoSensivel("backup-de-imagem-do-produto");
       try {
         if (!url) return null;
         if (url.includes("placehold.co") || url.includes("placeholder"))
@@ -575,6 +760,8 @@ export function useProducts({ autoFetch = true } = {}) {
       } catch (err) {
         console.error("[useProducts] Failed to backup storage file:", err, url);
         return url;
+      } finally {
+        desmarcar();
       }
     },
     [],
@@ -620,11 +807,7 @@ export function useProducts({ autoFetch = true } = {}) {
           .select("*")
           .eq("product_id", id);
 
-        if (vErr)
-          console.error(
-            "[useProducts] Error fetching variants for product:",
-            vErr,
-          );
+        if (vErr) throw vErr;
 
         const productData = {
           ...(p as any),
@@ -815,10 +998,52 @@ export function useProducts({ autoFetch = true } = {}) {
   // Synchronize queued offline updates when coming back online
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // L10 — a fila offline é por usuário (`<fila>:<uid>`): sem sessão não há
+    // fila de ninguém para enviar. Quando a autenticação terminar de carregar,
+    // `user?.id` muda e este efeito roda de novo (retentativa ao autenticar).
+    const userId = user?.id;
+    if (!userId) return;
+    // L10 — a fila ANTIGA (chave sem `:<uid>`, anterior a este desenho) só
+    // passa para a chave de um admin CONFIRMADO (`isAdmin` vem da RPC
+    // `is_admin`). Para cliente ou sessão não confirmada ela fica intocada: a
+    // atualização de produto por não-admin dá 0 linhas SEM erro, e o envio a
+    // contaria como sincronizada e a apagaria.
+    if (isAdmin) {
+      try {
+        migrarFilaLegada(
+          CHAVE_BASE_DA_FILA_DE_PRODUTOS,
+          userId,
+          (item) => (item as { id?: string } | null)?.id,
+        );
+      } catch (erroDeMigracao) {
+        console.error(
+          "[Offline Sync] Não foi possível migrar a fila de produtos antiga:",
+          erroDeMigracao,
+        );
+      }
+    }
+    // O temporizador de 1 s morre com a tela (ou com a troca de usuário): sem
+    // isto ele disparava DEPOIS da saída, contra uma sessão que já não é a
+    // dona da fila.
+    const timersPendentes = new Set<ReturnType<typeof setTimeout>>();
     const handleOnlineSync = () => {
-      setTimeout(() => {
-        syncOfflineUpdates().then((synced) => {
+      const timer = setTimeout(() => {
+        timersPendentes.delete(timer);
+        syncOfflineUpdates(userId).then((synced) => {
           if (synced) {
+            const versoes = new Map(versoesAposSincronizar);
+            versoesAposSincronizar.clear();
+            if (versoes.size > 0) {
+              const comVersao = (lista: Product[]) =>
+                lista.map((p) => {
+                  const nova = versoes.get(p.id);
+                  return nova ? { ...p, updatedAt: nova } : p;
+                });
+              if (cachedAdminProducts) {
+                cachedAdminProducts = comVersao(cachedAdminProducts);
+              }
+              setLocalProducts((prev) => comVersao(prev));
+            }
             refreshContext().catch(() => {});
             if (!autoFetch && isAdmin) {
               loadProducts(0, 10, { silent: true }).catch(() => {});
@@ -826,6 +1051,7 @@ export function useProducts({ autoFetch = true } = {}) {
           }
         });
       }, 1000);
+      timersPendentes.add(timer);
     };
 
     window.addEventListener("online", handleOnlineSync);
@@ -834,8 +1060,10 @@ export function useProducts({ autoFetch = true } = {}) {
     }
     return () => {
       window.removeEventListener("online", handleOnlineSync);
+      for (const timer of timersPendentes) clearTimeout(timer);
+      timersPendentes.clear();
     };
-  }, [refreshContext, autoFetch, isAdmin, loadProducts]);
+  }, [refreshContext, autoFetch, isAdmin, loadProducts, user?.id]);
 
   const getProductById = useCallback(
     (id: string) => {
@@ -1016,6 +1244,20 @@ export function useProducts({ autoFetch = true } = {}) {
 
       // Check if offline
       if (typeof navigator !== "undefined" && !navigator.onLine) {
+        // L10 — a fila é por dono (`products_offline_updates_queue:<uid>`).
+        // Sem usuário identificado não há de quem ser a alteração: recusa
+        // ANTES de pintar ou guardar qualquer coisa (um item sem dono seria
+        // enviado por quem entrasse depois).
+        if (!user?.id) {
+          toast.error(
+            "Sem conexão e sem sessão confirmada neste aparelho. A alteração não foi guardada — entre na conta e tente de novo.",
+          );
+          return;
+        }
+        const chaveDaFila = chaveDoUsuario(
+          CHAVE_BASE_DA_FILA_DE_PRODUTOS,
+          user.id,
+        );
         let oldProduct: Product | null | undefined = products.find(
           (p) => p.id === id,
         );
@@ -1042,6 +1284,27 @@ export function useProducts({ autoFetch = true } = {}) {
           throw err;
         }
 
+        // Sem a versão-base não há como provar, na volta da rede, que a edição
+        // não sobrescreve uma mais nova: recusa agora, em vez de aceitar e
+        // descartar depois.
+        let baseJaGuardada: unknown;
+        try {
+          const guardada = JSON.parse(
+            localStorage.getItem(chaveDaFila) || "[]",
+          ) as { id: string; baseUpdatedAt?: unknown }[];
+          baseJaGuardada = guardada.find(
+            (item) => item.id === id,
+          )?.baseUpdatedAt;
+        } catch {
+          baseJaGuardada = undefined;
+        }
+        if (typeof baseJaGuardada !== "string" && !oldProduct?.updatedAt) {
+          toast.error(
+            "Sem conexão e a versão atual deste produto não está neste aparelho. A alteração não foi guardada — conecte-se e tente de novo.",
+          );
+          return;
+        }
+
         try {
           if (optimisticProduct) {
             cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
@@ -1052,8 +1315,10 @@ export function useProducts({ autoFetch = true } = {}) {
             );
           }
 
-          const queueStr =
-            localStorage.getItem("products_offline_updates_queue") || "[]";
+          // A fila lida e reescrita é a do USUÁRIO que grava: juntar as
+          // alterações do mesmo produto acontece dentro dela, e o que outro
+          // usuário deixou pendente nem é lido (não vaza para este item).
+          const queueStr = localStorage.getItem(chaveDaFila) || "[]";
           const queue = JSON.parse(queueStr);
           const cleanQueue = queue.filter((item: any) => item.id !== id);
           const existingItem = queue.find((item: any) => item.id === id);
@@ -1064,12 +1329,17 @@ export function useProducts({ autoFetch = true } = {}) {
           cleanQueue.push({
             id,
             updates: mergedUpdates,
+            // Reeditar funde os patches, mas mantém a base da PRIMEIRA
+            // edição. Item legado continua sem base, por segurança.
+            baseUpdatedAt: existingItem
+              ? existingItem.baseUpdatedAt
+              : oldProduct?.updatedAt,
+            productName: existingItem
+              ? existingItem.productName
+              : oldProduct?.name || updates.name || id,
             timestamp: Date.now(),
           });
-          localStorage.setItem(
-            "products_offline_updates_queue",
-            JSON.stringify(cleanQueue),
-          );
+          localStorage.setItem(chaveDaFila, JSON.stringify(cleanQueue));
 
           toast.info("Alteração guardada offline.", {
             description:
@@ -1185,7 +1455,14 @@ export function useProducts({ autoFetch = true } = {}) {
         throw err;
       }
     },
-    [isAdmin, products, refreshContext, backupStorageFile, fetchProduct],
+    [
+      isAdmin,
+      products,
+      refreshContext,
+      backupStorageFile,
+      fetchProduct,
+      user?.id,
+    ],
   );
 
   // #99 (ADMIN-070): mídia é movida para backup/ DEPOIS do soft-delete já
@@ -1370,7 +1647,11 @@ export function useProducts({ autoFetch = true } = {}) {
         }
 
         await refreshContext();
-        toast.success(`${ids.length} produtos removidos`);
+        toast.success(
+          ids.length === 1
+            ? "1 produto removido"
+            : `${ids.length} produtos removidos`,
+        );
         return true;
       } catch (err) {
         console.error("Error deleting products:", err);
@@ -1506,37 +1787,42 @@ export function useProducts({ autoFetch = true } = {}) {
   );
 
   const uploadProductImages = useCallback(async (files: File[]) => {
-    const urls: string[] = [];
+    const desmarcar = marcarOperacaoSensivel("upload-de-imagem-do-produto");
+    try {
+      const urls: string[] = [];
 
-    for (const file of files) {
-      try {
-        // Laudo 0109 (C2): o arquivo cru do celular (foto de 12 MP = vários
-        // MB) ia inteiro ao bucket e era servido a quem escapar do pipeline
-        // de render. Redimensiona ANTES do upload — e `redimensionarImagem`
-        // é fail-open: na falha volta o próprio arquivo, o upload segue.
-        const pronto = await redimensionarImagem(file);
-        const fileExt = pronto.name.split(".").pop();
-        const fileName = `${crypto.randomUUID()}.${fileExt}`;
-        const filePath = `${fileName}`;
+      for (const file of files) {
+        try {
+          // Laudo 0109 (C2): o arquivo cru do celular (foto de 12 MP = vários
+          // MB) ia inteiro ao bucket e era servido a quem escapar do pipeline
+          // de render. Redimensiona ANTES do upload — e `redimensionarImagem`
+          // é fail-open: na falha volta o próprio arquivo, o upload segue.
+          const pronto = await redimensionarImagem(file);
+          const fileExt = pronto.name.split(".").pop();
+          const fileName = `${crypto.randomUUID()}.${fileExt}`;
+          const filePath = `${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from("products")
-          .upload(filePath, pronto);
+          const { error: uploadError } = await supabase.storage
+            .from("products")
+            .upload(filePath, pronto);
 
-        if (uploadError) throw uploadError;
+          if (uploadError) throw uploadError;
 
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("products").getPublicUrl(filePath);
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from("products").getPublicUrl(filePath);
 
-        urls.push(publicUrl);
-      } catch (err) {
-        console.error("Error uploading file:", err);
-        toast.error(`Erro ao enviar imagem ${file.name}`);
+          urls.push(publicUrl);
+        } catch (err) {
+          console.error("Error uploading file:", err);
+          toast.error(`Erro ao enviar imagem ${file.name}`);
+        }
       }
-    }
 
-    return urls;
+      return urls;
+    } finally {
+      desmarcar();
+    }
   }, []);
 
   // Recommendations Logic - Server Side RPC
@@ -1553,10 +1839,51 @@ export function useProducts({ autoFetch = true } = {}) {
 
         if (error) throw error;
 
-        // Map database results to application model and sort by availability
-        const mapped = data
-          ? (data as any[]).map((item: any) => mapProductFromDB(item))
-          : [];
+        // `get_product_recommendations` devolve `SETOF produtos`: SEM as
+        // variações. Sem elas o card não vê tamanho/cor, não trava, e a peça
+        // ia ao carrinho sem escolha (o servidor só recusava no pagamento).
+        // Mesma busca de `loadProducts` (uma consulta para os ids da faixa).
+        const linhas = (data ?? []) as any[];
+        let variantes: any[] | null = [];
+        if (linhas.length > 0) {
+          try {
+            const { data: lidas, error: varError } = await supabase
+              .from("product_variants")
+              .select("*")
+              .in(
+                "product_id",
+                linhas.map((l: any) => l.id),
+              );
+            if (varError) {
+              console.error(
+                "[useProducts] Error fetching recommendation variants:",
+                varError,
+              );
+            }
+            // Sem resposta não se sabe se há variação: nunca vira "não tem".
+            variantes = varError ? null : (lidas ?? null);
+          } catch (varErr) {
+            console.error(
+              "[useProducts] Recommendation variants request failed:",
+              varErr,
+            );
+            variantes = null;
+          }
+        }
+
+        // Falhou a leitura -> FALHA FECHADO: o produto sai marcado e o card
+        // abre a página do produto em vez de adicionar.
+        const mapped = linhas.map((item: any): Product => {
+          const produto = mapProductFromDB({
+            ...item,
+            product_variants: (variantes ?? []).filter(
+              (v: any) => v.product_id === item.id,
+            ),
+          });
+          return variantes === null
+            ? { ...produto, variantsUnavailable: true }
+            : produto;
+        });
         return mapped.sort((a, b) => {
           const aAvailable = a.stock > 0 ? 1 : 0;
           const bAvailable = b.stock > 0 ? 1 : 0;
@@ -1828,6 +2155,15 @@ export function useProducts({ autoFetch = true } = {}) {
     [isAdmin, refreshContext, backupStorageFile],
   );
 
+  /**
+   * Apaga as variações UMA POR VEZ: o banco recusa apagar a que já está num
+   * pedido (23503), e num DELETE em lote essa uma seguraria todas as que podiam
+   * sair. A tela é recarregada UMA vez e há UM aviso, no fim.
+   *
+   * Se alguma foi recusada, o erro lançado é o da primeira recusa (com o
+   * `code` do Postgres) e leva `recusadas`: os ids que ficaram no banco. Quem
+   * chama (o formulário) decide o que fazer com elas.
+   */
   const deleteVariants = useCallback(
     async (ids: string[]) => {
       if (!isAdmin) {
@@ -1837,25 +2173,41 @@ export function useProducts({ autoFetch = true } = {}) {
       try {
         const { data: variants } = (await supabase
           .from("product_variants")
-          .select("image_url" as any)
+          .select("id, image_url" as any)
           .in("id", ids)) as any;
 
-        const { error } = await supabase
-          .from("product_variants")
-          .delete()
-          .in("id", ids);
-
-        if (error) throw error;
+        const recusadas: string[] = [];
+        const apagadas: string[] = [];
+        let primeiraRecusa: unknown = null;
+        for (const id of ids) {
+          const { error } = await supabase
+            .from("product_variants")
+            .delete()
+            .eq("id", id);
+          if (error) {
+            if (primeiraRecusa === null) primeiraRecusa = error;
+            recusadas.push(id);
+          } else {
+            apagadas.push(id);
+          }
+        }
 
         if (variants && variants.length > 0) {
           for (const v of variants) {
-            if (v.image_url) {
+            if (v.image_url && apagadas.includes(v.id)) {
               await backupStorageFile(v.image_url);
             }
           }
         }
 
-        await refreshContext();
+        // As que saíram de verdade precisam sumir da tela, mesmo que outra
+        // tenha sido recusada.
+        if (apagadas.length > 0) await refreshContext();
+
+        if (recusadas.length > 0) {
+          throw Object.assign(primeiraRecusa as object, { recusadas });
+        }
+
         toast.success("Variantes removidas");
         return true;
       } catch (err) {
@@ -1899,7 +2251,8 @@ export function useProducts({ autoFetch = true } = {}) {
             // abaixo: `codigoBarras` é texto (como o sku), não número — não
             // existe "zero legítimo" a proteger, então vazio vira NULL direto.
             codigo_barras: v.codigoBarras || null,
-            stock_increment: v.stockIncrement,
+            // `stock_increment` NÃO entra aqui: ver o `if` logo depois do
+            // objeto. Estoque é dinheiro e só vai quando veio informado.
             // `?? null` (laudo 0109, A1): `undefined` some na serialização do
             // supabase-js, o UPDATE da variante existente saía SEM a coluna e
             // o override antigo sobrevivia — a tela dizia "Variantes salvas"
@@ -1910,6 +2263,14 @@ export function useProducts({ autoFetch = true } = {}) {
             active: v.active,
             image_url: v.imageUrl || null,
           };
+          // O formulário omite `stockIncrement` da variação cujo número a
+          // lojista NÃO mexeu (o que a tela leu ao abrir pode já estar velho:
+          // uma venda desconta o estoque no banco). Sem a chave, o UPDATE não
+          // leva a coluna e o número que o banco tem hoje sobrevive — nunca
+          // `null` (zeraria) nem o valor da tela (desfaria a venda).
+          if (v.stockIncrement !== undefined) {
+            item.stock_increment = v.stockIncrement;
+          }
           if (v.id && !v.id.startsWith("temp-")) {
             item.id = v.id;
           }
@@ -1926,7 +2287,16 @@ export function useProducts({ autoFetch = true } = {}) {
         // `uuid_generate_v4()`) e UPSERT com `onConflict: "id"` só para quem
         // já tem — cada linha só carrega as colunas que faz sentido carregar.
         const variantesNovas = dbVariants.filter((item) => !item.id);
-        const variantesExistentes = dbVariants.filter((item) => item.id);
+        // As existentes ainda se dividem: o postgrest-js monta `columns` com a
+        // UNIÃO das chaves do lote (mesma razão da separação acima), então uma
+        // linha sem `stock_increment` num lote em que outra tem a mandaria como
+        // NULL. Quem leva o estoque e quem não leva vão em requisições próprias.
+        const variantesExistentes = dbVariants.filter(
+          (item) => item.id && "stock_increment" in item,
+        );
+        const variantesExistentesSemEstoque = dbVariants.filter(
+          (item) => item.id && !("stock_increment" in item),
+        );
 
         // Ordem importa (revisão de useProducts-1591): as duas requisições não
         // são uma transação. A fase IDEMPOTENTE (upsert por id das que já
@@ -1938,6 +2308,13 @@ export function useProducts({ autoFetch = true } = {}) {
           const { error } = await supabase
             .from("product_variants")
             .upsert(variantesExistentes, { onConflict: "id" });
+          if (error) throw error;
+        }
+
+        if (variantesExistentesSemEstoque.length > 0) {
+          const { error } = await supabase
+            .from("product_variants")
+            .upsert(variantesExistentesSemEstoque, { onConflict: "id" });
           if (error) throw error;
         }
 

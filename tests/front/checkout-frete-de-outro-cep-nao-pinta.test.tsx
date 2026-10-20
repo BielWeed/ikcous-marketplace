@@ -87,7 +87,11 @@ const {
     // endereços) e a tela nunca estabiliza.
     contaEstavel: {
       user: { id: "user-1", user_metadata: { name: "Cliente Teste" } },
-      profile: { full_name: "Cliente Teste", whatsapp: "34999999999" },
+      profile: {
+        id: "user-1",
+        full_name: "Cliente Teste",
+        whatsapp: "34999999999",
+      },
     },
     dubleEnderecos: {
       fetchAddresses: vi.fn(async () => {}),

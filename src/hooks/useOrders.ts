@@ -2,9 +2,18 @@ import { statusConfig } from "@/components/admin/orders/OrderStatusBadge";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import {
+  CHAVE_BASE_DA_FILA_DE_PEDIDOS,
+  chaveDoUsuario,
+  migrarFilaLegada,
+  separarItensVencidos,
+} from "@/lib/fila-offline-por-usuario";
+import { instanteDentroDoPeriodo } from "@/lib/filtro-da-lista-de-pedidos";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -336,6 +345,22 @@ export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
   );
 }
 
+/**
+ * L10 — sem usuário identificado não há de quem ser a alteração guardada
+ * offline: a fila é por dono (`orders_offline_updates_queue:<uid>`), e um item
+ * sem dono seria enviado por quem entrasse depois. Lançado ANTES do update
+ * otimista, já com o aviso na tela (mesmo molde de
+ * `ErroCancelamentoOfflineRecusado`).
+ */
+export class ErroFilaOfflineSemSessao extends Error {
+  constructor() {
+    super(
+      "Sem conexão e sem sessão confirmada neste aparelho. A alteração não foi guardada — entre na conta e tente de novo.",
+    );
+    this.name = "ErroFilaOfflineSemSessao";
+  }
+}
+
 type ItemDaFila = {
   orderId: string;
   status: string;
@@ -361,31 +386,75 @@ export function mesclarFilaOfflineAposPassada(
   });
 }
 
-let sincronizacaoEmVoo: Promise<boolean> | null = null;
+// L10 — a passada em voo é POR USUÁRIO (mesmo padrão de `checkInFlight` no
+// AuthContext): a passada do admin A em voo nunca é "compartilhada" com o
+// admin B, que ficaria sem a sua. Quem chega com outro usuário espera a
+// passada em curso terminar e roda a sua.
+let sincronizacaoEmVoo: { userId: string; promise: Promise<boolean> } | null =
+  null;
 
-function syncOfflineOrderUpdates(): Promise<boolean> {
-  if (sincronizacaoEmVoo) return sincronizacaoEmVoo;
-  sincronizacaoEmVoo = processarFilaOfflineDePedidos().finally(() => {
-    sincronizacaoEmVoo = null;
+function syncOfflineOrderUpdates(userId: string): Promise<boolean> {
+  if (sincronizacaoEmVoo?.userId === userId) return sincronizacaoEmVoo.promise;
+  const anterior = sincronizacaoEmVoo?.promise.catch(() => false);
+  const promise: Promise<boolean> = (
+    anterior
+      ? anterior.then(() => processarFilaOfflineDePedidos(userId))
+      : processarFilaOfflineDePedidos(userId)
+  ).finally(() => {
+    if (sincronizacaoEmVoo?.promise === promise) sincronizacaoEmVoo = null;
   });
-  return sincronizacaoEmVoo;
+  sincronizacaoEmVoo = { userId, promise };
+  return promise;
 }
 
+/** L10 — a mensagem de descarte por validade (singular/plural). */
+function avisoDeItensVencidos(n: number): string {
+  return n === 1
+    ? "1 alteração offline antiga foi descartada (mais de 72 horas na fila)."
+    : `${n} alterações offline antigas foram descartadas (mais de 72 horas na fila).`;
+}
+
+/**
+ * Envia a fila offline do DONO `userId` (chave `<fila>:<uid>`): nunca olha a
+ * fila de outro usuário. Antes de CADA envio confere que a sessão do cliente
+ * Supabase ainda é a dele; se não for, encerra a passada — o que já saiu sai
+ * da fila dele, o resto fica, e nada é gravado em chave de outro usuário.
+ */
 async function processarFilaOfflineDePedidos(
+  userId: string,
   segundaPassada = false,
 ): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   // Declarado fora do try: se o storage falhar na ESCRITA, depois das RPCs, o
   // catch precisa resolver ESTE toast em vez de deixá-lo "Sincronizando…".
   let toastId: string | number | undefined;
+  const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PEDIDOS, userId);
 
   try {
     // A leitura vive dentro do try: storage bloqueado (SecurityError) é
     // "a sincronização não concluiu", nunca uma promessa rejeitada.
-    const queueStr = localStorage.getItem("orders_offline_updates_queue");
+    const queueStr = localStorage.getItem(chaveDaFila);
     if (!queueStr) return false;
-    const queue = JSON.parse(queueStr);
-    if (!Array.isArray(queue) || queue.length === 0) return false;
+    const filaBruta = JSON.parse(queueStr);
+    if (!Array.isArray(filaBruta) || filaBruta.length === 0) return false;
+
+    // Validade: item com mais de 72 h não é enviado. Sem timestamp (formato
+    // antigo) vale — o envio de status é relido contra o servidor (abaixo).
+    // Leitura e gravação síncronas: nenhuma gravação da aba se intercala.
+    const { validos: queue, vencidos } = separarItensVencidos(
+      filaBruta,
+      Date.now(),
+      "valido",
+    );
+    if (vencidos.length > 0) {
+      if (queue.length > 0) {
+        localStorage.setItem(chaveDaFila, JSON.stringify(queue));
+      } else {
+        localStorage.removeItem(chaveDaFila);
+      }
+      toast.warning(avisoDeItensVencidos(vencidos.length));
+    }
+    if (queue.length === 0) return false;
 
     const remainingQueue: ItemDaFila[] = [];
     const processados = new Map<string, number>();
@@ -393,11 +462,12 @@ async function processarFilaOfflineDePedidos(
     let syncedAny = false;
     let falhasTransitorias = 0;
     let descartesTerminais = 0;
+    let interrompida = false;
     toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
     );
 
-    for (const item of queue) {
+    for (const [indice, item] of queue.entries()) {
       const { orderId, status, notes, silent } = item;
       // Itens antigos sem timestamp saem ao concluir; qualquer versão datada
       // que entrar durante a RPC continua sendo mais nova.
@@ -406,6 +476,16 @@ async function processarFilaOfflineDePedidos(
           ? item.timestamp
           : Number.NEGATIVE_INFINITY;
       tentados.set(orderId, timestamp);
+
+      // L10 — a sessão também é conferida ANTES da releitura abaixo. Se a
+      // conta saiu no meio da passada, a releitura (sem login) falharia e o
+      // item viraria "falha transitória": aviso falso para quem vier depois.
+      // Aqui a passada só encerra, sem gravar fora da fila do dono nem avisar.
+      if (!(await sessaoAindaEhDoDono(userId))) {
+        interrompida = true;
+        remainingQueue.push(...queue.slice(indice));
+        break;
+      }
 
       // useOrders-196 (15/09/2026): a fila offline nunca guardou o status
       // ESPERADO do pedido, e `update_order_status_atomic` não valida a
@@ -455,6 +535,19 @@ async function processarFilaOfflineDePedidos(
         }
       }
 
+      // L10 — a sessão é conferida imediatamente antes de CADA envio (e
+      // DEPOIS da releitura acima, que é uma ida ao banco): a passada
+      // começou com o dono da fila e a tela pode ter trocado de conta no
+      // meio. Se a sessão já não é a dele, o envio NÃO sai: a passada
+      // encerra, o que já saiu é tirado da fila DELE (abaixo, mesma
+      // mescla), o resto continua lá, e nada é gravado em outra chave.
+      // Sem releitura (cancelamento) a conferência do topo já é a imediata.
+      if (status !== "cancelled" && !(await sessaoAindaEhDoDono(userId))) {
+        interrompida = true;
+        remainingQueue.push(...queue.slice(indice));
+        break;
+      }
+
       try {
         const { error } = await (supabase.rpc as any)(
           "update_order_status_atomic",
@@ -487,9 +580,7 @@ async function processarFilaOfflineDePedidos(
 
     let filaFresca: unknown = null;
     try {
-      filaFresca = JSON.parse(
-        localStorage.getItem("orders_offline_updates_queue") ?? "null",
-      );
+      filaFresca = JSON.parse(localStorage.getItem(chaveDaFila) ?? "null");
     } catch {
       // A reserva em memória conserva as falhas se o storage foi corrompido.
     }
@@ -500,13 +591,17 @@ async function processarFilaOfflineDePedidos(
     );
 
     if (final.length > 0) {
-      localStorage.setItem(
-        "orders_offline_updates_queue",
-        JSON.stringify(final),
-      );
+      localStorage.setItem(chaveDaFila, JSON.stringify(final));
     } else {
-      localStorage.removeItem("orders_offline_updates_queue");
+      localStorage.removeItem(chaveDaFila);
       clearAnalyticsCache();
+    }
+
+    if (interrompida) {
+      // A sessão trocou no meio: sem toast de sucesso nem de falha — a
+      // passada não terminou e o dono a refaz quando voltar.
+      toast.dismiss(toastId);
+      return syncedAny || descartesTerminais > 0;
     }
 
     if (falhasTransitorias > 0) {
@@ -545,7 +640,10 @@ async function processarFilaOfflineDePedidos(
     });
     const filaAvancou = syncedAny || descartesTerminais > 0;
     if (!segundaPassada && temItemNovo && navigator.onLine) {
-      const sincronizouNaSegunda = await processarFilaOfflineDePedidos(true);
+      const sincronizouNaSegunda = await processarFilaOfflineDePedidos(
+        userId,
+        true,
+      );
       return sincronizouNaSegunda || filaAvancou;
     }
 
@@ -730,6 +828,9 @@ export type RespostaCriarPagamento = {
   desafio3ds?: { url: string };
   // Cartão recusado: frase curada pela edge para o cliente.
   motivoRecusa?: string;
+  // Cartão recusado: categoria que a edge já classificou (conjunto fechado,
+  // aditivo; servidor antigo não manda). Valor desconhecido a tela ignora.
+  categoriaDaRecusa?: string;
   // Cartão recusado: `false` quando este pedido não aceita mais tentativa
   // (reserva vencida, limite de tentativas) — a tela não oferece outro
   // cartão nem PIX.
@@ -1125,6 +1226,56 @@ export function mesclarAtualizacaoRealtime(
   return { ...pedidoAtual, ...mapeado, ...preservados };
 }
 
+// Uma leitura iniciada antes do realtime não pode apagar a versão mais nova.
+// Só preserva ausentes que chegaram durante o voo: outra página/filtro ainda
+// precisa substituir os pedidos que já estavam na lista antes da consulta.
+function mesclarPedidosDaConsulta(
+  atuais: Order[],
+  resposta: Order[],
+  idsNoInicio: Set<string>,
+): Order[] {
+  const porId = new Map(atuais.map((pedido) => [pedido.id, pedido]));
+  const idsDaResposta = new Set(resposta.map((pedido) => pedido.id));
+  let mudou = false;
+  const mesclados = resposta.map((pedido) => {
+    const atual = porId.get(pedido.id);
+    if (atual && Date.parse(atual.updatedAt) > Date.parse(pedido.updatedAt)) {
+      mudou = true;
+      return atual;
+    }
+    return pedido;
+  });
+  const chegaramNoVoo = atuais.filter(
+    (pedido) => !idsNoInicio.has(pedido.id) && !idsDaResposta.has(pedido.id),
+  );
+  if (chegaramNoVoo.length > 0) {
+    mudou = true;
+    mesclados.unshift(...chegaramNoVoo);
+  }
+  // Nada a preservar: devolve a MESMA lista da resposta (o cache de módulo e o
+  // estado continuam apontando para o mesmo array, como antes).
+  return mudou ? mesclados : resposta;
+}
+
+// A mesma reconciliação de `mesclarPedidosDaConsulta`, aplicada ao TOTAL: os
+// pedidos que o realtime inseriu durante a leitura e que a resposta (um
+// retrato anterior a eles) não contém já foram somados ao total na hora da
+// inserção — a contagem velha da resposta não pode apagá-los.
+function contarInseridosNoVoo(
+  atuais: Order[],
+  resposta: Order[],
+  idsNoInicio: Set<string>,
+  idsInseridosPeloRealtime: Set<string>,
+): number {
+  const idsDaResposta = new Set(resposta.map((pedido) => pedido.id));
+  return atuais.filter(
+    (pedido) =>
+      !idsNoInicio.has(pedido.id) &&
+      !idsDaResposta.has(pedido.id) &&
+      idsInseridosPeloRealtime.has(pedido.id),
+  ).length;
+}
+
 /**
  * Deriva o novo valor de `cancelledAfterShipping` para o UPDATE OTIMISTA de
  * `updateOrderStatus` (achado da Task 5 do plano de cancelamento-com-
@@ -1502,9 +1653,15 @@ export function decidirRealtimeInsertAdmin(
       !["cancelled", "delivered"].includes(newOrder.status)) ||
     newOrder.status === filtro;
 
-  const casaPeriodo =
-    (!startDate || newOrder.createdAt >= startDate) &&
-    (!endDate || newOrder.createdAt <= endDate);
+  // Compara INSTANTES, não texto: a tela manda o início/fim do dia de
+  // Brasília ("2026-10-14T23:59:59.999-03:00") e o pedido chega em UTC
+  // ("2026-10-15T02:30:00Z" — 23h30 do dia 14). Como texto o pedido das 23h30
+  // ficava de fora do dia 14 e o das 23h59 do dia 13 entrava nele.
+  const casaPeriodo = instanteDentroDoPeriodo(
+    newOrder.createdAt,
+    startDate,
+    endDate,
+  );
 
   const busca = (searchQuery || "").trim().toLowerCase();
   const casaBusca =
@@ -1534,6 +1691,13 @@ export function decidirRealtimeInsertAdmin(
   return (page ?? 0) === 0 ? "inserir" : "recarregar";
 }
 
+/**
+ * Texto da falha de carregamento dos pedidos do cliente (`ordersLoadError`).
+ * Exportado para a tela e os testes falarem do MESMO literal.
+ */
+export const MENSAGEM_FALHA_AO_CARREGAR_PEDIDOS =
+  "Não conseguimos carregar seus pedidos agora.";
+
 export function useOrders(
   enabled = true,
   isAdmin = false,
@@ -1561,6 +1725,15 @@ export function useOrders(
     return [];
   });
   const [loading, setLoading] = useState(enabled);
+  // Falha de carregamento dos pedidos DO CLIENTE (`fetchUserOrders`), exposta
+  // para a tela não confundir "a consulta falhou" com "você não tem pedido":
+  // o catch devolvia `[]` e um toast que some em segundos, e quem acabou de
+  // pagar um PIX num aparelho sem cache via "Nenhum pedido". `null` = sem
+  // falha pendente. Só uma resposta ok limpa; o aborto (troca de conta, busca
+  // nova por cima) não prova nada sobre o servidor e não mexe aqui.
+  const [ordersLoadError, setOrdersLoadError] = useState<string | null>(null);
+  // Falha do painel, independente dos pedidos do cliente.
+  const [erroDaListagem, setErroDaListagem] = useState<string | null>(null);
   const [totalOrders, setTotalOrders] = useState(() => {
     return isAdmin ? cachedAdminTotalOrders : 0;
   });
@@ -1572,6 +1745,22 @@ export function useOrders(
   const [connectionStatus, setConnectionStatus] =
     useState<EstadoConexaoRealtime>("conectando");
 
+  // DONO DA LEITURA EM VOO (dado de cliente): `fetchUserOrders` só era
+  // cancelada por leitura nova ou desmonte — não pela troca de conta. Com a
+  // leitura de A no ar, o login de B na mesma instância deixava a resposta
+  // tardia de A gravar a lista (e a falha) de A na tela de B. Duas camadas:
+  // (1) a troca de id cancela a leitura em andamento (pedido ao transporte);
+  // (2) `fetchUserOrders` descarta a resposta cujo usuário capturado ao
+  // iniciar ≠ este (o transporte pode ignorar o cancelamento). Vale só para
+  // a leitura DO CLIENTE; o painel (`loadOrders`) tem o próprio controlador.
+  const userIdAtualRef = useRef<string | null>(user?.id ?? null);
+  useEffect(() => {
+    userIdAtualRef.current = user?.id ?? null;
+    return () => {
+      userOrdersAbortControllerRef.current?.abort();
+    };
+  }, [user?.id]);
+
   // Synchronously load cache on mount or when user changes
   useEffect(() => {
     if (isAdmin) return;
@@ -1580,6 +1769,8 @@ export function useOrders(
     // efeito roda pouco (só quando o usuário muda), mas manter as duas
     // escritas com a mesma disciplina evita que a próxima pessoa reintroduza o
     // loop da PEDIDO-040 por este caminho.
+    // Outra conta (ou ninguém): a falha da conta anterior não é desta.
+    setOrdersLoadError(null);
     if (!user?.id) {
       setOrders((atual) => (atual.length === 0 ? atual : []));
       return;
@@ -1620,6 +1811,7 @@ export function useOrders(
       }
       userOrdersAbortControllerRef.current = new AbortController();
       const signal = userOrdersAbortControllerRef.current.signal;
+      const idsNoInicio = new Set(ordersRef.current.map((pedido) => pedido.id));
 
       if (!hasCache) {
         setLoading(true);
@@ -1640,26 +1832,34 @@ export function useOrders(
 
         const { data, error } = await query;
 
+        // A conta mudou enquanto a leitura corria: a resposta é de OUTRA
+        // pessoa. Nada dela (lista, cache, erro) pode tocar a conta atual.
+        if (userIdAtualRef.current !== (user.id ?? null)) return [];
+
         if (error) throw error;
 
         if (data) {
-          const mappedOrders = data.map((item) => mapOrderFromDB(item as any));
-          const serializado = JSON.stringify(mappedOrders);
-
-          // Devolver a MESMA referência quando o resultado não mudou faz o React
-          // desistir do re-render. Sem isto, `setOrders` trocava a referência a
-          // cada volta — inclusive para lista vazia, porque `if (data)` é
-          // verdadeiro para `[]` — e quem tivesse `orders` nas dependências de um
-          // useCallback ficava em loop de requisição. Era o caso do
-          // OrderDetailsView para usuário logado sem nenhum pedido (PEDIDO-040,
-          // #84).
-          //
-          // A comparação é contra o state ATUAL, não contra o último fetch: se um
-          // update otimista mexeu na lista e o servidor devolver o valor antigo,
-          // a tela precisa voltar para o que o servidor diz.
-          setOrders((atual) =>
-            JSON.stringify(atual) === serializado ? atual : mappedOrders,
+          const mappedOrders = mesclarPedidosDaConsulta(
+            ordersRef.current,
+            data.map((item) => mapOrderFromDB(item as any)),
+            idsNoInicio,
           );
+          const serializado = JSON.stringify(mappedOrders);
+          // O updater também confere o estado mais recente do React, inclusive
+          // quando o evento e esta resposta são processados no mesmo lote.
+          setOrders((atual) => {
+            const mesclados = mesclarPedidosDaConsulta(
+              atual,
+              mappedOrders,
+              idsNoInicio,
+            );
+            // Mantém a referência quando nada mudou, evitando loops no cliente.
+            return JSON.stringify(atual) === JSON.stringify(mesclados)
+              ? atual
+              : mesclados;
+          });
+          // Resposta ok (inclusive com 0 pedidos): a falha anterior acabou.
+          setOrdersLoadError(null);
           // P-2 (laudo varredura 01/09): o setItem do cache está sob
           // try/catch — localStorage cheio (QuotaExceededError) NÃO é erro
           // de rede nem da leitura: é o armazenamento LOCAL do aparelho
@@ -1683,7 +1883,15 @@ export function useOrders(
         ) {
           return [];
         }
+        // Falha que chegou depois da troca de conta é da conta ANTERIOR.
+        if (userIdAtualRef.current !== (user.id ?? null)) return [];
         console.error("Error fetching user orders:", err);
+        // A falha FICA registrada (o toast some em segundos): a tela decide —
+        // sem pedido em memória mostra "Não conseguimos carregar" com
+        // "Tentar de novo"; com pedidos em memória mantém a lista e avisa
+        // sem alarde. O `orders` não é tocado aqui: lista que já estava na
+        // tela (cache/realtime) nunca é apagada por uma consulta que falhou.
+        setOrdersLoadError(MENSAGEM_FALHA_AO_CARREGAR_PEDIDOS);
         // Laudo #2 (P-9): sem internet, a lista do cache JÁ está na tela —
         // chamar aquilo de "Erro" ensina o cliente a desconfiar quando está
         // tudo bem. Diz o fato: offline, mostrando o que está salvo.
@@ -1739,6 +1947,7 @@ export function useOrders(
       }
       adminOrdersAbortControllerRef.current = new AbortController();
       const signal = adminOrdersAbortControllerRef.current.signal;
+      const idsNoInicio = new Set(ordersRef.current.map((pedido) => pedido.id));
 
       try {
         if (!silent) {
@@ -1766,16 +1975,31 @@ export function useOrders(
 
         if (data) {
           const orderData = data.data || [];
-          const totalCount = Number(data.total_count) || 0;
-
-          const mappedOrders = orderData.map((item: any) =>
+          const respostaMapeada: Order[] = orderData.map((item: any) =>
             mapOrderFromDB(item),
           );
-          setOrders(mappedOrders);
+          const totalCount =
+            (Number(data.total_count) || 0) +
+            contarInseridosNoVoo(
+              ordersRef.current,
+              respostaMapeada,
+              idsNoInicio,
+              idsInseridosPeloRealtimeRef.current,
+            );
+
+          const mappedOrders = mesclarPedidosDaConsulta(
+            ordersRef.current,
+            respostaMapeada,
+            idsNoInicio,
+          );
+          setOrders((atual) =>
+            mesclarPedidosDaConsulta(atual, mappedOrders, idsNoInicio),
+          );
           setTotalOrders(totalCount);
 
           cachedAdminOrders = mappedOrders;
           cachedAdminTotalOrders = totalCount;
+          setErroDaListagem(null);
 
           return { orders: mappedOrders, total: totalCount };
         }
@@ -1789,10 +2013,10 @@ export function useOrders(
           return { orders: [], total: 0 };
         }
         console.error("Error loading orders:", err);
-        // Mesma disciplina da fetchUserOrders (:920): recarga silenciosa (o
-        // ramo admin da recarga de reconexão força silent=true) não fala com
-        // a pessoa — some o AVISO, não some a falha (o console.error acima
-        // segue e o erro continua sendo devolvido).
+        setErroDaListagem(
+          "Não conseguimos carregar os pedidos agora. Seus pedidos não sumiram.",
+        );
+        // Recarga silenciosa evita só o toast; a falha permanece na tela.
         if (!silent) toast.error("Erro ao carregar pedidos");
         return { orders: [], total: 0 };
       } finally {
@@ -2079,6 +2303,17 @@ export function useOrders(
    * ali antes de religar.
    */
   const desmontadoRef = useRef(false);
+  // O finally e o desmonte podem encerrar a mesma marca: desmarcar é idempotente.
+  const operacoesSensiveisRef = useRef(new Set<() => void>());
+  const iniciarOperacaoSensivel = useCallback((motivo: string) => {
+    const desmarcar = marcarOperacaoSensivel(motivo);
+    const fim = () => {
+      desmarcar();
+      operacoesSensiveisRef.current.delete(fim);
+    };
+    operacoesSensiveisRef.current.add(fim);
+    return fim;
+  }, []);
   // pedidos-4: modo "buscar também os antigos" — quando o lojista pede, a
   // varredura passa a ir SEM janela (p_dias null) e FICA assim (sticky):
   // depois que ele pediu a lista completa, servir de novo a recortada
@@ -2402,14 +2637,46 @@ export function useOrders(
   );
 
   const handleRealtimeUpdate = useCallback(
-    (updatedOrder: any) => {
+    (updatedOrder: any, oldOrder: any) => {
       if (!updatedOrder.id) return;
+      const filtro = isAdmin ? ultimaConsultaAdminRef.current?.[2] : undefined;
+      const filtroConhecido =
+        filtro === "open" || statusConfigByKey.has(filtro as OrderStatus);
+      const casaStatus =
+        !filtroConhecido ||
+        (filtro === "open"
+          ? !["cancelled", "delivered"].includes(updatedOrder.status)
+          : updatedOrder.status === filtro);
+      const jaNaLista = ordersRef.current.some(
+        (pedido) => pedido.id === updatedOrder.id,
+      );
+      // A RPC existente recompõe página e total quando alguém entra ou sai
+      // do recorte. O mesmo debounce do INSERT absorve rajadas de eventos.
+      if (
+        (filtroConhecido ||
+          (isAdmin &&
+            ultimaConsultaAdminRef.current?.[7] === "pago" &&
+            updatedOrder.payment_status === "pago" &&
+            oldOrder?.payment_status !== "pago")) &&
+        (casaStatus ? !jaNaLista : jaNaLista)
+      ) {
+        if (debounceRecarregarInsertRef.current) {
+          clearTimeout(debounceRecarregarInsertRef.current);
+        }
+        debounceRecarregarInsertRef.current = setTimeout(() => {
+          debounceRecarregarInsertRef.current = null;
+          recarregarAposReconexaoRef
+            .current({ silencioso: true })
+            .catch(() => {});
+        }, DEBOUNCE_RECARREGAR_INSERT_MS);
+      }
       setOrders((prev) =>
-        prev.map((o) =>
-          o.id === updatedOrder.id
-            ? mesclarAtualizacaoRealtime(o, updatedOrder)
-            : o,
-        ),
+        prev.flatMap((o) => {
+          if (o.id !== updatedOrder.id) return [o];
+          return casaStatus
+            ? [mesclarAtualizacaoRealtime(o, updatedOrder)]
+            : [];
+        }),
       );
       // P-2 (laudo varredura 01/09): SEM gravação de cache aqui — mesmo
       // motivo do insert acima (serialização por evento + linha sem
@@ -2589,7 +2856,7 @@ export function useOrders(
       ) {
         await handleRealtimeInsertRef.current(payload.new);
       } else if (payload.eventType === "UPDATE" && payload.new) {
-        handleRealtimeUpdateRef.current(payload.new);
+        handleRealtimeUpdateRef.current(payload.new, payload.old);
       } else if (payload.eventType === "DELETE") {
         handleRealtimeDeleteRef.current(oldId);
       }
@@ -2886,8 +3153,9 @@ export function useOrders(
       silent = false,
       statusEsperado?: OrderStatus,
     ) => {
-      const originalOrders = [...orders];
-      let originalCache: Order[] | null = null;
+      const originalOrder = orders.find((pedido) => pedido.id === orderId);
+      let originalCache: Order | undefined;
+      let atualizacaoOtimistaAplicada = false;
       try {
         // Find the order in the current state to check its existing status
         const order = orders.find((o) => o.id === orderId);
@@ -3083,8 +3351,25 @@ export function useOrders(
           }
         }
 
+        // L10 — offline sem usuário identificado: recusa ANTES do update
+        // otimista (nada é pintado nem guardado). O uid de guardar vem do
+        // contexto de auth (`user.id`), que continua certo no tablet offline;
+        // `supabase.auth.getSession()` não serviria aqui — sem rede e com o
+        // token vencido ele devolve sessão nula.
+        if (
+          typeof navigator !== "undefined" &&
+          !navigator.onLine &&
+          !user?.id
+        ) {
+          toast.warning(new ErroFilaOfflineSemSessao().message);
+          throw new ErroFilaOfflineSemSessao();
+        }
+
         // Optimistic update
-        originalCache = cachedAdminOrders ? [...cachedAdminOrders] : null;
+        originalCache = cachedAdminOrders?.find(
+          (pedido) => pedido.id === orderId,
+        );
+        atualizacaoOtimistaAplicada = true;
         cachedAdminOrders = (cachedAdminOrders || []).map((o) => {
           if (o.id === orderId) {
             const updatedOrder = Object.assign({}, o);
@@ -3132,8 +3417,14 @@ export function useOrders(
 
         // Check if offline
         if (typeof navigator !== "undefined" && !navigator.onLine) {
-          const queueStr =
-            localStorage.getItem("orders_offline_updates_queue") || "[]";
+          // L10 — a fila é do USUÁRIO que grava (`:<uid>`; `user?.id` está
+          // garantido pela recusa acima). Regravar o mesmo pedido só
+          // substitui o item DELE; a fila de outro usuário nem é lida.
+          const chaveDaFila = chaveDoUsuario(
+            CHAVE_BASE_DA_FILA_DE_PEDIDOS,
+            user?.id as string,
+          );
+          const queueStr = localStorage.getItem(chaveDaFila) || "[]";
           const queue = JSON.parse(queueStr);
           const cleanQueue = queue.filter(
             (item: any) => item.orderId !== orderId,
@@ -3145,10 +3436,7 @@ export function useOrders(
             silent,
             timestamp: Date.now(),
           });
-          localStorage.setItem(
-            "orders_offline_updates_queue",
-            JSON.stringify(cleanQueue),
-          );
+          localStorage.setItem(chaveDaFila, JSON.stringify(cleanQueue));
 
           if (!silent) {
             toast.info("Alteração de status guardada offline.", {
@@ -3197,42 +3485,30 @@ export function useOrders(
         }
       } catch (err: any) {
         console.error("Error updating status:", err);
-        // L-9 front: os três erros da releitura acima já cuidaram do
-        // próprio aviso (`toast.warning`, não `toast.error`) — cair no
-        // `toast.error` genérico aqui empilharia um SEGUNDO toast para o
-        // mesmo clique. `ErroPedidoMudou` especificamente já corrigiu
-        // `orders`/`cachedAdminOrders` para o status VERDADEIRO logo
-        // acima: reverter para `originalOrders`/`originalCache` aqui
-        // devolveria a tela ao status velho — o próprio defeito que esta
-        // releitura existe para fechar.
-        //
-        // Achado 2 do laudo da rodada 2: nenhum dos três lançou update
-        // OTIMISTA (a variável `originalCache` só recebe valor DEPOIS de
-        // toda a guarda, na linha do `// Optimistic update` abaixo) — mas
-        // `originalCache` nasce `null`, e reverter para ele fazia
-        // `cachedAdminOrders = null`, zerando o cache do painel inteiro
-        // numa falha de rede que não tinha nada a ver com o conteúdo dele.
-        // O comentário anterior aqui dizia que isso era "inofensivo" — não
-        // era: `setOrders(originalOrders)` de fato é um no-op (mesmo
-        // conteúdo de antes), mas `cachedAdminOrders = originalCache`
-        // apagava a SWR cache. Por isso os três erros pulam a reversão
-        // inteira, não só a de `orders`.
-        //
-        // Achado 1, rodada 5: `ErroCancelamentoOfflineRecusado` entra no
-        // mesmo grupo pelo MESMO motivo — lançado antes do update otimista,
-        // `originalCache` ainda é `null` neste ponto, e já disparou seu
-        // próprio `toast.warning` na hora de nascer (acima).
-        // S1 (04/10/2026): `ErroCancelamentoNaoConcluido` também — nasce
-        // ANTES de qualquer mudança local e já mostrou o próprio aviso.
+        // As guardas anteriores à atualização já mostram o próprio aviso.
+        // Na falha da gravação, reverta só este pedido: eventos de outros
+        // pedidos e novas vendas recebidos durante o envio continuam válidos.
         const erroJaTratado =
           err instanceof ErroPedidoMudou ||
           err instanceof ErroReleituraDeStatusFalhou ||
           err instanceof ErroStatusEsperadoDesconhecido ||
           err instanceof ErroCancelamentoOfflineRecusado ||
+          err instanceof ErroFilaOfflineSemSessao ||
           err instanceof ErroCancelamentoNaoConcluido;
-        if (!erroJaTratado) {
-          cachedAdminOrders = originalCache;
-          setOrders(originalOrders);
+        if (!erroJaTratado && atualizacaoOtimistaAplicada) {
+          const pedidoDoCache = originalCache;
+          if (pedidoDoCache && cachedAdminOrders) {
+            cachedAdminOrders = cachedAdminOrders.map((pedido) =>
+              pedido.id === orderId ? pedidoDoCache : pedido,
+            );
+          }
+          if (originalOrder) {
+            setOrders((atuais) =>
+              atuais.map((pedido) =>
+                pedido.id === orderId ? originalOrder : pedido,
+              ),
+            );
+          }
         }
         // P-2 (ressalva da revisão da onda 3): sem escrita de cache aqui
         // também — a reversão é em memória; o cache se renova no fetch.
@@ -3352,6 +3628,7 @@ export function useOrders(
    */
   const registrarPagamentoRecebido = useCallback(
     async (orderId: string, recebido: boolean) => {
+      const fim = marcarOperacaoSensivel("registrar-pagamento-manual");
       try {
         const { data, error } = await (supabase.rpc as any)(
           "registrar_pagamento_recebido",
@@ -3404,10 +3681,15 @@ export function useOrders(
         return data;
       } catch (err: any) {
         console.error("Error registering payment received:", err);
-        toast.error("Não foi possível registrar o pagamento recebido.", {
-          description: err?.message,
-        });
+        toast.error(
+          recebido
+            ? "Não foi possível registrar o pagamento recebido."
+            : "Não foi possível desfazer o recebimento.",
+          { description: err?.message },
+        );
         throw err;
+      } finally {
+        fim();
       }
     },
     [],
@@ -3585,6 +3867,8 @@ export function useOrders(
         ? "create_marketplace_order_v24"
         : "create_marketplace_order_v23";
 
+      // Sair do checkout não cancela a RPC: só o finally libera a marca.
+      const fim = marcarOperacaoSensivel("envio-de-pedido");
       try {
         // 🛡️ SECURITY: Usando a RPC v22 Blindada (Zero-Trust)
         // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
@@ -3675,6 +3959,8 @@ export function useOrders(
         // recusa. O toast que existia aqui empilhava DOIS avisos da mesma
         // falha, e o segundo ainda nascia sem o contexto que a tela acrescenta.
         throw err;
+      } finally {
+        fim();
       }
     },
     [avisarLojista, enviarComprovanteAoCliente],
@@ -3849,16 +4135,29 @@ export function useOrders(
   );
 
   const fetchOrdersByOtp = useCallback(
-    async (email: string, otp: string): Promise<Order[]> => {
+    async (
+      email: string,
+      otp: string,
+      trio?: { whatsapp: string; fragmento: string },
+    ): Promise<Order[]> => {
       try {
         setLoading(true);
-        const { data, error } = await (supabase.rpc as any)(
-          "get_orders_by_otp_v1",
-          {
-            p_email: email,
-            p_otp: otp,
-          },
-        );
+        // Com o trio (e-mail + WhatsApp + pedaço do pedido, os mesmos que
+        // pediram o código), a verificação vai para a v2: ela só olha o código
+        // do pedido que confere com o trio, então quem sabe só o e-mail não
+        // consegue gastar as tentativas do código de outra pessoa (migration
+        // 20261217000000). Sem o trio, a v1 de sempre.
+        const { data, error } = trio
+          ? await (supabase.rpc as any)("get_orders_by_otp_v2", {
+              p_email: email,
+              p_whatsapp: trio.whatsapp,
+              p_fragmento: trio.fragmento,
+              p_otp: otp,
+            })
+          : await (supabase.rpc as any)("get_orders_by_otp_v1", {
+              p_email: email,
+              p_otp: otp,
+            });
 
         if (error) throw error;
 
@@ -3949,27 +4248,56 @@ export function useOrders(
   // pendente) — aqui a mudança de `user?.id` é o próprio gatilho que falta.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // L10 — a fila offline é por usuário (`<fila>:<uid>`): sem sessão não há
+    // fila de ninguém para enviar (a RPC falharia por falta de login de
+    // qualquer jeito). Quando a autenticação terminar de carregar, `user?.id`
+    // muda e este efeito roda de novo — é a retentativa descrita acima.
+    const userId = user?.id;
+    if (!userId) return;
+    // L10 — a fila ANTIGA (chave sem `:<uid>`, gravada antes deste desenho)
+    // só passa para a chave de um admin CONFIRMADO (`isUserAdmin` vem da RPC
+    // `is_admin`, nunca do cache). Para cliente ou sessão ainda não
+    // confirmada a chave antiga fica intocada; `isUserAdmin` nas
+    // dependências refaz isto quando a confirmação chega.
+    if (isUserAdmin) {
+      try {
+        migrarFilaLegada(
+          CHAVE_BASE_DA_FILA_DE_PEDIDOS,
+          userId,
+          (item) => (item as ItemDaFila | null)?.orderId,
+        );
+      } catch (erroDeMigracao) {
+        // Storage bloqueado ou cheio: a chave antiga fica inteira e a
+        // migração é tentada de novo na próxima execução.
+        console.error(
+          "[Offline Sync] Não foi possível migrar a fila de pedidos antiga:",
+          erroDeMigracao,
+        );
+      }
+    }
     // O desmonte (e a re-execução por `user?.id`) cancela o que ainda estiver
     // esperando o segundo de espera: sem isto a sincronização rodava DEPOIS do
     // desmonte, contra um `localStorage` que já não é o da tela.
     const timersPendentes = new Set<ReturnType<typeof setTimeout>>();
     const handleOnlineSync = () => {
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         timersPendentes.delete(timer);
-        syncOfflineOrderUpdates()
-          .then((filaAvancou) => {
-            if (filaAvancou) {
-              recarregarAposReconexaoRef
-                .current({ silencioso: true })
-                .catch(() => {});
-            }
-          })
-          .catch((err) => {
-            // Rede de segurança: `processarFilaOfflineDePedidos` já trata o
-            // storage, mas esta promessa nunca pode terminar sem dono — sem
-            // isto, qualquer rejeição vira "unhandled rejection".
-            console.error("[Offline Sync] Failed to sync offline orders:", err);
-          });
+        const fim = iniciarOperacaoSensivel("fila-offline-de-pedidos");
+        try {
+          const filaAvancou = await syncOfflineOrderUpdates(userId);
+          if (filaAvancou) {
+            recarregarAposReconexaoRef
+              .current({ silencioso: true })
+              .catch(() => {});
+          }
+        } catch (err) {
+          // Rede de segurança: `processarFilaOfflineDePedidos` já trata o
+          // storage, mas esta promessa nunca pode terminar sem dono — sem
+          // isto, qualquer rejeição vira "unhandled rejection".
+          console.error("[Offline Sync] Failed to sync offline orders:", err);
+        } finally {
+          fim();
+        }
       }, 1000);
       timersPendentes.add(timer);
     };
@@ -3983,13 +4311,14 @@ export function useOrders(
       for (const timer of timersPendentes) clearTimeout(timer);
       timersPendentes.clear();
     };
-  }, [user?.id]);
+  }, [user?.id, isUserAdmin, iniciarOperacaoSensivel]);
 
   useEffect(() => {
     // Em StrictMode (dev) o React roda setup → cleanup → setup na PRIMEIRA
     // montagem: sem rearmar aqui, a bandeira ficaria `true` numa instância
     // viva e o encadeamento do voo sujo nunca mais religaria (revisão).
     desmontadoRef.current = false;
+    const operacoesSensiveis = operacoesSensiveisRef.current;
     return () => {
       // Ressalva 'b' da revisão (useOrders-cancelados-janela-e-colunas):
       // marca o desmonte ANTES de qualquer outra limpeza abaixo — é o que
@@ -3997,6 +4326,7 @@ export function useOrders(
       // "voo sujo" depois que esta instância já morreu (ver o docstring de
       // `desmontadoRef`, acima).
       desmontadoRef.current = true;
+      for (const fim of operacoesSensiveis) fim();
       if (userOrdersAbortControllerRef.current) {
         userOrdersAbortControllerRef.current.abort();
       }
@@ -4029,6 +4359,10 @@ export function useOrders(
     orders,
     loading,
     isLoaded: !loading,
+    // Falha pendente do carregamento dos pedidos do cliente (ver o estado,
+    // acima). Campo ACRESCENTADO: nenhum dos existentes mudou de forma.
+    ordersLoadError,
+    erroDaListagem,
     totalOrders,
     // Estado da conexão realtime (auditoria de 26/08/2026) — ver o
     // docstring de `EstadoConexaoRealtime`, acima. Quatro valores possíveis:

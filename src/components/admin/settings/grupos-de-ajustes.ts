@@ -5,6 +5,7 @@ import {
   type ConfigDosSeisPassos,
   type EstadoDoItem,
   entradaDosSeisPassos,
+  entregaComAlcanceCurto,
   estadoDaEntrega,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
@@ -18,8 +19,8 @@ import { type ConfigDaEntrega, statusDaEntrega } from "@/lib/status-da-entrega";
 //
 // As portas de dentro dos grupos são as de PORTAS_DO_PAINEL.ajustes, com o
 // nome de NOMES_DO_PAINEL; o teste confere que nenhuma se perde nem repete.
-// Os acordeões (Formas de pagamento, Mercado Pago, Trocas e devoluções, Minha
-// loja está no ar?) não são portas: continuam sendo montados pela tela dentro
+// Os acordeões (E-mail da loja, Formas de pagamento, Mercado Pago, Trocas e
+// devoluções, Minha loja está no ar?) não são portas: continuam sendo montados pela tela dentro
 // do grupo de cada um. As Transportadoras e as Consultas de frete saíram de
 // Ajustes em 09/10/2026 (H5): moram na tela de Frete, atrás da porta.
 
@@ -51,7 +52,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "minha-loja",
     titulo: NOMES_DO_PAINEL["admin-about-store"],
     ajuda:
-      "Nome, logo, cores, endereço, horário de atendimento e a descrição da loja — tudo editado numa única tela.",
+      "Nome, logo, cores, endereço, horário de atendimento e a descrição da loja — tudo editado numa única tela. Aqui também fica o E-mail da loja: o Gmail que envia os e-mails do pedido, com o passo a passo para cadastrá-lo. E os Pedidos de privacidade dos clientes: exclusão de conta e correção de e-mail pedidas pelo app, que a loja atende e marca aqui.",
     portas: [
       {
         tela: "admin-about-store",
@@ -113,7 +114,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
 // ESCOLHE qual passo fala por qual grupo e como o texto se escreve.
 //
 //   minha-loja  → marca + endereço + WhatsApp: "Falta: …" ou "Tudo preenchido"
-//   entrega     → o passo "entrega": "Falta: CEP da loja" ou o resumo da cidade e do país
+//   entrega     → o passo "entrega": "Falta: CEP da loja", "Falta: confirmar até onde você entrega" ou o resumo da cidade e do país
 //   pagamentos  → o passo "recebe": o que está ativo, ou "Falta: Como você recebe"
 //   aparencia, devolucao, ferramentas → sem passo próprio: sem subtítulo
 //
@@ -150,17 +151,28 @@ interface EntregaEmAjustes {
 }
 
 // O fato "entrega" dos seis passos vem de `estadoDaEntrega` (loja-pronta.ts),
-// a MESMA regra do cartão do Início: pronta = CEP completo da loja. O texto do
+// a MESMA regra do cartão do Início: pronta = CEP completo da loja E alcance
+// que cobre a cidade (o aviso da tela de Frete). O texto do
 // subtítulo, esse sim, usa o que Ajustes TEM em mãos (nenhuma chamada nova):
 // `statusDaEntrega` diz a cidade e o país. Sem transportadora o passo continua
 // feito (a entrega na cidade já funciona) e o texto avisa "Sem transportadora".
 function entregaEmAjustes(
-  config: ConfigDaEntrega,
+  config: ConfigDaEntrega & Pick<ConfigDosSeisPassos, "localCepRange">,
   nomesLigados: readonly string[] | null,
 ): EntregaEmAjustes {
   const estado = estadoDaEntrega(config, false);
   if (estado === "pendente") {
-    return { estado, texto: "Falta: CEP da loja" };
+    // Há CEP, mas o alcance é curto: falta ampliar, não cadastrar o CEP.
+    // Em "Só retiro" não há alcance: com CEP, o que falta é o endereço.
+    return {
+      estado,
+      texto:
+        config.localDeliveryEnabled === false && config.originCep
+          ? "Falta: endereço da loja"
+          : entregaComAlcanceCurto(config)
+            ? "Falta: confirmar até onde você entrega"
+            : "Falta: CEP da loja",
+    };
   }
   const soNaCidade = (config.shippingCoverage || "national") === "local";
   if (nomesLigados === null && !soNaCidade) {

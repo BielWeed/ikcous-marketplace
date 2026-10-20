@@ -132,6 +132,7 @@ function hookPadrao() {
     devolvido: 0,
     emCurso: 0,
     disponivel: 100,
+    reservadoPorFora: 0,
     carregando: false,
     pedidoCarregado: true,
     erro: false,

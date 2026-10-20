@@ -90,11 +90,39 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     return hospedeiro.textContent ?? "";
   }
 
+  // O botão mora no <body> (portal): no app o <main> tem `will-change:
+  // transform`, que prende qualquer `fixed` filho ao conteúdo que rola.
   function botaoWhatsapp() {
-    return hospedeiro.querySelector<HTMLButtonElement>(
+    return document.body.querySelector<HTMLButtonElement>(
       "button[aria-label='Falar com a loja no WhatsApp']",
     );
   }
+
+  it("WhatsApp flutuante fica FORA do container da tela (portal no body), senão rola junto com o conteúdo", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    const botao = botaoWhatsapp();
+    expect(botao).not.toBeNull();
+    // Nenhum ancestral da tela (como o <main> com will-change: transform) pode
+    // conter o botão: ele é filho direto do body e continua `fixed`.
+    expect(hospedeiro.contains(botao)).toBe(false);
+    expect(botao?.parentElement).toBe(document.body);
+    expect(botao?.className).toContain("fixed");
+  });
+
+  it("WhatsApp flutuante sobe a área segura do aparelho: não fica atrás da barra de baixo", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    // A barra de baixo mede a altura dela MAIS a área segura (iPhone com
+    // barra de gestos); o botão precisa subir os dois, ou ela cobre parte dele.
+    const bottom = botaoWhatsapp()?.style.bottom ?? "";
+    expect(bottom).toContain("--nav-height");
+    expect(bottom).toContain("--safe-area-bottom");
+  });
 
   it("loja completa: nome, logo, local, horário e contato — nada inventado", async () => {
     configAtual = LOJA_COMPLETA;
@@ -147,13 +175,12 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
       "abre no google maps",
     );
 
-    // Pin balão da CASA: gota PRETA sólida (contorno e corpo #18181b, sem
-    // "buraco" branco) e o ÍCONE DO APP (icon_192 — o mesmo do manifest do
-    // PWA), NUNCA a logo larga do cabeçalho (evita o borrão preto reportado
-    // pelo dono, 28/09/2026), e o aviso honesto de localização aproximada
-    // enquanto o dado é o CEP.
+    // Pin da CASA: gota PRETA sólida (corpo #18181b) e o ÍCONE DO APP
+    // (icon_192 — o mesmo do manifest do PWA), NUNCA a logo larga do
+    // cabeçalho (evita o borrão preto reportado pelo dono, 28/09/2026), e o
+    // aviso honesto de localização aproximada enquanto o dado é o CEP.
     const corpoDoPin = hospedeiro.querySelector(
-      "svg path[d^='M28,64']",
+      "[data-pino-do-mapa] svg path[data-pino-corpo]",
     ) as SVGPathElement | null;
     expect(corpoDoPin).not.toBeNull();
     expect(corpoDoPin!.getAttribute("fill")).toBe("#18181b");
@@ -183,23 +210,124 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(document.title).toContain("Ateliê da Serra");
   });
 
-  it("pin: recorte é QUADRADO de cantos arredondados (não círculo) e tem moldura branca de contraste", async () => {
+  it("pin: a logo vai num CÍRCULO com anel PRETO (não mais quadrado de moldura branca)", async () => {
     configAtual = LOJA_COMPLETA;
 
     await renderizarPagina();
 
-    // O ícone do app já nasce quadrado — o recorte deixa de ser um círculo
-    // (que cortava os cantos) e vira um retângulo arredondado (`rx`).
-    const recorte = hospedeiro.querySelector("clipPath rect");
+    // Pedido do dono (14/10/2026): o quadrado branco "não combinava" com o
+    // pino arredondado. A logo agora é recortada num círculo, e o anel em
+    // volta é o próprio corpo PRETO do pino — os dois redondos.
+    const recorte = hospedeiro.querySelector("clipPath circle");
     expect(recorte).not.toBeNull();
-    expect(recorte!.getAttribute("rx")).toBe("7");
-    expect(hospedeiro.querySelector("clipPath circle")).toBeNull();
+    expect(hospedeiro.querySelector("clipPath rect")).toBeNull();
+    // Nada de moldura branca quadrada: o único branco é o fundo do círculo.
+    expect(hospedeiro.querySelector("[data-pino-do-mapa] svg rect")).toBeNull();
 
-    // Moldura branca ao redor do ícone: destaca o pin sobre a gota escura e
-    // sobre qualquer fundo de mapa (pedido do dono, 28/09/2026).
-    const moldura = hospedeiro.querySelector("svg rect[fill='#ffffff']");
-    expect(moldura).not.toBeNull();
-    expect(moldura!.getAttribute("rx")).toBe("9");
+    // O anel preto tem ~2px: raio do corpo (cabeça, o arco `A r,r` do
+    // caminho) menos raio do recorte.
+    const corpo = hospedeiro.querySelector("[data-pino-corpo]");
+    const raioDoRecorte = Number(recorte!.getAttribute("r"));
+    const raioDaCabeca = Number(
+      /A([\d.]+),/.exec(corpo!.getAttribute("d") ?? "")?.[1],
+    );
+    expect(raioDaCabeca - raioDoRecorte).toBeGreaterThanOrEqual(2);
+    expect(raioDaCabeca - raioDoRecorte).toBeLessThanOrEqual(3);
+
+    // O ícone fica dentro do círculo (mesmo centro do recorte).
+    const imagem = hospedeiro.querySelector(
+      "[data-pino-do-mapa] svg image",
+    ) as SVGImageElement | null;
+    expect(imagem).not.toBeNull();
+    const diametro = raioDoRecorte * 2;
+    expect(Number(imagem!.getAttribute("width"))).toBe(diametro);
+    expect(Number(imagem!.getAttribute("height"))).toBe(diametro);
+  });
+
+  it("pin: é PEQUENO (≤ 32 de largura, ≤ 40 de altura) — o de 60x73 cobria quarteirões", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    const svg = hospedeiro.querySelector(
+      "[data-pino-do-mapa] svg[role='img']",
+    ) as SVGSVGElement | null;
+    expect(svg).not.toBeNull();
+    expect(Number(svg!.getAttribute("width"))).toBeLessThanOrEqual(32);
+    expect(Number(svg!.getAttribute("width"))).toBeGreaterThanOrEqual(28);
+    expect(Number(svg!.getAttribute("height"))).toBeLessThanOrEqual(40);
+    // Sem esticar o desenho: a escala é 1:1 com o viewBox.
+    const [, , vw, vh] = svg!.getAttribute("viewBox")!.split(/\s+/).map(Number);
+    expect(Number(svg!.getAttribute("width"))).toBe(vw);
+    expect(Number(svg!.getAttribute("height"))).toBe(vh);
+  });
+
+  it("pin: segue nomeado para leitor de tela, não rouba o toque do mapa e o iframe segue preguiçoso", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    const camada = hospedeiro.querySelector(
+      "[data-pino-do-mapa]",
+    ) as HTMLElement;
+    expect(camada.classList.contains("pointer-events-none")).toBe(true);
+    const svg = camada.querySelector("svg") as SVGSVGElement;
+    expect(svg.getAttribute("role")).toBe("img");
+    expect(svg.getAttribute("aria-label")).toBe(
+      "Local da loja Ateliê da Serra",
+    );
+    const iframe = hospedeiro.querySelector(
+      "iframe[title^='Mapa da loja']",
+    ) as HTMLIFrameElement;
+    expect(iframe.getAttribute("loading")).toBe("lazy");
+    expect(iframe.classList.contains("pointer-events-none")).toBe(true);
+  });
+
+  it("pin: a PONTA fica no centro do MESMO retângulo do iframe (não do cartão recortado)", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    // Achado de 14/10/2026 medido no Chromium: o iframe sobe 56px para
+    // esconder o chip do Google, então o centro do MAPA fica 28px acima do
+    // centro do cartão — e o pino ancorado no centro do cartão apontava
+    // ~22px para o sul do lugar certo. A correção: o pino mora numa camada
+    // com a MESMA caixa do iframe (mesmas classes de recorte), e a ponta
+    // (base do SVG) é o centro dessa camada.
+    const iframe = hospedeiro.querySelector(
+      "iframe[title^='Mapa da loja']",
+    ) as HTMLIFrameElement;
+    const camada = hospedeiro.querySelector(
+      "[data-pino-do-mapa]",
+    ) as HTMLElement | null;
+    expect(camada).not.toBeNull();
+    expect(iframe.parentElement).toBe(camada!.parentElement);
+    for (const token of [
+      "absolute",
+      "left-0",
+      "top-[-56px]",
+      "h-[calc(100%+56px)]",
+      "w-full",
+    ]) {
+      expect(iframe.classList.contains(token)).toBe(true);
+      expect(camada!.classList.contains(token)).toBe(true);
+    }
+    // A ponta: o ancoradouro está a 50% (+2px, o 1–2px que o marcador do
+    // Google desce abaixo do centro, medido) da camada e sobe pela altura
+    // inteira do SVG (a ponta é a BASE do desenho, sem sobra).
+    const ancora = camada!.firstElementChild as HTMLElement;
+    expect(ancora.classList.contains("left-1/2")).toBe(true);
+    expect(ancora.classList.contains("top-[calc(50%+2px)]")).toBe(true);
+    expect(ancora.classList.contains("-translate-y-full")).toBe(true);
+    expect(ancora.classList.contains("-translate-x-1/2")).toBe(true);
+    const corpo = ancora.querySelector("[data-pino-corpo]")!;
+    const svg = ancora.querySelector("svg")!;
+    // O vértice de baixo do corpo (o `M x,y` do caminho) encosta no fundo
+    // do viewBox, no meio da largura — nenhuma sobra entre a ponta e a base.
+    const ponta = /^M([\d.]+),([\d.]+)/.exec(corpo.getAttribute("d") ?? "");
+    expect(ponta).not.toBeNull();
+    expect(Number(ponta![1])).toBe(Number(svg.getAttribute("width")) / 2);
+    expect(Number(ponta![2])).toBe(Number(svg.getAttribute("height")));
   });
 
   it("loja sem nada: blocos somem, nome cai na marca do build, zero 'undefined'", async () => {
@@ -223,6 +351,11 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     ).toBeNull();
     expect(
       hospedeiro.querySelector("iframe[title^='Mapa da loja']"),
+    ).toBeNull();
+    // Sem endereço/CEP/cidade não há mapa — e portanto NENHUM pino solto.
+    expect(hospedeiro.querySelector("[data-pino-do-mapa]")).toBeNull();
+    expect(
+      hospedeiro.querySelector("svg[aria-label^='Local da loja']"),
     ).toBeNull();
     // Sem WhatsApp, nem o botão ancorado existe.
     expect(botaoWhatsapp()).toBeNull();
@@ -301,13 +434,18 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
         "svg image[href='/identity/aurora/icon-192.png']",
       ),
     ).toBeNull();
-    const balaoDoPin = hospedeiro.querySelector("svg path[d^='M28,64']");
+    const balaoDoPin = hospedeiro.querySelector("[data-pino-corpo]");
     expect(balaoDoPin).not.toBeNull();
-    expect(
-      [...hospedeiro.querySelectorAll("svg text")].some(
-        (t) => t.textContent === "A",
-      ),
-    ).toBe(true);
+    // A inicial entra DENTRO do círculo (mesmo recorte do ícone), não
+    // solta: o texto mora no grupo recortado pelo círculo.
+    const inicial = [
+      ...hospedeiro.querySelectorAll("[data-pino-do-mapa] svg text"),
+    ].find((t) => t.textContent === "A");
+    expect(inicial).toBeDefined();
+    expect(inicial!.closest("g")?.getAttribute("clip-path") ?? "").toContain(
+      "pin-icone-recorte",
+    );
+    expect(hospedeiro.querySelector("clipPath circle")).not.toBeNull();
     expect(
       hospedeiro.querySelector<HTMLImageElement>("img[alt^='Logo da loja']")
         ?.src,
@@ -379,5 +517,8 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     const url = String(open.mock.calls[0]?.[0]);
     // "(34) 99999-9999" → 34999999999 (11 dígitos) → prefixo 55.
     expect(url).toContain("https://wa.me/5534999999999");
+    // A8-d/L12: a aba do WhatsApp não pode herdar `window.opener` do app.
+    expect(open.mock.calls[0]?.[1]).toBe("_blank");
+    expect(open.mock.calls[0]?.[2]).toBe("noopener,noreferrer");
   });
 });

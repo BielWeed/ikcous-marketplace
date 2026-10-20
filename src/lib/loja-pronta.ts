@@ -1,5 +1,10 @@
+import { cepEhLocal } from "@/lib/cep-local";
 import { lerEnderecoConferido } from "@/lib/endereco-da-loja";
 import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
+import {
+  modoDaEntregaNaCidade,
+  retiradaLigadaNaLista,
+} from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import type { View } from "@/types";
 
@@ -15,7 +20,7 @@ import type { View } from "@/types";
 export type EstadoDoItem = "carregando" | "feito" | "pendente";
 
 /** CEP completo: oito dígitos, com ou sem o hífen após o quinto. */
-function cepCompleto(cep: string | null | undefined): boolean {
+export function cepCompleto(cep: string | null | undefined): boolean {
   return /^\d{5}-?\d{3}$/.test(cep?.trim() ?? "");
 }
 
@@ -29,13 +34,242 @@ function cepCompleto(cep: string | null | undefined): boolean {
  * entrega própria na cidade já funciona (não há interruptor dela, só a taxa; a
  * taxa 0 é "grátis na cidade"), que é exatamente o que a faixa do Frete diz em
  * "Na sua cidade". Enquanto a config carrega, "não sei".
+ *
+ * Com CEP, o passo ainda precisa do ALCANCE: o aviso amarelo da tela de Frete
+ * (`avisoDaFaixaDeCep`) deixa o passo pendente SÓ no ramo da faixa VAZIA — CEP
+ * de rua com "Alcance por CEP" vazio só entrega para os mesmos 5 primeiros
+ * números do CEP (um pedaço de bairro), e cliente de outro bairro, sem conta,
+ * vai embora. É a MESMA função, nunca uma cópia da regra (nem da heurística do
+ * "000"), para o cartão e a tela de Frete não divergirem.
+ *
+ * Continuam "pronto": o CEP geral de cidade pequena (termina em "000"; ali o
+ * aviso é calado de propósito) e QUALQUER faixa preenchida. O aviso do ramo da
+ * faixa preenchida ("nem o CEP da loja entra") é só aviso na tela de Frete —
+ * uma faixa legítima pode deixar o CEP da loja de fora — e nunca trava o passo.
+ *
+ * "SÓ RETIRO" (16/10/2026): sem entrega própria não há alcance a confirmar. O
+ * passo vale pela RETIRADA: ligada e com o endereço da loja conferido (o texto
+ * do formato novo, com o CEP da loja) — o endereço é o que a cliente recebe
+ * para buscar o pedido. Alcance e valor não são olhados.
  */
 export function estadoDaEntrega(
-  config: { readonly originCep?: string | null },
+  config: {
+    readonly originCep?: string | null;
+    readonly localCepRange?: string | null;
+    readonly storeAddress?: string | null;
+    readonly localDeliveryEnabled?: boolean | null;
+    readonly enabledShippingMethods?: readonly string[] | null;
+  },
   configCarregando: boolean,
 ): EstadoDoItem {
   if (configCarregando) return "carregando";
-  return cepCompleto(config.originCep) ? "feito" : "pendente";
+  if (!cepCompleto(config.originCep)) return "pendente";
+  if (modoDaEntregaNaCidade(config) === "so_retiro") {
+    return retiradaLigadaNaLista(config.enabledShippingMethods) &&
+      lerEnderecoConferido(config.storeAddress, config.originCep) !== null
+      ? "feito"
+      : "pendente";
+  }
+  return entregaComAlcanceCurto(config) ? "pendente" : "feito";
+}
+
+/**
+ * Há CEP completo, o "Alcance por CEP" está VAZIO e o aviso da tela de Frete
+ * dispara ("Sua entrega local só vale para CEPs que começam com …")? É esse
+ * aviso virado em sim/não — o motivo que distingue "falta o alcance" de "falta
+ * o CEP" no texto do passo (cartão do Início e subtítulo de Ajustes).
+ *
+ * Faixa preenchida nunca entra: o outro aviso de `avisoDaFaixaDeCep` (faixa
+ * que não inclui o CEP da loja) é só aviso e não bloqueia nada.
+ */
+export function entregaComAlcanceCurto(config: {
+  readonly originCep?: string | null;
+  readonly localCepRange?: string | null;
+  readonly localDeliveryEnabled?: boolean | null;
+}): boolean {
+  return (
+    config.localDeliveryEnabled !== false &&
+    cepCompleto(config.originCep) &&
+    (config.localCepRange ?? "").trim() === "" &&
+    avisoDaFaixaDeCep(config) !== null
+  );
+}
+
+/**
+ * Os 5 primeiros números do CEP da loja, ou `null` sem CEP completo.
+ *
+ * É a regra REAL da "faixa de CEP" vazia: o servidor (`is_local_cep` no banco,
+ * edge calculate-shipping e `cepEhLocal` na tela) só compara os 5 primeiros
+ * números do CEP da cliente com os do CEP da loja. Nunca foi "a cidade inteira".
+ */
+export function prefixoDoCepDaLoja(
+  cep: string | null | undefined,
+): string | null {
+  return cepCompleto(cep) ? (cep as string).trim().slice(0, 5) : null;
+}
+
+/** A dica do campo de texto "Escrever faixa de CEP" quando ele está vazio. */
+export function dicaDaFaixaVazia(cepDaLoja: string | null | undefined): string {
+  const prefixo = prefixoDoCepDaLoja(cepDaLoja);
+  return prefixo
+    ? `Vazio = só CEPs que começam com ${prefixo}`
+    : "Vazio = só CEPs que começam com os mesmos 5 números do CEP da loja";
+}
+
+/** Os itens do texto do alcance: separados por vírgula, só os que têm número. */
+function itensDoAlcance(faixa: string | null | undefined): string[] {
+  return (faixa ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => /\d/.test(item));
+}
+
+const soNumeros = (texto: string): string => texto.replace(/\D/g, "");
+
+/**
+ * O texto do alcance está PREENCHIDO mas não tem nenhum número? ("abc", ",,,").
+ * Para o servidor isso NÃO é alcance vazio: com texto não vazio e sem nenhum
+ * item numérico, ninguém é local (banco, edge e `cepEhLocal` concordam).
+ */
+export function alcanceSemNumeros(faixa: string | null | undefined): boolean {
+  return (faixa ?? "").trim() !== "" && itensDoAlcance(faixa).length === 0;
+}
+
+/**
+ * O alcance é EXATAMENTE os 5 primeiros números do CEP da loja? NESSE instante
+ * gravar isso dá a mesma regra do alcance vazio nas três cópias do servidor
+ * (`is_local_cep`, edge e `cepEhLocal`) — por isso "Só perto da loja" pode
+ * gravar o número em vez de um campo novo. Mas o número é uma CÓPIA: se o CEP
+ * da loja mudar depois, a equivalência acaba — `alcanceAoMudarOCepDaLoja`
+ * regrava no mesmo salvamento do endereço. Alcance vazio NÃO conta: a lojista
+ * ainda não confirmou.
+ */
+export function alcanceEhSoPertoDaLoja(
+  cepDaLoja: string | null | undefined,
+  faixa: string | null | undefined,
+): boolean {
+  const prefixo = prefixoDoCepDaLoja(cepDaLoja);
+  const itens = itensDoAlcance(faixa);
+  return prefixo !== null && itens.length === 1 && itens[0] === prefixo;
+}
+
+/**
+ * "Incluir a região deste CEP": acrescenta os 5 primeiros números do CEP do
+ * cliente ao alcance, sem tirar ninguém e sem mudar o sentido do que já estava.
+ *
+ * Dois cuidados que o servidor impõe (mesma regra nas três cópias):
+ * 1. Alcance VAZIO quer dizer "a região da loja". Escrever só a região nova
+ *    tiraria a da loja — então a loja entra junto.
+ * 2. DOIS CEPs completos separados por vírgula são a FAIXA entre eles; um
+ *    terceiro item faria o servidor ler "três CEPs exatos". Esse par vira o
+ *    bloco longo "início-fim" (que o servidor lê como a mesma faixa) antes de
+ *    acrescentar.
+ * Região já presente: devolve o texto como estava. CEP do cliente com menos de
+ * 5 números, ou loja sem CEP completo: também.
+ */
+export function incluirRegiaoNoAlcance(
+  faixa: string,
+  cepDaLoja: string | null | undefined,
+  cepDoCliente: string,
+): string {
+  const regiao = soNumeros(cepDoCliente).slice(0, 5);
+  const daLoja = prefixoDoCepDaLoja(cepDaLoja);
+  if (regiao.length < 5 || daLoja === null) return faixa;
+  let itens = itensDoAlcance(faixa);
+  // Vazio de verdade = "a região da loja": ela entra junto. Texto SEM números
+  // não é vazio para o servidor (ninguém é local): não se abre a região da
+  // loja de carona, entra só a região que a lojista pediu.
+  if (itens.length === 0 && !alcanceSemNumeros(faixa)) itens = [daLoja];
+  if (itens.some((item) => soNumeros(item) === regiao)) return faixa;
+  if (itens.length === 2 && itens.every((i) => soNumeros(i).length === 8)) {
+    itens = [`${soNumeros(itens[0])}-${soNumeros(itens[1])}`];
+  }
+  return [...itens, regiao].join(", ");
+}
+
+/**
+ * O CEP da loja mudou (Minha loja): o alcance acompanha? Só quando era
+ * EXATAMENTE os 5 primeiros números do CEP ANTIGO ("só perto da loja") e os 5
+ * do CEP novo são outros — devolve o alcance novo para o MESMO salvamento do
+ * endereço gravar. Qualquer outro alcance (vazio, lista, faixa, texto) é da
+ * lojista e nunca é tocado: devolve `null`.
+ */
+export function alcanceAoMudarOCepDaLoja(
+  cepAntigo: string | null | undefined,
+  cepNovo: string | null | undefined,
+  faixa: string | null | undefined,
+): string | null {
+  if (!alcanceEhSoPertoDaLoja(cepAntigo, faixa)) return null;
+  const novo = prefixoDoCepDaLoja(cepNovo);
+  return novo !== null && novo !== prefixoDoCepDaLoja(cepAntigo) ? novo : null;
+}
+
+/**
+ * Em palavras da lojista, até onde vai a entrega própria (a faixa-resumo do
+ * Frete). Nunca "a cidade": o alcance vazio é só a região do CEP da loja.
+ */
+export function resumoDoAlcance(
+  cepDaLoja: string | null | undefined,
+  faixa: string | null | undefined,
+): string {
+  const itens = itensDoAlcance(faixa);
+  if (alcanceSemNumeros(faixa))
+    return "nenhum CEP: o que está escrito não tem números";
+  if (itens.length === 0) {
+    const prefixo = prefixoDoCepDaLoja(cepDaLoja);
+    return prefixo ? `CEPs que começam com ${prefixo}` : "CEPs perto da loja";
+  }
+  const digitos = itens.length === 1 ? soNumeros(itens[0]) : "";
+  return digitos !== "" && digitos.length < 8 && !itens[0].includes("-")
+    ? `CEPs que começam com ${digitos}`
+    : "CEPs que você escolheu";
+}
+
+/**
+ * Aviso (nunca bloqueio) de faixa escrita num formato que o servidor não
+ * entende. O campo é texto livre, mas a regra (`is_local_cep`, edge e
+ * `cepEhLocal`) só lê dois CEPs completos separados por vírgula: quem escreve
+ * "38500-000 a 38509-999" via "salvo" e ficava sem entrega local, em silêncio.
+ *
+ * O teste é o próprio `cepEhLocal`: se nem o CEP da loja cai na faixa, a faixa
+ * não está sendo entendida (ou ficou velha depois de trocar o endereço). É só
+ * aviso — uma faixa legítima pode deixar o CEP da loja de fora.
+ */
+function avisoDaFaixaNaoEntendida(
+  originCep: string | null | undefined,
+  faixa: string,
+): string | null {
+  if (!cepCompleto(originCep)) return null;
+  const cepDaLoja = (originCep as string).trim();
+  if (cepEhLocal(cepDaLoja, cepDaLoja, faixa)) return null;
+  return "O alcance que você escreveu não está sendo entendido: nem o CEP da sua loja entra. Escreva dois CEPs separados por vírgula, assim: 38500-000, 38509-999";
+}
+
+/**
+ * Aviso (nunca bloqueio) sobre o "Alcance por CEP".
+ *
+ * Faixa PREENCHIDA: avisa se o servidor não a entende (nem o CEP da loja
+ * entra) — ver `avisoDaFaixaNaoEntendida`.
+ *
+ * Faixa VAZIA: avisa entrega local curta demais quando o CEP da loja tem cara
+ * de CEP de rua. Heurística: CEP geral de cidade pequena termina em "000"
+ * (Monte Carmelo, 38500-000 — um CEP só para a cidade, e os 5 primeiros
+ * números bastam). CEP que NÃO termina em "000" é de rua, e a cidade
+ * provavelmente tem vários prefixos (Uberlândia, 38400 a 38415): a cliente de
+ * outro bairro seria tratada como "de fora". Devolve o texto para a lojista,
+ * ou `null`.
+ */
+export function avisoDaFaixaDeCep(config: {
+  readonly originCep?: string | null;
+  readonly localCepRange?: string | null;
+}): string | null {
+  const faixa = (config.localCepRange ?? "").trim();
+  if (faixa !== "") return avisoDaFaixaNaoEntendida(config.originCep, faixa);
+  const prefixo = prefixoDoCepDaLoja(config.originCep);
+  if (prefixo === null) return null;
+  const cepLimpo = (config.originCep as string).replace(/\D/g, "");
+  if (cepLimpo.endsWith("000")) return null;
+  return `Sua entrega local só vale para CEPs que começam com ${prefixo}. Se sua cidade tem vários CEPs, escolha até onde você entrega`;
 }
 
 // ── Os SEIS passos do painel simples (spec §8) ──────────────────────────────
@@ -59,6 +293,12 @@ export interface PassoDaLoja {
   readonly rotuloPendente: string;
   readonly estado: EstadoDoItem;
   readonly destino: View;
+  /**
+   * Uma frase para a lojista, só quando o passo está pendente e o motivo
+   * merece mais que o botão (hoje: "entrega" com alcance curto). Ausente =
+   * o rótulo basta.
+   */
+  readonly explicacaoPendente?: string;
 }
 
 /** Só o que os seis passos leem da config da loja. */
@@ -68,6 +308,10 @@ export interface ConfigDosSeisPassos {
   readonly originCep?: string | null;
   readonly storeAddress?: string | null;
   readonly whatsappNumber?: string | null;
+  /** O aviso da faixa de CEP (`avisoDaFaixaDeCep`) e o passo "entrega" leem. */
+  readonly localCepRange?: string | null;
+  /** "Só retiro" (entrega própria desligada) muda o que o passo "entrega" pede. */
+  readonly localDeliveryEnabled?: boolean | null;
 }
 
 /** Os fatos que NÃO vêm da config. */
@@ -81,7 +325,8 @@ export interface FatosDosSeisPassos {
   readonly produtosCarregando: boolean;
   /**
    * "Como você entrega" chega como FATO pronto. Por decisão, o passo é só a
-   * parte barata da entrega — o CEP completo da loja —, calculada por
+   * parte barata da entrega — o CEP completo da loja e o alcance que cobre a
+   * cidade —, calculada por
    * `estadoDaEntrega` (acima). Quem chama (Início, Ajustes) DEVE usá-la em vez
    * de calcular a própria régua, para as duas telas nunca divergirem. O
    * detalhe de transportadora (credenciais, provedores ligados) fica no texto
@@ -94,6 +339,14 @@ export interface EntradaDosSeisPassos {
   readonly estados: Readonly<Record<ChaveDosSeisPassos, EstadoDoItem>>;
   /** Só para o texto do "recebe": não diz "PIX" de quem só recebe na entrega. */
   readonly pixOk: boolean;
+  /**
+   * A entrega está pendente porque o ALCANCE é curto (há CEP, mas o aviso da
+   * tela de Frete dispara) — e não porque falta o CEP. Só muda o texto do
+   * passo "entrega"; ausente = falta o CEP (o texto de antes).
+   */
+  readonly entregaAlcanceCurto?: boolean;
+  /** Os 5 primeiros números do CEP da loja — o que a explicação do passo cita. */
+  readonly entregaPrefixo?: string | null;
 }
 
 function textoPreenchido(texto: string | null | undefined): boolean {
@@ -125,6 +378,11 @@ export function entradaDosSeisPassos(
 
   return {
     pixOk,
+    // `estados.entrega` é o fato que quem chama entregou (`estadoDaEntrega`);
+    // aqui só se descobre, com a MESMA função do aviso, QUAL é a pendência.
+    entregaAlcanceCurto:
+      fatos.entrega === "pendente" && entregaComAlcanceCurto(config),
+    entregaPrefixo: prefixoDoCepDaLoja(config.originCep),
     estados: {
       marca: daConfig(
         textoPreenchido(config.storeName) && textoPreenchido(config.logoUrl),
@@ -157,7 +415,12 @@ export function entradaDosSeisPassos(
 export function seisPassosDaLojaPronta(
   entrada: EntradaDosSeisPassos,
 ): readonly PassoDaLoja[] {
-  const { estados, pixOk } = entrada;
+  const {
+    estados,
+    pixOk,
+    entregaAlcanceCurto = false,
+    entregaPrefixo = null,
+  } = entrada;
   return [
     {
       chave: "marca",
@@ -197,7 +460,18 @@ export function seisPassosDaLojaPronta(
       chave: "entrega",
       rotulo: "Como você entrega",
       rotuloFeito: "Entrega configurada",
-      rotuloPendente: "Configurar a entrega",
+      // Com CEP mas alcance curto, o que falta não é "configurar a entrega":
+      // é a lojista CONFIRMAR até onde ela vale — "só perto da loja" é uma
+      // resposta tão boa quanto "em mais lugares" (a tela de Frete, em "Entrega
+      // na sua cidade", deixa dizer as duas).
+      rotuloPendente: entregaAlcanceCurto
+        ? "Confirmar até onde você entrega"
+        : "Configurar a entrega",
+      ...(entregaAlcanceCurto && {
+        explicacaoPendente: entregaPrefixo
+          ? `Hoje você entrega só em CEPs que começam com ${entregaPrefixo}`
+          : "Hoje você entrega só perto da loja",
+      }),
       estado: estados.entrega,
       destino: "admin-shipping",
     },

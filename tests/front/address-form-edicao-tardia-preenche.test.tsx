@@ -103,7 +103,7 @@ describe("AddressForm — endereço que chega DEPOIS do mount preenche a ediçã
     );
 
     // Âncora: os campos existem e a tela montou.
-    expect(cep).toBeDefined();
+    expect(cep).not.toBeNull();
 
     expect(cep.value).toBe("38500-000");
     // Endereço salvo aparece no cartão (rua e bairro/cidade/UF)...

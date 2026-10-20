@@ -1,6 +1,13 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
+  FOCO,
+  INTERRUPTOR,
+  PRIMARIO,
+  SECUNDARIO,
+  Selo,
+} from "@/components/admin/coupons/apresentacao";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -19,28 +26,34 @@ import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import {
+  AVISO_CUPOM_PODE_COBRIR_A_COMPRA,
+  AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP,
+  cupomPodeCobrirACompraInteira,
+} from "@/lib/cupom-que-cobre-a-compra";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
-import {
-  type RotuloDeCupom,
-  cupomEstaExpirado,
-  rotuloDoCupom,
-} from "@/utils/status-do-cupom";
+import { type RotuloDeCupom, rotuloDoCupom } from "@/utils/status-do-cupom";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
+  AlertCircle,
   Calendar,
   Check,
   ChevronDown,
-  ChevronUp,
+  CloudOff,
   Copy,
   Edit,
   HelpCircle,
+  LockKeyhole,
+  Percent,
   Plus,
-  Sparkles,
+  RefreshCw,
   Ticket,
   Trash,
   TrendingUp,
   Users,
+  Wallet,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -68,13 +81,9 @@ const itemVariants: Variants = {
 // não pode continuar com a mesma cara de "Ativo").
 const classesDoSeloPorRotulo: Record<RotuloDeCupom, string> = {
   Ativo: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-  Expirado: "border-amber-500/20 bg-amber-500/10 text-amber-400",
-  Inativo: "border-zinc-500/20 bg-zinc-500/10 text-zinc-500",
-};
-const classesDoPontoPorRotulo: Record<RotuloDeCupom, string> = {
-  Ativo: "animate-pulse bg-emerald-400",
-  Expirado: "bg-amber-400",
-  Inativo: "bg-zinc-600",
+  Expirado: "border-orange-400/20 bg-orange-400/10 text-orange-300",
+  Inativo: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+  Esgotado: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
 };
 
 interface AdminCouponsViewProps {
@@ -86,13 +95,27 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   onNavigate,
   active = true,
 }: AdminCouponsViewProps) {
-  const { coupons, loading, updateCoupon, deleteCoupon, refreshCoupons } =
-    useCoupons(true);
+  const {
+    coupons,
+    loading,
+    erroDaListagem,
+    updateCoupon,
+    deleteCoupon,
+    refreshCoupons,
+  } = useCoupons(true);
   const isOffline = useOnlineStatus();
   const { config, isLoaded: configLoaded, updateConfig } = useStore();
+  // Mesma regra do formulario: sem nenhuma forma 'na retirada/entrega', a loja
+  // so recebe pelo app e um cupom que zera a compra deixa a cliente sem caminho.
+  const lojaSoRecebePeloApp =
+    formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
 
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+  const [metricasAbertas, setMetricasAbertas] = useState(false);
+  const [detalhesAbertos, setDetalhesAbertos] = useState<
+    Record<string, boolean>
+  >({});
 
   const handleToggleCoupons = async (checked: boolean) => {
     if (isOffline) {
@@ -186,9 +209,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   // Dynamic stats computation
   const totalCoupons = coupons.length;
   // Achado do lote 1: cupom vencido continuava contado aqui, mesmo o
-  // servidor já recusando ele no checkout (`valid_until > now()`).
+  // servidor já recusando ele no checkout (`valid_until > now()`). O mesmo
+  // vale para o cupom ESGOTADO (usos no teto): "Disponíveis para uso" é o
+  // que o checkout ainda aceita — a mesma leitura do selo do card.
   const activeCoupons = coupons.filter(
-    (c) => c.active && !cupomEstaExpirado(c.validUntil),
+    (c) => rotuloDoCupom(c) === "Ativo",
   ).length;
   const totalUsage = coupons.reduce((sum, c) => sum + (c.usageCount || 0), 0);
   const averageDiscount = (() => {
@@ -229,12 +254,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         id: "desconto",
         label: "Desconto Médio",
         icon: TrendingUp,
-        iconClass: "text-amber-400",
-        iconBg: "bg-amber-500/10 border-amber-500/20",
-        hoverBorder:
-          "hover:border-amber-500/30 hover:shadow-[0_0_30px_rgba(245,158,11,0.05)]",
+        iconClass: "text-violet-300",
+        iconBg: "bg-violet-400/10 border-violet-400/20",
+        hoverBorder: "hover:border-violet-400/30",
         value: `${averageDiscount}%`,
-        accent: "text-amber-400",
+        accent: "text-violet-300",
         subValue: "OFF",
         footer: "Em ofertas percentuais",
       },
@@ -243,11 +267,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   );
 
   const renderSkeleton = () => (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
       {[1, 2, 3, 4, 5, 6].map((i) => (
         <div
           key={i}
-          className="flex h-[256px] animate-pulse flex-col justify-between rounded-[2.5rem] border border-white/[0.05] bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-6 lg:p-8"
+          className="flex min-h-[156px] animate-pulse flex-col justify-between gap-4 rounded-[20px] border border-white/10 bg-[#101013] p-3"
         >
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
@@ -275,169 +299,234 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   return (
     <div
       ref={viewRef}
-      className="relative h-auto bg-[#09090b] pb-admin lg:pb-12 font-sans text-zinc-400 duration-500 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200"
+      className="pb-admin relative h-auto bg-[#08080A] font-sans text-zinc-400 duration-500 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200 lg:pb-12"
     >
-      {/* Header */}
-      <div className="sticky top-0 z-50 p-4 pb-0">
-        <div className="admin-glass flex flex-col gap-4 rounded-[2rem] border border-white/5 p-4 shadow-2xl sm:flex-row sm:items-center sm:justify-between sm:p-5">
-          <div className="flex items-center gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                {/* Onda 3 da reforma visual (03/09): o título vivia com
-                    fórmula própria (text-xl) — agora é o AdminPageHeader; o
-                    botão de ajuda continua dentro da linha do título. */}
-                <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-coupons"]}>
-                  <button
-                    type="button"
-                    onClick={() => setShowHelpModal(true)}
-                    className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
-                    title="Guia de Cupons e Ajuda"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-zinc-400 transition-all duration-300 group-hover:border-white/20 group-hover:text-white"
-                    >
-                      <HelpCircle className="size-4.5" />
-                    </span>
-                  </button>
-                </AdminPageHeader>
-              </div>
-              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                Campanhas
-                <span className="size-1 animate-pulse rounded-full bg-emerald-500/50" />
-                <span className="text-emerald-400">Otimizar Conversões</span>
-              </p>
-            </div>
-          </div>
-
+      <div className="sticky top-0 z-20 bg-[#08080A]/95 px-5 py-4 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight">
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-coupons"]} />
           {coupons.length > 0 && (
             <button
+              type="button"
               onClick={() => onNavigate("admin-coupon-form")}
               disabled={isOffline}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-black shadow-lg shadow-white/5 transition-all hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:w-auto"
+              className={PRIMARIO}
             >
-              <Plus className="size-3.5" /> Novo Cupom
+              <Plus aria-hidden="true" className="size-5" /> Novo Cupom
             </button>
           )}
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl p-4 lg:p-8">
-        {/* Stats Carousel Row */}
-        {(coupons.length > 0 || loading) && (
-          <div className="mb-8 space-y-4">
-            <AdminKpiCarousel
-              active={active}
-              cards={kpiCards}
-              loading={loading}
-              title="Métricas de Campanhas"
-            />
+      <div className="mx-auto max-w-5xl space-y-7 px-5 py-3">
+        <section aria-label="Métricas de Campanhas" className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-400">
+              Métricas de Campanhas
+            </h2>
+            <div className="flex gap-2">
+              {(coupons.length > 0 || loading) && (
+                <button
+                  type="button"
+                  aria-label={
+                    metricasAbertas
+                      ? "Recolher métricas"
+                      : "Ver métricas de campanhas"
+                  }
+                  aria-expanded={metricasAbertas}
+                  aria-controls="coupon-metrics"
+                  onClick={() => setMetricasAbertas(!metricasAbertas)}
+                  className={SECUNDARIO}
+                >
+                  <ChevronDown
+                    aria-hidden="true"
+                    className={cn("size-5", metricasAbertas && "rotate-180")}
+                  />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowHelpModal(true)}
+                title="Guia de Cupons e Ajuda"
+                aria-label="Guia de Cupons e Ajuda"
+                className={`${SECUNDARIO} min-h-11 min-w-11`}
+              >
+                <span
+                  aria-hidden="true"
+                  className="flex size-7 items-center justify-center rounded-lg border border-violet-300/25 bg-violet-300/15"
+                >
+                  <HelpCircle className="size-5 text-violet-300" />
+                </span>
+              </button>
+            </div>
           </div>
-        )}
+          {(coupons.length > 0 || loading) &&
+            (metricasAbertas ? (
+              <div
+                id="coupon-metrics"
+                className="rounded-[20px] border border-white/10 bg-[#101013] p-4 [&_.bg-admin-gold]:bg-zinc-300 [&_.text-admin-gold]:text-zinc-300 [&_.text-zinc-500]:text-zinc-400"
+              >
+                <AdminKpiCarousel
+                  active={active}
+                  cards={kpiCards}
+                  loading={loading}
+                  title="Campanhas · Otimizar Conversões"
+                />
+              </div>
+            ) : (
+              <div
+                id="coupon-metrics"
+                className="grid grid-cols-3 gap-3 rounded-[20px] border border-white/10 bg-[#101013] p-3"
+              >
+                {kpiCards.map((stat) => (
+                  <div key={stat.id} className="flex min-w-0 flex-col gap-2">
+                    <p className="order-2 text-xs leading-snug text-zinc-400">
+                      {stat.label}
+                    </p>
+                    <div className="order-1 flex flex-wrap items-center gap-1.5">
+                      <stat.icon
+                        aria-hidden="true"
+                        className={cn("size-5 shrink-0", stat.iconClass)}
+                      />
+                      {loading ? (
+                        <Skeleton className="h-7 w-12 bg-zinc-800" />
+                      ) : (
+                        <span className="text-xl font-bold tabular-nums text-zinc-50">
+                          {stat.value}
+                          {stat.id === "ativos" && (
+                            <span>
+                              {" "}
+                              / {totalCoupons}
+                              <span className="sr-only"> total</span>
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+        </section>
 
         {configLoaded && (
-          <div className="mb-6">
-            <div
-              className={`flex flex-col rounded-2xl border p-4 transition-all duration-300 ${
-                config.enableCoupons
-                  ? "border-amber-500/20 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.05)]"
-                  : "border-white/5 bg-zinc-950/40 hover:border-white/10"
-              }`}
-            >
-              {/* Main Compact Row */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex size-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-300 ${
-                      config.enableCoupons
-                        ? "border-amber-500/30 bg-amber-500/10 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
-                        : "border-white/5 bg-zinc-900/60 text-zinc-500"
-                    }`}
-                  >
-                    <Ticket className="size-4.5" />
-                  </div>
-                  <div className="text-left">
-                    <div className="flex items-center gap-2">
-                      <Label
-                        htmlFor="enable-coupons-switch"
-                        className="cursor-pointer text-[12px] font-bold text-white animate-none"
-                      >
-                        Cupons de Desconto
-                      </Label>
-                      <span
-                        className={`inline-block size-1.5 rounded-full ${config.enableCoupons ? "animate-pulse bg-emerald-500" : "bg-zinc-600"}`}
-                      />
-                      <span className="text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
-                        {config.enableCoupons ? "Ativo" : "Inativo"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <p className="text-[11px] text-zinc-400 leading-none">
-                        {/* Achado 16 da auditoria de 20/08/2026: o campo de
-                            cupom fica no checkout, não no carrinho — existe
-                            um só CouponInput no app inteiro
-                            (CheckoutView.tsx). */}
-                        Permitir que clientes usem cupons no checkout.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-                        className="flex items-center gap-0.5 text-[11px] font-medium text-amber-400 hover:text-amber-300 transition-colors leading-none"
-                      >
-                        Saiba mais
-                        {isDetailsExpanded ? (
-                          <ChevronUp className="size-3.5" />
-                        ) : (
-                          <ChevronDown className="size-3.5" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div className="pl-1.5">
-                  <Switch
-                    id="enable-coupons-switch"
-                    checked={config.enableCoupons}
-                    onCheckedChange={handleToggleCoupons}
-                    className="scale-90 data-[state=checked]:bg-amber-500"
-                    disabled={isOffline || isUpdatingConfig}
-                  />
-                </div>
+          <section className="rounded-[20px] border border-white/10 bg-[#101013] p-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <Label
+                  htmlFor="enable-coupons-switch"
+                  className="text-sm font-bold text-zinc-50"
+                >
+                  Cupons de Desconto
+                </Label>
+                <p
+                  className={cn(
+                    "mt-1 text-sm",
+                    config.enableCoupons ? "text-teal-300" : "text-zinc-400",
+                  )}
+                >
+                  No checkout · {config.enableCoupons ? "Ativo" : "Inativo"}
+                </p>
               </div>
-
-              {/* Collapsible Explanatory Details */}
-              <AnimatePresence initial={false}>
-                {isDetailsExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-3 pt-3 border-t border-white/5 text-[11px] leading-relaxed text-zinc-400 text-left space-y-1.5">
-                      <p>
-                        Ativando esta opção, seus clientes poderão digitar
-                        códigos de cupom (ex: GANHE10) no checkout para receber
-                        descontos especiais.
-                      </p>
-                      <p>
-                        Se desativado, o campo de cupom some do checkout e
-                        nenhum desconto de cupom é aplicado em pedidos novos —
-                        nem para quem já tinha aplicado um cupom antes. Pedidos
-                        já feitos não mudam.
-                      </p>
-                      <p>
-                        Use isso para criar campanhas promocionais e incentivar
-                        novas vendas!
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <div className="flex flex-col items-center">
+                <span className="text-[11px] text-zinc-400">Checkout</span>
+                <Switch
+                  id="enable-coupons-switch"
+                  checked={config.enableCoupons}
+                  onCheckedChange={handleToggleCoupons}
+                  className={INTERRUPTOR}
+                  disabled={isOffline || isUpdatingConfig}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
+                aria-expanded={isDetailsExpanded}
+                aria-controls="coupon-settings-help"
+                className={SECUNDARIO}
+              >
+                Saiba mais
+              </button>
+            </div>
+            <p className="sr-only">
+              Permitir que clientes usem cupons no checkout.
+            </p>
+            {isUpdatingConfig && (
+              <p role="status" className="mt-3 text-sm text-sky-300">
+                Salvando... {config.enableCoupons ? "Ativo" : "Inativo"} até a
+                confirmação.
+              </p>
+            )}
+            {isDetailsExpanded && (
+              <div
+                id="coupon-settings-help"
+                className="mt-4 space-y-3 border-t border-white/10 pt-4 text-sm leading-relaxed text-zinc-400"
+              >
+                <h3 className="font-bold text-zinc-50">Cupons no checkout</h3>
+                <p>
+                  Ativando esta opção, seus clientes poderão digitar códigos de
+                  cupom (ex: GANHE10) no checkout para receber descontos
+                  especiais.
+                </p>
+                <p>
+                  Se desativado, o campo de cupom some do checkout e nenhum
+                  desconto de cupom é aplicado em pedidos novos — nem para quem
+                  já tinha aplicado um cupom antes. Pedidos já feitos não mudam.
+                </p>
+                <p>
+                  Use isso para criar campanhas promocionais e incentivar novas
+                  vendas!
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+        {isOffline && (
+          <div
+            role="status"
+            className="flex gap-3 rounded-[20px] border border-orange-300/20 bg-orange-300/5 p-4 text-sm leading-relaxed"
+          >
+            <CloudOff
+              aria-hidden="true"
+              className="size-5 shrink-0 text-orange-300"
+            />
+            <div>
+              <p className="font-bold text-zinc-50">Você está offline</p>
+              <p className="mt-1">
+                Novo Cupom, editar, excluir e os interruptores aguardam conexão.
+                Ajuda, Saiba mais e cópia continuam disponíveis.
+              </p>
             </div>
           </div>
         )}
+        {loading && coupons.length > 0 && (
+          <p
+            role="status"
+            className="flex items-center gap-2 text-sm text-sky-300"
+          >
+            <RefreshCw aria-hidden="true" className="size-4 animate-spin" />
+            Atualizando cupons... Seus cupons continuam aqui.
+          </p>
+        )}
+
+        {erroDaListagem ? (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-3 rounded-[20px] border border-red-300/20 bg-red-300/5 p-4 text-red-300"
+          >
+            <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
+            <p className="min-w-0 flex-1 text-sm leading-relaxed">
+              {erroDaListagem}
+            </p>
+            <button
+              type="button"
+              onClick={() => refreshCoupons()}
+              disabled={loading}
+              className={SECUNDARIO}
+            >
+              Tentar de novo
+            </button>
+          </div>
+        ) : null}
 
         <AnimatePresence mode="wait">
           {loading && coupons.length === 0 ? (
@@ -450,88 +539,30 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             >
               {renderSkeleton()}
             </motion.div>
-          ) : coupons.length === 0 ? (
+          ) : coupons.length === 0 && !erroDaListagem ? (
             <motion.div
               key="empty"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative flex flex-col items-center justify-center overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-900/10 px-6 py-20 backdrop-blur-md"
+              className="rounded-[20px] border border-white/10 bg-[#101013] p-5"
             >
-              {/* Ambient radial glow background */}
-              <div className="pointer-events-none absolute left-1/2 top-1/2 h-[350px] w-[350px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/5 blur-[100px]" />
-
-              {/* Premium Ticket Graphic */}
-              <div className="relative mb-6 flex size-28 items-center justify-center">
-                {/* Ambient glow */}
-                <div className="absolute inset-0 animate-pulse rounded-full bg-emerald-500/10 blur-xl" />
-
-                {/* Floating decorative stars */}
-                <motion.div
-                  animate={{
-                    y: [0, -4, 0],
-                    rotate: [0, 10, 0],
-                  }}
-                  transition={{
-                    duration: 3,
-                    repeat: Number.POSITIVE_INFINITY,
-                    ease: "easeInOut",
-                  }}
-                  className="absolute right-0 top-0 text-emerald-400/80"
-                >
-                  <Sparkles className="size-4" />
-                </motion.div>
-                <motion.div
-                  animate={{
-                    y: [0, 4, 0],
-                    rotate: [0, -10, 0],
-                  }}
-                  transition={{
-                    duration: 4,
-                    repeat: Number.POSITIVE_INFINITY,
-                    ease: "easeInOut",
-                    delay: 0.5,
-                  }}
-                  className="absolute bottom-0 left-0 text-emerald-500/40"
-                >
-                  <Sparkles className="size-3" />
-                </motion.div>
-
-                {/* Main Floating Ticket Container */}
-                <motion.div
-                  animate={{ y: [0, -6, 0] }}
-                  transition={{
-                    duration: 3.5,
-                    repeat: Number.POSITIVE_INFINITY,
-                    ease: "easeInOut",
-                  }}
-                  className="relative flex h-14 w-20 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-zinc-950 bg-gradient-to-br from-zinc-900 to-zinc-950 shadow-[0_8px_30px_rgb(0,0,0,0.5)]"
-                >
-                  {/* Ticket Cutouts (Notches) */}
-                  <div className="absolute -left-2.5 top-1/2 z-10 size-5 -translate-y-1/2 rounded-full border border-white/10 bg-[#09090b]" />
-                  <div className="absolute -right-2.5 top-1/2 z-10 size-5 -translate-y-1/2 rounded-full border border-white/10 bg-[#09090b]" />
-
-                  {/* Ticket Perforation */}
-                  <div className="absolute inset-y-0 left-1/2 border-l border-dashed border-white/10" />
-
-                  <Ticket className="size-6 text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.4)]" />
-                </motion.div>
-              </div>
-
-              <h3 className="text-xl font-black uppercase tracking-tight text-white">
-                Nenhum cupom ativo
+              <Selo icone={Ticket} matiz="#FF91B9" />
+              <h3 className="mt-5 text-2xl font-bold text-zinc-50">
+                Nenhum cupom cadastrado
               </h3>
-              <p className="mt-2 max-w-sm text-center text-xs font-semibold leading-relaxed text-zinc-400">
+              <p className="mt-3 text-sm leading-relaxed text-zinc-400">
                 Crie cupons promocionais para incentivar as vendas no seu
                 catálogo e aumentar suas conversões.
               </p>
-
               <button
+                type="button"
                 onClick={() => onNavigate("admin-coupon-form")}
                 disabled={isOffline}
-                className="mt-8 flex items-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-[11px] font-black uppercase tracking-wider text-black shadow-xl shadow-white/5 transition-all hover:scale-[1.02] hover:bg-zinc-200 active:scale-95 disabled:pointer-events-none disabled:opacity-50 disabled:grayscale"
+                className={`${PRIMARIO} mt-5 w-full`}
               >
-                <Plus className="size-4" /> Criar Primeiro Cupom
+                <Plus aria-hidden="true" className="size-5" /> Criar Primeiro
+                Cupom
               </button>
             </motion.div>
           ) : (
@@ -545,212 +576,263 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
-                className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
+                className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3"
               >
-                {coupons.map((coupon) => (
-                  <motion.div
-                    key={coupon.id}
-                    variants={itemVariants}
-                    layout
-                    className="group relative"
-                  >
-                    {/* Glass Ticket Design */}
-                    <div
-                      className={`relative flex min-h-[320px] flex-col justify-between overflow-hidden rounded-[2.5rem] border border-white/5 bg-zinc-900/60 p-7 shadow-xl backdrop-blur-md transition-all duration-500 hover:border-white/10 hover:bg-zinc-900/80 hover:shadow-2xl ${!coupon.active ? "opacity-45 grayscale" : ""}`}
+                {coupons.map((coupon) => {
+                  const rotulo = rotuloDoCupom(coupon);
+                  const aberto = Boolean(detalhesAbertos[coupon.id]);
+                  const indisponivel =
+                    rotulo === "Expirado" || rotulo === "Esgotado";
+                  return (
+                    <motion.div
+                      key={coupon.id}
+                      variants={itemVariants}
+                      layout
+                      className="group min-w-0 rounded-[20px] border border-white/10 bg-[#101013] p-3"
                     >
-                      {/* Left Notch */}
-                      <div className="pointer-events-none absolute -left-3.5 top-[40%] z-10 size-7 -translate-y-1/2 rounded-full border border-white/5 bg-[#09090b]" />
-
-                      {/* Right Notch */}
-                      <div className="pointer-events-none absolute -right-3.5 top-[40%] z-10 size-7 -translate-y-1/2 rounded-full border border-white/5 bg-[#09090b]" />
-
-                      {/* Perforated Dashed Line */}
-                      <div className="pointer-events-none absolute inset-x-4 top-[40%] -translate-y-1/2 border-t-2 border-dashed border-white/10" />
-
-                      {/* Upper Section */}
-                      <div className="pb-4">
-                        <div className="mb-2 flex items-center justify-between gap-4">
-                          <button
-                            onClick={() => handleCopyCode(coupon.code)}
-                            className="group/code flex max-w-[70%] items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-left transition-all hover:bg-white/[0.08] active:scale-95"
-                            title="Copiar Código"
-                          >
-                            {/* `pr-[3px]`: o Gabriel viu o ÚLTIMO caractere do código
-                                cortado (12/09/2026 — o "0" de TESTE20). Causa: `truncate`
-                                liga `overflow:hidden`, e glifo ITÁLICO se inclina para
-                                fora da largura que a fonte declara — a inclinação do
-                                último caractere cai fora da caixa e some. O
-                                `tracking-tighter` piora, porque encurta ainda mais o
-                                avanço de cada letra. A folga de 3px devolve o espaço da
-                                inclinação SEM tirar o `truncate` (que existe para código
-                                longo não empurrar o botão de copiar). */}
-                            <span className="truncate pr-[3px] font-mono text-lg font-black uppercase italic tracking-tighter text-white">
-                              {coupon.code}
-                            </span>
-                            {copiedCode === coupon.code ? (
-                              <Check className="size-3.5 shrink-0 text-emerald-400" />
-                            ) : (
-                              <Copy className="size-3.5 shrink-0 text-zinc-400 transition-colors group-hover/code:text-white" />
+                      <div className="flex items-start gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCode(coupon.code)}
+                          title="Copiar Código"
+                          aria-label={`Copiar código ${coupon.code}`}
+                          className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl bg-[#17171C] p-2 text-left ${FOCO}`}
+                        >
+                          <Selo
+                            icone={
+                              coupon.type === "percentage" ? Percent : Wallet
+                            }
+                            matiz={
+                              coupon.active
+                                ? coupon.type === "percentage"
+                                  ? "#BAA0FF"
+                                  : "#73BFFF"
+                                : "#A1A1AD"
+                            }
+                          />
+                          <span
+                            className={cn(
+                              "min-w-0 flex-1 break-all text-base font-bold uppercase",
+                              coupon.active ? "text-zinc-50" : "text-zinc-400",
                             )}
-                          </button>
-
-                          <div className="flex items-center gap-2">
-                            <div
-                              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-wider ${classesDoSeloPorRotulo[rotuloDoCupom(coupon)]}`}
-                            >
-                              <div
-                                className={`size-1 rounded-full ${classesDoPontoPorRotulo[rotuloDoCupom(coupon)]}`}
-                              />
-                              {rotuloDoCupom(coupon)}
-                            </div>
-                            <Switch
-                              checked={coupon.active}
-                              disabled={isOffline}
-                              onCheckedChange={async (checked) => {
-                                try {
-                                  await updateCoupon(coupon.id, {
-                                    active: checked,
-                                  });
-                                } catch (err) {
-                                  console.error(err);
-                                }
-                              }}
-                              className="origin-right scale-75 data-[state=checked]:bg-emerald-500"
+                          >
+                            {coupon.code}
+                          </span>
+                          {copiedCode === coupon.code ? (
+                            <Check
+                              aria-hidden="true"
+                              className="size-4 shrink-0 text-emerald-300"
                             />
-                          </div>
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">
-                          <Sparkles className="size-3 text-amber-500" />
-                          {coupon.type === "percentage"
-                            ? "Desconto Percentual"
-                            : "Desconto Fixo"}
-                          {/* Frente B: quem vê este cupom no checkout. */}
-                          {coupon.alcance === "vitrine" && (
-                            <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-sky-300">
-                              No checkout
-                            </span>
+                          ) : (
+                            <Copy
+                              aria-hidden="true"
+                              className="size-4 shrink-0 text-zinc-400"
+                            />
                           )}
-                          {coupon.alcance === "exclusivo" && (
-                            <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-amber-300">
-                              Exclusivo
-                            </span>
-                          )}
-                        </div>
+                        </button>
+                        <Switch
+                          aria-label={`Ativação manual de ${coupon.code}`}
+                          checked={coupon.active}
+                          disabled={isOffline}
+                          onCheckedChange={async (checked) => {
+                            try {
+                              await updateCoupon(coupon.id, {
+                                active: checked,
+                              });
+                            } catch (err) {
+                              console.error(err);
+                            }
+                          }}
+                          className={INTERRUPTOR}
+                        />
                       </div>
-
-                      {/* Lower Section */}
-                      <div className="mt-4 flex flex-1 flex-col justify-between pt-6">
-                        <div>
-                          <div className="mb-4 grid grid-cols-1 gap-4 xs:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
-                            {/* Mini-caixas no desenho do KpiCard (10/10/2026):
-                                casca com brilho no topo, rótulo em frase
-                                normal 12px cinza 300, valor branco tabular.
-                                De lg a xl são 3 bilhetes por linha COM a
-                                sidebar w-64: sobram ~42px úteis por caixa e
-                                o dinheiro (`whitespace-nowrap`, 18px) era
-                                cortado pela borda do bilhete; por isso a
-                                grade vira coluna única nessa faixa e volta
-                                a par em 2xl. */}
-                            <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3">
-                              <p className="mb-1 text-xs font-semibold text-zinc-300">
-                                Desconto
-                              </p>
-                              <p className="whitespace-nowrap text-lg font-black italic tabular-nums text-white">
-                                {coupon.type === "percentage"
-                                  ? `${coupon.value ?? 0}% OFF`
-                                  : `R$ ${Number(coupon.value ?? 0).toFixed(2)}`}
-                              </p>
-                            </div>
-                            <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3 text-right">
-                              <p className="mb-1 text-xs font-semibold text-zinc-300">
-                                Mínimo Compra
-                              </p>
-                              <p className="whitespace-nowrap text-lg font-black tabular-nums text-white">
-                                {/* Achado 15 da auditoria de 20/08/2026:
-                                    `.toFixed(0)` arredondava R$ 49,90 para
-                                    "R$ 50" — valor que não existe, e que
-                                    quem compra usa para decidir se bate o
-                                    mínimo. `formatCurrency` é o mesmo
-                                    utilitário de moeda já usado no resto do
-                                    painel, com centavos garantidos. */}
+                      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                        <p
+                          className={cn(
+                            "min-w-0 break-words text-2xl font-bold tabular-nums",
+                            coupon.active ? "text-zinc-50" : "text-zinc-400",
+                          )}
+                        >
+                          <span className="sr-only">Desconto </span>
+                          {coupon.type === "percentage"
+                            ? `${coupon.value ?? 0}% OFF`
+                            : formatCurrency(Number(coupon.value ?? 0))}
+                        </p>
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-xs font-bold ${classesDoSeloPorRotulo[rotulo]}`}
+                        >
+                          {rotulo}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs leading-relaxed text-zinc-400">
+                        <span>
+                          {coupon.validUntil ? (
+                            <>
+                              Expira em:{" "}
+                              {new Date(coupon.validUntil).toLocaleDateString(
+                                "pt-BR",
+                              )}
+                            </>
+                          ) : (
+                            "Aproveitamento"
+                          )}
+                        </span>
+                        <span className="tabular-nums">
+                          {coupon.usageCount} / {coupon.usageLimit || "∞"} usos
+                        </span>
+                      </div>
+                      {indisponivel && (
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-orange-300">
+                          <LockKeyhole
+                            aria-hidden="true"
+                            className="size-3.5"
+                          />
+                          {rotulo === "Expirado"
+                            ? "Validade encerrada"
+                            : "Limite atingido"}
+                        </p>
+                      )}
+                      {cupomPodeCobrirACompraInteira(coupon) && (
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-orange-300">
+                          <AlertCircle
+                            aria-hidden="true"
+                            className="size-3.5 shrink-0"
+                          />
+                          Confira as formas de pagamento
+                        </p>
+                      )}
+                      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
+                        <button
+                          type="button"
+                          aria-label={`Detalhes do cupom ${coupon.code}`}
+                          aria-expanded={aberto}
+                          aria-controls={`coupon-details-${coupon.id}`}
+                          onClick={() =>
+                            setDetalhesAbertos((prev) => ({
+                              ...prev,
+                              [coupon.id]: !prev[coupon.id],
+                            }))
+                          }
+                          className={SECUNDARIO}
+                        >
+                          <ChevronDown
+                            aria-hidden="true"
+                            className={cn(
+                              "size-4 shrink-0 text-zinc-400",
+                              aberto && "rotate-180",
+                            )}
+                          />
+                          {aberto ? "Recolher" : "Detalhes"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onNavigate("admin-coupon-form", coupon.id)
+                          }
+                          disabled={isOffline}
+                          className={SECUNDARIO}
+                        >
+                          <Edit
+                            aria-hidden="true"
+                            className="size-4 shrink-0 text-sky-300"
+                          />
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Excluir cupom ${coupon.code}`}
+                          onClick={() => handleDelete(coupon.id)}
+                          disabled={isOffline}
+                          className={`${SECUNDARIO} px-0`}
+                        >
+                          <Trash
+                            aria-hidden="true"
+                            className="size-5 text-red-400"
+                          />
+                        </button>
+                      </div>
+                      {aberto && (
+                        <div
+                          id={`coupon-details-${coupon.id}`}
+                          className="mt-4 space-y-3 border-t border-white/10 pt-4 text-sm text-zinc-400"
+                        >
+                          <p className="break-all font-bold text-zinc-50">
+                            {coupon.code}
+                          </p>
+                          <p>
+                            {coupon.type === "percentage"
+                              ? "Desconto Percentual"
+                              : "Desconto Fixo"}
+                          </p>
+                          <div className="flex flex-wrap items-end justify-between gap-3">
+                            <div>
+                              <p className="text-xs">Mínimo Compra</p>
+                              <p className="mt-1 text-lg font-bold tabular-nums text-zinc-50">
                                 {formatCurrency(coupon.minPurchase || 0)}
                               </p>
                             </div>
+                            {coupon.alcance === "vitrine" && (
+                              <span className="rounded-full border border-teal-300/20 bg-teal-300/10 px-2 py-1 text-xs font-semibold text-teal-300">
+                                No checkout
+                              </span>
+                            )}
+                            {coupon.alcance === "exclusivo" && (
+                              <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-1 text-xs font-semibold text-violet-300">
+                                Exclusivo
+                              </span>
+                            )}
                           </div>
-
-                          {coupon.validUntil && (
-                            <div className="mb-4 flex items-center gap-2 px-1">
-                              <Calendar className="size-3.5 text-zinc-400" />
-                              <span className="text-xs font-semibold text-zinc-400">
-                                Expira em:{" "}
-                                <span className="font-bold tabular-nums text-white">
-                                  {new Date(
-                                    coupon.validUntil,
-                                  ).toLocaleDateString("pt-BR")}
-                                </span>
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Progress / Utilization */}
-                        <div className="mb-6 space-y-2">
-                          <div className="flex items-center justify-between px-1">
-                            <div className="flex items-center gap-1.5">
-                              <Users className="size-3.5 text-zinc-400" />
-                              <span className="text-xs font-semibold text-zinc-300">
-                                Aproveitamento
-                              </span>
-                            </div>
-                            <span className="text-xs font-black tabular-nums text-white">
-                              {coupon.usageCount}{" "}
-                              <span className="font-semibold text-zinc-400">
-                                / {coupon.usageLimit || "∞"} usos
-                              </span>
-                            </span>
-                          </div>
+                          <p>
+                            Aproveitamento · {coupon.usageCount} /{" "}
+                            {coupon.usageLimit || "∞"} usos
+                          </p>
                           {coupon.usageLimit && coupon.usageLimit > 0 ? (
-                            <div className="relative h-1.5 w-full overflow-hidden rounded-full border border-white/5 bg-white/[0.02]">
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{
+                            <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                              <div
+                                className="h-full rounded-full bg-violet-300"
+                                style={{
                                   width: `${Math.min(((coupon.usageCount || 0) / coupon.usageLimit) * 100, 100)}%`,
                                 }}
-                                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
                               />
                             </div>
                           ) : (
-                            <div className="relative h-1.5 w-full overflow-hidden rounded-full border border-white/5 bg-white/[0.02]">
-                              <div className="h-full w-[35%] animate-[pulse_2s_infinite] rounded-full bg-zinc-800" />
+                            <p>Sem limite de utilizações.</p>
+                          )}
+                          <p>
+                            Ativação manual ·{" "}
+                            {coupon.active ? "Ligada" : "Desligada"}
+                          </p>
+                          {cupomPodeCobrirACompraInteira(coupon) && (
+                            <p className="text-sm leading-relaxed text-orange-200">
+                              {lojaSoRecebePeloApp
+                                ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
+                                : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
+                            </p>
+                          )}
+                          {indisponivel && (
+                            <div className="rounded-2xl border border-orange-300/20 bg-orange-300/5 p-3">
+                              <p className="font-bold text-orange-300">
+                                Cupom indisponível
+                              </p>
+                              <p className="mt-1 leading-relaxed">
+                                A chave está ligada. Ajuste{" "}
+                                {rotulo === "Expirado"
+                                  ? "a validade"
+                                  : "o limite de uso"}{" "}
+                                para voltar a aceitar o cupom.
+                              </p>
                             </div>
                           )}
                         </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2 border-t border-white/5 pt-4">
-                          <button
-                            onClick={() =>
-                              onNavigate("admin-coupon-form", coupon.id)
-                            }
-                            disabled={isOffline}
-                            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:bg-white/10 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                          >
-                            <Edit className="size-3.5" /> Editar
-                          </button>
-                          <button
-                            onClick={() => handleDelete(coupon.id)}
-                            disabled={isOffline}
-                            className="flex size-10 items-center justify-center rounded-xl border border-red-500/10 bg-red-500/10 text-red-400 transition-all duration-300 hover:bg-red-500 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                          >
-                            <Trash className="size-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
+                      )}
+                    </motion.div>
+                  );
+                })}
               </motion.div>
+              <p className="mt-5 text-xs text-zinc-400">
+                {coupons.length} {coupons.length === 1 ? "cupom" : "cupons"} ·
+                mais recentes primeiro.
+              </p>
             </div>
           )}
         </AnimatePresence>
@@ -763,7 +845,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         title="Guia de Campanhas Promocionais"
       >
         <div className="space-y-4">
-          <p className="text-xs leading-relaxed text-zinc-400">
+          <p className="text-sm leading-relaxed text-zinc-400">
             Nesta tela você pode criar e gerenciar cupons de desconto para
             campanhas de marketing e promoções especiais da sua loja.
           </p>
@@ -774,33 +856,35 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Ticket className="size-4 text-emerald-500" />
+                <div className="flex items-center gap-2 text-sm font-bold text-zinc-50">
+                  <Selo icone={Ticket} matiz="#FF91B9" />
                   Código do Cupom
                 </div>
-                <p className="text-xs text-zinc-400">
+                <p className="text-sm leading-relaxed text-zinc-400">
                   O texto digitado pelo cliente no checkout (ex: COMPRA10). Deve
                   ser curto, sem espaços e em letras maiúsculas.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Users className="size-4 text-sky-400" />
+                <div className="flex items-center gap-2 text-sm font-bold text-zinc-50">
+                  <Selo icone={Users} matiz="#73BFFF" />
                   Limite de Uso & Mínimos
                 </div>
-                <p className="text-xs text-zinc-400">
+                <p className="text-sm leading-relaxed text-zinc-400">
                   Configure o valor mínimo de compra para ativação e o limite
-                  total de usos permitidos (para evitar prejuízos).
+                  total de usos permitidos (para evitar prejuízos). Ao chegar no
+                  limite, o selo muda para "Esgotado" e o cupom deixa de ser
+                  aceito no checkout.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Calendar className="size-4 text-amber-500" />
+                <div className="flex items-center gap-2 text-sm font-bold text-zinc-50">
+                  <Selo icone={Calendar} matiz="#FFA45C" />
                   Validade
                 </div>
-                <p className="text-xs text-zinc-400">
+                <p className="text-sm leading-relaxed text-zinc-400">
                   {/* Achado 16 da auditoria de 20/08/2026, terceira
                       ocorrência (não estava no relatório original): mesmo
                       erro das duas primeiras — o cupom nunca foi aceito no
@@ -812,11 +896,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
               </div>
 
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Sparkles className="size-4 text-indigo-400" />
+                <div className="flex items-center gap-2 text-sm font-bold text-zinc-50">
+                  <Selo icone={Percent} matiz="#BAA0FF" />
                   Tipos de Desconto
                 </div>
-                <p className="text-xs text-zinc-400">
+                <p className="text-sm leading-relaxed text-zinc-400">
                   <strong className="text-white">Fixo:</strong> Subtrai um valor
                   em reais (ex: R$ 10).{" "}
                   <strong className="text-white">Percentual:</strong> Subtrai
@@ -828,13 +912,6 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         </div>
       </AdminHelpModal>
 
-      {/* Decorative Elements */}
-      <div className="pointer-events-none fixed inset-0 z-[-1] overflow-hidden">
-        <div className="absolute left-[-10%] top-[-10%] size-2/5 rounded-full bg-emerald-500/5 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] size-2/5 rounded-full bg-white/5 blur-[120px]" />
-        <div className="absolute left-1/2 top-1/2 z-[-2] size-full -translate-x-1/2 -translate-y-1/2 bg-[#09090b]" />
-      </div>
-
       {/* Diálogo de Confirmação de Exclusão de Cupom */}
       <AlertDialog
         open={couponToDelete !== null}
@@ -842,21 +919,25 @@ export const AdminCouponsView = memo(function AdminCouponsView({
       >
         <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
+            <Selo icone={Trash} matiz="#FF6868" />
+            <AlertDialogTitle className="text-2xl font-bold text-zinc-50">
               Excluir Cupom?
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-zinc-400">
+            <p className="break-all text-sm font-bold text-zinc-400">
+              {coupons.find((coupon) => coupon.id === couponToDelete)?.code}
+            </p>
+            <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
               Tem certeza que deseja excluir este cupom? Esta ação não pode ser
               desfeita e invalidará o código para os clientes.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className={SECUNDARIO}>
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeleteCoupon}
-              className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
+              className={SECUNDARIO}
             >
               Excluir Cupom
             </AlertDialogAction>

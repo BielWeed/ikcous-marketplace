@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
+import { useAuth } from "@/hooks/useAuth";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
 import { useCoupons } from "@/hooks/useCoupons";
@@ -41,12 +42,26 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import {
+  MENSAGEM_FIM_ANTES_DO_INICIO,
+  fimDoBannerEmTexto,
+  problemaDasDatas,
+} from "@/lib/datas-do-banner";
+import {
+  AVISO_DE_LINK_RECUSADO,
+  LINK_DA_PAGINA_DA_LOJA,
+  avisoDoLinkDigitado,
+  linkDaCategoria,
+  linkDoBannerParaSalvar,
+} from "@/lib/destino-do-banner";
+import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import {
   gravarModoDoEditor,
   lerModoDoEditor,
   modoAoAbrirOBanner,
 } from "@/lib/modo-do-editor-de-banner";
-import { cn, normalizeText } from "@/lib/utils";
+import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
@@ -684,6 +699,13 @@ export const AdminBannersView = memo(function AdminBannersView({
     refreshBanners,
   } = useBanners(true);
   const { products } = useProducts();
+  // L10 — o rascunho do formulário é do USUÁRIO (`admin_banner_form_draft:<uid>`):
+  // cada admin só lê, grava e apaga o dele. Sem uid não há chave, e a tela
+  // não lê nem grava rascunho (nunca cai numa chave compartilhada).
+  const { user } = useAuth();
+  const chaveDoRascunho = user?.id
+    ? chaveDoUsuario("admin_banner_form_draft", user.id)
+    : null;
   useCoupons(true);
   const { categories } = useCategories();
 
@@ -694,6 +716,8 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const isOffline = useOnlineStatus();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [edicaoPendenteAposSalvar, setEdicaoPendenteAposSalvar] =
+    useState(false);
   const isSavedRef = useRef(false);
   // Espelho em ref de isSubmitting: os caminhos de fechamento (Escape,
   // botão voltar) capturam handleOpenChange em closure antiga — lendo o
@@ -703,6 +727,8 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
   const [uploading, setUploading] = useState(false);
+  const geracaoDoUploadPendente = useRef<number | null>(null);
+  const geracaoDoEditor = useRef(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTab, setSelectedTab] = useLocalStorage<
     "all" | "home_top" | "home_middle" | "home_bottom"
@@ -715,6 +741,9 @@ export const AdminBannersView = memo(function AdminBannersView({
     id: string;
     imageUrl: string;
   } | null>(null);
+  // Fim da programação já passou: pede confirmação antes de salvar.
+  const [confirmarFimVencido, setConfirmarFimVencido] = useState(false);
+  const fimVencidoConfirmadoRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAction, setActiveAction] = useState<{
     id: string;
@@ -743,6 +772,12 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [formData, setFormData] = useState<Partial<Banner>>(() =>
     defaultBannerFor("home_top", 0),
   );
+  const formularioAtual = useRef({ formData, bannerMode });
+  // Inclui a digitação que ainda aguarda o debounce do LocalBufferedInput.
+  const revisaoDaDigitacao = useRef(0);
+  useEffect(() => {
+    formularioAtual.current = { formData, bannerMode };
+  }, [formData, bannerMode]);
 
   // Sync destinationMode based on link or productId
   useEffect(() => {
@@ -815,8 +850,9 @@ export const AdminBannersView = memo(function AdminBannersView({
   const dynamicRouteSuggestions = useMemo(() => {
     const base = [
       { label: "Sem Redirecionamento", path: "" },
-      { label: "Início", path: "/" },
-      { label: "Produtos", path: "/produtos" },
+      // Sem atalho "Produtos": a loja não tem `/produtos`; a lista de produtos
+      // é a própria Home ("Início").
+      { label: "Início", path: LINK_DA_PAGINA_DA_LOJA },
       { label: "Carrinho", path: "/checkout" },
       { label: "Perfil", path: "/profile" },
     ];
@@ -824,7 +860,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       .filter((c) => c.isActive)
       .map((c) => ({
         label: `Categoria: ${c.name}`,
-        path: `/?category=${c.name}`,
+        path: linkDaCategoria(c.name),
       }));
     return [...base, ...categoryChips];
   }, [categories]);
@@ -955,19 +991,30 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
   const [adjustingImgUrl, setAdjustingImgUrl] = useState("");
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
+  // O bloqueio síncrono pertence à geração: uma resposta antiga não libera a nova.
+  const geracaoDoRecortePendente = useRef<number | null>(null);
 
   const openAdjuster = (url: string) => {
+    if (isSubmittingRef.current) return;
     setAdjustingImgUrl(url);
     setIsAdjusterOpen(true);
   };
 
   const handleAdjustConfirm = async (croppedBlob: Blob) => {
+    if (
+      isSubmittingRef.current ||
+      geracaoDoRecortePendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para salvar a imagem ajustada.",
       });
       return;
     }
+    const geracaoDoRecorte = geracaoDoEditor.current;
+    geracaoDoRecortePendente.current = geracaoDoRecorte;
     setIsUploadingAdjusted(true);
     // Mesmo achado do produto (AdminProductFormView-499): o ImageAdjuster
     // exporta webp — nome/tipo fixos ".jpg"/"image/jpeg" mentiam sobre o
@@ -975,8 +1022,15 @@ export const AdminBannersView = memo(function AdminBannersView({
     // derivado do tipo REAL do blob é compartilhado com a tela de produtos.
     const file = arquivoDaImagemRecortada(croppedBlob, "banner-image-");
     const loadingToast = toast.loading("Enviando imagem recortada...");
+    const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       const url = await uploadBannerImage(file);
+      // O recorte pertence à abertura que o iniciou, assim como o upload normal.
+      if (geracaoDoRecorte !== geracaoDoEditor.current) {
+        deleteStorageFile(url).catch(() => {});
+        toast.dismiss(loadingToast);
+        return;
+      }
       if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
         deleteStorageFile(formData.imageUrl).catch(() => {});
       }
@@ -984,10 +1038,18 @@ export const AdminBannersView = memo(function AdminBannersView({
       toast.success("Imagem ajustada com sucesso!", { id: loadingToast });
       setIsAdjusterOpen(false);
     } catch (error) {
+      if (geracaoDoRecorte !== geracaoDoEditor.current) {
+        toast.dismiss(loadingToast);
+        return;
+      }
       console.error("Error uploading adjusted banner image:", error);
       toast.error("Erro ao salvar imagem ajustada", { id: loadingToast });
     } finally {
-      setIsUploadingAdjusted(false);
+      fim();
+      if (geracaoDoRecorte === geracaoDoEditor.current) {
+        geracaoDoRecortePendente.current = null;
+        setIsUploadingAdjusted(false);
+      }
     }
   };
 
@@ -1030,8 +1092,15 @@ export const AdminBannersView = memo(function AdminBannersView({
       titleSuggestions.push(`FRETE GRÁTIS: ${selectedProduct.name}`);
     }
 
+    // Texto que vai para a vitrine: dinheiro com vírgula e espaço comum depois
+    // do "R$" (o Intl usa um espaço inquebrável, que não queremos gravado).
+    // O caractere dentro da regex abaixo é o espaço inquebrável (U+00A0) de
+    // propósito: é exatamente ele que o Intl coloca depois do "R$".
+    const dinheiro = (valor: number) =>
+      // eslint-disable-next-line no-irregular-whitespace
+      formatCurrency(Number(valor)).replace(/ /g, " ");
     const subtitleSuggestions = [
-      `Por apenas R$ ${Number(selectedProduct.price).toFixed(2)}`,
+      `Por apenas ${dinheiro(selectedProduct.price)}`,
       "Confira essa oferta especial na nossa loja!",
     ];
     if (
@@ -1039,9 +1108,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       selectedProduct.originalPrice > selectedProduct.price
     ) {
       subtitleSuggestions.push(
-        `De R$ ${Number(selectedProduct.originalPrice).toFixed(2)} por R$ ${Number(
+        `De ${dinheiro(selectedProduct.originalPrice)} por ${dinheiro(
           selectedProduct.price,
-        ).toFixed(2)}`,
+        )}`,
       );
     }
     if (selectedProduct.freeShipping) {
@@ -1181,11 +1250,18 @@ export const AdminBannersView = memo(function AdminBannersView({
   // banner (abre a partir de dentro dele, via openAdjuster), então é o
   // overlay mais no topo e precisa ser checado ANTES de isDialogOpen — senão
   // o Esc fecha o formulário inteiro (e apaga o upload) enquanto só o
-  // recorte deveria fechar.
+  // recorte deveria fechar. Mesma razão para a pergunta "Este banner já
+  // terminou...": ela abre POR CIMA do formulário, e o Esc fecha só ela.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (isAdjusterOpen) {
+        // O Radix já tratou este Esc (fechou a pergunta/diálogo e chamou
+        // preventDefault) antes de o ouvinte da janela rodar; sem esta guarda
+        // o mesmo Esc fecharia também o formulário de baixo.
+        if (e.defaultPrevented) return;
+        if (confirmarFimVencido) {
+          setConfirmarFimVencido(false);
+        } else if (isAdjusterOpen) {
           setIsAdjusterOpen(false);
         } else if (isDialogOpen) {
           handleOpenChange(false);
@@ -1196,11 +1272,12 @@ export const AdminBannersView = memo(function AdminBannersView({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isDialogOpen, showHelpModal, isAdjusterOpen]);
+  }, [isDialogOpen, showHelpModal, isAdjusterOpen, confirmarFimVencido]);
 
   // Reset modal and adjuster states when active is false to prevent focus traps and scroll lock
   useEffect(() => {
     if (!active) {
+      geracaoDoEditor.current += 1;
       setIsDialogOpen(false);
       setShowHelpModal(false);
       setEditingBanner(null);
@@ -1315,8 +1392,18 @@ export const AdminBannersView = memo(function AdminBannersView({
       ...defaultBannerFor(defaultPosition, defaultOrder),
     };
 
-    onSetDirty(isBannerFormDirty(formData, initial));
-  }, [isDialogOpen, formData, editingBanner, banners, selectedTab, onSetDirty]);
+    onSetDirty(
+      edicaoPendenteAposSalvar || isBannerFormDirty(formData, initial),
+    );
+  }, [
+    isDialogOpen,
+    formData,
+    editingBanner,
+    banners,
+    selectedTab,
+    onSetDirty,
+    edicaoPendenteAposSalvar,
+  ]);
 
   // State to manage draft recovery
   const [draftToRecover, setDraftToRecover] = useState<{
@@ -1327,8 +1414,8 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   // Check for drafts when dialog opens
   useEffect(() => {
-    if (isDialogOpen) {
-      const savedDraft = localStorage.getItem("admin_banner_form_draft");
+    if (isDialogOpen && chaveDoRascunho) {
+      const savedDraft = localStorage.getItem(chaveDoRascunho);
       if (savedDraft) {
         try {
           const parsed = JSON.parse(savedDraft);
@@ -1347,11 +1434,11 @@ export const AdminBannersView = memo(function AdminBannersView({
     } else {
       setDraftToRecover(null);
     }
-  }, [isDialogOpen, editingBanner]);
+  }, [isDialogOpen, editingBanner, chaveDoRascunho]);
 
   // Debounced auto-save effect
   useEffect(() => {
-    if (!isDialogOpen || isSavedRef.current) return;
+    if (!isDialogOpen || isSavedRef.current || !chaveDoRascunho) return;
 
     const defaultPosition =
       editingBanner?.position ||
@@ -1375,14 +1462,18 @@ export const AdminBannersView = memo(function AdminBannersView({
         editingBannerId: editingBanner?.id || undefined,
         savedAt: new Date().toISOString(),
       };
-      localStorage.setItem(
-        "admin_banner_form_draft",
-        JSON.stringify(draftData),
-      );
+      localStorage.setItem(chaveDoRascunho, JSON.stringify(draftData));
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [formData, isDialogOpen, editingBanner, banners, selectedTab]);
+  }, [
+    formData,
+    isDialogOpen,
+    editingBanner,
+    banners,
+    selectedTab,
+    chaveDoRascunho,
+  ]);
 
   // O toque no alternador troca o modo E o lembra neste aparelho. Abrir o
   // editor nunca grava: só a escolha do lojista vira preferência.
@@ -1392,6 +1483,10 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleOpenDialog = (banner?: Banner) => {
+    geracaoDoEditor.current += 1;
+    setUploading(false);
+    setIsUploadingAdjusted(false);
+    setIsAdjusterOpen(false);
     setActiveColorElement("titleColor");
     setProductSearch("");
 
@@ -1405,6 +1500,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     setSelectedCouponCode(initialCoupon);
 
     isSavedRef.current = false;
+    setEdicaoPendenteAposSalvar(false);
     setActiveStep(1);
     if (banner?.id) {
       setEditingBanner(banner);
@@ -1486,6 +1582,8 @@ export const AdminBannersView = memo(function AdminBannersView({
       // ar. Ignora a tentativa: no sucesso o diálogo se fecha sozinho; na
       // falha ele segue aberto com o toast de erro e o lojista decide.
       if (isSubmittingRef.current) return;
+      geracaoDoEditor.current += 1;
+      setUploading(false);
       setProductSearch("");
       setSelectedCouponCode("");
       if (!isSavedRef.current) {
@@ -1497,15 +1595,14 @@ export const AdminBannersView = memo(function AdminBannersView({
           // O rascunho pode apontar para a URL recém-apagada — limpa o
           // campo para a recuperação não restaurar uma imagem morta.
           try {
-            const bruto = localStorage.getItem("admin_banner_form_draft");
-            if (bruto) {
+            const bruto = chaveDoRascunho
+              ? localStorage.getItem(chaveDoRascunho)
+              : null;
+            if (chaveDoRascunho && bruto) {
               const rascunho = JSON.parse(bruto);
               if (rascunho?.formData?.imageUrl === formData.imageUrl) {
                 rascunho.formData.imageUrl = "";
-                localStorage.setItem(
-                  "admin_banner_form_draft",
-                  JSON.stringify(rascunho),
-                );
+                localStorage.setItem(chaveDoRascunho, JSON.stringify(rascunho));
               }
             }
           } catch {
@@ -1645,6 +1742,12 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (
+      isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description:
@@ -1655,23 +1758,45 @@ export const AdminBannersView = memo(function AdminBannersView({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const geracaoDoUpload = geracaoDoEditor.current;
+    geracaoDoUploadPendente.current = geracaoDoUpload;
     setUploading(true);
     const loadingToast = toast.loading("Enviando imagem do banner...");
+    const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       const url = await uploadBannerImage(file);
+      // O upload pertence à abertura que o iniciou.
+      if (geracaoDoUpload !== geracaoDoEditor.current) {
+        deleteStorageFile(url).catch(() => {});
+        toast.dismiss(loadingToast);
+        return;
+      }
       if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
         deleteStorageFile(formData.imageUrl).catch(() => {});
       }
       setFormData((prev) => ({ ...prev, imageUrl: url }));
       toast.success("Imagem enviada com sucesso", { id: loadingToast });
     } catch {
+      if (geracaoDoUpload !== geracaoDoEditor.current) {
+        toast.dismiss(loadingToast);
+        return;
+      }
       toast.error("Erro ao enviar imagem", { id: loadingToast });
     } finally {
-      setUploading(false);
+      fim();
+      if (geracaoDoUpload === geracaoDoEditor.current) {
+        geracaoDoUploadPendente.current = null;
+        setUploading(false);
+      }
     }
   };
 
   const handleSubmit = async () => {
+    // A confirmação "Salvar mesmo assim" vale para ESTA chamada só: lida e
+    // zerada antes de qualquer retorno antecipado (offline, salvando...),
+    // senão sobraria `true` e pularia a pergunta no próximo banner vencido.
+    const jaConfirmouFimVencido = fimVencidoConfirmadoRef.current;
+    fimVencidoConfirmadoRef.current = false;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description:
@@ -1679,9 +1804,17 @@ export const AdminBannersView = memo(function AdminBannersView({
       });
       return;
     }
-    if (isSubmitting) return;
+    if (
+      isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current ||
+      geracaoDoRecortePendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
+    const revisaoEnviada = revisaoDaDigitacao.current;
     setIsSubmitting(true);
     isSubmittingRef.current = true;
+    const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       if (!formData.imageUrl) {
         toast.error("Imagem é obrigatória");
@@ -1689,14 +1822,42 @@ export const AdminBannersView = memo(function AdminBannersView({
         return;
       }
 
-      let sanitizedLink = formData.link ? formData.link.trim() : "";
+      // Datas sem sentido não salvam em silêncio: fim antes do início
+      // bloqueia; fim que já passou (banner que nunca vai aparecer) pergunta.
+      // Banner que já estava vencido e continua com a mesma data de fim não
+      // pergunta de novo (a lojista não mexeu nas datas).
+      const problemaDeData = problemaDasDatas(
+        formData.startDate,
+        formData.endDate,
+      );
+      const fimMudou =
+        !editingBanner ||
+        (editingBanner.endDate ?? null) !== (formData.endDate ?? null);
       if (
-        sanitizedLink &&
-        !sanitizedLink.startsWith("/") &&
-        !sanitizedLink.startsWith("http://") &&
-        !sanitizedLink.startsWith("https://")
+        problemaDeData === "fim-antes-do-inicio" ||
+        (problemaDeData === "fim-ja-passou" &&
+          fimMudou &&
+          !jaConfirmouFimVencido)
       ) {
-        sanitizedLink = `/${sanitizedLink}`;
+        if (problemaDeData === "fim-antes-do-inicio") {
+          toast.error(MENSAGEM_FIM_ANTES_DO_INICIO);
+        } else {
+          setConfirmarFimVencido(true);
+        }
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      // Endereço de site sem https:// (`wa.me/55...`) ganha o https://; sem
+      // barra no começo ganha uma (como sempre foi); `javascript:`, `data:`,
+      // `//outro-site` e afins não passam: a loja abriria o link ao tocar.
+      const sanitizedLink = linkDoBannerParaSalvar(formData.link);
+      if (sanitizedLink === null) {
+        toast.error(AVISO_DE_LINK_RECUSADO);
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        return;
       }
 
       const dataToSubmit = {
@@ -1727,15 +1888,38 @@ export const AdminBannersView = memo(function AdminBannersView({
       if (editingBanner) {
         await updateBanner(editingBanner.id, dataToSubmit);
       } else {
-        await addBanner(dataToSubmit as Required<Omit<Banner, "id">>);
+        const criado = await addBanner(
+          dataToSubmit as Required<Omit<Banner, "id">>,
+        );
+        // Se houve nova edição, o próximo salvar atualiza o banner criado.
+        // A imagem enviada já está publicada e não é mais um upload órfão.
+        if (criado?.id) {
+          setEditingBanner({ ...dataToSubmit, id: criado.id } as Banner);
+        }
+      }
+      const mudouDuranteEnvio =
+        JSON.stringify(formularioAtual.current.formData) !==
+          JSON.stringify(formData) ||
+        formularioAtual.current.bannerMode !== bannerMode ||
+        revisaoDaDigitacao.current !== revisaoEnviada;
+      if (mudouDuranteEnvio) {
+        setEdicaoPendenteAposSalvar(true);
+        if (editingBanner) {
+          setEditingBanner({ ...editingBanner, ...dataToSubmit });
+        }
+        onSetDirty?.(true);
+        return;
       }
       isSavedRef.current = true;
-      localStorage.removeItem("admin_banner_form_draft");
+      geracaoDoEditor.current += 1;
+      setEdicaoPendenteAposSalvar(false);
+      if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Erro ao salvar banner:", error);
       toast.error("Erro ao salvar as configurações do banner.");
     } finally {
+      fim();
       setIsSubmitting(false);
       isSubmittingRef.current = false;
     }
@@ -2290,7 +2474,12 @@ export const AdminBannersView = memo(function AdminBannersView({
 
       {/* Formulário de Cadastro / Edição (Renderizado Inline como Página) */}
       {isDialogOpen && (
-        <div className="relative z-10 mx-auto w-full max-w-2xl space-y-4 overflow-x-hidden px-4 pb-6 pt-0 text-white sm:px-6 sm:pb-8 sm:pt-0 lg:px-8 lg:pb-10 lg:pt-0">
+        <div
+          onInputCapture={() => {
+            revisaoDaDigitacao.current += 1;
+          }}
+          className="relative z-10 mx-auto w-full max-w-2xl space-y-4 overflow-x-hidden px-4 pb-6 pt-0 text-white sm:px-6 sm:pb-8 sm:pt-0 lg:px-8 lg:pb-10 lg:pt-0"
+        >
           <div className="pointer-events-none absolute -right-40 -top-40 size-80 rounded-full bg-admin-gold/5 blur-[120px]" />
           <div className="pointer-events-none absolute bottom-0 -left-40 size-80 rounded-full bg-[#FFBF00]/5 blur-[120px]" />
 
@@ -2623,7 +2812,8 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <button
                     type="button"
                     onClick={() => {
-                      localStorage.removeItem("admin_banner_form_draft");
+                      if (chaveDoRascunho)
+                        localStorage.removeItem(chaveDoRascunho);
                       setDraftToRecover(null);
                       toast.info("Rascunho descartado.");
                     }}
@@ -2753,7 +2943,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             accept="image/*"
                             className="hidden"
                             onChange={handleFileUpload}
-                            disabled={uploading}
+                            disabled={uploading || isSubmitting}
                           />
                         </div>
                       </div>
@@ -3068,7 +3258,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           accept="image/*"
                           className="hidden"
                           onChange={handleFileUpload}
-                          disabled={uploading}
+                          disabled={uploading || isSubmitting}
                         />
                       </div>
                     </div>
@@ -4270,7 +4460,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                               ) {
                                 setFormData((prev) => ({
                                   ...prev,
-                                  link: "/produtos",
+                                  link: LINK_DA_PAGINA_DA_LOJA,
                                   productId: "",
                                 }));
                               }
@@ -4453,8 +4643,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     {selectedProduct.name}
                                   </h4>
                                   <p className="mt-0.5 font-mono text-[11px] font-black leading-none text-amber-500">
-                                    R${" "}
-                                    {Number(selectedProduct.price).toFixed(2)}
+                                    {formatCurrency(
+                                      Number(selectedProduct.price),
+                                    )}
                                   </p>
                                 </div>
                               </div>
@@ -4539,7 +4730,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     </div>
                                     <div className="flex shrink-0 items-center gap-1.5">
                                       <span className="font-mono text-[11px] font-black text-amber-500">
-                                        R$ {Number(p.price).toFixed(2)}
+                                        {formatCurrency(Number(p.price))}
                                       </span>
                                       <span className="rounded border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-400 transition-colors group-hover:text-white">
                                         Vincular
@@ -4602,8 +4793,21 @@ export const AdminBannersView = memo(function AdminBannersView({
                             name="link"
                             value={formData.link || ""}
                             onFlush={(val) =>
-                              setFormData((prev) => ({ ...prev, link: val }))
+                              setFormData((prev) => {
+                                // Endereço de site sem https:// ganha o
+                                // https:// já aqui: sem isso o painel o
+                                // tratava como "Página da Loja" e o campo
+                                // sumia da tela enquanto a lojista digitava.
+                                const gravado = linkDoBannerParaSalvar(val);
+                                return {
+                                  ...prev,
+                                  link: gravado?.startsWith("https://")
+                                    ? gravado
+                                    : val,
+                                };
+                              })
                             }
+                            validate={avisoDoLinkDigitado}
                             placeholder="Ex: https://wa.me/5511999999999 ou link externo"
                             useShadcn={true}
                             className="h-9 rounded-xl border-white/10 bg-zinc-900/90 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-sky-400 focus:ring-sky-400"
@@ -4731,15 +4935,23 @@ export const AdminBannersView = memo(function AdminBannersView({
                               />
                             </div>
 
-                            {formData.startDate &&
-                              formData.endDate &&
-                              new Date(formData.startDate) >
-                                new Date(formData.endDate) && (
-                                <div className="col-span-2 select-none rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-[11px] font-bold text-rose-400">
-                                  ⚠️ Atenção: A data de expiração deve ser
-                                  posterior à data de início.
-                                </div>
-                              )}
+                            {problemaDasDatas(
+                              formData.startDate,
+                              formData.endDate,
+                            ) === "fim-antes-do-inicio" ? (
+                              <div
+                                role="alert"
+                                className="col-span-2 select-none rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-[11px] font-bold text-rose-400"
+                              >
+                                ⚠️ {MENSAGEM_FIM_ANTES_DO_INICIO}
+                              </div>
+                            ) : (
+                              formData.endDate && (
+                                <p className="select-none text-[11px] font-bold text-amber-300 sm:col-span-2">
+                                  ⏱ {fimDoBannerEmTexto(formData.endDate)}
+                                </p>
+                              )
+                            )}
                           </div>
 
                           {/* Scheduling Sentinel - Campaign Overlap & Clutter Auditor */}
@@ -4882,12 +5094,17 @@ export const AdminBannersView = memo(function AdminBannersView({
                   </Button>
                   <Button
                     onClick={handleSubmit}
-                    disabled={uploading || isSubmitting || isOffline}
+                    disabled={
+                      uploading ||
+                      isUploadingAdjusted ||
+                      isSubmitting ||
+                      isOffline
+                    }
                     className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
                   >
                     {isOffline
                       ? "Modo Offline"
-                      : uploading
+                      : uploading || isUploadingAdjusted
                         ? "Enviando Imagem..."
                         : isSubmitting
                           ? "Salvando..."
@@ -4935,12 +5152,17 @@ export const AdminBannersView = memo(function AdminBannersView({
                   ) : (
                     <Button
                       onClick={handleSubmit}
-                      disabled={uploading || isSubmitting || isOffline}
+                      disabled={
+                        uploading ||
+                        isUploadingAdjusted ||
+                        isSubmitting ||
+                        isOffline
+                      }
                       className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
                     >
                       {isOffline
                         ? "Modo Offline"
-                        : uploading
+                        : uploading || isUploadingAdjusted
                           ? "Enviando Imagem..."
                           : isSubmitting
                             ? "Salvando..."
@@ -5049,6 +5271,38 @@ export const AdminBannersView = memo(function AdminBannersView({
           />
         )}
       </AnimatePresence>
+
+      {/* Confirmação: salvar banner cujo fim já passou (nunca vai aparecer) */}
+      <AlertDialog
+        open={confirmarFimVencido}
+        onOpenChange={(open) => !open && setConfirmarFimVencido(false)}
+      >
+        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
+              Banner já terminou
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-zinc-400">
+              Este banner já terminou e não vai aparecer. Salvar mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+              Voltar e ajustar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                fimVencidoConfirmadoRef.current = true;
+                setConfirmarFimVencido(false);
+                handleSubmit();
+              }}
+              className="rounded-xl border-0 bg-amber-500 px-4 py-2 text-xs font-bold text-black hover:bg-amber-400"
+            >
+              Salvar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Diálogo de Confirmação de Exclusão de Banner */}
       <AlertDialog

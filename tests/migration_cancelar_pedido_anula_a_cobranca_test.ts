@@ -350,11 +350,38 @@ Deno.test("nenhuma migration POSTERIOR redefine as funções desta (esta não re
         );
       })
       .sort();
+  // A SUCESSORA conhecida (15/10/2026): a 20261241000000 (o reembolso em duvida prende o saldo) REESCREVE
+  // pedido__saldo_a_estornar (desconta o "em duvida") e so REVOGA o EXECUTE do logado na
+  // admin_devolucao_reemitir_reembolso (sem recriar o corpo). O rollback dela devolve o saldo DESTA byte a byte.
+  const SUCESSORA = "20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql";
   const definidoras = definem("update_order_status_atomic");
   assertEquals(definidoras[definidoras.length - 1], NOME);
   assert(definidoras.includes(NOME_80));
-  for (const nome of NOVAS) assertEquals(definem(nome), [NOME]);
-  const reemitir = definem("admin_devolucao_reemitir_reembolso");
+  for (const nome of NOVAS)
+    assertEquals(
+      definem(nome),
+      nome === "pedido__saldo_a_estornar" ? [NOME, SUCESSORA] : [NOME],
+    );
+  const reemitir = definem("admin_devolucao_reemitir_reembolso").filter(
+    (n) => n !== SUCESSORA,
+  );
   assertEquals(reemitir[reemitir.length - 1], NOME);
   assert(reemitir.includes(NOME_97));
+  const sucessora = ler(SUCESSORA);
+  assert(
+    !/CREATE (OR REPLACE )?FUNCTION public\.admin_devolucao_reemitir_reembolso\(/i.test(
+      sucessora,
+    ),
+    "a sucessora nao recria o corpo da reemissao antiga",
+  );
+  assertStringIncludes(
+    sucessora,
+    "REVOKE ALL ON FUNCTION public.admin_devolucao_reemitir_reembolso(uuid, boolean) FROM PUBLIC, anon, authenticated;",
+  );
+  // o rollback da sucessora devolve o saldo DESTA migration (o mesmo corpo, byte a byte)
+  const rbSucessora = ler(`rollback-manual-${SUCESSORA}`);
+  assertEquals(
+    funcao(rbSucessora, "pedido__saldo_a_estornar"),
+    funcao(migration, "pedido__saldo_a_estornar"),
+  );
 });

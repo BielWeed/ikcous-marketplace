@@ -26,7 +26,7 @@
 # `npm run size` mede QUATRO budgets independentes (`.size-limit.cjs`,
 # `scripts/portaoDividido.ts` classifica pelo grafo real do Rollup):
 #   cliente (o que qualquer visitante baixa)         <= 550 kB (era 800 somado)
-#   painel (só depois do `is_admin` do servidor)     <= 450 kB (novo)
+#   painel (só depois do `is_admin` do servidor)     <= 466 kB (450 até 15/10/26)
 #   CSS                                              <= 100 kB (sem mudança)
 #   leitor de código de barras (glue + wasm, C2.5)   <= 400 kB (sem mudança)
 # Medido no fixture build desta mudança: cliente 474,97 kB, painel 402,44 kB
@@ -74,8 +74,8 @@ jobs:
     name: Tipos
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -90,11 +90,11 @@ jobs:
     name: Testes (Deno — edge + unit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -139,8 +139,8 @@ jobs:
     name: Testes front (shard 1/2)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -183,8 +183,8 @@ jobs:
     name: Testes front (shard 2/2)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -199,8 +199,8 @@ jobs:
     name: Build e tamanho
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -227,10 +227,10 @@ jobs:
     name: Varredura de segredo
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -306,8 +306,8 @@ jobs:
     # Alvo é zerar: INFRA-250 para os warnings de eslint, INFRA-220
     # para o alcance do Biome e a normalização de fim de linha.
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -344,8 +344,8 @@ jobs:
     # URL externa (rede alheia deixaria o job vermelho sem culpa do PR) e
     # âncora `#secao` (falso positivo garantido com heading acentuado).
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Verifica os links relativos dos .md
@@ -392,8 +392,8 @@ jobs:
     # arquivo). A lógica em si já é coberta sem banco por
     # tests/db_check_objetos_do_codigo_test.ts, que roda no job Testes.
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm

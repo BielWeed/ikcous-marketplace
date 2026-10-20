@@ -832,7 +832,12 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
   // o próximo render lê `user === null` — exatamente o ramo `user ?
   // <botão cancelar> : <texto explicando>` que este teste prova.
   it("sessão cai (refresh do token falha) com a tela de erro do pagamento já aberta: o botão de cancelar SOME e o texto dos 30 min aparece — mesma tela, sem desmontar", async () => {
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    // O corpo da tela (`CheckoutViewDaConta`), sem a chave por conta do
+    // `CheckoutView`: o que se prova aqui é UMA instância atravessando a
+    // queda de sessão — o app real recria a tela pela chave do App.
+    const { CheckoutViewDaConta: CheckoutView } = await import(
+      "@/views/customer/CheckoutView"
+    );
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
 
     await act(async () => {

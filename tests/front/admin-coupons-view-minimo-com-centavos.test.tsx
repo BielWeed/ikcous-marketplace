@@ -106,6 +106,12 @@ describe("AdminCouponsView — o mínimo de compra mostra os centavos de verdade
     await act(async () => {
       raiz.render(<AdminCouponsView active={true} onNavigate={vi.fn()} />);
     });
+    await act(async () => {
+      for (const botao of hospedeiro.querySelectorAll<HTMLButtonElement>(
+        'button[aria-controls^="coupon-details-"]',
+      ))
+        botao.click();
+    });
   }
 
   function textoDoCard(codigo: string): string {

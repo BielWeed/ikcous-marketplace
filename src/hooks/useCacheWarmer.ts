@@ -1,4 +1,5 @@
 import { DataVault } from "@/lib/dataVault";
+import { miniaturaDaSugestao } from "@/lib/imageUrl";
 import { conexaoDoNavegador, redeLenta } from "@/lib/rede-lenta";
 import { useEffect } from "react";
 
@@ -27,15 +28,23 @@ export function useCacheWarmer() {
         // worker não casa por endereço exato (sw.ts:176). O único pedido cru de
         // banner é o preloadTopBanner (useBanners.ts:15), que passa pelo SW e
         // se auto-serve na gaveta — aquecê-lo aqui era um no-op. Só a 1ª foto
-        // de cada produto é pedida crua (SearchBar, CartItemsList,
-        // ShippingProgress, PremiumOffers) — é a única que vale a pena aquecer.
+        // de cada produto tem consumidor no endereço que se aquece: a ORIGINAL
+        // (CartItemsList, ShippingProgress) e a MINIATURA da sugestão da
+        // busca (SearchBar, via `miniaturaDaSugestao` — a mesma string que ela
+        // renderiza). Quando a loja não redimensiona (IKCOUS), a miniatura é a
+        // própria original e entra uma vez só.
         const vault = await DataVault.init();
 
         const products = await vault.getAll<any>("products");
-        const productUrls = products
-          .slice(0, 15) // Limitar aos primeiros 15 produtos
-          .map((p) => p.images?.[0] || p.imagem_url)
-          .filter((url) => typeof url === "string" && url.trim() !== "");
+        const productUrls = [
+          ...new Set(
+            products
+              .slice(0, 15) // Limitar aos primeiros 15 produtos
+              .map((p) => p.images?.[0] || p.imagem_url)
+              .filter((url) => typeof url === "string" && url.trim() !== "")
+              .flatMap((url: string) => [url, miniaturaDaSugestao(url)]),
+          ),
+        ];
 
         // Laudo 0109 (C5): guarda de rede lenta — o mesmo critério do
         // usePrefetchOnHover. Em 2G/slow-2g ou com economia de dados ligada,

@@ -9,16 +9,19 @@ import {
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { useReviews } from "@/hooks/useReviews";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Star } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 const reviewSchema = z.object({
   rating: z.number().min(1, "Selecione uma nota de 1 a 5."),
-  comment: z.string().min(3, "O comentário deve ter pelo menos 3 caracteres."),
+  // As estrelas bastam: o banco aceita avaliação sem texto (reviews.comment é
+  // nullable, sem CHECK nem trigger). Só espaços conta como vazio (trim no envio).
+  comment: z.string(),
 });
 
 interface ReviewFormProps {
@@ -28,12 +31,16 @@ interface ReviewFormProps {
   // OrderDetailsView): quem toca numa estrela do cartão já chega aqui com a
   // nota escolhida — só preenche `defaultValues.rating`, nada mais muda.
   initialRating?: number;
+  // Quem fecha a folha precisa saber se há comentário escrito a perder: o
+  // formulário mantém esta ref em dia (true = tem texto digitado).
+  temTextoRef?: { current: boolean };
 }
 
 export function ReviewForm({
   productId,
   onSuccess,
   initialRating,
+  temTextoRef,
 }: ReviewFormProps) {
   const { addReview } = useReviews();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -47,13 +54,28 @@ export function ReviewForm({
     },
   });
 
+  const temTexto = form.watch("comment").trim() !== "";
+  useEffect(() => {
+    if (!temTextoRef) return;
+    temTextoRef.current = temTexto;
+    return () => {
+      temTextoRef.current = false;
+    };
+  }, [temTexto, temTextoRef]);
+  // O comentário digitado só existe neste formulário: recarregar o app
+  // (atualização obrigatória, ao ir para segundo plano) o apagaria.
+  useEffect(() => {
+    if (!temTexto) return;
+    return marcarOperacaoSensivel("avaliacao-em-digitacao");
+  }, [temTexto]);
+
   async function onSubmit(values: z.infer<typeof reviewSchema>) {
     setIsSubmitting(true);
     try {
       const result = await addReview({
         productId,
         rating: values.rating,
-        comment: values.comment,
+        comment: values.comment.trim(),
       });
 
       if (result) {
@@ -88,6 +110,7 @@ export function ReviewForm({
                       <button
                         key={star}
                         type="button"
+                        disabled={isSubmitting}
                         className="relative p-0.5 transition-all active:scale-90"
                         onMouseEnter={() => setHoverRating(star)}
                         onMouseLeave={() => setHoverRating(0)}
@@ -116,13 +139,14 @@ export function ReviewForm({
             render={({ field }) => (
               <FormItem className="space-y-2">
                 <FormLabel className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                  Detalhes da Experiência
+                  Detalhes da Experiência (Opcional)
                 </FormLabel>
                 <FormControl>
                   <Textarea
                     placeholder="Conte-nos os detalhes que lhe surpreenderam..."
                     className="min-h-[110px] resize-none rounded-2xl border-zinc-200/60 bg-zinc-50 p-4 text-xs shadow-none transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:ring-0 md:text-sm"
                     {...field}
+                    disabled={isSubmitting}
                   />
                 </FormControl>
                 <FormMessage className="text-[10px] font-bold uppercase tracking-wider text-red-500" />
@@ -133,11 +157,11 @@ export function ReviewForm({
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-12 w-full rounded-2xl bg-primary text-[11px] font-bold uppercase tracking-widest text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
+            className="h-12 w-full rounded-2xl bg-primary text-[11px] font-bold uppercase tracking-widest text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
           >
             {isSubmitting ? (
               <div className="flex items-center justify-center gap-2">
-                <div className="size-3.5 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
                 <span>Publicando...</span>
               </div>
             ) : (

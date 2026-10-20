@@ -92,6 +92,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const {
     adminReviews,
     loading,
+    erroDaListagemAdmin,
     getAllReviews,
     deleteReview,
     aprovarReview,
@@ -150,7 +151,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   );
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState("");
+  const [rascunhos, setRascunhos] = useState<Record<string, string>>({});
+  const replyText = replyingTo ? (rascunhos[replyingTo] ?? "") : "";
+  const editorAtualRef = useRef<string | null>(null);
+  const envioDeRespostaRef = useRef(false);
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
   const [globalVerifiedCount, setGlobalVerifiedCount] = useState(0);
   const [globalRepliedCount, setGlobalRepliedCount] = useState(0);
@@ -174,6 +178,61 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
   const triggerRefresh = () => setRefreshTrigger((prev) => prev + 1);
 
+  const setReplyText = (texto: string) => {
+    if (!replyingTo || envioDeRespostaRef.current) return;
+    setRascunhos((anteriores) => ({ ...anteriores, [replyingTo]: texto }));
+  };
+
+  const abrirResposta = (id: string) => {
+    if (envioDeRespostaRef.current) return;
+    if (isOffline) {
+      toast.error("Você está offline", {
+        description: "Não é possível responder avaliações sem conexão.",
+      });
+      return;
+    }
+    editorAtualRef.current = id;
+    setReplyingTo(id);
+  };
+
+  const fecharResposta = () => {
+    if (envioDeRespostaRef.current) return;
+    editorAtualRef.current = null;
+    setReplyingTo(null);
+  };
+
+  const enviarResposta = async (id: string) => {
+    if (envioDeRespostaRef.current || !replyText.trim()) return;
+    if (isOffline) {
+      haptic.error();
+      toast.error("Você está offline", {
+        description: "Não é possível responder avaliações sem conexão.",
+      });
+      return;
+    }
+    envioDeRespostaRef.current = true;
+    setIsSubmittingReply(true);
+    haptic.light();
+    try {
+      const success = await addMerchantReply(id, replyText);
+      if (success) {
+        haptic.success();
+        setRascunhos((anteriores) => ({ ...anteriores, [id]: "" }));
+        // Uma resposta tardia só fecha o editor que fez o envio.
+        if (editorAtualRef.current === id) {
+          editorAtualRef.current = null;
+          setReplyingTo(null);
+        }
+        triggerRefresh();
+      } else {
+        haptic.error();
+      }
+    } finally {
+      envioDeRespostaRef.current = false;
+      setIsSubmittingReply(false);
+    }
+  };
+
   // Removed ref tracking for filter changes in favor of direct state resets
 
   const firstLoadRef = useRef(true);
@@ -183,14 +242,22 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     reviewsLengthRef.current = adminReviews.length;
   }, [adminReviews.length]);
 
+  // Cada leitura leva um número de rodada: a resposta superada por uma mais
+  // nova (o realtime dispara outra enquanto esta ainda espera) é descartada,
+  // senão a mais velha, chegando por último, sobrescreve os totais. Mesmo
+  // padrão de AdminCustomersView.
+  const rodadaRef = useRef(0);
+
   const loadReviews = useCallback(
     async (pageToFetch: number, silent = false) => {
+      const rodada = ++rodadaRef.current;
       try {
         const result = await getAllReviews(pageToFetch, pageSize, {
           rating: ratingFilter,
           search: searchQuery,
           silent,
         });
+        if (rodada !== rodadaRef.current) return;
         if (result) {
           setTotalReviews(result.total);
           setGlobalVerifiedCount(result.globalVerifiedCount || 0);
@@ -214,6 +281,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           .from("reviews" as any)
           .select("*", { count: "exact", head: true })
           .eq("status", "pendente");
+        if (rodada !== rodadaRef.current) return;
         if (!error && typeof count === "number") {
           setPendentesNoBanco(count);
         }
@@ -261,17 +329,19 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
   // Comunicar estado dirty para o roteador global
   useEffect(() => {
-    onSetDirty?.(replyText.trim().length > 0);
-  }, [replyText, onSetDirty]);
+    onSetDirty?.(
+      active &&
+        Object.values(rascunhos).some((texto) => texto.trim().length > 0),
+    );
+  }, [active, rascunhos, onSetDirty]);
 
   // Reset helper modals when tab becomes inactive to prevent focus traps
   useEffect(() => {
     if (!active) {
       setShowHelpModal(false);
       setConfirmDeleteId(null);
+      editorAtualRef.current = null;
       setReplyingTo(null);
-      setReplyText("");
-      setIsSubmittingReply(false);
       onSetDirty?.(false);
     }
     return () => {
@@ -304,6 +374,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     const ok = await deleteReview(id);
     setConfirmDeleteId(null);
     if (!ok) return; // o toast de erro já foi dado no hook (useReviews)
+    // A avaliação saiu: o rascunho dela não pode manter a tela "com alterações".
+    setRascunhos((anteriores) => {
+      if (!(id in anteriores)) return anteriores;
+      const { [id]: _removido, ...restantes } = anteriores;
+      return restantes;
+    });
     haptic.success();
     if (adminReviews.length === 1 && page > 0) {
       setPage((p) => p - 1);
@@ -799,6 +875,23 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           </div>
         )}
 
+        {erroDaListagemAdmin && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-300"
+          >
+            <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
+            <p className="min-w-0 flex-1 text-xs">{erroDaListagemAdmin}</p>
+            <button
+              type="button"
+              onClick={triggerRefresh}
+              disabled={loading}
+              className="min-h-11 rounded-xl border border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider hover:bg-red-500/10 disabled:opacity-50"
+            >
+              Tentar de novo
+            </button>
+          </div>
+        )}
         <AnimatePresence mode="wait">
           {(loading || firstLoadRef.current) && adminReviews.length === 0 ? (
             <motion.div
@@ -813,26 +906,28 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 : renderCompactSkeleton()}
             </motion.div>
           ) : adminReviews.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative flex flex-col items-center justify-center overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-950/40 py-24 backdrop-blur-3xl"
-            >
-              <div className="bg-radial-gradient pointer-events-none absolute inset-0 from-admin-gold/5 via-transparent to-transparent" />
-              <div className="group relative mb-8 flex size-24 items-center justify-center rounded-3xl border border-white/5 bg-zinc-900/60">
-                <Star className="size-12 text-zinc-700 transition-all duration-500 group-hover:rotate-12 group-hover:text-admin-gold" />
-                <div className="absolute inset-0 rounded-full bg-admin-gold/20 opacity-50 blur-2xl" />
-                <Sparkles className="absolute -right-2 -top-2 size-5 animate-bounce text-admin-gold" />
-              </div>
-              <h3 className="text-xl font-black uppercase tracking-tight text-white">
-                Sem Feedback Ainda
-              </h3>
-              <p className="mt-2 max-w-xs text-center text-sm font-medium leading-relaxed text-zinc-500">
-                As avaliações e depoimentos de satisfação dos seus clientes
-                aparecerão aqui assim que começarem a chegar.
-              </p>
-            </motion.div>
+            !erroDaListagemAdmin && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative flex flex-col items-center justify-center overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-950/40 py-24 backdrop-blur-3xl"
+              >
+                <div className="bg-radial-gradient pointer-events-none absolute inset-0 from-admin-gold/5 via-transparent to-transparent" />
+                <div className="group relative mb-8 flex size-24 items-center justify-center rounded-3xl border border-white/5 bg-zinc-900/60">
+                  <Star className="size-12 text-zinc-700 transition-all duration-500 group-hover:rotate-12 group-hover:text-admin-gold" />
+                  <div className="absolute inset-0 rounded-full bg-admin-gold/20 opacity-50 blur-2xl" />
+                  <Sparkles className="absolute -right-2 -top-2 size-5 animate-bounce text-admin-gold" />
+                </div>
+                <h3 className="text-xl font-black uppercase tracking-tight text-white">
+                  Sem Feedback Ainda
+                </h3>
+                <p className="mt-2 max-w-xs text-center text-sm font-medium leading-relaxed text-zinc-500">
+                  As avaliações e depoimentos de satisfação dos seus clientes
+                  aparecerão aqui assim que começarem a chegar.
+                </p>
+              </motion.div>
+            )
           ) : viewMode === "detailed" ? (
             <motion.div
               variants={containerVariants}
@@ -924,7 +1019,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                         "
                       </div>
                       <p className="text-lg font-medium leading-relaxed tracking-tight text-zinc-200 lg:pr-12">
-                        {review.comment}
+                        {review.comment || "Avaliação só com estrelas."}
                       </p>
                     </div>
 
@@ -978,11 +1073,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                       {!review.merchantReply && (
                         <button
-                          disabled={isOffline}
-                          onClick={() => {
-                            setReplyingTo(review.id);
-                            setReplyText("");
-                          }}
+                          disabled={isOffline || isSubmittingReply}
+                          onClick={() => abrirResposta(review.id)}
                           className="flex items-center gap-2 rounded-2xl bg-admin-gold px-6 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/10 transition-all hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                         >
                           <MessageSquare className="size-3.5" /> Responder
@@ -1103,42 +1195,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             )}
                             <div className="flex items-center justify-end gap-4">
                               <button
-                                onClick={() => setReplyingTo(null)}
+                                onClick={fecharResposta}
                                 className="px-6 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
                                 disabled={isSubmittingReply}
                               >
                                 Cancelar
                               </button>
                               <button
-                                onClick={async () => {
-                                  if (isOffline) {
-                                    haptic.error();
-                                    toast.error("Você está offline", {
-                                      description:
-                                        "Não é possível responder avaliações sem conexão.",
-                                    });
-                                    return;
-                                  }
-                                  if (!replyText.trim()) return;
-                                  haptic.light();
-                                  setIsSubmittingReply(true);
-                                  const success = await addMerchantReply(
-                                    review.id,
-                                    replyText,
-                                  );
-                                  setIsSubmittingReply(false);
-                                  if (success) {
-                                    haptic.success();
-                                    setReplyingTo(null);
-                                    setReplyText("");
-                                    getAllReviews(page, pageSize, {
-                                      rating: ratingFilter,
-                                      search: searchQuery,
-                                    });
-                                  } else {
-                                    haptic.error();
-                                  }
-                                }}
+                                onClick={() => enviarResposta(review.id)}
                                 className="rounded-2xl bg-admin-gold px-8 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale"
                                 disabled={
                                   isSubmittingReply ||
@@ -1221,7 +1285,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                       {/* Comment */}
                       <p className="mb-4 line-clamp-3 text-xs font-medium italic leading-relaxed text-zinc-400">
-                        "{review.comment}"
+                        {review.comment
+                          ? `"${review.comment}"`
+                          : "Avaliação só com estrelas."}
                       </p>
 
                       {/* Merchant Reply Indicator */}
@@ -1266,17 +1332,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                         {!review.merchantReply && (
                           <button
-                            onClick={() => {
-                              if (isOffline) {
-                                toast.error("Você está offline", {
-                                  description:
-                                    "Não é possível responder avaliações sem conexão.",
-                                });
-                                return;
-                              }
-                              setReplyingTo(review.id);
-                              setReplyText("");
-                            }}
+                            onClick={() => abrirResposta(review.id)}
+                            disabled={isOffline || isSubmittingReply}
                             className="rounded-xl bg-admin-gold p-2 text-black shadow-md shadow-admin-gold/10 transition-all hover:scale-105"
                             title="Responder"
                           >
@@ -1330,19 +1387,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                                 Responder
                               </span>
                               <button
-                                onClick={() => {
-                                  if (replyText.trim().length > 0) {
-                                    if (
-                                      globalThis.confirm(
-                                        "Deseja realmente cancelar a resposta? O texto digitado será perdido.",
-                                      )
-                                    ) {
-                                      setReplyingTo(null);
-                                    }
-                                  } else {
-                                    setReplyingTo(null);
-                                  }
-                                }}
+                                onClick={fecharResposta}
+                                disabled={isSubmittingReply}
                                 className="text-[11px] text-zinc-550 hover:text-white"
                               >
                                 ✕
@@ -1361,35 +1407,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             />
                             <div className="flex justify-end gap-2">
                               <button
-                                onClick={async () => {
-                                  if (isOffline) {
-                                    haptic.error();
-                                    toast.error("Você está offline", {
-                                      description:
-                                        "Não é possível responder avaliações sem conexão.",
-                                    });
-                                    return;
-                                  }
-                                  if (!replyText.trim()) return;
-                                  haptic.light();
-                                  setIsSubmittingReply(true);
-                                  const success = await addMerchantReply(
-                                    review.id,
-                                    replyText,
-                                  );
-                                  setIsSubmittingReply(false);
-                                  if (success) {
-                                    haptic.success();
-                                    setReplyingTo(null);
-                                    setReplyText("");
-                                    getAllReviews(page, pageSize, {
-                                      rating: ratingFilter,
-                                      search: searchQuery,
-                                    });
-                                  } else {
-                                    haptic.error();
-                                  }
-                                }}
+                                onClick={() => enviarResposta(review.id)}
                                 className="rounded-lg bg-admin-gold px-4 py-1.5 text-[11px] font-black uppercase text-black transition-all hover:scale-105 disabled:opacity-50"
                                 disabled={
                                   isSubmittingReply ||

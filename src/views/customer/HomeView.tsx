@@ -1,9 +1,14 @@
+import { RodapeDasPoliticas } from "@/components/politicas/RodapeDasPoliticas";
 import { BannerCarousel } from "@/components/ui/custom/BannerCarousel";
 import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
 import { useStore } from "@/contexts/StoreContext";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
-import { cn, normalizeText } from "@/lib/utils";
+import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
+import { categoriaValidaDaHome } from "@/lib/categoria-valida-da-home";
+import { identidadeLegalDaLoja } from "@/lib/identidade-legal-da-loja";
+import { ordenacaoValida } from "@/lib/ordenacao-da-home";
+import { cn } from "@/lib/utils";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { Product, SortOption, View } from "@/types";
 import {
@@ -11,8 +16,8 @@ import {
   ArrowUp,
   Clock,
   PackageSearch,
+  RotateCw,
   SlidersHorizontal,
-  TrendingUp,
 } from "lucide-react";
 import React, { useCallback, useState, useMemo } from "react";
 
@@ -69,14 +74,33 @@ export const HomeView = React.memo(function HomeView({
   isLoading = false,
   scrollProgress = 0,
   selectedProductId,
-  selectedCategory,
+  selectedCategory: categoriaPedida,
   onCategoryChange,
-  sortBy,
+  sortBy: sortByPedido,
   onSortByChange,
   onHeaderDockChange,
 }: HomeViewProps) {
-  const { config, isLoaded: configLoaded } = useStore();
+  // Valor que não é uma ordenação de hoje (ex.: o antigo "sold", de quando
+  // existia "Mais Vendidos") cai em Relevância, em vez de ordenar por nada.
+  const sortBy = ordenacaoValida(sortByPedido);
+  const {
+    config,
+    isLoaded: configLoaded,
+    catalogoErro,
+    fetchProducts,
+  } = useStore();
   const [showSortMenu, setShowSortMenu] = useState(false);
+  // "Tentar de novo" do catálogo: enquanto a consulta roda, o botão avisa e
+  // não aceita toque repetido.
+  const [tentandoCatalogo, setTentandoCatalogo] = useState(false);
+  const tentarCatalogoDeNovo = useCallback(async () => {
+    setTentandoCatalogo(true);
+    try {
+      await fetchProducts();
+    } finally {
+      setTentandoCatalogo(false);
+    }
+  }, [fetchProducts]);
   // Laudo de acessibilidade 05/09 (onda 3, item B5): guarda o botão que abriu
   // o menu de ordenar para devolver o foco a ele quando o Esc fechar.
   const sortButtonRef = React.useRef<HTMLButtonElement>(null);
@@ -90,6 +114,13 @@ export const HomeView = React.memo(function HomeView({
     }
   }, [showSortMenu]);
   const { categories, isLoading: isLoadingCategories } = useCategories();
+  // O endereço pode pedir uma categoria que a loja não tem (link velho de
+  // banner): nesse caso a vitrine mostra "Todas" em vez de ficar vazia.
+  const selectedCategory = categoriaValidaDaHome(
+    categoriaPedida,
+    categories,
+    isLoadingCategories,
+  );
   const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
   const sentinelRef = React.useRef<HTMLDivElement>(null);
   // Memória da última visita (desenho da frente cls-ressalva1-0409): lida
@@ -179,15 +210,10 @@ export const HomeView = React.memo(function HomeView({
 
     // Filter by search query
     if (searchQuery.trim()) {
-      // Os DOIS lados normalizados (BUSCA-010, #20). `description` pode vir
-      // nula do banco; `normalizeText` aguenta.
-      const query = normalizeText(searchQuery);
-      result = result.filter(
-        (p) =>
-          normalizeText(p.name).includes(query) ||
-          normalizeText(p.description).includes(query) ||
-          normalizeText(p.category).includes(query),
-      );
+      // Palavra por palavra, em qualquer ordem, ignorando acento e plural
+      // simples (`produtoCombinaComBusca`): "bolsa preta" acha "Bolsa Grande
+      // Preta". `description` pode vir nula do banco; a regra aguenta.
+      result = result.filter((p) => produtoCombinaComBusca(p, searchQuery));
     }
 
     // Sort with availability (in-stock first) prioritization, preserving sort order
@@ -203,18 +229,10 @@ export const HomeView = React.memo(function HomeView({
           return a.price - b.price;
         case "price-desc":
           return b.price - a.price;
-        case "sold":
-          return b.sold - a.sold;
         default:
           return 0;
       }
     });
-
-    if (result.length !== produtosAVenda.length || searchQuery) {
-      console.log(
-        `[HomeView] Filtered: ${result.length}/${produtosAVenda.length} products`,
-      );
-    }
 
     return result;
   }, [produtosAVenda, selectedCategory, searchQuery, sortBy]);
@@ -280,7 +298,6 @@ export const HomeView = React.memo(function HomeView({
     icon: React.ElementType;
   }[] = [
     { value: "default", label: "Relevância", icon: SlidersHorizontal },
-    { value: "sold", label: "Mais Vendidos", icon: TrendingUp },
     { value: "price-asc", label: "Menor Preço", icon: ArrowDown },
     { value: "price-desc", label: "Maior Preço", icon: ArrowUp },
   ];
@@ -605,7 +622,7 @@ export const HomeView = React.memo(function HomeView({
                       setShowSortMenu(false);
                     }
                   }}
-                  className="flex size-10 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+                  className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
                   aria-expanded={showSortMenu}
                   aria-haspopup="listbox"
                   title="Filtrar e Ordenar"
@@ -669,7 +686,7 @@ export const HomeView = React.memo(function HomeView({
                             }}
                             className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
                               sortBy === option.value
-                                ? "translate-x-1 bg-primary text-white"
+                                ? "translate-x-1 bg-primary text-primary-foreground"
                                 : "text-zinc-400 hover:bg-zinc-50 hover:text-zinc-900"
                             }`}
                           >
@@ -691,7 +708,34 @@ export const HomeView = React.memo(function HomeView({
           </div>
         </div>
 
-        {filteredProducts.length === 0 && !isLoading ? (
+        {catalogoErro && products.length === 0 && !isLoading ? (
+          <div
+            role="alert"
+            className="relative z-10 mt-16 rounded-[2.5rem] border border-zinc-100 bg-zinc-50/50 px-4 py-20 text-center"
+          >
+            <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-zinc-100">
+              <PackageSearch className="size-10 text-zinc-300" />
+            </div>
+            <h3 className="mb-2 text-xl font-bold tracking-tight text-zinc-900">
+              Não conseguimos carregar os produtos
+            </h3>
+            <p className="mx-auto mb-6 max-w-[240px] text-sm leading-relaxed text-zinc-500">
+              Confira sua internet e tente de novo.
+            </p>
+            <button
+              type="button"
+              onClick={tentarCatalogoDeNovo}
+              disabled={tentandoCatalogo}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-4 text-sm font-semibold text-zinc-900 underline underline-offset-2 hover:bg-zinc-100 disabled:opacity-60"
+            >
+              <RotateCw
+                aria-hidden="true"
+                className={cn("size-3.5", tentandoCatalogo && "animate-spin")}
+              />
+              {tentandoCatalogo ? "Tentando..." : "Tentar de novo"}
+            </button>
+          </div>
+        ) : filteredProducts.length === 0 && !isLoading ? (
           <div className="relative z-10 mt-16 rounded-[2.5rem] border border-zinc-100 bg-zinc-50/50 px-4 py-20 text-center italic">
             <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-zinc-100">
               <PackageSearch className="size-10 text-zinc-300" />
@@ -746,6 +790,14 @@ export const HomeView = React.memo(function HomeView({
           </p>
         </div>
       )}
+
+      {/* Termos, Privacidade e Trocas: a cliente precisa achá-los ANTES de
+          comprar ou cadastrar (LGPD e CDC). Sempre presentes — não dependem
+          de a lojista ter preenchido horário ou contato. */}
+      <RodapeDasPoliticas
+        onNavigate={onNavigate}
+        identidade={identidadeLegalDaLoja(config)}
+      />
     </div>
   );
 });

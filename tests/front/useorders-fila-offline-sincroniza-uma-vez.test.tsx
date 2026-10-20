@@ -11,10 +11,38 @@ const rpcMock = vi.hoisted(() =>
 );
 
 vi.mock("@/lib/supabase", () => ({
-  supabase: { rpc: rpcMock },
+  supabase: {
+    rpc: rpcMock,
+    // L10: a sessão é conferida antes de cada envio.
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "lojista-1" } } },
+      }),
+    },
+    // L10: o hook agora tem usuário, então a carga normal de pedidos também
+    // roda — estes dublês só a deixam inofensiva.
+    functions: { invoke: vi.fn() },
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          order: () => ({
+            abortSignal: () => Promise.resolve({ data: [], error: null }),
+          }),
+          single: () => Promise.resolve({ data: null, error: null }),
+        }),
+      }),
+    }),
+    channel: () => ({
+      on: () => ({ subscribe: () => ({}) }),
+      subscribe: () => ({}),
+      unsubscribe: () => {},
+    }),
+    removeChannel: () => {},
+  },
 }));
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: null, isAdmin: false }),
+  // L10: a fila offline é por usuário — sem sessão nada é enviado.
+  useAuth: () => ({ user: { id: "lojista-1" }, isAdmin: false }),
 }));
 vi.mock("@/hooks/useLeaderElection", () => ({
   useLeaderElection: () => ({ isLeader: false }),
@@ -32,7 +60,7 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público — padrão do projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const chave = "orders_offline_updates_queue";
+const chave = "orders_offline_updates_queue:lojista-1";
 const toastId = "sincronizacao-fila-offline";
 const item = { orderId: "pedido-offline", status: "cancelled", silent: false };
 
@@ -82,6 +110,7 @@ describe("useOrders — a fila offline sincroniza uma vez", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(1_000);
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     const armazenamento = new Map<string, string>();
     vi.stubGlobal("localStorage", {

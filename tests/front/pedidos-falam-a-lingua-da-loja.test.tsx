@@ -17,7 +17,6 @@ import type { LinhaEstornoDoPedido } from "@/hooks/useEstornosDoPedido";
 // Mesmo casco da casa: createRoot + act do React puro, sem
 // @testing-library/react.
 import type { EstornoEmCurso } from "@/hooks/useEstornosEmCursoDosPedidos";
-import { estadoInicialDaVenda } from "@/hooks/useVendaPresencial";
 import { padroesProibidosDoPainel } from "@/lib/glossario-do-painel";
 import type { Order } from "@/types";
 import { act } from "react";
@@ -76,6 +75,7 @@ const FONTES = import.meta.glob<string>(
     "/src/components/admin/orders/EstornoCard.tsx",
     "/src/components/admin/orders/OrderDetail.tsx",
     "/src/components/admin/pdv/CupomDaVenda.tsx",
+    "/src/components/admin/pdv/BuscaDeProduto.tsx",
   ],
   { query: "?raw", import: "default", eager: true },
 );
@@ -340,6 +340,12 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
         created_at: "2026-09-01T10:00:00.000Z",
         concluido_em:
           status === "concluido" ? "2026-09-02T10:00:00.000Z" : null,
+        // Lote R1: veredito do servidor (contestação não é repetível).
+        pode_ter_saido: true,
+        por_fora_liberado_em: null,
+        por_fora_apos_espera_liberado: false,
+        substituida_por_manual: false,
+        eh_pix: false,
       };
       useEstornosDoPedidoMock.mockReturnValue({
         linhas: [linha],
@@ -347,6 +353,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
         devolvido: status === "concluido" ? 30 : 0,
         emCurso: status === "concluido" ? 0 : 30,
         disponivel: 70,
+        reservadoPorFora: 0,
         carregando: false,
         pedidoCarregado: true,
         erro: false,
@@ -426,18 +433,15 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
   });
 
   it("caixa: a busca manual pede “nome ou código interno”", async () => {
-    const { CupomDaVenda } = await import(
-      "@/components/admin/pdv/CupomDaVenda"
+    const { BuscaDeProduto } = await import(
+      "@/components/admin/pdv/BuscaDeProduto"
     );
     await act(async () => {
       raiz.render(
-        <CupomDaVenda
-          estado={estadoInicialDaVenda(() => "chave-fixa")}
+        <BuscaDeProduto
+          visivel
           despachar={vi.fn()}
-          subtotal={0}
-          buscarProdutos={vi.fn().mockResolvedValue([])}
-          onNavigate={vi.fn()}
-          feedback={null}
+          buscarProdutos={vi.fn().mockResolvedValue({ produtos: [], total: 0 })}
         />,
       );
     });

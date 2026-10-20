@@ -27,12 +27,12 @@ import type { DataIso } from "@/types/financeiro";
 import { Dinheiro, useValoresEstaoOcultos } from "./partes";
 
 // Cores por FUNÇÃO (não por série arbitrária): entrada verde, saída
-// vermelha, saldo no ouro do painel. A cor nunca anda sozinha — a legenda
+// vermelha, saldo azul. A cor nunca anda sozinha — a legenda
 // nomeia cada uma e o tooltip escreve o sinal.
 const COR_ENTRADA = "#10b981";
 const COR_SAIDA = "#f43f5e";
-const COR_SALDO = "#f9c406";
-const COR_EIXO = "#71717a";
+const COR_SALDO = "#7AA2FF";
+const COR_EIXO = "#ABABB7";
 
 interface PontoDoGrafico extends PontoDoFluxo {
   /** Saída desenhada para BAIXO da linha do zero (mesmo eixo, sem 2º eixo). */
@@ -67,7 +67,7 @@ function ConteudoDoTooltip({
   return (
     <div
       data-testid="fluxo-tooltip"
-      className="pointer-events-none flex min-w-[168px] flex-col gap-1.5 rounded-xl border border-white/10 bg-zinc-950/95 px-3 py-2 text-[11px] shadow-[0_10px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl"
+      className="pointer-events-none flex min-w-[168px] flex-col gap-2 rounded-2xl border border-white/10 bg-[#1E1E24] p-3 text-xs shadow-[0_10px_40px_rgba(0,0,0,0.6)]"
     >
       <p className="font-black text-white">
         {formatarDiaPorExtenso(ponto.dia)}
@@ -217,7 +217,7 @@ export function FluxoDeCaixaGrafico({
     <YAxis
       axisLine={false}
       tickLine={false}
-      fontSize={9}
+      fontSize={11}
       width={ocultos ? 8 : 56}
       tick={ocultos ? false : { fill: COR_EIXO, fontWeight: 700 }}
       tickFormatter={(v: number) => formatarBRLCompacto(v)}
@@ -229,18 +229,28 @@ export function FluxoDeCaixaGrafico({
   }
   if (diasComMovimento.length === 0) {
     return (
-      <div className="flex h-[200px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/10 text-center">
-        <ChartColumn aria-hidden="true" className="size-6 text-admin-gold/40" />
-        <p className="text-xs text-zinc-500">
-          Nenhum dinheiro entrou ou saiu nos últimos 30 dias.
-        </p>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col items-start gap-3 rounded-2xl border border-white/10 bg-[#17171C] p-4">
+          <ChartColumn aria-hidden="true" className="size-6 text-blue-300" />
+          <p className="text-sm leading-relaxed text-zinc-400">
+            Nenhum dinheiro entrou ou saiu nos últimos 30 dias.
+          </p>
+        </div>
+        <details className="rounded-2xl border border-white/10 bg-[#1E1E24] p-3">
+          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-bold text-white">
+            Ver os números em tabela
+          </summary>
+          <p className="py-3 text-xs text-zinc-400">
+            Nenhum dia com movimento para listar.
+          </p>
+        </details>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold text-zinc-400">
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-zinc-400">
         <li className="flex items-center gap-1.5">
           <span
             className="size-2.5 rounded-sm"
@@ -270,27 +280,25 @@ export function FluxoDeCaixaGrafico({
           aria-label="Gráfico do fluxo de caixa dos últimos 30 dias. A tabela logo abaixo tem os mesmos números."
           className="flex flex-col"
         >
-          <p className="text-[11px] font-black uppercase tracking-[0.15em] text-zinc-400">
-            Saldo
-          </p>
+          <p className="mb-3 text-sm font-bold text-white">Saldo</p>
           {semLinhaDeSaldo ? (
-            <div className="flex min-h-[56px] w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/10 px-3 py-2 text-center">
+            <div className="flex min-h-[100px] w-full flex-col items-start justify-center gap-3 rounded-2xl border border-white/10 bg-[#17171C] p-4">
               {poucosPontosDeSaldo ? (
                 <>
-                  <p className="text-[11px] text-zinc-400">
+                  <p className="text-sm leading-relaxed text-zinc-400">
                     {marco
                       ? `O saldo aparece aqui a partir de ${formatarDataCurta(marco)}, data do saldo inicial das contas.`
                       : "Ainda não há saldo suficiente nesta janela para desenhar a linha."}
                   </p>
                   {pontosComSaldo.length === 1 ? (
-                    <p className="text-[11px] font-bold text-white">
+                    <p className="text-xl font-bold text-white">
                       Saldo de hoje:{" "}
                       {formatarSaldoComSinal(pontosComSaldo[0].saldo!, ocultos)}
                     </p>
                   ) : null}
                 </>
               ) : (
-                <p className="text-[11px] font-bold text-white">
+                <p className="text-lg font-bold text-white">
                   Saldo sem mudança desde{" "}
                   {formatarDataCurta(pontosComSaldo[0].dia)}:{" "}
                   {formatarSaldoComSinal(saldoConstante!, ocultos)}
@@ -298,7 +306,7 @@ export function FluxoDeCaixaGrafico({
               )}
             </div>
           ) : (
-            <div className="h-[110px] w-full min-w-0">
+            <div className="h-[150px] w-full min-w-0 rounded-2xl bg-[#17171C]">
               <ResponsiveContainer
                 width="100%"
                 height="100%"
@@ -373,10 +381,8 @@ export function FluxoDeCaixaGrafico({
               ("R$ 200") — dois painéis com escalas independentes, fáceis de
               ler como um só. */}
           <div className="my-1.5 h-px w-full bg-white/5" />
-          <p className="text-[11px] font-black uppercase tracking-[0.15em] text-zinc-400">
-            Entradas e saídas
-          </p>
-          <div className="h-[170px] w-full min-w-0">
+          <p className="mb-3 text-sm font-bold text-white">Entradas e saídas</p>
+          <div className="h-[170px] w-full min-w-0 rounded-2xl bg-[#17171C]">
             <ResponsiveContainer
               width="100%"
               height="100%"
@@ -399,7 +405,7 @@ export function FluxoDeCaixaGrafico({
                   dataKey="dia"
                   axisLine={false}
                   tickLine={false}
-                  fontSize={9}
+                  fontSize={11}
                   minTickGap={16}
                   tick={{ fill: COR_EIXO, fontWeight: 700 }}
                   tickFormatter={(dia: string) => formatarDataCurta(dia)}
@@ -435,7 +441,7 @@ export function FluxoDeCaixaGrafico({
         <Skeleton className="h-[280px] w-full rounded-2xl bg-white/5" />
       )}
       {marco && pontos.some((p) => p.saldo === null) ? (
-        <p className="text-[11px] text-zinc-400">
+        <p className="text-xs text-zinc-400">
           {semLinhaDeSaldo ? (
             // O painel que substitui o AreaChart (acima) já diz "a partir de
             // DD/MM" (ou "sem mudança desde DD/MM") — repetir aqui seria a
@@ -453,12 +459,18 @@ export function FluxoDeCaixaGrafico({
       ) : null}
 
       <details className="group rounded-xl border border-white/5 bg-white/[0.02]">
-        <summary className="flex min-h-11 cursor-pointer select-none items-center px-4 text-xs font-bold text-zinc-400 hover:text-white">
+        <summary className="flex min-h-12 cursor-pointer select-none items-center rounded-2xl bg-[#1E1E24] px-4 text-sm font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300">
           Ver os números em tabela
         </summary>
-        <div className="max-h-72 overflow-y-auto px-2 pb-2">
+        <div
+          className="max-h-72 overflow-auto px-2 pb-2"
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- região rolável precisa de foco para o teclado rolar (axe scrollable-region-focusable)
+          tabIndex={0}
+          role="region"
+          aria-label="Movimentos por dia, cabeçalho fixo"
+        >
           <table className="w-full text-left text-xs tabular-nums">
-            <thead className="sticky top-0 bg-zinc-950 text-[11px] uppercase tracking-wider text-zinc-500">
+            <thead className="sticky top-0 bg-[#17171C] text-xs text-zinc-400">
               <tr>
                 <th scope="col" className="p-2 font-black">
                   Dia

@@ -39,6 +39,12 @@ function builderDaReleitura() {
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    // L10: a sessão é conferida antes de cada envio.
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "lojista-1" } } },
+      }),
+    },
     rpc: rpcMock,
     from: (...args: unknown[]) => fromMock(...args),
   },
@@ -63,7 +69,7 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público — padrão do projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const chave = "orders_offline_updates_queue";
+const chave = "orders_offline_updates_queue:lojista-1";
 const toastId = "sincronizacao-fila-offline";
 const itemDeAvanco = {
   orderId: "pedido-A",
@@ -83,6 +89,9 @@ describe("useOrders — a fila offline não reativa pedido cancelado/entregue", 
 
   beforeEach(() => {
     vi.useFakeTimers();
+    // L10: itens com mais de 72 h não são enviados — o relógio dos testes
+    // fica perto dos `timestamp` pequenos das fixtures.
+    vi.setSystemTime(1_000);
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     vi.spyOn(console, "error").mockImplementation(() => {});
     const armazenamento = new Map<string, string>();

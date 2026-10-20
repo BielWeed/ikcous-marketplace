@@ -20,11 +20,25 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  AVISO_DO_FRETE,
+  transportadoraFicaSemPagamento,
+  transportadoraVendeForaDaCidade,
+} from "@/lib/aviso-transportadora-sem-pagamento";
+import {
   erroDoFormularioNacional,
   estrategiaTemAlcanceEditavel,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
-import { listaComRetirada, retiradaLigadaNaLista } from "@/lib/guarda-de-frete";
+import {
+  DIAS_DA_ENTREGA_PROPRIA_PADRAO,
+  type ModoDaEntregaNaCidade,
+  diasDaEntregaPropria,
+  listaComRetirada,
+  modoDaEntregaNaCidade,
+  retiradaLigadaNaLista,
+} from "@/lib/guarda-de-frete";
+import { alcanceAoMudarOCepDaLoja, cepCompleto } from "@/lib/loja-pronta";
+import { usePagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
 import {
   type PresetFreteGratis,
   presetDoConfig,
@@ -44,6 +58,22 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+
+/**
+ * O prazo digitado como número, ou o padrão (1) se o campo está vazio. Texto
+ * fora de 0 a 30 nem entra no campo (`aceitarDias`), então aqui só sobra
+ * vazio ou número válido — `diasDaEntregaPropria` é a rede de segurança.
+ */
+function diasDoTexto(texto: string): number {
+  return texto.trim() === ""
+    ? DIAS_DA_ENTREGA_PROPRIA_PADRAO
+    : diasDaEntregaPropria(Number(texto));
+}
+
+/** Só inteiro de 0 a 30 (ou vazio, para quem apaga para digitar de novo). */
+function aceitarDias(texto: string): boolean {
+  return /^\d{0,2}$/.test(texto) && (texto === "" || Number(texto) <= 30);
+}
 
 const ORDEM_DE_EXIBICAO: readonly ProvedorFrete[] = [
   "melhor_envio",
@@ -144,6 +174,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   const isOffline = useOnlineStatus();
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const sincronizacaoSuspensaRef = useRef(false);
   const [falhaAoSalvar, setFalhaAoSalvar] = useState(false);
 
   // Painéis recolhíveis (pedido do dono, 23/09/2026): todos nascem
@@ -212,8 +243,13 @@ export const AdminShippingView = memo(function AdminShippingView({
     shippingCoverage: "national" as "local" | "national",
     localDeliveryFee: 10,
     localCepRange: "",
-    retiradaNaLoja: false,
+    modo: "entrego" as ModoDaEntregaNaCidade,
+    diasDaEntrega: String(DIAS_DA_ENTREGA_PROPRIA_PADRAO),
   });
+  // O CEP da loja com que o formulário foi montado: "Só perto da loja" é uma
+  // CÓPIA dos 5 primeiros números dele, e o Salvar a regrava se Minha loja
+  // mudou o CEP enquanto esta tela estava aberta.
+  const cepDoFormularioRef = useRef<string | null | undefined>(undefined);
 
   // ── Formulário NACIONAL (T4, herdado de AdminShippingNationalView) ───
   const [formDataNacional, setFormDataNacional] = useState({
@@ -252,6 +288,9 @@ export const AdminShippingView = memo(function AdminShippingView({
     ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
   >(() => new Map());
   const [credsErro, setCredsErro] = useState(false);
+  // A leitura das transportadoras JÁ chegou ao menos uma vez? Antes disso as
+  // listas vazias são "ainda não sei", não "nenhuma ligada".
+  const [credsLidas, setCredsLidas] = useState(false);
 
   const fetchCreds = useCallback(async () => {
     setCredsErro(false);
@@ -262,6 +301,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     }
     setLigadosSalvos(new Set(resultado.config.ligados));
     setProvedoresSalvos(resultado.config.provedores);
+    setCredsLidas(true);
   }, []);
 
   // A seção de Transportadoras avisa a cada leitura confirmada dela (ao
@@ -273,6 +313,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>,
     ) => {
       setCredsErro(false);
+      setCredsLidas(true);
       setLigadosSalvos(new Set(ligados));
       setProvedoresSalvos(provedores);
     },
@@ -281,16 +322,8 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Token digitado e não salvo numa transportadora: entra na guarda de
   // navegação da tela (onSetDirty), mas não no botão Salvar do cabeçalho —
   // a chave tem o Salvar do próprio cartão.
-  const [transportadorasPendentes, setTransportadorasPendentes] =
+  const [transportadorasPendentes, marcarTransportadorasPendentes] =
     useState(false);
-  // Espelho em ref, escrito no MESMO instante do aviso: o `handleSave` lê a
-  // pendência DEPOIS do `await` do salvar, e o valor capturado no clique
-  // estaria velho se a lojista colou um token enquanto as regras salvavam.
-  const transportadorasPendentesRef = useRef(false);
-  const marcarTransportadorasPendentes = useCallback((pendente: boolean) => {
-    transportadorasPendentesRef.current = pendente;
-    setTransportadorasPendentes(pendente);
-  }, []);
 
   // ── Sincronização LOCAL (achado 3 da auditoria, intacta) ──────────────
   const jaSincronizouRef = useRef(false);
@@ -298,10 +331,14 @@ export const AdminShippingView = memo(function AdminShippingView({
 
   useEffect(() => {
     if (isLoaded && config) {
-      if (jaSincronizouRef.current && isFormDirtyRef.current) {
+      if (
+        jaSincronizouRef.current &&
+        (isFormDirtyRef.current || sincronizacaoSuspensaRef.current)
+      ) {
         return;
       }
       jaSincronizouRef.current = true;
+      cepDoFormularioRef.current = config.originCep;
       const minSalvo = Number(config.freeShippingMin ?? 0);
       const presetSalvo = presetDoConfig(minSalvo);
       setFormData({
@@ -312,7 +349,8 @@ export const AdminShippingView = memo(function AdminShippingView({
           | "national",
         localDeliveryFee: Number(config.localDeliveryFee ?? 10),
         localCepRange: config.localCepRange || "",
-        retiradaNaLoja: retiradaLigadaNaLista(config.enabledShippingMethods),
+        modo: modoDaEntregaNaCidade(config),
+        diasDaEntrega: String(diasDaEntregaPropria(config.localDeliveryDays)),
       });
       fetchCreds();
     }
@@ -324,7 +362,10 @@ export const AdminShippingView = memo(function AdminShippingView({
 
   useEffect(() => {
     if (isLoaded && config) {
-      if (jaSincronizouNacionalRef.current && isFormDirtyNacionalRef.current) {
+      if (
+        jaSincronizouNacionalRef.current &&
+        (isFormDirtyNacionalRef.current || sincronizacaoSuspensaRef.current)
+      ) {
         return;
       }
       jaSincronizouNacionalRef.current = true;
@@ -381,6 +422,21 @@ export const AdminShippingView = memo(function AdminShippingView({
     [config, credsErro, nomesLigados],
   );
 
+  // Transportadora vendendo + pagamento pelo app desligado = o cliente de
+  // outra cidade só descobre no ÚLTIMO passo do checkout, e o lojista nunca
+  // (14/10/2026). Mesma régua da faixa acima para "transportadora ligada" (a
+  // leitura que falhou NÃO chuta) e o estado do pagamento pelo app é o do
+  // PAINEL — o retrato do boot mais o eco que Ajustes recebe do servidor —,
+  // nunca só o boot: aviso falso é pior que aviso nenhum.
+  const pagamentoPeloAppLigado = usePagamentoPeloApp();
+  const avisarTransportadoraSemPagamento = transportadoraFicaSemPagamento({
+    transportadoraVende: transportadoraVendeForaDaCidade({
+      cobertura: config?.shippingCoverage,
+      nomesLigados: credsErro ? null : nomesLigados,
+    }),
+    pagamentoPeloAppLigado,
+  });
+
   // Resumo CURTO de cada painel fechado — deriva do MESMO `statusDaFaixa`
   // (fonte única; regra escrita em dois lugares diverge — lição #53).
   const resumoPainelLocal = statusDaFaixa[0].detalhe
@@ -403,13 +459,33 @@ export const AdminShippingView = memo(function AdminShippingView({
     if (formData.localDeliveryFee !== Number(config.localDeliveryFee ?? 10))
       return true;
     if (formData.localCepRange !== (config.localCepRange || "")) return true;
+    if (formData.modo !== modoDaEntregaNaCidade(config)) return true;
     if (
-      formData.retiradaNaLoja !==
-      retiradaLigadaNaLista(config.enabledShippingMethods)
+      diasDoTexto(formData.diasDaEntrega) !==
+      diasDaEntregaPropria(config.localDeliveryDays)
     )
       return true;
     return false;
   }, [formData, config]);
+
+  // Retirada (as duas respostas com ela) exige o endereço da loja. É a MESMA
+  // fonte que o bloco lê (`config.storeAddress`): o eco do Realtime não traz o
+  // endereço, e nesse instante a tela trata como "sem endereço" e NÃO deixa
+  // gravar uma retirada nova — melhor recusar do que gravar retirada que a
+  // cliente não consegue usar. Quem já tinha a retirada ligada e só mexe em
+  // outra coisa não é barrado (o modo não mudou).
+  const temEnderecoDaLoja = (config?.storeAddress ?? "").trim() !== "";
+  const retiradaSemEndereco =
+    !!config &&
+    formData.modo !== "entrego" &&
+    formData.modo !== modoDaEntregaNaCidade(config) &&
+    !temEnderecoDaLoja;
+
+  // "Só retiro" sem o CEP completo da loja: a edge e as RPCs recusam toda
+  // compra (origin_cep vazio). Vale também para a loja que JÁ está nesse modo:
+  // o salvar fica travado enquanto o modo resultante for "Só retiro".
+  const soRetiroSemCep =
+    !!config && formData.modo === "so_retiro" && !cepCompleto(config.originCep);
 
   // ── Dirty check NACIONAL (T4, herdado) ─────────────────────────────────
   const isFormDirtyNacional = useMemo(() => {
@@ -433,6 +509,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   useEffect(() => {
     isFormDirtyNacionalRef.current = isFormDirtyNacional;
   }, [isFormDirtyNacional]);
+  useEffect(() => {
+    // Libera só depois de comparar o formulário com o config confirmado.
+    if (!isSaving) sincronizacaoSuspensaRef.current = false;
+  }, [isSaving]);
 
   // Um sinal só sai para o pai (gate de navegação do App) — ele nunca soube
   // que existiam duas metades. O token não salvo das Transportadoras soma
@@ -521,12 +601,41 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
+    if (retiradaSemEndereco) {
+      // Antes do `setIsSaving`: recusar não pode deixar a tela em "Salvando…".
+      toast.error("Cadastre o endereço da loja em Minha loja", {
+        description: "Sem endereço, o cliente não sabe onde retirar.",
+      });
+      return;
+    }
+
+    if (soRetiroSemCep) {
+      toast.error("Cadastre o CEP da loja em Minha loja", {
+        description:
+          "Para vender só com retirada, a loja precisa do CEP. Ou escolha outra forma de entrega.",
+      });
+      return;
+    }
+
+    sincronizacaoSuspensaRef.current = true;
     setIsSaving(true);
     haptic.medium();
 
     const retiradaMudou =
-      formData.retiradaNaLoja !==
+      (formData.modo !== "entrego") !==
       retiradaLigadaNaLista(config?.enabledShippingMethods);
+    // O alcance "só perto da loja" é uma cópia do CEP: se Minha loja o mudou
+    // desde que o formulário abriu, o Salvar leva o alcance junto. Limite
+    // conhecido: um alcance escrito de propósito IGUAL aos 5 primeiros números
+    // do CEP antigo (ex.: "38500") é indistinguível do automático e também
+    // acompanha o CEP novo.
+    const alcanceAntes = formData.localCepRange;
+    const alcance =
+      alcanceAoMudarOCepDaLoja(
+        cepDoFormularioRef.current,
+        config?.originCep,
+        formData.localCepRange,
+      ) ?? formData.localCepRange;
 
     const ehDesconto =
       formDataNacional.estrategia === "desconto_na_mais_barata";
@@ -550,12 +659,14 @@ export const AdminShippingView = memo(function AdminShippingView({
         freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
         shippingCoverage: formData.shippingCoverage,
         localDeliveryFee: Math.max(0, formData.localDeliveryFee),
-        localCepRange: formData.localCepRange,
+        localCepRange: alcance,
+        localDeliveryEnabled: formData.modo !== "so_retiro",
+        localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
         ...(retiradaMudou
           ? {
               enabledShippingMethods: listaComRetirada(
                 config?.enabledShippingMethods,
-                formData.retiradaNaLoja,
+                formData.modo !== "entrego",
               ),
             }
           : {}),
@@ -571,15 +682,29 @@ export const AdminShippingView = memo(function AdminShippingView({
         return;
       }
 
-      // Espelha o AJUSTADO no formData nacional (REVISÃO herdada de
-      // AdminShippingNationalView, correção 1): sem isso, um mínimo/valor
-      // "esquecido" de uma estratégia anterior deixaria `isFormDirty`
-      // nacional preso em `true` para sempre.
-      setFormDataNacional(nacionalAjustado);
+      // Normaliza só o formulário enviado; preserva edições feitas na espera.
+      // O config confirmado passa a ser a referência do dirty check.
+      setFormDataNacional((atual) =>
+        atual.estrategia === formDataNacional.estrategia &&
+        atual.minimo === formDataNacional.minimo &&
+        atual.tipoDesconto === formDataNacional.tipoDesconto &&
+        atual.valorDesconto === formDataNacional.valorDesconto &&
+        atual.alcance === formDataNacional.alcance
+          ? nacionalAjustado
+          : atual,
+      );
+      if (alcance !== alcanceAntes) {
+        // O alcance foi regravado: o formulário o acompanha, senão ficaria
+        // "diferente do salvo" para sempre — mas só se o campo ainda é o de
+        // antes do Salvar (os campos seguem editáveis enquanto salva).
+        setFormData((prev) =>
+          prev.localCepRange === alcanceAntes
+            ? { ...prev, localCepRange: alcance }
+            : prev,
+        );
+      }
       setFalhaAoSalvar(false);
-      // As regras salvaram; um token de transportadora ainda não salvo
-      // continua segurando a guarda.
-      onSetDirty?.(transportadorasPendentesRef.current);
+      // A guarda acompanha o dirty check e os tokens pendentes pelo efeito.
       haptic.success();
       toast.success("Regras de frete salvas!");
     } catch (err) {
@@ -601,7 +726,12 @@ export const AdminShippingView = memo(function AdminShippingView({
         ? "pendente"
         : "limpo";
   const podeClicarSalvar =
-    !isSaving && !isOffline && isFormDirty && !erroNacional;
+    !isSaving &&
+    !isOffline &&
+    isFormDirty &&
+    !erroNacional &&
+    !retiradaSemEndereco &&
+    !soRetiroSemCep;
 
   // Map (não Record indexado por variável): indexação dinâmica dispara
   // `security/detect-object-injection` do eslint e o teto do lint reprova
@@ -715,6 +845,29 @@ export const AdminShippingView = memo(function AdminShippingView({
               <FreteResumoFaixa status={statusDaFaixa} />
             </div>
 
+            {avisarTransportadoraSemPagamento && (
+              <div
+                role="status"
+                data-aviso-transportadora-sem-pagamento=""
+                className="mt-4 flex flex-wrap items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-300 duration-200 animate-in fade-in"
+              >
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <p className="min-w-0 flex-1 text-[12.5px] leading-snug">
+                  <span className="font-bold">{AVISO_DO_FRETE.titulo}</span>{" "}
+                  {AVISO_DO_FRETE.detalhe}
+                </p>
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin-settings")}
+                    className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
+                  >
+                    Ver pagamento pelo app
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="mt-8 space-y-7">
               <PainelRecolhivel
                 id="painel-frete-local"
@@ -746,13 +899,21 @@ export const AdminShippingView = memo(function AdminShippingView({
                   cidade={config?.storeCity}
                   uf={config?.storeState}
                   semOrigem={!config?.originCep}
+                  cepDaLoja={config?.originCep}
                   desabilitado={isOffline}
-                  retirada={formData.retiradaNaLoja}
-                  onRetirada={(retiradaNaLoja) =>
-                    atualizarFormData((prev) => ({ ...prev, retiradaNaLoja }))
+                  modo={formData.modo}
+                  onModo={(modo) =>
+                    atualizarFormData((prev) => ({ ...prev, modo }))
                   }
+                  dias={formData.diasDaEntrega}
+                  onDias={(diasDaEntrega) => {
+                    if (aceitarDias(diasDaEntrega))
+                      atualizarFormData((prev) => ({ ...prev, diasDaEntrega }));
+                  }}
                   enderecoDaLoja={config?.storeAddress}
                   onNavigate={onNavigate}
+                  nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
+                  pagamentoPeloAppLigado={pagamentoPeloAppLigado}
                 />
               </PainelRecolhivel>
 

@@ -8,7 +8,7 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import type { Desfecho } from "@/hooks/useDevolucaoCliente";
@@ -26,9 +26,56 @@ import {
   tituloDoStatusParaCliente,
   tomDoStatus,
 } from "@/lib/devolucao";
+import { linkDeRastreio } from "@/lib/link-de-rastreio";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { DevolucaoDetalhe, ResumoDevolucao } from "@/types/devolucao";
 import { haptic } from "@/utils/haptic";
+
+const INTERVALO_DO_REEMBOLSO_MS = 15_000;
+
+/**
+ * Lote R1 (15/10/2026): o status da linha de `order_refunds` do reembolso
+ * desta devolução, para a frase da cliente só dizer "liberado" com o dinheiro
+ * confirmado. A policy `order_refunds_cliente_le` libera a linha do próprio
+ * pedido. `null` = não lido ainda (ou falhou a leitura) — a frase trata como
+ * "a loja está confirmando", nunca como liberado. Relê a cada 15s enquanto a
+ * linha ainda não chegou a um fim (ou ainda não foi lida).
+ */
+function useStatusDoReembolso(refundId: string | null): string | null {
+  const [lido, setLido] = useState<{ id: string; status: string } | null>(null);
+  const status = lido && lido.id === refundId ? lido.status : null;
+  const terminou =
+    status === "concluido" || status === "falhou" || status === "recusado";
+
+  useEffect(() => {
+    if (!refundId || terminou) return;
+    let ativo = true;
+    const ler = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("order_refunds")
+          .select("status")
+          .eq("id", refundId)
+          .maybeSingle();
+        const novo = (data as { status?: unknown } | null)?.status;
+        if (ativo && !error && typeof novo === "string") {
+          setLido({ id: refundId, status: novo });
+        }
+      } catch {
+        // Sem leitura: a frase segue "a loja está confirmando".
+      }
+    };
+    void ler();
+    const id = setInterval(() => void ler(), INTERVALO_DO_REEMBOLSO_MS);
+    return () => {
+      ativo = false;
+      clearInterval(id);
+    };
+  }, [refundId, terminou]);
+
+  return status;
+}
 
 interface DevolucaoDoPedidoCardProps {
   readonly atual: DevolucaoDetalhe;
@@ -70,10 +117,18 @@ export function DevolucaoDoPedidoCard({
     atual.politica?.endereco_devolucao?.trim() ||
     enderecoDaLoja?.trim() ||
     null;
-  const instrucao = instrucaoParaOCliente(atual, {
-    endereco,
-    horario: horarioDaLoja,
-  });
+  const statusDoReembolso = useStatusDoReembolso(
+    atual.status === "concluida" &&
+      atual.resolucao_final === "reembolso" &&
+      !atual.reembolso_manual
+      ? atual.refund_id
+      : null,
+  );
+  const instrucao = instrucaoParaOCliente(
+    atual,
+    { endereco, horario: horarioDaLoja },
+    statusDoReembolso,
+  );
   const tom = tomDoStatus(atual.status);
   const valorTotal = atual.valor_itens + atual.valor_frete_ida;
 
@@ -256,20 +311,21 @@ export function DevolucaoDoPedidoCard({
         </div>
       )}
 
-      {atual.codigo_rastreio && atual.status === "em_transito" && (
-        <a
-          href={`https://linkrastreio.com/?codigo=${encodeURIComponent(atual.codigo_rastreio)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 flex min-h-11 items-center gap-2 rounded-2xl border border-zinc-100 px-3 text-sm font-bold text-zinc-800"
-        >
-          <Truck className="size-4 text-zinc-500" />
-          Rastrear devolução
-          <span className="ml-auto font-mono text-xs text-zinc-500">
-            {atual.codigo_rastreio}
-          </span>
-        </a>
-      )}
+      {linkDeRastreio(atual.codigo_rastreio ?? "") &&
+        atual.status === "em_transito" && (
+          <a
+            href={linkDeRastreio(atual.codigo_rastreio ?? "")}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex min-h-11 items-center gap-2 rounded-2xl border border-zinc-100 px-3 text-sm font-bold text-zinc-800"
+          >
+            <Truck className="size-4 text-zinc-500" />
+            Rastrear devolução
+            <span className="ml-auto font-mono text-xs text-zinc-500">
+              {atual.codigo_rastreio}
+            </span>
+          </a>
+        )}
 
       <dl className="mt-4 space-y-1 border-t border-dashed border-zinc-200 pt-3 text-[13px]">
         {atual.itens.map((item) => (

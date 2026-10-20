@@ -1,4 +1,4 @@
-import { normalizeText } from "@/lib/utils";
+import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
 import type { Product } from "@/types";
 import { useMemo, useState } from "react";
 import { useDebounce } from "./useDebounce";
@@ -20,15 +20,9 @@ export function useSearch(products: Product[]) {
   const filteredProducts = useMemo(() => {
     return products
       .filter((product) => {
-        // Os DOIS lados normalizados: quem digita "alianca" acha "Alianca"
-        // E quem digita "Alianca" tambem acha (BUSCA-010, #20).
-        const productName = normalizeText(product.name);
-        const productDesc = normalizeText(product.description);
-        const searchQuery = normalizeText(debouncedQuery);
-
-        const matchesQuery =
-          productName.includes(searchQuery) ||
-          productDesc.includes(searchQuery);
+        // Palavra por palavra, em qualquer ordem, ignorando acento e plural
+        // simples: a MESMA regra do catalogo (BUSCA-010, #20).
+        const matchesQuery = produtoCombinaComBusca(product, debouncedQuery);
         const matchesCategory =
           category === "Todas" ||
           product.category.toLowerCase().trim() ===

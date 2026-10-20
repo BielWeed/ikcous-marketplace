@@ -2,8 +2,9 @@
 /**
  * send-push — dispara Web Push para as inscrições do marketplace.
  *
- * Exige que QUEM CHAMA seja admin: valida o Bearer token e confere
- * `profiles.role = 'admin'`. É o canal do painel ("avisar meus clientes"), não
+ * Exige que QUEM CHAMA seja admin AGORA (`_shared/admin-atual.ts`): valida a
+ * sessão no Auth e confere 'admin' em `profiles.role` E em
+ * `app_metadata.role`. É o canal do painel ("avisar meus clientes"), não
  * um canal que o site do cliente possa acionar — um pedido de convidado nunca
  * consegue chamar esta função. Quando o disparo precisa nascer do checkout, o
  * caminho é a `notify-new-order` (PEDIDO-020, #89), que não pede admin e valida
@@ -45,6 +46,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import { adminAtualDaSessao } from "../_shared/admin-atual.ts";
 import {
   base64UrlParaBytes,
   bytesParaBase64Url,
@@ -124,11 +126,9 @@ export async function paginarTudo(
  * tamanho da fatia), mas para de abrir fatia nova assim que
  * `agora() - inicio` passar de `orcamentoMs`.
  *
- * Isso é o que falta pra um broadcast grande nunca estourar o teto de
- * execução da function sem avisar: a checagem acontece ANTES de cada fatia,
- * nunca no meio de uma já em voo, e o que não deu tempo de tentar volta
- * contado em `naoTentados` — nunca escondido dentro de um `enviados` que não
- * é verdade (a PUSH-010 já existe por causa de contagem que mentia).
+ * O prazo também limita a espera da fatia em voo: envio pendurado conta
+ * como falha temporária, e inscrições de fatias que não chegaram a abrir
+ * voltam contadas em `naoTentados`.
  *
  * `agora` é injetado para o teste controlar o relógio sem `setTimeout` real.
  */
@@ -140,13 +140,19 @@ export async function enviarComOrcamentoDeTempo({
   rotulo = "push",
   tamanhoDoLote = TAMANHO_DO_LOTE_DE_ENVIO,
   orcamentoMs = ORCAMENTO_DE_TEMPO_MS,
+  tempoLimitePorEnvioMs = 10_000,
   agora = () => Date.now(),
 }: any): Promise<{ itens: any[]; naoTentados: number }> {
   const inicio = agora();
+  const prazoFinalMs = Date.now() + orcamentoMs;
   const itens: any[] = [];
   let i = 0;
   for (; i < inscricoes.length; i += tamanhoDoLote) {
-    if (agora() - inicio >= orcamentoMs) break;
+    const restanteMs = Math.min(
+      orcamentoMs - (agora() - inicio),
+      prazoFinalMs - Date.now(),
+    );
+    if (restanteMs <= 0) break;
     const lote = inscricoes.slice(i, i + tamanhoDoLote);
     const itensDoLote = await enviarParaInscritos({
       servidor,
@@ -155,6 +161,8 @@ export async function enviarComOrcamentoDeTempo({
       aoDetectarMorta,
       rotulo,
       tamanhoDoLote: lote.length,
+      tempoLimitePorEnvioMs,
+      prazoFinalMs: Math.min(prazoFinalMs, Date.now() + restanteMs),
     });
     itens.push(...itensDoLote);
   }
@@ -162,7 +170,9 @@ export async function enviarComOrcamentoDeTempo({
 }
 
 // ---------------------------------------------------------------------------
-// Handler
+// Handler — exportado (auditoria L3, 12/10/2026) para o teste exercitar a
+// porta de admin de ponta a ponta; o corpo é o mesmo que vivia dentro do
+// `serve(...)`.
 // ---------------------------------------------------------------------------
 
 const emTeste =
@@ -170,156 +180,154 @@ const emTeste =
   Deno.mainModule.endsWith("_test.js") ||
   Deno.mainModule.includes("index_test");
 
-if (!emTeste) {
-  serve(async (req: Request) => {
-    if (req.method === "OPTIONS") {
-      return new Response("ok", { headers: corsHeaders });
+export async function handler(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+    );
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      console.error("send-push: Missing Authorization header");
+      throw new Error("Missing Authorization header");
     }
 
-    try {
-      const supabaseClient = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
-      );
+    // O admin de AGORA (auditoria L3, 12/10/2026): a regra mora em
+    // `_shared/admin-atual.ts`, a MESMA de `estornar-pagamento` — sessão
+    // validada no Auth e papel 'admin' em `profiles.role` E em
+    // `app_metadata.role`. Papéis contraditórios (rebaixado em uma fonte só)
+    // não mandam push em nome da loja. Sessão inválida e quem não é admin
+    // recebem a mesma recusa (antes, a sessão inválida dizia
+    // "Not authenticated"; nenhuma tela lê o texto — o painel mostra a falha).
+    const adminId = await adminAtualDaSessao(authHeader, {
+      url: Deno.env.get("SUPABASE_URL") ?? "",
+      chavePublica: readKey("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY"),
+      chaveDeServico: readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+      rotulo: "send-push:",
+    });
+    if (!adminId) {
+      throw new Error("Unauthorized: Admin access required");
+    }
 
-      const authHeader = req.headers.get("Authorization");
-      if (!authHeader) {
-        console.error("send-push: Missing Authorization header");
-        throw new Error("Missing Authorization header");
-      }
+    const payload = await req.json();
+    const { title, body, url, targetUserId, tokens, data } = payload;
 
-      const token = authHeader.replace(/^Bearer\s+/i, "");
-      const {
-        data: { user },
-        error: userError,
-      } = await supabaseClient.auth.getUser(token);
+    let inscricoes: any[] = [];
+    if (tokens && Array.isArray(tokens)) {
+      inscricoes = tokens.map((t: any) => ({
+        endpoint: t.endpoint,
+        p256dh: t.keys?.p256dh || t.p256dh,
+        auth: t.keys?.auth || t.auth,
+      }));
+    } else {
+      // Paginado (index-133): era `select('*')` sem `.limit()`, carregando
+      // a base de inscritos inteira de uma vez. `.order("id")` fixa uma
+      // ordem estável entre páginas — sem ela o `.range()` pode repetir ou
+      // pular linha se a tabela mudar entre duas chamadas.
+      inscricoes = await paginarTudo(async (offset, tamanho) => {
+        let query = supabaseClient
+          .from("push_subscriptions")
+          .select("*")
+          .order("id", { ascending: true })
+          .range(offset, offset + tamanho - 1);
+        if (targetUserId) query = query.eq("user_id", targetUserId);
+        const { data: linhas, error: subError } = await query;
+        if (subError) throw subError;
+        return linhas || [];
+      }, TAMANHO_DA_PAGINA_DE_LEITURA);
+    }
 
-      if (userError || !user) {
-        console.error("send-push: Auth verification failed", userError);
-        throw new Error("Not authenticated");
-      }
+    console.log(
+      `send-push: ${title} (alvo: ${targetUserId || "todos"}, inscrições: ${inscricoes.length})`,
+    );
 
-      const { data: profile, error: profileError } = await supabaseClient
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (profileError || profile?.role !== "admin") {
-        throw new Error("Unauthorized: Admin access required");
-      }
-
-      const payload = await req.json();
-      const { title, body, url, targetUserId, tokens, data } = payload;
-
-      let inscricoes: any[] = [];
-      if (tokens && Array.isArray(tokens)) {
-        inscricoes = tokens.map((t: any) => ({
-          endpoint: t.endpoint,
-          p256dh: t.keys?.p256dh || t.p256dh,
-          auth: t.keys?.auth || t.auth,
-        }));
-      } else {
-        // Paginado (index-133): era `select('*')` sem `.limit()`, carregando
-        // a base de inscritos inteira de uma vez. `.order("id")` fixa uma
-        // ordem estável entre páginas — sem ela o `.range()` pode repetir ou
-        // pular linha se a tabela mudar entre duas chamadas.
-        inscricoes = await paginarTudo(async (offset, tamanho) => {
-          let query = supabaseClient
-            .from("push_subscriptions")
-            .select("*")
-            .order("id", { ascending: true })
-            .range(offset, offset + tamanho - 1);
-          if (targetUserId) query = query.eq("user_id", targetUserId);
-          const { data: linhas, error: subError } = await query;
-          if (subError) throw subError;
-          return linhas || [];
-        }, TAMANHO_DA_PAGINA_DE_LEITURA);
-      }
-
-      console.log(
-        `send-push: ${title} (alvo: ${targetUserId || "todos"}, inscrições: ${inscricoes.length})`,
-      );
-
-      if (inscricoes.length === 0) {
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            total: 0,
-            enviados: 0,
-            falharam: 0,
-            removidas: 0,
-            naoTentados: 0,
-            falhas: [],
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      // Falha aqui é falha da REQUISIÇÃO inteira, não de um dispositivo: sem
-      // chave não há o que tentar. Por isso sobe para o catch e vira 400.
-      const vapidKeys = await carregarChavesVapid(
-        Deno.env.get("VAPID_PUBLIC_KEY"),
-        Deno.env.get("VAPID_PRIVATE_KEY"),
-      );
-
-      const servidor = await webpush.ApplicationServer.new({
-        // O push service usa este contato para avisar de problema com a
-        // aplicação. `mailto:admin@example.org` era o valor fixo do código
-        // antigo; virou configurável, com o mesmo default para não mudar
-        // comportamento sem medir.
-        contactInformation:
-          Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.org",
-        vapidKeys,
-      });
-
-      const mensagem = JSON.stringify({
-        title,
-        body,
-        url: url || "/",
-        data: data || null,
-      });
-
-      // Orçamento de tempo (index-133): sem teto, a soma dos lotes de uma
-      // campanha grande pode ultrapassar o limite de execução da function e
-      // ela é cortada no meio — sem responder nada e sem dizer quanto ficou
-      // sem tentativa. Com o orçamento o handler sempre responde a tempo, e
-      // o que não deu pra tentar entra no resumo como `naoTentados` em vez
-      // de desaparecer.
-      const { itens, naoTentados } = await enviarComOrcamentoDeTempo({
-        servidor,
-        inscricoes,
-        mensagem,
-        rotulo: "send-push",
-        tamanhoDoLote: TAMANHO_DO_LOTE_DE_ENVIO,
-        orcamentoMs: ORCAMENTO_DE_TEMPO_MS,
-        aoDetectarMorta: (endpoint: string) =>
-          supabaseClient
-            .from("push_subscriptions")
-            .delete()
-            .eq("endpoint", endpoint),
-      });
-
-      const resumo = resumir(itens);
-      console.log(
-        `send-push: ${resumo.enviados} entregues, ${resumo.falharam} falharam, ${resumo.removidas} inscrições removidas, ${naoTentados} não tentadas (orçamento de tempo)`,
-      );
-
-      // HTTP 200 mesmo com falha parcial, e de propósito: o `functions.invoke`
-      // do supabase-js transforma qualquer status fora de 2xx em `error` e
-      // esconde o corpo dentro de error.context. Quem precisa dos números é o
-      // admin — então os números vêm no corpo, e quem decide o que mostrar é a
-      // tela. `ok` é falso quando ninguém recebeu.
+    if (inscricoes.length === 0) {
       return new Response(
-        JSON.stringify({ ok: resumo.enviados > 0, ...resumo, naoTentados }),
+        JSON.stringify({
+          ok: true,
+          total: 0,
+          enviados: 0,
+          falharam: 0,
+          removidas: 0,
+          naoTentados: 0,
+          falhas: [],
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
-    } catch (error: any) {
-      console.error("send-push: erro na requisição", error);
-      return new Response(JSON.stringify({ ok: false, error: error.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
-  });
+
+    // Falha aqui é falha da REQUISIÇÃO inteira, não de um dispositivo: sem
+    // chave não há o que tentar. Por isso sobe para o catch e vira 400.
+    const vapidKeys = await carregarChavesVapid(
+      Deno.env.get("VAPID_PUBLIC_KEY"),
+      Deno.env.get("VAPID_PRIVATE_KEY"),
+    );
+
+    const servidor = await webpush.ApplicationServer.new({
+      // O push service usa este contato para avisar de problema com a
+      // aplicação. `mailto:admin@example.org` era o valor fixo do código
+      // antigo; virou configurável, com o mesmo default para não mudar
+      // comportamento sem medir.
+      contactInformation:
+        Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.org",
+      vapidKeys,
+    });
+
+    const mensagem = JSON.stringify({
+      title,
+      body,
+      url: url || "/",
+      data: data || null,
+    });
+
+    // Orçamento de tempo (index-133): sem teto, a soma dos lotes de uma
+    // campanha grande pode ultrapassar o limite de execução da function e
+    // ela é cortada no meio — sem responder nada e sem dizer quanto ficou
+    // sem tentativa. Com o orçamento o handler sempre responde a tempo, e
+    // o que não deu pra tentar entra no resumo como `naoTentados` em vez
+    // de desaparecer.
+    const { itens, naoTentados } = await enviarComOrcamentoDeTempo({
+      servidor,
+      inscricoes,
+      mensagem,
+      rotulo: "send-push",
+      tamanhoDoLote: TAMANHO_DO_LOTE_DE_ENVIO,
+      orcamentoMs: ORCAMENTO_DE_TEMPO_MS,
+      aoDetectarMorta: (endpoint: string) =>
+        supabaseClient
+          .from("push_subscriptions")
+          .delete()
+          .eq("endpoint", endpoint),
+    });
+
+    const resumo = resumir(itens);
+    console.log(
+      `send-push: ${resumo.enviados} entregues, ${resumo.falharam} falharam, ${resumo.removidas} inscrições removidas, ${naoTentados} não tentadas (orçamento de tempo)`,
+    );
+
+    // HTTP 200 mesmo com falha parcial, e de propósito: o `functions.invoke`
+    // do supabase-js transforma qualquer status fora de 2xx em `error` e
+    // esconde o corpo dentro de error.context. Quem precisa dos números é o
+    // admin — então os números vêm no corpo, e quem decide o que mostrar é a
+    // tela. `ok` é falso quando ninguém recebeu.
+    return new Response(
+      JSON.stringify({ ok: resumo.enviados > 0, ...resumo, naoTentados }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (error: any) {
+    console.error("send-push: erro na requisição", error);
+    return new Response(JSON.stringify({ ok: false, error: error.message }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 }
+
+// `(req) => handler(req)`, e não `serve(handler)`: o `serve` do std passa um
+// segundo argumento (ConnInfo), e o handler pode ganhar costura de teste nele.
+if (!emTeste) serve((req: Request) => handler(req));

@@ -86,8 +86,8 @@ export function LinhasDaGrade({
         });
   return (
     <>
-      <div className="space-y-2 rounded-2xl border border-dashed border-amber-500/30 bg-amber-500/5 p-4">
-        <span className="ml-1 block text-[11px] font-black uppercase tracking-wider text-amber-400">
+      <div className="space-y-3 rounded-2xl border border-white/10 bg-[#101013] p-3">
+        <span className="ml-1 block text-[11px] font-black uppercase tracking-wider text-zinc-300">
           Aplicar para todas
         </span>
         <div className="grid grid-cols-2 gap-3">
@@ -109,6 +109,7 @@ export function LinhasDaGrade({
               id="grade-aplicar-preco"
               name="grade-aplicar-preco"
               mask="currency"
+              zeroVazio
               aria-label="Preço para todas as linhas"
               value={aplicarPreco}
               onFlush={onAplicarPreco}
@@ -120,7 +121,7 @@ export function LinhasDaGrade({
         <button
           type="button"
           onClick={onAplicarParaTodas}
-          className="min-h-11 w-full rounded-2xl border border-white/10 bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:border-emerald-500/30 active:scale-95"
+          className="min-h-11 w-full rounded-2xl border border-white/10 bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:border-white/30 active:scale-95"
         >
           Aplicar para todas
         </button>
@@ -193,49 +194,58 @@ export function LinhasDaGrade({
         tocadas
       </p>
 
+      <div
+        aria-hidden="true"
+        className="grid grid-cols-[minmax(0,1fr)_52px_minmax(88px,0.7fr)] gap-2 text-[11px] text-zinc-400"
+      >
+        <span>Combinação / Código interno</span>
+        <span>Estoque</span>
+        <span>Preço</span>
+      </div>
       {linhas.map((linha, i) => (
         <div
           key={JSON.stringify([linha.name, linha.value])}
-          className="space-y-2 rounded-2xl border border-white/5 bg-zinc-950/60 p-4"
+          className="grid grid-cols-[minmax(0,1fr)_52px_minmax(88px,0.7fr)] items-center gap-2 border-b border-white/5 py-3"
         >
-          <span
-            className="block text-sm font-black uppercase italic tracking-tight text-white"
-            data-testid="linha-da-grade"
-          >
-            {linha.value}
-          </span>
-          <div className="grid grid-cols-2 gap-3">
-            <LocalBufferedInput
-              id={`grade-linha-estoque-${i}`}
-              name={`grade-linha-estoque-${i}`}
-              type="number"
-              aria-label={`Estoque de ${linha.value}`}
-              value={linha.estoque}
-              onFlush={(val) => onMudarLinha(i, "estoque", val)}
-              className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-4 py-3 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-            />
-            <div className="relative flex items-center">
-              <span className="absolute left-4 text-xs font-black text-zinc-600">
-                R$
-              </span>
-              <LocalBufferedInput
-                id={`grade-linha-preco-${i}`}
-                name={`grade-linha-preco-${i}`}
-                mask="currency"
-                aria-label={`Preço de ${linha.value}`}
-                value={linha.preco}
-                onFlush={(val) => onMudarLinha(i, "preco", val)}
-                className="w-full rounded-2xl border border-white/5 bg-zinc-950 py-3 pl-10 pr-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                placeholder="Auto"
-              />
-            </div>
+          <div className="min-w-0 space-y-1 break-words">
+            <span
+              className="block text-xs font-bold text-white"
+              data-testid="linha-da-grade"
+            >
+              {linha.value}
+            </span>
+            <span
+              className="block break-all font-mono text-[11px] text-zinc-500"
+              data-testid="sku-da-linha"
+            >
+              {skusPrevistos.at(i) || "sem código"}
+            </span>
           </div>
-          <span
-            className="block font-mono text-[11px] text-zinc-500"
-            data-testid="sku-da-linha"
-          >
-            {skusPrevistos.at(i) || "sem código"}
-          </span>
+          <LocalBufferedInput
+            id={`grade-linha-estoque-${i}`}
+            name={`grade-linha-estoque-${i}`}
+            type="number"
+            aria-label={`Estoque de ${linha.value}`}
+            value={linha.estoque}
+            onFlush={(val) => onMudarLinha(i, "estoque", val)}
+            className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-2 py-3 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+          />
+          <div className="relative flex items-center">
+            <span className="absolute left-2 text-xs font-black text-zinc-600">
+              R$
+            </span>
+            <LocalBufferedInput
+              id={`grade-linha-preco-${i}`}
+              name={`grade-linha-preco-${i}`}
+              mask="currency"
+              zeroVazio
+              aria-label={`Preço de ${linha.value}`}
+              value={linha.preco}
+              onFlush={(val) => onMudarLinha(i, "preco", val)}
+              className="w-full rounded-2xl border border-white/5 bg-zinc-950 py-3 pl-7 pr-2 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              placeholder="Auto"
+            />
+          </div>
         </div>
       ))}
     </>

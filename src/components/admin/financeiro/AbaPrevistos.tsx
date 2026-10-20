@@ -1,4 +1,12 @@
-import { CalendarClock, ExternalLink, Info, Plus } from "lucide-react";
+import {
+  CalendarClock,
+  Check,
+  Clock,
+  ExternalLink,
+  Info,
+  Plus,
+  X,
+} from "lucide-react";
 import { useMemo } from "react";
 
 import { usePrevistosFinanceiros } from "@/hooks/useFinanceiro";
@@ -17,8 +25,6 @@ import { cn } from "@/lib/utils";
 import type { DataIso, LancamentoPrevisto } from "@/types/financeiro";
 import type { AbrirFolha, LadoDosPrevistos } from "./navegacao";
 import {
-  BlocoKpi,
-  CLASSE_BOTAO_PRIMARIO,
   CLASSE_BOTAO_SECUNDARIO,
   CLASSE_TITULO_SECAO,
   Dinheiro,
@@ -28,6 +34,7 @@ import {
   EstadoVazio,
   Etiqueta,
   Segmentado,
+  SeloFinanceiro,
 } from "./partes";
 
 const SECOES: readonly { situacao: SituacaoDoVencimento; titulo: string }[] = [
@@ -46,7 +53,7 @@ function NotaDoNaoEditavel({ item }: { readonly item: LancamentoPrevisto }) {
         ? "Devolução em andamento: o valor sai quando a devolução for concluída."
         : `${rotuloDaOrigem(item.origem)}: vem do pedido, o Financeiro só acompanha.`;
   return (
-    <p className="mt-3 flex items-start gap-2 text-[11px] text-zinc-400">
+    <p className="mt-3 flex items-start gap-2 rounded-2xl bg-sky-400/5 p-3 text-xs leading-relaxed text-zinc-400">
       <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
       {texto}
     </p>
@@ -77,38 +84,42 @@ function CartaoDoPrevisto({
   return (
     <li
       className={cn(
-        "flex flex-col rounded-2xl border p-4",
+        "flex min-w-0 flex-col rounded-3xl border bg-[#101013] p-4",
         vencido
-          ? "border-red-500/30 bg-red-500/[0.06]"
+          ? "border-red-400/25"
           : situacao === "hoje"
-            ? "border-amber-500/30 bg-amber-500/[0.05]"
-            : "border-white/5 bg-white/[0.02]",
+            ? "border-orange-300/25"
+            : "border-white/10",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col items-start gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-bold text-white">
-            <span className="truncate">{item.descricao}</span>
+          <p className="flex flex-wrap items-center gap-2 text-base font-bold leading-snug text-white">
+            <SeloFinanceiro
+              icone={Clock}
+              matiz={situacao === "hoje" ? "#FF9F5A" : "#FF8BB2"}
+            />
+            <span className="min-w-0 flex-1 break-words">{item.descricao}</span>
             {parcela ? <Etiqueta>{parcela}</Etiqueta> : null}
           </p>
-          <p className="truncate text-[11px] text-zinc-500">
+          <p className="mt-3 break-words text-xs leading-relaxed text-zinc-400">
             {item.categoriaNome ?? rotuloDaOrigem(item.origem)} ·{" "}
             {item.contaNome ?? "—"}
           </p>
           <p
             className={cn(
-              "mt-1 flex items-center gap-1.5 text-[11px] font-bold",
+              "mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium",
               vencido
                 ? "text-red-300"
                 : situacao === "hoje"
-                  ? "text-amber-200"
+                  ? "text-orange-300"
                   : "text-zinc-400",
             )}
           >
             <CalendarClock aria-hidden="true" className="size-3.5" />
             {textoDoVencimento(item.vencimento, hoje)}
             {item.vencimento && situacao !== "depois" ? (
-              <span className="font-normal text-zinc-500">
+              <span className="font-normal text-zinc-400">
                 · {formatarData(item.vencimento)}
               </span>
             ) : null}
@@ -118,13 +129,13 @@ function CartaoDoPrevisto({
           valor={item.valor}
           sentido={lado === "entrada" ? 1 : -1}
           className={cn(
-            "shrink-0 text-base font-black",
+            "text-2xl font-bold",
             lado === "entrada" ? "text-emerald-300" : "text-red-300",
           )}
         />
       </div>
       {editavel ? (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-4 grid grid-cols-1 gap-2 xs:grid-cols-2">
           <button
             type="button"
             onClick={() =>
@@ -140,8 +151,9 @@ function CartaoDoPrevisto({
                 },
               })
             }
-            className={`${CLASSE_BOTAO_PRIMARIO} flex-1`}
+            className={cn(CLASSE_BOTAO_SECUNDARIO, "text-teal-300")}
           >
+            <Check aria-hidden="true" className="size-5 shrink-0" />
             Dar baixa
           </button>
           <button
@@ -156,8 +168,9 @@ function CartaoDoPrevisto({
                 },
               })
             }
-            className={`${CLASSE_BOTAO_SECUNDARIO} flex-1`}
+            className={cn(CLASSE_BOTAO_SECUNDARIO, "text-red-300")}
           >
+            <X aria-hidden="true" className="size-5 shrink-0" />
             Cancelar
           </button>
         </div>
@@ -227,7 +240,7 @@ export function AbaPrevistos({
   const aReceber = lado === "entrada";
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-7">
       <Segmentado<LadoDosPrevistos>
         rotulo="A pagar ou a receber"
         valor={lado}
@@ -251,23 +264,43 @@ export function AbaPrevistos({
         </>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-            <BlocoKpi rotulo={aReceber ? "Total a receber" : "Total a pagar"}>
-              <Dinheiro valor={totais.total} />
-            </BlocoKpi>
-            <BlocoKpi rotulo="Vencido">
-              <Dinheiro
-                valor={totais.vencido}
-                className={totais.vencido > 0 ? "text-red-300" : undefined}
-              />
-            </BlocoKpi>
-            <BlocoKpi
-              rotulo="Próximos 7 dias"
-              className="col-span-2 lg:col-span-1"
-            >
-              <Dinheiro valor={totais.proximos7Dias} />
-            </BlocoKpi>
-          </div>
+          <section
+            aria-label={aReceber ? "Total a receber" : "Total a pagar"}
+            className="rounded-3xl border border-white/10 bg-[#17171C] p-5"
+          >
+            <p className="text-xs text-zinc-400">
+              {aReceber ? "Total a receber" : "Total a pagar"}
+            </p>
+            <Dinheiro
+              valor={totais.total}
+              sentido={aReceber ? 1 : -1}
+              className="mt-4 block text-3xl font-bold text-white"
+            />
+            <dl className="mt-6 flex flex-col gap-4 text-sm">
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="text-zinc-400">Vencido</dt>
+                <dd>
+                  <Dinheiro
+                    valor={totais.vencido}
+                    className={
+                      totais.vencido > 0
+                        ? "font-bold text-red-400"
+                        : "text-white"
+                    }
+                  />
+                </dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="text-zinc-400">Próximos 7 dias</dt>
+                <dd className="font-bold">
+                  <Dinheiro valor={totais.proximos7Dias} />
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-4 text-xs text-zinc-400">
+              De hoje até 7 dias à frente, inclusive.
+            </p>
+          </section>
 
           {previstos.erro ? (
             <EstadoDeErro
@@ -283,13 +316,13 @@ export function AbaPrevistos({
               texto={
                 aReceber
                   ? "Lance aqui o que alguém ainda vai te pagar (venda a prazo, aluguel de espaço)."
-                  : "Lance aluguel, fornecedor e boletos com vencimento — o app avisa quando vencer."
+                  : "Lance aluguel, fornecedor e boletos com vencimento."
               }
               acao={
                 <button
                   type="button"
                   onClick={() => aoNovoLancamento(lado)}
-                  className={CLASSE_BOTAO_PRIMARIO}
+                  className={CLASSE_BOTAO_SECUNDARIO}
                 >
                   <Plus aria-hidden="true" className="size-4" />
                   {aReceber ? "Lançar conta a receber" : "Lançar conta a pagar"}

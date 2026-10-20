@@ -246,6 +246,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           productId={productId}
           onNavigate={vi.fn()}
           onSetDirty={vi.fn()}
@@ -280,6 +281,107 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
   }
 
   describe("a. o que fica à vista e o que fica recolhido", () => {
+    it("mantém os cinco obrigatórios em ordem e uma única publicação junto da prévia", async () => {
+      await montar();
+      const ids = [
+        "product-name",
+        "product-description",
+        "product-category",
+        "product-sale-price",
+        "product-stock",
+      ];
+      for (let i = 1; i < ids.length; i++) {
+        expect(
+          document
+            .getElementById(ids[i - 1])!
+            .compareDocumentPosition(document.getElementById(ids[i])!) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).not.toBe(0);
+      }
+      const barra = document.querySelector('[aria-label="Ações do produto"]');
+      expect(barra).not.toBeNull();
+      const publicar = [...document.querySelectorAll("button")].filter(
+        (b) => b.textContent?.trim() === "Publicar",
+      );
+      expect(publicar).toHaveLength(1);
+      expect(barra?.contains(publicar[0])).toBe(true);
+      expect(document.querySelector("header")?.contains(publicar[0])).toBe(
+        false,
+      );
+      expect(barra?.textContent).toContain("Visualizar App");
+      expect(
+        document.querySelector('[data-testid="progresso-do-produto"]')
+          ?.textContent,
+      ).toContain("0 de 5 preenchidos");
+      expect(
+        document.querySelector('[data-testid="resumo-do-produto"]'),
+      ).toBeNull();
+      await preencherOBasico();
+      expect(
+        document.querySelector('[data-testid="progresso-do-produto"]')
+          ?.textContent,
+      ).toContain("5 de 5 preenchidos");
+      expect(
+        document.querySelector('[data-testid="resumo-do-produto"]')
+          ?.textContent,
+      ).toContain("Produto Teste");
+      expect(
+        document.querySelector('[data-testid="resumo-do-produto"]')
+          ?.textContent,
+      ).toContain("Sem foto");
+    });
+
+    it("oferece ajuda acessível junto das fotos e dos dados, sem ocultar o estado vazio", async () => {
+      await montar();
+      expect(
+        document.querySelector('[aria-label="Guia de Fotos do Produto"]'),
+      ).not.toBeNull();
+      expect(
+        document.querySelector('[aria-label="Guia de Cadastro e Informações"]'),
+      ).not.toBeNull();
+      expect(document.body.textContent).toContain("Opcional · até 10 fotos");
+      await clicar(botaoDaSecao("Variações"));
+      expect(painelDaSecao("Variações").textContent).toContain(
+        "Nenhuma Variação Adicionada",
+      );
+      expect(painelDaSecao("Variações").textContent).toContain("+ Novo");
+      expect(painelDaSecao("Variações").textContent).toContain("+ Grade");
+    });
+
+    it("mostra estoque e preço antes dos códigos opcionais no editor de variação", async () => {
+      await montar();
+      await clicar(botaoDaSecao("Variações"));
+      await clicar(
+        [...painelDaSecao("Variações").querySelectorAll("button")].find(
+          (b) => b.textContent?.trim() === "+ Novo",
+        ),
+      );
+      const modal = document.querySelector(
+        '[role="dialog"][aria-labelledby="titulo-da-variacao"]',
+      );
+      expect(modal).not.toBeNull();
+      const codigos = document
+        .getElementById("variant-sku")
+        ?.closest("details");
+      expect(codigos).not.toBeNull();
+      expect(codigos?.open).toBe(false);
+      expect(
+        document
+          .getElementById("variant-stock")!
+          .compareDocumentPosition(document.getElementById("variant-sku")!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).not.toBe(0);
+      const confirmar = [...modal!.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Salvar variação",
+      );
+      expect(confirmar?.className).toContain("min-h-14");
+      expect(
+        document.getElementById("variant-status")?.getAttribute("aria-checked"),
+      ).toBe("true");
+      expect(addProduct).not.toHaveBeenCalled();
+      expect(updateProduct).not.toHaveBeenCalled();
+    });
+
     it("Fotos, Nome, Descrição, Preço, Estoque e Categoria à vista; as quatro seções fechadas", async () => {
       await montar();
 
@@ -404,7 +506,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
   describe("b. erro em seção fechada abre e foca", () => {
     function guardarRascunho(campos: Record<string, unknown>) {
       armazem.set(
-        "ikcous_product_form_draft",
+        "ikcous_product_form_draft:u-teste",
         JSON.stringify({
           name: "Produto Teste",
           description: "Descrição de teste",
@@ -540,7 +642,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
 
     it("produto novo com RASCUNHO que tem variação: 'Variações' abre quando o rascunho é aplicado", async () => {
       armazem.set(
-        "ikcous_product_form_draft",
+        "ikcous_product_form_draft:u-teste",
         JSON.stringify({
           name: "Produto Teste",
           description: "Descrição de teste",
@@ -561,7 +663,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
 
     it("produto novo com rascunho SEM variação: 'Variações' fechada", async () => {
       armazem.set(
-        "ikcous_product_form_draft",
+        "ikcous_product_form_draft:u-teste",
         JSON.stringify({ name: "Produto Teste", variants: [] }),
       );
       await montar();
@@ -574,8 +676,14 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
 
     it("'Restaurar' o rascunho de um produto salvo sem variações, com variação no rascunho, abre 'Variações'", async () => {
       armazem.set(
-        "ikcous_product_form_draft_edit_prod-1",
-        JSON.stringify({ ...produtoDoBanco, variants: [variacao] }),
+        "ikcous_product_form_draft_edit_prod-1:u-teste",
+        // Variação que a lojista criou no rascunho e ainda não está no banco:
+        // toda variação nova nasce com id provisório `temp-…`. (Com id de
+        // verdade ausente do banco ela já saiu de lá, e não volta.)
+        JSON.stringify({
+          ...produtoDoBanco,
+          variants: [{ ...variacao, id: "temp-v-1" }],
+        }),
       );
       await montar("prod-1");
       expect(estaAberta("Variações")).toBe(false);
@@ -652,6 +760,26 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
         b.textContent?.includes("Publicar"),
       ) as HTMLButtonElement;
       expect(publicar.disabled).toBe(true);
+    });
+
+    it("avisa sobre promoção inválida na seção recolhida e junto à publicação", async () => {
+      await montar("prod-1");
+      await clicar(botaoDaSecao("Custo e lucro"));
+      await clicar(document.getElementById("product-promo-active"));
+      await digitarCampo("product-original-price", "100");
+      await clicar(botaoDaSecao("Custo e lucro"));
+      expect(estaAberta("Custo e lucro")).toBe(false);
+      expect(botaoDaSecao("Custo e lucro").textContent).toContain(
+        'Preço original ("De:") deve ser maior',
+      );
+      const barra = document.querySelector('[aria-label="Ações do produto"]');
+      expect(
+        barra?.querySelector('[data-testid="motivo-do-bloqueio"]')?.textContent,
+      ).toContain("corrija os campos");
+      expect(campo("product-original-price").getAttribute("aria-invalid")).toBe(
+        "true",
+      );
+      expect(updateProduct).not.toHaveBeenCalled();
     });
 
     it("sem erro de campo (só falta preencher) o motivo aparece como texto, sem botão", async () => {

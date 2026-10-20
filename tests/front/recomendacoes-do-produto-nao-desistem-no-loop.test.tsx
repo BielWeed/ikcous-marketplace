@@ -177,7 +177,7 @@ describe("useRecomendacoesDeProduto — a busca não morre no re-render", () => 
     // observador ficava sem alvo e a busca nunca rodava: loja que crescia
     // nunca mais ganhava recomendações naquele produto (achado 1 da revisão).
     const armazem = new Map<string, string>();
-    armazem.set("ikcous_recs_cache_prod-recupera", JSON.stringify([]));
+    armazem.set("ikcous_recs_v2_cache_prod-recupera", JSON.stringify([]));
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {
@@ -249,6 +249,6 @@ describe("useRecomendacoesDeProduto — a busca não morre no re-render", () => 
     });
 
     expect(buscar).toHaveBeenCalledTimes(1);
-    expect(armazem.get("ikcous_recs_cache_prod-vazio")).toBeUndefined();
+    expect(armazem.get("ikcous_recs_v2_cache_prod-vazio")).toBeUndefined();
   });
 });

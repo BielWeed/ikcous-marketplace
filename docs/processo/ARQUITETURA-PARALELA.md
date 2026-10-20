@@ -169,8 +169,9 @@ node scripts/paralelo/frente.mjs limpar   docs/superpowers/lanes/<manifesto>.jso
 
 ### Limites e números
 
-- 20 subagentes simultâneos é o teto padrão do Claude Code (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`);
-  o recomendado é **3–8 frentes grossas** por onda. Mais frentes ≠ mais velocidade: a integração e
+- 20 subagentes simultâneos é o teto padrão do Claude Code (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`); **nesta
+  máquina o teto medido é 8** (modos `eco` 2–3, `normal` 4–5, `max` 8 no `/paralelizar`); o recomendado é
+  **3–8 frentes grossas** por onda. Mais frentes ≠ mais velocidade: a integração e
   a revisão são o gargalo (o relato de 140 PRs/semana diz o mesmo).
 - Frentes que dependem uma da outra ⇒ **ondas** (um manifesto por onda). Dependência dentro de uma
   onda é erro de decomposição: a frente para e relata, não improvisa.

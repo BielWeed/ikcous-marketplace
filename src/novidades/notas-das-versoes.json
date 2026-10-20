@@ -1,0 +1,141 @@
+{
+  "1.5.43": {
+    "titulo": "Mais segurança ao editar banners e responder perguntas",
+    "novidades": [],
+    "correcoes": [
+      "Uma resposta enviada não apaga a nova pergunta ou resposta que você começou a escrever.",
+      "O envio e o recorte de banners aguardam o salvamento terminar, sem trocar a imagem de outro banner nem apagar a imagem publicada.",
+      "Ao atualizar Produtos, os números e avisos da consulta mais recente são preservados."
+    ],
+    "melhorias": []
+  },
+  "1.5.42": {
+    "titulo": "Resumo de Produtos mais limpo",
+    "novidades": [],
+    "correcoes": [
+      "Venda prevista, custo e lucro bruto do resumo agora consideram os mesmos produtos com custo cadastrado."
+    ],
+    "melhorias": [
+      "As explicações saíram da lista de produtos e só abrem ao tocar em Entender valores.",
+      "O total de vendas de todo o estoque fica separado nos detalhes, com um aviso curto quando falta cadastrar custos."
+    ]
+  },
+  "1.5.41": {
+    "titulo": "Custo e lucro do estoque sem confusão",
+    "novidades": [],
+    "correcoes": [
+      "O lucro bruto do estoque usa o preço de cada variação, assim como a previsão de vendas.",
+      "O simulador deixa claro que preço menos custo é lucro bruto, não líquido."
+    ],
+    "melhorias": [
+      "Em Produtos, receita prevista, custo conhecido e lucro bruto aparecem separados, com aviso quando faltam custos.",
+      "O resumo explica a parte da receita que ficou fora do lucro e não inventa lucro líquido sem as despesas da venda."
+    ]
+  },
+  "1.5.40": {
+    "titulo": "Faturamento atualizado ao abrir Produtos",
+    "novidades": [],
+    "correcoes": [
+      "O faturamento potencial busca os dados atuais ao abrir Produtos, mesmo quando há um resumo salvo da versão anterior.",
+      "Um resumo antigo carregado do aparelho não substitui os dados novos que já chegaram do servidor."
+    ],
+    "melhorias": []
+  },
+  "1.5.39": {
+    "titulo": "Faturamento potencial do estoque",
+    "novidades": [
+      "Em Produtos, o resumo mostra quanto você pode faturar ao vender todo o estoque ativo, antes de descontos, taxas e frete."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "A previsão de faturamento inclui produtos sem custo informado e respeita o preço de cada variação."
+    ]
+  },
+  "1.5.38": {
+    "titulo": "Resumos do painel mais organizados",
+    "novidades": [],
+    "correcoes": [
+      "Os números dos resumos se ajustam ao espaço da tela sem quebrar em outra linha."
+    ],
+    "melhorias": [
+      "Produtos, Clientes e Pedidos ganharam resumos compactos com informações mais organizadas.",
+      "Em Produtos, o guia e simulador ficou com um único acesso, sem o botão de ajuda repetido."
+    ]
+  },
+  "1.5.37": {
+    "titulo": "Painel mais rápido de usar",
+    "novidades": [
+      "No balcão, você escolhe entre bipar o código ou buscar o produto pelo nome. A lista de produtos já aparece ao abrir a busca.",
+      "Os botões de salvar e de ação agora ficam dentro da barra de navegação, no celular, em vez de flutuar sobre a tela.",
+      "Pedidos, Produtos e Clientes passaram a ter a mesma barra de busca e filtros."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "No Financeiro, as abas ficam sempre visíveis no alto da tela.",
+      "Em Pagamentos, o PIX ganhou o símbolo oficial e o cartão mostra o status em uma faixa própria.",
+      "O cartão de produto mostra a foto inteira, e os números do painel seguem o mesmo visual em todas as telas."
+    ]
+  },
+  "1.5.36": {
+    "titulo": "Motivo do desconto só da equipe",
+    "novidades": [],
+    "correcoes": [
+      "O motivo que você escreve ao dar desconto no balcão agora fica só com a equipe. A cliente cadastrada não recebe mais esse texto no celular dela."
+    ],
+    "melhorias": []
+  },
+  "1.5.35": {
+    "titulo": "Anotação interna só da equipe",
+    "novidades": [],
+    "correcoes": [
+      "A anotação interna do pedido agora fica só com você e sua equipe. A cliente não recebe mais esse texto no celular dela.",
+      "Ao editar a anotação, o painel confere antes o texto salvo, para não apagar o que outra pessoa escreveu."
+    ],
+    "melhorias": []
+  },
+  "1.5.34": {
+    "titulo": "Menos perda de texto e contas mais certas",
+    "novidades": [],
+    "correcoes": [
+      "Se você escreve uma anotação no pedido, uma avaliação ou um pedido de devolução e troca de aplicativo, o texto não se perde mais quando o app se atualiza.",
+      "O lucro mostrado no painel agora desconta o cupom que o cliente usou.",
+      "Se um lançamento do financeiro for enviado duas vezes por falha de internet, ele não é registrado em dobro.",
+      "Quando o Melhor Envio recusa a etiqueta depois do pagamento, o painel avisa em vez de dizer que deu certo.",
+      "O app continua abrindo sem internet mesmo quando uma atualização é interrompida no meio.",
+      "O frete calculado não some mais quando o armazenamento do celular está cheio."
+    ],
+    "melhorias": []
+  },
+  "1.5.33": {
+    "titulo": "Pequeno ajuste nas atualizações",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Um ajuste interno para conferirmos que o aviso de atualização aparece do jeito certo."
+    ]
+  },
+  "1.5.32": {
+    "titulo": "Atualizações automáticas e mais segurança no dia a dia",
+    "novidades": [
+      "O app agora se atualiza sozinho, sem botão e sem janelas confusas: um aviso discreto aparece no alto da tela quando está atualizando e quando termina.",
+      "As novidades de cada versão chegam aqui nas Notificações, escritas de forma simples."
+    ],
+    "correcoes": [
+      "A atualização nunca interrompe uma venda ou um pagamento em andamento: ela espera você terminar."
+    ],
+    "melhorias": [
+      "O aviso de atualização no painel ficou menor e não empurra a tela do caixa."
+    ]
+  },
+  "1.5.31": {
+    "titulo": "Entrega na sua cidade e pedidos mais seguros",
+    "novidades": [
+      "Agora você escolhe como entrega na sua cidade: entrega própria ou só retirada, direto no painel."
+    ],
+    "correcoes": [
+      "A busca de produtos não mostra mais produtos pausados.",
+      "Se o cliente voltar para pagar um pedido que já começou, o app reabre o mesmo pedido em vez de criar outro por engano."
+    ],
+    "melhorias": []
+  }
+}

@@ -101,6 +101,13 @@ export interface DashboardStats {
   inventory?: {
     totalCost: number;
     totalValue: number;
+    /** Venda prevista de todo o estoque ativo, inclusive sem custo cadastrado. */
+    totalRevenue?: number;
+    /** Parte da receita que não permite apurar lucro por faltar custo. */
+    revenueWithoutCost?: number;
+    /** Cobertura do estoque atual; não são os produtos vendidos sem custo da raiz. */
+    productsWithoutCost?: number;
+    productsWithCost?: number;
   };
   averageTicket?: number;
   /** Pedidos com `status = 'delivered'`, desde sempre. Opcional: campo novo
@@ -118,6 +125,11 @@ export interface DashboardStats {
    * que este campo existe para consertar — foi o que quase aconteceu aqui.
    * Mesma ressalva de `deliveredTotal` acima. */
   paidOnCancelled?: number;
+  /** Produtos vendidos que ficaram FORA do lucro e do Top 5 "mais lucrativos"
+   * por não terem custo cadastrado (migration 20261234). Opcional: a tela
+   * sobe antes da migration, e a função antiga não devolve o campo. Leia
+   * sempre por `produtosSemCusto()`, que trata ausente/inválido como 0. */
+  productsWithoutCost?: number;
 }
 
 // Memory cache for SWR pattern
@@ -136,6 +148,7 @@ let lastCategoryFetchTime = 0;
 // recente iniciada; resposta atrasada devolve o dado a quem chamou e pronto
 // (mesmo espírito de OrderDetailsView.tsx:303-306).
 let ultimaChamadaExecutiva = 0;
+let ultimaChamadaDeCategorias = 0;
 const REVALIDATION_THROTTLE_MS = 30000; // 30 seconds
 
 const STATS_EVENT = "ikcous-admin-stats-updated";
@@ -241,7 +254,9 @@ export function useAnalytics() {
               id: string;
               data: DashboardStats;
             }>("store_config", "admin_dashboard_stats");
-            if (localStats?.data) {
+            // A RPC pode ter terminado enquanto o disco era lido. Nesse
+            // caso o snapshot novo em memória vence a hidratação antiga.
+            if (localStats?.data && !cachedStats) {
               cachedStats = localStats.data;
               setStats(cachedStats);
               broadcastStats(cachedStats);
@@ -339,10 +354,12 @@ export function useAnalytics() {
                 return { data: data as DashboardStats | null, error };
               },
             );
-            if (!err && data && !chamadaFicouAtrasada()) {
+            if (err) throw err;
+            if (data && !chamadaFicouAtrasada()) {
               cachedStats = data;
               lastStatsFetchTime = Date.now();
               setStats(cachedStats);
+              setError(null);
               broadcastStats(cachedStats);
 
               // Persist in DataVault
@@ -469,7 +486,13 @@ export function useAnalytics() {
         return cachedCategoryData;
       }
 
+      // Como no resumo: só a consulta mais recente publica o resultado.
+      const minhaChamada = ++ultimaChamadaDeCategorias;
+      const chamadaFicouAtrasada = () =>
+        minhaChamada !== ultimaChamadaDeCategorias;
+
       if (cachedCategoryData && !forceRefresh) {
+        setCategoryLoading(false);
         // Background revalidation. #104: essa IIFE não é aguardada pelo
         // chamador (dado stale volta na hora), mas uma falha aqui NÃO pode
         // ficar muda — antes só olhava `data` e ignorava `error`, então uma
@@ -482,6 +505,7 @@ export function useAnalytics() {
                 end_date: end,
               }),
             );
+            if (chamadaFicouAtrasada()) return;
             if (err) {
               console.error("Background fetch category failed:", err);
               setCategoryError(
@@ -500,15 +524,17 @@ export function useAnalytics() {
               // Persist in DataVault
               DataVault.init()
                 .then((vault) => {
+                  if (chamadaFicouAtrasada()) return;
                   vault.put("store_config", {
                     id: "admin_category_data",
-                    data: cachedCategoryData,
+                    data,
                   });
                 })
                 .catch(() => {});
             }
           } catch (e: any) {
             console.error("Background fetch category failed:", e);
+            if (chamadaFicouAtrasada()) return;
             setCategoryError(
               mensagemParaLojista(e, "atualizar os dados de categorias"),
             );
@@ -526,6 +552,7 @@ export function useAnalytics() {
           }),
         );
         if (error) throw error;
+        if (chamadaFicouAtrasada()) return data;
         cachedCategoryData = data;
         cachedCategoryRange = rangeKey; // PAINEL-10
         lastCategoryFetchTime = Date.now();
@@ -536,9 +563,10 @@ export function useAnalytics() {
         // Persist in DataVault
         DataVault.init()
           .then((vault) => {
+            if (chamadaFicouAtrasada()) return;
             vault.put("store_config", {
               id: "admin_category_data",
-              data: cachedCategoryData,
+              data,
             });
           })
           .catch(() => {});
@@ -546,12 +574,13 @@ export function useAnalytics() {
         return data;
       } catch (err: any) {
         console.error("Error fetching category analytics:", err);
+        if (chamadaFicouAtrasada()) return null;
         setCategoryError(
           mensagemParaLojista(err, "carregar os dados de categorias"),
         );
         return null;
       } finally {
-        setCategoryLoading(false);
+        if (!chamadaFicouAtrasada()) setCategoryLoading(false);
       }
     },
     [],

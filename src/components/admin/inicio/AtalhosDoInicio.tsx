@@ -1,78 +1,57 @@
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import type { View } from "@/types";
-import { ArrowRight, BarChart3, Landmark, type LucideIcon } from "lucide-react";
+import { BarChart3, Wallet } from "lucide-react";
+import { SeloDoInicio } from "./visualDoInicio";
 
-interface BotaoGrande {
-  readonly destino: View;
-  readonly titulo: string;
-  readonly descricao: string;
-  readonly icone: LucideIcon;
-}
-
-const BOTOES_GRANDES: readonly BotaoGrande[] = [
+const BOTOES_GRANDES = [
   {
     destino: "admin-crm",
     titulo: NOMES_DO_PAINEL["admin-crm"],
-    descricao: "Clientes, canais, funil e todas as métricas",
+    descricao: "Clientes e métricas",
     icone: BarChart3,
+    tom: "azul",
   },
   {
     destino: "admin-financeiro",
     titulo: NOMES_DO_PAINEL["admin-financeiro"],
-    descricao: "Caixa, extrato, contas a pagar e receber",
-    icone: Landmark,
+    descricao: "Caixa e contas",
+    icone: Wallet,
+    tom: "teal",
   },
-];
+] as const;
 
-/**
- * As portas do Início: os dois botões grandes (CRM e Financeiro).
- * `aoPrepararDestino` aquece o chunk da tela no hover/toque, antes do
- * clique. A fileira de ações rápidas (Vender, Pedidos, Devoluções) saiu —
- * pedido do Gabriel (27/09/2026): Vender e Pedidos já estão na barra de
- * baixo, e Devoluções tem porta própria na tela de Pedidos
- * (o `AtalhosDaAba` de Pedidos, com o contador de devoluções abertas).
- */
+/** As mesmas duas portas; mantém o aquecimento por hover, foco e toque. */
 export function AtalhosDoInicio({
   onNavigate,
   aoPrepararDestino,
+  ativa = true,
 }: Readonly<{
   onNavigate: (view: View) => void;
   aoPrepararDestino?: (view: View) => void;
+  ativa?: boolean;
 }>) {
   return (
-    <nav aria-label="Atalhos do painel" className="h-full">
-      <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 lg:grid-cols-1">
-        {BOTOES_GRANDES.map((botao) => (
-          <button
-            key={botao.destino}
-            type="button"
-            onClick={() => onNavigate(botao.destino)}
-            onMouseEnter={() => aoPrepararDestino?.(botao.destino)}
-            onFocus={() => aoPrepararDestino?.(botao.destino)}
-            onTouchStart={() => aoPrepararDestino?.(botao.destino)}
-            className="group relative flex min-h-[88px] w-full cursor-pointer items-center gap-4 overflow-hidden rounded-2xl border border-admin-gold/20 bg-gradient-to-br from-admin-gold/[0.12] via-zinc-950/60 to-zinc-950 p-4 text-left shadow-lg transition-all duration-500 hover:border-admin-gold/40 hover:from-admin-gold/[0.18] active:scale-[0.98]"
-          >
-            <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-admin-gold/30 bg-admin-gold/10">
-              <botao.icone
-                className="size-5 text-admin-gold"
-                aria-hidden="true"
-              />
+    <AcaoDaBarra ativa={ativa} aria-label="Atalhos do painel">
+      {BOTOES_GRANDES.map((botao) => (
+        <button
+          key={botao.destino}
+          type="button"
+          onClick={() => onNavigate(botao.destino)}
+          onMouseEnter={() => aoPrepararDestino?.(botao.destino)}
+          onFocus={() => aoPrepararDestino?.(botao.destino)}
+          onTouchStart={() => aoPrepararDestino?.(botao.destino)}
+          className="flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2 rounded-[1.125rem] border border-white/10 bg-[#17171C] p-2 text-left transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+        >
+          <SeloDoInicio icone={botao.icone} tom={botao.tom} />
+          <span className="min-w-0 break-words text-sm font-bold text-white [overflow-wrap:anywhere]">
+            {botao.titulo}{" "}
+            <span className="sr-only text-xs font-normal leading-relaxed text-zinc-400 lg:not-sr-only lg:block">
+              {botao.descricao}
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-base font-black tracking-tight text-white">
-                {botao.titulo}
-              </span>
-              <span className="mt-0.5 block text-xs leading-snug text-zinc-400">
-                {botao.descricao}
-              </span>
-            </span>
-            <ArrowRight
-              className="size-4 shrink-0 text-admin-gold transition-transform duration-300 group-hover:translate-x-1"
-              aria-hidden="true"
-            />
-          </button>
-        ))}
-      </div>
-    </nav>
+          </span>
+        </button>
+      ))}
+    </AcaoDaBarra>
   );
 }

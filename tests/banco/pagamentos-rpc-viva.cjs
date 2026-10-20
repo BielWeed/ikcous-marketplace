@@ -80,6 +80,10 @@ const {
   anexarAoSummary,
 } = require("./efemero.cjs");
 const { SUCESSORAS_DA_99 } = require("./sucessoras-da-99.cjs");
+const { REEMBOLSO_EM_DUVIDA } = require("./reembolso-em-duvida-posterior.cjs");
+const {
+  DESFAZER_RECEBIMENTO,
+} = require("./desfazer-recebimento-posterior.cjs");
 
 const U_CLIENTE = "71111111-1111-1111-1111-111111111111";
 const U_OUTRO = "71111111-1111-1111-1111-111111111112";
@@ -1669,6 +1673,10 @@ const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
 // DENTRO da transação, na ordem inversa da aplicação; o ROLLBACK do fim
 // devolve tudo. Cada uma só é desfeita se estiver no ar.
 const POSTERIORES_A_97 = [
+  // 20261241000000 (o reembolso em duvida prende o saldo) redefine o reemitir e o por fora da 1226 e mais
+  // cinco corpos (tests/banco/reembolso-em-duvida-posterior.cjs): com ela no ar o rollback da 1226 recusa
+  // (B1_BASELINE_DIVERGENT). E a mais nova: sai PRIMEIRO.
+  REEMBOLSO_EM_DUVIDA,
   // As sucessoras da 99 (20261212, 20261214 — redefinem corpos dela;
   // tests/banco/sucessoras-da-99.cjs), na ordem inversa da aplicação: com
   // qualquer uma no ar, o rollback da 99 abaixo recusa. "No ar" = o corpo vivo
@@ -1708,6 +1716,69 @@ const POSTERIORES_A_97 = [
     nome: "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql",
     noAr: `SELECT to_regprocedure('public.admin_cupom_clientes(uuid)') IS NOT NULL AS sim`,
   },
+  // 20261219000000: a lista de perfis publicos so para quem esta logado. A politica de
+  // public_profiles usa rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). No FIM da lista de proposito.
+  {
+    nome: "20261219000000_perfil_publico_so_de_quem_escreveu.sql",
+    noAr: `SELECT EXISTS (
+       SELECT 1 FROM pg_policy
+        WHERE polname = 'public_profiles_select_policy'
+          AND polrelid = to_regclass('public.public_profiles')
+          AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%') AS sim`,
+  },
+  // 20261224000000: a avaliacao nasce sem a resposta da loja. A funcao do gatilho chama
+  // rls_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "funcoes
+  // fora da 20261197000000 ainda usam ..."). Ela nao depende de nenhuma outra da lista; so tem de
+  // sair ANTES da 97. No FIM da lista de proposito, como as demais.
+  {
+    nome: "20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql",
+    noAr: `SELECT to_regprocedure('public.avaliacao_nasce_sem_a_resposta_da_loja()') IS NOT NULL AS sim`,
+  },
+  // 20261226000000: a reemissao do reembolso consulta o MP antes de pagar de novo. A porta do
+  // painel admin_devolucao_reembolso_por_fora usa is_admin_atual(): sem esta entrada o
+  // rollback da 97 recusa (B1_BASELINE_DIVERGENT). No FIM da lista de proposito.
+  {
+    nome: "20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql",
+    noAr: `SELECT to_regprocedure('public.admin_devolucao_reembolso_por_fora(uuid,uuid)') IS NOT NULL AS sim`,
+  },
+  // 20261237000000: a lojista renomeia e apaga categoria sem deixar produto orfao. As tres
+  // portas do painel (categorias_com_uso, renomear_categoria, apagar_categoria_vazia) usam
+  // is_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT).
+  // No FIM da lista de proposito, como as demais.
+  {
+    nome: "20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql",
+    noAr: `SELECT to_regprocedure('public.renomear_categoria(uuid,text)') IS NOT NULL AS sim`,
+  },
+  // 20261238000000: a cliente pede exclusao da conta e correcao do e-mail. As tres politicas de
+  // public.pedidos_de_privacidade (dono_ou_admin_select, dono_insert, admin_update) usam
+  // is_admin_atual()/rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT: "politicas fora da 20261197000000 ainda usam ..."). O rollback dela
+  // recusa se a tabela tiver linha ou ja tiver guardado alguma (pg_relation_size > 0): num banco
+  // de prova recem-migrado ela esta vazia. Independe da 237; no FIM da lista de proposito, como as demais.
+  {
+    nome: "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql",
+    noAr: `SELECT to_regclass('public.pedidos_de_privacidade') IS NOT NULL AS sim`,
+  },
+  // 20261247000000: a anotacao interna do pedido. A politica FOR ALL de
+  // public.marketplace_order_internal_notes usa rls_admin_atual(): sem esta entrada o rollback da 97
+  // recusa (B1_BASELINE_DIVERGENT: "politicas fora da 20261197000000 ainda usam ..."). O rollback comum
+  // dela so' fecha a porta (tira a politica e os grants) e preserva tabela e linhas. Independe das outras
+  // da lista; no FIM de proposito, como as demais.
+  {
+    nome: "20261247000000_a_nota_interna_do_pedido_nao_chega_a_cliente.sql",
+    noAr: `SELECT EXISTS (
+       SELECT 1 FROM pg_policy
+        WHERE polname = 'nota_interna_so_admin_atual'
+          AND polrelid = to_regclass('public.marketplace_order_internal_notes')) AS sim`,
+  },
+  // 20261243000000: desfazer o recebimento recusa pedido com devolucao. Redefine o corpo de
+  // registrar_pagamento_recebido que a 97 deixa (e que a 95 e a 97 conferem por hash): com ela no ar
+  // os rollbacks da 95 e da 97 recusam (B1_BASELINE_DIVERGENT: "corpo vivo de ...
+  // registrar_pagamento_recebido ... nao e o que a 20261197000000 deixou"). So' mexe nessa funcao e
+  // nao depende de nenhuma outra da lista; tem de sair ANTES da 97. No FIM da lista de proposito.
+  // Definicao unica em tests/banco/desfazer-recebimento-posterior.cjs.
+  DESFAZER_RECEBIMENTO,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

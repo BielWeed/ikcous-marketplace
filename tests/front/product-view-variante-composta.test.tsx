@@ -198,7 +198,7 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
     });
 
     // 3 unidades: rótulo de estoque baixo com o número da PP.
-    expect(hospedeiro.textContent).toContain("Apenas 3 restam!");
+    expect(hospedeiro.textContent).toContain("Restam apenas 3!");
     // O price_override da linha PP (25) vence o preço do produto (30).
     expect(hospedeiro.textContent).toContain("R$ 25,00");
   });

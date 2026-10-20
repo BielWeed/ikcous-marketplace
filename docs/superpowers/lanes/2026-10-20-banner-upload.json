@@ -1,0 +1,14 @@
+{
+  "plano": "noturno-banner-upload",
+  "frentes": [
+    {
+      "nome": "banner-upload",
+      "descricao": "Impedir que upload normal concorra com salvar e exclua imagem publicada",
+      "posse": [
+        "src/views/admin/AdminBannersView.tsx",
+        "tests/front/admin-banners-upload-durante-salvar.test.tsx"
+      ]
+    }
+  ],
+  "liberados": {}
+}

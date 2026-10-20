@@ -13,9 +13,9 @@
 // Três provas:
 // 1. A lista mandada ao SW tem "/" + 1 URL por produto (a primeira),
 //    ZERO banners.
-// 2. A URL aquecida do produto é a MESMA STRING que a SearchBar usa para
-//    montar a miniatura da sugestão — observada do consumidor de verdade,
-//    nunca hardcoded.
+// 2. A miniatura da sugestão que a SearchBar usa está entre as URLs aquecidas
+//    (a mesma STRING, observada do consumidor de verdade, nunca hardcoded),
+//    junto da original que CartItemsList/ShippingProgress ainda pedem crua.
 // 3. Em rede lenta (2G/economia de dados), nenhuma imagem é aquecida — o
 //    comportamento de hoje continua.
 //
@@ -288,13 +288,12 @@ describe("useCacheWarmer — aquece só o que tem consumidor (laudo sócio r2, F
     ]);
   });
 
-  it("a URL aquecida do produto é a MESMA STRING que a SearchBar usa na miniatura da sugestão", async () => {
+  it("aquece a original E a MESMA STRING que a SearchBar usa na miniatura da sugestão", async () => {
     // Endereço no formato de arquivo público do Supabase Storage
-    // (CAMINHO_ORIGINAL de imageUrl.ts) de propósito: só assim a mutação (c)
-    // — trocar pela versão TRANSFORMADA via `imagemRedimensionada` — produz
-    // uma string DIFERENTE. Uma URL fora desse formato faz
-    // `imagemRedimensionada` devolvê-la intacta (linha 39 de imageUrl.ts),
-    // e a mutação passaria sem ser pega.
+    // (CAMINHO_ORIGINAL de imageUrl.ts) de propósito: só assim a versão
+    // TRANSFORMADA (a miniatura da busca) é uma string DIFERENTE da original.
+    // Uma URL fora desse formato volta intacta de `imagemRedimensionada`, e o
+    // teste não distinguiria aquecer a miniatura de aquecer só a original.
     const produtoCompartilhado = produtoDeTeste({
       id: "prod-contrato",
       name: "Caneca Termica Premium",
@@ -322,8 +321,13 @@ describe("useCacheWarmer — aquece só o que tem consumidor (laudo sócio r2, F
 
     const mensagem = await montarWarmerEEsperarMensagem();
     const imagensAquecidas = mensagem.urls.filter((url) => url !== "/");
-    expect(imagensAquecidas).toHaveLength(1);
-    const urlAquecidaDoProduto = imagensAquecidas[0];
+    // Só a 1ª foto do produto, em DUAS formas com consumidor: a original
+    // (CartItemsList, ShippingProgress) e a miniatura da sugestão da busca.
+    // A foto 2 e o banner continuam de fora.
+    expect(imagensAquecidas).toHaveLength(2);
+    expect(imagensAquecidas[0]).toBe(
+      "https://xyzsupabase.co/storage/v1/object/public/produtos/prod-contrato/foto-1.jpg",
+    );
 
     // Renderiza a SearchBar de verdade e digita o nome do produto — mesmo
     // andaime de searchbar-acha-produto-acentuado.test.tsx.
@@ -364,7 +368,11 @@ describe("useCacheWarmer — aquece só o que tem consumidor (laudo sócio r2, F
       "SearchBar não renderizou nenhuma sugestão",
     ).not.toBeNull();
 
-    expect(imgDaSugestao?.getAttribute("src")).toBe(urlAquecidaDoProduto);
+    // A miniatura que a SearchBar de fato renderiza está entre as aquecidas,
+    // string por string (e é a versão redimensionada, não a original).
+    const srcDaSugestao = imgDaSugestao?.getAttribute("src") ?? "";
+    expect(srcDaSugestao).toContain("/storage/v1/render/image/public/");
+    expect(imagensAquecidas).toContain(srcDaSugestao);
 
     act(() => {
       raizBusca.unmount();

@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
@@ -13,15 +14,28 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
-import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import {
+  DEPOIS_DO_DIA_COM_CLIENTE,
+  DEPOIS_DO_DIA_SEM_CLIENTE,
+  FRASE_ANULAR_SO_NO_MESMO_DIA,
+  podeAnularVendaDoBalcao,
+} from "@/lib/anulacao-do-balcao";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
-import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import {
+  ROTULO_SEM_VALOR_A_PAGAR,
+  pedidoSemValorAPagar,
+  rotuloDaFormaDoPedido,
+} from "@/lib/forma-de-pagamento";
 import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
+import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { cn } from "@/lib/utils";
@@ -51,8 +65,9 @@ import { OrderReceipt } from "./OrderReceipt";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
+  ROTULO_PRONTO_PARA_RETIRAR,
   rotuloDoPagamento,
-  statusConfig,
+  rotuloDoStatus,
 } from "./OrderStatusBadge";
 import { podeRegistrarPagamento } from "./podeRegistrarPagamento";
 
@@ -107,20 +122,18 @@ const getNextStatus = (current: OrderStatus): OrderStatus | null => {
   return null;
 };
 
-// `Map` em vez de indexação dinâmica — mesma razão de `statusConfigByKey`
-// em useOrders.ts: `statusConfig[chave]` acende
-// `security/detect-object-injection` no eslint-plugin-security mesmo a
-// chave vindo de uma união fechada.
-const statusConfigByKey = new Map(Object.entries(statusConfig));
-
 // Rótulo do método de pagamento na ficha. T3 (lote B, 12/09): "Rede PIX" e
 // "Rede Crédito" eram vocabulário de operador. Agora a ficha usa o MESMO
 // rótulo da planilha e da lista (`rotuloDaFormaDoPedido`, defeito D4 de
 // 28/09): cartão no balcão é "na maquininha", no site é "na entrega", e
 // "online" nunca vira "Dinheiro" (quem lança o caixa a partir daqui não pode
-// ler dinheiro e cobrar de novo). O PIX segue curto, como a ficha já dizia.
+// ler dinheiro e cobrar de novo). O PIX segue curto, como a ficha já dizia —
+// menos na compra de R$ 0,00 (cupom de 100%), que não tem forma de pagamento:
+// ali vale o rótulo único ("Sem valor a pagar").
 const getPaymentMethodLabel = (order: Order) =>
-  order.paymentMethod === "pix" ? "PIX" : rotuloDaFormaDoPedido(order);
+  order.paymentMethod === "pix" && !pedidoSemValorAPagar(order)
+    ? "PIX"
+    : rotuloDaFormaDoPedido(order);
 
 // T3 (lote B, 12/09) — a frase-situação do dinheiro no cabeçalho da seção
 // Pagamento (emprestada da direção "Dinheiro primeiro"): a primeira dúvida
@@ -161,6 +174,12 @@ function fraseSituacaoDoPagamento(order: Order): string {
   // recebido" (`podeRegistrarPagamento`). `recebido_na_entrega` + cancelado
   // já caiu no ramo de atenção acima.
   if (order.paymentMethod !== "online") {
+    // Compra que fechou em R$ 0,00 (cupom de 100%): o servidor a grava como
+    // "pagar na entrega", mas não há o que receber — "Falta receber na
+    // entrega · R$ 0,00" mandaria a lojista cobrar de quem não deve nada.
+    if (pedidoSemValorAPagar(order)) {
+      return ROTULO_SEM_VALOR_A_PAGAR;
+    }
     // D1 (lote C4): o banco não ganhou canal como oitavo payment_status — a
     // venda de balcão grava o MESMO `recebido_na_entrega`/pagamento pendente
     // de sempre. Só a FRASE muda de "entrega" para "balcão" quando o canal
@@ -233,6 +252,21 @@ interface OrderDetailProps {
 }
 
 const globalSkuCache: Record<string, string> = {};
+// Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
+// mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
+// quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
+const globalVariacaoCache = new Map<string, string>();
+const filaNotas = new Map<string, Promise<unknown>>();
+
+const lerNotaInterna = async (pedidoId: string) => {
+  const { data, error } = await supabase
+    .from("marketplace_order_internal_notes")
+    .select("note")
+    .eq("order_id", pedidoId)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.note || "";
+};
 
 // Redesenho da ficha (08/10/2026, aprovado pelo dono): a MESMA linguagem do
 // card de pedido redesenhado em 07/10 (`AdminOrderCard`) — blocos
@@ -331,7 +365,11 @@ function OrderHeader({ order, avisoDeEspera }: Readonly<OrderHeaderProps>) {
           <span className="text-admin-gold">#{numeroDoPedido(order.id)}</span>
         </h1>
         {statusForaDaTrilha && (
-          <OrderStatusBadge status={order.status} className={seloDaFicha} />
+          <OrderStatusBadge
+            status={order.status}
+            retiradaNaLoja={order.retiradaNaLoja}
+            className={seloDaFicha}
+          />
         )}
       </div>
       <p className="text-sm tabular-nums text-zinc-400">
@@ -373,6 +411,8 @@ interface OrderActionBarProps {
   orderId: string;
   orderStatus: OrderStatus;
   nextStatus: OrderStatus | null;
+  /** Retirada na loja: o avanço para `shipping` se lê "Pronto para retirar". */
+  retiradaNaLoja?: boolean;
   isOffline: boolean;
   isUpdatingStatus: boolean;
   // Dois callbacks, não um: "Avançar" e "Cancelar pedido" são ações
@@ -398,6 +438,7 @@ function OrderActionBar({
   orderId,
   orderStatus,
   nextStatus,
+  retiradaNaLoja,
   isOffline,
   isUpdatingStatus,
   onAdvance,
@@ -455,7 +496,7 @@ function OrderActionBar({
                 <span>Processando</span>
               </>
             ) : (
-              <span className="text-center">{`Avançar → ${statusConfigByKey.get(nextStatus)?.label ?? nextStatus}`}</span>
+              <span className="text-center">{`Avançar → ${rotuloDoStatus(nextStatus, retiradaNaLoja)}`}</span>
             )}
           </Button>
         )}
@@ -466,6 +507,7 @@ function OrderActionBar({
 
 interface OrderStepperPipelineProps {
   orderStatus: OrderStatus;
+  retiradaNaLoja?: boolean;
 }
 
 const statusesStepper: { key: OrderStatus; label: string }[] = [
@@ -480,6 +522,7 @@ const statusesStepper: { key: OrderStatus; label: string }[] = [
 // o pedido já chegou nesta etapa, apagado quando ainda não.
 function OrderStepperPipeline({
   orderStatus,
+  retiradaNaLoja,
 }: Readonly<OrderStepperPipelineProps>) {
   if (orderStatus === "cancelled") return null;
 
@@ -524,7 +567,9 @@ function OrderStepperPipeline({
                 !isActive && !isCompleted && "text-zinc-400",
               )}
             >
-              {step.label}
+              {retiradaNaLoja && step.key === "shipping"
+                ? ROTULO_PRONTO_PARA_RETIRAR
+                : step.label}
             </span>
           </li>
         );
@@ -538,10 +583,6 @@ interface OrderDeliveryCardProps {
   isOffline: boolean;
   copiedAddress: boolean;
   mapsUrlQuery: string;
-  /** Estado LOCAL das anotações (`localNotes` de OrderDetail): a linha "Como
-   * vai" lê daqui, não de `order.notes`, para não ficar velha depois que a
-   * lojista salva uma anotação. */
-  notes: string;
   onCopyAddress: () => void;
   onWhatsAppDirect: () => void;
   // Laudo 0109 (A-7): null = número não abre conversa — sem botão.
@@ -557,19 +598,17 @@ function OrderDeliveryCard({
   isOffline,
   copiedAddress,
   mapsUrlQuery,
-  notes,
   onCopyAddress,
   onWhatsAppDirect,
   whatsappUrl,
 }: Readonly<OrderDeliveryCardProps>) {
   // Retirada na loja: a cliente BUSCA — a linha diz isso em vez de ler a nota
-  // de frete. Entrega comum: nome e prazo da nota do checkout (se a lojista
-  // apagar a frase ao editar a anotação, a linha some — aceito); sem nota
+  // de frete. Entrega comum: nome e prazo da nota do checkout; sem nota
   // (pedido antigo, venda de balcão), a linha simplesmente não aparece.
   const formaDeEntrega = order.retiradaNaLoja
     ? "Retirada na loja"
     : (() => {
-        const forma = formaDeEntregaDaNota(notes);
+        const forma = formaDeEntregaDaNota(order.notes);
         return forma ? `${forma.nome} · ${forma.prazo}` : null;
       })();
 
@@ -687,6 +726,7 @@ function OrderDeliveryCard({
 interface OrderItemsCardProps {
   order: Order;
   skus: Record<string, string>;
+  variacoes: Record<string, string>;
   loadingSkus: boolean;
 }
 
@@ -697,6 +737,7 @@ interface OrderItemsCardProps {
 function OrderItemsCard({
   order,
   skus,
+  variacoes,
   loadingSkus,
 }: Readonly<OrderItemsCardProps>) {
   const { items } = order;
@@ -715,6 +756,7 @@ function OrderItemsCard({
           const itemSku = item.variantId
             ? skus[`var-${item.variantId}`] || skus[`prod-${item.productId}`]
             : skus[`prod-${item.productId}`];
+          const variacao = item.variantId ? variacoes[item.variantId] : "";
 
           return (
             <div
@@ -732,6 +774,14 @@ function OrderItemsCard({
                 <p className="truncate text-sm font-medium text-white">
                   {item.name}
                 </p>
+                {variacao && (
+                  <p
+                    data-testid="variacao-do-item"
+                    className="mt-0.5 break-words text-xs font-medium text-zinc-200"
+                  >
+                    {variacao}
+                  </p>
+                )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-xs tabular-nums text-zinc-400">
                     {item.quantity} × R$ {formatarValor(item.price)}
@@ -805,20 +855,8 @@ interface OrderFinanceCardProps {
   registrandoPagamento?: boolean;
 }
 
-// F7 do painel simples — venda do balcão não se CANCELA (nasce entregue, e
-// "Cancelar pedido" não existe para entregue): o caminho é ANULAR, e só no
-// mesmo dia. A 1ª frase é a da recusa do banco (migration 20261204000000,
-// `anular_venda_presencial`); a 2ª da recusa ("registre uma devolução") NÃO
-// vale aqui: o lojista não abre devolução de balcão no painel
-// (`solicitar_devolucao` exige o cliente logado, `user_id = auth.uid()`).
-// No balcão não há arrependimento (ele exige canal 'online'): sobra troca ou
-// vício, pedidos pelo cliente — e só se a venda nasceu na conta dele
-// (`registrar_venda_presencial(p_cliente_user_id)`; não há vínculo depois).
-const FRASE_ANULAR_SO_NO_MESMO_DIA = "Só dá para anular no mesmo dia da venda.";
-const DEPOIS_DO_DIA_COM_CLIENTE =
-  "Depois disso, a troca ou o reparo de defeito só podem ser pedidos pelo cliente, no app, dentro do prazo da loja.";
-const DEPOIS_DO_DIA_SEM_CLIENTE =
-  "Esta venda não está na conta de nenhum cliente: o app não abre devolução para ela.";
+// As frases de "passou do dia" (F7) moram em `@/lib/anulacao-do-balcao`: o
+// recibo da tela Vender diz a MESMA coisa.
 
 /** A venda do balcão que só não se anula mais porque o dia passou: a MESMA
  * regra do botão, com o recebimento trazido para hoje. Não decide nada — só
@@ -886,6 +924,7 @@ function OrderFinanceCard({
   const situacaoPositiva =
     !situacao.includes("precisa de atenção") &&
     (situacao.startsWith("Pago no site") ||
+      situacao === ROTULO_SEM_VALOR_A_PAGAR ||
       situacao.startsWith("Recebido na entrega") ||
       situacao.startsWith("Recebido no balcão"));
 
@@ -945,14 +984,12 @@ function OrderFinanceCard({
                   { day: "2-digit", month: "short" },
                 )}
               </span>
-              <button
-                type="button"
-                onClick={() => onRegistrarPagamento(order.id, false)}
+              <DesfazerRecebimento
+                order={order}
+                aoDesfazer={() => onRegistrarPagamento(order.id, false)}
                 disabled={registrandoPagamento}
                 className="h-11 shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
-              >
-                Desfazer
-              </button>
+              />
             </>
           ) : (
             <button
@@ -1132,15 +1169,17 @@ function OrderLogisticsCard({
             <Copy className="size-4" />
           )}
         </button>
-        <a
-          href={`https://linkrastreio.com/?codigo=${localTrackingCode}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
-          title="Rastrear nos Correios"
-        >
-          <ExternalLink className="size-4" />
-        </a>
+        {linkDeRastreio(localTrackingCode) && (
+          <a
+            href={linkDeRastreio(localTrackingCode)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
+            title="Rastrear nos Correios"
+          >
+            <ExternalLink className="size-4" />
+          </a>
+        )}
         <button
           onClick={() => setIsEditingTracking(true)}
           disabled={isOffline}
@@ -1160,29 +1199,55 @@ interface OrderNotesCardProps {
   notesValue: string;
   isSavingNotes: boolean;
   isOffline: boolean;
+  notesStatus: "loading" | "ready" | "error";
+  abrindoEdicao: boolean;
+  onRetry: () => void;
+  onEditNotes: () => void;
   setNotesValue: (val: string) => void;
   setIsEditingNotes: (val: boolean) => void;
   onSaveNotes: () => void;
 }
 
-// Linha "Anotações internas" da lista de envio — mesma ideia do rastreio:
-// vazia convida com "Adicionar", preenchida mostra o texto INTEIRO (sem
-// aspas nem itálico, com as quebras de linha) com "Editar", e editar abre o
-// campo ali mesmo. O texto inteiro importa: `notes` traz a observação da
-// cliente, a variante escolhida ("Produto: Tamanho G") e a frase do frete, e
-// a ficha não tem a variante em outro lugar. As palavras
-// "anotação"/"notas" ficam só para leitor de tela (`sr-only`), como no
-// rastreio.
+// Anotação privada da equipe, separada da observação pública do pedido.
 function OrderNotesCard({
   localNotes,
   isEditingNotes,
   notesValue,
   isSavingNotes,
   isOffline,
+  notesStatus,
+  abrindoEdicao,
+  onRetry,
+  onEditNotes,
   setNotesValue,
   setIsEditingNotes,
   onSaveNotes,
 }: Readonly<OrderNotesCardProps>) {
+  if (notesStatus !== "ready") {
+    return (
+      <div className="space-y-2 px-4 py-3.5">
+        <h3 className="text-sm font-medium text-zinc-200">
+          Anotações internas
+        </h3>
+        <p className="text-xs text-zinc-400" role="status">
+          {notesStatus === "loading"
+            ? "Carregando anotação interna…"
+            : "Não consegui carregar a anotação interna"}
+        </p>
+        {notesStatus === "error" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRetry}
+            disabled={isOffline}
+          >
+            Tentar de novo
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   if (isEditingNotes) {
     return (
       <div className="space-y-3 px-4 py-3.5 duration-300 animate-in fade-in">
@@ -1192,10 +1257,15 @@ function OrderNotesCard({
         >
           Anotações internas
         </label>
+        <p id="notes-ajuda" className="text-xs text-zinc-400">
+          Só você e sua equipe veem esta anotação. A cliente não vê.
+        </p>
         <textarea
           id="notes-textarea"
+          aria-describedby="notes-ajuda"
           name="notes"
           autoComplete="off"
+          maxLength={2000}
           value={notesValue}
           onChange={(e) => setNotesValue(e.target.value)}
           placeholder="Ex: Cliente solicitou entrega após as 18h..."
@@ -1220,7 +1290,7 @@ function OrderNotesCard({
             size="sm"
             onClick={onSaveNotes}
             className="flex h-10 items-center gap-1.5 rounded-xl bg-admin-gold px-4 text-sm font-semibold text-black hover:bg-admin-gold/90"
-            disabled={isSavingNotes}
+            disabled={isSavingNotes || isOffline}
           >
             {isSavingNotes ? (
               <Loader2 className="size-4 animate-spin" />
@@ -1248,8 +1318,8 @@ function OrderNotesCard({
         </div>
         <Button
           variant="ghost"
-          onClick={() => setIsEditingNotes(true)}
-          disabled={isOffline}
+          onClick={onEditNotes}
+          disabled={isOffline || abrindoEdicao}
           className="flex h-10 shrink-0 items-center gap-1 rounded-xl px-3 text-sm font-medium text-admin-gold hover:bg-admin-gold/10 hover:text-admin-gold active:scale-95 disabled:pointer-events-none disabled:opacity-40"
         >
           <Plus className="size-4" />
@@ -1269,8 +1339,8 @@ function OrderNotesCard({
         </h3>
         <Button
           variant="ghost"
-          onClick={() => setIsEditingNotes(true)}
-          disabled={isOffline}
+          onClick={onEditNotes}
+          disabled={isOffline || abrindoEdicao}
           className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-zinc-300 hover:bg-white/5 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
         >
           <Edit3 className="size-4 text-zinc-400" />
@@ -1313,13 +1383,40 @@ export const OrderDetail = memo(function OrderDetail({
   // componente tem que morar AQUI, não só dentro do card.
   const orderIdAtualRef = useRef(order.id);
   orderIdAtualRef.current = order.id;
+  // Cada salvamento ganha um número; trocar de pedido invalida os
+  // que estavam no ar (ir de A para B e voltar a A não revive a resposta).
+  const salvamentoNotasRef = useRef(0);
+  const salvamentoRastreioRef = useRef(0);
 
-  const [localNotes, setLocalNotes] = useState(order.notes || "");
+  const [localNotes, setLocalNotes] = useState("");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
-  const [notesValue, setNotesValue] = useState(order.notes || "");
+  const [notesValue, setNotesValue] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [leituraNotas, setLeituraNotas] = useState<{
+    pedidoId: string;
+    estado: OrderNotesCardProps["notesStatus"];
+  }>({ pedidoId: order.id, estado: "loading" });
+  const [tentativaNotas, setTentativaNotas] = useState(0);
+  const [abrindoEdicao, setAbrindoEdicao] = useState(false);
+  const notesStatus =
+    leituraNotas.pedidoId === order.id ? leituraNotas.estado : "loading";
+
+  // A anotação e o código de rastreio digitados só existem neste estado local
+  // até a lojista salvar: recarregar o app (atualização obrigatória, ao ir para
+  // segundo plano) apagaria o texto. Enquanto houver texto diferente do salvo,
+  // ou gravação em curso, a atualização espera.
+  const escritaPendente =
+    (isEditingNotes && notesValue !== localNotes) ||
+    isSavingNotes ||
+    (isEditingTracking && trackingValue !== localTrackingCode) ||
+    isSavingTracking;
+  useEffect(() => {
+    if (!escritaPendente) return;
+    return marcarOperacaoSensivel("anotacao-do-pedido");
+  }, [escritaPendente]);
 
   const [skus, setSkus] = useState<Record<string, string>>({});
+  const [variacoes, setVariacoes] = useState<Record<string, string>>({});
   const [loadingSkus, setLoadingSkus] = useState(false);
 
   const [copiedAddress, setCopiedAddress] = useState(false);
@@ -1352,6 +1449,43 @@ export const OrderDetail = memo(function OrderDetail({
     }
   };
 
+  // 🔴 Task 4b — a ordem não se negocia: grava o dinheiro PRIMEIRO, avança o
+  // status DEPOIS, e SÓ SE a gravação não tiver lançado. `onRegistrarPagamento`
+  // já mostra o próprio toast de erro (ver `useOrders.registrarPagamentoRecebido`)
+  // — o catch aqui só ABORTA, sem chamar `handleStatusChange`: o pedido
+  // continua "em aberto" e o botão de registrar continua na tela, em vez de
+  // ficar "entregue" e sem registro nenhum — o dano silencioso que esta
+  // tarefa existe pra evitar.
+  //
+  // Trava de reentrada: duplo clique em "Avançar" (pedido de R$ 0, que não
+  // abre caixinha) chamaria o registro e a mudança de status duas vezes. Uma
+  // `ref` — não depende de re-render, vale já no segundo clique — fica presa
+  // até o fim do registro E do avanço, e sempre solta no `finally`, então
+  // depois de uma falha a lojista pode tentar de novo.
+  const registrandoEAvancandoRef = useRef(false);
+  const registrarRecebimentoEAvancar = async (
+    orderId: string,
+    status: OrderStatus,
+  ) => {
+    if (!onRegistrarPagamento) return;
+    if (registrandoEAvancandoRef.current) return;
+    registrandoEAvancandoRef.current = true;
+    try {
+      try {
+        await onRegistrarPagamento(orderId, true);
+      } catch (err) {
+        console.error(
+          "[OrderDetail] Erro ao registrar pagamento recebido antes de avançar:",
+          err,
+        );
+        return;
+      }
+      await handleStatusChange(orderId, status);
+    } finally {
+      registrandoEAvancandoRef.current = false;
+    }
+  };
+
   // Ponto de entrada exclusivo do botão "Avançar" — o botão de abortar chama
   // handleStatusChange direto com "cancelled" (ver onCancel no JSX abaixo),
   // então esta função nunca recebe "cancelled" e não precisa mais comparar
@@ -1368,6 +1502,22 @@ export const OrderDetail = memo(function OrderDetail({
         status: nextStatus,
         perguntaRecebimento: false,
       });
+      return;
+    }
+
+    // Compra que fechou em R$ 0,00 (cupom de 100%): não há dinheiro a trocar
+    // de mão, então NÃO pergunta "Recebeu R$ 0,00?" — a ficha registra o
+    // "Recebi" sozinha, pelo MESMO caminho do botão "Recebi" (dinheiro
+    // primeiro, status depois), e o pedido segue como pago para devolução e
+    // troca. Mesmas condições da pergunta abaixo; só muda quem responde.
+    if (
+      onRegistrarPagamento &&
+      nextStatus === "delivered" &&
+      !order.pagamentoRecebidoEm &&
+      podeRegistrarPagamento(order) &&
+      pedidoSemValorAPagar(order)
+    ) {
+      void registrarRecebimentoEAvancar(orderId, nextStatus);
       return;
     }
 
@@ -1405,27 +1555,12 @@ export const OrderDetail = memo(function OrderDetail({
     handleStatusChange(orderId, status);
   };
 
-  // 🔴 Task 4b — a ordem não se negocia: grava o dinheiro PRIMEIRO, avança o
-  // status DEPOIS, e SÓ SE a gravação não tiver lançado. `onRegistrarPagamento`
-  // já mostra o próprio toast de erro (ver `useOrders.registrarPagamentoRecebido`)
-  // — o catch aqui só ABORTA, sem chamar `handleStatusChange`: o pedido
-  // continua "em aberto" e o botão de registrar continua na tela, em vez de
-  // ficar "entregue" e sem registro nenhum — o dano silencioso que esta
-  // tarefa existe pra evitar.
+  // "Recebi" da pergunta: tira a caixinha da tela e segue o mesmo caminho.
   const confirmarRecebimentoEAvancar = async () => {
-    if (!pendingAdvance || !onRegistrarPagamento) return;
+    if (!pendingAdvance) return;
     const { orderId, status } = pendingAdvance;
     setPendingAdvance(null);
-    try {
-      await onRegistrarPagamento(orderId, true);
-    } catch (err) {
-      console.error(
-        "[OrderDetail] Erro ao registrar pagamento recebido antes de avançar:",
-        err,
-      );
-      return;
-    }
-    handleStatusChange(orderId, status);
+    await registrarRecebimentoEAvancar(orderId, status);
   };
 
   // Task 4b — botão "Marcar como recebido"/"Desfazer" DENTRO da ficha
@@ -1452,9 +1587,43 @@ export const OrderDetail = memo(function OrderDetail({
   useEffect(() => {
     setLocalTrackingCode(order.trackingCode || "");
     setTrackingValue(order.trackingCode || "");
-    setLocalNotes(order.notes || "");
-    setNotesValue(order.notes || "");
-  }, [order.trackingCode, order.notes]);
+  }, [order.id, order.trackingCode]);
+
+  useEffect(() => {
+    const pedidoId = order.id;
+    let vigente = true;
+    setLocalNotes("");
+    setNotesValue("");
+    setLeituraNotas({ pedidoId, estado: "loading" });
+    const carregar = async () => {
+      try {
+        await filaNotas.get(pedidoId);
+        const note = await lerNotaInterna(pedidoId);
+        if (!vigente || orderIdAtualRef.current !== pedidoId) return;
+        setLocalNotes(note);
+        setNotesValue(note);
+        setLeituraNotas({ pedidoId, estado: "ready" });
+      } catch {
+        if (vigente && orderIdAtualRef.current === pedidoId) {
+          setLeituraNotas({ pedidoId, estado: "error" });
+        }
+      }
+    };
+    void carregar();
+    return () => {
+      vigente = false;
+    };
+  }, [order.id, tentativaNotas]);
+
+  useEffect(() => {
+    setIsEditingTracking(false);
+    setIsSavingTracking(false);
+    setIsEditingNotes(false);
+    setIsSavingNotes(false);
+    setAbrindoEdicao(false);
+    salvamentoNotasRef.current++;
+    salvamentoRastreioRef.current++;
+  }, [order.id]);
 
   const itemsSerialized = JSON.stringify(
     order.items.map((item) => ({
@@ -1465,6 +1634,9 @@ export const OrderDetail = memo(function OrderDetail({
   );
 
   useEffect(() => {
+    // A ficha não desmonta ao trocar de pedido: uma resposta atrasada não
+    // pode substituir tamanho/código nem encerrar o carregamento da nova.
+    let consultaVigente = true;
     const fetchSkus = async () => {
       try {
         const itemsList = JSON.parse(itemsSerialized) as {
@@ -1480,10 +1652,18 @@ export const OrderDetail = memo(function OrderDetail({
           (id) => !globalSkuCache[`prod-${id}`],
         );
         const missingVariantIds = variantIds.filter(
-          (id) => !globalSkuCache[`var-${id}`],
+          (id) => !globalSkuCache[`var-${id}`] || !globalVariacaoCache.has(id),
         );
+        const variacoesLidas = () =>
+          Object.fromEntries(
+            variantIds.flatMap((id) => {
+              const rotulo = globalVariacaoCache.get(id);
+              return rotulo ? [[id, rotulo] as const] : [];
+            }),
+          );
 
         if (missingProductIds.length === 0 && missingVariantIds.length === 0) {
+          setVariacoes(variacoesLidas());
           const cachedSkus: Record<string, string> = {};
           productIds.forEach((id) => {
             cachedSkus[`prod-${id}`] = globalSkuCache[`prod-${id}`];
@@ -1502,6 +1682,7 @@ export const OrderDetail = memo(function OrderDetail({
             .from("vw_produtos_admin")
             .select("id, codigo")
             .in("id", missingProductIds);
+          if (!consultaVigente) return;
           productsData?.forEach((p) => {
             if (p.codigo) globalSkuCache[`prod-${p.id}`] = p.codigo;
           });
@@ -1510,12 +1691,15 @@ export const OrderDetail = memo(function OrderDetail({
         if (missingVariantIds.length > 0) {
           const { data: variantsData } = await supabase
             .from("product_variants")
-            .select("id, sku")
+            .select("id, sku, name, value")
             .in("id", missingVariantIds);
+          if (!consultaVigente) return;
           variantsData?.forEach((v) => {
             if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
+            globalVariacaoCache.set(v.id, rotuloDaVariacao(v.name, v.value));
           });
         }
+        setVariacoes(variacoesLidas());
 
         const resultSkus: Record<string, string> = {};
         productIds.forEach((id) => {
@@ -1528,14 +1712,17 @@ export const OrderDetail = memo(function OrderDetail({
         });
         setSkus(resultSkus);
       } catch (err) {
-        console.error("Error fetching SKUs:", err);
+        if (consultaVigente) console.error("Error fetching SKUs:", err);
       } finally {
-        setLoadingSkus(false);
+        if (consultaVigente) setLoadingSkus(false);
       }
     };
 
     fetchSkus();
-  }, [itemsSerialized]);
+    return () => {
+      consultaVigente = false;
+    };
+  }, [order.id, itemsSerialized]);
 
   const nextStatus = getNextStatus(order.status);
 
@@ -1605,42 +1792,102 @@ export const OrderDetail = memo(function OrderDetail({
   };
 
   const handleSaveTracking = async () => {
+    const pedidoId = order.id;
+    const codigo = trackingValue.trim();
+    const salvamento = ++salvamentoRastreioRef.current;
+    const vigente = () =>
+      orderIdAtualRef.current === pedidoId &&
+      salvamentoRastreioRef.current === salvamento;
     try {
       setIsSavingTracking(true);
       const { error } = await supabase
         .from("marketplace_orders")
-        .update({ tracking_code: trackingValue.trim() || null })
-        .eq("id", order.id);
+        .update({ tracking_code: codigo || null })
+        .eq("id", pedidoId);
 
+      // Só o salvamento vigente pode alterar a ficha.
+      if (!vigente()) return;
       if (error) throw error;
-      setLocalTrackingCode(trackingValue.trim());
+      setLocalTrackingCode(codigo);
       setIsEditingTracking(false);
       toast.success("Código de rastreamento salvo!");
     } catch (err) {
+      if (!vigente()) return;
       console.error("Error saving tracking code:", err);
       toast.error("Erro ao salvar código de rastreamento.");
     } finally {
-      setIsSavingTracking(false);
+      if (vigente()) setIsSavingTracking(false);
+    }
+  };
+
+  // Abrir o editor relê a anotação: outra aba pode ter salvado depois que a
+  // ficha abriu, e salvar por cima apagaria o que esta aba nunca viu.
+  const handleEditNotes = async () => {
+    const pedidoId = order.id;
+    const salvamento = salvamentoNotasRef.current;
+    const vigente = () =>
+      orderIdAtualRef.current === pedidoId &&
+      salvamentoNotasRef.current === salvamento;
+    setAbrindoEdicao(true);
+    try {
+      const note = await lerNotaInterna(pedidoId);
+      if (!vigente()) return;
+      setLocalNotes(note);
+      setNotesValue(note);
+      setIsEditingNotes(true);
+    } catch {
+      if (vigente()) {
+        toast.error("Não consegui abrir a edição. Tente de novo.");
+      }
+    } finally {
+      if (vigente()) setAbrindoEdicao(false);
     }
   };
 
   const handleSaveNotes = async () => {
+    if (isOffline || isSavingNotes || notesStatus !== "ready") return;
+    const note = notesValue.trim();
+    if (note.length > 2000) {
+      toast.error("A anotação interna pode ter até 2000 caracteres.");
+      return;
+    }
+    const pedidoId = order.id;
+    const salvamento = ++salvamentoNotasRef.current;
+    const vigente = () =>
+      orderIdAtualRef.current === pedidoId &&
+      salvamentoNotasRef.current === salvamento;
     try {
       setIsSavingNotes(true);
-      const { error } = await supabase
-        .from("marketplace_orders")
-        .update({ notes: notesValue.trim() || null })
-        .eq("id", order.id);
+      const tabela = supabase.from("marketplace_order_internal_notes");
+      const gravar = () =>
+        note
+          ? tabela.upsert(
+              { order_id: pedidoId, note },
+              { onConflict: "order_id" },
+            )
+          : tabela.delete().eq("order_id", pedidoId);
+      const fila = filaNotas;
+      const vez = (fila.get(pedidoId) ?? Promise.resolve()).then(gravar);
+      const pendente = vez.catch(() => undefined);
+      fila.set(pedidoId, pendente);
+      void pendente.then(() => {
+        if (fila.get(pedidoId) === pendente) fila.delete(pedidoId);
+      });
+      const { error } = await vez;
 
+      // A resposta só pode alterar a ficha deste pedido E deste salvamento.
+      if (!vigente()) return;
       if (error) throw error;
-      setLocalNotes(notesValue.trim());
+      setLocalNotes(note);
+      setNotesValue(note);
       setIsEditingNotes(false);
-      toast.success("Notas operacionais salvas!");
+      toast.success("Anotação interna salva!");
     } catch (err) {
-      console.error("Error saving notes:", err);
-      toast.error("Erro ao salvar notas operacionais.");
+      if (!vigente()) return;
+      console.error("Error saving internal note:", err);
+      toast.error("Erro ao salvar anotação interna.");
     } finally {
-      setIsSavingNotes(false);
+      if (vigente()) setIsSavingNotes(false);
     }
   };
 
@@ -1676,10 +1923,7 @@ export const OrderDetail = memo(function OrderDetail({
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
     const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
-    globalThis.open(
-      `${whatsappUrl}?text=${encodeURIComponent(message)}`,
-      "_blank",
-    );
+    abrirWhatsapp(`${whatsappUrl}?text=${encodeURIComponent(message)}`);
   };
 
   // pb-[calc(7rem+safe-area)]: com a ação no topo (sticky, pedido do dono
@@ -1698,6 +1942,7 @@ export const OrderDetail = memo(function OrderDetail({
         orderId={order.id}
         orderStatus={order.status}
         nextStatus={nextStatus}
+        retiradaNaLoja={order.retiradaNaLoja}
         isOffline={isOffline}
         isUpdatingStatus={isUpdatingStatus}
         onAdvance={requestStatusChange}
@@ -1711,7 +1956,10 @@ export const OrderDetail = memo(function OrderDetail({
       <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6">
         <OrderHeader order={order} avisoDeEspera={avisoDeEspera} />
 
-        <OrderStepperPipeline orderStatus={order.status} />
+        <OrderStepperPipeline
+          orderStatus={order.status}
+          retiradaNaLoja={order.retiradaNaLoja}
+        />
 
         <OrderFinanceCard
           order={order}
@@ -1739,7 +1987,7 @@ export const OrderDetail = memo(function OrderDetail({
           (order.paymentStatus === "pago" ||
             order.paymentStatus === "pago_apos_expirar" ||
             order.paymentStatus === "estornado") && (
-            <EstornoCard order={order} />
+            <EstornoCard key={order.id} order={order} />
           )}
 
         <OrderDeliveryCard
@@ -1747,12 +1995,16 @@ export const OrderDetail = memo(function OrderDetail({
           isOffline={isOffline}
           copiedAddress={copiedAddress}
           mapsUrlQuery={mapsUrlQuery}
-          notes={localNotes}
           onCopyAddress={handleCopyAddress}
           onWhatsAppDirect={handleWhatsAppDirect}
           whatsappUrl={whatsappUrl}
         />
-        <OrderItemsCard order={order} skus={skus} loadingSkus={loadingSkus} />
+        <OrderItemsCard
+          order={order}
+          skus={skus}
+          variacoes={variacoes}
+          loadingSkus={loadingSkus}
+        />
 
         {/* Envio em linhas simples, separadas por divisores: uma linha por
             assunto, e tocar abre/edita ali mesmo. */}
@@ -1805,12 +2057,26 @@ export const OrderDetail = memo(function OrderDetail({
             onSaveTracking={handleSaveTracking}
             onCopyTracking={handleCopyTracking}
           />
+          {order.notes && (
+            <div className="space-y-2 px-4 py-3.5">
+              <h3 className="text-sm font-medium text-zinc-200">
+                Observações do pedido
+              </h3>
+              <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-200">
+                {order.notes}
+              </p>
+            </div>
+          )}
           <OrderNotesCard
             localNotes={localNotes}
             isEditingNotes={isEditingNotes}
             notesValue={notesValue}
             isSavingNotes={isSavingNotes}
             isOffline={isOffline}
+            notesStatus={notesStatus}
+            abrindoEdicao={abrindoEdicao}
+            onEditNotes={handleEditNotes}
+            onRetry={() => setTentativaNotas((tentativa) => tentativa + 1)}
             setNotesValue={setNotesValue}
             setIsEditingNotes={setIsEditingNotes}
             onSaveNotes={handleSaveNotes}
@@ -1818,7 +2084,7 @@ export const OrderDetail = memo(function OrderDetail({
         </section>
       </div>
 
-      <OrderReceipt order={order} storeName={storeName} />
+      <OrderReceipt order={order} storeName={storeName} variacoes={variacoes} />
 
       <AlertDialog
         open={pendingAdvance !== null}

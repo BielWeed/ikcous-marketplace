@@ -2,6 +2,12 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import type { OrigemDaEscolhaDoFrete } from "@/lib/auto-selecao-de-frete";
+import {
+  type CatalogoLido,
+  aplicarCatalogoAoCarrinho,
+  avisosDoCarrinho,
+  montarCatalogo,
+} from "@/lib/catalogo-do-carrinho";
 // FRETE V2/V3 (frentes B 03/09 e T3 23/09): o preço FINAL de cada opção
 // (grátis/desconto já aplicados) é a fonte única em estrategias-de-frete.ts
 // -- local calcula aqui (mesmo preset de sempre); nacional só EXIBE o que a
@@ -99,6 +105,13 @@ export interface CartActions {
   ) => void;
   setShippingCep: (cep: string | null) => void;
   setEnderecoSelecionadoId: (id: string | null) => void;
+  /** Relê AGORA preço, estoque e situação de cada item no catálogo e deixa o
+   *  carrinho como a loja está hoje (o que mudou sai em aviso). Serve a
+   *  recusa "Os valores do pedido mudaram. Atualize o carrinho": o app só
+   *  relia ao abrir ou por aviso em tempo real. A promessa termina quando a
+   *  leitura terminou e NUNCA rejeita — leitura que falha deixa o carrinho
+   *  como estava. */
+  renovarCarrinhoPeloCatalogo: () => Promise<void>;
 }
 
 export interface CartContextType extends CartState, CartActions {}
@@ -107,6 +120,10 @@ const CartStateContext = createContext<CartState | undefined>(undefined);
 const CartActionsContext = createContext<CartActions | undefined>(undefined);
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+// Reenvio automático após a gravação do carrinho falhar com o navegador online.
+const MAX_REENVIOS_APOS_FALHA = 5;
+const ESPERA_BASE_REENVIO_MS = 2_000;
+const ESPERA_MAX_REENVIO_MS = 30_000;
 const CART_STORAGE_KEY = "marketplace_cart_v1";
 const CART_TOMBSTONES_KEY = "marketplace_cart_tombstones_v1";
 
@@ -145,6 +162,72 @@ function saveTombstones(map: Map<string, CartTombstone>) {
   }
 }
 
+// localStorage pode lançar (modo privado, cota cheia, acesso bloqueado):
+// o carrinho segue em memória, sem persistir, em vez de derrubar o Provider.
+function lerSeguro(chave: string): string | null {
+  try {
+    return localStorage.getItem(chave);
+  } catch (e) {
+    console.error("[CartContext] Failed to read localStorage:", e);
+    return null;
+  }
+}
+
+function gravarSeguro(chave: string, valor: string): void {
+  try {
+    localStorage.setItem(chave, valor);
+  } catch (e) {
+    console.error("[CartContext] Failed to write localStorage:", e);
+  }
+}
+
+function removerSeguro(chave: string): void {
+  try {
+    localStorage.removeItem(chave);
+  } catch (e) {
+    console.error("[CartContext] Failed to remove from localStorage:", e);
+  }
+}
+
+/**
+ * Lê o estado ATUAL de produtos (vitrine pública: só devolve o que está à
+ * venda) e variações. `produtos` lança se a leitura do produto falhar; a das
+ * variações NÃO lança (o sync sempre continuou sem elas), mas devolve o erro:
+ * quem aplica o catálogo ao carrinho tem de desistir nesse caso, porque produto
+ * sem variação faria toda linha com variação parecer "sumida".
+ */
+async function lerProdutosEVariacoes(ids: string[]) {
+  const { data: prodData, error: prodError } = await supabase
+    .from("vw_produtos_public")
+    .select("*")
+    .in("id", ids);
+  if (prodError) throw prodError;
+
+  const { data: varData, error: varError } = await supabase
+    .from("product_variants")
+    .select("*")
+    .in("product_id", ids);
+  if (varError) {
+    console.error("[CartContext] Error fetching variants:", varError);
+  }
+  return {
+    produtos: (prodData || []) as Array<Record<string, unknown>>,
+    variantes: (varData || []) as Array<Record<string, unknown>>,
+    variantesFalharam: !!varError,
+  };
+}
+
+/**
+ * O aviso da mudança de preço/estoque fica na tela tempo de ser lido. A frase é
+ * o `id` do aviso: duas leituras em voo ao mesmo tempo (a da abertura e a de um
+ * evento em tempo real) contam a mesma mudança, e a cliente vê UM aviso.
+ */
+function avisarDoCarrinho(frases: string[]) {
+  for (const frase of frases) {
+    toast.warning(frase, { id: frase, duration: 12000 });
+  }
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { config } = useStore();
   const { user, loading: authLoading } = useAuth();
@@ -156,7 +239,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [userId]);
 
   const [cart, setCart] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem(CART_STORAGE_KEY);
+    const saved = lerSeguro(CART_STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -240,12 +323,98 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Only save to localStorage if we are not in the middle of an initial load
     if (!syncLocked.current && !isInitialLoad.current) {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+      gravarSeguro(CART_STORAGE_KEY, JSON.stringify(cart));
     }
   }, [cart]);
 
   // Track which user we have already synced for
   const lastSessionUserId = useRef<string | null>(null);
+
+  // Conta atual, para a leitura em voo saber se ainda é a dela quando voltar.
+  const userIdAtualRef = useRef<string | null>(userId ?? null);
+  useEffect(() => {
+    userIdAtualRef.current = userId ?? null;
+  }, [userId]);
+
+  // O carrinho que a cliente está VENDO agora, para a releitura do catálogo
+  // comparar o "antes" sem entrar num updater do estado.
+  const cartRef = useRef(cart);
+  useEffect(() => {
+    cartRef.current = cart;
+  }, [cart]);
+
+  // O carrinho que está no BANCO só é conhecido depois que a leitura inicial
+  // teve sucesso e foi mesclada ao daqui. Até lá NADA vai ao servidor: a RPC
+  // `sync_cart_atomic` apaga o carrinho salvo antes de gravar, então mandar só
+  // o que há neste aparelho (ex.: o carrinho de convidado) apagaria o que a
+  // cliente já tinha na conta. O destravamento da tela (`syncLocked`,
+  // `isInitialLoad`, `isLoading`) é outra coisa: o carrinho local funciona
+  // mesmo com a leitura falhando.
+  // O estado `remotoMesclado` só vira verdadeiro no MESMO render que aplica a
+  // junção; o ref (lido por quem grava) acompanha no efeito DEPOIS desse render,
+  // quando o temporizador de gravação velho (com o carrinho sem a junção) já foi
+  // cancelado — antes disso a trava segue fechada.
+  const [remotoMesclado, setRemotoMesclado] = useState(false);
+  const remotoMescladoRef = useRef(false);
+  useEffect(() => {
+    remotoMescladoRef.current = remotoMesclado;
+  }, [remotoMesclado]);
+
+  // Leitura inicial que falhou: relê com espera crescente e teto (mesmos
+  // limites do reenvio da gravação), e ainda ao voltar online, ao ficar
+  // visível e na próxima edição da cliente (ver os efeitos mais abaixo).
+  const falhasDeLeitura = useRef(0);
+  const timerDaReleitura = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncFromDBRef = useRef<(force?: boolean) => Promise<void>>(
+    async () => {},
+  );
+  const cancelarReleitura = useCallback(() => {
+    if (timerDaReleitura.current === null) return;
+    clearTimeout(timerDaReleitura.current);
+    timerDaReleitura.current = null;
+  }, []);
+  const agendarReleitura = useCallback(() => {
+    falhasDeLeitura.current += 1;
+    if (falhasDeLeitura.current > MAX_REENVIOS_APOS_FALHA) return;
+    // Sem rede quem retoma é o evento `online`.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    cancelarReleitura();
+    const espera = Math.min(
+      ESPERA_BASE_REENVIO_MS * 2 ** (falhasDeLeitura.current - 1),
+      ESPERA_MAX_REENVIO_MS,
+    );
+    timerDaReleitura.current = setTimeout(() => {
+      timerDaReleitura.current = null;
+      void syncFromDBRef.current(true);
+    }, espera);
+  }, [cancelarReleitura]);
+
+  // CONVIDADO (sem conta não há `syncFromDB` para reler o catálogo): ao abrir o
+  // app, relê preço, estoque e situação de cada item e deixa o carrinho como o
+  // catálogo está HOJE. Falhou a leitura -> o carrinho fica como estava (nunca
+  // pior que antes). Carrinho vazio -> nenhuma leitura.
+  // Também é a ação `renovarCarrinhoPeloCatalogo` (com ou sem conta): a recusa
+  // "Os valores do pedido mudaram. Atualize o carrinho" a chama antes de levar
+  // a cliente ao carrinho. Só mexe no carrinho local — o sync com o banco segue
+  // o caminho normal (a mudança de `cart` o dispara).
+  const renovarPeloCatalogo = useCallback(async () => {
+    const uidDaLeitura = userIdAtualRef.current;
+    const ids = Array.from(new Set(cartRef.current.map((i) => i.product.id)));
+    if (ids.length === 0) return;
+    try {
+      const lido = await lerProdutosEVariacoes(ids);
+      if (lido.variantesFalharam) return;
+      const catalogo = montarCatalogo(ids, lido.produtos, lido.variantes);
+      const avisos = await avisosDoCarrinho(cartRef.current, catalogo);
+      // A conta mudou durante a leitura: o carrinho de agora não é o que foi
+      // perguntado.
+      if (userIdAtualRef.current !== uidDaLeitura) return;
+      setCart((prev) => aplicarCatalogoAoCarrinho(prev, catalogo));
+      avisarDoCarrinho(avisos);
+    } catch (err) {
+      console.error("[CartContext] ❌ Catalog refresh failed:", err);
+    }
+  }, []);
 
   const syncFromDB = useCallback(
     async (force = false) => {
@@ -261,11 +430,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         syncLocked.current = false;
         isInitialLoad.current = false;
+        void renovarPeloCatalogo();
         return;
       }
 
       if (!isInitialLoad.current && !force) return;
 
+      const uidDaLeitura = userId;
       try {
         const startTime = Date.now();
         console.log(
@@ -286,34 +457,30 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         );
 
         if (dbItems) {
+          // Os itens do banco E os que a cliente já tem aqui: uma leitura só
+          // do catálogo serve para montar o carrinho do banco e para renovar
+          // o carrinho local (o preço do dia em que o item entrou não vale
+          // mais). Mesma consulta de antes, com mais ids.
           const productIds = Array.from(
-            new Set(dbItems.map((item) => item.product_id)),
-          );
+            new Set([
+              ...dbItems.map((item) => item.product_id),
+              ...cartRef.current.map((item) => item.product.id),
+            ]),
+          ).filter((id): id is string => id !== null);
 
           let products: any[] = [];
           let variants: any[] = [];
+          let catalogo: CatalogoLido | null = null;
 
           if (productIds.length > 0) {
-            const { data: prodData, error: prodError } = await supabase
-              .from("vw_produtos_public")
-              .select("*")
-              .in("id", productIds.filter((id) => id !== null) as string[]);
-
-            if (prodError) throw prodError;
-            products = prodData || [];
-
-            const { data: varData, error: varError } = await supabase
-              .from("product_variants")
-              .select("*")
-              .in(
-                "product_id",
-                productIds.filter((id) => id !== null) as string[],
-              );
-
-            if (varError) {
-              console.error("[CartContext] Error fetching variants:", varError);
+            const lido = await lerProdutosEVariacoes(productIds);
+            products = lido.produtos;
+            variants = lido.variantes;
+            // Sem as variações o catálogo está incompleto: não se aplica ao
+            // carrinho (o carrinho do banco segue sendo montado como antes).
+            if (!lido.variantesFalharam) {
+              catalogo = montarCatalogo(productIds, products, variants);
             }
-            variants = varData || [];
           }
 
           const reconstructedCart: CartItem[] = dbItems
@@ -344,24 +511,63 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             })
             .filter((item): item is CartItem => item !== null);
 
+          // O que a cliente VIA antes desta leitura (o carrinho daqui mais o
+          // que só existia no do banco): a base do aviso "o preço mudou".
+          let avisos: string[] = [];
+          if (catalogo) {
+            try {
+              const chavesDeAqui = new Set(
+                cartRef.current.map(
+                  (item) => `${item.product.id}-${item.variantId || ""}`,
+                ),
+              );
+              avisos = await avisosDoCarrinho(
+                [
+                  ...cartRef.current,
+                  ...reconstructedCart.filter(
+                    (item) =>
+                      !chavesDeAqui.has(
+                        `${item.product.id}-${item.variantId || ""}`,
+                      ),
+                  ),
+                ],
+                catalogo,
+              );
+            } catch (err) {
+              console.error("[CartContext] Failed to build cart notices:", err);
+            }
+          }
+
+          // A conta saiu/trocou durante a leitura: o carrinho dela não é de
+          // quem está agora (o efeito de troca já limpou o estado).
+          if (userIdAtualRef.current !== (uidDaLeitura ?? null)) return;
+
+          // Na junção fica o produto NOVO (preço, estoque, situação) com a
+          // quantidade que "quem escreveu por último" definiu. Antes, com o
+          // carimbo igual (o caso normal), ficava a cópia local velha.
+          const comOCatalogo = (itens: CartItem[]) =>
+            catalogo ? aplicarCatalogoAoCarrinho(itens, catalogo) : itens;
+
           setCart((prev) => {
+            const tombstones = loadTombstones();
             const prevHash = JSON.stringify(prev);
             const reconHash = JSON.stringify(reconstructedCart);
-            if (prevHash === reconHash) {
+            if (prevHash === reconHash && tombstones.size === 0) {
               // Skip updating state if the lists match exactly to prevent cycles
-              return prev;
+              return comOCatalogo(prev);
             }
 
             // If local cart is empty AND no tombstones exist, adopt remote
-            const tombstones = loadTombstones();
             if (prev.length === 0 && tombstones.size === 0) {
               console.log(
                 "[CartContext] ✅ Remote cart adopted (local was empty, no tombstones).",
               );
-              return reconstructedCart.map((item) => ({
-                ...item,
-                lastModifiedAt: item.lastModifiedAt || Date.now(),
-              }));
+              return comOCatalogo(
+                reconstructedCart.map((item) => ({
+                  ...item,
+                  lastModifiedAt: item.lastModifiedAt || Date.now(),
+                })),
+              );
             }
 
             const mergedMap = new Map<string, CartItem>();
@@ -369,6 +575,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             // Add local items first (these carry local timestamps)
             prev.forEach((item) => {
               const key = `${item.product.id}-${item.variantId || ""}`;
+              // A exclusão de outra aba também vale para a cópia que ficou aqui.
+              const tombstone = tombstones.get(key);
+              if (
+                tombstone &&
+                tombstone.deletedAt > (item.lastModifiedAt || 0)
+              ) {
+                return;
+              }
               mergedMap.set(key, {
                 ...item,
                 lastModifiedAt: item.lastModifiedAt || 0,
@@ -404,19 +618,50 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             });
 
             const mergedArray = Array.from(mergedMap.values());
-            return mergedArray;
+            return comOCatalogo(mergedArray);
           });
+          // Carrinho do banco lido e mesclado: agora a gravação sabe o que
+          // vai substituir. No mesmo lote da junção (ver `remotoMesclado`).
+          falhasDeLeitura.current = 0;
+          cancelarReleitura();
+          setRemotoMesclado(true);
+          avisarDoCarrinho(avisos);
         }
       } catch (err) {
         console.error("[CartContext] ❌ Sync error:", err);
+        // Sem a leitura o banco segue desconhecido e a gravação, travada:
+        // tenta de novo em vez de seguir como se o carrinho remoto não
+        // existisse.
+        if (
+          !remotoMescladoRef.current &&
+          userIdAtualRef.current === (uidDaLeitura ?? null)
+        ) {
+          agendarReleitura();
+        }
       } finally {
-        syncLocked.current = false;
-        setIsLoading(false);
-        isInitialLoad.current = false;
+        // Leitura de uma conta que já saiu não destrava o carregamento da
+        // conta atual (que tem a própria leitura em curso). Destrava a TELA e
+        // o carrinho local; a gravação no servidor segue presa a
+        // `remotoMesclado`, que só a junção bem-sucedida libera.
+        if (userIdAtualRef.current === (uidDaLeitura ?? null)) {
+          syncLocked.current = false;
+          setIsLoading(false);
+          isInitialLoad.current = false;
+        }
       }
     },
-    [userId, authLoading],
+    [
+      userId,
+      authLoading,
+      renovarPeloCatalogo,
+      cancelarReleitura,
+      agendarReleitura,
+    ],
   );
+
+  useEffect(() => {
+    syncFromDBRef.current = syncFromDB;
+  }, [syncFromDB]);
 
   // Initial Sync from Supabase
   useEffect(() => {
@@ -432,8 +677,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           "[CartContext] ℹ️ Cleared old user items and tombstones from state and localStorage to prevent cross-account merge.",
         );
         setCart([]);
-        localStorage.removeItem(CART_STORAGE_KEY);
-        localStorage.removeItem(CART_TOMBSTONES_KEY);
+        removerSeguro(CART_STORAGE_KEY);
+        removerSeguro(CART_TOMBSTONES_KEY);
       }
       // Troca de conta/saída não herda nada da sessão anterior: itens,
       // tombstones, cotação de frete e endereço escolhido.
@@ -442,11 +687,37 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setShippingCep(null);
       isInitialLoad.current = true;
       syncLocked.current = true;
+      // O carrinho do banco da conta anterior não diz nada sobre o desta.
+      remotoMescladoRef.current = false;
+      setRemotoMesclado(false);
+      falhasDeLeitura.current = 0;
+      cancelarReleitura();
       lastSessionUserId.current = currentUserId;
     }
 
     syncFromDB();
-  }, [userId, syncFromDB, setSelectedShippingOption]);
+  }, [userId, syncFromDB, setSelectedShippingOption, cancelarReleitura]);
+
+  // Leitura inicial que ainda não teve sucesso: o que sobra de gatilho além da
+  // espera crescente é a rede voltar ou o app voltar a ficar visível.
+  useEffect(() => {
+    const reler = () => {
+      if (!userId || remotoMescladoRef.current) return;
+      falhasDeLeitura.current = 0;
+      cancelarReleitura();
+      void syncFromDB(true);
+    };
+    const aoFicarVisivel = () => {
+      if (document.visibilityState === "visible") reler();
+    };
+    window.addEventListener("online", reler);
+    document.addEventListener("visibilitychange", aoFicarVisivel);
+    return () => {
+      window.removeEventListener("online", reler);
+      document.removeEventListener("visibilitychange", aoFicarVisivel);
+    };
+  }, [userId, syncFromDB, cancelarReleitura]);
+  useEffect(() => cancelarReleitura, [cancelarReleitura]);
 
   // Realtime subscription for cart updates
   useEffect(() => {
@@ -512,12 +783,66 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const syncPending = useRef(false);
   const lastSyncedCart = useRef<string>("");
+  // O carrinho mudou enquanto um sync ainda esperava o servidor: o efeito
+  // abaixo pula (um por vez) e, sem isto, ninguém reagendava ao fim — a
+  // alteração só ia ao banco na próxima mudança do carrinho. O contador
+  // reabre o efeito com o carrinho de agora quando o sync em voo termina.
+  const reenvioDevido = useRef(false);
+  const [reenvio, setReenvio] = useState(0);
+  const pedirReenvioSeDevido = useCallback(() => {
+    if (!reenvioDevido.current) return;
+    reenvioDevido.current = false;
+    setReenvio((n) => n + 1);
+  }, []);
+
+  // Falha da gravação com o navegador ainda online: o evento `online` que
+  // chegou durante a gravação em voo foi ignorado e não vem outro, então a
+  // própria falha reagenda — com espera crescente e teto, para um servidor
+  // fora do ar não virar laço. Sucesso, evento online e desmonte zeram/cancelam.
+  const falhasSeguidas = useRef(0);
+  const timerDoReenvio = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelarReenvioAgendado = useCallback(() => {
+    if (timerDoReenvio.current === null) return;
+    clearTimeout(timerDoReenvio.current);
+    timerDoReenvio.current = null;
+  }, []);
+  const agendarReenvioAposFalha = useCallback(() => {
+    falhasSeguidas.current += 1;
+    if (falhasSeguidas.current > MAX_REENVIOS_APOS_FALHA) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    cancelarReenvioAgendado();
+    const espera = Math.min(
+      ESPERA_BASE_REENVIO_MS * 2 ** (falhasSeguidas.current - 1),
+      ESPERA_MAX_REENVIO_MS,
+    );
+    timerDoReenvio.current = setTimeout(() => {
+      timerDoReenvio.current = null;
+      if (!syncPending.current) pedirReenvioSeDevido();
+    }, espera);
+  }, [cancelarReenvioAgendado, pedirReenvioSeDevido]);
+
+  useEffect(() => {
+    const aoVoltarOnline = () => {
+      // Conexão nova: recomeça a contagem de falhas.
+      falhasSeguidas.current = 0;
+      cancelarReenvioAgendado();
+      if (!syncPending.current) pedirReenvioSeDevido();
+    };
+    window.addEventListener("online", aoVoltarOnline);
+    return () => {
+      window.removeEventListener("online", aoVoltarOnline);
+      cancelarReenvioAgendado();
+    };
+  }, [pedirReenvioSeDevido, cancelarReenvioAgendado]);
 
   // Sync back to Supabase (Atomic-ish Strategy)
   const syncToDB = useCallback(
     async (currentCart: CartItem[], immediate = false) => {
       if (!user || authLoading || isInitialLoad.current || syncLocked.current)
         return;
+      // Banco ainda desconhecido (a leitura inicial não teve sucesso): gravar
+      // agora apagaria o carrinho salvo da conta (ver `remotoMesclado`).
+      if (!remotoMescladoRef.current) return;
 
       const cartHash = JSON.stringify(currentCart);
       if (cartHash === lastSyncedCart.current && !immediate) return;
@@ -533,6 +858,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             "[CartContext] Bypassing sync: session not active/ready in client",
           );
           syncPending.current = false;
+          pedirReenvioSeDevido();
+          return;
+        }
+
+        // A RPC grava em `auth.uid()` da sessão de AGORA: se ela já é de
+        // outro usuário (troca de conta entre montar o carrinho e enviá-lo),
+        // o carrinho de `user` substituiria o dessa conta no banco.
+        const donoDaSessao = session.user?.id;
+        if (donoDaSessao && donoDaSessao !== user.id) {
+          console.warn(
+            "[CartContext] Sync abortado: a sessão ativa é de outro usuário.",
+          );
+          syncPending.current = false;
+          pedirReenvioSeDevido();
           return;
         }
 
@@ -565,26 +904,42 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
         if (syncError) throw syncError;
         lastSyncedCart.current = cartHash;
+        falhasSeguidas.current = 0;
         syncPending.current = false;
+        pedirReenvioSeDevido();
       } catch (err) {
         console.error("[CartContext] ❌ DB Sync Failed:", err);
         syncPending.current = false;
+        // Offline, o evento online retoma a gravação que falhou; online, o
+        // reagendamento limitado abaixo cobre o evento que já passou.
+        reenvioDevido.current = true;
+        agendarReenvioAposFalha();
       }
     },
-    [user, authLoading],
+    [user, authLoading, pedirReenvioSeDevido, agendarReenvioAposFalha],
   );
 
   useEffect(() => {
     if (isInitialLoad.current || syncLocked.current) return;
 
     const timer = setTimeout(() => {
+      if (!remotoMescladoRef.current) {
+        // A cliente mexeu no carrinho e o banco ainda é desconhecido: não
+        // grava, relê. Se a leitura voltar, a junção muda o carrinho e este
+        // efeito grava a união.
+        if (user) void syncFromDB(true);
+        return;
+      }
       if (!syncPending.current) {
         syncToDB(cart);
+      } else {
+        reenvioDevido.current = true;
       }
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [cart, syncToDB]);
+    // `reenvio` reabre o efeito quando o sync em voo termina (ver acima).
+  }, [cart, syncToDB, reenvio, syncFromDB, user]);
 
   const addToCart = useCallback(
     (
@@ -659,6 +1014,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           const newCart = [...prev];
           newCart[existingIndex] = {
             ...existing,
+            // O produto que chega é o ATUAL (a cliente acabou de vê-lo na
+            // vitrine). Manter a cópia do dia em que o item entrou prendia o
+            // carrinho no preço velho: somar a quantidade não o corrigia.
+            product,
             quantity: nextQuantity,
             lastModifiedAt: Date.now(),
           };
@@ -792,7 +1151,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
     setSelectedShippingOption(null);
     setShippingCep(null);
-    localStorage.removeItem(CART_STORAGE_KEY);
+    removerSeguro(CART_STORAGE_KEY);
     toast.info("Carrinho limpo");
   }, [setSelectedShippingOption]);
 
@@ -957,6 +1316,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setSelectedShippingOption,
       setShippingCep,
       setEnderecoSelecionadoId,
+      renovarCarrinhoPeloCatalogo: renovarPeloCatalogo,
     }),
     [
       addToCart,
@@ -966,6 +1326,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       getCartTotal,
       getCartCount,
       setSelectedShippingOption,
+      renovarPeloCatalogo,
     ],
   );
 

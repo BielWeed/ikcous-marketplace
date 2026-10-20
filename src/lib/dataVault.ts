@@ -167,6 +167,18 @@ export class DataVault {
               } catch {
                 // ignore
               }
+              // `beforeunload` também dispara quando a pessoa CANCELA a saída
+              // no diálogo de alterações não salvas: a página segue viva e o
+              // singleton ficaria apontando para esta conexão morta — `init()`
+              // a devolveria e `getAll()` leria `[]` como "cofre vazio". Marca
+              // a instância como fechada e solta o singleton, como o
+              // `onversionchange`: quem a segura reabre, o próximo `init()`
+              // abre uma conexão nova.
+              if (_instance !== null && _instance === instanciaDestaConexao) {
+                _instance._fechada = true;
+                _instance = null;
+                _initPromise = null;
+              }
             };
             window.addEventListener("beforeunload", cleanClose);
           }
@@ -386,6 +398,40 @@ export class DataVault {
    */
   async put<T>(store: StoreName, item: T): Promise<void> {
     return this.putMany(store, [item]);
+  }
+
+  /**
+   * Leitura e alteração síncrona na mesma transação: evita que outra aba
+   * grave entre o get e o put. Retornar undefined não grava nada.
+   */
+  async mutate<T>(
+    store: StoreName,
+    id: string,
+    update: (current: T | undefined) => T | undefined,
+  ): Promise<T | undefined> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(store, "readwrite");
+      const objectStore = tx.objectStore(store);
+      const request = objectStore.get(id);
+      let updated: T | undefined;
+
+      request.onsuccess = () => {
+        try {
+          updated = update(request.result as T | undefined);
+          if (updated !== undefined) objectStore.put(updated);
+        } catch (err) {
+          tx.abort();
+          reject(err);
+        }
+      };
+      tx.oncomplete = () => resolve(updated);
+      tx.onerror = () =>
+        reject(tx.error ?? new Error(`mutate('${store}') failed`));
+      tx.onabort = () =>
+        reject(
+          tx.error ?? new Error(`Transaction aborted for mutate('${store}')`),
+        );
+    });
   }
 
   /**

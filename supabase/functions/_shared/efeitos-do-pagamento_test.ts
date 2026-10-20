@@ -17,7 +17,9 @@ import {
   assuntoDoAvisoDePagamentoAtrasado,
   avisoAoLojista,
   confirmarPagamentoProvado,
+  dispararAvisoDePagamentoAtrasadoReal,
   htmlDoAvisoDePagamentoAtrasado,
+  reenviarAvisoPendenteDoPagamentoAtrasado,
 } from "./efeitos-do-pagamento.ts";
 import { formatarBRL, numeroDoPedido } from "./pedido.ts";
 import {
@@ -239,4 +241,276 @@ Deno.test("paridade: o e-mail de pagamento atrasado (assunto e HTML) é BYTE A B
 Deno.test("avisoAoLojista: só 'pago' e 'pago_apos_expirar' têm aviso", () => {
   assertEquals(avisoAoLojista(PEDIDO, "ja_pago", 10), null);
   assertEquals(avisoAoLojista(PEDIDO, "divergente", 10), null);
+});
+
+// --- o remetente resolvido no aviso de pagamento atrasado (14/10/2026) ------
+
+function supabaseDoAviso(chamadas: string[]) {
+  return {
+    rpc: async (nome: string) => {
+      chamadas.push(`rpc:${nome}`);
+      return { data: nome === "reivindicar_email_de_confirmacao" ? true : null, error: null };
+    },
+    from(tabela: string) {
+      chamadas.push(`from:${tabela}`);
+      const resultado = tabela === "marketplace_orders"
+        ? { data: { id: PEDIDO, user_id: null, customer_data: { email: "cliente@exemplo.com" } }, error: null }
+        : { data: { store_name: "Loja Teste" }, error: null };
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => resultado }),
+          limit: () => ({ maybeSingle: async () => resultado }),
+        }),
+      };
+    },
+    auth: { admin: { getUserById: async () => ({ data: { user: null } }) } },
+  };
+}
+
+Deno.test("aviso atrasado: remetente 'nenhum' PARA antes de ler o pedido ou reservar o aviso (nada gasto)", async () => {
+  const chamadas: string[] = [];
+  const enviados: unknown[] = [];
+  await emSilencio(() =>
+    dispararAvisoDePagamentoAtrasadoReal({
+      supabase: supabaseDoAviso(chamadas) as never,
+      orderId: PEDIDO,
+      deps: {
+        resolverRemetente: async () => ({ origem: "nenhum", usuario: null, senha: null, motivo: "sem_registro", reserva: null }),
+        enviarEmail: async (...args: unknown[]) => void enviados.push(args),
+      },
+    })
+  );
+  assertEquals(chamadas, []);
+  assertEquals(enviados, []);
+});
+
+Deno.test("aviso atrasado: com remetente, reserva UMA vez e o envio recebe o MESMO remetente resolvido", async () => {
+  const chamadas: string[] = [];
+  const enviados: any[] = [];
+  const remetente = { origem: "painel", usuario: "painel@gmail.com", senha: "x", motivo: null, reserva: null };
+  await emSilencio(() =>
+    dispararAvisoDePagamentoAtrasadoReal({
+      supabase: supabaseDoAviso(chamadas) as never,
+      orderId: PEDIDO,
+      deps: {
+        resolverRemetente: async () => remetente,
+        enviarEmail: async (...args: unknown[]) => void enviados.push(args),
+      },
+    })
+  );
+  assertEquals(chamadas.filter((c) => c === "rpc:reivindicar_email_de_confirmacao").length, 1);
+  assertEquals(enviados.length, 1);
+  assertEquals(enviados[0][0].para, "cliente@exemplo.com");
+  assertEquals(enviados[0][1], remetente);
+});
+
+// --- EST-EDGE-DIN-3 (16/10/2026): o aviso de pagamento atrasado que não saiu --
+// O pedido vira 'pago_apos_expirar'; o SMTP falha; a reserva do e-mail é
+// devolvida; o webhook responde 200. A reentrega do MP recebe 'ja_pago' e
+// PULAVA tudo, e o cron exclui pedido com paid_at: o cliente que pagou depois
+// do cancelamento nunca era avisado. O caso que dói é a ORDEM: o que a
+// reentrega faz depende de a reserva estar livre, e a reserva é a mesma do
+// comprovante.
+
+/** Banco com ESTADO: a reserva do e-mail é `confirmation_email_sent_at`, atômica como a RPC. */
+function bancoComReserva(inicial: { payment_status: string; reservado: boolean; leituraFalha?: boolean }) {
+  const estado = { payment_status: inicial.payment_status, reservado: inicial.reservado };
+  const rpcs: string[] = [];
+  const liberarComErro = { restantes: 0 };
+  return {
+    estado,
+    rpcs,
+    liberarComErro,
+    from(tabela: string) {
+      return {
+        select: (colunas: string) => {
+          const consulta = {
+            eq: () => consulta,
+            limit: () => consulta,
+            maybeSingle: async () => {
+              if (inicial.leituraFalha) throw new Error("banco caiu");
+              if (tabela === "store_config") return { data: { store_name: "Loja" }, error: null };
+              if (colunas.includes("confirmation_email_sent_at")) {
+                return {
+                  data: {
+                    payment_status: estado.payment_status,
+                    confirmation_email_sent_at: estado.reservado ? "2026-10-16T10:00:00Z" : null,
+                  },
+                  error: null,
+                };
+              }
+              return { data: { id: PEDIDO, user_id: null, customer_data: { email: "cliente@exemplo.com" } }, error: null };
+            },
+          };
+          return consulta;
+        },
+      };
+    },
+    rpc: async (nome: string) => {
+      rpcs.push(nome);
+      if (nome === "reivindicar_email_de_confirmacao") {
+        if (estado.reservado) return { data: false, error: null };
+        estado.reservado = true;
+        return { data: true, error: null };
+      }
+      if (nome === "liberar_email_de_confirmacao") {
+        if (liberarComErro.restantes > 0) {
+          liberarComErro.restantes--;
+          return { data: null, error: { message: "banco indisponivel" } };
+        }
+        estado.reservado = false;
+        return { data: null, error: null };
+      }
+      return { data: null, error: null };
+    },
+    auth: { admin: { getUserById: async () => ({ data: { user: null } }) } },
+  };
+}
+
+const REMETENTE_OK = { origem: "painel", usuario: "painel@gmail.com", senha: "x", motivo: null, reserva: null };
+
+function avisoRealComSmtp(enviarEmail: (...a: unknown[]) => Promise<void>) {
+  return (a: { supabase: never; orderId: string }) =>
+    dispararAvisoDePagamentoAtrasadoReal({
+      ...a,
+      deps: { resolverRemetente: async () => REMETENTE_OK, enviarEmail },
+    });
+}
+
+Deno.test("EST-EDGE-DIN-3 - SMTP falha na confirmação; a reentrega 'ja_pago' reenvia o aviso UMA vez e a seguinte já não manda mais", async () => {
+  const banco = bancoComReserva({ payment_status: "pago_apos_expirar", reservado: false });
+  let smtpNoAr = false;
+  const enviados: unknown[] = [];
+  const smtp = async (...a: unknown[]) => {
+    if (!smtpNoAr) throw new Error("SMTP fora do ar");
+    enviados.push(a);
+  };
+  // 1) a transição: o SMTP recusa, a reserva volta.
+  await emSilencio(() =>
+    aplicarEfeitosDoPagamentoConfirmado({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      resultado: "pago_apos_expirar",
+      enviarPush: async () => {},
+      enviarAvisoAtrasado: avisoRealComSmtp(smtp) as never,
+    })
+  );
+  assertEquals(banco.estado.reservado, false);
+  assertEquals(enviados.length, 0);
+  // 2) a reentrega 'ja_pago' com o SMTP de volta: manda o aviso pendente.
+  smtpNoAr = true;
+  await emSilencio(() =>
+    reenviarAvisoPendenteDoPagamentoAtrasado({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      enviarAvisoAtrasado: avisoRealComSmtp(smtp) as never,
+    })
+  );
+  assertEquals(enviados.length, 1);
+  assertEquals(banco.estado.reservado, true);
+  // 3) outra reentrega: a reserva está presa, nada mais sai.
+  await emSilencio(() =>
+    reenviarAvisoPendenteDoPagamentoAtrasado({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      enviarAvisoAtrasado: avisoRealComSmtp(smtp) as never,
+    })
+  );
+  assertEquals(enviados.length, 1);
+});
+
+Deno.test("EST-EDGE-DIN-3 - três reentregas 'ja_pago' CONCORRENTES com a reserva livre mandam UM e-mail só", async () => {
+  const banco = bancoComReserva({ payment_status: "pago_apos_expirar", reservado: false });
+  const enviados: unknown[] = [];
+  const smtp = async (...a: unknown[]) => {
+    await new Promise((r) => setTimeout(r, 5));
+    enviados.push(a);
+  };
+  await emSilencio(() =>
+    Promise.all([1, 2, 3].map(() =>
+      reenviarAvisoPendenteDoPagamentoAtrasado({
+        supabase: banco as never,
+        orderId: PEDIDO,
+        enviarAvisoAtrasado: avisoRealComSmtp(smtp) as never,
+      })
+    ))
+  );
+  assertEquals(enviados.length, 1);
+});
+
+Deno.test("EST-EDGE-DIN-3 - reentrega 'ja_pago' NÃO envia nada quando já saiu, quando o pedido é 'pago' comum, ou quando a leitura falha", async () => {
+  const casos: Array<[string, Parameters<typeof bancoComReserva>[0]]> = [
+    ["reserva presa (e-mail já saiu)", { payment_status: "pago_apos_expirar", reservado: true }],
+    ["pedido 'pago' comum (comprovante não é desta frente)", { payment_status: "pago", reservado: false }],
+    ["pedido estornado", { payment_status: "estornado", reservado: false }],
+    ["leitura do pedido falha", { payment_status: "pago_apos_expirar", reservado: false, leituraFalha: true }],
+  ];
+  for (const [rotulo, inicial] of casos) {
+    const banco = bancoComReserva(inicial);
+    const enviados: unknown[] = [];
+    await emSilencio(() =>
+      reenviarAvisoPendenteDoPagamentoAtrasado({
+        supabase: banco as never,
+        orderId: PEDIDO,
+        enviarAvisoAtrasado: async (a) => void enviados.push(a),
+      })
+    );
+    assertEquals(enviados.length, 0, rotulo);
+    assertEquals(banco.rpcs.length, 0, rotulo);
+  }
+});
+
+Deno.test("EST-EDGE-DIN-3 - reentrega: coluna da reserva AUSENTE na leitura é 'não sei' e não envia (só o null explícito do banco libera)", async () => {
+  const enviados: unknown[] = [];
+  await emSilencio(() =>
+    reenviarAvisoPendenteDoPagamentoAtrasado({
+      supabase: bancoDoPedido({ linha: { payment_status: "pago_apos_expirar" } }) as never,
+      orderId: PEDIDO,
+      enviarAvisoAtrasado: async (a) => void enviados.push(a),
+    })
+  );
+  assertEquals(enviados.length, 0);
+});
+
+Deno.test("EST-EDGE-DIN-3 - reentrega: o envio que LANÇA não sobe para quem chama (o webhook segue com 200)", async () => {
+  const banco = bancoComReserva({ payment_status: "pago_apos_expirar", reservado: false });
+  await emSilencio(() =>
+    reenviarAvisoPendenteDoPagamentoAtrasado({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      enviarAvisoAtrasado: async () => {
+        throw new Error("explodiu");
+      },
+    })
+  );
+});
+
+Deno.test("EST-EDGE-DIN-3 - liberar_email_de_confirmacao devolvendo { error }: tenta DE NOVO e registra (antes o erro era ignorado e a reserva ficava presa)", async () => {
+  const banco = bancoComReserva({ payment_status: "pago_apos_expirar", reservado: false });
+  banco.liberarComErro.restantes = 1; // a 1ª tentativa de devolver a reserva falha
+  const erros: string[] = [];
+  const original = console.error;
+  console.error = (...a: unknown[]) => void erros.push(a.map(String).join(" "));
+  const [w, l] = [console.warn, console.log];
+  console.warn = () => {};
+  console.log = () => {};
+  try {
+    await dispararAvisoDePagamentoAtrasadoReal({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      deps: {
+        resolverRemetente: async () => REMETENTE_OK,
+        enviarEmail: async () => {
+          throw new Error("SMTP fora do ar");
+        },
+      },
+    });
+  } finally {
+    console.error = original;
+    [console.warn, console.log] = [w, l];
+  }
+  assertEquals(banco.rpcs.filter((n) => n === "liberar_email_de_confirmacao").length, 2);
+  // a 2ª tentativa funcionou: a reserva voltou a ficar livre para a reentrega.
+  assertEquals(banco.estado.reservado, false);
+  assertEquals(erros.some((e) => e.includes("liberar reserva falhou")), true, erros.join(" | "));
 });

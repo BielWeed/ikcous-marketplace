@@ -15,7 +15,7 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useSearch } from "@/hooks/useSearch";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
-import type { View } from "@/types";
+import type { Product, View } from "@/types";
 import {
   ArrowLeft,
   PackageSearch,
@@ -40,6 +40,15 @@ interface SearchViewProps {
    * segura a cópia "dona" do termo (a barra do Header) nunca fica sabendo
    * que o "Limpar Tudo" do estado vazio zerou a busca aqui dentro. */
   onQueryChange?: (query: string) => void;
+  /** O carrinho do App (mesma função que a Home recebe). Sem ela os cards
+   * ficam sem como adicionar: viram "Ver produto" em vez de fingir que
+   * adicionaram. */
+  onAddToCart?: (
+    product: Product,
+    quantity?: number,
+    variantId?: string,
+    variantNames?: string,
+  ) => void;
 }
 
 interface SearchInputProps {
@@ -85,14 +94,31 @@ export const SearchView = React.memo(function SearchView({
   onBack,
   selectedProductId,
   onQueryChange,
+  onAddToCart,
 }: SearchViewProps) {
-  const { config } = useStore();
+  const { config, catalogoErro, loadingProducts, fetchProducts } = useStore();
+  const [tentandoBusca, setTentandoBusca] = useState(false);
+  const tentarBusca = async () => {
+    if (tentandoBusca) return;
+    setTentandoBusca(true);
+    try {
+      await fetchProducts();
+    } finally {
+      setTentandoBusca(false);
+    }
+  };
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
   // preset da LOJA (ProductCard-520), derivado do MESMO config que já
   // alimentava `showRating` — mesmo padrão do ProductView.
   const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
   const { prefetchView } = usePrefetchOnHover();
   const { products: allProducts } = useProducts();
+  // O catálogo da dona da loja inclui pausados. A busca, a contagem e as
+  // categorias precisam mostrar só o que está à venda, como a vitrine.
+  const produtosAVenda = useMemo(
+    () => allProducts.filter((p) => p.isActive),
+    [allProducts],
+  );
   const {
     query,
     setQuery,
@@ -106,7 +132,7 @@ export const SearchView = React.memo(function SearchView({
     setSort,
     filteredProducts,
     totalResults,
-  } = useSearch(allProducts);
+  } = useSearch(produtosAVenda);
 
   const { isFavorite, toggleFavorite } = useFavorites();
   const handleProductClick = useCallback(
@@ -114,6 +140,28 @@ export const SearchView = React.memo(function SearchView({
       onNavigate("product-detail", id);
     },
     [onNavigate],
+  );
+
+  // Mesmos dois caminhos da Home. O card chama `onAddToCart(produto, clique)`:
+  // o invólucro entrega só o produto — o clique no lugar de `quantity` viraria
+  // quantidade. Com opções (tamanho/cor), o card abre a folha e entrega
+  // variação + quantidade escolhidas.
+  const handleAddToCart = useCallback(
+    (product: Product) => {
+      onAddToCart?.(product);
+    },
+    [onAddToCart],
+  );
+  const handleAddToCartWithVariants = useCallback(
+    (
+      product: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity = 1,
+    ) => {
+      onAddToCart?.(product, quantity, variantId, variantNames);
+    },
+    [onAddToCart],
   );
 
   const handlePrefetchProductDetail = useCallback(() => {
@@ -170,20 +218,19 @@ export const SearchView = React.memo(function SearchView({
   // dono da loja (admin) a lista carrega o catálogo inteiro — trending só
   // sugere produto ATIVO, pausado não é vitrine nem aqui.
   const trendingProducts = useMemo(() => {
-    return allProducts
-      .filter((p) => p.isActive)
+    return [...produtosAVenda]
       .sort((a, b) => {
         const aAvailable = a.stock > 0 ? 1 : 0;
         const bAvailable = b.stock > 0 ? 1 : 0;
         return bAvailable - aAvailable;
       })
       .slice(0, 4);
-  }, [allProducts]);
+  }, [produtosAVenda]);
 
   // Extract unique categories
   const categoriesSet = [
     "Todas",
-    ...Array.from(new Set(allProducts.map((p) => p.category))),
+    ...Array.from(new Set(produtosAVenda.map((p) => p.category))),
   ];
 
   // Só filtros — categoria, preço e ordenação. É o handler do "Limpar Tudo"
@@ -242,7 +289,7 @@ export const SearchView = React.memo(function SearchView({
           <div className="no-scrollbar flex items-center gap-2 overflow-x-auto pb-1">
             <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
               <SheetTrigger asChild>
-                <button className="flex items-center gap-2 whitespace-nowrap rounded-full bg-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-95">
+                <button className="flex items-center gap-2 whitespace-nowrap rounded-full bg-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-primary-foreground shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-95">
                   <SlidersHorizontal className="size-3" />
                   Filtros {activeFiltersCount > 0 && `(${activeFiltersCount})`}
                 </button>
@@ -279,7 +326,7 @@ export const SearchView = React.memo(function SearchView({
                           onClick={() => setCategory(catName)}
                           className={`rounded-2xl border px-5 py-2.5 text-[11px] font-bold transition-all ${
                             category === catName
-                              ? "scale-105 border-primary bg-primary text-white shadow-lg shadow-black/10"
+                              ? "scale-105 border-primary bg-primary text-primary-foreground shadow-lg shadow-black/10"
                               : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
                           }`}
                         >
@@ -305,7 +352,7 @@ export const SearchView = React.memo(function SearchView({
                           onClick={() => setSort(option.value as any)}
                           className={`rounded-2xl border px-4 py-3 text-[11px] font-bold transition-all ${
                             sort === option.value
-                              ? "border-primary bg-primary text-white"
+                              ? "border-primary bg-primary text-primary-foreground"
                               : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
                           }`}
                         >
@@ -317,7 +364,7 @@ export const SearchView = React.memo(function SearchView({
 
                   <Button
                     onClick={() => setIsFilterOpen(false)}
-                    className="h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-white shadow-2xl shadow-black/10 transition-all hover:bg-primary/90"
+                    className="h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-primary-foreground shadow-2xl shadow-black/10 transition-all hover:bg-primary/90"
                   >
                     Aplicar Filtros
                   </Button>
@@ -333,7 +380,7 @@ export const SearchView = React.memo(function SearchView({
                 onClick={() => setCategory(catName)}
                 className={`whitespace-nowrap rounded-full border px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
                   category === catName
-                    ? "border-primary bg-primary text-white"
+                    ? "border-primary bg-primary text-primary-foreground"
                     : "border-zinc-100 bg-zinc-50 text-zinc-500 hover:border-primary hover:text-primary"
                 }`}
               >
@@ -346,7 +393,28 @@ export const SearchView = React.memo(function SearchView({
 
       {/* Content Area */}
       <div className="mx-auto max-w-7xl px-4 py-8">
-        {filteredProducts.length > 0 ? (
+        {loadingProducts || tentandoBusca ? (
+          <p role="status" className="py-20 text-center text-sm text-zinc-500">
+            Carregando busca…
+          </p>
+        ) : catalogoErro && allProducts.length === 0 ? (
+          <div role="alert" className="py-20 text-center">
+            <h2 className="text-xl font-black text-zinc-900">
+              Não conseguimos carregar a busca agora
+            </h2>
+            <p className="mt-2 text-sm text-zinc-500">
+              Verifique sua conexão e tente de novo.
+            </p>
+            <Button
+              onClick={() => {
+                void tentarBusca();
+              }}
+              className="mt-6"
+            >
+              Tentar de novo
+            </Button>
+          </div>
+        ) : filteredProducts.length > 0 ? (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -371,6 +439,10 @@ export const SearchView = React.memo(function SearchView({
                     isFavorite={isFavorite(product.id)}
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
+                    onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                    onAddToCartWithVariants={
+                      onAddToCart ? handleAddToCartWithVariants : undefined
+                    }
                     showRating={config.enableReviews}
                     promessasDeFrete={promessasDaLoja}
                     onMouseEnter={handlePrefetchProductDetail}
@@ -436,6 +508,10 @@ export const SearchView = React.memo(function SearchView({
                     isFavorite={isFavorite(product.id)}
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
+                    onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                    onAddToCartWithVariants={
+                      onAddToCart ? handleAddToCartWithVariants : undefined
+                    }
                     showRating={config.enableReviews}
                     promessasDeFrete={promessasDaLoja}
                     onMouseEnter={handlePrefetchProductDetail}

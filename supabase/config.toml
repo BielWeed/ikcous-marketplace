@@ -112,3 +112,12 @@ verify_jwt = true
 # função. O Pix de hoje não passa por aqui.
 [functions."credenciais-mercado-pago"]
 verify_jwt = true
+
+# 14/10/2026: a lojista cadastra o Gmail da loja (e a senha de app) no painel
+# (Ajustes > E-mail da loja). Chamada pelo painel do lojista logado:
+# verify_jwt = true no portao E porta interna de admin na funcao (o admin de
+# AGORA, _shared/admin-atual.ts) — MESMO desenho da credenciais-mercado-pago.
+# A senha dorme CIFRADA (mesmo cofre do Mercado Pago) e JAMAIS volta para o
+# navegador. NUNCA publicar com --no-verify-jwt.
+[functions."credenciais-email"]
+verify_jwt = true

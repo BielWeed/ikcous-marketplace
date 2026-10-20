@@ -6,11 +6,17 @@ import {
   minutosDaVagaPresa,
 } from "@/lib/cupomPreso";
 import { mensagemDeErroDoCupom } from "@/lib/erro-do-cupom";
+import {
+  PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { ClienteDoCupom, Coupon } from "@/types";
 import type { Database } from "@/types/database.types";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /** Uma linha da busca de clientes do painel (sem CPF). */
@@ -64,6 +70,67 @@ async function bancoTemAlcanceDoCupom(): Promise<boolean> {
   }
 }
 
+/** O que o checkout recebe de uma tentativa de aplicar um cupom. */
+interface ResultadoDaValidacaoDoCupom {
+  valid: boolean;
+  discount: number;
+  message?: string;
+  /** Laudo 31/08 (E1): true = a CONSULTA falhou (não é recusa do cupom) — quem revalida em segundo plano mantém o cupom como está. */
+  networkError?: boolean;
+}
+
+/** No cupom o toque certo é "Aplicar" — não existe botão "Tentar de novo". */
+const MENSAGEM_CUPOM_CONEXAO_LENTA =
+  "A conexão está lenta. Toque em Aplicar para tentar de novo.";
+
+/**
+ * A consulta em si (sem prazo — quem chama é que limita a espera). LANÇA em
+ * erro de rede/RPC; o chamador transforma em `networkError`.
+ */
+async function consultarCupom(
+  code: string,
+  subtotal: number,
+): Promise<ResultadoDaValidacaoDoCupom> {
+  // SecOps: validate_coupon_secure_v2 es SECURITY DEFINER
+  const { data, error } = await supabase.rpc(
+    "validate_coupon_secure_v2" as any,
+    {
+      p_code: code,
+      p_subtotal: subtotal,
+    } as any,
+  );
+
+  if (error) throw error;
+
+  const result = data as any;
+  if (!result)
+    return {
+      valid: false,
+      discount: 0,
+      message: "Erro ao validar cupom",
+    };
+
+  // Cupom preso (#210/#116): recusa por LIMITE + sessão → pergunta se a
+  // vaga está presa num pedido cancelado do próprio cliente. Só a
+  // resposta confirmada troca a frase; cupom válido nunca pergunta.
+  if (!result.is_valid && ehRecusaPorLimiteDeUso(result.error_message)) {
+    const minutos = await minutosDaVagaPresaDoCliente(code);
+    if (minutos !== null) {
+      return {
+        valid: false,
+        discount: Number(result.discount_value),
+        message: mensagemDeVagaPresa(code, minutos),
+      };
+    }
+  }
+
+  return {
+    valid: result.is_valid,
+    discount: Number(result.discount_value),
+    message: result.error_message,
+  };
+}
+
 /**
  * @param autoFetch carrega a lista de cupons ao montar (telas do painel).
  * @param sondarAlcance só o formulário do cupom precisa saber se o banco já
@@ -72,12 +139,17 @@ async function bancoTemAlcanceDoCupom(): Promise<boolean> {
 export function useCoupons(autoFetch = false, sondarAlcance = false) {
   const { isAdmin } = useAuth();
   const [alcanceSuportado, setAlcanceSuportado] = useState(false);
+  /** A sonda ja respondeu (sim ou nao): antes disso `false` e so 'ainda nao sei'. */
+  const [alcanceSondado, setAlcanceSondado] = useState(false);
   const [coupons, setCoupons] = useState<Coupon[]>(
     () => cachedCouponsData || [],
   );
   const [loading, setLoading] = useState(() => autoFetch && !cachedCouponsData); // Skip initial loader if cache is available
+  const [erroDaListagem, setErroDaListagem] = useState<string | null>(null);
+  const rodadaRef = useRef(0);
 
   const fetchCoupons = useCallback(async () => {
+    const rodada = ++rodadaRef.current;
     try {
       setLoading(true);
 
@@ -86,15 +158,9 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) {
-        if (error.code === "PGRST116") {
-          console.warn("Coupons access restricted to admins or active items.");
-          setCoupons([]);
-          setCachedCouponsData([]);
-          return;
-        }
-        throw error;
-      }
+      if (rodada !== rodadaRef.current) return;
+
+      if (error) throw error;
 
       // PAINEL-12 + frente B: o mapeador único do cupom (usage_count só, `?? 0`;
       // alcance: banco sem a coluna = secreto).
@@ -103,13 +169,16 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
 
       setCachedCouponsData(formattedCoupons);
       setCoupons(formattedCoupons);
-    } catch (error: any) {
+      setErroDaListagem(null);
+    } catch (error) {
+      if (rodada !== rodadaRef.current) return;
       console.error("Error fetching coupons:", error);
-      if (error.code !== "PGRST116") {
-        toast.error("Não foi possível carregar os cupons.");
-      }
+      setErroDaListagem(
+        "Não conseguimos carregar os cupons agora. Seus cupons não sumiram.",
+      );
+      toast.error("Não foi possível carregar os cupons.");
     } finally {
-      setLoading(false);
+      if (rodada === rodadaRef.current) setLoading(false);
     }
   }, []);
 
@@ -123,7 +192,10 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     if (!sondarAlcance) return;
     let vivo = true;
     bancoTemAlcanceDoCupom().then((sim) => {
-      if (vivo) setAlcanceSuportado(sim);
+      if (vivo) {
+        setAlcanceSuportado(sim);
+        setAlcanceSondado(true);
+      }
     });
     return () => {
       vivo = false;
@@ -134,58 +206,23 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     async (
       code: string,
       subtotal: number,
-    ): Promise<{
-      valid: boolean;
-      discount: number;
-      message?: string;
-      /** Laudo 31/08 (E1): true = a CONSULTA falhou (não é recusa do cupom) — quem revalida em segundo plano mantém o cupom como está. */
-      networkError?: boolean;
-    }> => {
+    ): Promise<ResultadoDaValidacaoDoCupom> => {
       try {
-        // SecOps: validate_coupon_secure_v2 es SECURITY DEFINER
-        const { data, error } = await supabase.rpc(
-          "validate_coupon_secure_v2" as any,
-          {
-            p_code: code,
-            p_subtotal: subtotal,
-          } as any,
+        // Prazo na CADEIA inteira (validação + pergunta da vaga presa): rede
+        // pendurada não pode deixar "Aplicando…" travando a tela do cupom.
+        return await aguardarComPrazo(
+          consultarCupom(code, subtotal),
+          PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_CUPOM_CONEXAO_LENTA),
         );
-
-        if (error) throw error;
-
-        const result = data as any;
-        if (!result)
-          return {
-            valid: false,
-            discount: 0,
-            message: "Erro ao validar cupom",
-          };
-
-        // Cupom preso (#210/#116): recusa por LIMITE + sessão → pergunta se a
-        // vaga está presa num pedido cancelado do próprio cliente. Só a
-        // resposta confirmada troca a frase; cupom válido nunca pergunta.
-        if (!result.is_valid && ehRecusaPorLimiteDeUso(result.error_message)) {
-          const minutos = await minutosDaVagaPresaDoCliente(code);
-          if (minutos !== null) {
-            return {
-              valid: false,
-              discount: Number(result.discount_value),
-              message: mensagemDeVagaPresa(code, minutos),
-            };
-          }
-        }
-
-        return {
-          valid: result.is_valid,
-          discount: Number(result.discount_value),
-          message: result.error_message,
-        };
       } catch (error) {
         console.error("Error validating coupon:", error);
         return {
           valid: false,
           discount: 0,
-          message: "Erro na conexão com servidor",
+          message: ehConsultaSemResposta(error)
+            ? MENSAGEM_CUPOM_CONEXAO_LENTA
+            : "Erro na conexão com servidor",
           networkError: true,
         };
       }
@@ -235,17 +272,25 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     }
   };
 
-  const updateCoupon = async (id: string, updates: Partial<Coupon>) => {
+  const updateCoupon = async (
+    id: string,
+    updates: Partial<Coupon>,
+    clientes?: readonly string[],
+  ) => {
     if (!isAdmin) {
       toast.error("Permissão negada");
       return;
     }
 
-    // Optimistic Update
-    const oldCoupons = [...coupons];
-    setCoupons((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-    );
+    // O formulário pode gravar regras e clientes em duas chamadas. Só
+    // confirmar localmente depois das duas: trocar o alcance antes disso
+    // dispara a carga da lista antiga e apaga os clientes recém-escolhidos.
+    const anterior = coupons.find((c) => c.id === id);
+    if (clientes === undefined) {
+      setCoupons((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+      );
+    }
 
     /*
       O UPDATE é montado por PRESENÇA DE CHAVE, não por valor (ADMIN-050, #96).
@@ -285,7 +330,6 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     // "codigo" é mudança e VAI. Cupom que não está na lista carregada tem
     // anterior desconhecido: o pedido vai como veio (nunca engolir a troca).
     if ("alcance" in updates && updates.alcance) {
-      const anterior = oldCoupons.find((c) => c.id === id);
       const mudou =
         !anterior || (anterior.alcance ?? "codigo") !== updates.alcance;
       if (mudou) dbUpdates.alcance = updates.alcance;
@@ -299,14 +343,28 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
 
       if (error) throw error;
 
+      if (clientes !== undefined) {
+        await definirClientesDoCupom(id, clientes);
+        setCoupons((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+        );
+      }
+
       toast.success("Cupom atualizado");
       if (autoFetch) fetchCoupons();
     } catch (error) {
       console.error("Error updating coupon:", error);
       // Mesma régua do addCoupon (laudo 0109, A4): trocar o código por um
       // que já existe é recusa de constraint, não "revise as regras".
-      toast.error(mensagemDeErroDoCupom(error, "Erro ao atualizar cupom"));
-      setCoupons(oldCoupons);
+      toast.error(
+        clientes !== undefined
+          ? "Não foi possível salvar o cupom. Confira e tente de novo."
+          : mensagemDeErroDoCupom(error, "Erro ao atualizar cupom"),
+      );
+      if (clientes === undefined && anterior) {
+        // A falha deste cupom preserva os demais já salvos.
+        setCoupons((prev) => prev.map((c) => (c.id === id ? anterior : c)));
+      }
       throw error;
     }
   };
@@ -416,6 +474,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   return {
     coupons,
     loading,
+    erroDaListagem,
     validateCoupon,
     refreshCoupons: fetchCoupons,
     addCoupon,
@@ -424,6 +483,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     getCouponStats,
     /** `true` só depois da sonda confirmar a coluna `alcance` no banco. */
     alcanceSuportado,
+    alcanceSondado,
     listarClientesDoCupom,
     definirClientesDoCupom,
     buscarClientesParaCupom,

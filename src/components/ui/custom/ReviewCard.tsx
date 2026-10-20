@@ -3,11 +3,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import type { Review, View } from "@/types";
 import { Check, ThumbsUp } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { StarRating } from "./StarRating";
 
 interface ReviewCardProps {
   review: Review;
+  jaVotou?: boolean;
   // A união abaixo é deliberada: o chamador pode passar um handler síncrono
   // (void) ou um que devolve o resultado da gravação (Promise<boolean>), e os
   // dois já existem no código. Estreitar isso é mudança de contrato de uma prop
@@ -18,17 +19,34 @@ interface ReviewCardProps {
   onNavigate?: (view: View, id?: string) => void;
 }
 
-export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
-  const [hasMarkedHelpful, setHasMarkedHelpful] = useState(false);
+export function ReviewCard({
+  review,
+  jaVotou,
+  onHelpful,
+  onNavigate,
+}: ReviewCardProps) {
+  const [votoLocal, setHasMarkedHelpful] = useState(jaVotou ?? false);
+  // A leitura do hook acompanha login/logout e remontagem. O estado local
+  // continua atendendo os chamadores que não fornecem a marcação do banco.
+  const hasMarkedHelpful = jaVotou ?? votoLocal;
+  const votoEmVooRef = useRef(false);
+  const [votoEmVoo, setVotoEmVoo] = useState(false);
 
   // Trava o botão só quando o voto VALEU (o hook marcaHelpful devolve
-  // `false` quando o RPC falha e reverte o contador). Antes, a trava era
+  // `false` quando o RPC falha e mantém o contador). Antes, a trava era
   // local e definitiva: um erro de rede deixava o botão morto e o voto
   // que o banco nunca gravou travado para sempre.
   const handleHelpful = async () => {
-    if (hasMarkedHelpful || !onHelpful) return;
-    const valeu = await onHelpful(review.id);
-    if (valeu !== false) setHasMarkedHelpful(true);
+    if (hasMarkedHelpful || votoEmVooRef.current || !onHelpful) return;
+    votoEmVooRef.current = true;
+    setVotoEmVoo(true);
+    try {
+      const valeu = await onHelpful(review.id);
+      if (valeu !== false) setHasMarkedHelpful(true);
+    } finally {
+      votoEmVooRef.current = false;
+      setVotoEmVoo(false);
+    }
   };
 
   const handleUserClick = () => {
@@ -46,13 +64,16 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
     });
   };
 
+  // Nome só com espaços não tem inicial (cai no "U"), e `Array.from` pega o
+  // caractere inteiro — `charAt` partia emoji/símbolo astral ao meio.
   const getInitials = (name: string) => {
-    if (!name) return "U";
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-    return (
-      parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
-    ).toUpperCase();
+    const trimmed = name?.trim();
+    if (!trimmed) return "U";
+    const parts = trimmed.split(/\s+/);
+    const primeira = Array.from(parts[0])[0];
+    if (parts.length === 1) return primeira.toUpperCase();
+    const ultima = Array.from(parts[parts.length - 1])[0];
+    return (primeira + ultima).toUpperCase();
   };
 
   return (
@@ -128,15 +149,17 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
         </span>
       </div>
 
-      {/* Comment */}
-      <p
-        className={cn(
-          "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
-          "lg:text-sm",
-        )}
-      >
-        {review.comment}
-      </p>
+      {/* Comment (opcional: avaliação só com estrelas não leva parágrafo) */}
+      {review.comment && (
+        <p
+          className={cn(
+            "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
+            "lg:text-sm",
+          )}
+        >
+          {review.comment}
+        </p>
+      )}
 
       {/* Images */}
       {review.images && review.images.length > 0 && (
@@ -160,20 +183,19 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
       <div className="flex flex-col gap-3">
         <button
           onClick={handleHelpful}
-          disabled={hasMarkedHelpful}
+          disabled={hasMarkedHelpful || votoEmVoo}
           className={`flex w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
             hasMarkedHelpful
-              ? "border-primary bg-primary text-white shadow-sm"
+              ? "border-primary bg-primary text-primary-foreground shadow-sm"
               : "border-secondary/20 bg-secondary/10 text-primary hover:bg-secondary/20 active:scale-95"
           }`}
         >
           <ThumbsUp
             className={`size-3 ${hasMarkedHelpful ? "fill-current" : ""}`}
           />
-          {/* O contador vem do objeto já atualizado pelo update otimista de
+          {/* O contador vem do objeto confirmado pela releitura de
               useReviews.markHelpful — somar +1 aqui contava o clique duas
-              vezes (e deixava um voto fantasma quando o RPC falhava e o hook
-              revertia). */}
+              vezes. */}
           <span>Útil ({review.helpful})</span>
         </button>
 

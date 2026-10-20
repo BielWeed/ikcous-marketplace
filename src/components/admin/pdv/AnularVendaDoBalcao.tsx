@@ -28,6 +28,7 @@ import {
   useRef,
   useState,
 } from "react";
+import "./pdv.css";
 
 interface PropsDoAnularVendaDoBalcao {
   readonly total: number;
@@ -73,11 +74,8 @@ export function AnularVendaDoBalcao({
 
   if (resultado) {
     return (
-      <p
-        role="status"
-        className="flex items-start gap-2 rounded-xl border border-emerald-800/50 bg-emerald-950/30 p-3 text-sm text-emerald-200"
-      >
-        <CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <p role="status" className="pdv-notice">
+        <CheckCircle2 aria-hidden="true" className="pdv-icon pdv-green" />
         {resultado.jaAnulada ? (
           <span>
             Esta venda já estava anulada. Nada foi mexido de novo. O app não
@@ -100,9 +98,9 @@ export function AnularVendaDoBalcao({
         type="button"
         variant="outline"
         onClick={() => setAberto(true)}
-        className="border-red-900/60 text-red-300 hover:bg-red-950/40"
+        className="pdv-secondary pdv-annul-trigger"
       >
-        <Ban aria-hidden="true" className="mr-1.5 size-4" />
+        <Ban aria-hidden="true" className="pdv-red size-5" />
         Anular venda
       </Button>
     );
@@ -138,7 +136,7 @@ export function AnularVendaDoBalcao({
       setResultado(resposta);
       aoConcluir?.(resposta);
     } catch (e) {
-      setErro(mensagemDaFalhaDaAnulacao(e));
+      setErro(mensagemDaFalhaDaAnulacao(e, clienteComConta));
     } finally {
       emVoo.current = false;
       setEnviando(false);
@@ -151,17 +149,21 @@ export function AnularVendaDoBalcao({
       role="group"
       aria-label="Anular venda"
       onKeyDown={aoTeclar}
-      className="flex flex-col gap-2 rounded-xl border border-red-900/60 bg-red-950/20 p-3"
+      className="pdv-notice"
     >
-      <p className="text-sm font-semibold text-red-200">
+      <p className="pdv-heading">
+        <Ban aria-hidden="true" className="pdv-icon pdv-red" />
+        Anular venda
+      </p>
+      <p className="text-xl font-bold">
         Anular esta venda de {formatCurrency(total)}?
       </p>
-      <p className="text-xs text-zinc-400">
+      <p className="pdv-muted">
         Só vale no mesmo dia. O estoque volta e o Financeiro e o caixa descontam
         o valor. O app não devolve o dinheiro ao cliente: isso você faz na mão.
         Use para engano no caixa ou desistência na hora.
       </p>
-      <label htmlFor={idMotivo} className="text-xs font-semibold text-zinc-400">
+      <label htmlFor={idMotivo} className="pdv-muted">
         Motivo (obrigatório)
       </label>
       <textarea
@@ -173,10 +175,13 @@ export function AnularVendaDoBalcao({
         disabled={enviando}
         onChange={(e) => setMotivo(e.target.value)}
         placeholder="Ex.: forma de pagamento errada, cliente desistiu"
-        className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
+        className="pdv-field"
       />
+      <p className="pdv-muted">
+        {motivo.length}/500 caracteres · obrigatório para anular
+      </p>
       {clienteComConta && (
-        <p className="text-xs text-amber-300">
+        <p className="pdv-muted">
           Esta venda está na conta de um cliente: ele pode ler o motivo no
           histórico do pedido. Escreva algo que possa ser lido por ele.
         </p>
@@ -186,11 +191,11 @@ export function AnularVendaDoBalcao({
           {erro}
         </p>
       )}
-      <div className="flex gap-2">
+      <div className="pdv-annul-actions">
         <Button
           type="button"
           variant="outline"
-          className="flex-1"
+          className="pdv-secondary"
           disabled={enviando}
           onClick={fechar}
         >
@@ -198,13 +203,14 @@ export function AnularVendaDoBalcao({
         </Button>
         <Button
           type="button"
-          className="flex-1 bg-red-700 text-white hover:bg-red-600"
+          className="pdv-danger"
           disabled={motivo.trim() === "" || enviando}
           onClick={() => void confirmar()}
         >
           {enviando ? "Anulando…" : "Confirmar anulação"}
         </Button>
       </div>
+      <p className="pdv-muted">Esc também fecha esta confirmação.</p>
     </div>
   );
 }

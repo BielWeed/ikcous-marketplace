@@ -94,9 +94,9 @@ import {
   resolverSentinela,
   sentinelaDaChave,
   tipoDoPagamentoDaOrder,
-  TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
+import { conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
 import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
 import {
   consultarContestacao,
@@ -119,6 +119,7 @@ import {
   aplicarEfeitosDoPagamentoConfirmado,
   type DepsDosEfeitos,
   desfechoComEfeito,
+  reenviarAvisoPendenteDoPagamentoAtrasado,
 } from "../_shared/efeitos-do-pagamento.ts";
 // Os testes e o contrato antigo importam estes dois DAQUI: a definição é uma só.
 export {
@@ -718,6 +719,54 @@ async function registrarDesfechoDoEstorno(args: {
   // avisado uma vez. O APP não é liberado aqui: quando o saldo acaba, o
   // executor dele não manda POST — recusa a linha nova e SEGURA a incerta
   // (`linhaPodeJaTerChegadoAoMp`, _shared/estorno.ts) até o MP dar veredito.
+  // O legado Payments pode concluir pelo acumulado SEM refunds[] (E27/E39).
+  // Quando o ID aparece depois, o dinheiro JÁ está somado: adotar só a
+  // identidade evita criar uma segunda linha externa para o mesmo estorno.
+  // Casamento: mesmo pedido/pagamento, linha do app efetivamente concluída,
+  // sem refund/contestação, valor igual em centavos e correspondência ÚNICA
+  // nos dois lados. Não escolhemos pela ordem da lista em caso de empate.
+  const semIdentidade = ehPayments && String(corpo.id ?? "") === pedido.gateway_payment_id
+    ? linhasBanco.filter((l) => l.status === "concluido" && l.mp_refund_id === null &&
+      l.mp_chargeback_id == null && l.solicitado_por !== "sistema" &&
+      typeof l.concluido_em === "string" && l.concluido_em !== "" &&
+      (l.mp_status === "approved" || l.mp_status === "refunded"))
+    : [];
+  const centavos = (valor: unknown) => Math.round(Number(valor) * 100);
+  const livresPorId = new Map<string, Record<string, unknown>>();
+  let valoresLivresLegiveis = true;
+  for (const r of refundsConcluidos) {
+    const id = typeof r.id === "string" || typeof r.id === "number" ? String(r.id) : "";
+    if (!id || reivindicados.has(id)) continue;
+    if (!Number.isFinite(Number(r.amount)) || Number(r.amount) <= 0 ||
+      (livresPorId.has(id) && centavos(livresPorId.get(id)?.amount) !== centavos(r.amount))) {
+      valoresLivresLegiveis = false;
+    }
+    livresPorId.set(id, r);
+  }
+  const adocoes = new Map<string, Record<string, unknown>>();
+  for (const [id, r] of livresPorId) {
+    const candidatas = semIdentidade.filter((l) => centavos(l.amount) === centavos(r.amount));
+    const refundsDoValor = Array.from(livresPorId.values()).filter((outro) =>
+      centavos(outro.amount) === centavos(r.amount)
+    );
+    if (candidatas.length === 1 && refundsDoValor.length === 1) adocoes.set(id, candidatas[0]);
+  }
+  // Valor igual sozinho não prova identidade: pode ser OUTRO estorno de 30.
+  // O acumulado do MP precisa fechar com o já contado + os IDs livres,
+  // descontando SOMENTE as adoções propostas. Calculado antes de qualquer
+  // escrita, também funciona quando chegam ID tardio e externo no mesmo GET.
+  const acumulado = corpo.transaction_amount_refunded;
+  const acumuladoLegivel = typeof acumulado === "number" ||
+    (typeof acumulado === "string" && acumulado.trim() !== "");
+  const esperado = centavos(pedido.valor_estornado) +
+    Array.from(livresPorId.values()).reduce((s, r) => s + centavos(r.amount), 0) -
+    Array.from(adocoes.values()).reduce((s, l) => s + centavos(l.amount), 0);
+  const acumuladoConfere = acumuladoLegivel && valoresLivresLegiveis &&
+    Number.isFinite(Number(acumulado)) && centavos(acumulado) === esperado;
+  const semProvaDeIdentidade = semIdentidade.filter((l) =>
+    !acumuladoConfere || !Array.from(adocoes.values()).includes(l)
+  );
+
   for (const refund of refundsConcluidos) {
     const refundId = typeof refund.id === "string" || typeof refund.id === "number"
       ? String(refund.id)
@@ -741,6 +790,44 @@ async function registrarDesfechoDoEstorno(args: {
       continue;
     }
     const valorRefund = Number(valorRefundBruto.toFixed(2));
+
+    const candidata = adocoes.get(refundId);
+    if (candidata && acumuladoConfere) {
+      // Compare-and-set: nunca sobrescrever o ID de outra entrega. Erro ou
+      // zero linhas mantém o evento na fila do MP; NÃO cai na RPC externa
+      // sobre um retrato velho. O índice único (pedido, refund) protege a
+      // identidade em entregas concorrentes. Não altera valor nem conclusão.
+      const { data: adotada, error: erroAdocao } = await supabase
+        .from("order_refunds")
+        .update({ mp_refund_id: refundId })
+        .eq("id", candidata.id)
+        .eq("order_id", orderId)
+        .eq("status", "concluido")
+        .eq("amount", candidata.amount)
+        .eq("concluido_em", candidata.concluido_em)
+        .is("mp_refund_id", null)
+        .is("mp_chargeback_id", null)
+        .select("id")
+        .maybeSingle();
+      if (erroAdocao) throw erroAdocao;
+      if (!adotada) throw new Error("webhook-mercadopago: identidade do estorno mudou durante a adoção — o MP reenvia");
+      candidata.mp_refund_id = refundId;
+      reivindicados.add(refundId);
+      continue;
+    }
+    if (semProvaDeIdentidade.length > 0) {
+      const candidatas = semProvaDeIdentidade.filter((l) => l.mp_refund_id === null &&
+        centavos(l.amount) === centavos(valorRefund)
+      );
+      // Sem prova única, conserva o registro externo existente. Não corrige
+      // automaticamente o saldo antigo: deixa sinal para conferência manual.
+      console.error("webhook-mercadopago: estorno sem ID exige conferência", {
+        evento: "estorno_sem_id_nao_adotado", orderId, refundId, valorRefund,
+        motivo: candidatas.length > 1 ? "multiplos_candidatos"
+          : candidatas.length === 0 ? "valor_divergente" : "identidade_ou_acumulado_ambiguo",
+        candidatos: candidatas.map((l) => l.id),
+      });
+    }
 
     const { data, error } = await supabase.rpc("registrar_estorno_externo_do_mp", {
       p_order_id: orderId,
@@ -847,10 +934,15 @@ async function handler(
   // de Order, 29 caracteres; id de payment clássico é numérico, menor ainda).
   const LIMITE_LOG_DATA_ID = 64;
   const { ts: tsDoHeader, v1: v1Recebido } = camposDaAssinatura(req.headers.get("x-signature"));
+  // Auditoria L3 (12/10/2026): `ts`, `x-request-id` e `v1` vão para o log com
+  // o MESMO corte do `data.id` — são cabeçalhos que qualquer um escreve, e
+  // estes logs rodam antes de a assinatura valer. Só o LOG é cortado: a
+  // porta barata e o HMAC, abaixo, usam os valores inteiros, como sempre.
+  const cortarParaLog = (valor: string | null) => (valor === null ? null : valor.slice(0, LIMITE_LOG_DATA_ID));
   console.log("webhook-mercadopago: notificação recebida", {
     dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
     temXRequestId: req.headers.get("x-request-id") !== null,
-    ts: tsDoHeader,
+    ts: cortarParaLog(tsDoHeader),
   });
 
   // PORTA BARATA (tarefa mp-7, 16/09/2026): requisição que não tem NEM A
@@ -995,9 +1087,9 @@ async function handler(
     // `MP_WEBHOOK_SECRET` da plataforma.
     console.warn("webhook-mercadopago: assinatura inválida", {
       dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
-      xRequestId: req.headers.get("x-request-id"),
-      ts: tsDoHeader,
-      v1Recebido,
+      xRequestId: cortarParaLog(req.headers.get("x-request-id")),
+      ts: cortarParaLog(tsDoHeader),
+      v1Recebido: cortarParaLog(v1Recebido),
       candidatos: avaliacao.candidatos,
     });
     return json({ error: "Assinatura inválida." }, 401);
@@ -1841,55 +1933,47 @@ async function handler(
     }
   }
 
-  // CONFERÊNCIA DE VALOR (laudo 31/08, achado A3): o valor que o MP APROVOU
-  // tem que bater com o total do pedido. PIX é pago de valor parcial no
-  // mundo real; sem esta porta, um pagamento parcial entrava como pedido
-  // pago — e o mesmo buraco ficaria aberto na religação do cartão.
-  //
-  // A MESMA conferência existe na reconciliar-pagamentos (regra em um lugar
-  // só no _shared): sem ela lá, um divergente recusado aqui era confirmado
-  // depois pelo cron, por status, sem ninguém olhar o valor — a dobradiça
-  // do outro lado da porta (ressalva 1 da revisão do PR #366).
-  //
-  // Divergente: NÃO confirma, NÃO push, e devolve 200 com rótulo próprio —
-  // reenvio do MP não muda o valor pago, e manter o evento na fila só
-  // geraria tempestade de reenvio. O dinheiro que entrou sem virar pedido
-  // pago fica parado nos dois portões e cabe ao lojista resolver no painel
-  // do MP; o log aqui é error de propósito, no padrão dos
-  // 'divergente'/'inexistente' da RPC.
-  //
-  // Valor AUSENTE na resposta do MP (campo que não veio — nunca 0): avisa e
-  // segue, que é o comportamento de antes. Falha AQUI não pode bloquear
-  // pedido legítimo: quem decide o valor aprovado é o MP, e a ausência do
-  // campo é sinal de forma nova de resposta, não de fraude. Pedido
-  // inexistente (linhaDoPedido null) também não trava aqui — a RPC tem o
-  // rótulo 'inexistente' próprio para isso.
-  if (linhaDoPedido && typeof valorPagoMp === "number") {
-    const brutoTotal =
-      (linhaDoPedido as Record<string, unknown>).total ??
-      (linhaDoPedido as Record<string, unknown>).total_amount;
-    const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
-    if (!Number.isFinite(totalDoPedido)) {
-      // Total imprestável no banco é IMPOSSÍVEL no schema vivo (NOT NULL com
-      // CHECK >= 0) — se um dia acontecer, tem que fazer barulho e seguir
-      // pelo comportamento de antes, não pular a conferência em silêncio
-      // (ressalva 2 da revisão do PR #366).
-      console.warn(
-        "webhook-mercadopago: total do pedido imprestável — conferência de valor não rodou",
-        { orderId, rota, brutoTotal },
-      );
-    } else if (Math.abs(valorPagoMp - totalDoPedido) > TOLERANCIA_DE_VALOR) {
+  // A mesma regra base da prova imediata e do cron. Aprovação sem valor ou
+  // total válido nunca alcança adoção/RPC; o pedido segue elegível no cron.
+  // Divergência mantém o 200 de antes. Recusas/estornos mantêm seu fluxo:
+  // só uma divergência numérica que já era barrada aqui os interrompe.
+  const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
+    (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
+  const conferencia = conferirValorDoPagamento(valorPagoMp, brutoTotal);
+  const aprovado = statusMapeado === "pago" || statusMapeado === "pago_apos_expirar";
+  if (!conferencia.provado && (aprovado || (linhaDoPedido && conferencia.motivo === "valor_divergente"))) {
+    if (conferencia.motivo === "valor_divergente") {
       console.error(
         "webhook-mercadopago: VALOR pago diverge do total do pedido — pedido NÃO confirmado; conferir no painel do MP",
-        { orderId, rota, valorPago: valorPagoMp, totalDoPedido, paymentId: idParaRpc },
+        { orderId, rota, valorPago: valorPagoMp, totalDoPedido: Number(brutoTotal), paymentId: idParaRpc },
       );
       return json({ ok: true, ignorado: "valor divergente" }, 200);
     }
-  } else if (linhaDoPedido && valorPagoMp === undefined) {
-    console.warn(
-      "webhook-mercadopago: valor aprovado não veio na resposta do MP — conferência de valor não rodou (comportamento anterior)",
-      { orderId, rota },
+    console.error(
+      "webhook-mercadopago: valor ausente/ilegível ou total do pedido inválido — pedido NÃO confirmado; aguardando reconsulta",
+      { orderId, rota, paymentId: idParaRpc, motivo: conferencia.motivo },
     );
+    // A rota clássica pode notificar um pagamento de dentro da order gravada.
+    // Nesse caso usa a vaga real, como o cron, para deduplicar entre as portas.
+    const idGravado = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
+    const idDoAviso = rota === "payment" && typeof idGravado === "string" &&
+        idGravado.length > 0 && !vagaEmVerificacao(idGravado)
+      ? idGravado
+      : idParaRpc;
+    await comTempoLimite(avisarAdminUmaVez({
+      supabase,
+      enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+      chave: `valor_nao_conferido:${orderId}:${idDoAviso}`,
+      aviso: {
+        title: "Pagamento precisa de conferência",
+        body: `${numeroDoPedido(orderId)} · valor não conferido; tentando novamente`,
+        url: "/admin-orders",
+      },
+    }), 5000);
+    return json({
+      ok: true,
+      ignorado: conferencia.motivo === "valor_ausente" ? "valor ausente ou ilegível" : "total do pedido inválido",
+    }, 200);
   }
 
   // Achado B2 (2ª revisão de risco, 26/09/2026) — ADOÇÃO: uma cobrança de
@@ -2179,7 +2263,8 @@ async function handler(
   // transição sob o `FOR UPDATE` da RPC. `ja_pago`/`ja_estornado`/`ignorado`
   // são reenvio do MP (ou o outro caminho) encontrando um estado que já foi
   // tratado — 200, sem efeito, é o que impede o reenvio de virar spam para o
-  // lojista. `divergente`/`inexistente` NÃO são esse caso benigno: significam
+  // lojista. Exceção única: `ja_pago` de pedido `pago_apos_expirar` cujo aviso
+  // de e-mail ficou pendente reenvia só esse aviso (reserva atômica). `divergente`/`inexistente` NÃO são esse caso benigno: significam
   // que a confirmação (já aprovada pelo MP) não bate com o pedido, e por isso
   // são logados como erro no bloco abaixo, não silenciados. Falha de push ou
   // de e-mail nunca sobe (o módulo engole e loga): o pedido já está pago.
@@ -2190,6 +2275,18 @@ async function handler(
       resultado,
       enviarPush: deps.enviarPush,
       enviarComprovante: deps.enviarComprovante,
+      enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
+    });
+  } else if (resultado === "ja_pago") {
+    // EST-EDGE-DIN-3 (16/10/2026): 'ja_pago' continua sem push e sem
+    // comprovante (a transição já os disparou), MAS o aviso de pagamento
+    // atrasado pode não ter saído (SMTP fora do ar: a reserva do e-mail foi
+    // devolvida e o pedido, com `paid_at`, sai da vista do cron). Só então —
+    // pedido em 'pago_apos_expirar' com a reserva livre — a reentrega repete
+    // esse único efeito. Idempotente pela reserva; nunca lança.
+    await reenviarAvisoPendenteDoPagamentoAtrasado({
+      supabase,
+      orderId,
       enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
     });
   } else if (resultado === "divergente" || resultado === "inexistente") {

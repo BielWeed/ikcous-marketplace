@@ -30,6 +30,16 @@ export default defineConfig({
     },
   },
   test: {
+    // Isolamento de mock por teste, por padrão: spies, stubs de global e de
+    // variável de ambiente voltam ao original depois de cada teste. Antes, 19
+    // arquivos de `tests/front` usavam `spyOn`/`stubGlobal`/`stubEnv` sem
+    // nenhum restore e dependiam da disciplina de quem escreve (um `Date.now`
+    // fixo em `cpf-pendente-do-cadastro` vazava para os testes seguintes).
+    // Stub que precisa valer para o arquivo todo vai em `beforeEach`, não em
+    // `beforeAll` (ver `badges-do-painel-agrupam-rajada`).
+    restoreMocks: true,
+    unstubGlobals: true,
+    unstubEnvs: true,
     environment: "node",
     setupFiles: ["tests/front/setup-build-identity.ts"],
     include: ["tests/front/**/*.test.{ts,tsx}"],

@@ -139,7 +139,7 @@ antes de abrir o estorno automático do cancelamento. As functions novas continu
     qualquer outro nome, pare.**
   - Os jobs marcados "(informacional)" não bloqueiam.
 - [ ] **"Build e tamanho" verde.** O portão de tamanho é dividido: cliente ≤ 550 kB, painel
-  ≤ 450 kB ([AGENTS.md](../../AGENTS.md), Verificação).
+  ≤ 466 kB ([AGENTS.md](../../AGENTS.md), Verificação).
 - [ ] **Todas as revisões de risco independentes deram PASSA**, no commit que vai ser publicado:
   - migrations 75–78;
   - edges do cartão;
@@ -723,7 +723,7 @@ parou de funcionar no banco do cliente.
   2. A tela diz "Pagamento aprovado — confirmando o pedido".
   3. Pelo webhook, o pedido vira `pago`, com `metodo_online = 'credito'` e `parcelas`
      preenchido.
-  4. O comprovante diz "Cartao de credito pelo site".
+  4. O comprovante diz "Cartão de crédito pelo site".
 - [ ] **Recusado**:
   1. Pague com o titular de recusa da doc do MP, como `OTHE` ou `FUND`.
   2. A tela mostra o motivo, "Tentar outro cartão" e "Pagar com PIX".

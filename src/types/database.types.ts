@@ -919,6 +919,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      fin_lancamento_tentativas: {
+        Row: {
+          chave: string;
+          conteudo_hash: string;
+          criado_em: string;
+          ids: string[];
+        };
+        Insert: {
+          chave: string;
+          conteudo_hash: string;
+          criado_em?: string;
+          ids: string[];
+        };
+        Update: {
+          chave?: string;
+          conteudo_hash?: string;
+          criado_em?: string;
+          ids?: string[];
+        };
+        Relationships: [];
+      };
       fin_lancamentos: {
         Row: {
           caixa_sessao_id: string | null;
@@ -1081,6 +1102,61 @@ export type Database = {
             columns: ["order_id"];
             isOneToOne: false;
             referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      marketplace_order_internal_notes: {
+        Row: {
+          note: string;
+          order_id: string;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          note: string;
+          order_id: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          note?: string;
+          order_id?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_order_internal_notes_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: true;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      marketplace_order_item_custo: {
+        Row: {
+          custo: number;
+          item_id: string;
+          registrado_em: string;
+        };
+        Insert: {
+          custo: number;
+          item_id: string;
+          registrado_em?: string;
+        };
+        Update: {
+          custo?: number;
+          item_id?: string;
+          registrado_em?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_order_item_custo_item_id_fkey";
+            columns: ["item_id"];
+            isOneToOne: true;
+            referencedRelation: "marketplace_order_items";
             referencedColumns: ["id"];
           },
         ];
@@ -1381,6 +1457,67 @@ export type Database = {
         };
         Relationships: [];
       };
+      order_refund_diagnostico: {
+        Row: {
+          atualizado_em: string;
+          criado_em: string;
+          mp_codigo: string | null;
+          post_incerto_em: string | null;
+          refund_id: string;
+          transitorios: number;
+        };
+        Insert: {
+          atualizado_em?: string;
+          criado_em?: string;
+          mp_codigo?: string | null;
+          post_incerto_em?: string | null;
+          refund_id: string;
+          transitorios?: number;
+        };
+        Update: {
+          atualizado_em?: string;
+          criado_em?: string;
+          mp_codigo?: string | null;
+          post_incerto_em?: string | null;
+          refund_id?: string;
+          transitorios?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_refund_diagnostico_refund_id_fkey";
+            columns: ["refund_id"];
+            isOneToOne: true;
+            referencedRelation: "order_refunds";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      order_refund_prova: {
+        Row: {
+          por_fora_liberado_em: string | null;
+          refund_id: string;
+          substituida_por_manual_em: string | null;
+        };
+        Insert: {
+          por_fora_liberado_em?: string | null;
+          refund_id: string;
+          substituida_por_manual_em?: string | null;
+        };
+        Update: {
+          por_fora_liberado_em?: string | null;
+          refund_id?: string;
+          substituida_por_manual_em?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_refund_prova_refund_id_fkey";
+            columns: ["refund_id"];
+            isOneToOne: true;
+            referencedRelation: "order_refunds";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       order_refunds: {
         Row: {
           amount: number;
@@ -1580,6 +1717,42 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      pedidos_de_privacidade: {
+        Row: {
+          atendido_em: string | null;
+          atendido_por: string | null;
+          criado_em: string;
+          email_novo: string | null;
+          id: string;
+          observacao: string | null;
+          situacao: string;
+          tipo: string;
+          user_id: string;
+        };
+        Insert: {
+          atendido_em?: string | null;
+          atendido_por?: string | null;
+          criado_em?: string;
+          email_novo?: string | null;
+          id?: string;
+          observacao?: string | null;
+          situacao?: string;
+          tipo: string;
+          user_id: string;
+        };
+        Update: {
+          atendido_em?: string | null;
+          atendido_por?: string | null;
+          criado_em?: string;
+          email_novo?: string | null;
+          id?: string;
+          observacao?: string | null;
+          situacao?: string;
+          tipo?: string;
+          user_id?: string;
+        };
+        Relationships: [];
       };
       politica_devolucao: {
         Row: {
@@ -2203,6 +2376,8 @@ export type Database = {
           home_sections: Json | null;
           id: number;
           local_cep_range: string | null;
+          local_delivery_days: number;
+          local_delivery_enabled: boolean;
           local_delivery_fee: number;
           logo_url: string | null;
           manutencao: boolean;
@@ -2230,6 +2405,9 @@ export type Database = {
           store_name: string | null;
           store_state: string | null;
           store_description: string | null;
+          store_legal_name: string | null;
+          store_legal_document: string | null;
+          store_support_email: string | null;
           theme_mode: string | null;
           updated_at: string | null;
           vapid_public_key: string | null;
@@ -2246,6 +2424,8 @@ export type Database = {
           home_sections?: Json | null;
           id: number;
           local_cep_range?: string | null;
+          local_delivery_days?: number;
+          local_delivery_enabled?: boolean;
           local_delivery_fee?: number;
           logo_url?: string | null;
           manutencao?: boolean;
@@ -2273,6 +2453,9 @@ export type Database = {
           store_name?: string | null;
           store_state?: string | null;
           store_description?: string | null;
+          store_legal_name?: string | null;
+          store_legal_document?: string | null;
+          store_support_email?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -2289,6 +2472,8 @@ export type Database = {
           home_sections?: Json | null;
           id?: number;
           local_cep_range?: string | null;
+          local_delivery_days?: number;
+          local_delivery_enabled?: boolean;
           local_delivery_fee?: number;
           logo_url?: string | null;
           manutencao?: boolean;
@@ -2316,6 +2501,9 @@ export type Database = {
           store_name?: string | null;
           store_state?: string | null;
           store_description?: string | null;
+          store_legal_name?: string | null;
+          store_legal_document?: string | null;
+          store_support_email?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -2452,6 +2640,8 @@ export type Database = {
           home_sections: Json | null;
           id: number | null;
           local_cep_range: string | null;
+          local_delivery_days: number | null;
+          local_delivery_enabled: boolean | null;
           local_delivery_fee: number | null;
           logo_url: string | null;
           manutencao: boolean | null;
@@ -2472,6 +2662,9 @@ export type Database = {
           real_time_sales_alerts: boolean | null;
           store_address: string | null;
           store_description: string | null;
+          store_legal_name: string | null;
+          store_legal_document: string | null;
+          store_support_email: string | null;
           share_text: string | null;
           shipping_coverage: string | null;
           shipping_fee: number | null;
@@ -2495,6 +2688,8 @@ export type Database = {
           home_sections?: Json | null;
           id?: number | null;
           local_cep_range?: string | null;
+          local_delivery_days?: number | null;
+          local_delivery_enabled?: boolean | null;
           local_delivery_fee?: number | null;
           logo_url?: string | null;
           manutencao?: boolean | null;
@@ -2536,6 +2731,8 @@ export type Database = {
           home_sections?: Json | null;
           id?: number | null;
           local_cep_range?: string | null;
+          local_delivery_days?: number | null;
+          local_delivery_enabled?: boolean | null;
           local_delivery_fee?: number | null;
           logo_url?: string | null;
           manutencao?: boolean | null;
@@ -2931,6 +3128,18 @@ export type Database = {
         Args: { p_conferi_no_melhor_envio?: boolean; p_id: string };
         Returns: Json;
       };
+      admin_devolucao_reembolso_por_fora: {
+        Args: { p_devolucao_id: string; p_refund_esperado: string };
+        Returns: Json;
+      };
+      admin_devolucao_reembolso_por_fora_apos_espera: {
+        Args: {
+          p_confirmacao: string;
+          p_devolucao_id: string;
+          p_refund_esperado: string;
+        };
+        Returns: Json;
+      };
       admin_devolucao_reemitir_reembolso: {
         Args: { p_devolucao_id: string; p_manual?: boolean };
         Returns: Json;
@@ -2985,6 +3194,18 @@ export type Database = {
       };
       anular_venda_presencial: {
         Args: { p_motivo: string; p_order_id: string };
+        Returns: Json;
+      };
+      apagar_categoria_vazia: {
+        Args: { p_id: string };
+        Returns: Json;
+      };
+      categorias_com_uso: {
+        Args: never;
+        Returns: Json;
+      };
+      renomear_categoria: {
+        Args: { p_id: string; p_novo_nome: string };
         Returns: Json;
       };
       assinatura_da_loja_ler: {
@@ -3401,6 +3622,15 @@ export type Database = {
         Args: { p_email: string; p_otp: string };
         Returns: Json;
       };
+      get_orders_by_otp_v2: {
+        Args: {
+          p_email: string;
+          p_fragmento: string;
+          p_otp: string;
+          p_whatsapp: string;
+        };
+        Returns: Json;
+      };
       get_orders_by_whatsapp_v3: {
         Args: {
           p_customer_email: string;
@@ -3542,6 +3772,14 @@ export type Database = {
         };
         Returns: number;
       };
+      order_refund__liberavel_apos_espera: {
+        Args: { p_refund_id: string };
+        Returns: boolean;
+      };
+      order_refund__pode_ter_saido: {
+        Args: { p_refund_id: string };
+        Returns: boolean;
+      };
       pagamentos_a_reconciliar: {
         Args: never;
         Returns: {
@@ -3567,6 +3805,10 @@ export type Database = {
       pedido__saldo_a_estornar: {
         Args: { p_order_id: string };
         Returns: number;
+      };
+      pedido_reembolsos_e_saldo: {
+        Args: { p_order_id: string };
+        Returns: Json;
       };
       perfil_publico_avaliacoes: {
         Args: { p_autor: string };
@@ -3605,6 +3847,15 @@ export type Database = {
         };
         Returns: undefined;
       };
+      reemitir_reembolso_da_devolucao: {
+        Args: {
+          p_ator: string;
+          p_consulta: Json;
+          p_devolucao_id: string;
+          p_refund_esperado: string;
+        };
+        Returns: Json;
+      };
       registrar_contestacao_no_ledger: {
         Args: {
           p_case_id: string;
@@ -3614,6 +3865,15 @@ export type Database = {
           p_order_id: string;
           p_valor_caso: number;
           p_valor_estimado: number;
+        };
+        Returns: Json;
+      };
+      registrar_diagnostico_do_estorno: {
+        Args: {
+          p_mp_codigo?: string;
+          p_post_incerto?: boolean;
+          p_refund_id: string;
+          p_transitorio?: boolean;
         };
         Returns: Json;
       };
@@ -3628,6 +3888,14 @@ export type Database = {
         Returns: Json;
       };
       registrar_estorno_manual: { Args: { p_order_id: string }; Returns: Json };
+      registrar_estorno_manual_apos_espera: {
+        Args: {
+          p_confirmacao: string;
+          p_order_id: string;
+          p_refund_esperado: string;
+        };
+        Returns: Json;
+      };
       registrar_pagamento_recebido: {
         Args: { p_order_id: string; p_recebido: boolean };
         Returns: Json;

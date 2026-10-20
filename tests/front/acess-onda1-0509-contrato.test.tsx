@@ -53,6 +53,7 @@ function fonte(caminho: string): string {
 const SHIPPING = "/src/components/ui/custom/ShippingCalculator.tsx";
 const CATEGORY_FILTER = "/src/components/ui/custom/CategoryFilter.tsx";
 const PRODUCT_VIEW = "/src/views/customer/ProductView.tsx";
+const GALERIA_DO_PRODUTO = "/src/components/ui/custom/GaleriaDoProduto.tsx";
 const PROFILE_VIEW = "/src/views/customer/ProfileView.tsx";
 const ACCOUNT_SETTINGS = "/src/views/customer/AccountSettingsView.tsx";
 const COUPON_INPUT = "/src/components/ui/custom/CouponInput.tsx";
@@ -157,7 +158,7 @@ describe("M3 — anel de foco reposto nos 11 pontos que apagavam", () => {
 
 describe("M4 — alvos de toque ampliados sem mudar o visual", () => {
   it("bolinhas da galeria (4px) ganham 24px de ALTURA sem roubar a vizinha", () => {
-    const src = fonte(PRODUCT_VIEW);
+    const src = fonte(GALERIA_DO_PRODUTO);
     // Inset vertical de 10px: 4+20 = 24px de altura (mínimo WCAG).
     expect(src).toContain("after:-inset-y-2.5");
     // Inset horizontal de 3px (grafia canônica do linter, sem warning
@@ -170,7 +171,7 @@ describe("M4 — alvos de toque ampliados sem mudar o visual", () => {
   });
 
   it("setas da galeria (32px) ganham área de 44px", () => {
-    const src = fonte(PRODUCT_VIEW);
+    const src = fonte(GALERIA_DO_PRODUTO);
     expect(src).toContain("after:-inset-1.5");
   });
 

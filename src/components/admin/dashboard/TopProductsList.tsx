@@ -3,6 +3,10 @@ import { SUPERFICIE_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { cn } from "@/lib/utils";
+import {
+  avisoProdutosSemCusto,
+  produtosSemCusto,
+} from "@/utils/produtos-sem-custo";
 import { motion } from "framer-motion";
 import { ChevronRight, TrendingUp, Trophy } from "lucide-react";
 import { memo } from "react";
@@ -26,6 +30,7 @@ export const TopProductsList = memo(function TopProductsList({
   onNavigate,
 }: TopProductsListProps) {
   const products = stats?.topProducts || [];
+  const semCusto = produtosSemCusto(stats);
 
   const itemVariants = {
     hidden: { x: -20, opacity: 0 },
@@ -34,11 +39,14 @@ export const TopProductsList = memo(function TopProductsList({
 
   return (
     <div className="space-y-3">
-      {/* PAR com a migration 20261001000000 (revisão 20260825-2145): a RPC
-          ordena por LUCRO (preço menos custo) — o rótulo "mais lucrativos"
-          é verdade desde a migration. As duas metades aplicam juntas
-          (branch com o front primeiro, clique da migration logo depois);
-          sozinha, qualquer uma delas faz a tela mentir. */}
+      {/* PAR com as migrations 20261001000000 (a RPC ordena por LUCRO, preço
+          menos custo) e 20261234 (#879: só entra no lucro e neste Top 5 o
+          produto COM custo cadastrado, e a RPC devolve `productsWithoutCost`
+          com quantos ficaram de fora). Esta tela sobe ANTES da 20261234:
+          com a função antiga o campo não existe e vale 0 (tela igual à de
+          antes, sem aviso). Com a nova, uma loja sem nenhum custo cadastrado
+          tem Top 5 vazio — e "Nenhum dado de vendas" seria falso, então a
+          frase muda para pedir o custo. */}
       <SectionTitle title="Top 5 produtos mais lucrativos" icon={Trophy} />
 
       <div>
@@ -79,7 +87,9 @@ export const TopProductsList = memo(function TopProductsList({
               >
                 <TrendingUp className="mx-auto mb-2 size-8 text-zinc-500/50" />
                 <p className="text-xs font-semibold text-zinc-400">
-                  Nenhum dado de vendas disponível
+                  {semCusto > 0
+                    ? "Cadastre o custo dos produtos vendidos para ver quais dão mais lucro."
+                    : "Nenhum dado de vendas disponível"}
                 </p>
               </motion.div>
             ) : (
@@ -185,6 +195,11 @@ export const TopProductsList = memo(function TopProductsList({
                   );
                 })}
               </motion.div>
+            )}
+            {!loading && products.length > 0 && semCusto > 0 && (
+              <p className="px-3 pt-2 text-[11px] leading-relaxed text-zinc-400">
+                {avisoProdutosSemCusto(semCusto)}
+              </p>
             )}
           </div>
         </div>

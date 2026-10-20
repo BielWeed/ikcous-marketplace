@@ -64,11 +64,19 @@ function linhaDeExemplo(
     motivo: null,
     created_at: "2026-09-01T10:00:00.000Z",
     concluido_em: null,
+    // Lote R1: veredito do servidor. Padrão = "nada saiu" (o caso de hoje);
+    // os testes do R1 ligam `pode_ter_saido` explicitamente.
+    pode_ter_saido: false,
+    por_fora_liberado_em: null,
+    por_fora_apos_espera_liberado: false,
+    substituida_por_manual: false,
+    eh_pix: false,
     ...extra,
   };
 }
 
 const solicitarEstornoMock = vi.fn().mockResolvedValue(undefined);
+const registrarPorForaAposEsperaMock = vi.fn().mockResolvedValue(true);
 const recarregarMock = vi.fn();
 
 function hookPadrao(
@@ -79,7 +87,9 @@ function hookPadrao(
     pago: 100,
     devolvido: 0,
     emCurso: 0,
+    emDuvida: 0,
     disponivel: 100,
+    reservadoPorFora: 0,
     carregando: false,
     // Data já leu pelo menos uma vez (primeira carga concluída) — os 11
     // testes originais assumem saldo confiável na tela. O caso "ainda não
@@ -88,6 +98,7 @@ function hookPadrao(
     erro: false,
     recarregar: recarregarMock,
     solicitarEstorno: solicitarEstornoMock,
+    registrarPorForaAposEspera: registrarPorForaAposEsperaMock,
     enviando: false,
     ...extra,
   };
@@ -99,6 +110,7 @@ let confirmMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   solicitarEstornoMock.mockClear();
+  registrarPorForaAposEsperaMock.mockClear();
   recarregarMock.mockClear();
   useEstornosDoPedidoMock.mockReset();
   hospedeiro = document.createElement("div");
@@ -482,6 +494,55 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     expect(botaoComTexto("Devolver")).toBeUndefined();
   });
 
+  it("R1-reserva: saldo zero porque uma linha resolvida por fora ainda espera o MP — diz 'R$ X reservado', NUNCA 'Todo o valor pago já foi devolvido'", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        pago: 100,
+        devolvido: 0,
+        emCurso: 60,
+        disponivel: 0,
+        reservadoPorFora: 60,
+      }),
+    );
+
+    await montar();
+
+    expect(texto()).toContain(
+      "R$ 60,00 reservado até o Mercado Pago responder.",
+    );
+    expect(texto()).not.toContain("Todo o valor pago já foi devolvido.");
+    expect(botaoComTexto("Devolver")).toBeUndefined();
+  });
+
+  it("R1-reserva: com saldo ainda livre, a reserva aparece junto do botão", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        pago: 100,
+        emCurso: 60,
+        disponivel: 40,
+        reservadoPorFora: 60,
+      }),
+    );
+
+    await montar();
+
+    expect(texto()).toContain(
+      "R$ 60,00 reservado até o Mercado Pago responder.",
+    );
+    expect(botaoComTexto("Devolver R$ 40,00")).toBeDefined();
+  });
+
+  it("R1-reserva: pedido já estornado inteiro — a conta fechou: 'Todo o valor pago já foi devolvido', sem reserva", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 100, disponivel: 0, reservadoPorFora: 60 }),
+    );
+
+    await montar({ ...pedidoBase, paymentStatus: "estornado" });
+
+    expect(texto()).toContain("Todo o valor pago já foi devolvido.");
+    expect(texto()).not.toContain("reservado até o Mercado Pago responder");
+  });
+
   it("AC4-B (mutação B): 'falhou' com saldo insuficiente NÃO oferece 'Tentar de novo'", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({
@@ -674,5 +735,236 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     expect(describedBy).toBeTruthy();
     const aviso = describedBy ? document.getElementById(describedBy) : null;
     expect(aviso?.textContent).toContain("O valor tem de ficar entre");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lote R1 (15/10/2026): o veredito "pode ter saído" é do SERVIDOR, e a tela
+// decide os botões só a partir dele. jsdom não vê CSS: aqui só se afirma o
+// que está no DOM (texto, botões, chamadas), nunca layout.
+// ---------------------------------------------------------------------------
+describe("EstornoCard — lote R1: linha que pode ter saído não se repete", () => {
+  async function clicar(botao: HTMLButtonElement | undefined) {
+    await act(async () => {
+      botao?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+  }
+
+  it("R1-A: falhou com pode_ter_saido=false — 'Tentar de novo' normal, sem saída dos 7 dias", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            ultimo_erro: "Saldo insuficiente.",
+            pode_ter_saido: false,
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(texto()).toContain(
+      "A devolução de R$ 30,00 não foi concluída: Saldo insuficiente.",
+    );
+    expect(botaoComTexto("Tentar de novo")).toBeDefined();
+    expect(texto()).not.toContain("não repita");
+    expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
+  });
+
+  it("R1-B: falhou com pode_ter_saido=true — SEM 'Tentar de novo', mostra 'confirmando… não repita'", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            ultimo_erro: "Tempo esgotado.",
+            pode_ter_saido: true,
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(texto()).toContain(
+      "A loja está confirmando com o Mercado Pago, não repita.",
+    );
+    expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+    // Ainda sem liberação do servidor: nenhuma saída por fora.
+    expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
+  });
+
+  it("R1-C: recusado com pode_ter_saido=true também avisa 'não repita'", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "recusado",
+            ultimo_erro: "Recusado.",
+            pode_ter_saido: true,
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(texto()).toContain("não repita");
+    expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+  });
+
+  it("R1-D: servidor liberou (por_fora_apos_espera_liberado) — botão dos 7 dias com aviso de dobro e frase obrigatória", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            id: "refund-velho",
+            status: "falhou",
+            pode_ter_saido: true,
+            por_fora_apos_espera_liberado: true,
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+    const botao = botaoComTexto("Já devolvi por fora (depois de 7 dias)");
+
+    // Frase errada (minúscula), ou desistir (null): nada é registrado.
+    const promptMock = vi.fn().mockReturnValue("devolvi por fora");
+    vi.stubGlobal("prompt", promptMock);
+    await clicar(botao);
+    promptMock.mockReturnValue(null);
+    await clicar(botao);
+    expect(registrarPorForaAposEsperaMock).not.toHaveBeenCalled();
+
+    // O diálogo mostra o risco de dobro e pede a frase fixa.
+    expect(promptMock.mock.calls[0][0]).toContain(
+      "Se o Mercado Pago ainda processar esta devolução, o cliente recebe em dobro.",
+    );
+    expect(promptMock.mock.calls[0][0]).toContain("digite DEVOLVI POR FORA");
+
+    promptMock.mockReturnValue(" DEVOLVI POR FORA ");
+    await clicar(botao);
+
+    expect(registrarPorForaAposEsperaMock).toHaveBeenCalledTimes(1);
+    expect(registrarPorForaAposEsperaMock).toHaveBeenCalledWith("refund-velho");
+    // A saída por fora nunca pede dinheiro ao Mercado Pago.
+    expect(solicitarEstornoMock).not.toHaveBeenCalled();
+  });
+
+  it("R1-E: linha travada (5 tentativas) liberada pelo servidor ganha a saída dos 7 dias, nunca 'Tentar de novo'", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "em_processamento",
+            tentativas: 5,
+            pode_ter_saido: true,
+            por_fora_apos_espera_liberado: true,
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+    expect(
+      botaoComTexto("Já devolvi por fora (depois de 7 dias)"),
+    ).toBeDefined();
+  });
+
+  it("R1-F: linha concluída nunca mostra saída por fora, mesmo com o servidor liberando", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "concluido",
+            concluido_em: "2026-09-02T10:00:00.000Z",
+            pode_ter_saido: true,
+            por_fora_apos_espera_liberado: true,
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
+  });
+
+  it("R1-H: pode ter saído, há 7 dias, mas o servidor NÃO liberou (booleano false) — sem botão dos 7 dias", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            pode_ter_saido: true,
+            por_fora_apos_espera_liberado: false,
+            // Data antiga não decide nada: quem libera é o booleano.
+            created_at: "2026-01-01T10:00:00.000Z",
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
+    expect(texto()).toContain("não repita");
+  });
+
+  it("R1-I: saída já usada (por_fora_liberado_em) — não oferece o botão de novo e diz que já foi registrado", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            pode_ter_saido: true,
+            // Mesmo com o booleano ainda verdadeiro, a marca de uso vence.
+            por_fora_apos_espera_liberado: true,
+            por_fora_liberado_em: "2026-10-16T10:00:00.000Z",
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
+    expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+    expect(texto()).toContain("Você já registrou que devolveu por fora.");
+  });
+
+  it("R1-J: linha SUBSTITUÍDA pelo manual (pode_ter_saido=false = 'não conta como dúvida') — sem 'Tentar de novo' e sem a saída dos 7 dias, mesmo com saldo", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        disponivel: 100,
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            ultimo_erro: "Tempo esgotado.",
+            pode_ter_saido: false,
+            substituida_por_manual: true,
+            // Mesmo que o servidor dissesse que a espera passou, a linha já foi resolvida.
+            por_fora_apos_espera_liberado: true,
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+    expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
+    expect(texto()).toContain("Você já registrou que devolveu por fora.");
+  });
+
+  it("R1-G: o resumo mostra o valor 'Em confirmação' que o servidor prende", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ emDuvida: 30, disponivel: 70 }),
+    );
+    await montar();
+
+    expect(texto()).toContain(
+      "Disponível: R$ 70,00 · Em confirmação: R$ 30,00",
+    );
   });
 });

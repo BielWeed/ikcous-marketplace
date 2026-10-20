@@ -3,6 +3,7 @@
 // cidade" e "Frete grátis local". Era um `useMemo` dentro de
 // AdminShippingView; extraída para que a tela e quem mais precisar contem a
 // mesma história (regra escrita em dois lugares diverge).
+import { montarEnderecoDaLoja } from "@/lib/endereco-da-loja";
 import { statusDaEntrega } from "@/lib/status-da-entrega";
 import { describe, expect, it } from "vitest";
 
@@ -54,10 +55,12 @@ describe("statusDaEntrega — Na sua cidade", () => {
     expect(local.valor).toContain("falta o CEP");
   });
 
-  it("com CEP e taxa: mostra o valor por entrega e a cidade/UF", () => {
+  it("com CEP e taxa: mostra o valor por entrega e os CEPs que a entrega alcança (não a cidade)", () => {
     const [local] = statusDaEntrega(entrada());
     expect(local.valor).toBe("R$ 10 por entrega");
-    expect(local.detalhe).toBe("Entrega própria em Monte Carmelo/MG");
+    // Alcance vazio = só os 5 primeiros números do CEP da loja (01310-100).
+    expect(local.detalhe).toBe("Entrega própria em CEPs que começam com 01310");
+    expect(local.detalhe).not.toContain("Monte Carmelo");
     expect(local.tom).toBe("positivo");
   });
 
@@ -72,19 +75,51 @@ describe("statusDaEntrega — Na sua cidade", () => {
     ).toBe("Grátis na cidade");
   });
 
-  it("sem cidade/UF cai para 'sua cidade'; só cidade omite a UF", () => {
-    expect(
-      statusDaEntrega(
-        entrada({ config: config({ storeCity: null, storeState: null }) }),
-      )[0].detalhe,
-    ).toBe("Entrega própria em sua cidade");
-    expect(
-      statusDaEntrega(
-        entrada({
-          config: config({ storeCity: "Uberlândia", storeState: null }),
-        }),
-      )[0].detalhe,
-    ).toBe("Entrega própria em Uberlândia");
+  it("a promessa nunca é o nome da cidade, com ou sem cidade/UF na config", () => {
+    for (const parcial of [
+      { storeCity: null, storeState: null },
+      { storeCity: "Uberlândia", storeState: null },
+      { storeCity: "Uberlândia", storeState: "MG" },
+    ]) {
+      const [local] = statusDaEntrega(entrada({ config: config(parcial) }));
+      expect(local.detalhe, JSON.stringify(parcial)).toBe(
+        "Entrega própria em CEPs que começam com 01310",
+      );
+    }
+  });
+
+  it("alcance escrito sem número nenhum: diz que nenhum CEP entra e pede atenção (não 'positivo')", () => {
+    const [local] = statusDaEntrega(
+      entrada({ config: config({ localCepRange: "abc" }) }),
+    );
+    expect(local.detalhe).toBe(
+      "Entrega própria em nenhum CEP: o que está escrito não tem números",
+    );
+    expect(local.tom).toBe("atencao");
+    // Vazio de verdade (ou só espaços) segue sendo a região da loja, positivo.
+    const [vazio] = statusDaEntrega(
+      entrada({ config: config({ localCepRange: "  " }) }),
+    );
+    expect(vazio.tom).toBe("positivo");
+  });
+
+  it("diz a abrangência real do alcance escrito: um prefixo, ou 'os CEPs que você escolheu'", () => {
+    const detalhe = (localCepRange: string | undefined) =>
+      statusDaEntrega(entrada({ config: config({ localCepRange }) }))[0]
+        .detalhe;
+    expect(detalhe("38400")).toBe(
+      "Entrega própria em CEPs que começam com 38400",
+    );
+    expect(detalhe("")).toBe("Entrega própria em CEPs que começam com 01310");
+    for (const escrito of [
+      "38400, 38500",
+      "38400-000, 38409-999",
+      "38400000-38409999",
+    ]) {
+      expect(detalhe(escrito), escrito).toBe(
+        "Entrega própria em CEPs que você escolheu",
+      );
+    }
   });
 });
 
@@ -177,5 +212,71 @@ describe("statusDaEntrega — Frete grátis local", () => {
       statusDaEntrega(entrada({ config: config({ freeShippingMin: -1 }) }))[2]
         .valor,
     ).toBe("Por produto marcado");
+  });
+});
+
+describe("status da entrega em Só retiro", () => {
+  const conferido = montarEnderecoDaLoja({
+    cep: "01310100",
+    rua: "Avenida Paulista",
+    numero: "1578",
+    complemento: "",
+    bairro: "Bela Vista",
+    cidade: "São Paulo",
+    uf: "SP",
+  });
+  const soRetiro = (parcial: Partial<Config> = {}) =>
+    config({
+      localDeliveryEnabled: false,
+      enabledShippingMethods: ["store-pickup"],
+      ...parcial,
+    });
+
+  it("não promete entrega ou transportadora e informa retirada para quem é de fora", () => {
+    const [local, nacional, gratis] = statusDaEntrega(
+      entrada({
+        config: soRetiro({ ...conferido }),
+        nomesLigados: ["Melhor Envio"],
+      }),
+    );
+    expect(local.valor).toBe("Só retiro");
+    expect(local.tom).toBe("positivo");
+    expect(nacional.detalhe).toContain("retirar na loja");
+    expect(gratis.valor).toBe("Retirada grátis");
+  });
+  it("sem endereço, avisa a pendência", () => {
+    const [local] = statusDaEntrega(entrada({ config: soRetiro() }));
+    expect(local.tom).toBe("atencao");
+    expect(local.detalhe).toContain("endereço");
+  });
+  it("texto de endereço sem conferência (outro formato ou outro CEP) também é pendência", () => {
+    const [livre] = statusDaEntrega(
+      entrada({ config: soRetiro({ storeAddress: "Rua de Teste, 10" }) }),
+    );
+    expect(livre.tom).toBe("atencao");
+    const [outroCep] = statusDaEntrega(
+      entrada({
+        config: soRetiro({ ...conferido, originCep: "38500-000" }),
+      }),
+    );
+    expect(outroCep.tom).toBe("atencao");
+  });
+  it("a faixa de grátis fala só de retirada, com precedência sobre as outras regras", () => {
+    for (const freeShippingMin of [0, 100, -1, -2]) {
+      const [, , gratis] = statusDaEntrega(
+        entrada({ config: soRetiro({ ...conferido, freeShippingMin }) }),
+      );
+      expect(gratis.valor).toBe("Retirada grátis");
+      expect(`${gratis.valor} ${gratis.detalhe}`).not.toMatch(
+        /Acima de|entrega na cidade/,
+      );
+    }
+  });
+  it("padrões explícitos preservam todos os resumos antigos", () => {
+    expect(
+      statusDaEntrega(
+        entrada({ config: config({ localDeliveryEnabled: true }) }),
+      ),
+    ).toEqual(statusDaEntrega(entrada()));
   });
 });

@@ -7,14 +7,12 @@ import React, {
 } from "react";
 
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
+import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
-import { destinoPosLogin } from "@/lib/destinoPosLogin";
 import {
-  CHAVE_MOTIVO_DE_RECARGA,
-  atualizacaoTrocouDeBuild,
-  descreveMotivoDeRecarga,
-  limpaMotivoDeRecarga,
-} from "@/lib/motivo-de-recarga";
+  destinoPosLogin,
+  painelSemContaPedeEntrada,
+} from "@/lib/destinoPosLogin";
 import {
   PRAZO_DA_SESSAO_NA_RECARGA_MS,
   esquecerPedidoPendenteDoCheckout,
@@ -22,6 +20,7 @@ import {
   existeAlgumPedidoPendenteDoCheckout,
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
+import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
 
 // Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
 // fora dele (runner de teste), o app segue de pé.
@@ -162,11 +161,20 @@ function AdminAccessDenied({
   // passa por aqui com `adminStatus === "unknown"` (o pai só troca para
   // `<AdminArea>` quando `isAdmin` vira `true`) — expulsar nesse instante
   // era exatamente o piscar que a Parte B veio resolver.
-  const { adminStatus, loading } = useAuth();
+  const { adminStatus, loading, user } = useAuth();
 
   useEffect(() => {
     // If auth is still loading, wait.
     if (loading) return;
+
+    // SEM sessão não há veredito de permissão a dar: quem decide a rota é o
+    // `syncWithUrl` (painel sem conta pede a tela de entrada e guarda o
+    // pedido). Este efeito é de FILHO e roda antes do dele; expulsar aqui
+    // mandava para a vitrine, com "Acesso restrito", a lojista cuja sessão
+    // guardada o servidor acabou de derrubar (refresh token vencido) — e a
+    // transição terminava por cima do redirecionamento para a entrada. Quem
+    // TEM sessão e não é admin continua expulsa, com o aviso, como sempre.
+    if (!user) return;
 
     // Ainda verificando com o servidor — não expulsa, não redireciona.
     if (adminStatus === "unknown") return;
@@ -177,7 +185,7 @@ function AdminAccessDenied({
       toast.error("Acesso restrito a administradores.");
       onNavigate("home");
     }
-  }, [onNavigate, adminStatus, loading]);
+  }, [onNavigate, adminStatus, loading, user]);
 
   return <AdminRouteLoading />;
 }
@@ -258,6 +266,12 @@ const UserProfileView = lazyWithPreload(() =>
 const AboutStoreView = lazyWithPreload(() =>
   import("@/views/customer/AboutStoreView").then((m) => ({
     default: m.AboutStoreView,
+  })),
+);
+// Termos de uso, Privacidade e Trocas e devoluções: uma página só, três textos.
+const PoliticaDaLojaView = lazyWithPreload(() =>
+  import("@/views/customer/PoliticaDaLojaView").then((m) => ({
+    default: m.PoliticaDaLojaView,
   })),
 );
 
@@ -377,6 +391,9 @@ const VIEW_COMPONENTS = {
   "admin-login": AdminLogin,
   "user-profile": UserProfileView,
   "about-store": AboutStoreView,
+  terms: PoliticaDaLojaView,
+  privacy: PoliticaDaLojaView,
+  "returns-policy": PoliticaDaLojaView,
 };
 
 // F1 (glm-perf-1paint-0309): PushNotificationBanner usa framer-motion —
@@ -516,7 +533,11 @@ const AppBadgeSynchronizer = React.memo(function AppBadgeSynchronizer() {
 
 const AppContent = () => {
   const { user, isAdmin, adminStatus, loading: authLoading } = useAuth();
-  const { products, loading: productsLoading } = useProducts();
+  const {
+    products,
+    loading: productsLoading,
+    fetchProducts: recarregarProdutos,
+  } = useProducts();
   const { navigate: startTransition, isSupported: isTransitionSupported } =
     useViewTransition();
 
@@ -971,7 +992,16 @@ const AppContent = () => {
         targetView = "auth";
       }
 
+      // Painel pedido SEM sessão: vai para a tela de entrada (o `requested`
+      // gravado no pushState abaixo faz `handleAuthSuccess` devolvê-la ao
+      // painel) em vez de cair em silêncio na vitrine. É `else if` de
+      // propósito: a guarda de admin logo abaixo usa `view` e mandaria
+      // para a home também quem acabou de ser mandada ao login.
       if (
+        painelSemContaPedeEntrada(view, { authLoading: isAuthL, user: usr })
+      ) {
+        targetView = "auth";
+      } else if (
         view.startsWith("admin") &&
         view !== "admin-login" &&
         !isAuthL &&
@@ -1254,6 +1284,23 @@ const AppContent = () => {
     ],
   );
 
+  // Busca do topo (digitar, Enter, "Ver todos os resultados", sugestão). A
+  // barra aparece em quase toda tela, mas só a Home (e a /search, que é dona
+  // do próprio filtro) mostra a lista filtrada: buscar de outra tela leva a
+  // cliente à Home já com o termo. Isso acontece UMA vez — no primeiro termo
+  // a cliente já está na Home, e os seguintes só atualizam o termo, sem
+  // empurrar uma entrada de histórico por letra. Termo vazio só limpa.
+  const handleSearch = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      const telaAtual = currentViewRef.current;
+      if (query.trim() && telaAtual !== "home" && telaAtual !== "search") {
+        void handleNavigate("home");
+      }
+    },
+    [handleNavigate],
+  );
+
   useCacheWarmer();
   const { isSlow } = useNetworkAdaptive();
   const getFramerMotionDuration = useCallback(() => {
@@ -1516,23 +1563,24 @@ const AppContent = () => {
     handleNavigate("orders");
   }, [handleNavigate]);
 
+  // "Retomar pagamento" a partir do cartão do pedido no Perfil — a mesma
+  // porta que o detalhe do pedido usa (`retomarPedidoId`, Frente 10).
+  const handleRetomarPagamentoDoPerfil = useCallback(
+    (pedidoId: string) =>
+      handleNavigate("checkout", undefined, false, {
+        retomarPedidoId: pedidoId,
+      }),
+    [handleNavigate],
+  );
+
   // ==============================
   // PWA Reload Reason Consumption — laudo #2 (P-1): o motivo descreve o que
   // REALMENTE aconteceu (update, recuperação de erro, crash, sentinela);
-  // "Sistema Atualizado" só aparece quando houve atualização de verdade.
-  // Peça 22/09: e "de verdade" é PROVADO — a origem gravada na partida do
-  // apply tem de diferir do build deste boot. Apply pendurado, recarga de
-  // segurança ou purge que não curou: toast neutro, nunca sucesso inventado.
+  // A ilha só anuncia conclusão com troca de build provada. As novidades
+  // ficam no aparelho para leitura no painel; recuperações mantêm seu aviso.
   // ==============================
   useEffect(() => {
-    const bruto = localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA);
-    // Lê e limpa a evidência em TODO boot (com motivo de atualização ou sem)
-    // para a chave não órfã; a decisão de sucesso usa o resultado abaixo.
-    const trocouDeBuild = atualizacaoTrocouDeBuild(VERSAO_DO_APP);
-    const motivo =
-      bruto === "atualizacao-aplicada" && !trocouDeBuild
-        ? descreveMotivoDeRecarga("atualizacao-nao-confirmada")
-        : descreveMotivoDeRecarga(bruto);
+    const motivo = aoIniciarAposAtualizacao(VERSAO_DO_APP);
     if (motivo) {
       console.log(`[PWA] Consuming reload reason: ${motivo.titulo}`);
       import("sonner").then(({ toast }) => {
@@ -1541,7 +1589,6 @@ const AppContent = () => {
           duration: 5000,
         });
       });
-      limpaMotivoDeRecarga();
     }
   }, []);
 
@@ -1728,7 +1775,7 @@ const AppContent = () => {
   }, []);
 
   // Sync view with URL on initial load and back/forward buttons
-  const { isPasswordRecovery } = useAuth();
+  const { isPasswordRecovery, linkDeRecuperacaoVencido } = useAuth();
 
   useEffect(() => {
     if (isPasswordRecovery) {
@@ -1736,6 +1783,20 @@ const AppContent = () => {
       setCurrentView("auth");
     }
   }, [isPasswordRecovery]);
+
+  // Link de "esqueci a senha" vencido/já usado: a pessoa precisa cair na tela
+  // "Recuperar" com o aviso, não na vitrine (o AuthView devolve a flag assim
+  // que mostra o aviso, então isto só dispara uma vez por link).
+  useEffect(() => {
+    if (linkDeRecuperacaoVencido) {
+      // O endereço também vai para /auth: a sincronização com a URL (efeito
+      // logo abaixo) lê o caminho e, fora de /auth, devolveria a vitrine.
+      if (globalThis.location.pathname !== "/auth") {
+        globalThis.history.replaceState({ view: "auth" }, "", "/auth");
+      }
+      setCurrentView("auth");
+    }
+  }, [linkDeRecuperacaoVencido]);
 
   useEffect(() => {
     // `origem` distingue as duas chamadas abaixo: "efeito" (o efeito reage
@@ -1788,6 +1849,22 @@ const AppContent = () => {
           targetView = "auth";
           if (globalThis.location.pathname !== "/auth") {
             globalThis.history.replaceState({ view: "auth" }, "", "/auth");
+          }
+        }
+
+        // Painel pedido SEM sessão (o toque no aviso de "pedido novo" abre
+        // `/admin-orders` numa janela nova): tela de entrada com o pedido
+        // guardado, não a vitrine. Só olha a AUSÊNCIA de sessão — quem está
+        // logada e não é admin cai na guarda logo abaixo, como sempre caiu.
+        if (painelSemContaPedeEntrada(targetView, { authLoading, user })) {
+          const pedida = targetView;
+          targetView = "auth";
+          if (globalThis.location.pathname !== "/auth") {
+            globalThis.history.replaceState(
+              { view: "auth", requested: pedida },
+              "",
+              "/auth",
+            );
           }
         }
 
@@ -2156,12 +2233,41 @@ const AppContent = () => {
     saveCurrentScroll,
   ]);
 
-  // Clear search query when navigating to non-search views
+  // A busca é limpa quando a cliente TROCA de tela (sair da Home/da busca para
+  // outra), nunca a cada termo novo. Antes o efeito também olhava
+  // `searchQuery`: fora da Home, todo termo digitado era zerado na hora — o
+  // campo se esvaziava sozinho e nada acontecia. Quem busca fora da Home é
+  // levada à Home pelo `handleSearch`, que é onde a lista filtra.
   useEffect(() => {
-    if (currentView !== "search" && currentView !== "home" && searchQuery) {
+    if (currentView !== "search" && currentView !== "home") {
+      setSearchQuery("");
+    }
+  }, [currentView]);
+
+  // Só espaços fora da Home/da busca não é busca nem leva a lugar nenhum
+  // (`handleSearch` não navega): zera o campo, como sempre foi. Só toca em
+  // termo VAZIO de verdade — termo com letra nunca é apagado por aqui.
+  useEffect(() => {
+    if (
+      currentView !== "search" &&
+      currentView !== "home" &&
+      searchQuery &&
+      !searchQuery.trim()
+    ) {
       setSearchQuery("");
     }
   }, [currentView, searchQuery]);
+
+  // Link de produto cuja checagem falhou por REDE (id do produto, ou null).
+  // Falha de rede NÃO é "o produto não existe": o cliente fica no link e vê
+  // "Não conseguimos carregar" com "Tentar de novo", em vez de cair na Home.
+  const [produtoSemRede, setProdutoSemRede] = useState<string | null>(null);
+  const [tentativaDoProduto, setTentativaDoProduto] = useState(0);
+  const tentarProdutoDeNovo = useCallback(() => {
+    setProdutoSemRede(null);
+    void recarregarProdutos?.();
+    setTentativaDoProduto((n) => n + 1);
+  }, [recarregarProdutos]);
 
   // Handle missing product or invalid product detail view
   useEffect(() => {
@@ -2181,22 +2287,62 @@ const AppContent = () => {
         ? getProductById(products, selectedProductId)
         : null;
       if (!product) {
+        // Só o caso "o produto de fato não existe" manda para a Home.
+        const redirecionarParaHome = (avisar = false) => {
+          if (!active) return;
+          console.warn(
+            "[App] Product detail view requested but product not found on network. Redirecting to home.",
+          );
+          // Produto removido ou pausado: a cliente cai na Home e precisa saber
+          // por quê. Falha de rede NUNCA passa por aqui (vira "Não conseguimos
+          // carregar"), e link sem id nem é produto indisponível: sem aviso.
+          if (avisar) toast.info("Este produto não está mais disponível.");
+          setCurrentView("home");
+          // Sync URL back to home
+          const caminhoDaHome = caminhoDaHomeRef.current();
+          if (
+            globalThis.location.pathname + globalThis.location.search !==
+            caminhoDaHome
+          ) {
+            globalThis.history.replaceState(
+              { view: "home" },
+              "",
+              caminhoDaHome,
+            );
+          }
+        };
         const verifyProduct = async () => {
           try {
             console.log("[App] verifyProduct checking id =", selectedProductId);
-            if (!selectedProductId) throw new Error("No product ID");
+            if (!selectedProductId) {
+              redirecionarParaHome();
+              return;
+            }
             const { data, error } = await supabase
               .from("vw_produtos_public")
               .select("id")
               .eq("id", selectedProductId)
               .single();
             if (error) {
-              console.error("[App] verifyProduct query error:", error);
+              // PGRST116 = `.single()` não achou linha nenhuma: não existe.
+              // 22P02 = o id do link nem é um uuid (link truncado): também
+              // não existe, e vai para a Home como antes.
+              // Qualquer outro erro (rede, servidor) é falha de CARREGAR.
+              const codigoDoErro = (error as { code?: string }).code;
+              if (codigoDoErro === "PGRST116" || codigoDoErro === "22P02") {
+                console.error(
+                  "[App] verifyProduct: produto não existe:",
+                  error,
+                );
+                redirecionarParaHome(true);
+                return;
+              }
               throw error;
             }
             if (!data) {
               console.error("[App] verifyProduct query returned no data");
-              throw new Error("Product not active or not found");
+              redirecionarParaHome(true);
+              return;
             }
             // Product exists in database, do not redirect!
             console.log("[App] Product exists on network, avoiding redirect.");
@@ -2205,24 +2351,7 @@ const AppContent = () => {
               "[App] verifyProduct caught error:",
               err?.message || err,
             );
-            if (active) {
-              console.warn(
-                "[App] Product detail view requested but product not found on network. Redirecting to home.",
-              );
-              setCurrentView("home");
-              // Sync URL back to home
-              const caminhoDaHome = caminhoDaHomeRef.current();
-              if (
-                globalThis.location.pathname + globalThis.location.search !==
-                caminhoDaHome
-              ) {
-                globalThis.history.replaceState(
-                  { view: "home" },
-                  "",
-                  caminhoDaHome,
-                );
-              }
-            }
+            if (active) setProdutoSemRede(selectedProductId);
           }
         };
         verifyProduct();
@@ -2231,7 +2360,14 @@ const AppContent = () => {
     return () => {
       active = false;
     };
-  }, [currentView, selectedProductId, products, authLoading, productsLoading]);
+  }, [
+    currentView,
+    selectedProductId,
+    products,
+    authLoading,
+    productsLoading,
+    tentativaDoProduto,
+  ]);
 
   // Unified scroll restoration is handled in the consolidated useLayoutEffect hook above
 
@@ -2313,7 +2449,31 @@ const AppContent = () => {
         const product = selectedProductId
           ? getProductById(products, selectedProductId)
           : null;
-        if (!product) return null;
+        if (!product) {
+          if (produtoSemRede && produtoSemRede === selectedProductId) {
+            return (
+              <div
+                role="alert"
+                className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center"
+              >
+                <h2 className="text-xl font-bold tracking-tight text-zinc-900">
+                  Não conseguimos carregar este produto
+                </h2>
+                <p className="max-w-[260px] text-sm leading-relaxed text-zinc-500">
+                  Confira sua internet e tente de novo.
+                </p>
+                <button
+                  type="button"
+                  onClick={tentarProdutoDeNovo}
+                  className="inline-flex min-h-11 items-center rounded-lg px-4 text-sm font-semibold text-zinc-900 underline underline-offset-2 hover:bg-zinc-100"
+                >
+                  Tentar de novo
+                </button>
+              </div>
+            );
+          }
+          return null;
+        }
         return (
           <PreloadedOrLazy
             component={ProductView}
@@ -2421,6 +2581,24 @@ const AppContent = () => {
       case "about-store":
         return <PreloadedOrLazy component={AboutStoreView} props={{}} />;
 
+      case "terms":
+      case "privacy":
+      case "returns-policy":
+        return (
+          <PreloadedOrLazy
+            component={PoliticaDaLojaView}
+            props={{
+              tipo:
+                currentView === "terms"
+                  ? "termos"
+                  : currentView === "privacy"
+                    ? "privacidade"
+                    : "trocas",
+              onNavigate: handleNavigate,
+            }}
+          />
+        );
+
       case "order-details":
         return (
           <PreloadedOrLazy
@@ -2463,6 +2641,7 @@ const AppContent = () => {
               onBack: () => handleNavigate("home"),
               selectedProductId: selectedProductId || undefined,
               onQueryChange: setSearchQuery,
+              onAddToCart: handleAddToCart,
             }}
           />
         );
@@ -2615,6 +2794,7 @@ const AppContent = () => {
                       onToggleFavorite: handleToggleFavorite,
                       onProductClick: handleProductClick,
                       onNavigate: handleNavigate,
+                      onAddToCart: handleAddToCart,
                       selectedProductId: isMainTab
                         ? selectedProductId || undefined
                         : undefined,
@@ -2666,6 +2846,7 @@ const AppContent = () => {
                       key: user?.id ? `profile-${user.id}` : "profile-guest",
                       onNavigate: handleNavigate,
                       isActive: currentView === "profile",
+                      onRetomarPagamento: handleRetomarPagamentoDoPerfil,
                     }}
                   />
                 </DeferredTabContent>
@@ -2734,6 +2915,7 @@ const AppContent = () => {
                         onToggleFavorite: handleToggleFavorite,
                         onProductClick: handleProductClick,
                         onNavigate: handleNavigate,
+                        onAddToCart: handleAddToCart,
                         selectedProductId: selectedProductId || undefined,
                         isActive: currentView === "favorites",
                       }}
@@ -2784,6 +2966,7 @@ const AppContent = () => {
                         key: user?.id ? `profile-${user.id}` : "profile-guest",
                         onNavigate: handleNavigate,
                         isActive: currentView === "profile",
+                        onRetomarPagamento: handleRetomarPagamentoDoPerfil,
                       }}
                     />
                   </DeferredTabContent>
@@ -2797,7 +2980,7 @@ const AppContent = () => {
         {isTransitionSupported ? (
           !isMainTab && (
             <div
-              className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none"
+              className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none [&>*]:shrink-0"
               style={{ viewTransitionName: "main-content" }}
             >
               {renderCustomerSecondaryView()}
@@ -2945,7 +3128,7 @@ const AppContent = () => {
               // complemento já digitados.
               hideSearch={["address-form", "checkout"].includes(currentView)}
               searchQuery={searchQuery}
-              onSearch={setSearchQuery}
+              onSearch={handleSearch}
               scrollProgress={scrollProgress}
             />
           </React.Suspense>
@@ -3008,6 +3191,7 @@ const AppContent = () => {
                   handleAdminUserDetailBack={handleAdminUserDetailBack}
                   backOverride={backOverride}
                   isTransitionSupported={isTransitionSupported}
+                  userId={user?.id}
                   fallback={<AdminRouteLoading />}
                 />
               ) : (
@@ -3088,6 +3272,14 @@ const AppContent = () => {
             <AlertDialogAction
               onClick={() => {
                 setIsAdminDirty(false);
+                // "Descartar" é descartar: o rascunho do produto que ela está
+                // deixando sai do aparelho, senão voltaria como "Restaurar?".
+                if (currentView === "admin-product-form") {
+                  descartarRascunhoDoProduto(
+                    user?.id,
+                    selectedProductId || undefined,
+                  );
+                }
                 if (pendingNavigation) {
                   handleNavigate(
                     pendingNavigation.view,

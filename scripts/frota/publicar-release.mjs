@@ -234,6 +234,76 @@ export async function conferirCandidato({
   return { ok: problemas.length === 0, deployment: d, problemas };
 }
 
+/**
+ * A lojista precisa saber o que mudou antes de receber a atualização. Lemos
+ * só o arquivo versionado no SHA: uma nota local ainda sem commit não pode
+ * liberar a publicação, e o ensaio não cria nem corrige notas por conta própria.
+ */
+function conferirNotasDaVersao(versao, sha, lerArquivoNoSha) {
+  const arquivo = "src/novidades/notas-das-versoes.json";
+  const resultado = {
+    ok: true,
+    versao: versao ?? null,
+    arquivo,
+    problemas: [],
+  };
+  const exemplo = JSON.stringify({
+    [versao ?? "x.y.z"]: {
+      titulo: "Atualização do app",
+      novidades: [],
+      correcoes: ["Correções de estabilidade."],
+      melhorias: [],
+    },
+  });
+  const bloquear = (motivo) => ({
+    ...resultado,
+    ok: false,
+    problemas: [
+      `Nota da versão ${versao ?? "não identificada"} em ${arquivo}: ${motivo}. Exemplo mínimo aceito: ${exemplo}`,
+    ],
+  });
+  // codeVersion já passou pelo contrato do candidato: é o núcleo x.y.z,
+  // sem os sufixos de SHA e identidade da versão completa do build.
+  if (!versao)
+    return bloquear("a versão não pôde ser identificada no candidato validado");
+  let fonte;
+  try {
+    fonte = lerArquivoNoSha(sha, arquivo);
+  } catch {
+    return bloquear("arquivo não pôde ser lido no SHA da release");
+  }
+  if (fonte === null || fonte === undefined)
+    return bloquear("arquivo ausente ou não pôde ser lido no SHA da release");
+  let notas;
+  try {
+    notas = JSON.parse(fonte);
+  } catch {
+    return bloquear("JSON inválido");
+  }
+  if (!notas || typeof notas !== "object" || Array.isArray(notas))
+    return bloquear("o JSON precisa ser um objeto com as notas por versão");
+  if (!Object.hasOwn(notas, versao))
+    return bloquear("entrada ausente para esta versão");
+  const nota = notas[versao];
+  if (!nota || typeof nota !== "object" || Array.isArray(nota))
+    return bloquear("a entrada da versão precisa ser um objeto");
+  const textoPreenchido = (texto) =>
+    typeof texto === "string" && texto.trim().length > 0;
+  if (!textoPreenchido(nota.titulo))
+    return bloquear("falta titulo com texto não vazio");
+  let itens = 0;
+  for (const campo of ["novidades", "correcoes", "melhorias"]) {
+    if (!Array.isArray(nota[campo]) || !nota[campo].every(textoPreenchido))
+      return bloquear(`${campo} precisa ser uma lista de textos não vazios`);
+    itens += nota[campo].length;
+  }
+  if (!itens)
+    return bloquear(
+      "falta ao menos um item em novidades, correcoes ou melhorias",
+    );
+  return resultado;
+}
+
 // ------------------------------------------------------------------ etapa 2
 
 /**
@@ -412,6 +482,74 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "16b-antes-pix-anulado-foto-ausente",
   "17a-conferir-estoque-do-painel-aplicado",
   "17b-antes-estoque-do-painel-corpos-vigentes",
+  "19a-conferir-politica-devolucao-aplicado",
+  "19b-antes-politica-devolucao-grant-de-tabela",
+  "20a-conferir-fotos-da-devolucao-aplicado",
+  "20b-antes-fotos-da-devolucao-sem-delete",
+  "21a-conferir-teto-de-email-aplicado",
+  "21b-antes-teto-de-email-corpos-vigentes",
+  "22a-conferir-portas-do-banco-aplicado",
+  "22b-antes-portas-do-banco-estado-vigente",
+  "23a-conferir-consulta-antiga-de-pedido-fechada",
+  "23b-antes-consulta-antiga-de-pedido-aberta",
+  "24a-conferir-avaliacoes-fechadas-ao-visitante",
+  "24b-antes-avaliacoes-abertas-ao-visitante",
+  "25a-conferir-media-de-avaliacoes-so-admin",
+  "25b-antes-media-de-avaliacoes-sem-guarda",
+  "26a-conferir-voto-util-so-em-avaliacao-publica",
+  "26b-antes-voto-util-sem-guarda-de-status",
+  "27a-conferir-avaliacao-nasce-sem-resposta-da-loja",
+  "27b-antes-avaliacao-aceita-resposta-forjada",
+  "30a-conferir-numeros-do-painel-aplicado",
+  "30b-antes-numeros-do-painel-corpos-vigentes",
+  "33a-conferir-grade-do-crm-aplicado",
+  "33b-antes-grade-do-crm-corpo-vigente",
+  "31a-conferir-endereco-da-compra-fica-no-pedido",
+  "31b-antes-endereco-da-compra-so-no-ponteiro",
+  "28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro",
+  "28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao",
+  "29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes",
+  "29b-antes-reemissao-do-reembolso-base-conhecida",
+  "32a-conferir-busca-de-clientes-aplicado",
+  "32b-antes-busca-de-clientes-corpos-vigentes",
+  "34a-conferir-sino-da-retirada-aplicado",
+  "34b-antes-sino-da-retirada-corpo-vigente",
+  "35a-conferir-lucro-so-com-custo-aplicado",
+  "35b-antes-lucro-so-com-custo-corpo-vigente",
+  "36a-conferir-venda-repetida-do-balcao-aplicado",
+  "36b-antes-venda-repetida-do-balcao-corpo-vigente",
+  "37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado",
+  "37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente",
+  "38a-conferir-gestao-de-categorias-aplicado",
+  "38b-antes-gestao-de-categorias-funcoes-ausentes",
+  "39a-conferir-pedidos-de-privacidade-aplicado",
+  "39b-antes-pedidos-de-privacidade-objetos-ausentes",
+  "40a-conferir-identidade-legal-da-loja-aplicado",
+  "40b-antes-identidade-legal-da-loja-base-vigente",
+  "41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado",
+  "41b-antes-pergunta-respondida-corpos-vigentes",
+  "43a-conferir-reembolso-em-duvida-aplicado",
+  "43b-antes-reembolso-em-duvida-base-vigente",
+  "45a-conferir-custo-do-dia-aplicado",
+  "45b-antes-custo-do-dia-base-vigente",
+  "46a-conferir-desfazer-recebimento-aplicado",
+  "46b-antes-desfazer-recebimento-base-vigente",
+  "47a-conferir-a-loja-escolhe-como-entrega-aplicado",
+  "47b-antes-a-loja-escolhe-como-entrega-base-vigente",
+  "48a-conferir-lucro-com-desconto-aplicado",
+  "48b-antes-lucro-com-desconto-base-vigente",
+  "49a-conferir-lancamento-idempotente-aplicado",
+  "49b-antes-lancamento-idempotente-base-vigente",
+  "50a-conferir-nota-interna-do-pedido-aplicado",
+  "50b-antes-nota-interna-do-pedido-base-vigente",
+  "51a-conferir-notes-do-pedido-fechada-aplicado",
+  "51b-antes-notes-do-pedido-base-vigente",
+  "52a-conferir-motivo-do-balcao-privado-aplicado",
+  "52b-antes-motivo-do-balcao-base-vigente",
+  "53a-conferir-faturamento-potencial-aplicado",
+  "53b-antes-faturamento-potencial-base-vigente",
+  "54a-conferir-lucro-do-estoque-aplicado",
+  "54b-antes-lucro-do-estoque-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
@@ -1170,6 +1308,20 @@ export async function publicarRelease(opcoes, deps) {
   for (const p of cand.problemas)
     bloqueios.push({ alvo: `deployment ${deploymentId}`, motivo: p });
 
+  const notasDaVersao = conferirNotasDaVersao(
+    cand.deployment?.codeVersion,
+    sha,
+    deps.lerArquivoNoSha,
+  );
+  linhas.push(
+    notasDaVersao.ok
+      ? `- nota da versão: OK: ${notasDaVersao.versao} em ${notasDaVersao.arquivo}`
+      : `- nota da versão: BLOQUEADO: ${notasDaVersao.problemas.join("; ")}`,
+    "",
+  );
+  for (const p of notasDaVersao.problemas)
+    bloqueios.push({ alvo: notasDaVersao.arquivo, motivo: p });
+
   // 2. inventário oficial + identidade/isolamento/canônico antes do promote
   const inventario = await deps.inventariar(politica);
   const { lojas, problemas: probInv } = lojasDoInventario(inventario, politica);
@@ -1364,6 +1516,7 @@ export async function publicarRelease(opcoes, deps) {
       codigo: 1,
       relatorio: linhas.join("\n"),
       bloqueios,
+      notasDaVersao,
       consertos,
       lojas,
       producaoAnterior,
@@ -1382,6 +1535,7 @@ export async function publicarRelease(opcoes, deps) {
       codigo: 0,
       relatorio: linhas.join("\n"),
       bloqueios,
+      notasDaVersao,
       lojas,
       producaoAnterior,
     };
@@ -1402,6 +1556,7 @@ export async function publicarRelease(opcoes, deps) {
       codigo: 1,
       relatorio: linhas.join("\n"),
       bloqueios: [{ alvo: "promote", motivo: e.message }],
+      notasDaVersao,
       lojas,
       producaoAnterior,
     };
@@ -1436,6 +1591,7 @@ export async function publicarRelease(opcoes, deps) {
     bloqueios: ok
       ? []
       : [{ alvo: "frota", motivo: "conferência pós-promote falhou" }],
+    notasDaVersao,
     lojas,
     producaoAnterior,
   };
@@ -1733,7 +1889,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (a.json) {
     writeFileSync(
       a.json,
-      `${JSON.stringify({ geradoEm: new Date().toISOString(), codigo: r.codigo, bloqueios: r.bloqueios, lojas: r.lojas, producaoAnterior: r.producaoAnterior }, null, 2)}\n`,
+      `${JSON.stringify({ geradoEm: new Date().toISOString(), codigo: r.codigo, bloqueios: r.bloqueios, notasDaVersao: r.notasDaVersao, lojas: r.lojas, producaoAnterior: r.producaoAnterior }, null, 2)}\n`,
     );
   }
   return r.codigo;

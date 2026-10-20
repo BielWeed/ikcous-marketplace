@@ -128,7 +128,7 @@ describe("AddressForm — CEP de 7 dígitos é recusado", () => {
     // mesmo padrão de shipping-calculator-erro-traduzido...: o evento vai
     // direto no <form>, que é onde o handleSubmit do react-hook-form escuta.
     const formulario = hospedeiro.querySelector("form");
-    expect(formulario).toBeDefined();
+    expect(formulario).not.toBeNull();
     await act(async () => {
       formulario!.dispatchEvent(
         new Event("submit", { bubbles: true, cancelable: true }),

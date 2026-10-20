@@ -18,10 +18,22 @@ const URL_SUPA_TESTE = 'https://supa-fake.local'
 const ID_ADMIN = 'admin-1111-2222'
 const ANON_DE_TESTE = 'anon-chave-de-teste'
 
-function respostaAdminFalsa(url: string): Response {
+/**
+ * Papel ATUAL nas duas fontes (`_shared/admin-atual.ts`, a mesma regra de
+ * `public.is_admin_atual()`): `app_metadata.role` do usuário que o GET /user
+ * do Auth carrega do banco, e `profiles.role`. O admin de verdade tem
+ * 'admin' nas duas.
+ */
+function respostaDePapeisFalsa(url: string, papelNoAuth: string, papelNoPerfil: string): Response {
     if (url.includes('/auth/v1/user')) {
         return new Response(
-            JSON.stringify({ id: ID_ADMIN, email: 'admin@teste.local', aud: 'authenticated', role: 'authenticated' }),
+            JSON.stringify({
+                id: ID_ADMIN,
+                email: 'admin@teste.local',
+                aud: 'authenticated',
+                role: 'authenticated',
+                app_metadata: { provider: 'email', role: papelNoAuth },
+            }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
     }
@@ -29,7 +41,7 @@ function respostaAdminFalsa(url: string): Response {
         // `.single()` pede o accept vnd.pgrst.object — o SERVIDOR é quem
         // devolve objeto (não array); o fake imita o servidor.
         return new Response(
-            JSON.stringify({ id: ID_ADMIN, role: 'admin' }),
+            JSON.stringify({ id: ID_ADMIN, role: papelNoPerfil }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
     }
@@ -39,8 +51,12 @@ function respostaAdminFalsa(url: string): Response {
     )
 }
 
-const fetchAdminFalso = ((input: any) =>
-    respostaAdminFalsa(String(input instanceof Request ? input.url : input))) as any
+function fetchPapeisFalso(papelNoAuth: string, papelNoPerfil: string): any {
+    return ((input: any) =>
+        respostaDePapeisFalsa(String(input instanceof Request ? input.url : input), papelNoAuth, papelNoPerfil)) as any
+}
+
+const fetchAdminFalso = fetchPapeisFalso('admin', 'admin')
 
 globalThis.fetch = fetchAdminFalso
 const {
@@ -48,6 +64,7 @@ const {
     extrairEnderecoDoPedido,
     extrairServiceIdDaOpcao,
     handler,
+    buscarComTempo,
     montarProdutosEVolumes,
     montarRemetente,
     normalizarCheckout,
@@ -69,8 +86,13 @@ globalThis.fetch = fetchNativo
 
 /** Instala o fetch admin falso SÓ durante a chamada ao handler. */
 async function comAdminFalso(executar: () => Promise<any>): Promise<any> {
+    return await comFetchFalso(fetchAdminFalso, executar)
+}
+
+/** Instala um fetch falso qualquer SÓ durante a chamada ao handler. */
+async function comFetchFalso(fetchFalso: any, executar: () => Promise<any>): Promise<any> {
     const anterior = globalThis.fetch
-    globalThis.fetch = fetchAdminFalso
+    globalThis.fetch = fetchFalso
     try {
         return await executar()
     } finally {
@@ -382,9 +404,11 @@ Deno.test("remetente - falta documento ou CEP válido: null (falha antes de gast
 // ── normalizarCheckout ─────────────────────────────────────────────────────
 
 Deno.test("checkout - status paid fecha a compra", () => {
-  const r = normalizarCheckout({ purchase: { id: "pur-1", status: "paid" } })
-  assertEquals(r.pago, true)
-  assertEquals(r.purchaseId, "pur-1")
+  for (const status of ['paid', ' PAID ']) {
+    const r = normalizarCheckout({ purchase: { id: "pur-1", status } })
+    assertEquals(r.pago, true)
+    assertEquals(r.purchaseId, "pur-1")
+  }
 })
 
 Deno.test("checkout - 200 sem pagamento não engana: status pendente vira erro amigável", () => {
@@ -455,6 +479,46 @@ Deno.test("handler - action desconhecida nomeia as duas válidas e NÃO alcança
   })
 })
 
+// ── Admin de AGORA nas duas fontes (auditoria L3, 12/10/2026) ──────────────
+// A porta é a de `_shared/admin-atual.ts`: papel 'admin' em `profiles.role` E
+// em `app_metadata.role`. Papéis contraditórios (rebaixado em uma fonte só)
+// recebem o MESMO 403 de quem não é admin — nas duas direções — sem ler
+// pedido e sem uma chamada sequer ao Melhor Envio (que gasta o saldo da loja).
+for (
+  const [rotulo, papelNoAuth, papelNoPerfil] of [
+    ["só o Auth rebaixado (profiles ainda admin)", "customer", "admin"],
+    ["só o profiles rebaixado (Auth ainda admin)", "admin", "customer"],
+  ] as const
+) {
+  Deno.test(`handler - papéis contraditórios, ${rotulo}: 403 antes de ler pedido ou falar com o ME`, async () => {
+    await comEnvAdmin(async () => {
+      const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+      const me = buscarMeFalso()
+      const res = await comFetchFalso(fetchPapeisFalso(papelNoAuth, papelNoPerfil), () =>
+        handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+      assertEquals(res.status, 403)
+      const corpo = await respostaJson(res)
+      assertEquals(
+        corpo.error,
+        "Não autorizado: apenas administradores geram etiquetas e consultam rastreio.",
+      )
+      assertEquals(me.registro.chamadasMe, 0)
+      assertEquals(me.registro.carrinho, 0)
+      assertEquals(supa.registro.reivindicacoes.length, 0)
+      assertEquals(supa.registro.eventos.length, 0)
+    })
+  })
+}
+
+Deno.test("handler - CONTROLE: admin nas duas fontes passa a porta (a action estranha morre no portão dela, 400)", async () => {
+  await comEnvAdmin(async () => {
+    const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+    const res = await comFetchFalso(fetchPapeisFalso("admin", "admin"), () =>
+      handler(requisicaoGerar("apagar_tudo"), { supabase: supa.cliente, buscar: buscarMeFalso().buscar }))
+    assertEquals(res.status, 400)
+  })
+})
+
 // ── handler: os ramos de DINHEIRO (revisor, item C da 2ª rodada, PR #423) ──
 // O handler é exercido DE PONTA A PONTA com supabase falso (chainable, que
 // registra reivindicação/liberação/eventos) e fetch do ME falso (que conta
@@ -510,8 +574,11 @@ const CONTA_ME_FELIZ = {
  * (reivindicação gravada? liberação com os dois filtros? evento de qual
  * etapa?).
  */
-function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any; enderecoConta?: any } = {}) {
+function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any; enderecoConta?: any; erroRastreio?: boolean; erroReleituraPedido?: boolean } = {}) {
+    const pedidoAtual = configuracao.pedido ? { ...configuracao.pedido } : null
+    let leiturasPedido = 0
     const registro = {
+        pedidoAtual,
         reivindicacoes: [] as Array<{ valores: any; filtros: any[] }>,
         liberacoes: [] as Array<{ valores: any; filtros: any[] }>,
         completacoes: [] as Array<{ valores: any; filtros: any[] }>,
@@ -551,10 +618,19 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
         }
         // marketplace_orders
         if (no.acao === 'update') {
+            const bate = pedidoAtual && no.filtros.every((f: any) => {
+                if (f.metodo === 'eq' || f.metodo === 'is') return pedidoAtual[f.coluna] === f.valor
+                if (f.metodo === 'in') return f.valores.includes(pedidoAtual[f.coluna])
+                return true
+            })
+            if ('tracking_code' in (no.valores || {}) && configuracao.erroRastreio) {
+                return Promise.resolve({ data: null, error: { code: 'XX000', message: 'Falha simulada ao gravar rastreio' } })
+            }
             const soltaVinculo = 'shipping_label_id' in (no.valores || {}) && no.valores.shipping_label_id === null
-            const tomaVinculo = 'shipping_label_id' in (no.valores || {}) && no.valores.shipping_label_id !== null
+            const tomaVinculo = 'shipping_label_id' in (no.valores || {}) && no.valores.shipping_label_id !== null && !('shipping_label_url' in no.valores)
             if (soltaVinculo) {
                 registro.liberacoes.push({ valores: no.valores, filtros: [...no.filtros] })
+                if (bate) Object.assign(pedidoAtual, no.valores)
                 return Promise.resolve({ data: null, error: null })
             }
             if (tomaVinculo) {
@@ -562,6 +638,7 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
                 // Quem vence a corrida recebe 1 linha; o teste que arma
                 // `linhasReivindicadas: []` simula o perdedor.
                 const linhas = configuracao.linhasReivindicadas ?? [{ id: configuracao.pedido?.id ?? 'pedido-1' }]
+                if (bate && linhas.length) Object.assign(pedidoAtual, no.valores)
                 return Promise.resolve({ data: linhas, error: null })
             }
             const atualizaCpf = 'customer_data' in (no.valores || {})
@@ -573,9 +650,14 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
                 return Promise.resolve({ data: linhas, error: null })
             }
             registro.completacoes.push({ valores: no.valores, filtros: [...no.filtros] })
+            if (bate) Object.assign(pedidoAtual, no.valores)
             return Promise.resolve({ data: null, error: null })
         }
-        return Promise.resolve({ data: configuracao.pedido ?? null, error: null })
+        leiturasPedido++
+        if (leiturasPedido > 1 && configuracao.erroReleituraPedido) {
+            return Promise.resolve({ data: null, error: { code: 'XX000', message: 'Falha simulada ao reler pedido' } })
+        }
+        return Promise.resolve({ data: pedidoAtual ? { ...pedidoAtual } : null, error: null })
     }
     const cliente = {
         from(tabela: string) {
@@ -750,6 +832,174 @@ function requisicaoGerar(action = "gerar_etiqueta", extra: Record<string, unknow
     body: JSON.stringify({ action, orderId: "pedido-1", ...extra }),
   })
 }
+
+Deno.test('handler - pedido cancelado ou pagamento desfeito durante o carrinho: não gasta saldo e limpa o item não pago', async () => {
+    await comEnvAdmin(async () => {
+        for (const mudanca of [{ status: 'cancelled' }, { payment_status: 'estornado' }]) {
+            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const me = buscarMeFalso()
+            const buscar = async (input: any, init?: any) => {
+                const resposta = await me.buscar(input, init)
+                if (String(input).endsWith('/api/v2/me/cart')) Object.assign(supa.registro.pedidoAtual, mudanca)
+                return resposta
+            }
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            const corpo = await res.json()
+            assertEquals(res.status, 409)
+            assertEquals(typeof corpo.error, 'string')
+            assertEquals(corpo.success, undefined)
+            assertEquals(me.registro.checkouts, 0)
+            assertEquals(me.registro.remocoes, 1)
+            assertEquals(supa.registro.pedidoAtual.shipping_label_id, null)
+            assertEquals(supa.registro.eventos.some((e) => e.payload?.etapa === 'validacao_pedido'), true)
+        }
+    })
+})
+
+Deno.test('handler - falha na releitura antes de pagar: não compra a etiqueta e limpa o carrinho', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ, erroReleituraPedido: true })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 409)
+        assertEquals(typeof (await res.json()).error, 'string')
+        assertEquals(me.registro.checkouts, 0)
+        assertEquals(me.registro.remocoes, 1)
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, null)
+    })
+})
+
+Deno.test('handler - emissão preserva rastreio salvo por outra aba durante as chamadas do Melhor Envio', async () => {
+    await comEnvAdmin(async () => {
+        for (const tracking of [null, 'ME123456789BR']) {
+            for (const anterior of [null, 'MANUAL-ANTIGO']) {
+                const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, tracking_code: anterior } })
+                const me = buscarMeFalso()
+                const buscar = async (input: any, init?: any) => {
+                    const resposta = await me.buscar(input, init)
+                    if (String(input).endsWith('/api/v2/me/shipment/tracking')) {
+                        supa.registro.pedidoAtual.tracking_code = 'MANUAL-NOVO'
+                        return new Response(JSON.stringify({ [LABEL_ID]: { tracking, status: 'generated' } }))
+                    }
+                    return resposta
+                }
+                const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+                assertEquals(res.status, 200)
+                assertEquals((await res.json()).success, true)
+                assertEquals(supa.registro.pedidoAtual.tracking_code, 'MANUAL-NOVO')
+                assertEquals(supa.registro.pedidoAtual.shipping_label_url, 'https://imprimir.teste/etiqueta')
+            }
+        }
+    })
+})
+
+Deno.test('handler - emissão grava o rastreio do Melhor Envio quando o pedido continua sem código', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(supa.registro.pedidoAtual.tracking_code, 'ME123456789BR')
+    })
+})
+
+Deno.test('handler - consulta não anuncia rastreio atualizado quando o UPDATE falha', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID }, erroRastreio: true })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar('consultar_rastreio'), { supabase: supa.cliente, buscar: me.buscar }))
+        const corpo = await res.json()
+        assertEquals(res.status, 500)
+        assertEquals(typeof corpo.error, 'string')
+        assertEquals(corpo.success, undefined)
+        assertEquals(supa.registro.pedidoAtual.tracking_code, null)
+        assertEquals(supa.registro.eventos.some((e) => e.event_type === 'rastreio_consultado'), false)
+    })
+})
+
+Deno.test('handler - checkout 200 sem confirmação reconhecível mantém vínculo e impede uma segunda compra', async () => {
+    await comEnvAdmin(async () => {
+        for (const dados of [{}, { message: 'ok' }, { purchase: { status: 'paid' } }, { purchase: { id: 'pur-1', status: 'desconhecido' } }]) {
+            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const me = buscarMeFalso()
+            const buscar = async (input: any, init?: any) => {
+                const resposta = await me.buscar(input, init)
+                return String(input).endsWith('/api/v2/me/shipment/checkout')
+                    ? new Response(JSON.stringify(dados))
+                    : resposta
+            }
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            const corpo = await res.json()
+            assertEquals(res.status, 502)
+            assertEquals(corpo.resgate, true)
+            assertEquals(corpo.label_id, LABEL_ID)
+            assertEquals(String(corpo.error).includes('INDETERMINADO'), true)
+            assertEquals(me.registro.remocoes, 0)
+            assertEquals(me.registro.geracoes, 0)
+            assertEquals(supa.registro.liberacoes.length, 0)
+            assertEquals(supa.registro.pedidoAtual.shipping_label_id, LABEL_ID)
+            assertEquals(supa.registro.eventos.some((e) => e.payload?.etapa === 'checkout_indeterminado'), true)
+            const repetida = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            assertEquals((await repetida.json()).already, true)
+            assertEquals(me.registro.checkouts, 1)
+        }
+    })
+})
+
+Deno.test('buscarComTempo - corpo pendurado depois dos cabeçalhos também estoura o prazo de json e text', async () => {
+    for (const leitor of ['json', 'text']) {
+        let sinal: AbortSignal | undefined
+        let guarda: ReturnType<typeof setTimeout> | undefined
+        const buscar = async (_input: any, init: any) => {
+            sinal = init.signal
+            return new Response(new ReadableStream({
+                start(controle) {
+                    const abortar = () => controle.error(new DOMException('Tempo esgotado', 'AbortError'))
+                    sinal.addEventListener('abort', abortar, { once: true })
+                    // A guarda faz a versão defeituosa falhar sem pendurar a suíte.
+                    guarda = setTimeout(() => {
+                        sinal.removeEventListener('abort', abortar)
+                        controle.error(new Error('Corpo ficou sem limite de tempo'))
+                    }, 200)
+                },
+            }))
+        }
+        let erro: any
+        try {
+            const resposta = await buscarComTempo(buscar, 'https://me-falso.local', {}, 5)
+            await (leitor === 'json' ? resposta.json() : resposta.text())
+        } catch (e) {
+            erro = e
+        } finally {
+            clearTimeout(guarda)
+        }
+        assertEquals(erro?.name, 'AbortError')
+        assertEquals(sinal?.aborted, true)
+    }
+})
+
+Deno.test('buscarComTempo - corpo concluído preserva status, cabeçalhos e JSON', async () => {
+    const buscar = async () => new Response('{"ok":true}', { status: 201, headers: { 'X-Teste': 'preservado' } })
+    const resposta = await buscarComTempo(buscar, 'https://me-falso.local')
+    assertEquals(resposta.status, 201)
+    assertEquals(resposta.headers.get('X-Teste'), 'preservado')
+    assertEquals(await resposta.json(), { ok: true })
+})
+
+Deno.test('produtos e volumes - zero e medidas inválidas usam os padrões positivos da cotação campo a campo', () => {
+    for (const valor of [0, '0', null, undefined, -1, 'inválido', Infinity, true]) {
+        const { volumes } = montarProdutosEVolumes(
+            [{ product_id: 'p1', quantity: 2, price: 10 }],
+            [{ id: 'p1', peso_kg: valor, largura_cm: valor, altura_cm: valor, comprimento_cm: valor }],
+        )
+        assertEquals(volumes, [{ weight: 0.6, width: 15, height: 15, length: 15 }])
+    }
+    const { volumes } = montarProdutosEVolumes(
+        [{ product_id: 'p1', quantity: 2, price: 10 }],
+        [{ id: 'p1', peso_kg: '0.4', largura_cm: 10, altura_cm: 0, comprimento_cm: 14 }],
+    )
+    assertEquals(volumes, [{ weight: 0.8, width: 10, height: 15, length: 14 }])
+})
 
 Deno.test("handler - checkout recusado (200 com status pending): item sai do carrinho E reivindicação LIBERADA (o pedido volta a poder etiquetar)", async () => {
     // O ME RESPONDEU que não pagou — não há ambiguidade: é exatamente o caso
@@ -2260,6 +2510,122 @@ Deno.test("handler - generate HTTP (4xx) com campo irmão de `errors`: o log usa
         assertEquals(linha.includes('nao-pode-vazar-isto-aqui'), false)
     })
 })
+
+Deno.test("handler - generate 200 com status false: resgata a etiqueta paga, mantém o vínculo e não imprime nem consulta rastreio", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const base = buscarMeFalso()
+        const chamadas: string[] = []
+        const buscar = (async (input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            chamadas.push(new URL(url).pathname)
+            if (url.endsWith('/api/v2/me/shipment/generate')) {
+                return new Response(JSON.stringify({ [LABEL_ID]: { status: false, message: 'Envio bloqueado para geração.' } }))
+            }
+            return base.buscar(input, init)
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            const corpo = await res.json()
+            assertEquals(res.status, 502)
+            assertEquals(corpo.success, undefined)
+            assertEquals(corpo.resgate, true)
+            assertEquals(corpo.label_id, LABEL_ID)
+            assertEquals(corpo.error.includes('PAGA no Melhor Envio'), true)
+            assertEquals(corpo.error.includes('gere e imprima'), true)
+            assertEquals(corpo.error.includes('Envio bloqueado'), false)
+        })
+        assertEquals(base.registro.checkouts, 1)
+        assertEquals(base.registro.remocoes, 0)
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, LABEL_ID)
+        assertEquals(supa.registro.liberacoes.length, 0)
+        assertEquals(supa.registro.completacoes.length, 0)
+        assertEquals(chamadas.includes('/api/v2/me/shipment/generate'), true)
+        assertEquals(chamadas.includes('/api/v2/me/shipment/print'), false)
+        assertEquals(chamadas.includes('/api/v2/me/shipment/tracking'), false)
+        assertEquals(supa.registro.eventos.length, 1)
+        const evento = supa.registro.eventos[0]
+        assertEquals(evento.event_type, 'erro')
+        assertEquals(evento.payload.etapa, 'generate')
+        assertEquals(evento.payload.label_id, LABEL_ID)
+        assertEquals(evento.error_message.includes('Envio bloqueado para geração.'), true)
+        assertEquals(linhas.some((linha) => linha.includes('Envio bloqueado para geração.')), true)
+    })
+})
+
+Deno.test("handler - generate 200 recusado: motivo limitado e sem CPF, e-mail, telefone ou campos irmãos no evento e no log", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const base = buscarMeFalso()
+        const mensagem = `Contato pessoa@teste.local, (34) 99999-0000, CPF 529.982.247-25. ${'x'.repeat(400)} FIM-NAO-DEVE-APARECER`
+        const buscar = (async (input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me/shipment/generate')) {
+                return new Response(JSON.stringify({
+                    [LABEL_ID]: { status: false, message: mensagem, to: { name: 'Nome que não pode vazar', address: 'Rua que não pode vazar' } },
+                    outro_envio: { status: false, message: 'Mensagem de outro envio' },
+                }))
+            }
+            return base.buscar(input, init)
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 502)
+            const corpo = await res.json()
+            assertEquals(corpo.error.includes('Contato'), false)
+        })
+        const evento = supa.registro.eventos[0]
+        assertEquals(evento.event_type, 'erro')
+        assertEquals(evento.payload.etapa, 'generate')
+        const linha = linhas.find((linha) => linha.includes('generate recusado')) ?? ''
+        for (const texto of [evento.error_message, linha]) {
+            assertEquals(texto.includes('Contato [email], [telefone], CPF [cpf].'), true)
+            for (const proibido of ['pessoa@teste.local', '99999-0000', '529.982.247-25', 'Nome que não pode vazar', 'Rua que não pode vazar', 'Mensagem de outro envio', 'FIM-NAO-DEVE-APARECER']) {
+                assertEquals(texto.includes(proibido), false)
+            }
+        }
+        const motivo = evento.error_message.replace('O Melhor Envio recusou a geração da etiqueta: ', '')
+        assertEquals(motivo.length, 300)
+    })
+})
+
+for (const [caso, texto] of [
+    ['status true', JSON.stringify({ [LABEL_ID]: { status: true } })],
+    ['corpo vazio', ''],
+    ['não JSON', '<html>gateway</html>'],
+    ['array', JSON.stringify([{ status: false, message: 'Sem id' }])],
+    ['outro id recusado', JSON.stringify({ outro_envio: { status: false, message: 'Outro envio' } })],
+    ['status ausente', JSON.stringify({ [LABEL_ID]: { message: 'Sem status' } })],
+    ['status string false', JSON.stringify({ [LABEL_ID]: { status: 'false' } })],
+    ['status null', JSON.stringify({ [LABEL_ID]: { status: null } })],
+    ['entrada null', JSON.stringify({ [LABEL_ID]: null })],
+    ['JSON null', 'null'],
+]) {
+    Deno.test(`handler - generate 200 com ${caso}: segue para impressão e rastreio sem recusar por dúvida`, async () => {
+        await comEnvAdmin(async () => {
+            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const base = buscarMeFalso()
+            const chamadas: string[] = []
+            const buscar = (async (input: any, init?: any) => {
+                const url = String(input instanceof Request ? input.url : input)
+                chamadas.push(new URL(url).pathname)
+                if (url.endsWith('/api/v2/me/shipment/generate')) return new Response(texto)
+                return base.buscar(input, init)
+            }) as any
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            const corpo = await res.json()
+            assertEquals(res.status, 200)
+            assertEquals(corpo.success, true)
+            assertEquals(corpo.label_url, 'https://imprimir.teste/etiqueta')
+            assertEquals(corpo.tracking_code, 'ME123456789BR')
+            assertEquals(chamadas.includes('/api/v2/me/shipment/print'), true)
+            assertEquals(chamadas.includes('/api/v2/me/shipment/tracking'), true)
+            assertEquals(supa.registro.pedidoAtual.shipping_label_id, LABEL_ID)
+            assertEquals(supa.registro.liberacoes.length, 0)
+            assertEquals(supa.registro.eventos.map((evento) => evento.event_type), ['etiqueta_gerada'])
+        })
+    })
+}
 
 Deno.test("handler - print HTTP (4xx, falha suave) com campo irmão de `errors`: o log usa motivoDoProvedor — nunca o corpo cru", async () => {
     await comEnvAdmin(async () => {

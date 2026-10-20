@@ -700,7 +700,18 @@ export function etapasDaDevolucao(d: {
   ];
 }
 
-/** O que o cliente faz agora (ou o que está acontecendo), em uma frase. */
+const TEXTO_REEMBOLSO_CONFIRMANDO_CLIENTE =
+  "A loja está confirmando sua devolução com o Mercado Pago.";
+
+/**
+ * O que o cliente faz agora (ou o que está acontecendo), em uma frase.
+ *
+ * `statusDoReembolso` (lote R1, 15/10/2026): o status da linha de
+ * `order_refunds` desta devolução. Só `"concluido"` deixa dizer "liberado";
+ * qualquer outra coisa — em andamento, falhou, ou ainda não lido (`null`) —
+ * diz que a loja está confirmando. Antes a frase afirmava "liberado" assim
+ * que a devolução concluía, mesmo com o dinheiro ainda sem sair.
+ */
 export function instrucaoParaOCliente(
   d: Pick<
     DevolucaoDetalhe,
@@ -716,6 +727,7 @@ export function instrucaoParaOCliente(
     | "valor_reembolso"
   >,
   loja: { endereco?: string | null; horario?: string | null },
+  statusDoReembolso: string | null = null,
 ): string {
   switch (d.status) {
     case "solicitada":
@@ -743,10 +755,17 @@ export function instrucaoParaOCliente(
             ? "Imprima a declaração de conteúdo (botão Etiqueta) e leve o pacote a uma agência dos Correios em até 7 dias, informando o código de postagem abaixo — ele também é o rastreio da devolução. Depois de postar, toque em “Já postei”."
             : "A loja está preparando a declaração de conteúdo (DC-e), obrigatória para postar. Ela aparece aqui como um botão “Etiqueta” assim que ficar pronta — vale a pena esperar antes de ir aos Correios com o código abaixo.";
         }
-        default:
+        default: {
+          // Envio próprio: quem posta de outra cidade precisa saber PARA ONDE.
+          // Sem endereço cadastrado, manda perguntar — nunca inventa um.
+          const endereco = loja.endereco?.trim();
+          const destino = endereco
+            ? `Envie para: ${endereco}.`
+            : "Peça o endereço de envio à loja.";
           return d.tipo === "troca"
-            ? "Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui."
-            : "Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. Guarde o comprovante: a loja reembolsa o frete de volta.";
+            ? `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino}`
+            : `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino} Guarde o comprovante: a loja reembolsa o frete de volta.`;
+        }
       }
     case "em_transito":
       return d.codigo_rastreio
@@ -757,9 +776,12 @@ export function instrucaoParaOCliente(
     case "concluida": {
       if (d.resolucao_final === "reembolso") {
         const valor = formatarReais(d.valor_reembolso ?? 0);
-        return d.reembolso_manual
-          ? `Reembolso de ${valor} combinado com a loja (em mãos ou por PIX).`
-          : `Reembolso de ${valor} liberado pelo Mercado Pago: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).`;
+        if (d.reembolso_manual) {
+          return `Reembolso de ${valor} combinado com a loja (em mãos ou por PIX).`;
+        }
+        return statusDoReembolso === "concluido"
+          ? `Reembolso de ${valor} liberado pelo Mercado Pago: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).`
+          : TEXTO_REEMBOLSO_CONFIRMANDO_CLIENTE;
       }
       if (d.resolucao_final === "troca") {
         return "A troca foi confirmada. A loja combina com você a entrega do novo produto.";
@@ -816,6 +838,16 @@ const campo = (o: Objeto, chave: string): unknown =>
   Object.prototype.hasOwnProperty.call(o, chave)
     ? Object.getOwnPropertyDescriptor(o, chave)?.value
     : undefined;
+
+/**
+ * Colunas de `politica_devolucao` que `anon` e `authenticated` podem ler.
+ * Tudo menos `updated_by` (o uuid do admin que salvou por último): a migration
+ * 20261215 tirou o SELECT da tabela inteira, então `select("*")` falha. Os
+ * tipos gerados (database.types.ts) ignoram privilégio de coluna e ainda
+ * mostram `updated_by`: um `select("updated_by")` compila e quebra em runtime.
+ */
+export const COLUNAS_DA_POLITICA =
+  "prazo_arrependimento_dias,prazo_troca_dias,prazo_vicio_dias,aceita_troca,aceita_vale,exige_fotos_vicio,metodos_locais,metodos_nacionais,reembolso_momento,frete_troca_pago_por,categorias_sem_troca,texto_politica,endereco_devolucao,updated_at";
 
 export function lerPolitica(v: unknown): PoliticaDevolucao | null {
   if (!ehObjeto(v)) return null;

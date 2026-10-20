@@ -228,6 +228,8 @@ export interface FechamentoDeCaixa {
 /** Corpo de `fin_lancamento_salvar(p jsonb)` — contrato do plano. */
 export interface PayloadDoLancamento {
   readonly id?: string;
+  /** Opcional para clientes antigos; repetir a criação preserva todos os ids. */
+  readonly chave_idempotencia?: string;
   readonly tipo: TipoDeLancamento;
   readonly valor: number;
   readonly conta_id: string;

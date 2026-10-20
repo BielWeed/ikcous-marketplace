@@ -1,7 +1,10 @@
+import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
 import {
-  type EstadoDeOperacao,
-  EstadoDeOperacaoProvider,
-} from "@/components/admin/PontoDeOperacao";
+  ContextoDaBarra,
+  useBarraAcoplada,
+} from "@/components/layouts/AcaoDaBarra";
+import { ConexaoDoPainel } from "@/components/layouts/ConexaoDoPainel";
+import { IlhaDeAtualizacao } from "@/components/pwa/IlhaDeAtualizacao";
 import { Button } from "@/components/ui/button";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
@@ -23,6 +26,10 @@ import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
+import {
+  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+  inicioDaJanelaDoSino,
+} from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -40,42 +47,18 @@ import {
   Bell,
   Layers,
   LayoutGrid,
+  Lock,
   Package,
   Plus,
   ScanBarcode,
   Settings,
   ShoppingBag,
   Store,
+  TriangleAlert,
   Users,
+  WifiOff,
 } from "lucide-react";
 import React from "react";
-
-/**
- * Palavras do selo de conexão (painel simples, G7a). A barra lateral e o
- * cabeçalho do celular dizem a mesma coisa — "Sem internet / Sincronizado /
- * Lenta / Online" — e o title explica em frase, sem milissegundo: o lojista
- * não precisa do número, só de saber se a conexão está boa. A medição em si
- * (`useConnectionDiagnostics`) não muda.
- */
-function rotuloDoSelo(
-  isOffline: boolean,
-  showSyncFlash: boolean,
-  quality: EstadoDeOperacao["quality"],
-): string {
-  if (isOffline) return "Sem internet";
-  if (showSyncFlash) return "Sincronizado";
-  return quality === "slow" ? "Lenta" : "Online";
-}
-
-function tituloDoSelo(
-  isOffline: boolean,
-  showSyncFlash: boolean,
-  quality: EstadoDeOperacao["quality"],
-): string {
-  if (isOffline) return "Sem conexão com o servidor";
-  if (showSyncFlash) return "Sincronização concluída!";
-  return quality === "slow" ? "Conexão lenta" : "Conexão boa";
-}
 
 /**
  * Pedidos que ainda exigem ação do lojista — alias de `STATUS_PARA_PREPARAR`
@@ -114,6 +97,28 @@ interface AdminLayoutProps {
   onBack?: () => void;
 }
 
+/** Registra o fim anormal de um canal de avisos do painel (só log, sem efeito na tela). */
+function aoMudarOStatusDoCanal(nome: string) {
+  return (status: any, err?: any) => {
+    if (status !== "CHANNEL_ERROR") return;
+    const errMessage = err?.message || (typeof err === "string" ? err : "");
+    if (errMessage.includes("1000") || errMessage.includes("normal")) {
+      console.log(
+        `[AdminLayout] ${nome} badge channel closed normally (socket closed: 1000)`,
+      );
+    } else if (errMessage.includes("1006") || errMessage.includes("abnormal")) {
+      console.warn(
+        `[AdminLayout] ${nome} badge channel abnormally closed (socket closed: 1006). SDK will auto-reconnect.`,
+      );
+    } else {
+      console.error(
+        `[AdminLayout] ${nome} badge channel error:`,
+        err?.message || err,
+      );
+    }
+  };
+}
+
 export function AdminLayout({
   children,
   currentView,
@@ -139,6 +144,12 @@ export function AdminLayout({
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
   const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
   const [devolucoesSolicitadasCount, setDevolucoesSolicitadasCount] =
+    React.useState(0);
+  // Pedidos de privacidade (exclusão de conta, correção de e-mail) que a loja
+  // ainda não respondeu: têm prazo legal de 15 dias, então também acendem o sino.
+  const [privacidadeAbertosCount, setPrivacidadeAbertosCount] =
+    React.useState(0);
+  const [recebimentosPorMarcarCount, setRecebimentosPorMarcarCount] =
     React.useState(0);
   // Defeito medido em 25/08/2026: quando uma das consultas abaixo
   // falhava, a contagem dela ficava parada em 0 e o sino apagava — a mesma
@@ -267,6 +278,40 @@ export function AdminLayout({
             contagemDe(devolucoes.contagem, "solicitada"),
           );
         }
+
+        // Mesmo critério da lista em useAvisosDoLojista: só `aberto` espera a
+        // loja. Resposta sem número (nem erro) é falha da fonte, nunca "zero":
+        // o prazo legal corre e a dúvida acende o sino como nas outras fontes.
+        const { count: privacidadeCount, error: privacidadeErr } =
+          await supabase
+            .from("pedidos_de_privacidade")
+            .select("id", { count: "exact", head: true })
+            .eq("situacao", "aberto");
+        if (privacidadeErr || typeof privacidadeCount !== "number") {
+          falhouAlgumaConsulta = true;
+        } else if (podeGravar()) {
+          setPrivacidadeAbertosCount(privacidadeCount);
+        }
+
+        // Pedido entregue, pago na entrega, sem recebimento marcado (14/10):
+        // a cliente nao consegue pedir devolucao ate a lojista marcar, entao
+        // acende o sino. A MESMA regra da lista (`useAvisosDoLojista`), lida
+        // de `@/lib/recebimentos-por-marcar` — duas contagens diferentes para
+        // a mesma pergunta seria pior que nenhuma.
+        const { count: recebimentosCount, error: recebimentosErr } =
+          await supabase
+            .from("marketplace_orders")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "delivered")
+            .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
+            .is("payment_status", null)
+            .gte("updated_at", await inicioDaJanelaDoSino());
+
+        if (recebimentosErr) {
+          falhouAlgumaConsulta = true;
+        } else if (recebimentosCount !== null && podeGravar()) {
+          setRecebimentosPorMarcarCount(recebimentosCount);
+        }
       } catch (err) {
         console.error("[AdminLayout] Error fetching initial counts:", err);
         falhouAlgumaConsulta = true;
@@ -299,7 +344,8 @@ export function AdminLayout({
     };
 
     // LIMITACAO CONHECIDA, de proposito: nao ha canal de tempo real para
-    // `reviews` nem `devolucoes`. Essas contagens são lidas na busca
+    // `reviews`, `devolucoes` nem `pedidos_de_privacidade` (os pedidos de
+    // privacidade dos clientes). Essas contagens são lidas na busca
     // inicial e nas revalidacoes de `visibilitychange` — uma pendência que
     // chegue com o painel aberto so acende a bolinha na proxima vez que a
     // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
@@ -320,30 +366,7 @@ export function AdminLayout({
               bc?.postMessage({ type: "badge_update" });
             },
           )
-          .subscribe((status: any, err?: any) => {
-            if (status === "CHANNEL_ERROR") {
-              const errMessage =
-                err?.message || (typeof err === "string" ? err : "");
-              const isNormalClose =
-                errMessage.includes("1000") || errMessage.includes("normal");
-              const isAbnormalClose =
-                errMessage.includes("1006") || errMessage.includes("abnormal");
-              if (isNormalClose) {
-                console.log(
-                  "[AdminLayout] Orders badge channel closed normally (socket closed: 1000)",
-                );
-              } else if (isAbnormalClose) {
-                console.warn(
-                  "[AdminLayout] Orders badge channel abnormally closed (socket closed: 1006). SDK will auto-reconnect.",
-                );
-              } else {
-                console.error(
-                  "[AdminLayout] Orders badge channel error:",
-                  err?.message || err,
-                );
-              }
-            }
-          });
+          .subscribe(aoMudarOStatusDoCanal("Orders"));
 
         questionsChannel = supabase
           .channel("admin-layout-questions-badge")
@@ -363,30 +386,7 @@ export function AdminLayout({
               bc?.postMessage({ type: "badge_update" });
             },
           )
-          .subscribe((status: any, err?: any) => {
-            if (status === "CHANNEL_ERROR") {
-              const errMessage =
-                err?.message || (typeof err === "string" ? err : "");
-              const isNormalClose =
-                errMessage.includes("1000") || errMessage.includes("normal");
-              const isAbnormalClose =
-                errMessage.includes("1006") || errMessage.includes("abnormal");
-              if (isNormalClose) {
-                console.log(
-                  "[AdminLayout] Questions badge channel closed normally (socket closed: 1000)",
-                );
-              } else if (isAbnormalClose) {
-                console.warn(
-                  "[AdminLayout] Questions badge channel abnormally closed (socket closed: 1006). SDK will auto-reconnect.",
-                );
-              } else {
-                console.error(
-                  "[AdminLayout] Questions badge channel error:",
-                  err?.message || err,
-                );
-              }
-            }
-          });
+          .subscribe(aoMudarOStatusDoCanal("Questions"));
       } else {
         console.log(
           "[AdminLayout] Secondary tab listening to badge updates via BroadcastChannel...",
@@ -436,10 +436,16 @@ export function AdminLayout({
     }
 
     document.addEventListener("visibilitychange", handleVisibility);
+    // A lojista salvou outro prazo de devolução: o corte do sino muda.
+    window.addEventListener("admin:recontar-avisos", pedirConferenciaDeAvisos);
 
     return () => {
       isMounted = false;
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener(
+        "admin:recontar-avisos",
+        pedirConferenciaDeAvisos,
+      );
       unsubscribe();
       bc?.close();
       if (timeoutDeRetentativa) {
@@ -571,11 +577,36 @@ export function AdminLayout({
   }, [currentView]);
 
   const navItems = [
-    { icon: Store, label: "Início", view: "admin-dashboard" },
-    { icon: Package, label: "Pedidos", view: "admin-orders" },
-    { icon: ShoppingBag, label: "Produtos", view: "admin-products" },
-    { icon: Users, label: "Clientes", view: "admin-customers" },
-    { icon: Settings, label: "Ajustes", view: "admin-settings" },
+    {
+      icon: Store,
+      label: "Início",
+      view: "admin-dashboard",
+      cor: "text-[#91ABFF] bg-[#91ABFF]/10 border-[#91ABFF]/20",
+    },
+    {
+      icon: Package,
+      label: "Pedidos",
+      view: "admin-orders",
+      cor: "text-[#C4A7FF] bg-[#C4A7FF]/10 border-[#C4A7FF]/20",
+    },
+    {
+      icon: ShoppingBag,
+      label: "Produtos",
+      view: "admin-products",
+      cor: "text-[#FFA1C6] bg-[#FFA1C6]/10 border-[#FFA1C6]/20",
+    },
+    {
+      icon: Users,
+      label: "Clientes",
+      view: "admin-customers",
+      cor: "text-[#6DE0CF] bg-[#6DE0CF]/10 border-[#6DE0CF]/20",
+    },
+    {
+      icon: Settings,
+      label: "Ajustes",
+      view: "admin-settings",
+      cor: "text-[#75DBFF] bg-[#75DBFF]/10 border-[#75DBFF]/20",
+    },
   ];
 
   /**
@@ -603,14 +634,21 @@ export function AdminLayout({
     pendingOrdersCount > 0 ||
     pendingQuestionsCount > 0 ||
     pendingReviewsCount > 0 ||
-    devolucoesSolicitadasCount > 0;
+    devolucoesSolicitadasCount > 0 ||
+    privacidadeAbertosCount > 0 ||
+    recebimentosPorMarcarCount > 0;
 
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
   const prevOfflineRef = React.useRef(isOffline);
+  // Lida DENTRO do efeito, sem entrar nas deps: sair de "sem internet" para
+  // "lenta" não sincronizou nada — o flash "Sincronizado" só vale para a volta
+  // a uma conexão que responde.
+  const qualityRef = React.useRef(quality);
+  qualityRef.current = quality;
 
   React.useEffect(() => {
-    if (prevOfflineRef.current && !isOffline) {
+    if (prevOfflineRef.current && !isOffline && qualityRef.current !== "slow") {
       setShowSyncFlash(true);
       const timer = setTimeout(() => {
         setShowSyncFlash(false);
@@ -763,20 +801,29 @@ export function AdminLayout({
     [isOffline, quality, latency, showSyncFlash],
   );
 
-  return (
+  const barraAcoplada = useBarraAcoplada();
+
+  return React.createElement(
+    ContextoDaBarra.Provider,
+    { value: barraAcoplada },
     <div
       className="flex size-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-50 lg:flex-row"
       style={
         {
+          // iPhone instalado: o app desenha por baixo da barra de status/notch
+          // (`black-translucent`); sem esta folga o cabeçalho do painel ficava
+          // por baixo dela. Vale 0 fora disso.
+          paddingTop: "var(--safe-area-top)",
+          "--admin-prateleira-altura": `${barraAcoplada.altura}px`,
           "--admin-tab-pb": isStandalone
-            ? "calc(6.25rem + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
-            : `calc(6.25rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))`,
+            ? "calc(6.25rem + var(--admin-prateleira-altura, 0px) + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
+            : `calc(6.25rem + var(--admin-prateleira-altura, 0px) + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))`,
         } as React.CSSProperties
       }
     >
-      {/* Desktop Sidebar */}
+      {/* No computador, os mesmos destinos e estados ficam na lateral. */}
       <aside
-        className="z-50 hidden w-64 flex-shrink-0 flex-col justify-between border-r border-white/5 bg-[#09090b]/80 p-6 backdrop-blur-xl lg:flex"
+        className="z-50 hidden w-64 shrink-0 flex-col justify-between gap-6 overflow-y-auto border-r border-white/5 bg-[#101013] p-5 lg:flex"
         style={
           {
             viewTransitionName: isViewTransitionSupported
@@ -785,74 +832,24 @@ export function AdminLayout({
           } as React.CSSProperties
         }
       >
-        <div className="space-y-8">
-          <div className="flex select-none flex-col">
-            <div className="flex items-center justify-between gap-2">
-              {/* min-w-0 + break-words: o selo (shrink-0) ficou maior; sem isso um
-                  nome de uma palavra só ("Distribuidora…") estoura a borda da
-                  coluna quando o selo diz "Sem internet" ou "Sincronizado". */}
-              <h1 className="min-w-0 break-words text-xl font-black leading-none tracking-tight text-white">
-                {nomeDaLoja(config)}{" "}
-                <span className="text-admin-gold">Admin</span>
-              </h1>
-              <div
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-0.5 rounded-full border bg-zinc-950/80 border-white/5 select-none shrink-0 cursor-help transition-all duration-500",
-                  showSyncFlash
-                    ? "border-emerald-500/50 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.2)] scale-105"
-                    : "border-white/5",
-                )}
-                title={tituloDoSelo(isOffline, showSyncFlash, quality)}
-              >
-                <span
-                  className={cn(
-                    "w-1.5 h-1.5 rounded-full relative flex transition-colors duration-300",
-                    isOffline
-                      ? "bg-red-500"
-                      : showSyncFlash
-                        ? "bg-emerald-500"
-                        : quality === "slow"
-                          ? "bg-amber-500"
-                          : quality === "good"
-                            ? "bg-sky-500"
-                            : "bg-emerald-500",
-                  )}
-                >
-                  {!isOffline && (
-                    <span
-                      className={cn(
-                        "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-                        showSyncFlash
-                          ? "bg-emerald-400"
-                          : quality === "slow"
-                            ? "bg-amber-400"
-                            : quality === "good"
-                              ? "bg-sky-400"
-                              : "bg-emerald-400",
-                      )}
-                    />
-                  )}
-                </span>
-                <span
-                  className={cn(
-                    "text-[11px] font-black uppercase tracking-wide transition-colors",
-                    showSyncFlash ? "text-emerald-400" : "text-zinc-400",
-                  )}
-                >
-                  {rotuloDoSelo(isOffline, showSyncFlash, quality)}
-                </span>
-              </div>
-            </div>
+        <div className="space-y-7">
+          <div className="space-y-5">
+            <h1 className="min-w-0 break-words text-xl font-semibold leading-tight text-zinc-50">
+              {nomeDaLoja(config)}{" "}
+              <span className="mt-1 block text-xs font-normal text-[#A1A1AD]">
+                Admin
+              </span>
+            </h1>
+            <ConexaoDoPainel estado={estadoDeOperacao} />
           </div>
-
-          <nav className="flex flex-col gap-1.5">
-            {/* "Vender" NÃO é uma 6ª aba (navItems continua com 5 — plano
-                §5.3): é um botão DESTACADO, irmão do `.map`, para não
-                arrastar os 8 lugares que tratam `navItems` como as tabs
-                principais (ADMIN_TABS_SET, isMainTabNav, o atalho
-                Ctrl+Alt e os TabWrapper de AdminArea.tsx). */}
+          <nav
+            aria-label="Navegação do painel"
+            className="flex flex-col gap-1.5"
+          >
             <button
               type="button"
+              aria-label="Vender"
+              aria-current={currentView === "admin-pdv" ? "page" : undefined}
               onClick={() => {
                 haptic.light();
                 onNavigate("admin-pdv" as View);
@@ -860,27 +857,42 @@ export function AdminLayout({
               onMouseEnter={() => handleMouseEnter("admin-pdv")}
               onMouseLeave={handleMouseLeave}
               onTouchStart={() => handleMouseEnter("admin-pdv", true)}
-              className="mb-1 flex w-full items-center gap-3.5 rounded-2xl bg-admin-gold px-4 py-3.5 text-left text-[11px] font-black uppercase tracking-widest text-black transition-transform active:scale-95"
+              className={cn(
+                "mb-3 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-white/10 px-3 text-left text-sm font-semibold transition-transform active:scale-95",
+                currentView === "admin-pdv"
+                  ? "bg-[#3B3016] text-admin-gold"
+                  : "bg-[#17171C] text-zinc-50",
+              )}
             >
-              <ScanBarcode className="size-4.5" />
-              <span className="flex-grow">Vender</span>
+              <span
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-xl border",
+                  currentView === "admin-pdv"
+                    ? "border-transparent"
+                    : "border-emerald-400/20 bg-emerald-400/10 text-emerald-400",
+                )}
+              >
+                <ScanBarcode aria-hidden="true" className="size-5" />
+              </span>
+              Vender
             </button>
-            {navItems.map((item, idx) => {
+            {navItems.map((item) => {
               const Icon = item.icon;
               const parentView = getParentView(currentView);
-              // Relato do dono em teste real (19/09, print): no PDV a barra
-              // marcava GERAL como ativa. O pai do admin-pdv (dashboard)
-              // existe para o botão VOLTAR, não para herdar destaque —
-              // "Vender" é AÇÃO com botão próprio (o redondo, que se marca
-              // com anel). Na tela dele, nenhuma aba acende.
               const isActive =
                 currentView === item.view ||
                 (item.view === "admin-dashboard" && currentView === "admin") ||
                 (parentView === item.view && currentView !== "admin-pdv");
-
               return (
                 <button
-                  key={idx}
+                  key={item.view}
+                  type="button"
+                  aria-current={isActive ? "page" : undefined}
+                  aria-label={
+                    item.view === "admin-orders" && pendingOrdersCount > 0
+                      ? `${item.label}, ${pendingOrdersCount} para preparar`
+                      : item.label
+                  }
                   onClick={() => {
                     haptic.light();
                     onNavigate(item.view as View);
@@ -889,55 +901,35 @@ export function AdminLayout({
                   onMouseLeave={handleMouseLeave}
                   onTouchStart={() => handleMouseEnter(item.view, true)}
                   className={cn(
-                    "flex items-center gap-3.5 px-4 py-3.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 text-left font-black uppercase text-[11px] tracking-widest transform-gpu w-full",
+                    "relative flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-[color,transform] active:scale-95",
                     isActive
-                      ? "text-admin-gold"
-                      : "text-zinc-500 hover:text-zinc-300",
+                      ? "bg-[#3B3016] font-semibold text-admin-gold"
+                      : "text-[#A1A1AD] hover:text-white",
                   )}
                 >
-                  {isActive && (
-                    <motion.div
-                      layoutId="admin-active-pill-desktop"
-                      className="absolute inset-0 -z-10 rounded-2xl border border-white/5 bg-zinc-800/40 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05),0_8px_16px_rgba(0,0,0,0.3)]"
-                      style={
-                        {
-                          viewTransitionName: isViewTransitionSupported
-                            ? "admin-active-pill-desktop"
-                            : undefined,
-                        } as React.CSSProperties
-                      }
-                      transition={{
-                        type: "spring",
-                        stiffness: 380,
-                        damping: 30,
-                      }}
-                    />
-                  )}
-                  <Icon
+                  <span
                     className={cn(
-                      "w-4.5 h-4.5 transition-transform group-hover:scale-105",
-                      isActive && "scale-110",
+                      "flex size-8 shrink-0 items-center justify-center rounded-xl border",
+                      isActive ? "border-transparent" : item.cor,
                     )}
-                  />
-                  <span className="flex-grow">{item.label}</span>
+                  >
+                    <Icon aria-hidden="true" className="size-5" />
+                  </span>
+                  <span className="flex-1">{item.label}</span>
                   {item.view === "admin-orders" && pendingOrdersCount > 0 && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-black text-white shadow-[0_0_12px_rgba(239,68,68,0.4)] duration-200 animate-in zoom-in-95">
-                      {pendingOrdersCount}
+                    <span
+                      aria-hidden="true"
+                      className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1.5 text-[11px] font-bold text-white"
+                    >
+                      {pendingOrdersCount > 99 ? "99+" : pendingOrdersCount}
                     </span>
                   )}
-                  {/* O badge de perguntas pendentes NÃO mora na engrenagem
-                      de Ajustes: clicar nela abre as configurações da loja,
-                      onde pendência de pergunta nenhuma aparece — o lojista
-                      via o número e não achava nada (relato do Gabriel,
-                      02/09). Quem acende e leva à lista de perguntas é o
-                      SINO (temAvisoNoSino → tela de Notificações). */}
                 </button>
               );
             })}
           </nav>
         </div>
-
-        <div className="flex flex-col gap-2 space-y-4 border-t border-white/5 pt-4">
+        <div className="flex flex-col gap-2 pt-5">
           <Button
             variant="ghost"
             onClick={() => {
@@ -950,33 +942,42 @@ export function AdminLayout({
             }}
             onMouseEnter={() => handleMouseEnter(parentView as any)}
             onMouseLeave={handleMouseLeave}
-            className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[11px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
+            className="min-h-11 w-full justify-start gap-3 rounded-2xl border border-white/10 bg-[#17171C] px-3 text-xs text-zinc-50"
           >
-            <ArrowLeft className="size-4 text-zinc-400" />{" "}
-            <span>{isSubView ? "Voltar" : "Perfil"}</span>
+            <ArrowLeft aria-hidden="true" className="size-5 text-violet-300" />
+            {isSubView ? "Voltar" : "Perfil"}
           </Button>
-          {/*
-            A porta das Notificações no COMPUTADOR. O sino mora no cabeçalho
-            `lg:hidden` e esta `<aside>` é `hidden ... lg:flex`: são larguras
-            opostas, então uma porta só no sino deixaria a tela inalcançável
-            acima de 1024px. Foi exatamente esse o defeito que a revisão de
-            contexto limpo pegou — zero portas visíveis no computador.
-          */}
           <Button
             variant="ghost"
             aria-label="Notificações"
+            title={
+              naoConseguiuConferirAvisos
+                ? "Falha ao conferir avisos"
+                : undefined
+            }
             onClick={() => {
               haptic.light();
               onNavigate(notificationBellTarget);
             }}
             onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
             onMouseLeave={handleMouseLeave}
-            className="relative flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[11px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
+            className="relative min-h-11 w-full justify-start gap-3 rounded-2xl border border-white/10 bg-[#17171C] px-3 text-xs text-zinc-50"
           >
-            <Bell className="size-4 text-admin-gold" />{" "}
+            <Bell
+              aria-hidden="true"
+              className={cn(
+                "size-5",
+                naoConseguiuConferirAvisos
+                  ? "text-[#FFA1B0]"
+                  : "text-[#75DBFF]",
+              )}
+            />
             <span>Notificações</span>
             {temAvisoNoSino && (
-              <span className="absolute right-4 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
+              <span
+                aria-hidden="true"
+                className="ml-auto size-2 animate-pulse rounded-full bg-red-500"
+              />
             )}
           </Button>
         </div>
@@ -984,22 +985,12 @@ export function AdminLayout({
 
       {/* Main Area Wrapper */}
       <div className="relative flex h-full flex-1 flex-col overflow-hidden">
-        {/* Offline Alert Banner */}
-        {isOffline && (
-          <div className="relative z-[70] flex shrink-0 select-none items-center justify-center gap-2 border-b border-red-500/20 bg-red-500/10 px-6 py-2.5 text-center text-[11px] font-black uppercase tracking-widest text-red-400 duration-300 animate-in fade-in slide-in-from-top">
-            <span className="size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-            <span>
-              Conexão perdida. Criação, edição e exclusão de dados estão
-              temporariamente bloqueadas.
-            </span>
-          </div>
-        )}
-
-        {/* Compact Header - Mobile Only. Fundo SÓLIDO e sem blur: é `sticky` e
+        {/* Navegação compacta no celular; ilha também no desktop.
+            Fundo SÓLIDO e sem blur: é `sticky` e
             a lista rola por baixo dele (mesmo caso da barra inferior); com
             95% + blur o texto de baixo ainda se lia atrás dos títulos. */}
         <header
-          className="sticky top-0 z-50 flex-shrink-0 border-b border-white/5 bg-zinc-950 px-3.5 py-0 shadow-md lg:hidden"
+          className="sticky top-0 z-50 flex-shrink-0 border-b border-white/5 bg-[#101013] px-5 py-0 shadow-md lg:border-0 lg:shadow-none"
           style={
             {
               viewTransitionName: isViewTransitionSupported
@@ -1008,161 +999,193 @@ export function AdminLayout({
             } as React.CSSProperties
           }
         >
-          <div className="mx-auto max-w-7xl">
-            {/* Row 1: Top Navigation Bar */}
-            <div className="flex h-11 items-center justify-between gap-2">
-              {/* Left: Profile or Back Button */}
-              <div className="flex shrink-0 items-center">
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    haptic.light();
-                    if (onBack) {
-                      onBack();
-                    } else {
-                      onNavigate(parentView as View);
+          <div className="mx-auto max-w-7xl lg:hidden">
+            <div className="flex min-h-14 items-center gap-3 py-1">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  haptic.light();
+                  if (onBack) {
+                    onBack();
+                  } else {
+                    onNavigate(parentView as View);
+                  }
+                }}
+                onMouseEnter={() => handleMouseEnter(parentView as any)}
+                onMouseLeave={handleMouseLeave}
+                className="min-h-11 min-w-11 shrink-0 gap-1.5 rounded-full border border-white/10 bg-[#17171C] px-2 text-xs font-semibold text-zinc-50 hover:bg-[#26262E]"
+              >
+                <span className="flex size-6 items-center justify-center rounded-full border border-violet-300/20 bg-violet-300/10">
+                  <ArrowLeft
+                    aria-hidden="true"
+                    className="size-3.5 text-violet-300"
+                  />
+                </span>
+                {isSubView ? "Voltar" : "Perfil"}
+              </Button>
+              <ConexaoDoPainel
+                key={currentView}
+                estado={estadoDeOperacao}
+                nome={nomeDaLoja(config)}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Notificações"
+                title={
+                  naoConseguiuConferirAvisos
+                    ? "Falha ao conferir avisos"
+                    : temAvisoNoSino
+                      ? "Há avisos para conferir"
+                      : "Notificações"
+                }
+                className={cn(
+                  "relative min-h-11 min-w-11 shrink-0 rounded-full border p-0 active:scale-95",
+                  naoConseguiuConferirAvisos
+                    ? "border-rose-300/25 bg-[#401A24] text-[#FFA1B0]"
+                    : "border-sky-300/20 bg-[#192A31] text-[#75DBFF]",
+                )}
+                onClick={() => {
+                  haptic.light();
+                  onNavigate(notificationBellTarget);
+                }}
+                onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
+                onMouseLeave={handleMouseLeave}
+              >
+                <Bell aria-hidden="true" className="size-5" />
+                {temAvisoNoSino && (
+                  <span
+                    aria-hidden="true"
+                    className={
+                      naoConseguiuConferirAvisos
+                        ? "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1 text-[11px] font-bold text-white"
+                        : "absolute right-0 top-0 size-2 animate-pulse rounded-full bg-red-500 ring-2 ring-[#101013]"
                     }
-                  }}
-                  onMouseEnter={() => handleMouseEnter(parentView as any)}
-                  onMouseLeave={handleMouseLeave}
-                  // Alvo de toque de 44px (painel simples, A3): o botão é o
-                  // envoltório clicável, transparente; a pílula de 28px que
-                  // o lojista vê mora no <span> de dentro.
-                  className="group flex min-h-11 min-w-11 transform-gpu items-center justify-center rounded-full bg-transparent p-0 transition-transform duration-200 hover:bg-transparent active:scale-95 dark:hover:bg-transparent"
-                >
-                  <span className="flex h-7 items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-2.5 text-[11px] font-bold uppercase tracking-widest text-white transition-[background-color] duration-200 group-hover:bg-zinc-800">
-                    <ArrowLeft className="size-3.5 text-zinc-400" />{" "}
-                    <span className="inline">
-                      {isSubView ? "Voltar" : "Perfil"}
-                    </span>
-                  </span>
-                </Button>
-              </div>
-
-              {/* Center: Logo / Title */}
-              <div className="flex items-center justify-center gap-1.5 text-center">
-                <h1 className="text-xs font-black uppercase leading-none tracking-wider text-white">
-                  <span className="text-admin-gold">Admin</span>
-                </h1>
-                <div
-                  className={cn(
-                    "flex items-center gap-1 px-1.5 py-0.5 rounded-full border bg-zinc-950/80 border-white/5 select-none shrink-0 cursor-help transition-all duration-500",
-                    showSyncFlash
-                      ? "border-emerald-500/50 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.2)] scale-105"
-                      : "border-white/5",
-                  )}
-                  title={tituloDoSelo(isOffline, showSyncFlash, quality)}
-                >
-                  <span
-                    className={cn(
-                      "w-1 h-1 rounded-full relative flex transition-colors duration-300",
-                      isOffline
-                        ? "bg-red-500"
-                        : showSyncFlash
-                          ? "bg-emerald-500"
-                          : quality === "slow"
-                            ? "bg-amber-500"
-                            : quality === "good"
-                              ? "bg-sky-500"
-                              : "bg-emerald-500",
-                    )}
                   >
-                    {!isOffline && (
-                      <span
-                        className={cn(
-                          "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-                          showSyncFlash
-                            ? "bg-emerald-400"
-                            : quality === "slow"
-                              ? "bg-amber-400"
-                              : quality === "good"
-                                ? "bg-sky-400"
-                                : "bg-emerald-400",
-                        )}
-                      />
-                    )}
+                    {naoConseguiuConferirAvisos ? "!" : null}
                   </span>
-                  <span
-                    className={cn(
-                      "text-[11px] font-black uppercase tracking-wide transition-colors",
-                      showSyncFlash ? "text-emerald-400" : "text-zinc-400",
-                    )}
-                  >
-                    {rotuloDoSelo(isOffline, showSyncFlash, quality)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Right: Notifications */}
-              <div className="flex shrink-0 items-center">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Notificações"
-                  // Alvo de toque de 44px (painel simples, A3): o botão é o
-                  // envoltório clicável, transparente; o círculo de 28px que
-                  // o lojista vê mora no <div> de dentro.
-                  className="group relative min-h-11 min-w-11 transform-gpu rounded-full bg-transparent p-0 hover:bg-transparent active:scale-95 dark:hover:bg-transparent"
-                  onClick={() => {
-                    haptic.light();
-                    onNavigate(notificationBellTarget);
-                  }}
-                  onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  <div className="relative flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900 transition-colors group-hover:bg-zinc-800">
-                    <Bell className="size-3.5 text-admin-gold" />
-                    {temAvisoNoSino && (
-                      <span className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
-                    )}
-                  </div>
-                </Button>
-              </div>
+                )}
+              </Button>
             </div>
 
             {/* Row 2: Coupled Sub-Header Bar (Admin Banners) */}
             {currentView === "admin-banners" && (
-              <div className="flex h-11 items-center justify-between border-t border-white/5 px-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="flex size-6 items-center justify-center rounded-md border border-[#FFBF00]/25 bg-[#FFBF00]/10 text-[#FFBF00] shadow-[0_0_8px_rgba(255,191,0,0.15)] shrink-0">
-                    <LayoutGrid className="size-3" />
+              <div className="border-t border-white/5 py-2">
+                <div className="flex min-h-14 items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-pink-300/20 bg-pink-300/10 text-pink-300">
+                      <LayoutGrid className="size-3" />
+                    </div>
+                    <h1 className="min-w-0 break-words text-sm font-semibold text-zinc-50">
+                      {NOMES_DO_PAINEL["admin-banners"]}
+                    </h1>
                   </div>
-                  <h1 className="select-none text-xs font-black uppercase tracking-wider text-white truncate">
-                    {NOMES_DO_PAINEL["admin-banners"]}
-                  </h1>
-                </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    haptic.light();
-                    window.dispatchEvent(
-                      new CustomEvent("admin:open-new-banner-dialog"),
-                    );
-                  }}
-                  className="group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] via-amber-450 to-amber-500 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-black shadow-[0_2px_10px_rgba(255,191,0,0.2)] transition-all active:scale-95"
-                >
-                  <Plus className="size-3 stroke-[3px]" />
-                  <span>Novo Banner</span>
-                </button>
+                  <button
+                    type="button"
+                    disabled={isOffline}
+                    aria-describedby={
+                      isOffline ? "motivo-banner-offline" : undefined
+                    }
+                    onClick={() => {
+                      haptic.light();
+                      window.dispatchEvent(
+                        new CustomEvent("admin:open-new-banner-dialog"),
+                      );
+                    }}
+                    className={cn(
+                      "flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-bold transition-transform active:scale-95",
+                      isOffline
+                        ? "border border-white/15 bg-[#1E1E24] text-[#A1A1AD]"
+                        : "bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] text-[#1B1300] shadow-lg",
+                    )}
+                  >
+                    {isOffline ? (
+                      <Lock aria-hidden="true" className="size-4 shrink-0" />
+                    ) : (
+                      <Plus aria-hidden="true" className="size-4 shrink-0" />
+                    )}
+                    <span>
+                      {isOffline ? "Novo Banner indisponível" : "Novo Banner"}
+                    </span>
+                  </button>
+                </div>
+                {isOffline && (
+                  <p
+                    id="motivo-banner-offline"
+                    className="mt-2 text-xs text-[#A1A1AD]"
+                  >
+                    Disponível quando a conexão retornar.
+                  </p>
+                )}
               </div>
             )}
 
             {/* Row 2: Coupled Sub-Header Bar (Admin Carousels) */}
             {currentView === "admin-carousels" && (
-              <div className="flex h-11 items-center justify-between border-t border-white/5 px-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="flex size-6 items-center justify-center rounded-md border border-[#FFBF00]/25 bg-[#FFBF00]/10 text-[#FFBF00] shadow-[0_0_8px_rgba(255,191,0,0.15)] shrink-0">
+              <div className="flex min-h-11 items-center gap-2 border-t border-white/5 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-violet-300/20 bg-violet-300/10 text-violet-300">
                     <Layers className="size-3" />
                   </div>
-                  <h1 className="select-none text-xs font-black uppercase tracking-wider text-white truncate">
+                  <h1 className="min-w-0 break-words text-sm font-semibold text-zinc-50">
                     {NOMES_DO_PAINEL["admin-carousels"]}
                   </h1>
                 </div>
               </div>
             )}
           </div>
+          {/* Sobreposta abaixo dos controles: não desloca a venda em curso.
+              O z local fica abaixo das folhas; só a pílula recebe ponteiro. */}
+          <div className="pointer-events-none absolute inset-x-0 top-full z-[100] flex min-w-0 justify-center">
+            <IlhaDeAtualizacao
+              variante="painel"
+              className="pointer-events-auto mt-1"
+            />
+          </div>
         </header>
+
+        {isOffline && (
+          <div
+            role="alert"
+            className="z-40 mx-5 my-2 flex shrink-0 items-start gap-3 rounded-2xl border border-rose-300/20 bg-[#2B151D] p-3 text-xs leading-relaxed text-[#F5C1CC]"
+          >
+            <WifiOff
+              aria-hidden="true"
+              className="mt-0.5 size-5 shrink-0 text-[#FFA1B0]"
+            />
+            <p>
+              <strong className="block">Conexão perdida.</strong> Criação,
+              edição e exclusão de dados estão temporariamente bloqueadas.
+            </p>
+          </div>
+        )}
+        {naoConseguiuConferirAvisos && currentView !== "admin-pdv" && (
+          // Na venda em curso a faixa não empurra a tela (mesma regra da ilha de atualização).
+          <div
+            role="status"
+            className="mx-5 my-2 flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-rose-300/20 bg-[#2B151D] p-3 text-xs text-[#F5C1CC]"
+          >
+            <TriangleAlert
+              aria-hidden="true"
+              className="size-5 shrink-0 text-[#FFA1B0]"
+            />
+            <div className="min-w-0 flex-1 basis-32">
+              <p className="font-semibold">Falha ao conferir avisos</p>
+              <p className="mt-1">Contagem atual não confirmada.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light();
+                onNavigate(notificationBellTarget);
+              }}
+              className="min-h-11 rounded-xl border border-white/15 bg-[#1E1E24] px-4 font-semibold text-zinc-50"
+            >
+              Ver avisos
+            </button>
+          </div>
+        )}
 
         {/* Main Content Area */}
         <main
@@ -1218,13 +1241,8 @@ export function AdminLayout({
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 120, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              // Sem `admin-glass` de propósito: a `.admin-glass` (index.css,
-              // @layer utilities) sai DEPOIS do `bg-zinc-950` no CSS final
-              // e vencia o fundo e a borda — a barra ficava translúcida e o
-              // conteúdo aparecia por baixo dos rótulos. Fundo SÓLIDO e sem
-              // blur: com 95% + backdrop-blur o texto de baixo ainda se lia
-              // no render; opaco, o blur não serve a nada.
-              className="fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] lg:hidden"
+              aria-label="Navegação inferior do painel"
+              className="fixed inset-x-5 z-[60] mx-auto max-w-lg rounded-[2rem] border border-white/15 bg-[#141418] shadow-[0_12px_28px_rgba(0,0,0,0.6)] lg:hidden"
               style={
                 {
                   bottom: `calc(0.75rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)) * 0.5)`,
@@ -1234,138 +1252,111 @@ export function AdminLayout({
                 } as React.CSSProperties
               }
             >
-              {navItems.map((item, idx) => {
-                const Icon = item.icon;
-                const parentView = getParentView(currentView);
-                // Mesma regra da sidebar acima (relato do dono, 19/09): o pai
-                // do admin-pdv não herda destaque na barra do celular — na
-                // tela de venda o único marcado é o botão redondo Vender.
-                const isActive =
-                  currentView === item.view ||
-                  (item.view === "admin-dashboard" &&
-                    currentView === "admin") ||
-                  (parentView === item.view && currentView !== "admin-pdv");
-
-                return (
-                  <button
-                    key={idx}
-                    // Nome acessível da aba; o selo de pedidos entra nele
-                    // ("Pedidos, 3 para preparar") e o selo visual é
-                    // aria-hidden. O selo conta a mesma regra do "Pedidos para
-                    // preparar" do Início (sem PIX/cartão ainda não pago).
-                    aria-label={
-                      item.view === "admin-orders" && pendingOrdersCount > 0
-                        ? `${item.label}, ${pendingOrdersCount} para preparar`
-                        : item.label
-                    }
-                    onClick={() => {
-                      haptic.light();
-                      onNavigate(item.view as View);
-                    }}
-                    onMouseEnter={() => handleMouseEnter(item.view)}
-                    onMouseLeave={handleMouseLeave}
-                    onTouchStart={() => handleMouseEnter(item.view, true)}
-                    className={cn(
-                      "flex flex-col items-center gap-0.5 sm:gap-1 flex-1 py-2.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 transform-gpu",
-                      // Contraste sobre QUALQUER fundo: com o fundo
-                      // sólido (zinc-950), ícone inativo é zinc-300 (AA
-                      // sobre escuro) — na barra translúcida antiga os
-                      // ícones sumiam ao rolar sobre conteúdo claro
-                      // (relato do Gabriel, 02/09).
-                      isActive
-                        ? "text-admin-gold"
-                        : "text-zinc-300 hover:text-white",
-                    )}
-                  >
-                    {isActive && (
-                      <motion.div
-                        layoutId="admin-active-pill-mobile"
-                        className="absolute inset-0 rounded-2xl border border-white/10 bg-zinc-800/60 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_8px_16px_rgba(0,0,0,0.4)]"
-                        style={
-                          {
-                            zIndex: -1,
-                            viewTransitionName: isViewTransitionSupported
-                              ? "admin-active-pill-mobile"
-                              : undefined,
-                          } as React.CSSProperties
-                        }
-                        transition={{
-                          type: "spring",
-                          stiffness: 380,
-                          damping: 30,
-                        }}
-                      />
-                    )}
-                    <Icon
+              <div
+                ref={barraAcoplada.receberPrateleira}
+                role="group"
+                aria-label="Ações da tela"
+                className="admin-prateleira"
+              />
+              <div className="flex h-16 items-center p-1.5" data-admin-abas>
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const parentView = getParentView(currentView);
+                  // O pai da venda continua valendo para Voltar, sem marcar Início.
+                  const isActive =
+                    currentView === item.view ||
+                    (item.view === "admin-dashboard" &&
+                      currentView === "admin") ||
+                    (parentView === item.view && currentView !== "admin-pdv");
+                  return (
+                    <button
+                      key={item.view}
+                      type="button"
+                      aria-current={isActive ? "page" : undefined}
+                      aria-label={
+                        item.view === "admin-orders" && pendingOrdersCount > 0
+                          ? `${item.label}, ${pendingOrdersCount} para preparar`
+                          : item.label
+                      }
+                      onClick={() => {
+                        haptic.light();
+                        onNavigate(item.view as View);
+                      }}
+                      onMouseEnter={() => handleMouseEnter(item.view)}
+                      onMouseLeave={handleMouseLeave}
+                      onTouchStart={() => handleMouseEnter(item.view, true)}
                       className={cn(
-                        "w-5 h-5 transition-transform group-hover:-translate-y-0.5",
-                        isActive && "scale-110",
-                      )}
-                    />
-                    {item.view === "admin-orders" && pendingOrdersCount > 0 && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute right-2 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.5)]"
-                      >
-                        {pendingOrdersCount}
-                      </span>
-                    )}
-                    {/* Badge de perguntas removido da engrenagem: o destino
-                        dela (Ajustes) não lista pendência nenhuma — quem
-                        acende e leva à lista é o sino (temAvisoNoSino). */}
-                    {/* Rótulo SEMPRE visível (painel simples, A2): a 11px e em
-                        caixa normal — em 360px cada aba tem ~53px (nav de
-                        328px, menos o padding e o Vender de 44px, dividido em
-                        5) e "PRODUTOS" em maiúscula pesada (~57,6px) não cabe. */}
-                    <span
-                      className={cn(
-                        "text-[11px] font-bold leading-none transition-all",
-                        isActive ? "opacity-100" : "opacity-80",
+                        "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
+                        isActive
+                          ? "bg-[#3B3016] text-admin-gold"
+                          : "text-[#A1A1AD] hover:text-white",
                       )}
                     >
-                      {item.label}
-                    </span>
-                    {isActive && (
                       <span
-                        className="mt-0.5 size-1.5 rounded-full bg-admin-gold duration-300 animate-in zoom-in sm:hidden"
-                        style={
-                          {
-                            viewTransitionName: isViewTransitionSupported
-                              ? "admin-active-dot-mobile"
-                              : undefined,
-                          } as React.CSSProperties
-                        }
-                      />
+                        className={cn(
+                          "flex size-6 items-center justify-center rounded-lg border",
+                          isActive ? "border-transparent" : item.cor,
+                        )}
+                      >
+                        <Icon aria-hidden="true" className="size-[18px]" />
+                      </span>
+                      <span className="text-center text-[11px] font-medium leading-3">
+                        {item.label}
+                      </span>
+                      {item.view === "admin-orders" &&
+                        pendingOrdersCount > 0 && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute -top-2 right-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1 text-[11px] font-bold text-white ring-2 ring-[#141418]"
+                          >
+                            {pendingOrdersCount > 99
+                              ? "99+"
+                              : pendingOrdersCount}
+                          </span>
+                        )}
+                    </button>
+                  );
+                })}
+                {/* Ação separada das cinco abas; rótulo sempre visível. */}
+                <button
+                  type="button"
+                  aria-current={
+                    currentView === "admin-pdv" ? "page" : undefined
+                  }
+                  onClick={() => {
+                    haptic.light();
+                    onNavigate("admin-pdv" as View);
+                  }}
+                  onMouseEnter={() => handleMouseEnter("admin-pdv")}
+                  onMouseLeave={handleMouseLeave}
+                  onTouchStart={() => handleMouseEnter("admin-pdv", true)}
+                  aria-label="Vender"
+                  className={cn(
+                    "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
+                    currentView === "admin-pdv"
+                      ? "bg-[#3B3016] text-admin-gold"
+                      : "text-[#A1A1AD] hover:text-white",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded-lg border",
+                      currentView === "admin-pdv"
+                        ? "border-transparent"
+                        : "border-emerald-400/20 bg-emerald-400/10 text-emerald-400",
                     )}
-                  </button>
-                );
-              })}
-              {/* "Vender" fica FORA do `.map` como sexto elemento, redondo e
-                  destacado (mesmo raciocínio da barra lateral: não é uma 6ª
-                  aba). `shrink-0` em vez de `flex-1` — os cinco rótulos das
-                  abas principais não podem ser espremidos por ele numa tela
-                  de 360px (é o que este arquivo tem de provar no teste). */}
-              <button
-                type="button"
-                onClick={() => {
-                  haptic.light();
-                  onNavigate("admin-pdv" as View);
-                }}
-                onMouseEnter={() => handleMouseEnter("admin-pdv")}
-                onMouseLeave={handleMouseLeave}
-                onTouchStart={() => handleMouseEnter("admin-pdv", true)}
-                aria-label="Vender"
-                className={cn(
-                  "flex size-11 shrink-0 items-center justify-center rounded-full bg-admin-gold text-black transition-transform active:scale-95",
-                  currentView === "admin-pdv" && "ring-2 ring-white/70",
-                )}
-              >
-                <ScanBarcode className="size-5" />
-              </button>
+                  >
+                    <ScanBarcode aria-hidden="true" className="size-[18px]" />
+                  </span>
+                  <span className="text-center text-[11px] font-medium leading-3">
+                    Vender
+                  </span>
+                </button>
+              </div>
             </motion.nav>
           )}
         </AnimatePresence>
       </div>
-    </div>
+    </div>,
   );
 }

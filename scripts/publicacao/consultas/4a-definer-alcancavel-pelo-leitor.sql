@@ -21,11 +21,13 @@
 -- Achado da rodada 5 (26/09/2026) — as duas guardas tiraram os 7 falsos
 -- positivos medidos contra o schema do zero (Postgres efêmero).
 --
--- Esperado: 0 linhas. Exceção CONHECIDA E ACEITA (revise se aparecer outra):
+-- Esperado: 0 linhas. Numa loja SEM o lote 20261218000000 ainda aparece
 -- `public.get_segmented_push_count` — VOLATILE (por isso não é filtrada
--- pela guarda acima), mas só faz `SELECT count(*)` depois de barrar
--- `NOT public.is_admin()`; alcançável pelo papel de leitura só porque
--- ninguém revogou o EXECUTE default de PUBLIC dela, não porque ela escreva.
+-- pela guarda acima), mas só faz `SELECT count(*)` depois de barrar quem
+-- não é o admin atual; alcançável pelo papel de leitura só pelo EXECUTE
+-- default de PUBLIC dela, não porque ela escreva. A 20261218000000 revoga
+-- esse EXECUTE de PUBLIC e anon: depois dela, 0 linhas (qualquer linha é
+-- porta nova a revisar).
 -- Se vier a linha "(supabase_read_only_user AUSENTE — resultado não vale)"
 -- em vez disso, o papel não existe neste projeto e "0 linhas" NÃO PROVA
 -- nada — rode de novo com o papel certo antes de confiar no resultado.

@@ -188,7 +188,9 @@ vi.mock("sonner", () => ({
 }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "u1" } }) }));
 vi.mock("@/hooks/usePushNotifications", () => ({
-  usePushNotifications: () => ({ isSupported: false, subscribe: vi.fn() }),
+  // true: o bloco "Ajustes" só existe quando o botão de teste aparece (a
+  // chave de avisos de compras está escondida).
+  usePushNotifications: () => ({ isSupported: true, subscribe: vi.fn() }),
 }));
 vi.mock("@/hooks/useVOR", () => ({
   useVOR: () => ({ recordAction: vi.fn() }),
@@ -374,7 +376,9 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     // A composição é cartão FIXO: zero controle de colapso para ela — o
     // conteúdo (os campos, logo abaixo) está na árvore sem interação
     // nenhuma. O histórico segue colapsável e nasce aberto.
-    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
+    const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
+    expect(mensagem).not.toBeNull();
+    expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
     const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar");
     expect(historico).toBeTruthy();
     expect(historico!.getAttribute("aria-expanded")).toBe("true");
@@ -385,7 +389,7 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     expect(hospedeiro.querySelector("#push-destination")).not.toBeNull();
     expect(
       [...hospedeiro.querySelectorAll("button")].find((b) =>
-        (b.textContent ?? "").includes("Todos os Clientes"),
+        (b.textContent ?? "").includes("Todos os clientes"),
       ),
     ).toBeTruthy();
     expect(
@@ -400,8 +404,9 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
       hospedeiro.querySelector('button[title="Ajuda e explicação desta tela"]'),
     ).not.toBeNull();
 
-    // O interruptor de prova social mora na seção "Ajustes", que nasce
-    // FECHADA — expandir para prová-lo na árvore.
+    // A seção "Ajustes" nasce FECHADA e guarda o teste de recebimento — o
+    // interruptor de prova social está escondido (não promete o que a loja
+    // não faz); expandir para provar as duas coisas na árvore.
     const ajustes = cabecalhoDeSecao(hospedeiro, "Ajustes");
     expect(ajustes).toBeTruthy();
     expect(ajustes!.getAttribute("aria-expanded")).toBe("false");
@@ -411,9 +416,10 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     await act(async () => {
       await esperar(50);
     });
+    expect(textoDaTela()).toContain("Testar Recebimento Neste Aparelho");
     expect(
       hospedeiro.querySelector("#realtime-sales-alerts-switch"),
-    ).not.toBeNull();
+    ).toBeNull();
   });
 
   it("o histórico recolhe e reabre (o conteúdo sai e volta da árvore) — e a composição é fixa", async () => {
@@ -443,7 +449,9 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     // A composição NÃO é recolhível — cartão fixo: sem controle de colapso,
     // o campo nunca sai da árvore (o recolher/reabrir vale só para o
     // histórico e os Ajustes).
-    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
+    const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
+    expect(mensagem).not.toBeNull();
+    expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
   });
 
@@ -466,7 +474,9 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     expect(textoDaTela()).not.toMatch(/salve antes de fechar/i);
 
     // E a composição segue inteira na árvore, com o rascunho no campo.
-    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
+    const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
+    expect(mensagem).not.toBeNull();
+    expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
     expect(
       (hospedeiro.querySelector("#push-title") as HTMLInputElement).value,

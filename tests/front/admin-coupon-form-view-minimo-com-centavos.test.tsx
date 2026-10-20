@@ -25,6 +25,13 @@ vi.mock("@/hooks/useCoupons", () => ({
 }));
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+// O formulário lê as formas de pagamento da loja (aviso do cupom que cobre a
+// compra inteira): sem provedor de loja nos testes, o dublê entra aqui.
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { formasPagamentoEntrega: ["pix", "card", "cash"] },
+  }),
+}));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
@@ -74,6 +81,11 @@ describe("AdminCouponFormView — a pré-visualização mostra os centavos do m�
       raiz.render(
         <AdminCouponFormView couponId={couponId} onNavigate={vi.fn()} />,
       );
+    });
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>('[aria-controls="coupon-preview"]')
+        ?.click();
     });
   }
 

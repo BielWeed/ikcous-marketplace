@@ -1,11 +1,29 @@
 import { pedirAoSwPurgarArquivosPrivados } from "@/lib/arquivo-publico-do-storage";
+import { esquecerAdiamentoDosAvisos } from "@/lib/avisos-do-aparelho";
+import {
+  REVIEWS_CACHE_KEY_PREFIX,
+  esquecerAvaliacoesGuardadas,
+  esvaziarAvaliacoesEmMemoria,
+} from "@/lib/cache-de-avaliacoes";
 import { cpfValido } from "@/lib/cpf";
-import { gravarCpfDaConta } from "@/lib/cpf-da-conta";
+import {
+  gravarCpfDaConta,
+  gravarPerfilDaConta,
+  mensagemFalhaCpf,
+} from "@/lib/cpf-da-conta";
 import {
   lerPendente,
   retomarCpfPendente,
   salvarPendente,
 } from "@/lib/cpf-pendente-do-cadastro";
+import {
+  enderecoSemOErroDoLink,
+  enderecoTrazErroDeLink,
+} from "@/lib/erro-no-endereco-do-link";
+import {
+  cancelarInscricaoDaConta,
+  soltarInscricaoDoAparelho,
+} from "@/lib/inscricao-de-push-da-conta";
 import {
   type LoginAudience,
   MENSAGEM_ERRO_LOGIN_GENERICA,
@@ -82,14 +100,21 @@ interface AuthContextType {
   updatePassword: (newPassword: string) => Promise<boolean>;
   logout: () => Promise<void>;
   fetchProfile: (passedUser?: User | null) => Promise<void>;
-  updateProfile: (updates: {
-    full_name?: string | null;
-    whatsapp?: string | null;
-    avatar_url?: string | null;
-    cover_url?: string | null;
-  }) => Promise<boolean>;
+  updateProfile: (
+    updates: {
+      full_name?: string | null;
+      whatsapp?: string | null;
+      avatar_url?: string | null;
+      cover_url?: string | null;
+    },
+    contaEsperada?: string,
+  ) => Promise<boolean>;
   isPasswordRecovery: boolean;
   setIsPasswordRecovery: (value: boolean) => void;
+  /** O link de "esqueci a senha" voltou com erro (vencido ou já usado). */
+  linkDeRecuperacaoVencido: boolean;
+  /** A tela que mostrou o aviso avisa que já usou (a flag volta a falso). */
+  limparLinkDeRecuperacaoVencido: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType>(
@@ -117,6 +142,24 @@ let initPromise: Promise<any> | null = null;
 // remover) — igual ao que o código já fazia para `ikcous_is_admin_`: um
 // dispositivo compartilhado acumula cache de vários usuários, não só do que
 // acabou de sair.
+// L10 (12/10/2026) — os pedidos que o comprador achou por e-mail + código
+// (`sessionStorage`, gravados em OrderSearch.tsx): dado dele, e a próxima
+// pessoa na MESMA aba os via — `OrderDetailsView` lê essa chave até para quem
+// está logado. Limpa no logout E ao entrar numa conta (o visitante sem conta
+// nunca faz logout). Protegido: modo privado ou política do navegador podem
+// lançar, e nem o logout nem o login podem parar aqui.
+//
+// NÃO resolve visitante → visitante (duas pessoas na mesma aba sem nenhuma
+// conta no meio): isso pede validade do registro e é outro achado.
+function esquecerRastreioDeConvidado() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem("guest_tracked_orders");
+  } catch {
+    // sessionStorage indisponível: nada a apagar que se possa alcançar.
+  }
+}
+
 function clearLocalUserData() {
   // admin_cache-17 — os quatro caches de admin (customers/coupons/reviews/
   // questions) são variáveis de módulo em src/utils/admin_cache.ts, fora do
@@ -127,18 +170,44 @@ function clearLocalUserData() {
   // `window`, e assim continua valendo em qualquer ambiente que chame esta
   // função.
   limparCachesDeAdmin();
+  // As avaliações guardadas por produto (mapa em memória; as chaves do
+  // `localStorage` caem na varredura abaixo) podem trazer avaliações ainda não
+  // aprovadas, com o nome do autor, e sobreviviam ao "Sair".
+  esvaziarAvaliacoesEmMemoria();
   // R12 (04/10/2026) — a gaveta de imagens do service worker pode ter
   // guardado endereço ASSINADO de bucket privado (foto de devolução) antes
   // da correção: pede ao SW que jogue fora o que não é público. Disparar-e-
   // esquecer, nunca lança — o logout não espera o SW nem depende dele.
   pedirAoSwPurgarArquivosPrivados();
+  // A inscrição de push é do APARELHO e está no nome de quem saiu: sem
+  // sessão (outra aba saiu, a sessão venceu) não há como apagar a linha dele
+  // no servidor, mas desinscrever o navegador basta para o push parar de
+  // chegar neste aparelho. O "Sair" feito aqui já cancelou antes (com
+  // servidor); isto cobre o resto. Disparar-e-esquecer, nunca lança.
+  void soltarInscricaoDoAparelho();
+  // O "Agora não" do cartão de avisos do Início é do APARELHO no nome de quem
+  // o tocou. Aparelho descadastrado + adiamento vivo = o alarme que existe
+  // para pegar exatamente este caso (Sair e Entrar) ficaria calado por até 7
+  // dias. Nunca lança.
+  esquecerAdiamentoDosAvisos();
   // Recarga do checkout (04/10/2026): o id do pedido em pagamento que a aba
   // guarda para o PIX sobreviver ao F5 (src/lib/pedido-pendente-do-checkout.ts)
   // é da sessão de quem saiu. Mora no `sessionStorage`, não no
   // `localStorage` varrido abaixo; o próprio módulo protege o acesso (nunca
   // lança), por isso fica antes do `return` sem `window`.
   esquecerTodosOsPedidosPendentesDoCheckout();
+  esquecerRastreioDeConvidado();
   if (typeof window === "undefined") return;
+  // L10 — as FILAS offline (`orders_`/`products_offline_updates_queue:<uid>`)
+  // e os RASCUNHOS do admin (`admin_banner_form_draft:<uid>`,
+  // `admin_pdv_venda_draft:<uid>`, `ikcous_product_form_draft…:<uid>`) são
+  // por usuário e ficam de propósito: são escrita pendente legítima e
+  // trabalho em curso do dono, que os reencontra ao voltar. O que se apaga
+  // aqui são só os rascunhos de ANTES desse desenho — chave sem `:<uid>`,
+  // que nenhum código lê mais: o do PDV pode levar nome e WhatsApp de cliente.
+  localStorage.removeItem("admin_pdv_venda_draft");
+  localStorage.removeItem("admin_banner_form_draft");
+  localStorage.removeItem("ikcous_product_form_draft");
   localStorage.removeItem("marketplace_cart_v1");
   localStorage.removeItem("ikcous_recently_viewed");
   localStorage.removeItem("ikcous_is_admin");
@@ -155,7 +224,11 @@ function clearLocalUserData() {
       key?.startsWith("ikcous_is_admin_") ||
       key?.startsWith("ikcous_orders_cache_") ||
       key?.startsWith("ikcous_addresses_cache_") ||
-      key?.startsWith("ikcous_shipping_cache_")
+      key?.startsWith("ikcous_shipping_cache_") ||
+      key?.startsWith(REVIEWS_CACHE_KEY_PREFIX) ||
+      // L10 — rascunho de edição de produto de ANTES do desenho por usuário
+      // (`…_edit_<id>`, sem `:<uid>`; o id é um UUID, nunca tem `:`).
+      (key?.startsWith("ikcous_product_form_draft_edit_") && !key.includes(":"))
     ) {
       localStorage.removeItem(key);
     }
@@ -201,9 +274,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [adminStatus, setAdminStatus] = useState<AdminStatus>(
     cachedSession?.user ? "unknown" : "not-admin",
   );
+  // Rede lenta não rebaixa quem o servidor já confirmou (14/10/2026): o id de
+  // quem o servidor confirmou como admin NESTA sessão (resposta bem-sucedida
+  // dizendo `true`, nunca texto em cache). Só serve para uma recheca de
+  // FUNDO (SIGNED_IN reanunciado ao voltar ao app, TOKEN_REFRESHED) não
+  // rebaixar por estouro de tempo ou erro de rede/HTTP — só um "não" REAL
+  // rebaixa. Vive só em memória: nunca nasce do `localStorage`. Só
+  // `applyResult` a preenche, e o ramo "manter" nunca PROMOVE ninguém: só
+  // deixa de rebaixar. Esquece-se num "não" real e quando a pessoa ativa
+  // muda (troca de conta, saída).
+  const adminConfirmadoRef = useRef<string | null>(null);
   const isAdmin = adminStatus === "admin";
+  // Link de "esqueci a senha" VENCIDO ou já usado: o servidor devolve a pessoa
+  // com o erro no endereço (`error_code=otp_expired`, no hash ou na query) e o
+  // `?type=recovery` continua lá. Com `error_code` o app NÃO entra em modo
+  // nova senha (sem sessão a troca nunca funciona e a pessoa só lia "Não foi
+  // possível atualizar sua senha"): a tela "Recuperar" abre com o aviso. Sem
+  // `error_code` o caminho que funciona é idêntico ao de antes.
+  const [linkDeRecuperacaoVencido, setLinkDeRecuperacaoVencido] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      enderecoTrazErroDeLink(window.location.search, window.location.hash),
+  );
+  const limparLinkDeRecuperacaoVencido = useCallback(
+    () => setLinkDeRecuperacaoVencido(false),
+    [],
+  );
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
     if (typeof window !== "undefined") {
+      if (enderecoTrazErroDeLink(window.location.search, window.location.hash))
+        return false;
       const params = new URLSearchParams(window.location.search);
       return (
         params.get("type") === "recovery" ||
@@ -234,6 +334,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       );
     }
   }, [isPasswordRecovery]);
+
+  // O erro do link é lido uma vez (acima); aqui ele sai do endereço, para um
+  // F5 não repetir o aviso nem reabrir a tela por causa de um link já tratado.
+  useEffect(() => {
+    if (linkDeRecuperacaoVencido && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      window.history.replaceState(
+        {},
+        document.title,
+        enderecoSemOErroDoLink(url),
+      );
+    }
+  }, [linkDeRecuperacaoVencido]);
 
   // #121 — precisa existir ANTES de `checkAdmin`: é a guarda que decide, na
   // resolução de uma verificação, se o usuário que a disparou ainda é o
@@ -276,8 +389,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setAdminStatus(isAdminResult ? "admin" : "not-admin");
       if (verified) {
         localStorage.setItem(cacheKey, isAdminResult ? "true" : "false");
+        // Só um VEREDITO do servidor (`verified`) confirma — e só ele
+        // rebaixa: um "não" real esquece a confirmação.
+        adminConfirmadoRef.current = isAdminResult ? userId : null;
       }
     };
+
+    // Recheca de FUNDO de quem o servidor já confirmou admin nesta sessão:
+    // estouro de tempo ou erro de rede/HTTP não é "não" — o painel aberto
+    // (cadastro em andamento, foto subindo) não pode ser trocado por "Acesso
+    // restrito" por causa de uma resposta que não chegou. A guarda do
+    // usuário ativo continua valendo (troca de conta no meio da checagem).
+    const jaConfirmadoNestaSessao = () => adminConfirmadoRef.current === userId;
 
     // #123 — a sessão local é texto que o usuário edita no DevTools; o
     // supabase-js não valida a assinatura do JWT no cliente. `app_metadata`
@@ -286,7 +409,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Fast Path 2: Local Cache (Immediate return for confirmed customers, keyed by user ID)
     const cachedAdmin = localStorage.getItem(cacheKey);
-    if (cachedAdmin === "false") {
+    // Quem o servidor já confirmou nesta sessão não toma o atalho: um "false"
+    // no aparelho (de outra aba, de antes) não rebaixa antes de a rede falar.
+    if (cachedAdmin === "false" && !jaConfirmadoNestaSessao()) {
       setAdminStatus("not-admin");
       // Run background check to sync with potential admin status updates without blocking initial load
       networkCheck()
@@ -326,7 +451,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             .eq("id", userId)
             .single();
 
-          return !profileError && profile?.role === "admin";
+          // Erro aqui (401, rede, linha invisível) NÃO é "não é dona": é a
+          // ausência de resposta. Vira não-veredito (rejeita) — antes
+          // devolvia `false` como se o servidor tivesse negado, e isso
+          // rebaixava a dona e gravava "false" no aparelho (o Fast Path 2
+          // lê no próximo abrir). Só uma resposta bem-sucedida decide.
+          if (profileError) {
+            throw new Error("Admin check inconclusive (profiles fallback)");
+          }
+          return profile?.role === "admin";
         })();
 
         // Add a resilient 3-second timeout limit to the network query
@@ -360,6 +493,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       applyResult(result, true);
     } catch (err) {
       console.error("[Auth] Error/Timeout checking admin status:", err);
+      if (jaConfirmadoNestaSessao()) {
+        // Recheca de fundo que não obteve resposta: segue admin, sem tocar
+        // no estado nem no aparelho. Um "sim" atrasado já não muda nada; um
+        // "não" REAL na próxima recheca rebaixa (applyResult acima).
+        return;
+      }
       // Não-veredito (Achado 2): trata como não-admin SÓ nesta carga, sem
       // persistir no localStorage.
       applyResult(false, false);
@@ -392,6 +531,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       const { data, error } = await supabase.rpc("get_my_complete_profile");
+      // A resposta pertence à conta que iniciou a leitura, mesmo chegando após a troca.
+      if (activeUserIdRef.current !== currentUser.id) return;
       if (!error && data) {
         const profileData = Array.isArray(data) ? data[0] : data;
         setProfile((prev: any) => {
@@ -712,17 +853,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const previousUserId = activeUserIdRef.current;
       const currentUserId = session?.user?.id || null;
       activeUserIdRef.current = currentUserId;
+      // Outra pessoa (ou ninguém) no lugar: a confirmação de admin era da
+      // anterior. Quem voltar depois entra como primeiro login.
+      if (previousUserId !== currentUserId) adminConfirmadoRef.current = null;
 
       // admin_cache-17 — troca de conta na MESMA aba sem passar por
       // SIGNED_OUT explícito (ex.: sessão expira e outra pessoa loga em
       // seguida no mesmo tablet de balcão) também precisa zerar os caches de
       // admin; sem isto, o caso coberto por `clearLocalUserData()` no
       // SIGNED_OUT (abaixo) não pegaria essa troca direta uid→uid.
+      // L10 — entrar numa conta (visitante → conta, ou troca direta A → B
+      // sem SIGNED_OUT) esquece o rastreio de convidado da aba. Só quando o
+      // usuário MUDA: o SIGNED_IN que o navegador reemite ao voltar à aba,
+      // com o mesmo usuário, não pode apagar a consulta em andamento.
+      if (
+        event === "SIGNED_IN" &&
+        currentUserId &&
+        previousUserId !== currentUserId
+      ) {
+        esquecerRastreioDeConvidado();
+      }
+
       if (previousUserId && currentUserId && previousUserId !== currentUserId) {
+        // `user` vira a nova conta já neste evento; o perfil da anterior sai
+        // junto — se a consulta do perfil da nova falhar, nada o substituiria
+        // e a nova veria nome, avatar e capa de quem saiu.
+        setProfile(null);
         limparCachesDeAdmin();
+        // Avaliações guardadas (inclui as não aprovadas, com nome do autor):
+        // memória e chaves do `localStorage`, pois esta troca não passa por
+        // `clearLocalUserData`.
+        esquecerAvaliacoesGuardadas();
         // R12 — mesma troca uid→uid: o que a conta anterior abriu por
         // endereço assinado não pode ficar na gaveta do SW para a próxima.
         pedirAoSwPurgarArquivosPrivados();
+        // E a inscrição de push do aparelho era da anterior: a sessão agora é
+        // da nova, que não pode apagar a linha dela — só soltar o navegador.
+        void soltarInscricaoDoAparelho();
+        // E o "Agora não" do cartão de avisos era da conta anterior.
+        esquecerAdiamentoDosAvisos();
       }
 
       // Only set loading screen for explicit critical transitions (login/logout).
@@ -904,14 +1073,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // aqui; `cpfValido` de novo é defesa em profundidade, não a régua
       // principal).
       if (cpf && cpfValido(cpf)) {
-        if (data.session) {
+        if (data.session && data.user) {
           // Sessão IMEDIATA (confirmação por e-mail desligada, ou conta
           // já confirmada por outro caminho) — grava na hora, mesma RPC
           // que o perfil e o checkout usam.
-          const resultado = await gravarCpfDaConta(cpf);
+          const resultado = await gravarCpfDaConta(cpf, data.user.id);
           if (!resultado.ok) {
             toast.error(
-              "Cadastro concluído, mas não foi possível salvar o CPF agora. Você pode informá-lo depois em Minha conta > Informações pessoais.",
+              resultado.motivo === "conta_trocada"
+                ? mensagemFalhaCpf(resultado.motivo)
+                : "Cadastro concluído, mas não foi possível salvar o CPF agora. Você pode informá-lo depois em Minha conta > Informações pessoais.",
             );
           }
         } else if (data.user) {
@@ -1010,6 +1181,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const logout = useCallback(async () => {
+    // A inscrição de push deste aparelho está no nome de quem sai. Só a
+    // PRÓPRIA conta pode apagar a linha dela (RLS), então isto vem ANTES do
+    // `signOut`, com prazo curto: rede ruim ou erro aqui nunca seguram o Sair.
+    const idDeQuemSai = activeUserIdRef.current;
+    if (idDeQuemSai) {
+      try {
+        await cancelarInscricaoDaConta(idDeQuemSai);
+      } catch {
+        // O módulo não lança; o catch é só o cinto de segurança do Sair.
+      }
+    }
     const { error } = await supabase.auth.signOut();
     if (error) {
       // #122 — `signOut()` devolvendo erro (rede caída, por exemplo) não
@@ -1051,6 +1233,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     } else {
+      activeUserIdRef.current = null;
       setSession(null);
       setUser(null);
       setAdminStatus("not-admin");
@@ -1079,7 +1262,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         toast.error(message);
         return false;
       }
-      toast.success("E-mail de confirmação reenviado!");
+      // O servidor responde SUCESSO sem mandar e-mail quando o endereço já
+      // está confirmado (conta existente), então "reenviado!" era afirmação
+      // falsa para quem já tem conta. Condicional, e sem revelar se tem conta
+      // (a #120 fechou esse vazamento) — vale para qualquer endereço.
+      toast.success(
+        "Se este e-mail ainda aguarda confirmação, reenviamos o link. Se você já tem conta, entre ou use 'Esqueceu?'.",
+      );
       return true;
     },
     [],
@@ -1236,35 +1425,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const updateProfile = useCallback(
-    async (updates: {
-      full_name?: string | null;
-      whatsapp?: string | null;
-      avatar_url?: string | null;
-      cover_url?: string | null;
-    }): Promise<boolean> => {
+    async (
+      updates: {
+        full_name?: string | null;
+        whatsapp?: string | null;
+        avatar_url?: string | null;
+        cover_url?: string | null;
+      },
+      contaDoClique?: string,
+    ): Promise<boolean> => {
+      // Quem inicia trabalho assíncrono antes de salvar (ler/comprimir imagem)
+      // passa a conta do instante do clique; sem ela, vale a conta atual.
+      const contaEsperada = contaDoClique ?? activeUserIdRef.current ?? "";
       try {
-        const { error } = await supabase.rpc("update_my_profile_secure", {
-          p_full_name:
-            updates.full_name !== undefined ? updates.full_name : null,
-          p_whatsapp: updates.whatsapp !== undefined ? updates.whatsapp : null,
-          p_avatar_url:
-            updates.avatar_url !== undefined ? updates.avatar_url : null,
-          p_cover_url:
-            updates.cover_url !== undefined ? updates.cover_url : null,
-        } as any);
-        if (error) throw error;
+        const resultado = await gravarPerfilDaConta(
+          {
+            p_full_name: updates.full_name ?? null,
+            p_whatsapp: updates.whatsapp ?? null,
+            p_avatar_url: updates.avatar_url ?? null,
+            p_cover_url: updates.cover_url ?? null,
+          },
+          contaEsperada,
+        );
+        if (!resultado.ok) throw resultado;
         await fetchProfile();
         return true;
       } catch (err: any) {
         // `update_my_profile_secure` não tem nenhum `RAISE EXCEPTION` (ver
         // supabase/migrations/20260806000000_baseline_do_schema_vivo.sql,
         // função `update_my_profile_secure`) — o único `WHERE id = auth.uid()`
-        // não gera erro nem quando não afeta linha nenhuma. Todo erro que
-        // chega aqui é de causa não distinguível (rede, restrição do banco),
-        // então a mensagem é sempre a mesma, sem depender de `err.message`
-        // como reserva — reserva com o texto cru é vazamento também.
+        // não gera erro nem quando não afeta linha nenhuma. Erros da RPC
+        // (rede, restrição do banco) mantêm a mensagem genérica, sem usar
+        // `err.message`. A troca de conta reconhecida antes do envio tem
+        // seu próprio aviso fixo.
         console.error("[Auth] Error updating profile:", err);
-        toast.error("Não foi possível atualizar seu perfil. Tente novamente.");
+        toast.error(
+          err?.motivo === "conta_trocada"
+            ? mensagemFalhaCpf("conta_trocada")
+            : "Não foi possível atualizar seu perfil. Tente novamente.",
+        );
         return false;
       }
     },
@@ -1290,6 +1489,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       fetchProfile,
       isPasswordRecovery,
       setIsPasswordRecovery,
+      linkDeRecuperacaoVencido,
+      limparLinkDeRecuperacaoVencido,
     }),
     [
       session,
@@ -1309,6 +1510,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       fetchProfile,
       isPasswordRecovery,
       setIsPasswordRecovery,
+      linkDeRecuperacaoVencido,
+      limparLinkDeRecuperacaoVencido,
     ],
   );
 

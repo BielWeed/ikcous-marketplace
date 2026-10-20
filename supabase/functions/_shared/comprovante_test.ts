@@ -2,7 +2,10 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { enviarComprovantePedido } from "./comprovante.ts";
+import {
+  enviarComprovantePedido,
+  fonteDoEnderecoDoComprovante,
+} from "./comprovante.ts";
 
 /**
  * O miolo (`enviarComprovantePedido`) e' o que `send-order-confirmation`
@@ -25,6 +28,23 @@ import { enviarComprovantePedido } from "./comprovante.ts";
 
 const UUID_PEDIDO = "d77c6616-c389-4caa-b5c1-9a8d7af77f72";
 
+// O remetente que `resolverRemetente` devolve (14/10/2026): o resolvedor real
+// e testado em `email-da-loja_test.ts`; aqui ele entra como dubla.
+const REMETENTE_DE_TESTE = {
+  origem: "ambiente",
+  usuario: "loja@exemplo.com",
+  senha: "senha-de-teste",
+  motivo: null,
+  reserva: null,
+};
+const REMETENTE_NENHUM = {
+  origem: "nenhum",
+  usuario: null,
+  senha: null,
+  motivo: "sem_registro",
+  reserva: null,
+};
+
 type Chamada = { tipo: "rpc" | "from"; nome: string; args?: unknown };
 
 /**
@@ -37,12 +57,18 @@ type Chamada = { tipo: "rpc" | "from"; nome: string; args?: unknown };
 function clienteFalso(opts: {
   pedido?: Record<string, unknown> | null;
   erroLeituraPedido?: unknown;
+  erroLeituraItens?: unknown;
   itens?: Array<Record<string, unknown>>;
   storeConfig?: Record<string, unknown> | null;
   endereco?: Record<string, unknown> | null;
   reservou?: boolean;
   erroReserva?: unknown;
   chamadas?: Chamada[];
+  // Variações (product_variants) que a busca em lote devolve, e como ela
+  // pode FALHAR: resultado com `error`, exceção síncrona ou promessa rejeitada.
+  variantes?: Array<Record<string, unknown>>;
+  falhaVariantes?: "erro" | "lanca" | "rejeita";
+  consultasDeVariantes?: Array<{ colunas: string; coluna: string; ids: unknown[] }>;
 }) {
   const chamadas = opts.chamadas ?? [];
 
@@ -54,7 +80,9 @@ function clienteFalso(opts: {
           ? { data: null, error: opts.erroLeituraPedido }
           : { data: opts.pedido ?? null, error: null };
       case "marketplace_order_items":
-        return { data: opts.itens ?? [], error: null };
+        return opts.erroLeituraItens
+          ? { data: null, error: opts.erroLeituraItens }
+          : { data: opts.itens ?? [], error: null };
       case "user_addresses":
         return { data: opts.endereco ?? null, error: null };
       case "store_config":
@@ -75,8 +103,29 @@ function clienteFalso(opts: {
     },
     from(tabela: string) {
       return {
-        select(_colunas: string) {
+        select(colunas: string) {
           return {
+            // Busca em LOTE de variações: `.in("id", [...])`. O fake só
+            // aceita isto para `product_variants` — qualquer outra tabela
+            // com `.in` é um erro do teste, não do código.
+            in(coluna: string, ids: unknown[]) {
+              if (tabela !== "product_variants") {
+                throw new Error(`fake: .in() inesperado em ${tabela}`);
+              }
+              opts.consultasDeVariantes?.push({ colunas, coluna, ids });
+              chamadas.push({ tipo: "from", nome: tabela });
+              if (opts.falhaVariantes === "lanca") {
+                throw new Error("fake: product_variants explodiu");
+              }
+              if (opts.falhaVariantes === "rejeita") {
+                return Promise.reject(new Error("fake: product_variants rejeitou"));
+              }
+              const resultado =
+                opts.falhaVariantes === "erro"
+                  ? { data: null, error: { message: "permission denied" } }
+                  : { data: opts.variantes ?? [], error: null };
+              return Promise.resolve(resultado);
+            },
             eq(_coluna: string, _valor: unknown) {
               const resultado = resultadoPara(tabela);
               return {
@@ -109,7 +158,7 @@ Deno.test("SMTP não configurado -> sem_remetente, e NADA é lido nem reservado 
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => false },
+    deps: { resolverRemetente: async () => REMETENTE_NENHUM },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "sem_remetente" });
@@ -125,7 +174,7 @@ Deno.test("pedido inexistente -> sem_pedido, reserva NÃO chamada", async () => 
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "sem_pedido" });
@@ -140,7 +189,7 @@ Deno.test("leitura do pedido falha -> envio_falhou", async () => {
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "envio_falhou" });
@@ -156,7 +205,7 @@ Deno.test("pedido sem e-mail em lugar nenhum -> sem_destinatario, reserva NÃO �
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "sem_destinatario" });
@@ -176,7 +225,7 @@ Deno.test("reserva falha (erro de banco) -> envio_falhou", async () => {
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "envio_falhou" });
@@ -191,7 +240,7 @@ Deno.test("reserva devolve false ('já enviado') -> ja_enviado, e o e-mail NUNCA
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async () => {
         enviarEmailChamado = true;
       },
@@ -210,7 +259,7 @@ Deno.test("reserva concedida -> a RPC 'reivindicar_email_de_confirmacao' é cham
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true, enviarEmail: async () => {} },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE, enviarEmail: async () => {} },
   });
 
   assertEquals(desfecho, { ok: true });
@@ -221,6 +270,50 @@ Deno.test("reserva concedida -> a RPC 'reivindicar_email_de_confirmacao' é cham
 });
 
 // --- sucesso: envia e devolve ok:true ----------------------------------------
+
+Deno.test("leitura dos itens falha depois de reservar -> não envia, libera a reserva e permite tentar de novo", async () => {
+  const chamadas: Chamada[] = [];
+  const opcoes = {
+    pedido: { id: UUID_PEDIDO, customer_data: { email: "cliente@exemplo.com" } },
+    erroLeituraItens: { message: "connection reset" } as unknown,
+    itens: [{ product_name: "Produto", quantity: 1, price: 10 }],
+    chamadas,
+  };
+  const cliente = clienteFalso(opcoes);
+  let reservado = false;
+  let envios = 0;
+  const supabase = {
+    ...cliente,
+    rpc: async (nome: string, args: Record<string, unknown>) => {
+      const resultado = await cliente.rpc(nome, args);
+      if (nome === "reivindicar_email_de_confirmacao") {
+        const ganhou = !reservado;
+        reservado = true;
+        return { data: ganhou, error: null };
+      }
+      if (nome === "liberar_email_de_confirmacao") reservado = false;
+      return resultado;
+    },
+  };
+  const enviar = () => enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
+      enviarEmail: async () => { envios++; },
+    },
+  });
+
+  assertEquals(await enviar(), { ok: false, motivo: "envio_falhou" });
+  assertEquals(envios, 0);
+  assertEquals(reservado, false);
+  assertEquals(chamadas.at(-1), {
+    tipo: "rpc", nome: "liberar_email_de_confirmacao", args: { p_order_id: UUID_PEDIDO },
+  });
+  opcoes.erroLeituraItens = null;
+  assertEquals(await enviar(), { ok: true });
+  assertEquals(envios, 1);
+});
 
 Deno.test("reserva concedida + SMTP configurado -> envia com o texto certo e devolve ok:true", async () => {
   const pedido = {
@@ -244,7 +337,7 @@ Deno.test("reserva concedida + SMTP configurado -> envia com o texto certo e dev
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
@@ -289,7 +382,7 @@ async function htmlDoPedidoEnviado(
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
@@ -311,8 +404,8 @@ Deno.test("retirada na loja -> e-mail mostra 'Retirada na loja' + endereço da l
   });
   assertStringIncludes(html, "Retirada na loja");
   assertStringIncludes(html, "Rua Ficticia da Loja, 100 - Centro");
-  assertStringIncludes(html, "Aguarde a confirmacao da loja para retirar");
-  assertStringIncludes(html, "Endereco do cliente");
+  assertStringIncludes(html, "Aguarde a confirmação da loja para retirar");
+  assertStringIncludes(html, "Endereço do cliente");
   assertStringIncludes(html, "Rua da Cliente");
   assertEquals(html.includes("Entrega em"), false);
 });
@@ -325,7 +418,7 @@ Deno.test("entrega local (controle) -> e-mail segue com 'Entrega em' e SEM bloco
   });
   assertStringIncludes(html, "Entrega em");
   assertEquals(html.includes("Retirada na loja"), false);
-  assertEquals(html.includes("Aguarde a confirmacao da loja"), false);
+  assertEquals(html.includes("Aguarde a confirmação da loja"), false);
 });
 
 Deno.test("id de retirada SEM o retrato do endereço (pedido forjado/antigo) -> não inventa endereço de retirada", async () => {
@@ -335,8 +428,8 @@ Deno.test("id de retirada SEM o retrato do endereço (pedido forjado/antigo) -> 
     number: "7",
   });
   assertStringIncludes(html, "Retirada na loja");
-  assertStringIncludes(html, "Aguarde a confirmacao da loja para retirar");
-  assertStringIncludes(html, "Endereco do cliente");
+  assertStringIncludes(html, "Aguarde a confirmação da loja para retirar");
+  assertStringIncludes(html, "Endereço do cliente");
 });
 
 // --- canal presencial: o canal sai do BANCO e chega ao e-mail ----------------
@@ -368,7 +461,7 @@ Deno.test("pedido com canal 'presencial' no banco -> o e-mail abre com 'Compra n
       supabase: supabase as never,
       orderId: UUID_PEDIDO,
       deps: {
-        remetenteConfigurado: () => true,
+        resolverRemetente: async () => REMETENTE_DE_TESTE,
         enviarEmail: async (args) => {
           chamadasEnvio.push(args);
         },
@@ -387,12 +480,13 @@ Deno.test("pedido com canal 'presencial' no banco -> o e-mail abre com 'Compra n
 //
 // Defeito medido (spec do balcão, 28/09): venda de balcão pelo caminho real
 // (`enviarComprovantePedido`, canal lido do banco) saía com "Dinheiro na
-// entrega" / "PIX na entrega" / "Cartao na entrega". Aqui a ponta inteira:
+// entrega" / "PIX na entrega" / "Cartão na entrega". Aqui a ponta inteira:
 // coluna `canal` -> montador -> `htmlDoPedido` -> rótulo no HTML enviado.
 
 async function htmlDoComprovante(
   paymentMethod: string,
   canal: string | undefined,
+  valores: Record<string, unknown> = {},
 ): Promise<string> {
   const pedido: Record<string, unknown> = {
     id: UUID_PEDIDO,
@@ -401,6 +495,7 @@ async function htmlDoComprovante(
     total: 100,
     payment_method: paymentMethod,
     payment_status: "recebido_na_entrega",
+    ...valores,
   };
   if (canal !== undefined) pedido.canal = canal;
   const enviados: Array<{ para: string; assunto: string; html: string }> = [];
@@ -414,7 +509,7 @@ async function htmlDoComprovante(
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         enviados.push(args);
       },
@@ -432,7 +527,7 @@ Deno.test("e-mail do BALCÃO diz a forma real paga na loja e nunca 'na entrega'"
   const pix = await htmlDoComprovante("pix", "presencial");
   assertStringIncludes(pix, ">PIX<");
   const cartao = await htmlDoComprovante("card", "presencial");
-  assertStringIncludes(cartao, "Cartao na maquininha");
+  assertStringIncludes(cartao, "Cartão na maquininha");
   for (const html of [dinheiro, pix, cartao]) {
     assertEquals(html.toLowerCase().includes("na entrega"), false);
   }
@@ -442,7 +537,49 @@ Deno.test("e-mail do SITE (não presencial) segue com o texto de sempre: 'na ent
   assertStringIncludes(await htmlDoComprovante("cash", undefined), "Dinheiro na entrega");
   assertStringIncludes(await htmlDoComprovante("cash", "online"), "Dinheiro na entrega");
   assertStringIncludes(await htmlDoComprovante("pix", "online"), "PIX na entrega");
-  assertStringIncludes(await htmlDoComprovante("card", "online"), "Cartao na entrega");
+  assertStringIncludes(await htmlDoComprovante("card", "online"), "Cartão na entrega");
+});
+
+// --- Cupom de 100%: pedido de R$ 0,00 diz "Sem valor a pagar" (15/10/2026) ----
+//
+// Mesma regra das telas. O pedido segue gravado como "pagar na entrega"; só o
+// TEXTO do comprovante muda.
+
+Deno.test("e-mail de pedido de R$ 0,00 (cupom de 100%) diz 'Sem valor a pagar', nunca 'Dinheiro na entrega'", async () => {
+  const zerado = { subtotal: 100, discount: 100, shipping: 0, total: 0 };
+  for (const [metodo, canal] of [
+    ["cash", undefined],
+    ["pix", undefined],
+    ["card", "online"],
+    ["online", undefined],
+    ["cash", "presencial"],
+  ] as const) {
+    const html = await htmlDoComprovante(metodo, canal, zerado);
+    assertStringIncludes(html, "Forma de pagamento");
+    assertStringIncludes(html, ">Sem valor a pagar<");
+    assertEquals(html.toLowerCase().includes("na entrega"), false);
+    assertEquals(html.includes("Dinheiro"), false);
+  }
+});
+
+Deno.test("CONTROLE do e-mail: o mesmo pedido com total 10 e 100 mantém o texto de antes", async () => {
+  assertStringIncludes(
+    await htmlDoComprovante("cash", undefined, { subtotal: 10, total: 10 }),
+    "Dinheiro na entrega",
+  );
+  assertStringIncludes(
+    await htmlDoComprovante("cash", undefined, {}),
+    "Dinheiro na entrega",
+  );
+  assertEquals(
+    (await htmlDoComprovante("cash", undefined, { subtotal: 10, total: 10 })).includes("Sem valor a pagar"),
+    false,
+  );
+  // Linha com total 0 mas a conta não fecha (150 - 0 + 20): NÃO é sem valor.
+  assertStringIncludes(
+    await htmlDoComprovante("cash", undefined, { subtotal: 150, discount: 0, shipping: 20, total: 0 }),
+    "Dinheiro na entrega",
+  );
 });
 
 // --- PIX pelo site: a abertura do e-mail depende do STATUS, não só do MÉTODO
@@ -477,7 +614,7 @@ Deno.test("PIX pelo site JÁ PAGO -> abertura de CONFIRMADO, nunca a de 'aguarda
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
@@ -488,10 +625,10 @@ Deno.test("PIX pelo site JÁ PAGO -> abertura de CONFIRMADO, nunca a de 'aguarda
   assertEquals(chamadasEnvio.length, 1);
   assertStringIncludes(
     chamadasEnvio[0].html,
-    "Recebemos seu pedido. Guarde este e-mail: ele e o resumo do que voce comprou.",
+    "Recebemos seu pedido. Guarde este e-mail: ele é o resumo do que você comprou.",
   );
   assertEquals(
-    chamadasEnvio[0].html.includes("esta aguardando a confirmacao do pagamento"),
+    chamadasEnvio[0].html.includes("está aguardando a confirmação do pagamento"),
     false,
     "pedido online JÁ PAGO não pode dizer que está aguardando confirmação",
   );
@@ -519,7 +656,7 @@ Deno.test("PIX pelo site AINDA aguardando pagamento -> abertura de 'aguardando',
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
@@ -530,13 +667,159 @@ Deno.test("PIX pelo site AINDA aguardando pagamento -> abertura de 'aguardando',
   assertEquals(chamadasEnvio.length, 1);
   assertStringIncludes(
     chamadasEnvio[0].html,
-    "Recebemos seu pedido e ele esta aguardando a confirmacao do pagamento. Assim que o pagamento for confirmado, ele entra na fila de separacao.",
+    "Recebemos seu pedido e ele está aguardando a confirmação do pagamento. Assim que o pagamento for confirmado, ele entra na fila de separação.",
   );
   assertEquals(
-    chamadasEnvio[0].html.includes("Guarde este e-mail: ele e o resumo do que voce comprou"),
+    chamadasEnvio[0].html.includes("Guarde este e-mail: ele é o resumo do que você comprou"),
     false,
     "pedido online AINDA aguardando pagamento não pode dizer que está confirmado",
   );
+});
+
+// --- VARIAÇÃO (tamanho/cor) no e-mail do pedido -------------------------------
+//
+// Defeito medido (caçada de 14/10/2026): o banco grava como nome do item só o
+// nome do PRODUTO; quem comprava o mesmo vestido em P e em G recebia duas
+// linhas idênticas. A variação mora em `product_variants` (name = "Tamanho",
+// value = "M") e o item do pedido a aponta por `variant_id`. A busca é UMA por
+// pedido (em lote) e NUNCA derruba o envio: falhou, o e-mail sai com o nome
+// simples, como sempre saiu.
+
+const VARIANTE_P = "aaaaaaaa-0000-4000-8000-000000000001";
+const VARIANTE_G = "aaaaaaaa-0000-4000-8000-000000000002";
+const VARIANTE_APAGADA = "aaaaaaaa-0000-4000-8000-0000000000ff";
+
+async function enviarComItens(
+  itens: Array<Record<string, unknown>>,
+  extras: {
+    variantes?: Array<Record<string, unknown>>;
+    falhaVariantes?: "erro" | "lanca" | "rejeita";
+  } = {},
+) {
+  const consultasDeVariantes: Array<{ colunas: string; coluna: string; ids: unknown[] }> = [];
+  const chamadas: Chamada[] = [];
+  const enviados: Array<{ para: string; assunto: string; html: string }> = [];
+  const supabase = clienteFalso({
+    pedido: {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com" },
+      subtotal: 200,
+      total: 200,
+      payment_method: "pix",
+      payment_status: "aguardando",
+    },
+    itens,
+    storeConfig: { store_name: "Loja Teste" },
+    reservou: true,
+    chamadas,
+    consultasDeVariantes,
+    ...extras,
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
+      enviarEmail: async (args) => {
+        enviados.push(args);
+      },
+    },
+  });
+  return { desfecho, enviados, consultasDeVariantes, chamadas };
+}
+
+const DOIS_TAMANHOS = [
+  { product_name: "Vestido Midi Linho", quantity: 1, price: 100, variant_id: VARIANTE_P },
+  { product_name: "Vestido Midi Linho", quantity: 1, price: 100, variant_id: VARIANTE_G },
+];
+const VARIANTES_P_E_G = [
+  { id: VARIANTE_P, name: "Tamanho", value: "P" },
+  { id: VARIANTE_G, name: "Tamanho", value: "G" },
+];
+
+Deno.test("mesmo vestido em P e em G -> o e-mail mostra os DOIS tamanhos, em linhas distintas", async () => {
+  const { desfecho, enviados } = await enviarComItens(DOIS_TAMANHOS, {
+    variantes: VARIANTES_P_E_G,
+  });
+  assertEquals(desfecho, { ok: true });
+  assertEquals(enviados.length, 1);
+  assertStringIncludes(enviados[0].html, "1× Vestido Midi Linho – Tamanho: P");
+  assertStringIncludes(enviados[0].html, "1× Vestido Midi Linho – Tamanho: G");
+});
+
+Deno.test("a busca de variação é UMA por pedido (em lote, ids sem repetição) e só na tabela product_variants", async () => {
+  const itens = [
+    ...DOIS_TAMANHOS,
+    // O mesmo tamanho P comprado em outra linha: o id não pode ir duas vezes.
+    { product_name: "Blusa", quantity: 1, price: 50, variant_id: VARIANTE_P },
+    // Item sem variação não entra na lista de ids.
+    { product_name: "Cinto", quantity: 1, price: 30, variant_id: null },
+  ];
+  const { enviados, consultasDeVariantes } = await enviarComItens(itens, {
+    variantes: VARIANTES_P_E_G,
+  });
+  assertEquals(enviados.length, 1);
+  assertEquals(consultasDeVariantes.length, 1, "uma consulta por pedido, nunca uma por item");
+  assertEquals(consultasDeVariantes[0].coluna, "id");
+  assertEquals(consultasDeVariantes[0].colunas, "id, name, value");
+  assertEquals(consultasDeVariantes[0].ids, [VARIANTE_P, VARIANTE_G]);
+  // O item sem variação segue com o nome simples.
+  assertStringIncludes(enviados[0].html, "1× Cinto");
+  assertEquals(enviados[0].html.includes("Cinto –"), false);
+});
+
+for (const falha of ["erro", "lanca", "rejeita"] as const) {
+  Deno.test(`busca de variação FALHA (${falha}) -> o e-mail SAI igual, com o nome simples, e o desfecho é ok:true`, async () => {
+    const { desfecho, enviados, chamadas } = await enviarComItens(DOIS_TAMANHOS, {
+      variantes: VARIANTES_P_E_G,
+      falhaVariantes: falha,
+    });
+    assertEquals(desfecho, { ok: true });
+    assertEquals(enviados.length, 1, "a falha da busca extra nunca pode derrubar o envio");
+    assertEquals(enviados[0].html.includes("Tamanho"), false);
+    assertStringIncludes(enviados[0].html, "1× Vestido Midi Linho");
+    // A reserva NÃO foi devolvida: o e-mail saiu, o pedido está avisado.
+    assertEquals(
+      chamadas.some((c) => c.tipo === "rpc" && c.nome === "liberar_email_de_confirmacao"),
+      false,
+    );
+  });
+}
+
+Deno.test("variação apagada/ausente da resposta -> só aquele item cai no nome simples; os demais mantêm o tamanho", async () => {
+  const itens = [
+    { product_name: "Vestido Midi Linho", quantity: 1, price: 100, variant_id: VARIANTE_P },
+    { product_name: "Saia Antiga", quantity: 1, price: 80, variant_id: VARIANTE_APAGADA },
+  ];
+  const { desfecho, enviados } = await enviarComItens(itens, {
+    variantes: [VARIANTES_P_E_G[0]],
+  });
+  assertEquals(desfecho, { ok: true });
+  assertStringIncludes(enviados[0].html, "1× Vestido Midi Linho – Tamanho: P");
+  assertStringIncludes(enviados[0].html, "1× Saia Antiga");
+  assertEquals(enviados[0].html.includes("Saia Antiga –"), false);
+});
+
+Deno.test("pedido SEM variação (itens sem variant_id) -> nenhuma consulta extra e o texto dos itens é o de sempre", async () => {
+  const { desfecho, enviados, consultasDeVariantes, chamadas } = await enviarComItens([
+    { product_name: "Blusa", quantity: 2, price: 100 },
+    { product_name: "Cinto", quantity: 1, price: 30, variant_id: null },
+  ]);
+  assertEquals(desfecho, { ok: true });
+  assertEquals(consultasDeVariantes.length, 0);
+  assertEquals(chamadas.some((c) => c.nome === "product_variants"), false);
+  assertStringIncludes(enviados[0].html, "2× Blusa");
+  assertStringIncludes(enviados[0].html, "1× Cinto");
+  assertEquals(enviados[0].html.includes(" – "), false);
+});
+
+Deno.test("nome e valor da variação são texto digitado: entram ESCAPADOS no e-mail", async () => {
+  const { enviados } = await enviarComItens(
+    [{ product_name: "Blusa", quantity: 1, price: 100, variant_id: VARIANTE_P }],
+    { variantes: [{ id: VARIANTE_P, name: "Cor", value: "<b>Azul</b> & Cia" }] },
+  );
+  assertEquals(enviados[0].html.includes("<b>Azul</b>"), false);
+  assertStringIncludes(enviados[0].html, "Cor: &lt;b&gt;Azul&lt;/b&gt; &amp; Cia");
 });
 
 // --- falha no envio: libera a reserva ----------------------------------------
@@ -560,7 +843,7 @@ Deno.test("envio de e-mail falha -> libera a reserva (RPC 'liberar_email_de_conf
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async () => {
         throw new Error("SMTP: envio recusado");
       },
@@ -576,6 +859,129 @@ Deno.test("envio de e-mail falha -> libera a reserva (RPC 'liberar_email_de_conf
     UUID_PEDIDO,
     "sem liberar, o pedido ficaria marcado 'já avisado' para sempre e o cliente sem comprovante nenhum",
   );
+});
+
+// --- liberar a reserva: o cliente do Supabase NAO rejeita em falha ----------------
+// `rpc()` resolve com `{ error }` (nao lanca). Ignorar esse resultado deixava a
+// reserva presa: toda chamada seguinte devolvia `ja_enviado` sem e-mail enviado.
+
+/** Supabase falso com a reserva de verdade e a liberacao programavel por chamada. */
+function clienteComLiberacao(
+  respostasDaLiberacao: Array<
+    { error: unknown } | "rejeita"
+  >,
+  opcoes: { erroLeituraItens?: unknown } = {},
+) {
+  const chamadas: Chamada[] = [];
+  const base = clienteFalso({
+    pedido: { id: UUID_PEDIDO, customer_data: { email: "cliente@exemplo.com" } },
+    erroLeituraItens: opcoes.erroLeituraItens,
+    itens: [{ product_name: "Produto", quantity: 1, price: 10 }],
+    storeConfig: { store_name: "Loja Teste" },
+    chamadas,
+  });
+  const estado = { reservado: false, liberacoes: 0 };
+  const supabase = {
+    ...base,
+    rpc: async (nome: string, args: Record<string, unknown>) => {
+      chamadas.push({ tipo: "rpc", nome, args });
+      if (nome === "reivindicar_email_de_confirmacao") {
+        const ganhou = !estado.reservado;
+        estado.reservado = true;
+        return { data: ganhou, error: null };
+      }
+      if (nome === "liberar_email_de_confirmacao") {
+        const resposta = respostasDaLiberacao[estado.liberacoes] ?? { error: null };
+        estado.liberacoes++;
+        if (resposta === "rejeita") throw new Error("fake: rede caiu");
+        if (!resposta.error) estado.reservado = false;
+        return { data: null, error: resposta.error };
+      }
+      return { data: null, error: null };
+    },
+  };
+  return { supabase, estado, chamadas };
+}
+
+const enviarCom = (
+  supabase: unknown,
+  enviarEmail: () => Promise<void>,
+) =>
+  enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE, enviarEmail },
+  });
+const FALHA_DE_REDE = { message: "connection reset" };
+
+Deno.test("liberar a reserva devolve { error } (leitura dos itens falhou) -> tenta UMA vez mais, e a reserva volta", async () => {
+  const { supabase, estado } = clienteComLiberacao(
+    [{ error: FALHA_DE_REDE }],
+    { erroLeituraItens: { message: "boom" } },
+  );
+  const enviar = async () => {};
+
+  assertEquals(await enviarCom(supabase, enviar), { ok: false, motivo: "envio_falhou" });
+  assertEquals(estado.liberacoes, 2);
+  assertEquals(estado.reservado, false, "reserva presa = proximas chamadas dariam ja_enviado sem e-mail");
+});
+
+Deno.test("liberar a reserva devolve { error } (SMTP recusou) -> tenta UMA vez mais, e a proxima chamada ainda pode enviar", async () => {
+  const { supabase, estado } = clienteComLiberacao([{ error: FALHA_DE_REDE }]);
+  let envios = 0;
+  const recusa = async () => { throw new Error("SMTP: recusado"); };
+  const aceita = async () => { envios++; };
+
+  assertEquals(await enviarCom(supabase, recusa), { ok: false, motivo: "envio_falhou" });
+  assertEquals(estado.liberacoes, 2);
+  assertEquals(estado.reservado, false);
+  assertEquals(await enviarCom(supabase, aceita), { ok: true });
+  assertEquals(envios, 1);
+});
+
+Deno.test("liberar a reserva falha nas DUAS tentativas -> para por ali (sem laco), registra e devolve envio_falhou", async () => {
+  const { supabase, estado } = clienteComLiberacao([
+    { error: FALHA_DE_REDE },
+    { error: FALHA_DE_REDE },
+    { error: FALHA_DE_REDE },
+  ]);
+  const recusa = async () => { throw new Error("SMTP: recusado"); };
+  const registros: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => { registros.push(args); };
+  try {
+    assertEquals(await enviarCom(supabase, recusa), { ok: false, motivo: "envio_falhou" });
+  } finally {
+    console.error = original;
+  }
+  assertEquals(estado.liberacoes, 2, "uma nova tentativa, nao um laco");
+  assertEquals(
+    registros.some((r) => String(r[0]).includes("liberar reserva falhou")),
+    true,
+    "a reserva presa precisa aparecer no log",
+  );
+});
+
+Deno.test("liberar a reserva LANCA excecao -> nao derruba o desfecho e tambem tenta uma vez mais", async () => {
+  const { supabase, estado } = clienteComLiberacao(["rejeita"]);
+  const recusa = async () => { throw new Error("SMTP: recusado"); };
+  const original = console.error;
+  console.error = () => {};
+  try {
+    assertEquals(await enviarCom(supabase, recusa), { ok: false, motivo: "envio_falhou" });
+  } finally {
+    console.error = original;
+  }
+  assertEquals(estado.liberacoes, 2);
+  assertEquals(estado.reservado, false);
+});
+
+Deno.test("liberar a reserva funciona de primeira -> UMA chamada so (a nova tentativa nao e' automatica)", async () => {
+  const { supabase, estado } = clienteComLiberacao([{ error: null }]);
+  const recusa = async () => { throw new Error("SMTP: recusado"); };
+  assertEquals(await enviarCom(supabase, recusa), { ok: false, motivo: "envio_falhou" });
+  assertEquals(estado.liberacoes, 1);
+  assertEquals(estado.reservado, false);
 });
 
 // 26/09/2026 — cartão pelo app: o comprovante diz a forma que o cliente usou
@@ -601,13 +1007,262 @@ Deno.test("cartão de crédito pelo app -> o comprovante diz cartão, nunca PIX"
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
     },
   });
   assertEquals(desfecho, { ok: true });
-  assertStringIncludes(chamadasEnvio[0].html, "Cartao de credito pelo site");
+  assertStringIncludes(chamadasEnvio[0].html, "Cartão de crédito pelo site");
   assertEquals(chamadasEnvio[0].html.includes("PIX pelo site"), false);
+});
+
+// --- o remetente resolvido (e-mail da loja no painel, 14/10/2026) -----------
+
+Deno.test("o remetente resolvido sai da `resolverRemetente` com o MESMO supabase, e e' ELE que chega ao envio", async () => {
+  const supabase = clienteFalso({
+    pedido: {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com" },
+      subtotal: 100,
+      total: 100,
+      payment_method: "pix",
+      payment_status: "aguardando",
+    },
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    reservou: true,
+  });
+  const doPainel = { ...REMETENTE_DE_TESTE, origem: "painel", usuario: "painel@gmail.com" };
+  const recebidoPeloResolvedor: unknown[] = [];
+  const recebidoPeloEnvio: unknown[] = [];
+
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: async (cliente: unknown) => {
+        recebidoPeloResolvedor.push(cliente);
+        return doPainel;
+      },
+      enviarEmail: async (_mensagem: unknown, remetente: unknown) => {
+        recebidoPeloEnvio.push(remetente);
+      },
+    },
+  });
+
+  assertEquals(desfecho, { ok: true });
+  assertEquals(recebidoPeloResolvedor, [supabase]);
+  assertEquals(recebidoPeloEnvio, [doPainel]);
+});
+
+Deno.test("resolvedor REAL sem remetente nenhum (sem cofre e sem SMTP no ambiente) -> sem_remetente, e NADA e' lido nem reservado", async () => {
+  const guardados = ["SMTP_USER", "SMTP_PASSWORD", "MP_CHAVES_ENCRYPTION_KEY"].map(
+    (nome) => [nome, Deno.env.get(nome)] as const,
+  );
+  for (const [nome] of guardados) Deno.env.delete(nome);
+  try {
+    const chamadas: Chamada[] = [];
+    const desfecho = await enviarComprovantePedido({
+      supabase: clienteFalso({ chamadas }) as never,
+      orderId: UUID_PEDIDO,
+    });
+    assertEquals(desfecho, { ok: false, motivo: "sem_remetente" });
+    assertEquals(chamadas.length, 0);
+  } finally {
+    for (const [nome, valor] of guardados) {
+      if (valor === undefined) Deno.env.delete(nome);
+      else Deno.env.set(nome, valor);
+    }
+  }
+});
+
+// --- O ENDEREÇO DA COMPRA (migration 20261229): o e-mail mostra o da COMPRA ---
+//
+// Antes da migration 20261229 o pedido de quem tem conta só guardava o ponteiro
+// (`address_id`); a migration passou a gravar também uma CÓPIA em
+// `customer_data.address` (objeto, 8 chaves). O comprovante lia a linha ATUAL de
+// `user_addresses` e, se ela tinha sido apagada, caía na raiz de `customer_data`,
+// onde `pegar("street", "address")` transformava o OBJETO da cópia em texto:
+// "[object Object] · 38500100". Agora ele PREFERE a cópia (como o mapper do
+// front, a etiqueta e o antifraude), depois a linha da conta, depois o formato
+// antigo — e nunca converte objeto em texto.
+
+const COPIA_DA_COMPRA = {
+  cep: "38600-123",
+  street: "Rua das Acácias",
+  number: "120",
+  complement: "Apto 301",
+  neighborhood: "Jardim Primavera",
+  city: "Paracatu",
+  state: "MG",
+};
+const LINHA_EDITADA_DEPOIS = {
+  street: "Avenida Nova Demais",
+  number: "999",
+  complement: null,
+  neighborhood: "Bairro Que Nao Existia",
+  city: "Outra Cidade",
+  state: "SP",
+  cep: "01310-100",
+};
+
+async function htmlComEndereco(args: {
+  customerData: Record<string, unknown>;
+  addressId?: string | null;
+  linhaDaConta?: Record<string, unknown> | null;
+  chamadas?: Chamada[];
+}): Promise<string> {
+  const chamadasEnvio: Array<{ para: string; assunto: string; html: string }> = [];
+  const supabase = clienteFalso({
+    pedido: {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com", ...args.customerData },
+      address_id: args.addressId ?? null,
+      subtotal: 100,
+      shipping: 0,
+      total: 100,
+      payment_method: "cash",
+      payment_status: null,
+    },
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    storeConfig: { store_name: "Loja Teste" },
+    endereco: args.linhaDaConta ?? null,
+    chamadas: args.chamadas,
+    reservou: true,
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
+      enviarEmail: async (args) => {
+        chamadasEnvio.push(args);
+      },
+    },
+  });
+  assertEquals(desfecho, { ok: true });
+  return chamadasEnvio[0].html;
+}
+
+Deno.test("endereço da conta APAGADO depois da compra + cópia no pedido -> o e-mail mostra rua, número e bairro certos (nunca '[object Object]')", async () => {
+  const html = await htmlComEndereco({
+    customerData: { address: COPIA_DA_COMPRA, destination_cep: "38600123" },
+    addressId: "addr-apagado",
+    linhaDaConta: null, // ON DELETE SET NULL no pedido, ou a linha some do select
+  });
+  assertStringIncludes(html, "Rua das Acácias, 120");
+  assertStringIncludes(html, "Apto 301");
+  assertStringIncludes(html, "Jardim Primavera");
+  assertStringIncludes(html, "Paracatu - MG");
+  assertStringIncludes(html, "38600-123");
+  assertEquals(html.includes("[object Object]"), false);
+});
+
+Deno.test("endereço da conta EDITADO depois da compra -> o e-mail mostra o da COMPRA (a cópia), não o da linha atual", async () => {
+  const html = await htmlComEndereco({
+    customerData: { address: COPIA_DA_COMPRA },
+    addressId: "addr-1",
+    linhaDaConta: LINHA_EDITADA_DEPOIS,
+  });
+  assertStringIncludes(html, "Rua das Acácias, 120");
+  assertEquals(html.includes("Avenida Nova Demais"), false);
+  assertEquals(html.includes("Bairro Que Nao Existia"), false);
+  assertEquals(html.includes("[object Object]"), false);
+});
+
+Deno.test("pedido ANTIGO (sem cópia) de quem tem conta -> segue lendo a linha atual de user_addresses, igual a antes", async () => {
+  const chamadas: Chamada[] = [];
+  const html = await htmlComEndereco({
+    customerData: { address: null },
+    addressId: "addr-1",
+    linhaDaConta: LINHA_EDITADA_DEPOIS,
+    chamadas,
+  });
+  assertStringIncludes(html, "Avenida Nova Demais, 999");
+  assertStringIncludes(html, "Outra Cidade - SP");
+  assertEquals(html.includes("[object Object]"), false);
+  assertEquals(
+    chamadas.some((c) => c.tipo === "from" && c.nome === "user_addresses"),
+    true,
+    "sem cópia, a linha da conta é consultada",
+  );
+});
+
+Deno.test("pedido ANTIGO (sem cópia) com a linha da conta apagada -> cai no formato antigo da raiz de customer_data, igual a antes", async () => {
+  const html = await htmlComEndereco({
+    customerData: {
+      address: "Rua Antiga do Convidado",
+      number: "55",
+      neighborhood: "Centro Velho",
+      destination_cep: "38500100",
+    },
+    addressId: "addr-apagado",
+    linhaDaConta: null,
+  });
+  assertStringIncludes(html, "Rua Antiga do Convidado, 55");
+  assertStringIncludes(html, "Centro Velho");
+  assertStringIncludes(html, "38500100");
+  assertEquals(html.includes("[object Object]"), false);
+});
+
+Deno.test("CONVIDADO (cópia em customer_data.address, sem address_id) -> o e-mail mostra a rua em vez de '[object Object]'", async () => {
+  const chamadas: Chamada[] = [];
+  const html = await htmlComEndereco({
+    customerData: { address: COPIA_DA_COMPRA, destination_cep: "38600123" },
+    addressId: null,
+    chamadas,
+  });
+  assertStringIncludes(html, "Rua das Acácias, 120");
+  assertStringIncludes(html, "Jardim Primavera");
+  assertEquals(html.includes("[object Object]"), false);
+  assertEquals(
+    chamadas.some((c) => c.tipo === "from" && c.nome === "user_addresses"),
+    false,
+    "sem address_id nenhuma linha de conta é lida",
+  );
+});
+
+Deno.test("objeto em customer_data.address que NÃO serve (vazio, sem nenhuma chave de endereço) + nada mais -> sem endereço, e NUNCA vira texto", async () => {
+  const html = await htmlComEndereco({
+    customerData: { address: {}, destination_cep: "38500100" },
+    addressId: null,
+  });
+  assertEquals(html.includes("[object Object]"), false);
+  assertStringIncludes(html, "38500100");
+  const html2 = await htmlComEndereco({
+    customerData: { address: { foo: { bar: 1 } } },
+    addressId: "addr-apagado",
+    linhaDaConta: null,
+  });
+  assertEquals(html2.includes("[object Object]"), false);
+});
+
+Deno.test("cópia inutilizável + linha da conta existente -> a linha da conta ainda socorre (a cópia só vale quando tem endereço)", async () => {
+  const html = await htmlComEndereco({
+    customerData: { address: {} },
+    addressId: "addr-1",
+    linhaDaConta: LINHA_EDITADA_DEPOIS,
+  });
+  assertStringIncludes(html, "Avenida Nova Demais, 999");
+});
+
+Deno.test("fonteDoEnderecoDoComprovante: preferência cópia > linha da conta > raiz; da raiz só entram valores simples (texto/número)", () => {
+  assertEquals(
+    fonteDoEnderecoDoComprovante({ address: COPIA_DA_COMPRA }, LINHA_EDITADA_DEPOIS),
+    COPIA_DA_COMPRA,
+  );
+  assertEquals(
+    fonteDoEnderecoDoComprovante({ address: null }, LINHA_EDITADA_DEPOIS),
+    LINHA_EDITADA_DEPOIS,
+  );
+  assertEquals(
+    fonteDoEnderecoDoComprovante(
+      { address: ["lista", "nao", "e", "copia"], number: "5", ok: true, nested: { a: 1 } },
+      null,
+    ),
+    { number: "5" },
+  );
+  assertEquals(fonteDoEnderecoDoComprovante(null, null), null);
+  assertEquals(fonteDoEnderecoDoComprovante({}, null), null);
 });

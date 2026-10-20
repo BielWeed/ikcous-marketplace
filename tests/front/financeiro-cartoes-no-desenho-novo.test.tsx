@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 //
-// Financeiro no desenho novo de cartão de métrica e de botão-linha (redesenho
-// de 10/10/2026, o mesmo do KpiCard e do AtalhosDaAba): casca `rounded-2xl`
-// com borda de 10% e brilho no topo, rótulo em frase normal (12px semibold
-// cinza 300, não caixa-alta miúda em cinza 500), valor grande e branco, e as
-// linhas-botão com selo de ícone, seta que vira dourada e alvo de 44px.
+// Financeiro v8: superfícies escuras, borda discreta, texto legível,
+// valores sem corte e ícones com matiz por função. Dourado fica nas ações
+// principais e seleções. jsdom confere classes, sem alegar medição de pixels.
 //
 // SÓ CASCA: o texto visível, as props e o "ocultar valores" não mudam (os
 // outros testes do financeiro seguem travando isso). Aqui só se confere a
@@ -39,23 +37,9 @@ import {
 } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
 
-const CASCA_DO_CARTAO = [
-  "rounded-2xl",
-  "border-white/10",
-  "bg-zinc-900/70",
-  "bg-gradient-to-b",
-  "from-white/[0.06]",
-  "to-transparent",
-];
+const CASCA_DO_CARTAO = ["rounded-2xl", "border-white/10", "bg-[#17171C]"];
 
-const CASCA_DA_LINHA_BOTAO = [
-  "rounded-2xl",
-  "border-white/10",
-  "bg-zinc-900/70",
-  "bg-gradient-to-r",
-  "from-white/[0.05]",
-  "to-transparent",
-];
+const CASCA_DA_LINHA_BOTAO = ["rounded-2xl", "border-white/10", "bg-[#101013]"];
 
 const normalizar = (t: string | null | undefined) =>
   (t ?? "").replace(/\s+/g, " ").trim();
@@ -249,9 +233,10 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
 
     // O contrato antigo do rótulo segue (travado por financeiro-fala-a-lingua).
     expect(classes(rotulo)).toEqual(
-      expect.arrayContaining(["line-clamp-2", "break-words", "min-h-[2.5em]"]),
+      expect.arrayContaining(["break-words", "min-h-[2.5em]"]),
     );
     expect(classes(rotulo)).not.toContain("truncate");
+    expect(classes(rotulo)).not.toContain("line-clamp-2");
     rotuloNoDesenhoNovo(rotulo, "BlocoKpi");
 
     // O ícone ganha selo e reserva a faixa dele no rótulo.
@@ -269,24 +254,14 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     expect(classes(valor)).toEqual(
       expect.arrayContaining(["font-black", "tabular-nums", "text-white"]),
     );
-    // Dinheiro não pode ser cortado: 17px na base (360px), 24px de `sm`, 18px
-    // de volta em `lg` (grade de 4 colunas + sidebar: ~145px úteis a 1024px) e
-    // 24px de novo em `xl`.
+    // O valor usa 24px e pode quebrar linha, sem reticências.
     expect(classes(valor)).toEqual(
-      expect.arrayContaining([
-        "text-[17px]",
-        "sm:text-2xl",
-        "lg:text-lg",
-        "xl:text-2xl",
-      ]),
+      expect.arrayContaining(["text-2xl", "break-words", "min-w-0"]),
     );
     expect(classes(valor)).not.toContain("text-lg");
     expect(classes(valor)).not.toContain("text-xl");
-    // Padding horizontal: 10px na base (360px: +4px de folga ao valor) e 12px
-    // de `sm` em diante.
-    expect(classes(cartao)).toEqual(
-      expect.arrayContaining(["px-2.5", "sm:px-3", "py-3.5"]),
-    );
+    // O cartão tem 16px de respiro e intervalo próprio entre as informações.
+    expect(classes(cartao)).toEqual(expect.arrayContaining(["p-4", "gap-3"]));
     expect(classes(cartao)).not.toContain("px-3");
 
     const detalhe = [...hospedeiro.querySelectorAll("div")].find(
@@ -337,26 +312,29 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
 
     for (const rotulo of ["Vencido", "Próximos 7 dias"]) {
       const r = dt(rotulo);
-      rotuloNoDesenhoNovo(r, rotulo);
+      expect(classes(r.parentElement?.parentElement), rotulo).toContain(
+        "text-xs",
+      );
+      expect(classes(r.parentElement), rotulo).toContain("flex-wrap");
       const caixa = r.parentElement;
-      expect(classes(caixa), rotulo).toContain("rounded-2xl");
+      expect(classes(caixa), rotulo).toContain("items-baseline");
       expect(classes(caixa), rotulo).not.toContain("rounded-xl");
     }
-    // Sem vencido (a pagar) a caixa é neutra: casca de cartão completa.
+    // Sem vencido (a pagar), o indicador permanece neutro.
     const vencidoDoAPagar = [...hospedeiro.querySelectorAll("dt")].filter(
       (el) => normalizar(el.textContent) === "Vencido",
-    )[1];
+    )[0];
     comACasca(
       vencidoDoAPagar?.parentElement,
-      CASCA_DO_CARTAO,
+      ["text-zinc-400"],
       "Vencido neutro",
     );
     // Com vencido a cor de estado (vermelho) fica, só a casca muda.
-    const vencidoDoAReceber = [...hospedeiro.querySelectorAll("dt")].find(
-      (el) => normalizar(el.textContent) === "Vencido",
+    const vencidoDoAReceber = hospedeiro.querySelector(
+      '[aria-label="A receber"] dt',
     );
     expect(classes(vencidoDoAReceber?.parentElement)).toEqual(
-      expect.arrayContaining(["border-red-500/30", "bg-red-500/10"]),
+      expect.arrayContaining(["text-red-400", "flex-wrap"]),
     );
 
     const conta = hospedeiro.querySelector(
@@ -377,19 +355,18 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     for (const rotulo of ["Entrou", "Saiu", "Resultado"]) {
       const r = dt(rotulo);
       rotuloNoDesenhoNovo(r, rotulo);
-      comACasca(r.parentElement, CASCA_DO_CARTAO, rotulo);
+      comACasca(r.parentElement?.parentElement, CASCA_DO_CARTAO, rotulo);
     }
-    // Valor em dinheiro não vaza da célula: uma coluna abaixo de `xs` (480px),
-    // três a partir dali (~115px úteis para os ~95px do valor), 12px até `sm`.
+    // Os totais ficam em linhas próprias no mesmo cartão.
     expect(classes(dt("Saiu").parentElement?.parentElement)).toEqual(
-      expect.arrayContaining(["grid-cols-1", "xs:grid-cols-3"]),
+      expect.arrayContaining(["flex", "flex-col"]),
     );
     expect(classes(dt("Saiu").parentElement?.parentElement)).not.toContain(
       "grid-cols-3",
     );
-    expect(classes(dt("Saiu").parentElement)).toContain("p-2");
+    expect(classes(dt("Saiu").parentElement?.parentElement)).toContain("p-4");
     expect(classes(dt("Saiu").nextElementSibling)).toEqual(
-      expect.arrayContaining(["text-xs", "sm:text-sm"]),
+      expect.arrayContaining(["text-sm", "font-bold"]),
     );
     // O valor não perde a cor de sinal.
     expect(classes(dt("Entrou").nextElementSibling)).toContain(
@@ -449,24 +426,21 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
       comACasca(linha, CASCA_DA_LINHA_BOTAO, normalizar(linha.textContent));
       // Alvo de toque de pelo menos 44px (a conta tem 56px, com o selo).
       expect(classes(linha).some((c) => /^min-h-(11|14)$/.test(c))).toBe(true);
-      expect(classes(linha)).toContain("hover:border-admin-gold/40");
+      expect(classes(linha)).toContain("hover:bg-[#1E1E24]");
       // "Editar" continua no nome acessível do botão.
       expect(normalizar(linha.textContent)).toContain("Editar");
       const seta = linha.querySelector("svg.lucide-chevron-right");
       expect(seta, normalizar(linha.textContent)).not.toBeNull();
       expect(classes(seta)).toEqual(
-        expect.arrayContaining(["size-5", "text-zinc-500"]),
+        expect.arrayContaining(["size-5", "text-zinc-400"]),
       );
-      expect(classes(seta)).toContain("group-hover:text-admin-gold");
+      expect(classes(seta)).toContain("group-hover:text-white");
       expect(classes(linha)).toContain("group");
     }
-    // A conta leva o selo de ícone dourado.
+    // Conta bancária usa o selo azul da função.
     const selo = linhas[0]?.querySelector("span.size-10");
-    comACasca(
-      selo,
-      ["rounded-xl", "border-admin-gold/25", "bg-admin-gold/10"],
-      "selo da conta",
-    );
+    comACasca(selo, ["rounded-xl", "border"], "selo da conta");
+    expect((selo as HTMLElement).style.color).toBe("rgb(122, 162, 255)");
     // O nome segue em branco e negrito.
     const nome = [...(linhas[0]?.querySelectorAll("span") ?? [])].find(
       (el) => normalizar(el.textContent) === "Conta bancária",

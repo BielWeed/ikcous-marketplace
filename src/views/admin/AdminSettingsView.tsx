@@ -1,26 +1,43 @@
-import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   AlertTriangle,
-  ArrowUpRight,
   Banknote,
   ChevronDown,
   ChevronRight,
-  CreditCard,
+  Coins,
+  GalleryHorizontal,
   HelpCircle,
-  Layers,
+  ImageIcon,
+  KeyRound,
+  type LucideIcon,
+  Mail,
+  PackageCheck,
   Palette,
   RefreshCw,
   RotateCcw,
+  ShieldCheck,
+  SlidersHorizontal,
   Store,
   Truck,
   Wifi,
 } from "lucide-react";
-import { Suspense, lazy, memo, useEffect, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useState,
+} from "react";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePagamentoCard";
+import { IconePix } from "@/components/admin/primitivos/IconePix";
+import {
+  CartaoPeloAppBloco,
+  FormasDePagamentoSection,
+} from "@/components/admin/settings/FormasDePagamentoCard";
 import { PoliticaDeDevolucaoSection } from "@/components/admin/settings/PoliticaDeDevolucaoSection";
 import {
   type ConfigDoProvedor,
@@ -36,18 +53,29 @@ import {
   type PortaDoGrupoDeAjustes,
   subtitulosDosGrupos,
 } from "@/components/admin/settings/grupos-de-ajustes";
+import {
+  CARTAO_AJUSTES,
+  IconeDeAjustes,
+  type MatizDeAjustes,
+} from "@/components/admin/settings/visual-ajustes";
+import "@/components/admin/settings/ajustes.css";
 import { Skeleton } from "@/components/ui/skeleton";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { NOMES_DO_PAINEL, type TelaDoPainel } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { transportadoraVendeForaDaCidade } from "@/lib/aviso-transportadora-sem-pagamento";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import { publicarPagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
-import { StatusPagamentoPix } from "@/views/admin/StatusPagamentoPix";
+import {
+  StatusPagamentoCartao,
+  StatusPagamentoPix,
+} from "@/views/admin/StatusPagamentoPix";
 
 import type { View } from "@/types";
 
@@ -58,7 +86,8 @@ import type { View } from "@/types";
 // (src/config/configuracaoDaLoja.ts), lida do banco de cada loja pelo
 // porteiro. `null`/`false` é o "não configurada".
 interface AdminSettingsViewProps {
-  onNavigate: (view: View) => void;
+  // `id` opcional: a seção de privacidade abre a ficha da cliente (admin-user-detail).
+  onNavigate: (view: View, id?: string) => void;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
 }
@@ -70,6 +99,28 @@ const MercadoPagoSection = lazy(() =>
   import("@/components/admin/settings/MercadoPagoSection").then((module) => ({
     default: module.MercadoPagoSection,
   })),
+);
+
+// E-mail da loja (14/10/2026, pedido do dono): a lojista cadastra o Gmail que
+// envia o e-mail do pedido, com o passo a passo dentro da tela. Carregada sob
+// demanda, como o Mercado Pago: só é baixada (e só fala com o servidor) quando
+// a seção é aberta.
+const EmailDaLojaSection = lazy(() =>
+  import("@/components/admin/settings/EmailDaLojaSection").then((module) => ({
+    default: module.EmailDaLojaSection,
+  })),
+);
+
+// Pedidos de privacidade dos clientes (14/10/2026, LGPD): exclusão de conta e
+// correção de e-mail pedidas pelo app e atendidas à mão pela loja. Carregada sob
+// demanda, como o E-mail da loja: só é baixada (e só lê o banco) quando a seção
+// é aberta. O sino do painel já avisa quando há pedido esperando.
+const PrivacidadeDosClientesSection = lazy(() =>
+  import("@/components/admin/settings/PrivacidadeDosClientesSection").then(
+    (module) => ({
+      default: module.PrivacidadeDosClientesSection,
+    }),
+  ),
 );
 
 // ==========================================
@@ -125,7 +176,7 @@ const PALAVRAS_DA_CONEXAO = new Map<
       titulo: "Conexão lenta",
       frase:
         "A loja demora (ou às vezes não responde) neste aparelho. Se o painel travar, tente outra rede: Wi-Fi ou dados móveis.",
-      cor: "text-amber-400",
+      cor: "text-orange-300",
     },
   ],
   [
@@ -205,112 +256,88 @@ const ConnectionDiagnosticsSection = memo(
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
           aria-expanded={isOpen}
-          className="group flex min-h-11 w-full select-none items-center justify-between rounded-2xl p-2 text-left transition-all hover:bg-white/5"
+          className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl p-2 text-left"
         >
-          <div className="flex items-center gap-4">
-            <div className="relative flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 shadow-[0_2px_12px_-4px] shadow-amber-500/25 ring-1 ring-amber-500/20">
-              <span
-                aria-hidden="true"
-                className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-amber-500/[0.32] to-amber-500/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-              />
-              <RefreshCw className="relative size-[18px]" strokeWidth={2.25} />
-            </div>
-            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
-              Diagnóstico de Conexão
-            </h2>
-          </div>
+          <span className="flex items-center gap-3">
+            <IconeDeAjustes icone={Wifi} matiz="ciano" />
+            <span className="text-base font-bold">Diagnóstico de Conexão</span>
+          </span>
           <ChevronDown
-            strokeWidth={2.25}
-            className={cn(
-              "size-5 shrink-0 text-zinc-500 transition-transform duration-200 group-hover:text-zinc-300",
-              isOpen && "rotate-180",
-            )}
+            aria-hidden="true"
+            className={`size-5 shrink-0 text-zinc-400 ${isOpen ? "rotate-180" : ""}`}
           />
         </button>
-
         <div
-          className={`grid transition-all duration-300 ease-in-out ${
-            isOpen
-              ? "grid-rows-[1fr] opacity-100"
-              : "pointer-events-none grid-rows-[0fr] opacity-0"
-          }`}
+          hidden={!isOpen}
+          className="space-y-4 rounded-3xl border border-white/15 bg-gradient-to-br from-[#24242e] to-[#101013] p-4"
         >
-          <div className="overflow-hidden">
-            <div className="pt-2">
-              <div className="admin-glass group relative overflow-hidden p-3.5 sm:rounded-2xl sm:p-4">
-                <div className="flex flex-col gap-3">
-                  <p className="text-left text-[11px] leading-snug text-zinc-400">
-                    Teste se a internet deste aparelho chega bem até a sua loja.
-                    Ajuda a saber se uma lentidão do painel vem da sua rede.
+          <p className="text-xs leading-relaxed text-zinc-400">
+            Teste se a internet deste aparelho chega bem até a sua loja. Ajuda a
+            saber se uma lentidão do painel vem da sua rede.
+          </p>
+          <div role="status" aria-live="polite" className="space-y-3">
+            {testando ? (
+              <p className="flex items-center gap-2 text-sm text-sky-300">
+                <RefreshCw aria-hidden="true" className="size-5 animate-spin" />
+                Testando… Medindo a resposta da loja.
+              </p>
+            ) : medida && palavras ? (
+              <>
+                <p className={cn("text-lg font-bold", palavras.cor)}>
+                  {palavras.titulo}
+                </p>
+                {medida.media !== null && (
+                  <p
+                    aria-label="Tempo médio de resposta"
+                    className="text-4xl font-bold tabular-nums text-white"
+                  >
+                    {medida.media} ms
                   </p>
-
-                  {testando ? (
-                    <div
-                      aria-hidden="true"
-                      className="h-16 animate-pulse rounded-xl bg-white/5"
-                    />
-                  ) : medida && palavras ? (
-                    <div
-                      role="status"
-                      className="space-y-1.5 rounded-xl border border-white/5 bg-zinc-950/40 p-3"
-                    >
-                      <p className={cn("text-sm font-black", palavras.cor)}>
-                        {palavras.titulo}
-                      </p>
-                      <p className="text-[11px] leading-relaxed text-zinc-400">
-                        {palavras.frase}
-                      </p>
-                      <details className="text-[11px] text-zinc-500">
-                        <summary className="min-h-11 cursor-pointer select-none py-2 font-bold text-zinc-400">
-                          Ver os números
-                        </summary>
-                        <ul className="space-y-0.5">
-                          {medida.media !== null && (
-                            <>
-                              <li>
-                                Tempo médio de resposta: {medida.media} ms
-                              </li>
-                              <li>
-                                Mais rápida: {medida.minima} ms · mais lenta:{" "}
-                                {medida.maxima} ms
-                              </li>
-                            </>
-                          )}
-                          <li>
-                            Tentativas sem resposta: {medida.falhas} de{" "}
-                            {medida.tentativas}
-                          </li>
-                        </ul>
-                      </details>
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-zinc-500">
-                      Ainda não testada neste aparelho.
-                    </p>
-                  )}
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      disabled={testando}
-                      onClick={handleTestConnectivity}
-                      className="flex min-h-11 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-amber-500/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      <RefreshCw
-                        className={cn(
-                          "size-3 text-amber-500",
-                          testando && "animate-spin",
-                        )}
-                      />
-                      <span>
-                        {testando ? "Testando…" : "Testar a conexão agora"}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+                )}
+                <p className="text-sm leading-relaxed text-zinc-300">
+                  {palavras.frase}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-300">
+                Ainda não testada neste aparelho.
+              </p>
+            )}
           </div>
+          <button
+            type="button"
+            disabled={testando}
+            onClick={handleTestConnectivity}
+            className="ajustes-primario flex min-h-11 items-center justify-center gap-2"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={cn("size-5", testando && "animate-spin")}
+            />
+            {testando ? "Testando…" : "Testar a conexão agora"}
+          </button>
+          {medida && (
+            <details className="text-xs text-zinc-400">
+              <summary className="min-h-11 cursor-pointer py-3 text-sm text-zinc-200">
+                Ver os números
+              </summary>
+              <ul className="space-y-3 rounded-2xl bg-[#17171c] p-3">
+                {medida.media !== null && (
+                  <>
+                    <li>Tempo médio de resposta: {medida.media} ms</li>
+                    <li>
+                      Mais rápida: {medida.minima} ms · mais lenta:{" "}
+                      {medida.maxima} ms
+                    </li>
+                  </>
+                )}
+                <li>
+                  Tentativas sem resposta: {medida.falhas} de{" "}
+                  {medida.tentativas}
+                </li>
+              </ul>
+            </details>
+          )}
         </div>
       </div>
     );
@@ -346,11 +373,12 @@ function SecaoColapsavel({
   icone: Icone,
   comPendencia = false,
   abrirGatilho,
+  aoAbrir,
   children,
 }: {
   readonly titulo: string;
   readonly subtitulo?: string;
-  readonly icone: React.ElementType;
+  readonly icone: LucideIcon;
   readonly comPendencia?: boolean;
   /**
    * FORMAS DE PAGAMENTO POR LOJA (25/09/2026): incrementa de FORA (um botão
@@ -360,9 +388,14 @@ function SecaoColapsavel({
    * quem manda no clique normal do cabeçalho (fechar continua funcionando).
    */
   readonly abrirGatilho?: number;
+  readonly aoAbrir?: () => void;
   readonly children: React.ReactNode;
 }) {
   const [aberta, setAberta] = useState(false);
+  const conteudoId = useId();
+  useEffect(() => {
+    if (aberta) aoAbrir?.();
+  }, [aberta, aoAbrir]);
 
   useEffect(() => {
     if (abrirGatilho !== undefined && abrirGatilho > 0) setAberta(true);
@@ -371,7 +404,7 @@ function SecaoColapsavel({
   }, [abrirGatilho]);
 
   return (
-    <div className="rounded-3xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl">
+    <div className="min-w-0 rounded-2xl border border-white/10 bg-[#101013] p-3">
       <button
         type="button"
         onClick={() => {
@@ -384,30 +417,36 @@ function SecaoColapsavel({
           setAberta((antes) => !antes);
         }}
         aria-expanded={aberta}
+        aria-controls={conteudoId}
         className="group flex min-h-11 w-full items-center justify-between gap-3 text-left"
       >
         <span className="flex min-w-0 items-center gap-3">
-          <span className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold shadow-[0_2px_12px_-4px] shadow-admin-gold/25 ring-1 ring-admin-gold/20">
-            <span
-              aria-hidden="true"
-              className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-admin-gold/[0.32] to-admin-gold/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-            />
-            <Icone className="relative size-[18px]" strokeWidth={2.25} />
-          </span>
+          <IconeDeAjustes
+            icone={Icone}
+            matiz={
+              Icone === Mail
+                ? "verde"
+                : Icone === ShieldCheck || Icone === Banknote
+                  ? "roxo"
+                  : Icone === RotateCcw
+                    ? "rosa"
+                    : "ciano"
+            }
+          />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-black uppercase tracking-[0.2em] text-white">
+            <span className="block text-[15px] font-bold leading-snug text-white">
               {titulo}
             </span>
             {subtitulo && (
-              <span className="block truncate text-[11px] font-medium normal-case tracking-normal text-zinc-500">
+              <span className="block text-[11px] font-medium normal-case tracking-normal text-zinc-500">
                 {subtitulo}
               </span>
             )}
           </span>
         </span>
-        <span className="flex shrink-0 items-center gap-2">
+        <span className="flex max-w-[40%] shrink-0 flex-wrap items-center justify-end gap-2">
           {aberta && comPendencia && (
-            <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">
+            <span className="text-[11px] font-black uppercase tracking-widest text-orange-300">
               Salve antes de fechar
             </span>
           )}
@@ -420,19 +459,9 @@ function SecaoColapsavel({
         </span>
       </button>
 
-      <AnimatePresence initial={false}>
-        {aberta && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22, ease: "easeOut" }}
-            className="overflow-hidden"
-          >
-            <div className="pt-4">{children}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div id={conteudoId}>
+        {aberta && <div className="min-w-0 pt-4">{children}</div>}
+      </div>
     </div>
   );
 }
@@ -444,19 +473,39 @@ const CLASSE_DO_ICONE_DA_PORTA = "size-5";
 const ICONE_DA_PORTA = new Map<TelaDoPainel, React.ReactNode>([
   [
     "admin-about-store",
-    <Store key="s" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+    <Store
+      key="s"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
   ],
   [
     "admin-banners",
-    <Palette key="p" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+    <ImageIcon
+      key="p"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
   ],
   [
     "admin-carousels",
-    <Layers key="l" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+    <GalleryHorizontal
+      key="l"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
   ],
   [
     "admin-shipping",
-    <Truck key="t" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+    <Truck
+      key="t"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
   ],
 ]);
 
@@ -476,6 +525,7 @@ function PortaDeAjustes({
 }) {
   return (
     <div
+      data-porta-ajustes={porta.tela}
       role="button"
       tabIndex={0}
       onClick={() => onNavigate(porta.tela)}
@@ -485,22 +535,22 @@ function PortaDeAjustes({
           onNavigate(porta.tela);
         }
       }}
-      className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
+      className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-white/20 hover:from-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
     >
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-gold/25 bg-admin-gold/10 text-admin-gold">
+      <div
+        className={`flex size-10 shrink-0 items-center justify-center rounded-xl border ${porta.tela === "admin-banners" ? "border-pink-400/30 bg-pink-400/15 text-pink-300" : porta.tela === "admin-carousels" ? "border-violet-400/30 bg-violet-400/15 text-violet-300" : porta.tela === "admin-shipping" ? "border-orange-400/30 bg-orange-400/15 text-orange-300" : "border-blue-400/30 bg-blue-400/15 text-blue-300"}`}
+      >
         {ICONE_DA_PORTA.get(porta.tela)}
       </div>
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-[15px] font-bold leading-tight text-white">
+        <h3 className="text-[15px] font-bold leading-tight text-white">
           {NOMES_DO_PAINEL[porta.tela]}
         </h3>
-        <p className="mt-0.5 truncate text-xs text-zinc-400">
-          {porta.descricao}
-        </p>
+        <p className="mt-0.5 text-xs text-zinc-400">{porta.descricao}</p>
       </div>
       <ChevronRight
         aria-hidden="true"
-        className="size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold"
+        className="size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-white"
       />
     </div>
   );
@@ -517,35 +567,135 @@ function PortaDeAjustes({
  * entrada no mapa não desenha a linha. É um `<p>` irmão do `<h2>`: o título
  * do grupo continua sendo só o nome.
  */
+const VISUAL_DO_GRUPO = new Map<
+  ChaveDoGrupoDeAjustes,
+  { icone: LucideIcon; matiz: MatizDeAjustes }
+>([
+  ["minha-loja", { icone: Store, matiz: "azul" }],
+  ["aparencia", { icone: Palette, matiz: "roxo" }],
+  ["entrega", { icone: Truck, matiz: "laranja" }],
+  ["pagamentos", { icone: Coins, matiz: "verde" }],
+  ["devolucao", { icone: RotateCcw, matiz: "rosa" }],
+  ["ferramentas", { icone: SlidersHorizontal, matiz: "ciano" }],
+]);
+
 function GrupoDeAjustes({
   chave,
   onNavigate,
   subtitulos,
   children,
+  comPendencia = false,
+  abrirGatilho,
+  subtituloExtra,
 }: {
   readonly chave: ChaveDoGrupoDeAjustes;
   readonly onNavigate: (view: View) => void;
   readonly subtitulos: ReadonlyMap<ChaveDoGrupoDeAjustes, string>;
-  readonly children?: React.ReactNode;
+  readonly children?: React.ReactNode | ((aberta: boolean) => React.ReactNode);
+  readonly comPendencia?: boolean;
+  readonly abrirGatilho?: number;
+  readonly subtituloExtra?: string;
 }) {
+  const [aberta, setAberta] = useState(false);
+  useEffect(() => {
+    if (abrirGatilho) setAberta(true);
+  }, [abrirGatilho]);
   const grupo = GRUPO_POR_CHAVE.get(chave);
-  if (!grupo) return null;
-  const subtitulo = subtitulos.get(chave);
+  const visual = VISUAL_DO_GRUPO.get(chave);
+  if (!grupo || !visual) return null;
+  const subtitulo =
+    subtituloExtra ??
+    subtitulos.get(chave) ??
+    (chave === "aparencia"
+      ? "Banners e vitrines"
+      : chave === "devolucao"
+        ? "Prazos, formas de devolver e política"
+        : undefined);
+  const direta = chave === "entrega";
   return (
     <section
       id={`grupo-de-ajustes-${chave}`}
-      className="scroll-mt-24 space-y-3"
+      aria-label={grupo.titulo}
+      className={`${CARTAO_AJUSTES} scroll-mt-24 !p-0`}
     >
-      <h2 className="px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-        {grupo.titulo}
+      <h2>
+        <button
+          type="button"
+          onKeyDown={(evento) => {
+            if (direta && (evento.key === "Enter" || evento.key === " ")) {
+              evento.preventDefault();
+              onNavigate("admin-shipping");
+            }
+          }}
+          data-cabecalho-grupo=""
+          data-porta-ajustes={direta ? "admin-shipping" : undefined}
+          aria-label={grupo.titulo}
+          aria-describedby={
+            [
+              subtitulo ? `subtitulo-${chave}` : null,
+              aberta && comPendencia ? `pendencia-${chave}` : null,
+            ]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
+          aria-expanded={direta ? undefined : aberta}
+          aria-controls={direta ? undefined : `conteudo-${chave}`}
+          onClick={() => {
+            if (direta) {
+              onNavigate("admin-shipping");
+              return;
+            }
+            if (aberta && comPendencia) return;
+            setAberta((antes) => !antes);
+          }}
+          className="flex min-h-11 w-full items-center gap-3 rounded-3xl p-3 text-left focus-visible:ring-2 focus-visible:ring-violet-300"
+        >
+          <IconeDeAjustes icone={visual.icone} matiz={visual.matiz} />
+          <span className="min-w-0 flex-1">
+            <span
+              data-grupo-titulo=""
+              className="block text-[15px] font-bold leading-snug text-white"
+            >
+              {grupo.titulo}
+            </span>
+            {subtitulo && (
+              <span
+                data-grupo-subtitulo=""
+                id={`subtitulo-${chave}`}
+                className={`mt-1 block text-xs font-normal leading-relaxed ${subtitulo.startsWith("Falta:") ? "text-orange-300" : "text-zinc-400"}`}
+              >
+                {subtitulo}
+              </span>
+            )}
+            {aberta && comPendencia && (
+              <span
+                id={`pendencia-${chave}`}
+                className="mt-1 block text-xs font-normal text-orange-300"
+              >
+                Salve antes de fechar
+              </span>
+            )}
+          </span>
+          {direta ? (
+            <ChevronRight
+              aria-hidden="true"
+              className="size-5 shrink-0 text-zinc-400"
+            />
+          ) : (
+            <ChevronDown
+              aria-hidden="true"
+              className={`size-5 shrink-0 text-zinc-400 ${aberta ? "rotate-180" : ""}`}
+            />
+          )}
+        </button>
       </h2>
-      {subtitulo && (
-        <p className="-mt-1 px-1 text-xs font-medium text-zinc-300">
-          {subtitulo}
-        </p>
-      )}
-      {grupo.portas.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {!direta && (
+        <div
+          id={`conteudo-${chave}`}
+          data-conteudo-grupo=""
+          hidden={!aberta}
+          className="space-y-3 border-t border-white/10 p-3"
+        >
           {grupo.portas.map((porta) => (
             <PortaDeAjustes
               key={porta.tela}
@@ -553,77 +703,10 @@ function GrupoDeAjustes({
               onNavigate={onNavigate}
             />
           ))}
+          {typeof children === "function" ? children(aberta) : children}
         </div>
       )}
-      {children}
     </section>
-  );
-}
-
-/**
- * Indicador "Conexão" do grupo Ferramentas (desenho SALÃO+PORÃO; o cartão de
- * quatro indicadores onde ele nasceu saiu em 09/10/2026 — só este sobrou).
- * Espelho PURO: ícone + rótulo curto + valor lido do que já existe — sem
- * ação, sem fetch novo, sem estado.
- *
- * `estado` escolhe SÓ a paleta visual do tile — container do ícone tintado
- * pelo estado + dot de status na frente do rótulo (pulsa apenas em "vivo", o
- * único estado momentâneo). Não carrega julgamento de dado nenhum: o VALOR e
- * a COR do valor continuam sendo escolha do chamador.
- */
-type EstadoDoIndicador = "vivo" | "problema";
-
-// Paleta por estado do tile: container do ícone + dot do rótulo, com glow
-// fraco da própria cor.
-const PALETA_VIVA = {
-  container:
-    "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20 shadow-[0_0_16px_-6px] shadow-emerald-500/40",
-  dot: "bg-emerald-400",
-};
-const PALETA_DE_PROBLEMA = {
-  container:
-    "bg-red-500/10 text-red-400 ring-red-500/20 shadow-[0_0_16px_-6px] shadow-red-500/40",
-  dot: "bg-red-400",
-};
-
-function IndicadorDoPainel({
-  icone: Icone,
-  rotulo,
-  valor,
-  cor = "text-zinc-200",
-  estado,
-}: {
-  readonly icone: React.ElementType;
-  readonly rotulo: string;
-  readonly valor: string;
-  readonly cor?: string;
-  readonly estado: EstadoDoIndicador;
-}) {
-  const paleta = estado === "vivo" ? PALETA_VIVA : PALETA_DE_PROBLEMA;
-  return (
-    <div className="flex min-h-11 min-w-0 flex-col gap-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
-      <span
-        className={cn(
-          "flex size-10 items-center justify-center rounded-xl ring-1 backdrop-blur-sm",
-          paleta.container,
-        )}
-      >
-        <Icone className="size-[18px]" strokeWidth={2.25} />
-      </span>
-      <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-400">
-        <span
-          className={cn(
-            "size-1.5 shrink-0 rounded-full",
-            paleta.dot,
-            estado === "vivo" && "animate-pulse",
-          )}
-        />
-        {rotulo}
-      </span>
-      <span className={cn("truncate text-sm font-bold leading-tight", cor)}>
-        {valor}
-      </span>
-    </div>
   );
 }
 
@@ -661,6 +744,11 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // salva não some num clique no cabeçalho da seção.
   const [politicaDevolucaoPendente, setPoliticaDevolucaoPendente] =
     useState(false);
+  // E-mail da loja (14/10/2026): Gmail ou senha de app digitados e não salvos
+  // não somem num clique no cabeçalho da seção.
+  const [emailPendente, setEmailPendente] = useState(false);
+  // Pedidos de privacidade (14/10/2026): nota de resposta digitada e não salva.
+  const [privacidadePendente, setPrivacidadePendente] = useState(false);
   // Contador que só CRESCE: o botão "Configurar credenciais" da seção nova
   // incrementa para abrir a seção Mercado Pago de fora (SecaoColapsavel
   // continua dona do próprio fechar).
@@ -669,6 +757,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // a seção, pede os campos das chaves já à mostra. O "Ver o PIX em
   // Pagamentos" de Ferramentas abre a seção sem ele.
   const [abrirChavesGatilho, setAbrirChavesGatilho] = useState(0);
+  const [abrirPagamentosGatilho, setAbrirPagamentosGatilho] = useState(0);
+  const [relerCartaoGatilho, setRelerCartaoGatilho] = useState(0);
+  const relerCartao = useCallback(
+    () => setRelerCartaoGatilho((n) => n + 1),
+    [],
+  );
 
   // Espelha a soma das pendências para o App (onSetDirty = setIsAdminDirty):
   // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
@@ -682,13 +776,17 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       onSetDirty?.(
         pagamentosPendente ||
           formasPagamentoPendente ||
-          politicaDevolucaoPendente,
+          politicaDevolucaoPendente ||
+          emailPendente ||
+          privacidadePendente,
       );
   }, [
     active,
     pagamentosPendente,
     formasPagamentoPendente,
     politicaDevolucaoPendente,
+    emailPendente,
+    privacidadePendente,
     onSetDirty,
   ]);
 
@@ -735,6 +833,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // Mercado Pago (o mesmo gatilho de "Configurar credenciais") e rola até o
   // termômetro, no topo do grupo.
   const irParaOPixEmPagamentos = () => {
+    setAbrirPagamentosGatilho((n) => n + 1);
     setAbrirMercadoPagoGatilho((n) => n + 1);
     setTimeout(() => {
       document
@@ -802,6 +901,14 @@ export const AdminSettingsView = memo(function AdminSettingsView({
           })
           .map((p) => NOME_DO_PROVEDOR.get(p) ?? p);
 
+  // A transportadora está de fato OFERECIDA ao cliente de outra cidade? Com
+  // o que esta tela já leu (a mesma lista acima); sem leitura (`null`) não se
+  // chuta. Pausar o pagamento pelo app avisa disso ANTES (MercadoPagoSection).
+  const transportadoraVende = transportadoraVendeForaDaCidade({
+    cobertura: config.shippingCoverage,
+    nomesLigados: nomesLigadosDeFrete,
+  });
+
   // O subtítulo de status de cada grupo — a mesma função dos seis passos do
   // Início (grupos-de-ajustes.ts); aqui só se entregam os fatos.
   const subtitulos = subtitulosDosGrupos({
@@ -812,9 +919,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   });
 
   return (
-    <div className="pb-admin h-auto bg-admin-bg duration-200 animate-in fade-in lg:pb-12">
+    <div className="ajustes pb-admin h-auto duration-200 animate-in fade-in lg:pb-12">
       {/* Elite Header */}
-      <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
+      <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#08080a]/95 p-5 backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-settings"]}>
             <button
@@ -822,19 +929,20 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               onClick={() => setShowHelpModal(true)}
               className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
               title="Guia de Configurações e Ajuda"
+              aria-label="Guia de Configurações e Ajuda"
             >
               <span
                 aria-hidden="true"
-                className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                className="flex size-11 items-center justify-center rounded-full border border-white/10 bg-zinc-900/60 text-zinc-300 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
               >
-                <HelpCircle className="size-4" />
+                <HelpCircle aria-hidden="true" className="size-5" />
               </span>
             </button>
           </AdminPageHeader>
         </div>
       </div>
 
-      <div className="mx-auto max-w-2xl space-y-3 px-3 pb-8">
+      <div className="mx-auto max-w-2xl space-y-3 px-5 pb-8">
         {isOffline && (
           <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
             <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />
@@ -846,7 +954,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
         )}
 
         {!isLoaded ? (
-          <div className="mt-4 animate-pulse space-y-6">
+          <div
+            role="status"
+            aria-label="Carregando ajustes"
+            className="mt-4 animate-pulse space-y-6"
+          >
+            <span className="sr-only">Carregando ajustes…</span>
             {[1, 2].map((i) => (
               <div
                 key={i}
@@ -858,14 +971,107 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             ))}
           </div>
         ) : (
-          <>
-            {/* ── Os grupos com o que o lojista edita. O cartão "Como está
+          <CartaoPeloAppBloco
+            pixLigado={pixLigado}
+            pixChaveOk={pixChaveOk}
+            isOffline={isOffline}
+            onDirtyMudou={setFormasPagamentoPendente}
+            relerGatilho={relerCartaoGatilho}
+          >
+            {(
+              resumoDoCartao,
+              controlesDoCartao,
+              estadoDoCartao,
+              cartaoLigado,
+            ) => (
+              <>
+                <section
+                  aria-label="Recebimentos"
+                  aria-busy={estadoDoCartao === "carregando"}
+                  className={`${CARTAO_AJUSTES} mb-7 space-y-3 !p-3`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-base font-bold">Recebimentos</h3>
+                    <button
+                      type="button"
+                      aria-label="Gerenciar recebimentos"
+                      onClick={() => {
+                        setAbrirPagamentosGatilho((n) => n + 1);
+                        setTimeout(
+                          () =>
+                            document
+                              .getElementById("grupo-de-ajustes-pagamentos")
+                              ?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "start",
+                              }),
+                          0,
+                        );
+                      }}
+                      className="flex min-h-11 items-center gap-2 text-xs text-zinc-400"
+                    >
+                      Gerenciar{" "}
+                      <ChevronRight aria-hidden="true" className="size-4" />
+                    </button>
+                  </div>
+                  <dl className="space-y-3">
+                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-start gap-3">
+                      <dt className="flex items-center gap-2 text-sm font-bold">
+                        <IconeDeAjustes icone={IconePix} matiz="verde" />
+                        PIX
+                      </dt>
+                      <dd className="pt-1 text-right text-xs text-zinc-400">
+                        {nivelDoPix === "ok"
+                          ? "Funcionando"
+                          : nivelDoPix === "alerta"
+                            ? "Chave ausente"
+                            : "Desligado"}
+                      </dd>
+                    </div>
+                    {resumoDoCartao}
+                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-start gap-3">
+                      <dt className="flex items-center gap-2 text-sm font-bold">
+                        <IconeDeAjustes icone={PackageCheck} matiz="azul" />
+                        Na entrega
+                      </dt>
+                      <dd className="pt-1 text-right text-xs text-zinc-400">
+                        {formasNaEntrega.length
+                          ? formasNaEntrega
+                              .map((forma) =>
+                                forma === "pix"
+                                  ? "PIX"
+                                  : forma === "card"
+                                    ? "cartão"
+                                    : "dinheiro",
+                              )
+                              .join(", ")
+                              .replace(/, ([^,]*)$/, " e $1")
+                          : "Nenhuma forma ligada"}
+                      </dd>
+                    </div>
+                  </dl>
+                  {estadoDoCartao === "falhou" && (
+                    <button
+                      type="button"
+                      onClick={relerCartao}
+                      disabled={formasPagamentoPendente}
+                      className="ajustes-secundario min-h-11"
+                    >
+                      <RefreshCw aria-hidden="true" className="size-4" />
+                      Atualizar recebimentos
+                    </button>
+                  )}
+                </section>
+                <p className="py-1 text-[11px] font-bold tracking-wider text-zinc-400">
+                  CONFIGURAÇÕES · 6 GRUPOS
+                </p>
+                {/* ── Os grupos com o que o lojista edita. O cartão "Como está
                 sua loja" (4 indicadores) SAIU em 09/10/2026 (painel simples,
                 E5): o estado de cada grupo é a linha sob o título dele,
                 calculada pela mesma função dos seis passos do Início.
                 Vive DENTRO do ramo isLoaded, porque estado com config pela
                 metade é estado mentiroso. ── */}
-            {/* Minha loja: porta única para a edição de marca, endereço,
+                {/* Minha loja: porta única para a edição de marca, endereço,
                 horário e descrição (pedido do dono, 20/09/2026). "Nome, logo
                 e cores" e "Atendimento" — os dois acordeões que moravam
                 aqui — SAÍRAM em 22/09/2026: eram duplicados de
@@ -873,31 +1079,75 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 (IdentitySettingsSection, BusinessHoursSection) com o mesmo
                 contrato de salvamento. A edição existe só lá; o atalho para
                 lá é o cartão deste grupo. */}
-            <GrupoDeAjustes
-              chave="minha-loja"
-              onNavigate={onNavigate}
-              subtitulos={subtitulos}
-            />
+                <GrupoDeAjustes
+                  chave="minha-loja"
+                  comPendencia={emailPendente || privacidadePendente}
+                  onNavigate={onNavigate}
+                  subtitulos={subtitulos}
+                >
+                  {/* E-mail da loja (14/10/2026): o Gmail que envia o e-mail do
+                  pedido e o código de login. Nascida FECHADA como as demais;
+                  com algo digitado e não salvo, o cabeçalho não fecha. */}
+                  <SecaoColapsavel
+                    titulo="E-mail da loja"
+                    subtitulo="O Gmail que envia os e-mails do pedido aos seus clientes"
+                    icone={Mail}
+                    comPendencia={emailPendente}
+                  >
+                    <Suspense
+                      fallback={
+                        <p className="text-sm text-zinc-400">
+                          Carregando E-mail da loja…
+                        </p>
+                      }
+                    >
+                      <EmailDaLojaSection onDirtyMudou={setEmailPendente} />
+                    </Suspense>
+                  </SecaoColapsavel>
+                  {/* Pedidos de privacidade dos clientes (14/10/2026, LGPD): a
+                  cliente pede, pelo app, a exclusão da conta ou a correção do
+                  e-mail; a loja atende à mão e marca aqui. SEM botão de apagar.
+                  Nascida FECHADA; com nota digitada e não salva, não fecha. */}
+                  <SecaoColapsavel
+                    titulo="Pedidos de privacidade dos clientes"
+                    subtitulo="Exclusão de conta e correção de e-mail pedidas pelo app"
+                    icone={ShieldCheck}
+                    comPendencia={privacidadePendente}
+                  >
+                    <Suspense
+                      fallback={
+                        <p className="text-sm text-zinc-400">
+                          Carregando os pedidos…
+                        </p>
+                      }
+                    >
+                      <PrivacidadeDosClientesSection
+                        onNavigate={onNavigate}
+                        onDirtyMudou={setPrivacidadePendente}
+                      />
+                    </Suspense>
+                  </SecaoColapsavel>
+                </GrupoDeAjustes>
 
-            {/* Aparência do app: Banners e Vitrines — só portas. */}
-            <GrupoDeAjustes
-              chave="aparencia"
-              onNavigate={onNavigate}
-              subtitulos={subtitulos}
-            />
+                {/* Aparência do app: Banners e Vitrines — só portas. */}
+                <GrupoDeAjustes
+                  chave="aparencia"
+                  onNavigate={onNavigate}
+                  subtitulos={subtitulos}
+                />
 
-            {/* Entrega e frete: só a PORTA para a tela de Frete e o
+                {/* Entrega e frete: só a PORTA para a tela de Frete e o
                 subtítulo do grupo (H5, painel simples, 09/10/2026). As
                 Transportadoras e as Consultas de frete, que moravam aqui em
                 acordeões, foram para a tela de Frete — o frete mora num lugar
                 só. */}
-            <GrupoDeAjustes
-              chave="entrega"
-              onNavigate={onNavigate}
-              subtitulos={subtitulos}
-            />
+                <GrupoDeAjustes
+                  chave="entrega"
+                  onNavigate={onNavigate}
+                  subtitulos={subtitulos}
+                />
 
-            {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
+                {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
                 lojista cadastra as chaves do Mercado Pago dele — guia com
                 prompt pronto para o agente de IA do app do MP, salvar e
                 testar conexão ali mesmo. Desde a mp-9 o que Salvar, Testar,
@@ -905,110 +1155,129 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 subtítulo deste grupo e para o termômetro — era a mesma tela
                 contando dois estados do dinheiro. Nascida FECHADA como as
                 demais: ajuste feito uma vez. */}
-            <GrupoDeAjustes
-              chave="pagamentos"
-              onNavigate={onNavigate}
-              subtitulos={subtitulos}
-            >
-              {/* O termômetro do PIX no TOPO do grupo: o ÚNICO status do PIX
-                  da tela (H6, painel simples, P2 aprovada). "Minha loja está
-                  no ar?", "Formas de pagamento" e o bloco do Mercado Pago
-                  deixaram de repetir o estado — cada um aponta para cá ou só
-                  traz a ação (Pausar/Retomar). */}
-              <StatusPagamentoPix ligado={pixLigado} chaveOk={pixChaveOk} />
+                <GrupoDeAjustes
+                  chave="pagamentos"
+                  comPendencia={pagamentosPendente || formasPagamentoPendente}
+                  abrirGatilho={
+                    abrirPagamentosGatilho + abrirMercadoPagoGatilho
+                  }
+                  onNavigate={onNavigate}
+                  subtitulos={subtitulos}
+                >
+                  {/* Mesmos sinais dos controles, só leitura. O cartão depende
+                  também da liberação do pagamento pelo app, como no checkout. */}
+                  <StatusPagamentoPix ligado={pixLigado} chaveOk={pixChaveOk} />
+                  <StatusPagamentoCartao
+                    ligado={pixLigado && cartaoLigado}
+                    chaveOk={pixChaveOk}
+                    estado={estadoDoCartao}
+                  />
 
-              {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
+                  {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
                   20261174000000): ANTES do Mercado Pago (pedido explícito do
                   brief) — a lojista decide primeiro O QUE aceita na
                   entrega/retirada, e só depois mexe nas credenciais do
                   pagamento pelo app. Nascida FECHADA como as demais. */}
-              <SecaoColapsavel
-                titulo="Formas de pagamento"
-                subtitulo={`${formasNaEntrega.length} na entrega`}
-                icone={Banknote}
-                comPendencia={formasPagamentoPendente}
-              >
-                <FormasDePagamentoSection
-                  formasNaEntrega={formasNaEntrega}
-                  pixLigado={pixLigado}
-                  pixChaveOk={pixChaveOk}
-                  isOffline={isOffline}
-                  updateConfig={updateConfig}
-                  onDirtyMudou={setFormasPagamentoPendente}
-                  onAbrirMercadoPago={() => {
-                    setAbrirMercadoPagoGatilho((n) => n + 1);
-                    // "Configurar credenciais" cai direto nos campos das
-                    // chaves (Avançado + Suas chaves abertos).
-                    setAbrirChavesGatilho((n) => n + 1);
-                  }}
-                />
-              </SecaoColapsavel>
+                  <SecaoColapsavel
+                    titulo="Formas de pagamento"
+                    aoAbrir={relerCartao}
+                    abrirGatilho={abrirPagamentosGatilho}
+                    subtitulo={`${formasNaEntrega.length} na entrega`}
+                    icone={Banknote}
+                    comPendencia={formasPagamentoPendente}
+                  >
+                    <FormasDePagamentoSection
+                      cartaoPeloApp={controlesDoCartao}
+                      formasNaEntrega={formasNaEntrega}
+                      pixLigado={pixLigado}
+                      pixChaveOk={pixChaveOk}
+                      isOffline={isOffline}
+                      updateConfig={updateConfig}
+                      onDirtyMudou={setFormasPagamentoPendente}
+                      onAbrirMercadoPago={() => {
+                        setAbrirMercadoPagoGatilho((n) => n + 1);
+                        // "Configurar credenciais" cai direto nos campos das
+                        // chaves (Avançado + Suas chaves abertos).
+                        setAbrirChavesGatilho((n) => n + 1);
+                      }}
+                    />
+                  </SecaoColapsavel>
 
-              <SecaoColapsavel
-                titulo="Mercado Pago"
-                subtitulo="Chaves do seu Mercado Pago no app"
-                icone={CreditCard}
-                comPendencia={pagamentosPendente}
-                abrirGatilho={abrirMercadoPagoGatilho}
-              >
-                <Suspense
-                  fallback={
-                    <p className="text-sm text-zinc-400">
-                      Carregando Mercado Pago…
-                    </p>
-                  }
-                >
-                  <MercadoPagoSection
-                    onDirtyMudou={setPagamentosPendente}
-                    abrirChavesGatilho={abrirChavesGatilho}
-                    onPixAlternado={(ligado, chaveNaLoja) => {
-                      setPixLigado(ligado);
-                      // `chaveNaLoja` só vem preenchido no eco do `ler`
-                      // (mp-10): é o único dos quatro que NÃO garante chave
-                      // publicada quando `ligado` é `true` — `ler` devolve o
-                      // retrato cru da ficha (`pagamento_online`), que pode
-                      // estar ligada com a Public Key ausente (teste X6).
-                      // Com o dado do servidor em mãos, usamos ELE; sem ele
-                      // (eco de `ligar_pix`/`salvar`, que a edge só acende
-                      // com a chave publicada JUNTO — mp-8), a inferência
-                      // antiga continua válida: ligado -> chave OK. Sem esta
-                      // distinção o painel acendia "Funcionando" com o PIX
-                      // quebrado assim que o lojista abria esta seção
-                      // (achado BLOQUEIA da revisão de mp-10).
-                      if (chaveNaLoja !== undefined) {
-                        setPixChaveOk(chaveNaLoja);
-                      } else if (ligado) {
-                        setPixChaveOk(true);
+                  <SecaoColapsavel
+                    titulo="Mercado Pago"
+                    subtitulo="Chaves do seu Mercado Pago no app"
+                    icone={KeyRound}
+                    comPendencia={pagamentosPendente}
+                    abrirGatilho={abrirMercadoPagoGatilho}
+                  >
+                    <Suspense
+                      fallback={
+                        <p className="text-sm text-zinc-400">
+                          Carregando Mercado Pago…
+                        </p>
                       }
-                    }}
-                  />
-                </Suspense>
-              </SecaoColapsavel>
-            </GrupoDeAjustes>
+                    >
+                      <MercadoPagoSection
+                        onDirtyMudou={setPagamentosPendente}
+                        abrirChavesGatilho={abrirChavesGatilho}
+                        transportadoraVende={transportadoraVende}
+                        onPixAlternado={(ligado, chaveNaLoja) => {
+                          setPixLigado(ligado);
+                          // A tela de Frete é OUTRA aba (as duas ficam montadas):
+                          // o mesmo eco do servidor vai para ela, que o usa para
+                          // avisar da transportadora sem aviso falso.
+                          publicarPagamentoPeloApp(ligado);
+                          // `chaveNaLoja` só vem preenchido no eco do `ler`
+                          // (mp-10): é o único dos quatro que NÃO garante chave
+                          // publicada quando `ligado` é `true` — `ler` devolve o
+                          // retrato cru da ficha (`pagamento_online`), que pode
+                          // estar ligada com a Public Key ausente (teste X6).
+                          // Com o dado do servidor em mãos, usamos ELE; sem ele
+                          // (eco de `ligar_pix`/`salvar`, que a edge só acende
+                          // com a chave publicada JUNTO — mp-8), a inferência
+                          // antiga continua válida: ligado -> chave OK. Sem esta
+                          // distinção o painel acendia "Funcionando" com o PIX
+                          // quebrado assim que o lojista abria esta seção
+                          // (achado BLOQUEIA da revisão de mp-10).
+                          if (chaveNaLoja !== undefined) {
+                            setPixChaveOk(chaveNaLoja);
+                          } else if (ligado) {
+                            setPixChaveOk(true);
+                          }
+                        }}
+                      />
+                    </Suspense>
+                  </SecaoColapsavel>
+                </GrupoDeAjustes>
 
-            {/* ── Regras de troca e devolução (antes "Pós-venda"; plano 2026-09-26, seção "Devoluções"; P3 do
+                {/* ── Regras de troca e devolução (antes "Pós-venda"; plano 2026-09-26, seção "Devoluções"; P3 do
                 AGENTS.md): a política de trocas e devoluções de CADA loja —
                 prazos (com os mínimos da lei), formas de devolver e o texto
                 que o cliente lê. Nascida FECHADA como as demais. */}
-            <GrupoDeAjustes
-              chave="devolucao"
-              onNavigate={onNavigate}
-              subtitulos={subtitulos}
-            >
-              <SecaoColapsavel
-                titulo="Trocas e devoluções"
-                subtitulo="Prazos, formas de devolver e a política da loja"
-                icone={RotateCcw}
-                comPendencia={politicaDevolucaoPendente}
-              >
-                <PoliticaDeDevolucaoSection
-                  isOffline={isOffline}
-                  onDirtyMudou={setPoliticaDevolucaoPendente}
-                />
-              </SecaoColapsavel>
-            </GrupoDeAjustes>
+                <GrupoDeAjustes
+                  chave="devolucao"
+                  comPendencia={politicaDevolucaoPendente}
+                  onNavigate={onNavigate}
+                  subtitulos={subtitulos}
+                >
+                  {(aberta) => (
+                    <SecaoColapsavel
+                      abrirGatilho={aberta ? 1 : 0}
+                      titulo="Trocas e devoluções"
+                      subtitulo="Prazos, formas de devolver e a política da loja"
+                      icone={RotateCcw}
+                      comPendencia={politicaDevolucaoPendente}
+                    >
+                      <PoliticaDeDevolucaoSection
+                        ativa={active !== false && aberta}
+                        isOffline={isOffline}
+                        onDirtyMudou={setPoliticaDevolucaoPendente}
+                      />
+                    </SecaoColapsavel>
+                  )}
+                </GrupoDeAjustes>
 
-            {/*
+                {/*
               A porta "Avisar clientes" morou AQUI de 24/08 a 30/08/2026 e
               SAIU por decisão do Gabriel: o lugar dela é a tela de Clientes
               (hoje o `AtalhosDaAba` de Clientes). O motivo que a trouxe para cá em 24/08 (zero
@@ -1017,54 +1286,64 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               continua sensível à origem (pai-da-tela-do-admin).
             */}
 
-            {/* ── PORÃO: consulta rara e técnica, no pé da tela ── */}
-            <GrupoDeAjustes
-              chave="ferramentas"
-              onNavigate={onNavigate}
-              subtitulos={subtitulos}
-            >
-              {/* "Conexão": o único indicador do antigo cartão "Como está
-                  sua loja" que sobrou — mora aqui, junto de "Minha loja está
-                  no ar?" (painel simples, E5). Espelho puro de
-                  `useOnlineStatus`, sem fetch. */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <IndicadorDoPainel
-                  icone={Wifi}
-                  rotulo="Conexão"
-                  valor={isOffline ? "Offline" : "Online"}
-                  cor={isOffline ? "text-red-400" : "text-emerald-400"}
-                  estado={isOffline ? "problema" : "vivo"}
-                />
-              </div>
-              {/* Status de funcionamento — COLAPSADA por padrão (pedido do
+                {/* ── PORÃO: consulta rara e técnica, no pé da tela ── */}
+                <GrupoDeAjustes
+                  chave="ferramentas"
+                  subtituloExtra={`Conexão · ${isOffline ? "Offline" : "Online"}`}
+                  onNavigate={onNavigate}
+                  subtitulos={subtitulos}
+                >
+                  {(aberta) => (
+                    <>
+                      <p className="text-xs text-zinc-400">
+                        Conexão · {isOffline ? "Offline" : "Online"}
+                      </p>
+                      {/* Status de funcionamento — COLAPSADA por padrão (pedido do
                   Gabriel, 02/09: status é consulta rara, não porta de
                   trabalho; a tela abre mostrando o que o lojista edita).
                   Desde H6 mostra só a conexão; o PIX é um atalho para o
                   termômetro de Pagamentos (um status do PIX só). */}
-              <SecaoColapsavel
-                titulo="Minha loja está no ar?"
-                subtitulo="A conexão deste aparelho com a loja"
-                icone={Activity}
-              >
-                <div className="space-y-3">
-                  <ConnectionDiagnosticsSection />
-                  <button
-                    type="button"
-                    onClick={irParaOPixEmPagamentos}
-                    className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 px-4 text-left text-[11px] font-bold text-zinc-300 transition-colors hover:border-admin-gold/30 hover:text-white"
-                  >
-                    <span>
-                      O estado do PIX pelo app fica no topo de Pagamentos.
-                    </span>
-                    <span className="flex shrink-0 items-center gap-1 text-admin-gold">
-                      Ver o PIX em Pagamentos
-                      <ArrowUpRight className="size-3.5" />
-                    </span>
-                  </button>
-                </div>
-              </SecaoColapsavel>
-            </GrupoDeAjustes>
-          </>
+                      <SecaoColapsavel
+                        titulo="Minha loja está no ar?"
+                        abrirGatilho={aberta ? 1 : 0}
+                        subtitulo="A conexão deste aparelho com a loja"
+                        icone={Activity}
+                      >
+                        <div className="space-y-3">
+                          <ConnectionDiagnosticsSection />
+                          <button
+                            type="button"
+                            onClick={irParaOPixEmPagamentos}
+                            className="flex min-h-11 w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#17171c] p-3 text-left text-xs text-zinc-300"
+                          >
+                            <span>
+                              O estado do PIX pelo app fica no topo de
+                              Pagamentos.
+                            </span>
+                            <span className="flex shrink-0 items-center gap-1 text-sky-300">
+                              Ver o PIX em Pagamentos
+                              <ChevronRight
+                                aria-hidden="true"
+                                className="size-3.5"
+                              />
+                            </span>
+                          </button>
+                        </div>
+                      </SecaoColapsavel>
+                    </>
+                  )}
+                </GrupoDeAjustes>
+                <button
+                  type="button"
+                  onClick={() => setShowHelpModal(true)}
+                  className="flex min-h-11 w-full min-w-11 items-center justify-between gap-3 py-4 text-left text-xs text-zinc-300"
+                >
+                  Guia de Configurações e Ajuda{" "}
+                  <HelpCircle aria-hidden="true" className="size-5 shrink-0" />
+                </button>
+              </>
+            )}
+          </CartaoPeloAppBloco>
         )}
       </div>
 
@@ -1085,7 +1364,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
           {GRUPOS_DE_AJUSTES.map((grupo) => (
             <div key={grupo.chave} className="space-y-3">
-              <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              <h4 className="border-l-2 border-sky-400 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                 {grupo.titulo}
               </h4>
               <p className="rounded-2xl border border-white/5 bg-zinc-900/40 p-4 text-xs text-zinc-400">

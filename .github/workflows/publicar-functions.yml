@@ -25,26 +25,32 @@
 # Settings → Secrets and variables → Actions) é um token pessoal da conta do
 # Supabase (Account → Access Tokens). Ele vale para TODOS os projetos da
 # conta — por isso o destino é uma escolha fechada (ikcous-publicada | savy |
-# almeida | sandbox | loja) e o log imprime o ref antes de publicar. Savy usa SOMENTE o segredo
+# sandbox | loja) e o log imprime o ref antes de publicar. Savy usa SOMENTE o segredo
 # separado `SUPABASE_ACCESS_TOKEN_SAVY`, da conta que tem acesso àquele projeto.
-# Almeida (loja cliente, desde 30/09/2026) está no MESMO org Supabase da loja
-# principal e por isso usa o mesmo `SUPABASE_ACCESS_TOKEN` — nunca o da Savy.
 # Revogar: na mesma página do Supabase.
 #
-# LOJA CLIENTE (ikcous-publicada | savy | almeida) = mesma disciplina, de
+# LOJA CLIENTE (ikcous-publicada | savy) = mesma disciplina, de
 # propósito: só as cinco Functions financeiras (as do apelido `cobranca`) e
 # `expected_sha` completo, igual ao SHA do run, conferido ANTES do primeiro
 # deploy. Function de dinheiro numa loja de terceiro não sobe de um commit que
 # ninguém aprovou. EXCEÇÃO (09/10/2026): `send-order-confirmation`, e SÓ na
-# ikcous-publicada e na savy (as lojas reais; a almeida segue nas cinco). O
+# ikcous-publicada e na savy (as lojas reais). O
 # comprovante do balcão divide `_shared/pedido.ts` e `_shared/comprovante.ts`
 # com as financeiras, então a release trava se esses arquivos mudam e a
 # function que os usa para o e-mail não pode subir. O apelido `cobranca` NÃO a
-# inclui: ela só entra pelo nome. A lista por loja que a release enxerga é
+# inclui: ela só entra pelo nome. EXCEÇÃO (13/10/2026, decisão do dono): mais
+# cinco functions NOMEADAS, também SÓ na ikcous-publicada e na savy:
+# calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e
+# send-push. Antes, uma delas que mudasse numa release deixava a loja PARADA
+# pelo nome (o portão não imprimia comando). EXCEÇÃO (14/10/2026): mais uma
+# NOMEADA, também SÓ na ikcous-publicada e na savy: `credenciais-email` (a lojista
+# cadastra o Gmail da loja no painel; ela é admin-only, verify_jwt = true no
+# config.toml). Nenhuma outra entra e a send-order-whatsapp continua proibida. O verify_jwt de
+# cada uma é o do supabase/config.toml (o workflow nunca passa flag). A lista
+# por loja que a release enxerga é
 # `functionsPublicaveis` em scripts/frota/canais-de-backend.json (o teste
 # tests/ci_publicar_functions_test.ts exige que as duas listas concordem). As
-# outras lojas clientes (Brand Meliz, Space Loja do Kit) ficam em projetos de
-# contas sem acesso deste token e não têm rota aqui.
+# tres lojas de teste foram descontinuadas pelo dono em 16/10/2026 e não têm rota aqui.
 #
 # Testado por tests/ci_publicar_functions_test.ts: o bloco de validação é
 # extraído DESTE arquivo e rodado com bash contra os casos que importam.
@@ -65,23 +71,22 @@ on:
       projeto:
         description: >-
           Destino fechado: ikcous-publicada (CAF, a loja principal no ar), savy (GNJ),
-          almeida (CUE), sandbox (lof...) ou loja (DEK, projeto antigo, sem loja no ar)
+          sandbox (lof...) ou loja (DEK, projeto antigo, sem loja no ar)
         required: true
         type: choice
         # 03/10/2026: o padrão era `loja` (DEK), que a loja principal deixou de usar —
         # quem disparasse sem escolher publicaria no banco errado. O padrão agora é o
         # destino que está no ar, e ele é o mais travado (só as cinco financeiras e
-        # expected_sha): esquecer de escolher vira recusa, nunca deploy no lugar errado.
+        # as seis nomeadas, e expected_sha): esquecer de escolher vira recusa, nunca deploy no lugar errado.
         default: ikcous-publicada
         options:
           - ikcous-publicada
           - savy
-          - almeida
           - sandbox
           - loja
       expected_sha:
         description: >-
-          Savy e Almeida: SHA completo do commit aprovado, igual ao SHA deste run
+          IKCOUS publicada e Savy: SHA completo do commit aprovado, igual ao SHA deste run
         required: false
         type: string
 
@@ -101,7 +106,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
 
@@ -116,13 +121,12 @@ jobs:
           case "$PROJETO" in
             loja) REF=dekxabvqdsuukijblazl ;;
             savy) REF=gnjsrucsmjkajijrakzr ;;
-            almeida) REF=cuemaffjmhkebhmghbap ;;
             ikcous-publicada) REF=cafkrminfnokvgjqtkle ;;
             sandbox) REF=lofznuxcvezrhxsgjqyg ;;
-            *) echo "::error::projeto desconhecido: $PROJETO (use loja, savy, almeida, ikcous-publicada ou sandbox)"; exit 1 ;;
+            *) echo "::error::projeto desconhecido: $PROJETO (use loja, savy, ikcous-publicada ou sandbox)"; exit 1 ;;
           esac
           CLIENTE=nao
-          case "$PROJETO" in savy|almeida|ikcous-publicada) CLIENTE=sim ;; esac
+          case "$PROJETO" in savy|ikcous-publicada) CLIENTE=sim ;; esac
           if [ "$CLIENTE" = "sim" ]; then
             if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
               echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
@@ -152,12 +156,12 @@ jobs:
             if [ "$CLIENTE" = "sim" ]; then
               case "$n" in
                 criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
-                send-order-confirmation)
+                send-order-confirmation|calculate-shipping|notify-new-order|send-otp-email|melhor-envio-etiqueta|send-push|credenciais-email)
                   case "$PROJETO" in
                     ikcous-publicada|savy) ;;
-                    *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (a send-order-confirmation só sobe na IKCOUS e na Savy)"; exit 1 ;;
+                    *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (as outras seis nomeadas só sobem na IKCOUS e na Savy)"; exit 1 ;;
                   esac ;;
-                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (mais a send-order-confirmation, só na IKCOUS e na Savy)"; exit 1 ;;
+                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (mais as sete nomeadas: send-order-confirmation, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta, send-push e credenciais-email, só na IKCOUS e na Savy)"; exit 1 ;;
               esac
             fi
             if [ ! -f "supabase/functions/$n/index.ts" ]; then
@@ -195,7 +199,7 @@ jobs:
             echo "::error::segredo SUPABASE_ACCESS_TOKEN_SAVY ausente no repositório"; exit 1
           fi
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: latest
 

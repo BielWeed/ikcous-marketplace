@@ -10,7 +10,7 @@ import { useEffect, useRef } from "react";
  * Abas secundárias recebem os pings via BroadcastChannel local.
  *
  * Peça 22/09: este hook NÃO avisa por conta própria — nenhum toast aqui.
- * O ÚNICO avisador de atualização é o gate (UpdateNotification via
+ * O ÚNICO avisador de atualização é o gate (o gate de atualização via
  * useUpdateCheck), que respeita "Depois"/soneca, telas de compra e admin
  * dirty. O papel do ping é só acionar o deep checkUpdate (e propagar o ping
  * às abas secundárias).
@@ -32,9 +32,12 @@ export function useRealtimeUpdate(
     let setupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     // Shared BroadcastChannel for cross-tab realtime synchronization
-    const bc = new BroadcastChannel("ikcous_realtime_updates");
+    const bc =
+      typeof BroadcastChannel === "undefined"
+        ? null
+        : new BroadcastChannel("ikcous_realtime_updates");
 
-    if (isLeader) {
+    if (isLeader || !bc) {
       console.log(
         "[RealtimeUpdate] Current tab is LEADER. Deferring Supabase Realtime subscription...",
       );
@@ -75,7 +78,7 @@ export function useRealtimeUpdate(
 
             // Propagate update event to secondary tabs
             try {
-              bc.postMessage({ type: "deploy-ping", payload: data });
+              bc?.postMessage({ type: "deploy-ping", payload: data });
               console.log(
                 "[RealtimeUpdate-Leader] Propagated deploy signal to other tabs via BroadcastChannel.",
               );
@@ -167,7 +170,7 @@ export function useRealtimeUpdate(
       if (setupTimeoutId) {
         clearTimeout(setupTimeoutId);
       }
-      bc.close();
+      bc?.close();
       if (activeChannel) {
         const channelToCleanup = activeChannel;
         activeChannel = null;

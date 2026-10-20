@@ -16,9 +16,12 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  *    nomes que existem, expande o apelido `cobranca` nas cinco do Mercado
  *    Pago, recusa a `send-order-whatsapp` (despublicada em 11/08/2026),
  *    recusa `_shared`, nome inexistente, nome com shell dentro e projeto
- *    desconhecido, e resolve `loja`/`savy`/`almeida`/`sandbox` nos refs certos.
- *    Lojas clientes (`savy`, `almeida`) só admitem as cinco Functions
- *    financeiras e exigem `expected_sha` igual ao SHA do run.
+ *    desconhecido, e resolve `loja`/`savy`/`sandbox` nos refs certos.
+ *    Lojas clientes (`ikcous-publicada`, `savy`) só admitem as cinco
+ *    Functions financeiras e exigem `expected_sha` igual ao SHA do run.
+ *    Exceção: `ikcous-publicada` e `savy` (e só elas) admitem também seis
+ *    functions NOMEADAS (send-order-confirmation desde 09/10/2026; as outras
+ *    cinco desde 13/10/2026); o apelido `cobranca` fica nas cinco.
  *
  * Extraído e não copiado: copiado, o teste passaria enquanto o arquivo
  * apodrece.
@@ -37,7 +40,6 @@ const REF_IKCOUS_PUBLICADA = "cafkrminfnokvgjqtkle";
 const REF_LOJA = "dekxabvqdsuukijblazl";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const REF_SANDBOX = "lofznuxcvezrhxsgjqyg";
-const REF_ALMEIDA = "cuemaffjmhkebhmghbap";
 const AS_CINCO_DA_COBRANCA =
   "criar-pagamento webhook-mercadopago reconciliar-pagamentos estornar-pagamento credenciais-mercado-pago";
 
@@ -196,11 +198,10 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
   );
 
   await t.step(
-    "os cinco destinos são fechados: CAF, Savy, Almeida, sandbox e loja",
+    "os quatro destinos são fechados: CAF, Savy, sandbox e loja",
     () => {
       assertStringIncludes(yaml, `loja) REF=${REF_LOJA} ;;`);
       assertStringIncludes(yaml, `savy) REF=${REF_SAVY} ;;`);
-      assertStringIncludes(yaml, `almeida) REF=${REF_ALMEIDA} ;;`);
       assertStringIncludes(
         yaml,
         "ikcous-publicada) REF=cafkrminfnokvgjqtkle ;;",
@@ -208,7 +209,7 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
       assertStringIncludes(yaml, `sandbox) REF=${REF_SANDBOX} ;;`);
       assertStringIncludes(
         yaml,
-        "options:\n          - ikcous-publicada\n          - savy\n          - almeida\n          - sandbox\n          - loja",
+        "options:\n          - ikcous-publicada\n          - savy\n          - sandbox\n          - loja",
       );
     },
   );
@@ -222,14 +223,11 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
   });
 
   await t.step(
-    "Almeida usa o MESMO segredo da loja (mesmo org Supabase), nunca o da Savy",
+    "o destino descontinuado não tem rota nem segredo; o token Savy continua exclusivo",
     () => {
-      // As etapas de token da loja/sandbox têm `if: inputs.projeto != 'savy'`,
-      // então Almeida cai nelas. O segredo da Savy tem de continuar exclusivo
-      // da Savy: uma condição que citasse 'almeida' nas etapas Savy, ou um
-      // segredo novo, mudaria de quem é a credencial sem ninguém decidir.
       assert(!yaml.includes("inputs.projeto == 'almeida'"));
       assert(!yaml.includes("SUPABASE_ACCESS_TOKEN_ALMEIDA"));
+      assert(!yaml.includes("almeida) REF="));
       const inicio = yaml.indexOf("name: Publica Savy, uma function por vez");
       const proximo = yaml.indexOf("\n      - ", inicio + 1);
       const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
@@ -353,11 +351,22 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
     assertEquals(r.codigo, 0, r.stderr + r.stdout);
   });
 
-  await t.step("Savy só admite as cinco Functions financeiras", async () => {
-    const r = await validar("savy", "send-push", "a".repeat(40));
-    assertEquals(r.codigo, 1);
-    assertEquals(r.outputs.nomes, undefined);
-  });
+  // 13/10/2026: a Savy admite também as seis functions NOMEADAS (a
+  // send-order-confirmation e as cinco de baixo risco); o que continua fora é
+  // qualquer outro nome. O teste do canal novo está no fim do arquivo.
+  await t.step(
+    "Savy recusa function fora das financeiras e das seis nomeadas",
+    async () => {
+      const r = await validar(
+        "savy",
+        "outra-function-qualquer",
+        "a".repeat(40),
+      );
+      assertEquals(r.codigo, 1);
+      assertStringIncludes(r.stdout, "Loja cliente (savy) só admite");
+      assertEquals(r.outputs.nomes, undefined);
+    },
+  );
 
   await t.step(
     "recusa a send-order-whatsapp, despublicada em 11/08/2026",
@@ -396,21 +405,24 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
   );
 
   await t.step(
-    "Almeida resolve a ref própria e mantém as cinco Functions",
+    "IKCOUS resolve a ref própria e mantém as cinco Functions",
     async () => {
-      const r = await validar("almeida", "cobranca", "a".repeat(40));
+      const r = await validar("ikcous-publicada", "cobranca", "a".repeat(40));
       assertEquals(r.codigo, 0, r.stderr + r.stdout);
-      assertEquals(r.outputs.ref, REF_ALMEIDA);
+      assertEquals(r.outputs.ref, REF_IKCOUS_PUBLICADA);
       assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
-      assertStringIncludes(r.stdout, `Projeto: almeida (${REF_ALMEIDA})`);
+      assertStringIncludes(
+        r.stdout,
+        `Projeto: ikcous-publicada (${REF_IKCOUS_PUBLICADA})`,
+      );
     },
   );
 
   await t.step(
-    "Almeida aceita uma function financeira sozinha e SHA em maiúsculas",
+    "IKCOUS aceita uma function financeira sozinha e SHA em maiúsculas",
     async () => {
       const r = await validar(
-        "almeida",
+        "ikcous-publicada",
         "criar-pagamento",
         "A".repeat(40),
         "a".repeat(40),
@@ -421,7 +433,7 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
   );
 
   await t.step(
-    "Almeida exige o SHA exato: vazio, outro, curto ou comprido recusam",
+    "IKCOUS exige o SHA exato: vazio, outro, curto ou comprido recusam",
     async () => {
       for (const expected of [
         "",
@@ -430,7 +442,7 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
         "a".repeat(41),
         `${"a".repeat(39)}g`,
       ]) {
-        const r = await validar("almeida", "cobranca", expected);
+        const r = await validar("ikcous-publicada", "cobranca", expected);
         assertEquals(r.codigo, 1, `SHA "${expected}" deveria falhar`);
         // Pelo MOTIVO certo: sem isto, o teste passaria com o destino ainda
         // "desconhecido" (recusa por outro caminho) e não provaria a trava.
@@ -443,15 +455,15 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
   );
 
   await t.step(
-    "Almeida recusa function não financeira, sozinha ou no meio de um pedido",
+    "IKCOUS recusa function fora da lista permitida, sozinha ou no meio de um pedido",
     async () => {
       for (const pedido of [
-        "send-push",
-        "melhor-envio-etiqueta",
-        "criar-pagamento send-push",
-        "send-push, criar-pagamento",
+        "outra-function-qualquer",
+        "listar criar-pagamento",
+        "criar-pagamento outra-function-qualquer",
+        "outra-function-qualquer, criar-pagamento",
       ]) {
-        const r = await validar("almeida", pedido, "a".repeat(40));
+        const r = await validar("ikcous-publicada", pedido, "a".repeat(40));
         assertEquals(r.codigo, 1, `"${pedido}" deveria ser recusado`);
         assertStringIncludes(
           r.stdout,
@@ -469,7 +481,7 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
   );
 
   await t.step(
-    "Almeida mantém as recusas gerais: whatsapp, nome inválido, pedido vazio",
+    "IKCOUS mantém as recusas gerais: whatsapp, nome inválido, pedido vazio",
     async () => {
       for (const pedido of [
         "send-order-whatsapp",
@@ -477,10 +489,22 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
         "criar-pagamento;echo pwned",
         "",
       ]) {
-        const r = await validar("almeida", pedido, "a".repeat(40));
+        const r = await validar("ikcous-publicada", pedido, "a".repeat(40));
         assertEquals(r.codigo, 1, `"${pedido}" deveria ser recusado`);
         assert(!r.stdout.includes("projeto desconhecido"));
         assertEquals(r.outputs.nomes, undefined);
+      }
+    },
+  );
+
+  await t.step(
+    "as três lojas descontinuadas não são destinos, mesmo com SHA aprovado",
+    async () => {
+      for (const projeto of ["almeida", "brandmeliz", "spacelojadoskit"]) {
+        const r = await validar(projeto, "cobranca", "a".repeat(40));
+        assertEquals(r.codigo, 1, projeto);
+        assertStringIncludes(r.stdout, `projeto desconhecido: ${projeto}`);
+        assertEquals(r.outputs, {});
       }
     },
   );
@@ -542,8 +566,8 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
     "IKCOUS publicada recusa extras injecao WhatsApp e nomes vazios",
     async () => {
       for (const pedido of [
-        "send-push",
-        "criar-pagamento,send-push",
+        "outra-function-qualquer",
+        "criar-pagamento,outra-function-qualquer",
         "_shared",
         "send-order-whatsapp",
         "criar-pagamento;echo injected",
@@ -691,7 +715,7 @@ Deno.test("publicar-functions: o passo 'Lista o que está no ar ANTES' existe s�
     "o run do ANTES é o mesmo do 'Lista o que ficou publicado na IKCOUS publicada', só com outro título",
   );
   // não roda para nenhuma outra loja, em nenhum modo
-  for (const projeto of ["savy", "almeida", "sandbox", "loja"]) {
+  for (const projeto of ["savy", "sandbox", "loja"]) {
     for (const modo of ["publicar", "listar"]) {
       assertEquals(seRoda(antes, projeto, modo), false, `${projeto}/${modo}`);
     }
@@ -734,7 +758,6 @@ Deno.test("publicar-functions: com `listar` NENHUM passo de deploy (nem a prova 
   const esperado: Record<string, string> = {
     "ikcous-publicada": "Publica IKCOUS publicada, uma function por vez",
     savy: "Publica Savy, uma function por vez",
-    almeida: "Publica, uma function por vez, sempre pelo nome",
     sandbox: "Publica, uma function por vez, sempre pelo nome",
     loja: "Publica, uma function por vez, sempre pelo nome",
   };
@@ -773,7 +796,7 @@ Deno.test("publicar-functions: `functions` exatamente `listar` em ikcous-publica
     assertEquals(s.outputs, {});
   }
   // fora de ikcous-publicada, "listar" é um nome como outro qualquer: não existe a function
-  for (const projeto of ["savy", "almeida", "sandbox", "loja"]) {
+  for (const projeto of ["savy", "sandbox", "loja"]) {
     const s = await validar(
       projeto,
       "listar",
@@ -807,7 +830,7 @@ Deno.test("publicar-functions: `functions` exatamente `listar` em ikcous-publica
 // E com a send-order-confirmation. Se a release muda esses arquivos e a
 // send-order-confirmation não pode ser publicada nas lojas reais, a release
 // trava (ela ficaria PARADA pelo nome). Por isso IKCOUS e Savy — e SÓ elas —
-// admitem a sexta function. Almeida (loja cliente de teste) continua nas cinco.
+// admitem a sexta function.
 Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy, só ali, e as cinco financeiras continuam iguais", async (t) => {
   const sha = "a".repeat(40);
   const CONFIRMACAO = "send-order-confirmation";
@@ -847,14 +870,13 @@ Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy,
     );
 
     await t.step(
-      `${projeto} continua RECUSANDO todas as outras fora das cinco`,
+      `${projeto} continua RECUSANDO todas as outras fora das cinco e das seis nomeadas`,
       async () => {
+        // 13/10/2026: send-otp-email, notify-new-order, send-push,
+        // calculate-shipping e melhor-envio-etiqueta SAÍRAM desta lista (o canal
+        // as admite agora, pelo nome); o teste delas é o do fim do arquivo.
         for (const nome of [
-          "send-otp-email",
-          "notify-new-order",
-          "send-push",
-          "calculate-shipping",
-          "melhor-envio-etiqueta",
+          "outra-function-qualquer",
           "_shared",
           "send-order-whatsapp",
         ]) {
@@ -881,15 +903,12 @@ Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy,
   }
 
   await t.step(
-    "Almeida NÃO ganhou a send-order-confirmation: recusa com a mensagem de sempre",
+    "destino descontinuado recusa send-order-confirmation antes de gerar outputs",
     async () => {
       for (const pedido of [CONFIRMACAO, `criar-pagamento,${CONFIRMACAO}`]) {
         const r = await validar("almeida", pedido, sha);
         assertEquals(r.codigo, 1, pedido);
-        assertStringIncludes(
-          r.stdout,
-          "só admite as cinco Functions financeiras",
-        );
+        assertStringIncludes(r.stdout, "projeto desconhecido: almeida");
         assertEquals(r.outputs, {});
       }
     },
@@ -898,7 +917,7 @@ Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy,
   await t.step(
     "o apelido `cobranca` continua sendo SÓ as cinco (a sexta não entra por ele)",
     async () => {
-      for (const projeto of ["ikcous-publicada", "savy", "almeida"]) {
+      for (const projeto of ["ikcous-publicada", "savy"]) {
         const r = await validar(projeto, "cobranca", sha);
         assertEquals(r.codigo, 0, r.stdout + r.stderr);
         assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
@@ -926,6 +945,205 @@ Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy,
           "--no-verify-jwt",
         ),
       );
+    },
+  );
+});
+
+// 13/10/2026 (decisão do dono): cinco functions de baixo risco passam a ser
+// publicadas pelo canal central, SÓ na IKCOUS e na Savy e SÓ pelo nome:
+// calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e
+// send-push. Antes, qualquer uma delas que mudasse numa release deixava a loja
+// PARADA pelo nome (o portão não imprimia comando). O apelido `cobranca`
+// segue nas cinco financeiras; a
+// send-order-whatsapp segue proibida em qualquer destino.
+const AS_CINCO_NOMEADAS = [
+  "calculate-shipping",
+  "notify-new-order",
+  "send-otp-email",
+  "melhor-envio-etiqueta",
+  "send-push",
+];
+
+// 14/10/2026: a credenciais-email (o painel onde a lojista cadastra o Gmail da
+// loja) entra como mais uma NOMEADA, também só na IKCOUS e na Savy e só pelo
+// nome. Fica fora do array acima para os testes das "cinco" não mudarem de
+// sentido; o bloco dela está no fim deste arquivo.
+const CREDENCIAIS_EMAIL = "credenciais-email";
+
+Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, push) sobem na IKCOUS e na Savy, só ali, só pelo nome", async (t) => {
+  const sha = "a".repeat(40);
+
+  for (const projeto of ["ikcous-publicada", "savy"]) {
+    const refEsperada = projeto === "savy" ? REF_SAVY : REF_IKCOUS_PUBLICADA;
+
+    await t.step(
+      `${projeto} admite cada uma das cinco, sozinha, na ref certa`,
+      async () => {
+        for (const nome of AS_CINCO_NOMEADAS) {
+          const r = await validar(projeto, nome, sha);
+          assertEquals(r.codigo, 0, `${nome}: ${r.stdout}${r.stderr}`);
+          assertEquals(r.outputs.nomes, nome);
+          assertEquals(r.outputs.ref, refEsperada);
+          assertEquals(r.outputs.modo, "publicar");
+        }
+      },
+    );
+
+    await t.step(
+      `${projeto} admite as cinco juntas, com as financeiras e a send-order-confirmation, sem duplicar`,
+      async () => {
+        const pedido = [
+          ...AS_CINCO_NOMEADAS,
+          "send-order-confirmation",
+          "criar-pagamento",
+          "send-push", // repetida de propósito
+        ].join(",");
+        const r = await validar(projeto, pedido, sha);
+        assertEquals(r.codigo, 0, r.stdout + r.stderr);
+        assertEquals(
+          r.outputs.nomes,
+          [
+            ...AS_CINCO_NOMEADAS,
+            "send-order-confirmation",
+            "criar-pagamento",
+          ].join(" "),
+        );
+      },
+    );
+
+    await t.step(
+      `${projeto} continua exigindo o SHA exato para cada uma das cinco`,
+      async () => {
+        for (const nome of AS_CINCO_NOMEADAS) {
+          for (const expected of ["", "b".repeat(40), "a".repeat(39)]) {
+            const r = await validar(projeto, nome, expected);
+            assertEquals(r.codigo, 1, `${nome} com SHA "${expected}"`);
+            assertStringIncludes(r.stdout, "exige expected_sha");
+            assertEquals(r.outputs, {});
+          }
+        }
+      },
+    );
+
+    await t.step(
+      `${projeto}: uma function fora da lista ou a send-order-whatsapp no meio das cinco derruba o pedido inteiro`,
+      async () => {
+        for (const intruso of [
+          "outra-function-qualquer",
+          "_shared",
+          "send-order-whatsapp",
+        ]) {
+          const r = await validar(
+            projeto,
+            `${AS_CINCO_NOMEADAS.join(",")},${intruso}`,
+            sha,
+          );
+          assertEquals(r.codigo, 1, `${intruso} no meio das cinco`);
+          assertEquals(r.outputs, {}, `${intruso}: nada pode virar output`);
+        }
+      },
+    );
+  }
+
+  await t.step(
+    "destino descontinuado recusa as cinco nomeadas, sozinhas ou no meio de um pedido",
+    async () => {
+      for (const nome of AS_CINCO_NOMEADAS) {
+        for (const pedido of [
+          nome,
+          `criar-pagamento,${nome}`,
+          `${nome} criar-pagamento`,
+        ]) {
+          const r = await validar("almeida", pedido, sha);
+          assertEquals(
+            r.codigo,
+            1,
+            `almeida: "${pedido}" deveria ser recusado`,
+          );
+          assertStringIncludes(r.stdout, "projeto desconhecido: almeida");
+          assertEquals(
+            r.outputs,
+            {},
+            `almeida: "${pedido}" não pode virar output`,
+          );
+        }
+      }
+    },
+  );
+
+  await t.step(
+    "IKCOUS e Savy: as financeiras e o apelido `cobranca` seguem aceitos, e o apelido continua sendo SÓ as cinco financeiras",
+    async () => {
+      for (const projeto of ["ikcous-publicada", "savy"]) {
+        const r = await validar(projeto, "cobranca", sha);
+        assertEquals(r.codigo, 0, r.stdout + r.stderr);
+        assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
+        for (const nome of AS_CINCO_NOMEADAS) {
+          assert(
+            !r.outputs.nomes.includes(nome),
+            `${nome} entrou pelo apelido`,
+          );
+        }
+      }
+      const ikcous = await validar("ikcous-publicada", "criar-pagamento", sha);
+      assertEquals(ikcous.codigo, 0, ikcous.stdout + ikcous.stderr);
+    },
+  );
+
+  await t.step(
+    "a send-order-whatsapp segue proibida em TODOS os destinos, mesmo junto das cinco",
+    async () => {
+      for (const projeto of ["ikcous-publicada", "savy", "loja", "sandbox"]) {
+        const r = await validar(projeto, "send-order-whatsapp", sha);
+        assertEquals(r.codigo, 1, projeto);
+        assertStringIncludes(r.stdout, "send-order-whatsapp foi despublicada");
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step(
+    "o modo `listar` segue só na IKCOUS: nas outras lojas cliente `listar` não vira nome nem modo",
+    async () => {
+      const ik = await validar("ikcous-publicada", "listar", sha);
+      assertEquals(ik.codigo, 0, ik.stdout + ik.stderr);
+      assertEquals(ik.outputs.modo, "listar");
+      for (const projeto of ["savy"]) {
+        const r = await validar(projeto, "listar", sha);
+        assertEquals(r.codigo, 1, projeto);
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step(
+    "o JSON dos canais lista as cinco nomeadas na IKCOUS e na Savy (e nada além das onze publicáveis)",
+    async () => {
+      const canais = JSON.parse(
+        await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+      );
+      const esperadas = [
+        ...AS_CINCO_DA_COBRANCA.split(" "),
+        "send-order-confirmation",
+        ...AS_CINCO_NOMEADAS,
+        CREDENCIAIS_EMAIL,
+      ].sort();
+      assertEquals(
+        Object.keys(canais.canais).sort(),
+        [REF_IKCOUS_PUBLICADA, REF_SAVY].sort(),
+        "só IKCOUS e Savy têm canal",
+      );
+      for (const [ref, canal] of Object.entries(canais.canais)) {
+        assertEquals(
+          [...canal.functionsPublicaveis].sort(),
+          esperadas,
+          `${canal.nome} (${ref}): lista de functionsPublicaveis`,
+        );
+        assert(
+          !canal.functionsPublicaveis.includes("send-order-whatsapp"),
+          `${canal.nome}: send-order-whatsapp não pode estar na lista`,
+        );
+      }
     },
   );
 });
@@ -975,4 +1193,81 @@ Deno.test("publicar-functions: o JSON dos canais e o workflow concordam, functio
       if (r.codigo === 0) assertEquals(r.outputs.ref, ref);
     }
   }
+});
+
+Deno.test("publicar-functions: a credenciais-email (e-mail da loja no painel) sobe na IKCOUS e na Savy, só ali, só pelo nome, com SHA exato", async (t) => {
+  const sha = "a".repeat(40);
+
+  for (const projeto of ["ikcous-publicada", "savy"]) {
+    const refEsperada = projeto === "savy" ? REF_SAVY : REF_IKCOUS_PUBLICADA;
+
+    await t.step(
+      `${projeto} admite a credenciais-email, sozinha e no meio de um pedido, sem duplicar`,
+      async () => {
+        const sozinha = await validar(projeto, CREDENCIAIS_EMAIL, sha);
+        assertEquals(sozinha.codigo, 0, sozinha.stdout + sozinha.stderr);
+        assertEquals(sozinha.outputs.nomes, CREDENCIAIS_EMAIL);
+        assertEquals(sozinha.outputs.ref, refEsperada);
+        const junto = await validar(
+          projeto,
+          `${CREDENCIAIS_EMAIL},send-otp-email,${CREDENCIAIS_EMAIL}`,
+          sha,
+        );
+        assertEquals(junto.codigo, 0, junto.stdout + junto.stderr);
+        assertEquals(
+          junto.outputs.nomes,
+          `${CREDENCIAIS_EMAIL} send-otp-email`,
+        );
+      },
+    );
+
+    await t.step(
+      `${projeto} exige o SHA exato para a credenciais-email`,
+      async () => {
+        for (const expected of ["", "b".repeat(40), "a".repeat(39)]) {
+          const r = await validar(projeto, CREDENCIAIS_EMAIL, expected);
+          assertEquals(r.codigo, 1, `SHA "${expected}"`);
+          assertStringIncludes(r.stdout, "exige expected_sha");
+          assertEquals(r.outputs, {});
+        }
+      },
+    );
+  }
+
+  await t.step(
+    "destino descontinuado recusa credenciais-email, sozinha ou no meio de um pedido",
+    async () => {
+      for (const pedido of [
+        CREDENCIAIS_EMAIL,
+        `criar-pagamento,${CREDENCIAIS_EMAIL}`,
+      ]) {
+        const r = await validar("almeida", pedido, sha);
+        assertEquals(r.codigo, 1, pedido);
+        assertStringIncludes(r.stdout, "projeto desconhecido: almeida");
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step("o apelido `cobranca` NÃO a inclui", async () => {
+    const r = await validar("savy", "cobranca", sha);
+    assertEquals(r.codigo, 0, r.stdout + r.stderr);
+    assert(!r.outputs.nomes.includes(CREDENCIAIS_EMAIL));
+  });
+
+  await t.step(
+    "no config.toml ela tem verify_jwt = true (nunca --no-verify-jwt: só o admin entra)",
+    async () => {
+      const toml = await Deno.readTextFile(`${RAIZ}/supabase/config.toml`);
+      const bloco =
+        /\[functions\."credenciais-email"\]\s*\n\s*verify_jwt\s*=\s*(true|false)/.exec(
+          toml,
+        );
+      assert(
+        bloco,
+        'falta o bloco [functions."credenciais-email"] no config.toml',
+      );
+      assertEquals(bloco![1], "true");
+    },
+  );
 });

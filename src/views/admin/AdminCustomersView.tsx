@@ -1,52 +1,43 @@
-import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
-import {
-  AdminKpiCarousel,
-  type KpiCardConfig,
-} from "@/components/admin/AdminKpiCarousel";
+import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { BarraDeBusca } from "@/components/admin/BarraDeBusca";
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
-import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
+import { CartaoCliente } from "@/components/admin/users/CartaoCliente";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  BOTAO_CLIENTES,
+  FOCO_CLIENTES,
+  FolhaClientes,
+} from "@/components/admin/users/FolhaClientes";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
+import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { formatarInteiro } from "@/lib/crm";
-import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
+  AlertCircle,
+  ArrowDownAZ,
+  ArrowDownWideNarrow,
   ArrowUpDown,
-  Calendar,
+  Box,
+  CloudOff,
   HelpCircle,
-  LayoutGrid,
-  List,
-  Loader2,
-  Mail,
-  MoreHorizontal,
-  Phone,
+  Info,
+  Megaphone,
+  MessageSquare,
+  RefreshCw,
   Search,
-  Shield,
   ShoppingBag,
   TrendingUp,
   Users,
   Wallet,
-  Zap,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -60,9 +51,27 @@ import {
 /** Ordenações da fileira de chips abaixo da busca (o funil dropdown virou
  * chips — pedido do Gabriel de 02/09; mesmos pares campo/direção de antes). */
 const ORDENACOES_CLIENTES = [
-  { campo: "total_spent", direcao: "desc", rotulo: "Maior total comprado" },
-  { campo: "orders_count", direcao: "desc", rotulo: "Mais Pedidos" },
-  { campo: "full_name", direcao: "asc", rotulo: "Alfabética" },
+  {
+    campo: "total_spent",
+    direcao: "desc",
+    rotulo: "Maior total comprado",
+    icone: ArrowDownWideNarrow,
+    cor: "text-indigo-300",
+  },
+  {
+    campo: "orders_count",
+    direcao: "desc",
+    rotulo: "Mais pedidos",
+    icone: Box,
+    cor: "text-pink-300",
+  },
+  {
+    campo: "full_name",
+    direcao: "asc",
+    rotulo: "A–Z",
+    icone: ArrowDownAZ,
+    cor: "text-violet-300",
+  },
 ] as const;
 
 /** Mesmo par campo/direção de ORDENACOES_CLIENTES, como `Map` — pra
@@ -123,6 +132,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   );
 
   const [loading, setLoading] = useState(() => !cachedCustomersData);
+  // Qual consulta (busca + ordem + página) falhou por último: só ela esconde a
+  // lista, para a falha não parecer o resultado de outra busca.
+  const [chaveComErro, setChaveComErro] = useState<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -162,6 +174,12 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   const fetchCustomers = useCallback(
     async (pageToFetch: number) => {
       const rodada = ++rodadaRef.current;
+      const chaveDaRodada = JSON.stringify([
+        searchTerm,
+        sortField,
+        sortDirection,
+        pageToFetch,
+      ]);
       try {
         setLoading(true);
 
@@ -197,10 +215,12 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           setCustomers(customersList);
           setTotalCustomers(totalCount);
           setGlobalStats(stats);
+          setChaveComErro(null);
         }
       } catch (error) {
         console.error("Error fetching customers:", error);
         if (rodada === rodadaRef.current) {
+          setChaveComErro(chaveDaRodada);
           toast.error("Erro ao carregar clientes");
         }
       } finally {
@@ -265,14 +285,14 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         // ("Ticket Médio") já usam este padrão.
         value: formatarInteiro(globalStats?.total_customers),
         icon: Users,
-        accent: "text-admin-gold",
+        accent: "text-indigo-300",
         subValue: "Base de Clientes",
       },
       {
         label: "Novos (30 dias)",
         value: formatarInteiro(globalStats?.new_customers_30d),
         icon: TrendingUp,
-        accent: "text-emerald-500",
+        accent: "text-emerald-300",
         subValue: "Crescimento",
       },
       {
@@ -342,7 +362,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               })}`;
         })(),
         icon: Wallet,
-        accent: "text-blue-500",
+        accent: "text-orange-300",
         subValue: "Média por pedido",
       },
       {
@@ -364,15 +384,23 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         // o bloco `executive` — que existe, mas não traz contagem nenhuma.
         value: formatarInteiro(analyticsStats?.executive?.totalOrders),
         icon: ShoppingBag,
-        accent: "text-amber-500",
+        accent: "text-pink-300",
         subValue: "Pedidos",
       },
     ],
     [globalStats, analyticsStats],
   );
 
-  const totalPages = Math.ceil(totalCustomers / PAGE_SIZE);
-  const paginatedCustomers = customers; // Already paginated from server
+  const chaveDaConsulta = JSON.stringify([
+    searchTerm,
+    sortField,
+    sortDirection,
+    page,
+  ]);
+  const erroDaListagem = chaveComErro === chaveDaConsulta;
+  const totalExibido = erroDaListagem ? 0 : totalCustomers;
+  const totalPages = Math.ceil(totalExibido / PAGE_SIZE);
+  const paginatedCustomers = erroDaListagem ? [] : customers; // Already paginated from server
 
   // `sortField`/`sortDirection` já NASCEM como "total_spent"/"desc" (linhas
   // 111-112, pra bater com o chip "Maior total comprado" antes de qualquer
@@ -397,252 +425,239 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     }
     jaClicouEmAlgumCabecalhoRef.current = true;
   };
-  const renderDetailedSkeletons = () => {
-    return (
-      <div className="flex flex-col gap-4 divide-y-0 divide-zinc-800/30 md:gap-0 md:divide-y">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <div
-            key={i}
-            className="group relative flex min-h-[120px] animate-pulse flex-col gap-5 rounded-3xl border border-zinc-800/50 bg-zinc-900/30 p-5 md:grid md:grid-cols-12 md:items-center md:gap-4 md:rounded-none md:border-transparent md:bg-transparent md:px-8 md:py-6"
-          >
-            <div className="flex items-center gap-4 pr-10 md:col-span-4 md:pr-0">
-              <div className="size-12 shrink-0 rounded-full bg-zinc-850 sm:size-14" />
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <div className="h-4 w-2/3 rounded bg-zinc-850" />
-                <div className="h-3 w-1/3 rounded bg-zinc-850" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-3">
-              <div className="h-3.5 w-3/4 rounded bg-zinc-850" />
-              <div className="h-3.5 w-1/2 rounded bg-zinc-850" />
-            </div>
-            <div className="grid grid-cols-2 justify-between gap-4 md:col-span-3 md:flex md:items-center md:justify-end">
-              <div className="h-9 w-24 rounded-xl bg-zinc-850" />
-              <div className="size-10 rounded-[0.8rem] bg-zinc-850" />
-            </div>
-            <div className="hidden flex-col items-end gap-1.5 md:col-span-1 md:flex">
-              <div className="h-8 w-20 rounded-lg bg-zinc-850" />
-            </div>
-            <div className="absolute right-4 top-4 flex justify-end md:relative md:right-auto md:top-auto md:col-span-1">
-              <div className="size-10 rounded-[0.8rem] bg-zinc-850" />
+  const renderSkeletons = () => (
+    <div aria-label="Carregando clientes" className="space-y-3">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div
+          key={i}
+          className="animate-pulse rounded-2xl border border-white/10 bg-[#101013] p-3"
+        >
+          <div className="flex gap-3">
+            <div className="size-10 shrink-0 rounded-full bg-[#1E1E24]" />
+            <div className="flex-1 space-y-2 py-1">
+              <div className="h-3 w-2/3 rounded-full bg-[#1E1E24]" />
+              <div className="h-2 w-1/4 rounded-full bg-[#1E1E24]" />
             </div>
           </div>
-        ))}
-      </div>
-    );
-  };
+          <div className="mt-3 flex gap-4">
+            <div className="h-3 w-1/3 rounded-full bg-[#1E1E24]" />
+            <div className="h-3 w-1/6 rounded-full bg-[#1E1E24]" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
-  const renderCompactSkeletons = () => {
-    return (
-      <div className="grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <div
-            key={i}
-            className="group relative flex min-h-[170px] animate-pulse flex-col justify-between rounded-2xl border border-white/10 bg-zinc-900/70 p-3.5 backdrop-blur-md sm:p-5"
-          >
-            <div className="flex size-full flex-col">
-              <div className="relative flex w-full items-start justify-between">
-                <div className="size-10 shrink-0 rounded-full bg-zinc-850 sm:size-12" />
-                <div className="size-11 rounded-xl bg-zinc-850" />
-              </div>
-              <div className="mt-3 space-y-2">
-                <div className="h-4 w-3/4 rounded bg-zinc-850" />
-                <div className="h-3 w-1/2 rounded bg-zinc-850" />
-              </div>
-              <div className="mt-3 space-y-1">
-                <div className="h-3 w-5/6 rounded bg-zinc-850" />
-                <div className="h-3 w-2/3 rounded bg-zinc-850" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-2 border-t border-white/5 pt-3">
-              <div className="h-3 w-12 rounded bg-zinc-850" />
-              <div className="h-3 w-8 rounded bg-zinc-850" />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+  const temBuscaOuOrdenacao =
+    Boolean(searchTerm) ||
+    sortField !== "total_spent" ||
+    sortDirection !== "desc";
+  const limparBuscaEOrdenacao = () => {
+    setSearchTerm("");
+    setSortField("total_spent");
+    setSortDirection("desc");
+    setPage(0);
+    shouldScrollToTop.current = true;
   };
 
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-admin-bg pb-admin lg:pb-12 text-white duration-200 animate-in fade-in selection:bg-admin-gold/30"
+      className="pb-admin h-auto bg-[#08080A] text-white lg:pb-12"
     >
-      {/* Header Elite */}
-      <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-customers"]}>
-          <button
-            type="button"
-            onClick={() => setShowHelpModal(true)}
-            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
-            title="Guia de Clientes e Ajuda"
+      <div className="flex items-start justify-between gap-3 px-5 pb-2 pt-4">
+        <div className="min-w-0 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-customers"]} />
+          <div
+            className={cn(
+              "mt-1 flex items-center gap-1.5 text-xs",
+              isOffline || erroDaListagem ? "text-red-300" : "text-zinc-400",
+            )}
           >
-            <span
-              aria-hidden="true"
-              className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
-            >
-              <HelpCircle className="size-4.5" />
+            <PontoDeOperacao sincronizando={loading} />
+            <span>
+              {isOffline
+                ? "Sem conexão com o servidor"
+                : loading
+                  ? "Sincronizando clientes..."
+                  : erroDaListagem
+                    ? "Falha ao atualizar clientes"
+                    : `${formatarInteiro(globalStats?.total_customers)} contas no app · Sincronizado`}
             </span>
-          </button>
-          {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
-              tag que ficava verde após a carga. Desde o pedido do Gabriel de
-              02/09 à tarde ele vive AQUI, ao lado direito do título (igual
-              em Pedidos e Produtos), fora do canto da tela. */}
-          <PontoDeOperacao sincronizando={loading} />
-        </AdminPageHeader>
+          </div>
+        </div>
+        <FolhaClientes
+          aberta={showHelpModal}
+          aoMudar={setShowHelpModal}
+          titulo="Guia da Base de Clientes"
+          ajuda
+          gatilho={
+            <button
+              type="button"
+              aria-label="Guia de Clientes e Ajuda"
+              title="Guia de Clientes e Ajuda"
+              className={`flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-violet-300/20 bg-violet-300/10 text-violet-300 ${FOCO_CLIENTES}`}
+            >
+              <HelpCircle aria-hidden="true" className="size-6" />
+            </button>
+          }
+        >
+          <AjudaDaBaseClientes />
+        </FolhaClientes>
       </div>
-      {/* De onde vem a lista: esta tela só tem contas do app
-          (`get_admin_customers_paged`); quem comprou só no balcão está em
-          Relatórios › Clientes (`crm_clientes`). O `AdminPageHeader` não tem
-          subtítulo e é de todas as telas — a frase mora aqui. */}
-      <p className="px-6 pb-2 text-xs text-zinc-400">
-        Clientes com conta no app. Quem comprou só no balcão aparece em{" "}
-        {NOMES_DO_PAINEL["admin-crm"]} › Clientes.
+      <p className="flex items-start gap-1.5 px-5 pb-3 text-xs text-zinc-400">
+        <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+        <span>
+          Clientes com conta no app. Quem comprou só no balcão aparece em{" "}
+          {NOMES_DO_PAINEL["admin-crm"]} › Clientes.
+        </span>
       </p>
-
-      <div className="space-y-8 p-4 sm:p-6 lg:p-8">
-        {/* Support & Engagement Banners */}
-        <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-          <AtalhosDaAba aba="clientes" onNavigate={handleLocalNavigate} />
-        </div>
-        {/* Control Bar para Carrossel/Grid de Métricas */}
-        <div className="space-y-4">
-          <LocalErrorBoundary>
-            <AdminKpiCarousel
-              active={active}
-              cards={kpiCards}
-              loading={loading && !globalStats}
-              title="Métricas de Clientes"
-            />
-          </LocalErrorBoundary>
-        </div>
-        {/* Unified Control Bar Compacta */}
-        <div className="relative z-30 mb-5 mt-3 flex flex-col border-t border-white/5 pt-4">
+      <div className="px-5">
+        <LocalErrorBoundary>
+          <MetricasDoPainel
+            titulo="Métricas de Clientes"
+            legendasDoResumo={[
+              "Total",
+              "Novos · 30d",
+              "Média/pedido",
+              "Pedidos",
+            ]}
+            cards={kpiCards}
+          />
+        </LocalErrorBoundary>
+        <div className="relative z-30 mt-7 flex flex-col">
           {/* Sticky de filha DIRETA deste bloco (que contém a lista): sticky
               só anda dentro do próprio containing block — embrulhada num
               wrapper da própria altura ela nunca gruda (achado 1 da revisão). */}
-          <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-admin-bg/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-            <div className="flex w-full items-center gap-3">
-              <div className="group relative w-full flex-1">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                  {loading || isTyping ? (
-                    <Loader2 className="size-4 animate-spin text-admin-gold" />
-                  ) : (
-                    <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
-                  )}
-                </div>
-                <label htmlFor="customers-search" className="sr-only">
-                  Buscar clientes
-                </label>
-                <DebouncedSearchInput
-                  id="customers-search"
-                  name="search"
-                  placeholder="Buscar clientes..."
-                  className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                  value={searchTerm}
-                  onChange={(val) => {
-                    setSearchTerm(val);
-                    setPage(0);
-                    shouldScrollToTop.current = true;
-                  }}
-                  onTyping={setIsTyping}
-                  delay={300}
-                />
+          <BarraDeBusca
+            id="customers-search"
+            rotulo="Buscar clientes"
+            placeholder="Buscar cliente, telefone…"
+            value={searchTerm}
+            onChange={(val) => {
+              setSearchTerm(val);
+              setPage(0);
+              shouldScrollToTop.current = true;
+            }}
+            onTyping={setIsTyping}
+            carregando={loading || isTyping}
+            modo={viewMode}
+            onMudarModo={setViewMode}
+            grupo="Ordenar clientes"
+            tituloFiltro="Ordenar por"
+            opcoes={ORDENACOES_CLIENTES.map((o) => ({
+              valor: o.campo,
+              rotulo: o.rotulo,
+              icone: o.icone,
+              cor: o.cor,
+              selecionada: sortField === o.campo && sortDirection === o.direcao,
+              onClick: () => {
+                setSortField(o.campo);
+                setSortDirection(o.direcao);
+                setPage(0);
+                shouldScrollToTop.current = true;
+              },
+            }))}
+            onLimpar={temBuscaOuOrdenacao ? limparBuscaEOrdenacao : undefined}
+          />
+          {isOffline && (
+            <div
+              role="status"
+              className="mt-5 flex items-start gap-3 rounded-2xl border border-red-300/10 bg-red-400/5 p-4 text-xs text-zinc-300"
+            >
+              <CloudOff
+                aria-hidden="true"
+                className="size-8 shrink-0 rounded-xl bg-red-400/10 p-1.5 text-red-300"
+              />
+              <div>
+                <p className="font-semibold text-red-300">
+                  Sem conexão com o servidor
+                </p>
+                <p className="mt-1">
+                  Os dados na tela podem estar desatualizados até a conexão
+                  voltar.
+                </p>
               </div>
-
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setViewMode((prev) =>
-                    prev === "detailed" ? "compact" : "detailed",
-                  )
-                }
-                className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
-                title={
-                  viewMode === "detailed"
-                    ? "Visualização Compacta"
-                    : "Visualização Detalhada"
-                }
-              >
-                {viewMode === "detailed" ? (
-                  <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                ) : (
-                  <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                )}
-              </Button>
             </div>
-
-            {/* Chips de ordenação (pedido do Gabriel, 02/09: a mesma fileira
-                de filtros da tela de Pedidos — substitui o funil dropdown).
-                Parte da MESMA âncora da busca: gruda junto com ela. Chips
-                COMPACTOS: o botão mantém h-11 (alvo de toque de 44px, WCAG
-                2.5.8) e o VISUAL desenha 32px via pseudo-elemento; o pseudo
-                vive dentro do botão, então o overflow-x-auto da fileira não
-                o corta. Mesmo molde das telas de Pedidos e Produtos. */}
-            <div className="custom-scrollbar-hidden relative flex w-full snap-x gap-1.5 overflow-x-auto pt-2">
-              {ORDENACOES_CLIENTES.map((o) => (
-                <button
-                  key={o.campo}
-                  onClick={() => {
-                    setSortField(o.campo);
-                    setSortDirection(o.direcao);
-                    setPage(0);
-                    shouldScrollToTop.current = true;
-                  }}
-                  className={cn(
-                    "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
-                    sortField === o.campo && sortDirection === o.direcao
-                      ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                      : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
-                  )}
-                >
-                  {o.rotulo}
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
 
           {/* Data List (Responsive Grid/Cards) */}
+          {erroDaListagem && (
+            <div
+              role="alert"
+              className="mt-7 flex flex-col items-center gap-3 rounded-3xl border border-red-300/10 bg-red-400/5 p-5 text-center text-sm text-zinc-100"
+            >
+              <AlertCircle
+                aria-hidden="true"
+                className="size-10 rounded-xl bg-red-400/10 p-2 text-red-300"
+              />
+              <p className="font-semibold">
+                Não conseguimos carregar os clientes agora.
+              </p>
+              <button
+                type="button"
+                aria-label="Tentar carregar os clientes de novo"
+                onClick={() => fetchCustomers(page)}
+                disabled={loading}
+                className={`${BOTAO_CLIENTES} w-full disabled:opacity-60`}
+              >
+                <RefreshCw
+                  aria-hidden="true"
+                  className="size-4 text-violet-300"
+                />
+                Tentar de novo
+              </button>
+            </div>
+          )}
           <LocalErrorBoundary>
-            <div className="group/table relative w-full p-2 sm:p-0">
+            <div className="group/table relative w-full">
               {loading && paginatedCustomers.length > 0 && (
-                <div className="admin-sync-progress-bar" />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden rounded-full bg-[#26262E]"
+                >
+                  <span className="block h-full w-2/5 animate-pulse bg-indigo-300" />
+                </div>
               )}
-              {/* Glow Decoration */}
-              <div className="pointer-events-none absolute -left-24 -top-24 size-48 bg-admin-gold/5 blur-[100px]" />
-
-              <div className="relative z-10 flex w-full flex-col">
+              <div
+                className="relative z-10 mt-7 flex w-full flex-col"
+                aria-busy={loading}
+              >
+                {loading && paginatedCustomers.length > 0 && (
+                  <p role="status" className="mb-3 text-xs text-zinc-400">
+                    Carregando novos dados...
+                  </p>
+                )}
                 {loading && paginatedCustomers.length === 0 ? (
-                  viewMode === "detailed" ? (
-                    renderDetailedSkeletons()
-                  ) : (
-                    renderCompactSkeletons()
-                  )
-                ) : paginatedCustomers.length === 0 ? (
-                  <div className="py-24 text-center">
-                    <div className="flex flex-col items-center justify-center text-zinc-600">
-                      <div className="mb-6 flex size-20 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 shadow-inner">
-                        <Users className="size-8 opacity-20" />
-                      </div>
-                      <p className="text-sm font-bold uppercase tracking-widest text-zinc-500">
-                        Nenhum cliente retornado
-                      </p>
-                      <p className="mt-2 text-[11px] text-zinc-600">
-                        Revise os filtros ou sua pesquisa.
-                      </p>
-                    </div>
+                  renderSkeletons()
+                ) : erroDaListagem ? null : paginatedCustomers.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3 rounded-3xl bg-[#101013] px-4 py-6 text-center">
+                    <Search
+                      aria-hidden="true"
+                      className="size-10 rounded-xl border border-indigo-300/20 bg-indigo-300/10 p-2 text-indigo-300"
+                    />
+                    <p className="text-sm font-bold text-white">
+                      Nenhum cliente retornado
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      Revise os filtros ou sua pesquisa.
+                    </p>
+                    {temBuscaOuOrdenacao && (
+                      <button
+                        type="button"
+                        onClick={limparBuscaEOrdenacao}
+                        className={BOTAO_CLIENTES}
+                      >
+                        Limpar tudo
+                      </button>
+                    )}
                   </div>
                 ) : viewMode === "detailed" ? (
                   <>
-                    {/* Desktop Headers — offset = altura da barra sticky
-                        acima (py-2.5 ×2 + busca h-11 + pt-2 + fileira de
-                        chips h-11 = 116px desde os chips compactos de
-                        02/09; era 120px com a fileira gorda). */}
-                    <div className="sticky top-[116px] z-20 hidden grid-cols-12 gap-4 border-b border-zinc-800/50 bg-zinc-900/60 px-8 py-5 shadow-sm md:grid">
+                    {/* Cabeçalhos desktop: mesmos campos e handlers de ordenação. */}
+                    <div className="sticky top-[120px] z-20 hidden grid-cols-12 gap-4 border-b border-white/10 bg-[#17171C] p-3 md:grid">
                       <div
-                        className="group/th col-span-4 flex cursor-pointer items-center gap-2"
+                        className="group/th col-span-4 flex min-h-11 cursor-pointer items-center gap-2"
                         onClick={() => handleSort("full_name")}
                         role="button"
                         tabIndex={0}
@@ -653,13 +668,13 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           }
                         }}
                       >
-                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
+                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
                           Cliente
                         </span>
-                        <ArrowUpDown className="size-3 text-zinc-600 transition-all group-hover/th:translate-y-0.5 group-hover/th:text-admin-gold" />
+                        <ArrowUpDown className="size-3 text-indigo-300" />
                       </div>
                       <div
-                        className="group/th col-span-3 flex cursor-pointer items-center gap-2"
+                        className="group/th col-span-3 flex min-h-11 cursor-pointer items-center gap-2"
                         onClick={() => handleSort("role")}
                         role="button"
                         tabIndex={0}
@@ -670,13 +685,13 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           }
                         }}
                       >
-                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
+                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
                           Contato / Tipo de conta
                         </span>
-                        <ArrowUpDown className="size-3 text-zinc-600 transition-all group-hover/th:translate-y-0.5 group-hover/th:text-admin-gold" />
+                        <ArrowUpDown className="size-3 text-indigo-300" />
                       </div>
                       <div
-                        className="group/th col-span-2 flex cursor-pointer items-center justify-end gap-2"
+                        className="group/th col-span-2 flex min-h-11 cursor-pointer items-center justify-end gap-2"
                         onClick={() => handleSort("total_spent")}
                         role="button"
                         tabIndex={0}
@@ -687,13 +702,13 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           }
                         }}
                       >
-                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
+                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
                           Total já comprado
                         </span>
-                        <ArrowUpDown className="size-3 text-zinc-600 transition-all group-hover/th:translate-y-0.5 group-hover/th:text-admin-gold" />
+                        <ArrowUpDown className="size-3 text-indigo-300" />
                       </div>
                       <div
-                        className="group/th col-span-1 flex cursor-pointer items-center justify-center gap-2"
+                        className="group/th col-span-1 flex min-h-11 cursor-pointer items-center justify-center gap-2"
                         onClick={() => handleSort("orders_count")}
                         role="button"
                         tabIndex={0}
@@ -704,21 +719,22 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           }
                         }}
                       >
-                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
+                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
                           Pedidos
                         </span>
                       </div>
                       <div className="col-span-2 flex items-center justify-end">
-                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                        <span className="text-[11px] font-semibold text-zinc-300">
                           Gestão
                         </span>
                       </div>
                     </div>
 
                     {/* Data Rows */}
-                    <div className="flex flex-col gap-4 divide-y-0 divide-zinc-800/30 md:gap-0 md:divide-y">
+                    <div className="flex flex-col gap-3">
                       {paginatedCustomers.map((customer) => (
-                        <CustomerRowDetailed
+                        <CartaoCliente
+                          detalhado
                           key={customer.id}
                           customer={customer}
                           onNavigate={handleLocalNavigate}
@@ -728,9 +744,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                     </div>
                   </>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">
                     {paginatedCustomers.map((customer) => (
-                      <CustomerRowCompact
+                      <CartaoCliente
                         key={customer.id}
                         customer={customer}
                         onNavigate={handleLocalNavigate}
@@ -746,9 +762,10 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               página alinha com pedidos/produtos (12). Sem cartão próprio:
               mesmo padrão limpo das outras telas (pedido do Gabriel, 02/09). */}
           <PaginacaoAdmin
+            aparencia="clientes"
             pagina={page}
             totalPaginas={totalPages}
-            totalItens={totalCustomers}
+            totalItens={totalExibido}
             itensPorPagina={PAGE_SIZE}
             aoMudar={(nova) => {
               setPage(nova);
@@ -756,427 +773,122 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             }}
           />
         </div>
-      </div>
-      {/* Modal de Ajuda */}
-      <AdminHelpModal
-        isOpen={showHelpModal}
-        onClose={() => setShowHelpModal(false)}
-        title="Guia da Base de Clientes"
-      >
-        <div className="space-y-4">
-          <p className="text-xs leading-relaxed text-zinc-400">
-            Esta tela exibe a base de perfis de consumidores cadastrados. Ela
-            reúne informações consolidadas de compras e histórico financeiro de
-            cada cliente.
-          </p>
-
-          <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              Métricas e Conceitos
-            </h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Users className="size-4 text-emerald-500" />
-                  Total de Clientes
-                </div>
-                <p className="text-xs text-zinc-400">
-                  O número total de usuários cadastrados que já realizaram login
-                  ou criaram perfil na plataforma.
-                </p>
-              </div>
-
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Wallet className="size-4 text-admin-gold" />
-                  Total já comprado
-                </div>
-                <p className="text-xs text-zinc-400">
-                  O valor financeiro total gasto por um cliente ao longo de todo
-                  o tempo de vida de sua conta na loja.
-                </p>
-              </div>
-
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <ShoppingBag className="size-4 text-sky-500" />
-                  Pedidos Totais
-                </div>
-                <p className="text-xs text-zinc-400">
-                  {/* Achado 636: o texto antigo prometia "independentemente
-                  do status atual do pagamento", mas o card lê
-                  `analyticsStats.executive.totalOrders` (get_admin_analytics_v2),
-                  que só conta pedido com pagamento reconhecido — o oposto do
-                  que estava escrito. Mesmo vocabulário do card "Volume
-                  Total" do Dashboard (AdminDashboardView.tsx). */}
-                  Quantidade de pedidos com pagamento reconhecido (PIX
-                  confirmado, gateway ou recebido na entrega); pedido cancelado
-                  ou com pagamento pendente não entra na conta.
-                </p>
-              </div>
-
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <TrendingUp className="size-4 text-purple-500" />
-                  Novos Clientes (30 dias)
-                </div>
-                <p className="text-xs text-zinc-400">
-                  {/* Laudo 0109 (A11): o número é perfis CRIADOS nos
-                  últimos 30 dias (profiles.created_at) — o texto antigo
-                  prometia "ou que realizaram o primeiro acesso", regra que
-                  a contagem nunca usou. */}
-                  Quantidade de perfis criados nos últimos 30 dias.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </AdminHelpModal>
-    </div>
-  );
-});
-
-interface CustomerRowProps {
-  readonly customer: Customer;
-  readonly onNavigate: (view: View, id?: string) => void;
-  readonly onPrefetch: () => void;
-}
-
-const CustomerRowDetailed = memo(function CustomerRowDetailed({
-  customer,
-  onNavigate,
-  onPrefetch,
-}: CustomerRowProps) {
-  return (
-    <div
-      className="content-visibility-auto group relative flex min-h-[120px] cursor-pointer flex-col gap-5 overflow-hidden rounded-3xl border border-zinc-800/50 bg-zinc-900/30 p-5 shadow-xl transition-all hover:bg-zinc-800/20 md:grid md:grid-cols-12 md:items-center md:gap-4 md:rounded-none md:border-transparent md:bg-transparent md:px-8 md:py-6 md:shadow-none md:hover:bg-zinc-800/30"
-      onClick={() => onNavigate("admin-user-detail", customer.id)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onNavigate("admin-user-detail", customer.id);
-        }
-      }}
-      onMouseEnter={onPrefetch}
-      onTouchStart={onPrefetch}
-    >
-      {/* Column 1: Client Info (md:col-span-4) */}
-      <div className="flex items-center gap-4 pr-10 md:col-span-4 md:pr-0">
-        <div className="relative shrink-0 transition-transform duration-300 group-hover:scale-105">
-          <Avatar className="size-12 border-2 border-zinc-800/60 shadow-2xl transition-colors group-hover:border-admin-gold/50 sm:size-14">
-            <AvatarImage src={customer.avatar_url} className="object-cover" />
-            <AvatarFallback className="border border-zinc-800/50 bg-zinc-950 text-xs font-black text-zinc-400">
-              {customer.full_name?.substring(0, 2).toUpperCase() || "CX"}
-            </AvatarFallback>
-          </Avatar>
-          {customer.is_push_subscribed && (
-            <div className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-black bg-gradient-to-br from-admin-gold to-yellow-600 shadow-[0_0_15px_rgba(255,191,0,0.4)] sm:size-6">
-              <Zap className="size-2.5 fill-black text-black sm:size-3" />
-            </div>
-          )}
-        </div>
-        <div className="flex min-w-0 flex-col justify-center">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="truncate text-sm font-black leading-none text-white transition-colors group-hover:text-admin-gold sm:text-base">
-              {customer.full_name || "Usuário"}
-            </h4>
-            <Badge
-              className={`rounded-md border px-2 py-0.5 text-[11px] font-black uppercase tracking-widest sm:text-[11px] ${
-                customer.role === "admin"
-                  ? "border-admin-gold/50 bg-admin-gold text-black"
-                  : "border-zinc-800/80 bg-zinc-950 text-zinc-400 shadow-inner"
-              }`}
-            >
-              {customer.role === "admin" && (
-                <Shield className="mr-1 inline-flex hidden size-2.5 md:block" />
-              )}
-              {rotuloDoPapel(customer.role)}
-            </Badge>
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <span className="rounded border border-white/5 bg-black/20 px-1.5 py-0.5 font-mono text-[11px] font-bold tracking-widest text-zinc-400">
-              #{customer.id.slice(0, 8).toUpperCase()}
-            </span>
-            <span className="truncate text-[11px] font-bold uppercase tracking-widest text-zinc-400 md:hidden">
-              Desde {new Date(customer.created_at).toLocaleDateString("pt-BR")}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Column 2: Contact Info (md:col-span-3) */}
-      <div className="flex flex-col gap-2.5 overflow-hidden md:col-span-3">
-        <div className="flex w-full items-center gap-3">
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-[0.6rem] border border-zinc-800/80 bg-zinc-950/80 text-zinc-500 shadow-inner transition-colors group-hover:border-admin-gold/30 group-hover:text-admin-gold sm:size-8">
-            <Mail className="size-3.5" />
-          </div>
-          <span className="truncate text-[11px] font-semibold tracking-wide text-zinc-300 sm:text-xs">
-            {customer.email || "N/A"}
-          </span>
-        </div>
-        {customer.phone && (
-          <div className="flex w-full items-center gap-3">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-[0.6rem] border border-zinc-800/80 bg-zinc-950/80 text-zinc-500 shadow-inner transition-colors group-hover:border-admin-gold/30 group-hover:text-admin-gold sm:size-8">
-              <Phone className="size-3.5" />
-            </div>
-            <span className="truncate text-[11px] font-semibold tracking-wider text-zinc-400 sm:text-xs">
-              {customer.phone}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Quick Mobile Stats Divider */}
-      <div className="my-1 h-px w-full bg-gradient-to-r from-transparent via-zinc-800/80 to-transparent md:hidden" />
-
-      {/* Columns 3 & 4: Mobile Grid Stats footer OR Desktop LTV/Orders */}
-      <div className="grid grid-cols-2 justify-between gap-4 md:col-span-3 md:flex md:items-center md:justify-end">
-        {/* Desktop: LTV | Mobile: Col 1 */}
-        <div className="flex flex-col items-start gap-1.5 md:w-full md:items-end">
-          <span className="text-xs font-semibold tracking-wide text-zinc-300 md:hidden">
-            Total já comprado
-          </span>
-          <div className="flex min-w-[100px] items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent px-3 py-2 text-sm font-black tabular-nums text-white transition-colors group-hover:border-admin-gold/30 md:min-w-0 xl:text-base">
-            <span className="text-[11px] font-semibold leading-none text-zinc-400">
-              R$
-            </span>
-            <span className="leading-none">
-              {Number(customer.total_spent || 0).toLocaleString("pt-BR", {
-                minimumFractionDigits: 2,
-              })}
-            </span>
-          </div>
-        </div>
-
-        {/* Desktop: Orders | Mobile: Col 2 */}
-        <div className="flex flex-col items-end gap-1.5 md:items-center">
-          <span className="text-right text-xs font-semibold tracking-wide text-zinc-300 md:hidden">
-            Pedidos
-          </span>
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent transition-colors group-hover:border-admin-gold/50 group-hover:bg-black group-hover:text-admin-gold sm:size-11">
-            <span className="text-xs font-black text-white sm:text-sm">
-              {formatarInteiro(customer.orders_count || 0)}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Column 5: Desktop Date (hidden on mobile, inline above) */}
-      <div className="hidden flex-col items-end gap-1.5 md:col-span-1 md:flex">
-        <div
-          className="flex w-full items-center justify-center truncate rounded-lg border border-zinc-800/80 bg-zinc-950/80 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest text-zinc-400 shadow-inner"
-          title={
-            customer.last_order_date
-              ? new Date(customer.last_order_date).toLocaleDateString()
-              : "Nenhuma"
-          }
-        >
-          <Calendar className="mr-1.5 size-3 shrink-0 text-admin-gold/50" />
-          {customer.last_order_date
-            ? new Date(customer.last_order_date).toLocaleDateString()
-            : "--"}
-        </div>
-      </div>
-
-      {/* Column 6: Management Options */}
-      <div className="absolute right-4 top-4 flex justify-end md:relative md:right-auto md:top-auto md:col-span-1">
-        <div onClick={(e) => e.stopPropagation()} role="presentation">
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-10 rounded-[0.8rem] border border-zinc-800/80 bg-zinc-950/80 text-zinc-400 shadow-xl backdrop-blur-md transition-all hover:border-admin-gold hover:bg-admin-gold hover:text-white group-hover:border-zinc-700 sm:size-12 md:size-10 md:bg-zinc-900/50 md:shadow-none"
-              >
-                <MoreHorizontal className="size-5 flex-shrink-0" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="z-[100] w-[200px] rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.8)] backdrop-blur-2xl"
-            >
-              <DropdownMenuLabel className="p-3 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-                Gestão de Cliente
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator className="bg-zinc-800/60" />
-              <DropdownMenuItem
-                className="group flex cursor-pointer items-center gap-1 rounded-xl p-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
-                onClick={() => onNavigate("admin-user-detail", customer.id)}
-              >
-                <Shield className="mr-2 size-4 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
-                Ver ficha do cliente
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="group flex cursor-pointer items-center gap-1 rounded-xl p-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
-                onClick={() => onNavigate("admin-push", customer.id)}
-              >
-                <Zap className="mr-2 size-4 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
-                Notificação Push
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-const CustomerRowCompact = memo(function CustomerRowCompact({
-  customer,
-  onNavigate,
-  onPrefetch,
-}: CustomerRowProps) {
-  return (
-    <div
-      onClick={() => onNavigate("admin-user-detail", customer.id)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onNavigate("admin-user-detail", customer.id);
-        }
-      }}
-      onMouseEnter={onPrefetch}
-      onTouchStart={onPrefetch}
-      className="content-visibility-auto group relative flex min-h-[170px] cursor-pointer flex-col justify-between rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5 backdrop-blur-md transition-all duration-500 hover:scale-[1.01] hover:border-admin-gold/30 hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] active:scale-[0.98] sm:p-5 lg:p-4 xl:p-5"
-    >
-      {/* Glow Background */}
-      <div className="pointer-events-none absolute inset-0 z-0 rounded-2xl bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 transition-all duration-700 group-hover:from-admin-gold/5 group-hover:to-transparent" />
-
-      <div className="relative z-10 flex size-full flex-col">
-        {/* Header Row: Avatar and Action Dropdown */}
-        <div className="relative flex w-full items-start justify-between">
-          <div className="relative shrink-0 transition-transform duration-300 group-hover:scale-105">
-            <Avatar className="size-10 border border-zinc-800/60 shadow-md transition-colors group-hover:border-admin-gold/50 sm:size-12">
-              <AvatarImage src={customer.avatar_url} className="object-cover" />
-              <AvatarFallback className="border border-zinc-800/50 bg-zinc-950 text-xs font-black text-zinc-400">
-                {customer.full_name?.substring(0, 2).toUpperCase() || "CX"}
-              </AvatarFallback>
-            </Avatar>
-            {customer.is_push_subscribed && (
-              <div className="absolute -bottom-0.5 -right-0.5 flex size-4.5 items-center justify-center rounded-full border border-black bg-gradient-to-br from-admin-gold to-yellow-600 shadow-[0_0_10px_rgba(255,191,0,0.4)]">
-                <Zap className="size-2.5 fill-black text-black" />
-              </div>
-            )}
-          </div>
-
-          <div
-            className="absolute right-0 top-0"
-            onClick={(e) => e.stopPropagation()}
-            role="presentation"
+        <AcaoDaBarra ativa={active !== false} aria-label="Ações dos clientes">
+          <button
+            type="button"
+            onClick={() => handleLocalNavigate("admin-qa")}
+            className={`flex min-h-14 min-w-0 flex-[0.8] items-center justify-center gap-2 rounded-[1.125rem] border border-white/10 bg-[#17171C] p-2 text-left text-xs font-bold text-white ${FOCO_CLIENTES}`}
           >
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="flex size-11 items-center justify-center rounded-xl border border-white/5 bg-zinc-950/80 text-zinc-400 shadow-md transition-all hover:bg-zinc-900 hover:text-white"
-                >
-                  <MoreHorizontal className="size-5 flex-shrink-0" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="z-[100] w-[180px] rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.8)] backdrop-blur-2xl"
-              >
-                <DropdownMenuLabel className="p-2.5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-                  Gestão de Cliente
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator className="bg-zinc-800/60" />
-                <DropdownMenuItem
-                  className="group flex cursor-pointer items-center gap-1 rounded-xl p-2.5 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
-                  onClick={() => onNavigate("admin-user-detail", customer.id)}
-                >
-                  <Shield className="mr-2 size-3.5 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
-                  Ver ficha do cliente
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="group flex cursor-pointer items-center gap-1 rounded-xl p-2.5 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
-                  onClick={() => onNavigate("admin-push", customer.id)}
-                >
-                  <Zap className="mr-2 size-3.5 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
-                  Notificação Push
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        {/* Customer Name and Badges */}
-        <div className="mt-3 min-w-0 pr-2">
-          <h4 className="truncate text-xs font-black leading-none text-white transition-colors group-hover:text-admin-gold sm:text-sm">
-            {customer.full_name || "Usuário"}
-          </h4>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <Badge
-              className={cn(
-                "px-1.5 py-0.5 rounded-md text-[11px] font-black tracking-widest uppercase border",
-                customer.role === "admin"
-                  ? "bg-admin-gold text-black border-admin-gold/50"
-                  : "bg-zinc-950 text-zinc-400 border-zinc-800/80 shadow-inner",
-              )}
-            >
-              {rotuloDoPapel(customer.role)}
-            </Badge>
-            <span className="rounded border border-white/5 bg-black/20 px-1 py-0.5 font-mono text-[11px] font-bold text-zinc-400">
-              #{customer.id.slice(0, 8).toUpperCase()}
-            </span>
-          </div>
-        </div>
-
-        {/* Email & Phone */}
-        <div className="mt-3 space-y-1 text-[11px] text-zinc-400">
-          <div className="flex items-center gap-1.5 truncate">
-            <Mail className="size-3 shrink-0 text-zinc-400" />
-            <span className="truncate">{customer.email || "N/A"}</span>
-          </div>
-          {customer.phone && (
-            <div className="flex items-center gap-1.5 truncate">
-              <Phone className="size-3 shrink-0 text-zinc-400" />
-              <span className="truncate">{customer.phone}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Bottom KPIs: LTV & Pedidos */}
-      {/* Rodapé no desenho do cartão de métrica (10/10/2026): cartãozinho com
-          brilho no topo, rótulo em frase normal 12px cinza 300, números
-          brancos e tabulares. Dinheiro NUNCA parte no meio do número: o valor
-          é `whitespace-nowrap` em 12px (com 16px e `break-words` o número
-          se partia a 390px e em todo notebook de 1024–1440px). Como o valor
-          não cede, a largura é decidida pela grade: abaixo de 480px e de lg
-          a xl (1024–1535px, onde a sidebar w-64 come a tela e o valor de
-          milhões, "R$ 1.312.456,78", passava da coluna `1fr` e ficava em
-          cima de "Pedidos") o par empilha; de xs a md e a partir de 2xl ele
-          fica lado a lado. O rótulo só cede (`min-w-0 break-words`) quando o
-          par está lado a lado. */}
-      <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-white/[0.04] bg-gradient-to-b from-white/[0.06] to-transparent px-2 py-2.5 xs:grid-cols-[minmax(0,1fr)_auto] xs:items-end lg:grid-cols-1 lg:items-start 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-end">
-        <div className="flex min-w-0 flex-col">
-          <span className="min-w-0 break-words text-xs font-semibold tracking-wide text-zinc-300">
-            Total já comprado
-          </span>
-          <span className="mt-0.5 whitespace-nowrap text-xs font-black tabular-nums text-white">
-            <span className="mr-0.5 text-xs font-semibold text-zinc-400">
-              R$
-            </span>
-            {Number(customer.total_spent || 0).toLocaleString("pt-BR", {
-              minimumFractionDigits: 2,
-            })}
-          </span>
-        </div>
-        <div className="flex flex-col items-end">
-          <span className="text-xs font-semibold tracking-wide text-zinc-300">
-            Pedidos
-          </span>
-          <span className="mt-0.5 text-xs font-black tabular-nums text-admin-gold">
-            {formatarInteiro(customer.orders_count || 0)}
-          </span>
-        </div>
+            <MessageSquare
+              aria-hidden="true"
+              className="size-7 shrink-0 rounded-lg border border-violet-300/20 bg-violet-300/10 p-1 text-violet-300"
+            />
+            <span className="min-w-0">Perguntas e avaliações</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleLocalNavigate("admin-push")}
+            className={`admin-barra-principal flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2 rounded-[1.125rem] bg-gradient-to-b from-[#F9D65C] to-[#E4AF16] p-2 text-sm font-bold text-[#1B1300] ${FOCO_CLIENTES}`}
+          >
+            <Megaphone
+              aria-hidden="true"
+              className="size-8 shrink-0 rounded-xl border border-sky-300/30 bg-sky-950 p-1.5 text-sky-200"
+            />
+            <span>{NOMES_DO_PAINEL["admin-push"]}</span>
+          </button>
+        </AcaoDaBarra>
       </div>
     </div>
   );
 });
+
+function AjudaDaBaseClientes() {
+  return (
+    <div className="space-y-7">
+      <section className="rounded-2xl bg-[#101013] p-4">
+        <h3 className="mb-2 text-base font-bold text-white">
+          Quem aparece aqui?
+        </h3>
+        <p className="text-xs text-zinc-400">
+          Clientes com conta no app. Quem comprou só no balcão aparece em{" "}
+          {NOMES_DO_PAINEL["admin-crm"]} › Clientes.
+        </p>
+      </section>
+      <section>
+        <h3 className="mb-4 text-lg font-bold text-white">
+          Métricas e Conceitos
+        </h3>
+        <div className="space-y-4">
+          {[
+            {
+              titulo: "Total Clientes",
+              icone: Users,
+              cor: "text-indigo-300",
+              texto: "Base de Clientes: perfis com conta no app.",
+            },
+            {
+              titulo: "Novos (30 dias)",
+              icone: TrendingUp,
+              cor: "text-emerald-300",
+              texto: "Crescimento: perfis criados nos últimos 30 dias.",
+            },
+            {
+              titulo: "Valor médio por venda",
+              icone: Wallet,
+              cor: "text-orange-300",
+              texto: "Média por pedido: valor médio das compras consolidadas.",
+            },
+            {
+              titulo: "Pedidos Totais",
+              icone: ShoppingBag,
+              cor: "text-pink-300",
+              texto:
+                "Pedidos com pagamento reconhecido. Cancelados e pendentes ficam fora.",
+            },
+          ].map((item) => (
+            <div key={item.titulo} className="flex gap-3">
+              <item.icone
+                aria-hidden="true"
+                className={cn(
+                  "size-8 shrink-0 rounded-xl border border-current bg-white/5 p-1.5",
+                  item.cor,
+                )}
+              />
+              <div>
+                <h4 className="text-sm font-bold text-white">{item.titulo}</h4>
+                <p className="mt-1 text-xs text-zinc-400">{item.texto}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="space-y-3 rounded-2xl bg-[#1E1E24] p-4 text-xs text-zinc-300">
+        <h3 className="text-base font-bold text-white">
+          Encontre e abra a ficha
+        </h3>
+        <p>
+          Toque no cartão para ver a ficha. No menu de três pontos, escolha Ver
+          ficha do cliente ou Notificação Push.
+        </p>
+        <p>
+          A busca volta à página 1. São 12 clientes por página. Busca, modos e
+          ordenação ficam fixos ao rolar; o cabeçalho e as métricas saem da
+          janela.
+        </p>
+        <p>
+          Compacta é a visualização padrão. A escolha entre Compacta e Detalhada
+          fica salva.
+        </p>
+        <p>
+          O raio indica avisos ativos. Sem raio, Notificação Push continua
+          disponível no menu.
+        </p>
+        <p>
+          Avisar clientes abre os avisos sem destinatário. Perguntas e
+          avaliações abre a tela de dúvidas e avaliações. Ambos ficam acima da
+          navegação.
+        </p>
+      </section>
+    </div>
+  );
+}

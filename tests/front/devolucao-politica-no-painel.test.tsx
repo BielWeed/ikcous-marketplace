@@ -9,8 +9,9 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rpc, maybeSingle, toast } = vi.hoisted(() => ({
+const { rpc, maybeSingle, selecionar, toast } = vi.hoisted(() => ({
   rpc: vi.fn(),
+  selecionar: vi.fn(),
   maybeSingle: vi.fn(),
   toast: Object.assign(vi.fn(), {
     success: vi.fn(),
@@ -22,7 +23,12 @@ const { rpc, maybeSingle, toast } = vi.hoisted(() => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc,
-    from: () => ({ select: () => ({ eq: () => ({ maybeSingle }) }) }),
+    from: () => ({
+      select: (colunas: string) => {
+        selecionar(colunas);
+        return { eq: () => ({ maybeSingle }) };
+      },
+    }),
   },
 }));
 vi.mock("@/hooks/useCategories", () => ({
@@ -118,6 +124,21 @@ function botao(texto: string) {
   );
 }
 
+describe("leitura da política (achado L)", () => {
+  it("pede colunas explícitas, nunca * nem updated_by", async () => {
+    await montar();
+    expect(selecionar).toHaveBeenCalledTimes(1);
+    const colunas = String(selecionar.mock.calls[0][0]);
+    expect(colunas).not.toContain("*");
+    expect(colunas.split(",")).not.toContain("updated_by");
+    // Todas as colunas que lerPolitica usa continuam sendo pedidas.
+    for (const c of Object.keys(LINHA)) {
+      if (c === "id" || c === "updated_by") continue;
+      expect(colunas.split(",")).toContain(c);
+    }
+  });
+});
+
 describe("mínimos legais da política (funções puras)", () => {
   it("arrependimento ≥ 7, vício ≥ 30, troca 0..365 — com explicação", async () => {
     const { erroDaTroca, erroDoArrependimento, erroDoVicio } = await import(
@@ -148,6 +169,8 @@ describe("PoliticaDeDevolucaoSection", () => {
   });
 
   it("salva pela RPC com os prazos e as categorias sem troca escolhidas", async () => {
+    const recontar = vi.fn();
+    window.addEventListener("admin:recontar-avisos", recontar);
     await montar();
 
     await digitar("politica-arrependimento", "10");
@@ -155,6 +178,8 @@ describe("PoliticaDeDevolucaoSection", () => {
       botao("Moda íntima")?.click();
     });
     expect(onDirtyMudou).toHaveBeenLastCalledWith(true);
+    // Nada de recontar o sino antes de salvar.
+    expect(recontar).not.toHaveBeenCalled();
 
     await act(async () => {
       botao("Salvar política")?.click();
@@ -176,6 +201,9 @@ describe("PoliticaDeDevolucaoSection", () => {
       }),
     );
     expect(toast.success).toHaveBeenCalled();
+    // Salvou: o sino do painel recalcula a janela dos recebimentos por marcar.
+    expect(recontar).toHaveBeenCalledTimes(1);
+    window.removeEventListener("admin:recontar-avisos", recontar);
     expect(botao("Política salva")).toBeTruthy();
     expect(onDirtyMudou).toHaveBeenLastCalledWith(false);
   });

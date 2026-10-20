@@ -4,11 +4,17 @@ import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { LojaProntaEEstoqueBaixo } from "@/components/admin/dashboard/LojaProntaEEstoqueBaixo";
 import { AtalhosDoInicio } from "@/components/admin/inicio/AtalhosDoInicio";
 import { CartaoDaAssinatura } from "@/components/admin/inicio/CartaoDaAssinatura";
+import { CartaoDeAvisosDoAparelho } from "@/components/admin/inicio/CartaoDeAvisosDoAparelho";
 import { HojeNaLoja } from "@/components/admin/inicio/HojeNaLoja";
 import { NumerosDoMes } from "@/components/admin/inicio/NumerosDoMes";
 import { ParaFazer } from "@/components/admin/inicio/ParaFazer";
 import { PerfilDaLoja } from "@/components/admin/inicio/PerfilDaLoja";
 import { SerieDe14Dias } from "@/components/admin/inicio/SerieDe14Dias";
+import {
+  ACAO_PRINCIPAL_INICIO,
+  BOTAO_INICIO,
+  CARTAO_INICIO,
+} from "@/components/admin/inicio/visualDoInicio";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { buildIdentity } from "@/config/buildIdentity";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
@@ -19,14 +25,15 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { formatarInteiro } from "@/lib/crm";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
-import { AlertCircle, HelpCircle, RefreshCw } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { AlertCircle, HelpCircle, Package, RefreshCw } from "lucide-react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AdminDashboardViewProps {
@@ -50,11 +57,13 @@ function SecaoLojaProntaEEstoqueBaixo({
   estoqueCarregando,
   onNavigate,
   onTentarDeNovo,
+  somenteBoasVindas,
 }: Readonly<{
   estoqueBaixo: number | null;
   estoqueCarregando: boolean;
   onNavigate: (view: View, id?: string) => void;
   onTentarDeNovo: () => void;
+  somenteBoasVindas?: boolean;
 }>) {
   const { config, isLoaded, products, loadingProducts } = useStore();
 
@@ -75,6 +84,7 @@ function SecaoLojaProntaEEstoqueBaixo({
       estoqueCarregando={estoqueCarregando}
       onNavigate={onNavigate}
       onTentarDeNovo={onTentarDeNovo}
+      somenteBoasVindas={somenteBoasVindas}
     />
   );
 }
@@ -149,6 +159,20 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     estavaOfflineRef.current = isOffline;
   }, [isOffline, ativo, atualizar]);
 
+  // O cartão de avisos se fecha com o foco do teclado dentro dele: o foco vai
+  // para o título do Início, e não para o corpo da página.
+  const focarNoTitulo = useCallback(() => {
+    const titulo = viewRef.current?.querySelector("h1");
+    if (titulo instanceof HTMLElement) {
+      titulo.tabIndex = -1;
+      // Título já à vista: o foco não deve rolar a página (um pulo à toa). Fora
+      // da tela, deixa o navegador trazê-lo para onde a pessoa possa ver.
+      const caixa = titulo.getBoundingClientRect();
+      const aVista = caixa.top >= 0 && caixa.bottom <= window.innerHeight;
+      titulo.focus(aVista ? { preventScroll: true } : undefined);
+    }
+  }, [viewRef]);
+
   const semNumeros = carregando && !painel;
 
   return (
@@ -156,96 +180,159 @@ export const AdminDashboardView = memo(function AdminDashboardView({
       ref={viewRef}
       className="pb-admin h-auto bg-admin-bg text-white selection:bg-emerald-500/30 lg:pb-12"
     >
-      <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <AdminPageHeader
-          titulo={NOMES_DO_PAINEL["admin-dashboard"]}
-          acoes={
-            <button
-              type="button"
-              disabled={carregando || isOffline}
-              onClick={() => void atualizar()}
-              className="group flex min-h-11 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 transition-all hover:bg-white/10 disabled:opacity-50 sm:px-6 sm:py-3"
-              aria-label="Sincronizar os números do Início"
-            >
-              <RefreshCw
-                className={cn(
-                  "size-4 text-zinc-400 transition-transform duration-700 group-hover:rotate-180",
-                  carregando && "animate-spin",
-                )}
-                aria-hidden="true"
-              />
-              <span className="hidden text-[11px] font-black uppercase tracking-widest text-zinc-400 sm:inline">
-                Sincronizar
-              </span>
-            </button>
-          }
-        >
-          <button
-            type="button"
-            onClick={() => setMostrarAjuda(true)}
-            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
-            title="Como ler o Início"
-            aria-label="Como ler o Início"
-          >
-            <span
-              aria-hidden="true"
-              className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
-            >
-              <HelpCircle className="size-4.5" aria-hidden="true" />
-            </span>
-          </button>
+      <div className="px-5 pt-6 lg:grid lg:grid-cols-[1fr_auto] lg:items-center lg:gap-x-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+          <AdminPageHeader
+            titulo={NOMES_DO_PAINEL["admin-dashboard"]}
+            acoes={
+              <>
+                <button
+                  type="button"
+                  disabled={carregando || isOffline}
+                  onClick={() => void atualizar()}
+                  className="flex min-h-11 items-center gap-2 rounded-2xl border border-teal-300/15 bg-teal-300/5 px-3 text-sm font-semibold text-teal-300 transition-colors hover:bg-teal-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300 disabled:opacity-50"
+                  aria-label="Sincronizar os números do Início"
+                >
+                  <RefreshCw
+                    className={cn("size-5", carregando && "animate-spin")}
+                    aria-hidden="true"
+                  />
+                  Sincronizar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMostrarAjuda(true)}
+                  className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                  title="Como ler o Início"
+                  aria-label="Como ler o Início"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex size-11 items-center justify-center rounded-full border border-violet-300/15 bg-violet-300/10 text-violet-300"
+                  >
+                    <HelpCircle className="size-5" aria-hidden="true" />
+                  </span>
+                </button>
+              </>
+            }
+          />
+        </div>
+        <div className="mt-3 flex items-center gap-2 text-sm text-zinc-400">
           <PontoDeOperacao sincronizando={carregando} />
-        </AdminPageHeader>
+          <span>
+            {isOffline
+              ? "Sem internet · os valores podem estar desatualizados"
+              : carregando
+                ? "Atualizando sua loja…"
+                : erro
+                  ? "Não foi possível atualizar os números"
+                  : "Conectado"}
+          </span>
+        </div>
+        <div className="mt-3 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0 lg:max-w-md">
+          <LocalErrorBoundary
+            fallback={
+              <PerfilDaLoja
+                nome={nomeDaLoja(null)}
+                logoUrl={null}
+                cidade={null}
+                uf={null}
+                responsavel={responsavel}
+              />
+            }
+          >
+            <PerfilDaLojaComDados responsavel={responsavel} />
+          </LocalErrorBoundary>
+        </div>
       </div>
 
-      <div className="mt-4 space-y-4 px-4 sm:space-y-6 sm:px-6">
-        <LocalErrorBoundary
-          fallback={
-            <PerfilDaLoja
-              nome={nomeDaLoja(null)}
-              logoUrl={null}
-              cidade={null}
-              uf={null}
-              responsavel={responsavel}
-            />
-          }
-        >
-          <PerfilDaLojaComDados responsavel={responsavel} />
-        </LocalErrorBoundary>
-
+      <div className="space-y-7 px-5 pt-7">
         {erro && !carregando ? (
-          <div
-            role="alert"
-            className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-300"
-          >
-            <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
-            <p className="flex-1 text-xs">{erro}</p>
+          <div role="alert" className={`${CARTAO_INICIO} space-y-3`}>
+            <div className="flex items-start gap-3">
+              <AlertCircle
+                className="mt-1 size-5 shrink-0 text-pink-300"
+                aria-hidden="true"
+              />
+              <div className="min-w-0">
+                <p className="text-base font-bold text-white">
+                  Não foi possível ler os números
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-zinc-400">
+                  {erro}
+                </p>
+              </div>
+            </div>
             <button
               type="button"
               onClick={() => void atualizar()}
-              className="flex min-h-11 shrink-0 items-center rounded-xl border border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider text-red-300 transition-colors hover:bg-red-500/10"
+              className={BOTAO_INICIO}
             >
+              <RefreshCw className="size-5" aria-hidden="true" />
               Tentar de novo
             </button>
           </div>
         ) : null}
 
-        {/* Celular: uma coluna na ordem de leitura (Hoje → botões → mês →
-            pendências → 14 dias → assinatura). Computador: duas colunas
-            alinhadas por linha — a ordem do DOM continua a de leitura. */}
-        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 lg:col-start-1 lg:row-start-1">
+        {/* A ordem de leitura do celular também ordena as três colunas do computador. */}
+        <div className="space-y-7 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+          <div className="min-w-0 space-y-7">
+            {painel?.mes.pedidos === 0 &&
+            painel.hoje.pedidos === 0 &&
+            painel.pendencias.pedidosParaPreparar === 0 ? (
+              <LocalErrorBoundary>
+                <SecaoLojaProntaEEstoqueBaixo
+                  estoqueBaixo={painel.pendencias.estoqueBaixo}
+                  estoqueCarregando={semNumeros}
+                  onNavigate={onNavigate}
+                  onTentarDeNovo={() => void atualizar()}
+                  somenteBoasVindas
+                />
+              </LocalErrorBoundary>
+            ) : null}
             <LocalErrorBoundary>
-              <HojeNaLoja hoje={painel?.hoje ?? null} carregando={semNumeros} />
+              <HojeNaLoja
+                hoje={painel?.hoje ?? null}
+                carregando={semNumeros}
+                acaoPrincipal={
+                  (painel?.pendencias.pedidosParaPreparar ?? 0) > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate("admin-orders")}
+                      className={ACAO_PRINCIPAL_INICIO}
+                    >
+                      <Package className="size-5 shrink-0" aria-hidden="true" />
+                      Preparar{" "}
+                      {formatarInteiro(painel?.pendencias.pedidosParaPreparar)}{" "}
+                      {painel?.pendencias.pedidosParaPreparar === 1
+                        ? "pedido"
+                        : "pedidos"}
+                    </button>
+                  ) : null
+                }
+              />
             </LocalErrorBoundary>
+            <LocalErrorBoundary>
+              <ParaFazer
+                painel={painel}
+                carregando={semNumeros}
+                onNavigate={onNavigate}
+                preparoEmDestaque
+              />
+            </LocalErrorBoundary>
+            {/* Montar só à vista preserva a releitura da permissão do aparelho. */}
+            {ativo ? (
+              <LocalErrorBoundary>
+                <CartaoDeAvisosDoAparelho aoFechar={focarNoTitulo} />
+              </LocalErrorBoundary>
+            ) : null}
           </div>
-          <div className="lg:col-start-3 lg:row-start-1">
+          <div className="min-w-0 space-y-7">
             <AtalhosDoInicio
+              ativa={ativo}
               onNavigate={onNavigate}
               aoPrepararDestino={prefetchView}
             />
-          </div>
-          <div className="lg:col-span-2 lg:col-start-1 lg:row-start-2">
             <LocalErrorBoundary>
               <NumerosDoMes
                 painel={painel}
@@ -253,25 +340,16 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 onNavigate={onNavigate}
               />
             </LocalErrorBoundary>
-          </div>
-          <div className="lg:col-start-3 lg:row-start-2">
-            <LocalErrorBoundary>
-              <ParaFazer
-                painel={painel}
-                carregando={semNumeros}
-                onNavigate={onNavigate}
-              />
-            </LocalErrorBoundary>
-          </div>
-          <div className="lg:col-span-2 lg:col-start-1 lg:row-start-3">
             <LocalErrorBoundary>
               <SerieDe14Dias
                 serie={painel?.serie14d ?? []}
                 carregando={semNumeros}
+                falhou={painel === null && erro !== null}
+                onTentarDeNovo={() => void atualizar()}
               />
             </LocalErrorBoundary>
           </div>
-          <div className="lg:col-start-3 lg:row-start-3">
+          <div className="min-w-0 space-y-7">
             <LocalErrorBoundary>
               <CartaoDaAssinatura
                 assinatura={assinatura}
@@ -281,20 +359,17 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 onTentarDeNovo={() => void atualizar()}
               />
             </LocalErrorBoundary>
+            <LocalErrorBoundary>
+              <SecaoLojaProntaEEstoqueBaixo
+                estoqueBaixo={painel?.pendencias.estoqueBaixo ?? null}
+                estoqueCarregando={semNumeros}
+                onNavigate={onNavigate}
+                onTentarDeNovo={() => void atualizar()}
+              />
+            </LocalErrorBoundary>
           </div>
         </div>
-
-        {/* Estoque baixo + checklist "loja pronta para vender" */}
-        <LocalErrorBoundary>
-          <SecaoLojaProntaEEstoqueBaixo
-            estoqueBaixo={painel?.pendencias.estoqueBaixo ?? null}
-            estoqueCarregando={semNumeros}
-            onNavigate={onNavigate}
-            onTentarDeNovo={() => void atualizar()}
-          />
-        </LocalErrorBoundary>
       </div>
-
       <AdminHelpModal
         isOpen={mostrarAjuda}
         onClose={() => setMostrarAjuda(false)}
@@ -310,7 +385,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
             <li>
               <strong className="text-white">Vendas pagas hoje:</strong> quanto
               entrou hoje, quanto veio do app e quanto do balcão, comparado com
-              o mesmo dia da semana passada.
+              o mesmo dia da semana passada até esta mesma hora.
             </li>
             <li>
               <strong className="text-white">Lucro estimado:</strong> o

@@ -1,0 +1,458 @@
+.produtos-tela {
+  --produto-altura-compacto: 380px;
+  min-height: 100%;
+  padding-bottom: var(--admin-tab-pb, 6.25rem);
+  background: #08080a;
+}
+
+.produtos-tela [hidden] {
+  display: none !important;
+}
+.produto-esqueleto {
+  pointer-events: none;
+}
+.produto-esqueleto.overflow-hidden {
+  min-height: var(--produto-altura-compacto);
+}
+.produto-esqueleto.overflow-hidden > :first-child {
+  height: auto;
+  aspect-ratio: 1;
+  flex-shrink: 0;
+}
+.produtos-abas button,
+.produtos-guia .uppercase {
+  text-transform: none;
+  letter-spacing: normal;
+}
+.produtos-tela :is(button, input):focus-visible,
+.produto-menu :is(button, [role="menuitem"]):focus-visible {
+  outline: 2px solid #a5d7e9;
+  outline-offset: 3px;
+}
+.produtos-tela button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.produto-cartao {
+  contain-intrinsic-size: auto var(--produto-altura-compacto) !important;
+}
+.produto-cartao.content-visibility-detailed-card {
+  contain-intrinsic-size: auto 210px !important;
+}
+.produto-cartao :is(p, h4, span) {
+  overflow-wrap: anywhere;
+}
+.produtos-tela .produto-gatilho:focus-visible {
+  outline-offset: -3px;
+}
+.produto-gatilho:hover {
+  background: #ffffff05;
+}
+.produto-status[data-slot="badge"] {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-weight: 600;
+  white-space: normal;
+}
+.produto-status.sr-only {
+  position: absolute;
+}
+
+.produto-secundario,
+.produto-principal,
+.produto-perigo {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #ffffff1a;
+  border-radius: 14px;
+  background: #1e1e24;
+  color: #f4f4f5;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: normal;
+}
+.produto-secundario:hover {
+  background: #26262e;
+}
+.produto-principal,
+.produto-perigo {
+  min-height: 56px;
+}
+.produto-principal {
+  border-color: #edbd32;
+  background: linear-gradient(#f8d658, #e3ac16);
+  color: #211a07;
+  font-size: 14px;
+  font-weight: 700;
+}
+.produto-principal:disabled {
+  border-color: #ffffff1a;
+  background: #1e1e24;
+  color: #f4f4f5;
+}
+.produto-perigo {
+  border-color: #ff575e;
+  background: #ff575e;
+  color: #25090c;
+  font-weight: 700;
+}
+.produto-interruptor {
+  display: inline-flex;
+  width: 32px;
+  height: 22px;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid #71717a;
+  border-radius: 20px;
+  background: #303038;
+}
+.produto-interruptor::after {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #a1a1ad;
+  content: "";
+}
+.produto-interruptor.ligado {
+  justify-content: flex-end;
+  border-color: #d4d4dc;
+  background: #d4d4dc;
+}
+.produto-interruptor.ligado::after {
+  background: #101013;
+}
+.produto-icone {
+  display: inline;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: -3px;
+}
+.produto-detalhes {
+  color: #a1a1ad;
+}
+.produto-detalhes :is(span, .font-semibold) {
+  color: #f4f4f5;
+}
+.produto-detalhes .text-orange-300 {
+  color: #ffb077;
+}
+.produto-resumo:has(+ [data-custo-suspeito]) {
+  grid-template-columns: 1fr 1fr;
+}
+.produto-acoes .produto-secundario {
+  font-size: 11px;
+}
+.produto-menu-item {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.produto-menu-item > svg {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 8px;
+  border-radius: 12px;
+  background: #ffffff0a;
+}
+.produto-menu-item small {
+  display: block;
+  margin-top: 4px;
+  color: #a1a1ad;
+  font-size: 11px;
+  font-weight: 400;
+}
+.produto-menu-item:focus {
+  background: #ffffff0a;
+}
+.produtos-confirmacao {
+  text-align: center;
+}
+.produtos-confirmacao > div:last-child {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 12px;
+}
+.produtos-confirmacao > div:first-child {
+  text-align: center;
+}
+.produtos-confirmacao [id] {
+  line-height: 1.5;
+}
+.produtos-confirmacao button {
+  margin: 0;
+}
+
+.produtos-cupons button {
+  width: 48px;
+  min-height: 44px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 14px;
+  background: #17171c;
+  background-image: none;
+  box-shadow: none;
+}
+.produtos-cupons button:hover {
+  border-color: #ffa4cc55;
+}
+.produtos-cupons button > span:first-child {
+  width: auto;
+  height: auto;
+  border: 0;
+  background: transparent;
+}
+.produtos-cupons button > span:first-child svg {
+  width: 20px;
+  height: 20px;
+  color: #ffa4cc;
+}
+.produtos-cupons button > span:nth-child(2) {
+  flex: none;
+  overflow: visible;
+  color: #f4f4f5;
+  font-size: 11px;
+  font-weight: 500;
+}
+.produtos-cupons button > span:last-child {
+  display: none;
+}
+.produtos-paginacao {
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0 20px;
+}
+.produtos-paginacao p {
+  color: #a1a1ad;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.produtos-paginacao > div {
+  justify-content: center;
+  gap: 72px;
+}
+.produtos-pagina {
+  position: absolute;
+  bottom: 34px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.produtos-paginacao button {
+  background: #101013;
+  color: #d4d4dc;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
+/* Aparência local do componente de métricas compartilhado, sem alterar sua API. */
+.produtos-metricas .group.relative {
+  min-height: 164px;
+  padding: 16px;
+  background: #101013;
+  background-image: none;
+  box-shadow: none;
+}
+.produtos-metricas .group.relative:hover {
+  border-color: #ffffff33;
+}
+.produtos-metricas .group.relative > div:first-child {
+  position: static;
+  margin-bottom: 12px;
+}
+.produtos-metricas .group.relative > div:last-child {
+  display: flex;
+  flex-direction: column;
+}
+.produtos-metricas h3 {
+  order: -1;
+  overflow: visible;
+  margin: 0 0 12px;
+  font-size: 22px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.produtos-metricas .line-clamp-2 {
+  display: block;
+  overflow: visible;
+  padding-right: 0;
+  -webkit-line-clamp: unset;
+}
+.produtos-metricas .text-zinc-500 {
+  color: #a1a1ad;
+}
+.produtos-metricas .text-admin-gold {
+  color: #d4d4dc;
+}
+.produtos-metricas button[aria-label] {
+  min-width: 44px;
+  min-height: 44px;
+}
+.produtos-metricas button[aria-label="Anterior"],
+.produtos-metricas button[aria-label="Próximo"] {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+}
+.produtos-metricas button:disabled {
+  pointer-events: none;
+}
+.produtos-metricas .bg-admin-gold {
+  background-color: #d4d4dc;
+}
+
+/* As folhas são portais. :has restringe estes estilos à tela que as abriu. */
+body:has(.produtos-tela:is([data-guia], [data-categorias])) [role="dialog"] {
+  background: #08080a;
+}
+body:has(.produtos-tela:is([data-guia], [data-categorias])) [role="dialog"] h2 {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  color: #f4f4f5;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+}
+body:has(.produtos-tela:is([data-guia], [data-categorias]))
+  [role="dialog"]
+  button:focus-visible {
+  outline: 2px solid #a5d7e9;
+  outline-offset: 3px;
+}
+body:has(.produtos-tela:is([data-guia], [data-categorias]))
+  [role="dialog"]
+  button[aria-label="Fechar"] {
+  align-self: flex-start;
+}
+body:has(.produtos-tela[data-guia]) [role="dialog"] h2 > svg {
+  color: #c4a7ff;
+}
+body:has(.produtos-tela[data-categorias]) [role="dialog"] h2 > svg {
+  color: #7edbd4;
+}
+body:has(.produtos-tela:is([data-guia], [data-categorias]))
+  [role="dialog"]
+  .text-zinc-500,
+body:has(.produtos-tela:is([data-guia], [data-categorias]))
+  [role="dialog"]
+  .text-zinc-600 {
+  color: #a1a1ad;
+}
+body:has(.produtos-tela[data-categorias]) [role="dialog"] li {
+  padding: 16px;
+  border: 1px solid #ffffff1a;
+  border-radius: 24px;
+  background: #101013;
+}
+body:has(.produtos-tela[data-categorias]) [role="dialog"] button {
+  letter-spacing: normal;
+  text-transform: none;
+}
+body:has(.produtos-tela[data-categorias])
+  [role="dialog"]
+  button[type="submit"] {
+  min-height: 56px;
+  border-color: #edbd32;
+  background: linear-gradient(#f8d658, #e3ac16);
+}
+body:has(.produtos-tela[data-categorias]) [role="dialog"] input {
+  min-height: 48px;
+  background: #17171c;
+}
+body:has(.produtos-tela[data-categorias])
+  [role="dialog"]
+  button[class*="border-red-500/40"]:not([aria-label]) {
+  min-height: 56px;
+  border-color: #ff575e;
+  background: #ff575e;
+  color: #25090c;
+}
+body:has(.produtos-tela[data-categorias])
+  [role="dialog"]
+  button[aria-label^="Renomear"]
+  svg {
+  color: #69c8ff;
+}
+body:has(.produtos-tela[data-categorias])
+  [role="dialog"]
+  button[aria-label^="Apagar"]
+  svg {
+  color: #ff8b92;
+}
+body:has(.produtos-tela[data-categorias])
+  [role="dialog"]
+  button[aria-label^="Esconder"]
+  svg,
+body:has(.produtos-tela[data-categorias])
+  [role="dialog"]
+  button[aria-label^="Mostrar"]
+  svg {
+  color: #7edbd4;
+}
+body:has(.produtos-tela[data-categorias])
+  [role="dialog"]
+  li
+  > div:has(> button[id^="renomear"]) {
+  flex-wrap: wrap;
+}
+body:has(.produtos-tela[data-categorias])
+  [role="dialog"]
+  button[aria-label^="Esconder"],
+body:has(.produtos-tela[data-categorias])
+  [role="dialog"]
+  button[aria-label^="Mostrar"] {
+  order: -1;
+  flex-grow: 1;
+}
+
+@media (width <= 639px) {
+  body:has(.produto-menu[data-state="open"])::after {
+    position: fixed;
+    z-index: 90;
+    inset: 0;
+    background: #000b;
+    pointer-events: none;
+    content: "";
+  }
+  [data-radix-popper-content-wrapper]:has(> .produto-menu) {
+    z-index: 100 !important;
+    inset: auto 0 0 !important;
+    transform: none !important;
+  }
+  .produto-menu {
+    width: 100%;
+    max-width: none;
+    max-height: 88dvh;
+    overflow-y: auto;
+    padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+    border-radius: 28px 28px 0 0;
+  }
+  .produto-menu::before {
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: -8px auto 20px;
+    border-radius: 4px;
+    background: #52525b;
+    content: "";
+  }
+}

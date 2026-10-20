@@ -4,6 +4,7 @@ import { useCart } from "@/hooks/useCart";
 // FreeShippingBlock — o lembrete só conhecia a regra LOCAL e dizia "toda a
 // loja" sem qualificar; agora usa `promessasDeFrete` para saber se precisa
 // do qualificador "na cidade" (quando local e nacional divergem).
+import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { formatCurrency } from "@/lib/utils";
@@ -46,7 +47,8 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
   const soLocal = !promessasDeFrete(config).iguais;
   const isFree =
     isSempreGratis ||
-    (hasFreeShippingGoal && totalAmount >= config.freeShippingMin);
+    (hasFreeShippingGoal &&
+      atingiuOMinimo(totalAmount, config.freeShippingMin));
   const amountToFree = hasFreeShippingGoal
     ? Math.max(0, config.freeShippingMin - totalAmount)
     : 0;
@@ -172,7 +174,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             {/* Right: Compact Action */}
             <button
               onClick={onAction}
-              className="group/btn flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-[9px] font-black uppercase tracking-wider text-white shadow-md transition-all hover:bg-primary/90 active:scale-95"
+              className="group/btn flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-[9px] font-black uppercase tracking-wider text-primary-foreground shadow-md transition-all hover:bg-primary/90 active:scale-95"
             >
               Carrinho
               <ChevronRight className="size-2.5 transition-transform group-hover:translate-x-0.5" />

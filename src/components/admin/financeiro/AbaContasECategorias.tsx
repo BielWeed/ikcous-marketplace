@@ -12,7 +12,7 @@ import type {
   ContaFinanceira,
   NaturezaDaCategoria,
 } from "@/types/financeiro";
-import { IconeDoTipoDeConta } from "./icones";
+import { IconeDoTipoDeConta, matizDoTipoDeConta } from "./icones";
 import type { AbrirFolha } from "./navegacao";
 import {
   CLASSE_BOTAO_SECUNDARIO,
@@ -25,6 +25,7 @@ import {
   EstadoDeErro,
   EstadoVazio,
   Etiqueta,
+  SeloFinanceiro,
 } from "./partes";
 
 function BotaoNovo({
@@ -38,7 +39,10 @@ function BotaoNovo({
     <button
       type="button"
       onClick={aoClicar}
-      className={cn(CLASSE_BOTAO_SECUNDARIO, "min-h-11 px-3 text-xs")}
+      className={cn(
+        CLASSE_BOTAO_SECUNDARIO,
+        "min-h-11 w-full px-3 text-sm text-blue-300",
+      )}
     >
       <Plus aria-hidden="true" className="size-4" />
       {rotulo}
@@ -54,51 +58,54 @@ function ListaDeContas({
   readonly abrirFolha: AbrirFolha;
 }) {
   return (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-7">
       {contas.map((conta) => {
         return (
           <li key={conta.id}>
             <button
               type="button"
               onClick={() => abrirFolha({ tipo: "conta", conta })}
-              className={`${CLASSE_CASCA_DA_LINHA_BOTAO} flex min-h-14 w-full items-center gap-3 px-3.5 py-3${conta.ativa ? "" : " opacity-60"}`}
+              className={`${CLASSE_CASCA_DA_LINHA_BOTAO} relative flex min-h-14 w-full flex-wrap items-start gap-3 p-4`}
             >
               <span
                 aria-hidden="true"
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-gold/25 bg-admin-gold/10"
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl border"
+                style={{
+                  color: matizDoTipoDeConta(conta.tipo),
+                  backgroundColor: `${matizDoTipoDeConta(conta.tipo)}1A`,
+                  borderColor: `${matizDoTipoDeConta(conta.tipo)}40`,
+                }}
               >
-                <IconeDoTipoDeConta
-                  tipo={conta.tipo}
-                  className="size-5 text-admin-gold"
-                />
+                <IconeDoTipoDeConta tipo={conta.tipo} className="size-5" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span className="truncate text-[15px] font-bold leading-tight text-white">
+                <span className="flex flex-wrap items-center gap-2 pr-5">
+                  <span className="break-words text-[15px] font-bold leading-tight text-white">
                     {conta.nome}
                   </span>
-                  {conta.sistema ? (
-                    <Etiqueta tom="ouro">Sistema</Etiqueta>
-                  ) : null}
+                  {conta.sistema ? <Etiqueta>Sistema</Etiqueta> : null}
                   {conta.ativa ? null : <Etiqueta>Inativa</Etiqueta>}
                 </span>
-                <span className="block truncate text-xs font-medium text-zinc-400">
-                  {rotuloDoTipoDeConta(conta.tipo)} · saldo inicial{" "}
-                  <Dinheiro valor={conta.saldoInicial} /> em{" "}
-                  {formatarData(conta.saldoInicialEm)}
+                <span className="mt-1 block text-xs text-zinc-400">
+                  {rotuloDoTipoDeConta(conta.tipo)}
                 </span>
               </span>
-              <span className="flex shrink-0 items-center gap-2">
+              <span className="block w-full break-words text-xs leading-relaxed text-zinc-400">
+                Saldo inicial <Dinheiro valor={conta.saldoInicial} /> em{" "}
+                {formatarData(conta.saldoInicialEm)}
+              </span>
+              <span className="flex w-full flex-wrap items-baseline justify-between gap-2">
+                <span className="text-xs text-zinc-400">Saldo atual</span>
                 <Dinheiro
                   valor={conta.saldo}
                   className={cn(
-                    "text-sm font-black",
+                    "text-2xl font-bold",
                     conta.saldo < 0 ? "text-red-300" : "text-white",
                   )}
                 />
                 <ChevronRight
                   aria-hidden="true"
-                  className={CLASSE_SETA_DA_LINHA_BOTAO}
+                  className={`${CLASSE_SETA_DA_LINHA_BOTAO} absolute right-4 top-5`}
                 />
                 <span className="sr-only">Editar</span>
               </span>
@@ -126,7 +133,7 @@ function ListaDeCategorias({
         {natureza === "receita" ? "Receitas" : "Despesas"} · {daNatureza.length}
       </h3>
       {daNatureza.length === 0 ? (
-        <p className="px-1 text-xs text-zinc-500">Nenhuma ainda.</p>
+        <p className="px-1 text-xs text-zinc-400">Nenhuma ainda.</p>
       ) : (
         <ul className="flex flex-col gap-1.5">
           {daNatureza.map((categoria) => (
@@ -134,19 +141,29 @@ function ListaDeCategorias({
               <button
                 type="button"
                 onClick={() => abrirFolha({ tipo: "categoria", categoria })}
-                className={`${CLASSE_CASCA_DA_LINHA_BOTAO} flex min-h-11 w-full items-center justify-between gap-3 px-3.5 py-2.5${categoria.ativa ? "" : " opacity-60"}`}
+                className={`${CLASSE_CASCA_DA_LINHA_BOTAO} flex min-h-14 w-full items-center gap-3 px-3.5 py-3`}
               >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-[15px] font-bold leading-tight text-white">
+                <SeloFinanceiro
+                  icone={Tags}
+                  matiz={
+                    !categoria.ativa
+                      ? "#ABABB7"
+                      : natureza === "receita"
+                        ? "#2DD4BF"
+                        : "#FF9F5A"
+                  }
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words text-[15px] font-bold leading-tight text-white">
                     {categoria.nome}
                   </span>
-                  {categoria.sistema ? (
-                    <Etiqueta tom="ouro">Sistema</Etiqueta>
-                  ) : null}
-                  {categoria.ativa ? null : <Etiqueta>Inativa</Etiqueta>}
+                  <span className="mt-1 block break-words text-xs leading-relaxed text-zinc-400">
+                    {rotuloDoGrupoDre(categoria.grupoDre)}
+                    {categoria.sistema ? " · Sistema" : ""}
+                    {categoria.ativa ? "" : " · Inativa"}
+                  </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
-                  <Etiqueta>{rotuloDoGrupoDre(categoria.grupoDre)}</Etiqueta>
                   <ChevronRight
                     aria-hidden="true"
                     className={CLASSE_SETA_DA_LINHA_BOTAO}
@@ -177,7 +194,7 @@ export function AbaContasECategorias({
   readonly abrirFolha: AbrirFolha;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
+    <div className="grid grid-cols-1 gap-7 lg:grid-cols-2">
       <CartaoSecao
         titulo="Contas"
         subtitulo="Gaveta, banco, Mercado Pago — o saldo de cada uma"

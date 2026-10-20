@@ -23,10 +23,14 @@
 // dentro de `FechamentoDaVenda` — esta view deixa o erro CRU subir.
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { BuscaDeProduto } from "@/components/admin/pdv/BuscaDeProduto";
+import type {
+  PaginaDeProdutosEncontrados,
+  ProdutoEncontradoNaBusca,
+} from "@/components/admin/pdv/BuscaDeProduto";
 import { ClienteDaVenda } from "@/components/admin/pdv/ClienteDaVenda";
 import type { LinhaDeClienteEncontrado } from "@/components/admin/pdv/ClienteDaVenda";
 import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
-import type { ProdutoEncontradoNaBusca } from "@/components/admin/pdv/CupomDaVenda";
 import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
 import { LeitorDeCodigo } from "@/components/admin/pdv/LeitorDeCodigo";
 import { ReciboDaVenda } from "@/components/admin/pdv/ReciboDaVenda";
@@ -34,6 +38,7 @@ import { branding } from "@/config/branding";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
+import { useAuth } from "@/hooks/useAuth";
 import {
   chaveDoItemDoCupom,
   useVendaPresencial,
@@ -45,12 +50,24 @@ import type {
   ReciboDaVendaRegistrada,
   RespostaDoCodigo,
 } from "@/hooks/useVendaPresencial";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import type { Leitura } from "@/lib/leitor/decodificador";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
-import { ScanBarcode } from "lucide-react";
-import { type ReactElement, useEffect, useRef, useState } from "react";
+import { ScanBarcode, Search } from "lucide-react";
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
+
+/** Quanto o balconista espera pelo registro da venda antes de ver a frase de
+ * rede e poder tentar de novo (a retentativa é idempotente). */
+const PRAZO_DO_REGISTRO_DA_VENDA_MS = 20_000;
 
 export interface AdminPdvViewProps {
   readonly onNavigate: (view: View, id?: string) => void;
@@ -65,7 +82,16 @@ export function AdminPdvView({
   onSetDirty,
   onSetBackOverride,
 }: AdminPdvViewProps): ReactElement {
-  const { estado, despachar, subtotal, limparCupom } = useVendaPresencial();
+  // L10: o rascunho do caixa é do usuário que está nele (`:<uid>`).
+  const { user } = useAuth();
+  const {
+    estado,
+    despachar,
+    subtotal,
+    limparCupom: limparCupomDaVenda,
+  } = useVendaPresencial({
+    userId: user?.id,
+  });
   const { anular } = useAnularVendaDoBalcao();
   // Amarra o pedido do recibo (o botão do recibo só conhece o motivo).
   const anularEstaVenda = (orderId: string) => (motivo: string) =>
@@ -184,10 +210,14 @@ export function AdminPdvView({
     return () => onSetDirty?.(false);
   }, [onSetDirty]);
 
-  // O leitor fica sempre visível acima do cupom, mas o balconista pode
-  // recolher a câmera sem perder a tela (LeitorDeCodigo é um cartão inline,
-  // não uma folha — contexto, fato 2).
-  const [leitorAberto, setLeitorAberto] = useState(true);
+  const [modoDeProduto, setModoDeProduto] = useState<"bipar" | "buscar">(
+    "bipar",
+  );
+
+  function limparCupom(): void {
+    limparCupomDaVenda();
+    setModoDeProduto("bipar");
+  }
 
   async function buscarPorCodigo(codigo: string): Promise<RespostaDoCodigo> {
     // `leitura.codigo` vai DIRETO, sem normalizar (pdv-c2.json é explícito:
@@ -199,9 +229,24 @@ export function AdminPdvView({
     return data as unknown as RespostaDoCodigo;
   }
 
+  // Chave da venda em andamento: a resposta de uma leitura só vale para a
+  // venda em que o código foi lido. Cancelar a venda gira a chave, e a
+  // resposta atrasada não pode colocar a peça da venda cancelada na nova.
+  const chaveDaVendaRef = useRef(estado.chaveDeIdempotencia);
+  useEffect(() => {
+    chaveDaVendaRef.current = estado.chaveDeIdempotencia;
+  }, [estado.chaveDeIdempotencia]);
+
   async function aoLerCodigo(leitura: Leitura): Promise<void> {
+    if (estado.enviando) {
+      // O cupom já foi copiado para o envio: a peça lida agora não entraria.
+      toast.error("Aguarde: a venda está sendo registrada.");
+      return;
+    }
+    const chaveDaLeitura = chaveDaVendaRef.current;
     try {
       const resposta = await buscarPorCodigo(leitura.codigo);
+      if (chaveDaLeitura !== chaveDaVendaRef.current) return;
       despachar({
         tipo: "codigo_resolvido",
         codigo: leitura.codigo,
@@ -239,19 +284,27 @@ export function AdminPdvView({
 
   async function buscarProdutos(
     termo: string,
-  ): Promise<readonly ProdutoEncontradoNaBusca[]> {
+    pagina: number,
+  ): Promise<PaginaDeProdutosEncontrados> {
     const rodada = ++rodadaProdutosRef.current;
     const { data, error } = await supabase.rpc("get_admin_products_paged", {
       p_search: termo,
       p_category: "all",
       p_status: "active",
       p_stock: "all",
-      p_page: 0,
+      p_page: pagina,
       p_page_size: 8,
     });
-    if (rodada !== rodadaProdutosRef.current) return [];
+    if (rodada !== rodadaProdutosRef.current) return { produtos: [], total: 0 };
     if (error) throw error;
-    return ((data as any)?.data ?? []) as ProdutoEncontradoNaBusca[];
+    const produtos = ((data as any)?.data ?? []) as ProdutoEncontradoNaBusca[];
+    // `total_count` é quantos produtos o termo acha no banco inteiro, não só
+    // nesta página — é o que deixa a tela dizer "mostrando 8 de 22".
+    const total = Number((data as any)?.total_count);
+    return {
+      produtos,
+      total: Number.isFinite(total) ? total : produtos.length,
+    };
   }
 
   // A linha inteira de `marketplace_orders` que `to_jsonb(o.*)` devolve
@@ -381,115 +434,155 @@ export function AdminPdvView({
     if (!estado.pagamento) {
       throw new Error("A venda saiu sem meio de pagamento escolhido.");
     }
-    const { data, error } = await supabase.rpc("registrar_venda_presencial", {
-      p_itens: estado.itens.map((item) => ({
-        product_id: item.productId,
-        variant_id: item.variantId,
-        quantity: item.quantidade,
-      })),
-      p_pagamento: estado.pagamento,
-      p_cliente_user_id:
-        estado.cliente.tipo === "cadastrado" ? estado.cliente.userId : null,
-      p_cliente_nome:
-        estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
-      p_cliente_whatsapp:
-        estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
-      p_desconto: estado.desconto,
-      p_observacao: estado.motivoDoDesconto || null,
-      // A MESMA chave em toda retentativa do MESMO cupom — nasce em
-      // `estadoInicialDaVenda`/`cupom_limpo` (C3.1), nunca aqui. É o que
-      // faz a segunda tentativa de uma venda que já foi gravada (rede
-      // caindo na resposta, F5 no meio do envio) devolver `ja_existia:
-      // true` em vez de debitar estoque duas vezes.
-      p_idempotency_key: estado.chaveDeIdempotencia,
-    });
-
-    // Deixa o erro CRU subir: quem traduz para português é
-    // `mensagemDaFalhaDaVenda` (C3.4), chamada de dentro de
-    // `FechamentoDaVenda` — repetir a tradução aqui criaria dois lugares
-    // decidindo a mesma frase (o mesmo defeito que o cabeçalho de
-    // `recusaDoPedido.ts` descreve para outra RPC). Em QUALQUER falha aqui
-    // (rede, 22023, 23505, 42501, PGRST202) nada é despachado: o cupom (e o
-    // rascunho, que só é apagado depois de `venda_registrada` — ver o
-    // efeito de gravação em `useVendaPresencial.ts`) ficam exatamente como
-    // estavam. É a invariante de D3, não um `if`.
-    if (error) throw error;
-
-    const resposta = data as unknown as RespostaDoFechamento;
-    const pedido = resposta.order;
-
-    // Retentativa de uma venda que JÁ foi gravada e depois ANULADA (a chave de
-    // idempotência devolve o mesmo pedido): o recibo de uma compra que não vale
-    // mais seria mostrado como se valesse. A recusa leva `code` 22023 para a
-    // tradução do fechamento mostrar a frase e oferecer "nova venda".
-    if (resposta.ja_existia && pedido.status === "cancelled") {
-      throw {
-        code: "22023",
-        message:
-          "Esta venda já foi anulada. Comece uma venda nova para registrar de novo.",
-      };
-    }
-
-    const recibo: ReciboDaVendaRegistrada = {
-      orderId: pedido.id,
-      // Seis últimos caracteres, maiúsculos — mesma regra de
-      // `AdminOrdersView.tsx:2028`.
-      numero: pedido.id.slice(-6).toUpperCase(),
-      criadoEm: pedido.created_at,
-      total: pedido.total,
-      subtotal: pedido.subtotal,
-      desconto: pedido.discount,
-      pagamento: pedido.payment_method,
-      // B2 (fila do bastão 19/09): da RESPOSTA do banco, nunca da tela — ver
-      // `clienteDoRecibo` acima. O recibo mostra o cliente da venda que o
-      // banco gravou; um F5 ou uma troca de cliente por baixo do fechamento
-      // não reescreve a história.
-      cliente: clienteDoRecibo(pedido),
-      // PASSO 3(a) da tarefa, ao pé da letra: os itens saem de
-      // `resposta.items` (o BANCO), e só imagem/variação vêm do cupom da
-      // tela, por `product_id`+`variant_id` (ver `montarItensDoRecibo`
-      // acima). Usar `estado.itens` aqui é o achado BLOQUEIA da revisão: o
-      // cupom continua interativo por baixo do fechamento e pode ter mudado
-      // entre a tentativa que gravou e esta leitura da resposta.
-      itens: montarItensDoRecibo(resposta.items),
-      jaExistia: resposta.ja_existia,
-    };
-
-    // (a) primeiro o recibo entra no estado — só DEPOIS disso o efeito de
-    // C3.1 apaga o rascunho (ele apaga quando vê `estado.recibo !== null`,
-    // não antes): se a montagem do recibo tivesse estourado ANTES deste
-    // despacho, o cupom continuaria intacto em disco.
-    despachar({ tipo: "venda_registrada", recibo });
-
-    // (c) o e-mail de confirmação, SEM `await` e com `.catch` que só
-    // registra — a venda JÁ está gravada, uma falha de envio não pode
-    // derrubar a tela do recibo (mesma forma e mesmo motivo de
-    // `useOrders.ts:2988-3020`, `enviarComprovanteAoCliente`). A edge
-    // decide sozinha o caso "sem e-mail" (`comprovante.ts:280-289`) — por
-    // isso NENHUMA guarda aqui.
-    //
-    // NÃO chamamos `notify-new-order`: quem registrou a venda é o próprio
-    // lojista — avisá-lo do que ele acabou de fazer é ruído, e a edge nem
-    // aceita um sinal de origem para dispensar isso (divergência da
-    // tarefa, `notify-new-order/index.ts:32,150-153`).
+    // PRAZO PRÓPRIO: a sonda de conexão só diz "lenta" (não "sem internet")
+    // quando a rede está pendurada, e o botão segue habilitado — sem prazo,
+    // o clique giraria por minutos. Estourar NÃO prova que a venda não
+    // chegou ao servidor: o erro sai SEM `code`, então a tradução do
+    // fechamento mostra a frase de rede de sempre (cupom salvo, tentar de
+    // novo), e a retentativa leva a MESMA chave de idempotência — se a venda
+    // já tinha sido gravada, o servidor devolve `ja_existia` em vez de
+    // debitar o estoque de novo. A resposta que chegar depois do prazo é
+    // descartada por `aguardarComPrazo`.
+    const desmarcar = marcarOperacaoSensivel("registro-de-venda-do-pdv");
     try {
-      void (supabase.functions as any)
-        .invoke("send-order-confirmation", { body: { orderId: pedido.id } })
-        .then((r: any) => {
-          if (r?.error) {
-            console.warn(
-              "send-order-confirmation: comprovante não saiu",
-              r.error,
-            );
-          }
-        })
-        .catch((err: unknown) => {
-          console.warn("send-order-confirmation: comprovante não saiu", err);
-        });
-    } catch (err) {
-      console.warn("send-order-confirmation: comprovante não saiu", err);
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc("registrar_venda_presencial", {
+            p_itens: estado.itens.map((item) => ({
+              product_id: item.productId,
+              variant_id: item.variantId,
+              quantity: item.quantidade,
+            })),
+            p_pagamento: estado.pagamento,
+            p_cliente_user_id:
+              estado.cliente.tipo === "cadastrado"
+                ? estado.cliente.userId
+                : null,
+            p_cliente_nome:
+              estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
+            p_cliente_whatsapp:
+              estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
+            p_desconto: estado.desconto,
+            p_observacao:
+              estado.desconto > 0 ? estado.motivoDoDesconto || null : null,
+            // A MESMA chave em toda retentativa do MESMO cupom — nasce em
+            // `estadoInicialDaVenda`/`cupom_limpo` (C3.1), nunca aqui. É o que
+            // faz a segunda tentativa de uma venda que já foi gravada (rede
+            // caindo na resposta, F5 no meio do envio) devolver `ja_existia:
+            // true` em vez de debitar estoque duas vezes.
+            p_idempotency_key: estado.chaveDeIdempotencia,
+          }),
+        ),
+        PRAZO_DO_REGISTRO_DA_VENDA_MS,
+        () => new Error("O registro da venda não respondeu a tempo."),
+      );
+
+      // Deixa o erro CRU subir: quem traduz para português é
+      // `mensagemDaFalhaDaVenda` (C3.4), chamada de dentro de
+      // `FechamentoDaVenda` — repetir a tradução aqui criaria dois lugares
+      // decidindo a mesma frase (o mesmo defeito que o cabeçalho de
+      // `recusaDoPedido.ts` descreve para outra RPC). Em QUALQUER falha aqui
+      // (rede, 22023, 23505, 42501, PGRST202) nada é despachado: o cupom (e o
+      // rascunho, que só é apagado depois de `venda_registrada` — ver o
+      // efeito de gravação em `useVendaPresencial.ts`) ficam exatamente como
+      // estavam. É a invariante de D3, não um `if`.
+      if (error) throw error;
+
+      const resposta = data as unknown as RespostaDoFechamento;
+      const pedido = resposta.order;
+
+      // Retentativa de uma venda que JÁ foi gravada e depois ANULADA (a chave de
+      // idempotência devolve o mesmo pedido): o recibo de uma compra que não vale
+      // mais seria mostrado como se valesse. A recusa leva `code` 22023 para a
+      // tradução do fechamento mostrar a frase e oferecer "nova venda".
+      if (resposta.ja_existia && pedido.status === "cancelled") {
+        throw {
+          code: "22023",
+          message:
+            "Esta venda já foi anulada. Comece uma venda nova para registrar de novo.",
+        };
+      }
+
+      const recibo: ReciboDaVendaRegistrada = {
+        orderId: pedido.id,
+        // Seis últimos caracteres, maiúsculos — mesma regra de
+        // `AdminOrdersView.tsx:2028`.
+        numero: pedido.id.slice(-6).toUpperCase(),
+        criadoEm: pedido.created_at,
+        total: pedido.total,
+        subtotal: pedido.subtotal,
+        desconto: pedido.discount,
+        pagamento: pedido.payment_method,
+        // B2 (fila do bastão 19/09): da RESPOSTA do banco, nunca da tela — ver
+        // `clienteDoRecibo` acima. O recibo mostra o cliente da venda que o
+        // banco gravou; um F5 ou uma troca de cliente por baixo do fechamento
+        // não reescreve a história.
+        cliente: clienteDoRecibo(pedido),
+        // PASSO 3(a) da tarefa, ao pé da letra: os itens saem de
+        // `resposta.items` (o BANCO), e só imagem/variação vêm do cupom da
+        // tela, por `product_id`+`variant_id` (ver `montarItensDoRecibo`
+        // acima). Usar `estado.itens` aqui é o achado BLOQUEIA da revisão: o
+        // cupom continua interativo por baixo do fechamento e pode ter mudado
+        // entre a tentativa que gravou e esta leitura da resposta.
+        itens: montarItensDoRecibo(resposta.items),
+        jaExistia: resposta.ja_existia,
+      };
+
+      // (a) primeiro o recibo entra no estado — só DEPOIS disso o efeito de
+      // C3.1 apaga o rascunho (ele apaga quando vê `estado.recibo !== null`,
+      // não antes): se a montagem do recibo tivesse estourado ANTES deste
+      // despacho, o cupom continuaria intacto em disco.
+      despachar({ tipo: "venda_registrada", recibo });
+
+      // (c) o e-mail de confirmação, SEM `await` e com `.catch` que só
+      // registra — a venda JÁ está gravada, uma falha de envio não pode
+      // derrubar a tela do recibo (mesma forma e mesmo motivo de
+      // `useOrders.ts:2988-3020`, `enviarComprovanteAoCliente`). A edge
+      // decide sozinha o caso "sem e-mail" (`comprovante.ts:280-289`) — por
+      // isso NENHUMA guarda aqui.
+      //
+      // NÃO chamamos `notify-new-order`: quem registrou a venda é o próprio
+      // lojista — avisá-lo do que ele acabou de fazer é ruído, e a edge nem
+      // aceita um sinal de origem para dispensar isso (divergência da
+      // tarefa, `notify-new-order/index.ts:32,150-153`).
+      try {
+        void (supabase.functions as any)
+          .invoke("send-order-confirmation", { body: { orderId: pedido.id } })
+          .then((r: any) => {
+            if (r?.error) {
+              console.warn(
+                "send-order-confirmation: comprovante não saiu",
+                r.error,
+              );
+            }
+          })
+          .catch((err: unknown) => {
+            console.warn("send-order-confirmation: comprovante não saiu", err);
+          });
+      } catch (err) {
+        console.warn("send-order-confirmation: comprovante não saiu", err);
+      }
+    } finally {
+      desmarcar();
     }
   }
+
+  const teclarNosModos = (evento: KeyboardEvent) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(evento.key)) {
+      return;
+    }
+    evento.preventDefault();
+    const proximo =
+      evento.key === "Home"
+        ? "bipar"
+        : evento.key === "End"
+          ? "buscar"
+          : modoDeProduto === "bipar"
+            ? "buscar"
+            : "bipar";
+    setModoDeProduto(proximo);
+    document.getElementById(`modo-${proximo}-produto`)?.focus();
+  };
 
   return (
     // pb-admin lg:pb-12 — o MESMO respiro das outras telas do admin: sem ele,
@@ -497,30 +590,89 @@ export function AdminPdvView({
     // etapa) ficava por trás da barra de navegação fixa, e a rolagem termina
     // exatamente ali — relato do dono em teste real no aparelho (19/09):
     // "os botões não têm rolagem suficiente para eu poder clicar".
-    <div className="pb-admin flex flex-col gap-4 lg:pb-12">
-      <div className="flex items-center justify-between gap-3">
+    <div className="pdv pb-admin lg:pb-12">
+      <div
+        className={`pdv-page-heading ${estado.etapa === "cupom" || estado.etapa === "escolha_de_variacao" ? "" : "sr-only"}`}
+      >
         <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-pdv"]} />
+        <p className="pdv-muted mt-2">Venda presencial · balcão</p>
       </div>
 
-      <LeitorDeCodigo
-        // Gate por `active` (nova-tela.md, molde AdminProductsView): quando
-        // a sub-view não está em foco, a câmera não pode continuar ligada
-        // comendo bateria do tablet do balcão.
-        aberto={active !== false && leitorAberto && estado.etapa === "cupom"}
-        aoLer={aoLerCodigo}
-        aoFechar={() => setLeitorAberto(false)}
-        titulo="Bipar produto"
-        dica="Aponte a câmera para o código de barras — ou digite embaixo"
-      />
-      {!leitorAberto && estado.etapa === "cupom" && (
-        <button
-          type="button"
-          onClick={() => setLeitorAberto(true)}
-          className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-700 p-3 text-sm font-semibold text-zinc-400"
+      {estado.etapa === "cupom" && (
+        <div
+          className="pdv-modes"
+          role="tablist"
+          aria-label="Adicionar produto à venda"
         >
-          <ScanBarcode className="size-4" />
-          Abrir leitor de código
-        </button>
+          <button
+            id="modo-bipar-produto"
+            type="button"
+            role="tab"
+            aria-selected={modoDeProduto === "bipar"}
+            tabIndex={modoDeProduto === "bipar" ? 0 : -1}
+            aria-controls="leitor-do-balcao"
+            onKeyDown={teclarNosModos}
+            onClick={() => setModoDeProduto("bipar")}
+          >
+            <ScanBarcode aria-hidden="true" className="pdv-cyan size-5" />
+            <span>Bipar produto</span>
+          </button>
+          <button
+            id="modo-buscar-produto"
+            type="button"
+            role="tab"
+            aria-selected={modoDeProduto === "buscar"}
+            tabIndex={modoDeProduto === "buscar" ? 0 : -1}
+            aria-controls="busca-do-balcao"
+            onKeyDown={teclarNosModos}
+            onClick={() => setModoDeProduto("buscar")}
+          >
+            <Search aria-hidden="true" className="pdv-blue size-5" />
+            <span>Buscar produto</span>
+          </button>
+        </div>
+      )}
+      <div
+        id="leitor-do-balcao"
+        role="tabpanel"
+        aria-labelledby="modo-bipar-produto"
+        hidden={estado.etapa !== "cupom" || modoDeProduto !== "bipar"}
+      >
+        <LeitorDeCodigo
+          // Gate por `active` (nova-tela.md, molde AdminProductsView): quando
+          // a sub-view não está em foco, a câmera não pode continuar ligada
+          // comendo bateria do tablet do balcão.
+          aberto={
+            active !== false &&
+            modoDeProduto === "bipar" &&
+            estado.etapa === "cupom"
+          }
+          lerTeclado={active === false ? false : estado.etapa === "cupom"}
+          aoLer={aoLerCodigo}
+          titulo="Bipar produto"
+          dica="Aponte a câmera para o código de barras — ou digite embaixo"
+        />
+      </div>
+
+      {estado.etapa !== "recibo" && (
+        <div
+          id="busca-do-balcao"
+          role="tabpanel"
+          aria-labelledby="modo-buscar-produto"
+          hidden={estado.etapa !== "cupom" || modoDeProduto !== "buscar"}
+        >
+          <BuscaDeProduto
+            despachar={despachar}
+            buscarProdutos={buscarProdutos}
+            visivel={
+              active === false
+                ? false
+                : modoDeProduto === "buscar"
+                  ? estado.etapa === "cupom"
+                  : false
+            }
+          />
+        </div>
       )}
 
       {estado.etapa !== "recibo" && (
@@ -528,8 +680,8 @@ export function AdminPdvView({
           estado={estado}
           despachar={despachar}
           subtotal={subtotal}
-          buscarProdutos={buscarProdutos}
           onNavigate={onNavigate}
+          limparCupom={limparCupom}
         />
       )}
 

@@ -296,16 +296,20 @@ describe("FavoritesContext — pendente não é tocável: tocar o coração nunc
     // remoção. É essa ausência de caminho que torna a corrida antiga
     // (marca de cancelamento + DELETE compensatório) inalcançável.
     expect(chamadasDelete.filter((d) => d.product_id === "p1")).toHaveLength(0);
-    // A segunda tentativa usa `upsert` (idempotente), então mais uma
-    // chamada de upsert para p1 é esperada — prova que o toque tentou
-    // ADICIONAR, não remover.
-    expect(
-      chamadasUpsert.filter((c) => c.product_id === "p1").length,
-    ).toBeGreaterThanOrEqual(2);
+    // As gravações de p1 são SERIALIZADAS (fila por produto): a segunda
+    // tentativa espera a primeira terminar, então ainda só há um upsert no ar.
+    expect(chamadasUpsert.filter((c) => c.product_id === "p1").length).toBe(1);
 
     // 4. O upsert original de p1 finalmente aterrissa (com sucesso).
     liberarProduto("p1");
     await flush();
+
+    // A segunda tentativa usa `upsert` (idempotente), então mais uma
+    // chamada de upsert para p1 acontece agora — prova que o toque tentou
+    // ADICIONAR, não remover.
+    expect(
+      chamadasUpsert.filter((c) => c.product_id === "p1").length,
+    ).toBeGreaterThanOrEqual(2);
 
     // Nunca houve DELETE para p1 em NENHUM momento — não existe "ressuscitar"
     // porque nunca houve uma remoção real para desfazer.

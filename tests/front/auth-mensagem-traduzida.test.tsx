@@ -22,6 +22,7 @@
 import { act, useContext } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pedidoCpfComCabecalho } from "./helpers/pedido-cpf-com-cabecalho";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -103,7 +104,15 @@ interface Snapshot {
   logout: () => Promise<void>;
   resendConfirmationEmail: (email: string) => Promise<boolean>;
   updatePassword: (newPassword: string) => Promise<boolean>;
-  updateProfile: (updates: { full_name?: string | null }) => Promise<boolean>;
+  updateProfile: (
+    updates: {
+      full_name?: string | null;
+      whatsapp?: string | null;
+      avatar_url?: string | null;
+      cover_url?: string | null;
+    },
+    contaEsperada?: string,
+  ) => Promise<boolean>;
 }
 
 function Sonda({
@@ -152,7 +161,7 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
     vi.restoreAllMocks();
   });
 
-  async function montar() {
+  async function montar(comSessao = false) {
     vi.resetModules();
     const { AuthContext, AuthProvider } = await import(
       "@/contexts/AuthContext"
@@ -162,7 +171,23 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
 
     (
       supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ data: { session: null }, error: null });
+    ).mockResolvedValue({
+      data: {
+        session: comSessao
+          ? { access_token: "token-a", user: { id: "conta-a" } }
+          : null,
+      },
+      error: null,
+    });
+    if (comSessao) {
+      (
+        supabase.auth.getUser as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ data: { user: { id: "conta-a" } }, error: null });
+      (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        data: false,
+        error: null,
+      });
+    }
     (
       supabase.auth.onAuthStateChange as unknown as ReturnType<typeof vi.fn>
     ).mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
@@ -598,14 +623,18 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
   // --- Ponto 6: updateProfile (linha ~818-819) ----------------------------
   describe("updateProfile", () => {
     it("erro da RPC (sem causa distinguível): mensagem genérica, e NÃO usa err.message como reserva", async () => {
-      const { supabase, toast, updateProfile } = await montar();
+      const { supabase, toast, updateProfile } = await montar(true);
       const consoleErrorSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
-      (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-        data: null,
-        error: { message: 'column "whatsapp" violates check constraint' },
-      });
+      (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+        pedidoCpfComCabecalho(
+          Promise.resolve({
+            data: null,
+            error: { message: 'column "whatsapp" violates check constraint' },
+          }),
+        ),
+      );
 
       await act(async () => {
         await updateProfile({ full_name: "Novo Nome" });
@@ -614,16 +643,29 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
       const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
         .calls[0][0] as string;
       expect(mensagem).not.toMatch(/check constraint|whatsapp/i);
+      expect(mensagem).toBe(
+        "Não foi possível atualizar seu perfil. Tente novamente.",
+      );
+      expect(supabase.rpc).toHaveBeenCalledWith("update_my_profile_secure", {
+        p_full_name: "Novo Nome",
+        p_whatsapp: null,
+        p_avatar_url: null,
+        p_cover_url: null,
+      });
       expect(consoleErrorSpy).toHaveBeenCalled();
     });
 
     it("erro sem message nenhuma: a mensagem exibida é a MESMA de quando há message (prova que o '||' de reserva saiu)", async () => {
-      const { supabase, toast, updateProfile } = await montar();
+      const { supabase, toast, updateProfile } = await montar(true);
       vi.spyOn(console, "error").mockImplementation(() => {});
-      (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-        data: null,
-        error: {},
-      });
+      (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+        pedidoCpfComCabecalho(
+          Promise.resolve({
+            data: null,
+            error: {},
+          }),
+        ),
+      );
 
       await act(async () => {
         await updateProfile({ full_name: "Novo Nome 2" });
@@ -633,10 +675,14 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
         .calls[0][0] as string;
 
       (toast.error as ReturnType<typeof vi.fn>).mockClear();
-      (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-        data: null,
-        error: { message: "detalhe interno do banco" },
-      });
+      (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+        pedidoCpfComCabecalho(
+          Promise.resolve({
+            data: null,
+            error: { message: "detalhe interno do banco" },
+          }),
+        ),
+      );
 
       await act(async () => {
         await updateProfile({ full_name: "Novo Nome 3" });
@@ -647,6 +693,116 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
 
       expect(mensagemSemDetalhe).toBe(mensagemComDetalhe);
       expect(mensagemComDetalhe).not.toMatch(/detalhe interno do banco/i);
+    });
+
+    it("sem sessão: devolve false, não envia e mantém o erro fixo do perfil", async () => {
+      const { supabase, toast, updateProfile } = await montar();
+      (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockClear();
+      let resultado: boolean | undefined;
+      await act(async () => {
+        resultado = await updateProfile({ full_name: "Nome de A" });
+      });
+
+      expect(resultado).toBe(false);
+      expect(supabase.rpc).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+        "Não foi possível atualizar seu perfil. Tente novamente.",
+      );
+    });
+
+    it("captura A antes de aguardar a sessão, mesmo se o contexto muda para B durante a leitura", async () => {
+      const { supabase, toast, updateProfile } = await montar(true);
+      const rpc = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
+      const getSession = supabase.auth.getSession as unknown as ReturnType<
+        typeof vi.fn
+      >;
+      const aoMudar = (
+        supabase.auth.onAuthStateChange as unknown as ReturnType<typeof vi.fn>
+      ).mock.calls[0][0];
+      const sessaoB = { access_token: "token-b", user: { id: "conta-b" } };
+      // Depois da troca o armazenamento passa a ter B de forma permanente:
+      // só a conta capturada ANTES do await impede gravar como B.
+      getSession.mockImplementation(async () => {
+        aoMudar("SIGNED_IN", sessaoB);
+        return { data: { session: sessaoB }, error: null };
+      });
+      rpc.mockClear();
+
+      let resultado: boolean | undefined;
+      await act(async () => {
+        resultado = await updateProfile({ avatar_url: "avatar-de-a" });
+      });
+
+      expect(resultado).toBe(false);
+      expect(
+        rpc.mock.calls.filter(([nome]) => nome === "update_my_profile_secure"),
+      ).toEqual([]);
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+        "A conta mudou durante a operação: nada foi salvo. Confira a conta e tente de novo.",
+      );
+    });
+
+    it("conta do clique: se B já entrou antes da chamada (depois de comprimir a imagem), nada é salvo", async () => {
+      const { supabase, toast, updateProfile } = await montar(true);
+      const rpc = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
+      const aoMudar = (
+        supabase.auth.onAuthStateChange as unknown as ReturnType<typeof vi.fn>
+      ).mock.calls[0][0];
+      const sessaoB = { access_token: "token-b", user: { id: "conta-b" } };
+      (
+        supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+      ).mockImplementation(async () => ({
+        data: { session: sessaoB },
+        error: null,
+      }));
+      await act(async () => {
+        aoMudar("SIGNED_IN", sessaoB);
+      });
+      rpc.mockClear();
+
+      let resultado: boolean | undefined;
+      await act(async () => {
+        resultado = await updateProfile(
+          { avatar_url: "avatar-de-a" },
+          "conta-a",
+        );
+      });
+
+      expect(resultado).toBe(false);
+      expect(
+        rpc.mock.calls.filter(([nome]) => nome === "update_my_profile_secure"),
+      ).toEqual([]);
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+        "A conta mudou durante a operação: nada foi salvo. Confira a conta e tente de novo.",
+      );
+    });
+
+    it("foto/capa enviam os quatro parâmetros originais e fixam o token de A", async () => {
+      const { supabase, toast, updateProfile } = await montar(true);
+      const rpc = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
+      const pedido = pedidoCpfComCabecalho(Promise.resolve({ error: null }));
+      rpc.mockClear().mockReturnValueOnce(pedido);
+
+      let resultado: boolean | undefined;
+      await act(async () => {
+        resultado = await updateProfile({
+          avatar_url: "avatar-de-a",
+          cover_url: "REMOVE",
+        });
+      });
+
+      expect(resultado).toBe(true);
+      expect(rpc).toHaveBeenCalledWith("update_my_profile_secure", {
+        p_full_name: null,
+        p_whatsapp: null,
+        p_avatar_url: "avatar-de-a",
+        p_cover_url: "REMOVE",
+      });
+      expect(pedido.setHeader).toHaveBeenCalledExactlyOnceWith(
+        "Authorization",
+        "Bearer token-a",
+      );
+      expect(toast.error).not.toHaveBeenCalled();
     });
   });
 });

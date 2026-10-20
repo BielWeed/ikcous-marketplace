@@ -18,7 +18,7 @@
  * conta de `resolverPrecoDaGrade` — o preço do produto e o estoque saem de uma
  * fonte só, as linhas efetivas.
  */
-import { limparNumero, precoDaLinha } from "@/utils/preco-da-grade";
+import { precoDaLinha, precoPositivoOuVazio } from "@/utils/preco-da-grade";
 
 export interface LinhaComValores {
   estoque: string;
@@ -33,10 +33,7 @@ const estoqueDoSegurado = (bruto: string): string => bruto.replace(/\D/g, "");
 /** O preço segurado que vale: número maior que zero, na mesma limpeza do botão
  *  ("49,90" vira "49.90"). Texto inválido, vazio ou 0,00 não vale — nunca vira
  *  preço zero (cobrança de graça) nem NaN. */
-const precoDoSegurado = (bruto: string): string => {
-  const numero = precoDaLinha(bruto);
-  return numero !== undefined && numero > 0 ? limparNumero(bruto) : "";
-};
+const precoDoSegurado = precoPositivoOuVazio;
 
 export function preencherComSegurado<T extends LinhaComValores>(
   linhas: T[],

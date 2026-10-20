@@ -186,7 +186,9 @@ describe("useOrders — cancelamento de cliente offline não vira fila (achado 1
     );
 
     expect(rpcMock).not.toHaveBeenCalled();
-    expect(localStorage.getItem("orders_offline_updates_queue")).toBeNull();
+    expect(
+      localStorage.getItem("orders_offline_updates_queue:cliente-1"),
+    ).toBeNull();
     // Achado 3, rodada 6: a frase não pode afirmar que o pedido "continua
     // reservado" — este erro dispara para QUALQUER cancelamento de cliente
     // offline, inclusive de um pedido já `processing`/`shipping`, onde
@@ -232,7 +234,9 @@ describe("useOrders — cancelamento de cliente offline não vira fila (achado 1
         p_new_status: "cancelled",
       }),
     );
-    expect(localStorage.getItem("orders_offline_updates_queue")).toBeNull();
+    expect(
+      localStorage.getItem("orders_offline_updates_queue:cliente-1"),
+    ).toBeNull();
   });
 
   it("controle: o ramo de fila OFFLINE continua vivo para o ADMIN — este achado é só do cliente", async () => {
@@ -248,7 +252,7 @@ describe("useOrders — cancelamento de cliente offline não vira fila (achado 1
 
     expect(rpcMock).not.toHaveBeenCalled();
     const fila = JSON.parse(
-      localStorage.getItem("orders_offline_updates_queue") ?? "[]",
+      localStorage.getItem("orders_offline_updates_queue:cliente-1") ?? "[]",
     );
     expect(fila).toEqual([
       expect.objectContaining({ orderId: "pedido-9", status: "processing" }),

@@ -117,6 +117,12 @@ describe("LeitorDeCodigo (componente)", () => {
     expect(alerta?.textContent).toContain(
       "Você precisa permitir o acesso à câmera para ler o código.",
     );
+    expect(alerta?.textContent).toContain("Não foi possível abrir a câmera");
+    expect(
+      [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Digitar o código",
+      ),
+    ).toBeDefined();
 
     const botoes = Array.from(document.querySelectorAll("button"));
     const botaoTentarDeNovo = botoes.find(
@@ -188,6 +194,17 @@ describe("LeitorDeCodigo (componente)", () => {
       botaoFechar?.click();
     });
     expect(aoFechar).toHaveBeenCalledTimes(1);
+  });
+
+  it("modo Bipar omite Fechar e mantém câmera, digitação e anúncio da leitura", async () => {
+    await montar({ aberto: true, aoLer: vi.fn(), titulo: "Bipar produto" });
+    expect(hospedeiro.querySelector("video")).not.toBeNull();
+    expect(hospedeiro.querySelector('[aria-live="polite"]')).not.toBeNull();
+    const textos = [...hospedeiro.querySelectorAll("button")].map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(textos).not.toContain("Fechar");
+    expect(textos).toContain("Digitar o código");
   });
 
   it("18. aberto={false}: não renderiza vídeo nenhum, e o hook recebe ativo:false (solta a câmera)", async () => {

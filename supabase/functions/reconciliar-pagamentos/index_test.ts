@@ -23,6 +23,7 @@ import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 import {
   MOTIVO_LINHA_INCERTA,
+  MOTIVO_REENVIO_SEM_CONSULTA,
   MOTIVO_SALDO_MUDOU_ANTES_DO_POST,
   MOTIVO_SALDO_NAO_COBRE_MAIS,
 } from "../_shared/estorno.ts";
@@ -98,10 +99,10 @@ function clienteFalso(opts: {
   rpcConfirmarResultado?: string;
   rpcConfirmarError?: unknown;
   // Conferência de valor (laudo 31/08, A3): total do pedido devolvido pela
-  // leitura de `marketplace_orders` (default 149.9 — os mocks antigos não
-  // tinham `from()` nenhum e os MPs mockados não trazem valor, então a
-  // conferência deles nem roda). `erroFrom` injeta falha de leitura.
-  pedidoTotal?: number | null;
+  // leitura de `marketplace_orders` (default 149.9). Null e valores ilegíveis
+  // são preservados para testar a recusa. `erroFrom` injeta falha de leitura.
+  pedidoTotal?: unknown;
+  avisos?: Map<string, { enviado: boolean }>;
   erroFrom?: unknown;
   // Fase 3.5 (cartão): `rpc("liberar_cobranca_do_pedido")` — o boolean
   // devolvido (default true) e a falha de banco simulada.
@@ -114,10 +115,15 @@ function clienteFalso(opts: {
   registro: {
     adocoesPedido?: Array<{ valores: Record<string, unknown>; filtros: Array<[string, unknown]> }>;
     chamadasConfirmar: Array<{ args: Record<string, unknown> }>;
+    chamadasAviso?: Array<{ nome: string; args: Record<string, unknown> }>;
     chamadasLiberar?: Array<{ args: Record<string, unknown> }>;
     chamouCandidatos: boolean;
     chamadasConcluirEstorno?: Array<{ args: Record<string, unknown> }>;
     chamadasAutorizarPost?: Array<{ args: Record<string, unknown> }>;
+    // 14/10/2026: registrar_diagnostico_do_estorno (o porquê do POST) e a
+    // ordem em que ele e o desfecho terminal foram gravados.
+    chamadasDiagnostico?: Array<{ args: Record<string, unknown> }>;
+    ordemDeGravacao?: string[];
     atualizacoesOrderRefunds?: Array<
       {
         id: string;
@@ -147,6 +153,7 @@ function clienteFalso(opts: {
     id: string,
     valores: Record<string, unknown>,
     statusFiltro: string[],
+    filtroEq?: [string, unknown],
   ) => { data: unknown; error: unknown };
   aoConcluirEstorno?: (args: Record<string, unknown>) => void;
   erroConcluirEstorno?: unknown;
@@ -170,7 +177,15 @@ function clienteFalso(opts: {
   // pedido fresco ATUAL da linha (`resolverPedidoFresco`) — o banco relê o
   // mesmo estado que o handler leu, no instante da pergunta.
   autorizarPost?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
+  // 14/10/2026: o que a linha tem DEPOIS de gravar o diagnóstico (contador e
+  // carimbo) e o erro simulado. Default: 1 falha "nada saiu", sem carimbo.
+  diagnostico?: { transitorios: number; post_incerto: boolean };
+  erroDiagnostico?: unknown;
+  // Simulação de vários ciclos: o diagnóstico COM ESTADO (conta, carimbo e
+  // último código acumulados, como a tabela de verdade).
+  aoRegistrarDiagnostico?: (args: Record<string, unknown>) => Record<string, unknown>;
 }) {
+  const avisos = opts.avisos ?? new Map<string, { enviado: boolean }>();
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
       if (nome === "pagamentos_a_reconciliar") {
@@ -182,6 +197,21 @@ function clienteFalso(opts: {
         opts.registro.chamadasConfirmar.push({ args: args ?? {} });
         if (opts.rpcConfirmarError) return { data: null, error: opts.rpcConfirmarError };
         return { data: opts.rpcConfirmarResultado ?? "pago", error: null };
+      }
+      if (nome === "reservar_aviso_ao_lojista") {
+        opts.registro.chamadasAviso?.push({ nome, args: args ?? {} });
+        const chave = String(args?.p_chave);
+        const anterior = avisos.get(chave);
+        if (anterior) return { data: anterior.enviado ? "enviado" : "em_envio", error: null };
+        avisos.set(chave, { enviado: false });
+        return { data: "reservado", error: null };
+      }
+      if (nome === "confirmar_aviso_ao_lojista" || nome === "liberar_aviso_ao_lojista") {
+        opts.registro.chamadasAviso?.push({ nome, args: args ?? {} });
+        const chave = String(args?.p_chave);
+        if (nome === "confirmar_aviso_ao_lojista") avisos.set(chave, { enviado: true });
+        else avisos.delete(chave);
+        return { data: true, error: null };
       }
       if (nome === "liberar_cobranca_do_pedido") {
         if (!opts.registro.chamadasLiberar) {
@@ -200,6 +230,13 @@ function clienteFalso(opts: {
         const pedido = refund ? opts.resolverPedidoFresco?.(String(refund.order_id)) : null;
         if (!pedido) throw new Error("autorizar_post_do_estorno sem pedido conhecido neste teste");
         return { data: { decisao: "autorizado", pedido }, error: null };
+      }
+      if (nome === "registrar_diagnostico_do_estorno") {
+        opts.registro.chamadasDiagnostico?.push({ args: args ?? {} });
+        opts.registro.ordemDeGravacao?.push("diagnostico");
+        if (opts.erroDiagnostico) return { data: null, error: opts.erroDiagnostico };
+        if (opts.aoRegistrarDiagnostico) return { data: opts.aoRegistrarDiagnostico(args ?? {}), error: null };
+        return { data: opts.diagnostico ?? { transitorios: 1, post_incerto: false }, error: null };
       }
       if (nome === "concluir_estorno") {
         opts.registro.chamadasConcluirEstorno?.push({ args: args ?? {} });
@@ -282,12 +319,10 @@ function clienteFalso(opts: {
                     return comExclusoes([...exclusoes, { coluna, valor }]);
                   },
                   lt(_colunaData: string, valorLimite: string) {
-                    // D4 (ANTES-DE-CRESCER 6): a producao encadeia DOIS
-                    // `.order()` (tentativas ASC, created_at ASC) antes do
-                    // `.limit()` — o mock acumula os criterios recursivamente
-                    // (cada `.order()` devolve um objeto com `.order()` E
-                    // `.limit()`) e SIMULA a ordenacao de verdade, para que
-                    // R10 prove a fila sem reimplementar o handler.
+                    // O dublê acumula todos os critérios de `.order()` antes
+                    // de `.limit()` e simula a ordenação de verdade: cada
+                    // `.order()` devolve `.order()` e `.limit()`. Assim R10
+                    // e RODIZIO provam a fila sem reimplementar o handler.
                     const comCriterios = (
                       criterios: Array<{ coluna: string; ascendente: boolean }>,
                     ) => ({
@@ -347,23 +382,30 @@ function clienteFalso(opts: {
               eq(_coluna: string, id: string) {
                 return {
                   in(_coluna2: string, statusFiltro: string[]) {
-                    const executar = async (filtroIs?: [string, unknown]) => {
-                      opts.registro.atualizacoesOrderRefunds?.push(
-                        filtroIs ? { id, valores, statusFiltro, filtroIs } : { id, valores, statusFiltro },
-                      );
+                    const executar = async (filtroIs?: [string, unknown], filtroEq?: [string, unknown]) => {
+                      if (valores.status === "falhou" || valores.status === "recusado") {
+                        opts.registro.ordemDeGravacao?.push("final");
+                      }
+                      const registroDaEscrita: Record<string, unknown> = { id, valores, statusFiltro };
+                      if (filtroIs) registroDaEscrita.filtroIs = filtroIs;
+                      if (filtroEq) registroDaEscrita.filtroEq = filtroEq;
+                      opts.registro.atualizacoesOrderRefunds?.push(registroDaEscrita as never);
                       if (opts.atualizarOrderRefunds) {
-                        return opts.atualizarOrderRefunds(id, valores, statusFiltro);
+                        return opts.atualizarOrderRefunds(id, valores, statusFiltro, filtroEq);
                       }
                       return { data: [{ id }], error: null };
                     };
-                    const encadeavel = (filtroIs?: [string, unknown]) => ({
+                    const encadeavel = (filtroIs?: [string, unknown], filtroEq?: [string, unknown]) => ({
                       // R1: `.is("post_autorizado_em", null)` no recusado.
-                      is: (coluna: string, valor: unknown) => encadeavel([coluna, valor]),
-                      select: () => executar(filtroIs),
+                      is: (coluna: string, valor: unknown) => encadeavel([coluna, valor], filtroEq),
+                      // P1 do Codex no #888: `.eq("tentativas", marca)` no
+                      // desfazer da tentativa de um ciclo sem envio.
+                      eq: (coluna: string, valor: unknown) => encadeavel(filtroIs, [coluna, valor]),
+                      select: () => executar(filtroIs, filtroEq),
                       then: (
                         res: (v: { data: unknown; error: unknown }) => void,
                         rej?: (e: unknown) => void,
-                      ) => executar(filtroIs).then(res, rej),
+                      ) => executar(filtroIs, filtroEq).then(res, rej),
                     });
                     return encadeavel();
                   },
@@ -391,7 +433,7 @@ function clienteFalso(opts: {
                     return opts.erroFrom
                       ? { data: null, error: opts.erroFrom }
                       : {
-                        data: { total: opts.pedidoTotal ?? 149.9, total_amount: null },
+                        data: { total: opts.pedidoTotal === undefined ? 149.9 : opts.pedidoTotal, total_amount: null },
                         error: null,
                       };
                   },
@@ -517,7 +559,7 @@ Deno.test("order aprovada (processed:accredited) -> confirmados:1, p_payment_id 
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
   const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
-  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
   const req = requisicaoComSegredo(SEGREDO);
 
   const resposta = await handler(req, { supabase, fetchImpl });
@@ -534,6 +576,116 @@ Deno.test("order aprovada (processed:accredited) -> confirmados:1, p_payment_id 
 // --- 3.5 CONFERÊNCIA DE VALOR (laudo 31/08, A3; ressalva 1 da revisão do
 // PR #366): a reconciliação atinge PEDIDO VIVO — sem esta porta, o que o
 // webhook recusou por valor entrava aqui depois, por status. ----------------
+
+for (const rota of ["payment", "order"] as const) {
+  for (const caso of [
+    { nome: "ausente", valor: undefined },
+    { nome: "nulo", valor: null },
+    { nome: "NaN (JSON nulo)", valor: NaN },
+    { nome: "infinito (JSON nulo)", valor: Infinity },
+    { nome: "string NaN", valor: "NaN" },
+    { nome: "string ilegível", valor: "sem valor" },
+    { nome: "string vazia", valor: "" },
+    { nome: "zero", valor: 0 },
+  ]) {
+    Deno.test(`valor estrito — cron ${rota}: MP ${caso.nome} -> não confirma, alerta registrado`, async () => {
+      const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+      const id = rota === "payment" ? "88888" : "ORDTSTVALORESTRITO";
+      const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], registro });
+      const corpoMp = rota === "payment"
+        ? { id: 88888, status: "approved", transaction_amount: caso.valor }
+        : { id, status: "processed", status_detail: "accredited", total_amount: caso.valor };
+      const alertas: unknown[] = [];
+      const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+        supabase,
+        fetchImpl: fetchConsulta(200, corpoMp),
+        enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+      });
+      const corpo = await resposta.json();
+      assertEquals(resposta.status, 200);
+      assertEquals(corpo.confirmados, 0);
+      assertEquals(corpo.ignorados, 1);
+      assertEquals(corpo.falhas, 0);
+      assertEquals(registro.chamadasConfirmar.length, 0);
+      assertEquals(alertas.length, 1);
+      assertEquals(registro.chamadasAviso.map((c) => c.nome), ["reservar_aviso_ao_lojista", "confirmar_aviso_ao_lojista"]);
+    });
+  }
+
+  for (const total of [0, null, NaN, Infinity, -1, "ilegível", "", true, {}]) {
+    Deno.test(`valor estrito — cron ${rota}: total do pedido ${String(total)} -> não confirma, alerta registrado`, async () => {
+      const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+      const id = rota === "payment" ? "88888" : "ORDTSTVALORESTRITO";
+      const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], pedidoTotal: total, registro });
+      const corpoMp = rota === "payment"
+        ? { id: 88888, status: "approved", transaction_amount: 149.9 }
+        : { id, status: "processed", status_detail: "accredited", total_amount: "149.90" };
+      const alertas: unknown[] = [];
+      const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+        supabase,
+        fetchImpl: fetchConsulta(200, corpoMp),
+        enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+      });
+      const corpo = await resposta.json();
+      assertEquals(resposta.status, 200);
+      assertEquals(corpo.confirmados, 0);
+      assertEquals(corpo.ignorados, 1);
+      assertEquals(registro.chamadasConfirmar.length, 0);
+      assertEquals(alertas.length, 1);
+      assertEquals(registro.chamadasAviso[0].args.p_chave, `valor_nao_conferido:${UUID_PEDIDO_1}:${id}`);
+      // O mesmo número que o painel mostra no cartão do pedido (6 últimos, maiúsculas).
+      assertEquals((alertas[0] as { body: string }).body.startsWith(`#${UUID_PEDIDO_1.slice(-6).toUpperCase()} · `), true);
+    });
+  }
+
+  Deno.test(`valor estrito — cron ${rota}: pedido zero e MP zero nunca confirmam pagamento`, async () => {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+    const id = rota === "payment" ? "88888" : "ORDTSTVALORESTRITO";
+    const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], pedidoTotal: 0, registro });
+    const corpoMp = rota === "payment"
+      ? { id: 88888, status: "approved", transaction_amount: 0 }
+      : { id, status: "processed", status_detail: "accredited", total_amount: "0.00" };
+    const alertas: unknown[] = [];
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase,
+      fetchImpl: fetchConsulta(200, corpoMp),
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.confirmados, 0);
+    assertEquals(corpo.ignorados, 1);
+    assertEquals(registro.chamadasConfirmar.length, 0);
+    assertEquals(alertas.length, 1);
+  });
+
+  Deno.test(`valor estrito — cron ${rota}: novo ciclo sem valor deduplica alerta; consulta corrigida confirma`, async () => {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+    const id = rota === "payment" ? "88888" : "ORDTSTVALORESTRITO";
+    const avisos = new Map<string, { enviado: boolean }>();
+    const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], registro, avisos });
+    const alertas: unknown[] = [];
+    for (const valor of [undefined, undefined, 149.9]) {
+      const corpoMp = rota === "payment"
+        ? { id: 88888, status: "approved", transaction_amount: valor }
+        : { id, status: "processed", status_detail: "accredited", total_amount: valor };
+      const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+        supabase,
+        fetchImpl: fetchConsulta(200, corpoMp),
+        enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+        enviarPush: async () => {},
+        enviarComprovante: async () => {},
+      });
+      const corpo = await resposta.json();
+      assertEquals(resposta.status, 200);
+      assertEquals(corpo.confirmados, valor === undefined ? 0 : 1);
+      assertEquals(corpo.ignorados, valor === undefined ? 1 : 0);
+    }
+    assertEquals(alertas.length, 1);
+    assertEquals(registro.chamadasConfirmar.length, 1);
+    assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+  });
+}
 
 Deno.test("order aprovada com total_amount '10.00' de um pedido de R$ 149,90 -> NÃO confirma, ignorados:1", async () => {
   const registro = { chamadasConfirmar: [], chamouCandidatos: false };
@@ -759,7 +911,7 @@ Deno.test("candidato legado (id numérico) nunca chama /v1/orders/ — vai diret
   const fetchImpl = async (url: string) => {
     urlsChamadas.push(url);
     if (url.includes("/v1/payments/999")) {
-      return new Response(JSON.stringify({ id: 999, status: "approved" }), { status: 200 });
+      return new Response(JSON.stringify({ id: 999, status: "approved", transaction_amount: 149.9 }), { status: 200 });
     }
     throw new Error(`fetch inesperado nos testes: ${url}`);
   };
@@ -790,7 +942,7 @@ Deno.test("candidato novo (ULID de order) nunca chama /v1/payments/ — vai dire
     urlsChamadas.push(url);
     if (url.includes(`/v1/orders/${idOrder}`)) {
       return new Response(
-        JSON.stringify({ id: idOrder, status: "processed", status_detail: "accredited" }),
+        JSON.stringify({ id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" }),
         { status: 200 },
       );
     }
@@ -992,7 +1144,7 @@ Deno.test("candidato legado pago (approved) é confirmado como pago_apos_expirar
   const urlsChamadas: string[] = [];
   const fetchImpl = async (url: string) => {
     urlsChamadas.push(url);
-    return new Response(JSON.stringify({ id: 555, status: "approved" }), { status: 200 });
+    return new Response(JSON.stringify({ id: 555, status: "approved", transaction_amount: 149.9 }), { status: 200 });
   };
   const req = requisicaoComSegredo(SEGREDO);
 
@@ -1054,7 +1206,7 @@ Deno.test("erro de rede na consulta de um candidato não impede o seguinte", asy
     if (url.includes("ORDTST04NETFAIL")) throw new Error("timeout de rede");
     if (url.includes("ORDTST05NETOK")) {
       return new Response(
-        JSON.stringify({ id: "ORDTST05NETOK", status: "processed", status_detail: "accredited" }),
+        JSON.stringify({ id: "ORDTST05NETOK", status: "processed", total_amount: "149.90", status_detail: "accredited" }),
         { status: 200 },
       );
     }
@@ -1118,6 +1270,7 @@ Deno.test("confirmar_pagamento rejeita para um candidato e o outro é processado
       JSON.stringify({
         id: url.includes("ORDTST06A") ? "ORDTST06A" : "ORDTST06B",
         status: "processed",
+        total_amount: "149.90",
         status_detail: "accredited",
       }),
       { status: 200 },
@@ -1237,7 +1390,7 @@ Deno.test("invariante confirmados + ignorados + falhas === verificados, com cand
     urlsChamadas.push(url);
     if (url.includes("/v1/orders/ORDTST08APROVADO")) {
       return new Response(
-        JSON.stringify({ id: "ORDTST08APROVADO", status: "processed", status_detail: "accredited" }),
+        JSON.stringify({ id: "ORDTST08APROVADO", status: "processed", total_amount: "149.90", status_detail: "accredited" }),
         { status: 200 },
       );
     }
@@ -1254,7 +1407,7 @@ Deno.test("invariante confirmados + ignorados + falhas === verificados, com cand
       );
     }
     if (url.includes("/v1/payments/777")) {
-      return new Response(JSON.stringify({ id: 777, status: "approved" }), { status: 200 });
+      return new Response(JSON.stringify({ id: 777, status: "approved", transaction_amount: 149.9 }), { status: 200 });
     }
     if (url.includes("/v1/payments/666")) {
       return new Response(JSON.stringify({ message: "payment not found" }), { status: 404 });
@@ -1453,8 +1606,15 @@ Deno.test("R3 - consulta sem refund e tentativas=2 -> repete o POST com a MESMA 
     resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
   });
   const mp = fetchDubleReconciliacao([
-    // GET da confirmação direta: sem transaction_amount_refunded -> "não sei".
-    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    // GET da confirmação direta e da consulta do reenvio (A1, 15/10/2026): o
+    // MP prova que NADA foi devolvido (acumulado 0, lista vazia) — só assim o
+    // reenvio sai.
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: { id: 123456789, status: "approved", transaction_amount_refunded: 0, refunds: [] },
+    },
     // POST do retry: em_process (PIX em contingência) — não conclui, mas
     // prova que o retry aconteceu com a MESMA chave.
     { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "in_process" } },
@@ -1464,10 +1624,9 @@ Deno.test("R3 - consulta sem refund e tentativas=2 -> repete o POST com a MESMA 
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
-  assertEquals(mp.chamadas.length, 2);
-  assertEquals(mp.chamadas[0].metodo, "GET");
-  assertEquals(mp.chamadas[1].metodo, "POST");
-  assertEquals(mp.chamadas[1].chave, "r3");
+  // confirmação (GET), consulta do reenvio (GET) e só então o POST.
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET", "GET", "POST"]);
+  assertEquals(mp.chamadas[2].chave, "r3");
   assertEquals(corpo.estornos.concluidos, 0);
   assertEquals(corpo.estornos.adiados, 1);
   // tentativas foi incrementada ANTES do retry (marca da nova tentativa).
@@ -1475,6 +1634,241 @@ Deno.test("R3 - consulta sem refund e tentativas=2 -> repete o POST com a MESMA 
     registro.atualizacoesOrderRefunds.some((a) => a.id === "r3" && a.valores.tentativas === 3),
     true,
   );
+});
+
+// ── A1 do crítico do reembolso A/B (15/10/2026): o robô não reenvia sem a
+// consulta dizer `nao_achou`. A chave de idempotência do MP vale 24 h; depois
+// dela, o reenvio de uma linha que já criou o reembolso no MP (resposta perdida)
+// cria o SEGUNDO. Os dublês abaixo REPROVAM qualquer POST de reembolso: cada um
+// é uma violação registrada (e respondida 201, como o MP responderia).
+
+function mpQueReprovaPost(gets: Array<{ status: number; corpo: unknown }>) {
+  const chamadas: Array<{ url: string; metodo: string; chave?: string }> = [];
+  const violacoes: string[] = [];
+  let i = 0;
+  const f = (entrada: string | URL | Request, init?: RequestInit) => {
+    const url = typeof entrada === "string" ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+    const metodo = (init?.method ?? "GET").toUpperCase();
+    chamadas.push({ url, metodo, chave: ((init?.headers ?? {}) as Record<string, string>)["X-Idempotency-Key"] });
+    if (metodo === "POST") {
+      violacoes.push(url);
+      return Promise.resolve(new Response(JSON.stringify({ id: 9999, status: "approved", amount: 20 }), { status: 201 }));
+    }
+    const r = gets[Math.min(i, gets.length - 1)];
+    i++;
+    return Promise.resolve(
+      new Response(typeof r.corpo === "string" ? r.corpo : JSON.stringify(r.corpo), { status: r.status }),
+    );
+  };
+  return { f, chamadas, violacoes };
+}
+
+function cenarioDeReenvio(extras: Record<string, unknown> = {}) {
+  const registro = registroDoReenvio();
+  const pedido = pedidoFrescoPara({ total: 200, valor_estornado: 0 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [{
+      id: "rr1",
+      order_id: pedido.id,
+      amount: 20,
+      status: "em_processamento",
+      // Um envio anterior, carimbado (o POST do dia 1 cuja resposta se perdeu).
+      tentativas: 1,
+      criada_sob_autorizacao: true,
+      post_autorizado_em: "2026-10-12T10:00:00.000Z",
+      mp_refund_id: null,
+      ...extras,
+    }],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  return { registro, supabase };
+}
+
+function registroDoReenvio() {
+  return {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    chamadasAutorizarPost: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+}
+
+const PAGAMENTO_SEM_ACUMULADO = { id: 123456789, status: "approved" };
+const PAGAMENTO_SEM_REEMBOLSO = { id: 123456789, status: "approved", transaction_amount_refunded: 0, refunds: [] };
+const PAGAMENTO_COM_REF1 = {
+  id: 123456789,
+  status: "approved",
+  transaction_amount_refunded: 20,
+  refunds: [{ id: 7001, status: "approved", amount: 20, date_created: "2026-10-12T10:00:05.000Z" }],
+};
+
+Deno.test("R3b (A1) - robô: consulta que NÃO sabe quanto já voltou (acumulado ausente) -> ZERO POST, linha adiada, motivo leigo", async () => {
+  const { registro, supabase } = cenarioDeReenvio();
+  const mp = mpQueReprovaPost([{ status: 200, corpo: PAGAMENTO_SEM_ACUMULADO }]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.violacoes, [], "nenhum POST de reembolso");
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET", "GET"], "confirmação + consulta do reenvio");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasAutorizarPost.length, 0, "o banco nem é perguntado: o carimbo não se renova");
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.id === "rr1" && a.valores.ultimo_erro === MOTIVO_REENVIO_SEM_CONSULTA),
+    true,
+  );
+});
+
+for (const [nome, get] of [
+  ["GET 500", { status: 500, corpo: { message: "erro" } }],
+  ["corpo ilegível", { status: 200, corpo: "<html>gateway</html>" }],
+] as Array<[string, { status: number; corpo: unknown }]>) {
+  Deno.test(`R3c (A1) - robô: consulta indeterminada (${nome}) -> ZERO POST, adiada`, async () => {
+    const { supabase } = cenarioDeReenvio();
+    const mp = mpQueReprovaPost([get]);
+    const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f })).json();
+    assertEquals(mp.violacoes, []);
+    assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  });
+}
+
+Deno.test("R3d (A1) - robô: a confirmação não fechou, mas a consulta do reenvio ACHA o REF1 do MP -> ZERO POST, adota o REF1 e conclui", async () => {
+  const { registro, supabase } = cenarioDeReenvio();
+  // 1º GET (confirmação): o MP ainda não lista nada; 2º (consulta do reenvio)
+  // e 3º (confirmação da adoção): o REF1 aparece — a consistência eventual do MP.
+  const mp = mpQueReprovaPost([
+    { status: 200, corpo: PAGAMENTO_SEM_REEMBOLSO },
+    { status: 200, corpo: PAGAMENTO_COM_REF1 },
+  ]);
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f })).json();
+
+  assertEquals(mp.violacoes, [], "nenhum POST: seria o REF2, dinheiro em dobro");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "rr1");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "7001");
+});
+
+Deno.test("R3e (A1, controle) - robô: linha NOVA (solicitado, tentativas 0) envia como antes — POST direto, ZERO GET", async () => {
+  const { registro, supabase } = cenarioDeReenvio({ status: "solicitado", tentativas: 0, post_autorizado_em: null });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 999, status: "approved", amount: 20 } },
+  ]);
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f })).json();
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["POST"]);
+  assertEquals(mp.chamadas[0].chave, "rr1");
+  assertEquals(corpo.estornos.concluidos, 1);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});
+
+// ── P1 do Codex no #888 (15/10/2026): o pré-voo inconclusivo (consulta antes do
+// reenvio sem resposta clara) NÃO pode gastar tentativa. Sem isso, uma linha com
+// tentativas 1 cujo 1º ciclo parou ANTES do POST chega ao teto (5) em quatro
+// ciclos de MP confuso, sem nenhum envio, e fica presa para sempre — o ramo
+// travado nunca reentra no executor, mesmo quando o MP volta a responder.
+// Simulação COM ESTADO (a linha guarda tentativas, status e carimbo entre os
+// ciclos; o UPDATE condicionado a `.eq("tentativas", n)` só pega se bater).
+
+type CicloDoPrevoo = "inconclusivo" | "nao_achou" | "nao_achou_post_500";
+
+async function ciclosDoPrevoo(ciclos: CicloDoPrevoo[]) {
+  const pedido = pedidoFrescoPara({ total: 200, valor_estornado: 0 });
+  const linha: Record<string, unknown> = {
+    status: "em_processamento",
+    // O 1º ciclo marcou e parou ANTES do POST (GET da transação caiu): sem carimbo.
+    tentativas: 1,
+    post_autorizado_em: null,
+  };
+  const historico: string[] = [];
+  const violacoes: string[] = [];
+  let posts = 0;
+  for (const ciclo of ciclos) {
+    if (linha.status !== "em_processamento") {
+      historico.push(String(linha.status));
+      continue;
+    }
+    const supabase = clienteFalso({
+      candidatos: [],
+      registro: registroDoReenvio(),
+      refundsPendentes: [{
+        id: "rp1",
+        order_id: pedido.id,
+        amount: 20,
+        status: linha.status,
+        tentativas: linha.tentativas,
+        criada_sob_autorizacao: true,
+        post_autorizado_em: linha.post_autorizado_em,
+        mp_refund_id: null,
+      }],
+      resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+      atualizarOrderRefunds: (_id, valores, statusFiltro, filtroEq) => {
+        if (!statusFiltro.includes(String(linha.status))) return { data: [], error: null };
+        if (filtroEq && linha[filtroEq[0]] !== filtroEq[1]) return { data: [], error: null };
+        if (typeof valores.tentativas === "number") linha.tentativas = valores.tentativas;
+        if (typeof valores.status === "string") linha.status = valores.status;
+        return { data: [{ id: "rp1" }], error: null };
+      },
+      // O banco carimba o POST que autoriza (20261196000000).
+      autorizarPost: () => {
+        linha.post_autorizado_em = "2026-10-15T10:00:00.000Z";
+        return { data: { decisao: "autorizado", pedido }, error: null };
+      },
+      aoConcluirEstorno: () => {
+        linha.status = "concluido";
+      },
+    });
+    const f = (entrada: string | URL | Request, init?: RequestInit) => {
+      const url = typeof entrada === "string" ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+      const metodo = (init?.method ?? "GET").toUpperCase();
+      if (metodo === "POST") {
+        posts++;
+        if (ciclo === "inconclusivo") violacoes.push(url);
+        return Promise.resolve(
+          ciclo === "nao_achou_post_500"
+            ? new Response("{}", { status: 500 })
+            : new Response(JSON.stringify({ id: 9999, status: "approved", amount: 20 }), { status: 201 }),
+        );
+      }
+      const corpo = ciclo === "inconclusivo" ? PAGAMENTO_SEM_ACUMULADO : PAGAMENTO_SEM_REEMBOLSO;
+      return Promise.resolve(new Response(JSON.stringify(corpo), { status: 200 }));
+    };
+    await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: f });
+    historico.push(`${linha.status}/t${linha.tentativas}`);
+  }
+  return { linha, historico, violacoes, posts: () => posts };
+}
+
+Deno.test("PREVOO-1 (P1 Codex) - linha com tentativas 1 sem carimbo, 8 ciclos de pré-voo inconclusivo: ZERO POST e o contador NÃO anda (nunca chega ao teto)", async () => {
+  const r = await ciclosDoPrevoo(Array(8).fill("inconclusivo"));
+  assertEquals(r.violacoes, [], "nenhum POST com a consulta sem resposta clara");
+  assertEquals(r.historico, Array(8).fill("em_processamento/t1"));
+});
+
+Deno.test("PREVOO-2 (P1 Codex) - depois de 4 pré-voos inconclusivos, o MP prova que nada voltou: 1 POST sai e a devolução conclui", async () => {
+  const r = await ciclosDoPrevoo(["inconclusivo", "inconclusivo", "inconclusivo", "inconclusivo", "nao_achou"]);
+  assertEquals(r.violacoes, []);
+  assertEquals(r.posts(), 1);
+  assertEquals(r.linha.status, "concluido");
+});
+
+Deno.test("PREVOO-3 (controle) - linha cujo POST de verdade sai e falha (500) continua contando: trava em 5 e para de enviar", async () => {
+  const r = await ciclosDoPrevoo(Array(7).fill("nao_achou_post_500"));
+  assertEquals(r.historico, [
+    "em_processamento/t2",
+    "em_processamento/t3",
+    "em_processamento/t4",
+    "em_processamento/t5",
+    "em_processamento/t5",
+    "em_processamento/t5",
+    "em_processamento/t5",
+  ]);
+  assertEquals(r.posts(), 4, "um POST por ciclo até o teto; depois só consulta");
 });
 
 Deno.test("R4 - tentativas=5 -> continua em_processamento (saldo reservado), SEM novo POST, ultimo_erro com o texto do teto (D2/BLOQUEIA-2)", async () => {
@@ -1754,9 +2148,14 @@ Deno.test("R9 - retry em_processamento de pedido PIX (gateway_payment_id de ORDE
       metodo: "GET",
       trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
       status: 200,
+      // A1 (15/10/2026): a order paga SEM reembolso nenhum — o mesmo GET
+      // serve à consulta do reenvio, que precisa provar `nao_achou` para o
+      // POST sair (antes o corpo dizia `status: "refunded"` com a lista vazia,
+      // contradição que a consulta do reenvio lê como "não sei").
       corpo: {
         id: "ORD01ABCDEFOLUIMWQKDXYZ01",
-        status: "refunded",
+        status: "processed",
+        status_detail: "accredited",
         transactions: {
           payments: [{ id: "PAY_RETRY", status: "processed" }],
           refunds: [],
@@ -1850,6 +2249,118 @@ Deno.test("R10 - fila ordena por tentativas ASC antes de created_at ASC: linha t
     true,
   );
   assertEquals(corpo.estornos.concluidos, 1, "a nova concluiu o estorno normalmente");
+});
+
+// Rodízio com estado: a ordem e o LIMIT vêm da query real; o dublê só
+// persiste os UPDATEs. Dez minutos entre ciclos tornam todas as linhas
+// elegíveis de novo, portanto a janela sozinha não resolve a inanição.
+for (const falha of ["leitura", "consulta"] as const) {
+  Deno.test(`RODIZIO - 25 linhas no teto, 20 falham na ${falha}: a segunda rodada visita a 21ª em diante`, async () => {
+    const DataReal = Date;
+    let agora = DataReal.now();
+    globalThis.Date = class extends DataReal {
+      constructor(...args: unknown[]) {
+        super(...(args.length ? args : [agora]));
+      }
+      static now() { return agora; }
+    };
+    try {
+      const linhas = Array.from({ length: 25 }, (_, i) => ({
+        id: `rodizio-${i}`,
+        order_id: `pedido-rodizio-${i}`,
+        amount: 10,
+        status: "em_processamento",
+        tentativas: 5,
+        mp_refund_id: null,
+        solicitado_por: "lojista",
+        created_at: new Date(agora - (50 - i) * 60_000).toISOString(),
+        updated_at: new Date(agora - (50 - i) * 60_000).toISOString(),
+      }));
+      const visitas: string[] = [];
+      const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasConcluirEstorno: [], atualizacoesOrderRefunds: [] };
+      const supabase = clienteFalso({
+        registro,
+        refundsPendentes: linhas,
+        resolverPedidoFresco: (id) => {
+          visitas.push(id);
+          const indice = linhas.findIndex((r) => r.order_id === id);
+          if (falha === "leitura" && indice < 20) throw new Error("leitura indisponível");
+          return pedidoFrescoPara({ id, gateway_payment_id: String(123456789 + indice) });
+        },
+        atualizarOrderRefunds: (id, valores, statusFiltro) => {
+          const linha = linhas.find((r) => r.id === id);
+          if (!linha || !statusFiltro.includes(linha.status)) return { data: [], error: null };
+          Object.assign(linha, valores);
+          return { data: [{ id }], error: null };
+        },
+      });
+      const chamadasMp: string[] = [];
+      const fetchImpl = async (url: string, init?: RequestInit) => {
+        chamadasMp.push(init?.method ?? "GET");
+        const indice = Number(String(url).split("/").pop()) - 123456789;
+        return new Response(JSON.stringify(indice < 20 ? {} : {
+          id: 123456789 + indice, status: "approved", transaction_amount_refunded: 10,
+        }), { status: indice < 20 ? 500 : 200 });
+      };
+
+      const primeira = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+      assertEquals((await primeira.json()).estornos.vistos, 20);
+      assertEquals(visitas, linhas.slice(0, 20).map((r) => r.order_id));
+      agora += 10 * 60_000;
+      const segunda = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+      const resumo = (await segunda.json()).estornos;
+      assertEquals(resumo.vistos, 20, "o lote continua limitado a 20");
+      assertEquals(visitas.slice(20, 25), linhas.slice(20).map((r) => r.order_id), "as cinco nunca visitadas passam à frente");
+      assertEquals(resumo.concluidos, 5);
+      assertEquals(linhas.every((r) => r.tentativas === 5), true, "visita não gasta tentativa nem aumenta o teto");
+      assertEquals(chamadasMp.every((metodo) => metodo === "GET"), true, "no teto não há POST");
+    } finally {
+      globalThis.Date = DataReal;
+    }
+  });
+}
+
+Deno.test("RODIZIO - linha dentro dos dois minutos não recebe visita nem carimbo", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, atualizacoesOrderRefunds: [] };
+  let leituras = 0;
+  const supabase = clienteFalso({
+    registro,
+    refundsPendentes: [{
+      id: "recente", order_id: "pedido-recente", amount: 10,
+      status: "em_processamento", tentativas: 5, mp_refund_id: null,
+      updated_at: new Date(Date.now() - 30_000).toISOString(),
+    }],
+    resolverPedidoFresco: () => { leituras++; return null; },
+  });
+  const mp = fetchDubleReconciliacao([]);
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  assertEquals((await resposta.json()).estornos, { vistos: 0, concluidos: 0, adiados: 0, falhos: 0 });
+  assertEquals(leituras, 0);
+  assertEquals(registro.atualizacoesOrderRefunds, []);
+  assertEquals(mp.chamadas, []);
+});
+
+Deno.test("RODIZIO - caminho feliz mantém POST, chave e conclusão, carimbando só a visita", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasConcluirEstorno: [], atualizacoesOrderRefunds: [] };
+  const pedido = pedidoFrescoPara({ total: 10 });
+  const supabase = clienteFalso({
+    registro,
+    refundsPendentes: [{
+      id: "feliz", order_id: pedido.id, amount: 10, status: "solicitado",
+      tentativas: 0, mp_refund_id: null,
+      updated_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+    }],
+    resolverPedidoFresco: () => pedido,
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 123, status: "approved", amount: 10 } },
+  ]);
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  assertEquals((await resposta.json()).estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(mp.chamadas.map((c) => [c.metodo, c.chave, c.corpoEnviado]), [["POST", "feliz", {}]]);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "feliz");
+  const visita = registro.atualizacoesOrderRefunds.find((a) => Object.keys(a.valores).join() === "updated_at");
+  assertEquals(typeof visita?.valores.updated_at, "string", "também carimba visita que concluiu");
 });
 
 Deno.test("R11 - concluido cuja RPC concluir_estorno levanta: incrementa tentativas e grava o motivo leigo, linha continua em_processamento (D4, ANTES-DE-CRESCER 5)", async () => {
@@ -1956,17 +2467,18 @@ Deno.test("R12 - experimento do laudo ponta a ponta: com a ordenação tentativa
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
-  // b (avaliada primeiro) NÃO conclui: nem com o dinheiro de a (achado 1),
-  // nem sem POST — o POST com a chave DELA saiu (`mp.chamadas` abaixo) e o
-  // resultado é "em_processamento" (adiada). a conclui SEM POST, pela
-  // consulta, com o refund que é exatamente do valor dela.
+  // b (avaliada primeiro) NÃO conclui com o dinheiro de a (achado 1) e fica
+  // adiada. a conclui SEM POST, pela consulta, com o refund que é exatamente
+  // do valor dela.
   assertEquals(corpo.estornos, { vistos: 2, concluidos: 1, adiados: 1, falhos: 0 });
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "a");
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "ref-a");
-  // O POST de b saiu com a chave DELA (idempotência por linha) — nunca a de a.
-  const postDeB = mp.chamadas.find((c) => c.metodo === "POST");
-  assertEquals(postDeB?.chave, "b");
+  // A1 (15/10/2026): b já teve envio e, quando é avaliada, o MP mostra um
+  // reembolso (o de a) que nenhuma linha reivindicou ainda — a consulta do
+  // reenvio não sabe de quem é, então NENHUM POST sai neste ciclo (antes saía o
+  // POST de b). No ciclo seguinte a já gravou o id dela e b volta a poder enviar.
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0);
 });
 
 Deno.test("R13 - idsJaReivindicados: duas linhas do MESMO valor no mesmo lote — a 1ª conclui com o refund, a 2ª (vendo o id já gravado) NÃO conclui", async () => {
@@ -2195,7 +2707,7 @@ Deno.test("PEÇA 5 - resultado 'pago' via reconciliação -> dispara o comprovan
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
   const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
-  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
   const req = requisicaoComSegredo(SEGREDO);
   const chamadasComprovante: unknown[] = [];
   const enviarComprovante = async (args: unknown) => {
@@ -2221,7 +2733,7 @@ Deno.test("PEÇA 5 - resultado 'pago_apos_expirar' via reconciliação -> dispar
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
   const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago_apos_expirar", registro });
-  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
   const req = requisicaoComSegredo(SEGREDO);
   const chamadasComprovante: unknown[] = [];
   const enviarComprovante = async (args: unknown) => {
@@ -2247,7 +2759,7 @@ Deno.test("PEÇA 5 - resultado 'ja_pago' (reenvio) via reconciliação -> NÃO d
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
   const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "ja_pago", registro });
-  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
   const req = requisicaoComSegredo(SEGREDO);
   const chamadasComprovante: unknown[] = [];
   const enviarComprovante = async (args: unknown) => {
@@ -2384,7 +2896,7 @@ Deno.test("PEÇA 5 (caminho real) - 'pago' -> alcança a MESMA reserva do compro
       reservaResultados: [false], // basta provar que a reserva foi ALCANÇADA
       registro,
     });
-    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
 
     const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
 
@@ -2417,7 +2929,7 @@ Deno.test("PEÇA 5 (caminho real) - 'pago_apos_expirar' -> alcança a reserva do
       reservaResultados: [false],
       registro,
     });
-    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
 
     const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
 
@@ -2525,7 +3037,7 @@ Deno.test("aviso de pagamento atrasado (reconciliação): reserva NÃO concedida
         throw new Error(`from inesperado no dublê mínimo: ${tabela}`);
       },
     };
-    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
 
     const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
     const corpo = await resposta.json();
@@ -2572,7 +3084,7 @@ Deno.test("PEÇA 5 - AUSÊNCIA DE DUPLICATA: dois candidatos do MESMO pedido no 
       reservaResultados: [true, false],
       registro,
     });
-    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
 
     const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
     const corpo = await resposta.json();
@@ -2630,6 +3142,7 @@ Deno.test("MP-1 — com chave do LOJISTA cadastrada, o Bearer da consulta ao MP 
     const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
       id: idOrder,
       status: "processed",
+      total_amount: "149.90",
       status_detail: "accredited",
     });
 
@@ -2660,6 +3173,7 @@ Deno.test("MP-2 — chave do lojista cadastrada + cofre ausente: o candidato é 
   const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
     id: idOrder,
     status: "processed",
+    total_amount: "149.90",
     status_detail: "accredited",
   });
 
@@ -2720,7 +3234,10 @@ Deno.test("MP-3 — cofre ausente: a fila de ESTORNOS também para fechada (falh
   // conserto de operador; não pode consumir o orçamento de tentativas de uma
   // devolução de dinheiro.
   assertEquals(capturado.chamadas, 0);
-  assertEquals(registro.atualizacoesOrderRefunds.length, 0);
+  // Sem credencial só há metadado de visita: status e tentativas intactos.
+  assertEquals(registro.atualizacoesOrderRefunds.length, 1);
+  assertEquals(Object.keys(registro.atualizacoesOrderRefunds[0].valores), ["updated_at"]);
+  assertEquals(registro.atualizacoesOrderRefunds[0].statusFiltro, ["solicitado", "em_processamento"]);
   assertEquals(registro.chamadasConcluirEstorno.length, 0);
 });
 
@@ -2761,10 +3278,19 @@ Deno.test("MP-4 — lote com DOIS candidatos resolve as credenciais UMA vez (um 
     const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
       id: idOrder1,
       status: "processed",
+      total_amount: "149.90",
       status_detail: "accredited",
     });
 
-    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    // O e-mail do comprovante entra como dublê: ele resolve o REMETENTE em
+    // app_settings (outra linha, a do e-mail da loja) e este teste conta só as
+    // leituras das credenciais do Mercado Pago.
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase,
+      fetchImpl,
+      enviarComprovante: async () => {},
+      enviarAvisoAtrasado: async () => {},
+    });
     const corpo = await resposta.json();
 
     // Os DOIS candidatos passaram pelo laço com o token do lojista.
@@ -2795,6 +3321,7 @@ function orderDoCandidato(id: string, status: string, statusDetail: string, tipo
     id,
     status,
     status_detail: statusDetail,
+    total_amount: "149.90",
     transactions: { payments: [{ id: "PAY1", status, status_detail: statusDetail, payment_method: { type: tipo } }] },
   };
 }
@@ -3011,14 +3538,16 @@ Deno.test("LEASE-C2 - retry da em_processamento (consulta sem refund): o banco d
     autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 10 }, error: null }),
   });
   const mp = fetchDubleReconciliacao([
-    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    // A1 (15/10/2026): o MP prova que nada foi devolvido — a pergunta ao banco
+    // só acontece depois da consulta do reenvio dizer `nao_achou`.
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: PAGAMENTO_SEM_REEMBOLSO },
     { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 20 } },
   ]);
 
   const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
   const corpo = await resposta.json();
 
-  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"], "só a consulta; nenhum POST");
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET", "GET"], "confirmação + consulta do reenvio; nenhum POST");
   assertEquals(corpo.estornos.adiados, 1);
   assertEquals(registro.chamadasAutorizarPost.map((c) => c.args), [{ p_refund_id: "rl2", p_valor: 20 }]);
   // Linha LEGADA (sem criada_sob_autorizacao) com tentativas 2: incerta —
@@ -3046,7 +3575,9 @@ Deno.test("LEASE-C3 - autorizado: os dois caminhos perguntam ao banco UMA vez ca
     resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
   });
   const mp = fetchDubleReconciliacao([
-    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    // A1 (15/10/2026): rl4 já teve envio — sem a prova de que nada foi
+    // devolvido, o POST dela não sairia.
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: PAGAMENTO_SEM_REEMBOLSO },
     { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "in_process" } },
   ]);
 
@@ -3392,3 +3923,390 @@ for (const caso of PARCELADOS_COM_JUROS) {
     assertEquals(corpo.confirmados, 1);
   });
 }
+
+// --- O aviso "o cliente cancelou" NAO prende a fila de estornos (14/10/2026) --
+//
+// O passo que avisa o lojista roda ANTES da fila de `order_refunds`. Push
+// service que aceita a conexao e nao responde (o `fetch` do web-push nao tem
+// teto) deixava o handler parado nesse passo: nenhum estorno da loja rodava,
+// inclusive o do proprio pedido cancelado, e a reserva vencia em 2 min e a
+// rodada seguinte pendurava de novo. O passo INTEIRO corre contra um teto
+// (`comTempoLimite`); vencido o teto, a rotina segue direto para os estornos.
+const CLIENTE_DO_CANCELAMENTO = "c1111111-1111-4111-8111-111111111111";
+
+function comCancelamentoDoCliente(base: ReturnType<typeof clienteFalso>, pedido: Record<string, unknown>) {
+  const reservas = new Map<string, boolean>();
+  const historico = [{
+    id: "h1",
+    order_id: pedido.id,
+    old_status: "processing",
+    created_by: CLIENTE_DO_CANCELAMENTO,
+    created_at: new Date(Date.now() - 2 * 60000).toISOString(),
+  }];
+  const pedidoDoAviso = {
+    id: pedido.id,
+    user_id: CLIENTE_DO_CANCELAMENTO,
+    customer_name: "Maria Silva",
+    total: pedido.total,
+    total_amount: null,
+    payment_status: "pago",
+    status: "cancelled",
+    cancelled_after_shipping: false,
+  };
+  // Cadeia que ignora os filtros (eles tem teste proprio no modulo): o que
+  // este teste prende e o TEMPO, nao a selecao.
+  const cadeia = (dados: unknown[]) => {
+    const q = { eq: () => q, not: () => q, gte: () => q, order: () => q, limit: () => q };
+    return Object.assign(q, {
+      then: (res: (v: unknown) => void, rej?: (e: unknown) => void) =>
+        Promise.resolve({ data: dados, error: null }).then(res, rej),
+    });
+  };
+  return {
+    reservas,
+    rpc: async (nome: string, args?: Record<string, unknown>) => {
+      if (nome === "reservar_aviso_ao_lojista") {
+        const chave = String(args?.p_chave);
+        if (reservas.has(chave)) return { data: reservas.get(chave) ? "enviado" : "em_envio", error: null };
+        reservas.set(chave, false);
+        return { data: "reservado", error: null };
+      }
+      if (nome === "confirmar_aviso_ao_lojista") return reservas.set(String(args?.p_chave), true), { data: null, error: null };
+      if (nome === "liberar_aviso_ao_lojista") return reservas.delete(String(args?.p_chave)), { data: null, error: null };
+      return base.rpc(nome, args);
+    },
+    from(tabela: string) {
+      if (tabela === "marketplace_order_history") return { select: () => cadeia(historico) };
+      if (tabela === "profiles") return { select: () => ({ in: () => Promise.resolve({ data: [{ id: CLIENTE_DO_CANCELAMENTO, role: "customer" }], error: null }) }) };
+      if (tabela === "marketplace_orders") {
+        const original = base.from(tabela);
+        return {
+          ...original,
+          select: (colunas: string) =>
+            colunas.includes("user_id")
+              ? { in: () => Promise.resolve({ data: [pedidoDoAviso], error: null }) }
+              : original.select(colunas),
+        };
+      }
+      return base.from(tabela);
+    },
+  };
+}
+
+function cenarioDeCancelamentoComEstorno() {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 50 });
+  const base = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r1", order_id: pedido.id, amount: 50, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 999, status: "approved", amount: 50 } },
+  ]);
+  return { registro, supabase: comCancelamentoDoCliente(base, pedido), mp };
+}
+
+async function rodarSemPrender(args: Parameters<typeof handler>[1]) {
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  const pendurado = new Promise<"PENDURADO">((resolve) => {
+    temporizador = setTimeout(() => resolve("PENDURADO"), 3000);
+  });
+  const e0 = console.error, w0 = console.warn, l0 = console.log;
+  console.error = () => {};
+  console.warn = () => {};
+  console.log = () => {};
+  try {
+    return await Promise.race([handler(requisicaoComSegredo(SEGREDO), args), pendurado]);
+  } finally {
+    clearTimeout(temporizador);
+    console.error = e0;
+    console.warn = w0;
+    console.log = l0;
+  }
+}
+
+Deno.test("cancelamento do cliente: push que NUNCA responde NAO prende a fila de estornos - o estorno do proprio pedido cancelado sai", async () => {
+  const { registro, supabase, mp } = cenarioDeCancelamentoComEstorno();
+
+  const resposta = await rodarSemPrender({
+    supabase,
+    fetchImpl: mp.f,
+    enviarPushContado: () => new Promise(() => {}),
+    tetoDosCancelamentosMs: 50,
+  });
+
+  assertEquals(resposta === "PENDURADO", false, "o handler ficou preso no passo do aviso: a fila de estornos nunca foi lida");
+  const corpo = await resposta.json();
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  // O teto venceu: o passo nao contou nada (o push segue em voo, em segundo plano).
+  assertEquals(corpo.cancelamentos, { candidatos: 0, avisados: 0, ignorados: 0, falhas: 0 });
+});
+
+Deno.test("cancelamento do cliente: push que responde -> o lojista e avisado E o estorno sai na mesma rodada", async () => {
+  const { registro, supabase, mp } = cenarioDeCancelamentoComEstorno();
+  const pushes: Array<{ title: string }> = [];
+
+  const resposta = await rodarSemPrender({
+    supabase,
+    fetchImpl: mp.f,
+    enviarPushContado: ({ aviso }) => {
+      pushes.push(aviso);
+      return Promise.resolve(1);
+    },
+  });
+
+  assertEquals(resposta === "PENDURADO", false);
+  const corpo = await resposta.json();
+  assertEquals(pushes.map((p) => p.title), ["Cliente cancelou o pedido"]);
+  assertEquals(corpo.cancelamentos, { candidatos: 1, avisados: 1, ignorados: 0, falhas: 0 });
+  assertEquals(corpo.estornos.concluidos, 1);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});
+
+// ── 14/10/2026 — reembolso da devolução, parte TypeScript (D4/D5/D6) ────────
+// O cron grava o diagnóstico do POST ANTES de qualquer `falhou`, aplica o limite
+// de falhas "nada saiu" e nunca põe motivo interno em `ultimo_erro`.
+
+async function cronComPostRecusado(
+  status: number,
+  corpo: unknown,
+  extras: Partial<Parameters<typeof clienteFalso>[0]> = {},
+  linha: Record<string, unknown> = {},
+) {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    chamadasDiagnostico: [] as Array<{ args: Record<string, unknown> }>,
+    ordemDeGravacao: [] as string[],
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 50 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r1", order_id: pedido.id, amount: 50, status: "solicitado", tentativas: 0, mp_refund_id: null, ...linha },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    ...extras,
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status, corpo },
+  ]);
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  return { corpo: await resposta.json(), registro };
+}
+
+Deno.test("C1 (M6/D4) - cron: 428 'sem saldo' (errors[]): diagnóstico gravado, linha adiada (NÃO falhou), ultimo_erro neutro", async () => {
+  const { corpo, registro } = await cronComPostRecusado(428, { errors: [{ code: "insufficient_money_for_refund", message: "saldo" }] }, {
+    diagnostico: { transitorios: 2, post_incerto: false },
+  });
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasDiagnostico.map((c) => c.args), [
+    { p_refund_id: "r1", p_mp_codigo: "insufficient_money_for_refund", p_post_incerto: false, p_transitorio: true },
+  ]);
+  assertEquals(registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+  const erro = registro.atualizacoesOrderRefunds.find((a) => typeof a.valores.ultimo_erro === "string");
+  assertEquals(/saldo|insufficient|conta/i.test(String(erro?.valores.ultimo_erro)), false);
+});
+
+Deno.test("C2 (D4) - cron: a 5ª falha 'nada saiu' sem carimbo vira falhou, DEPOIS de gravar o diagnóstico; com carimbo nunca", async () => {
+  const quinta = await cronComPostRecusado(428, { errors: [{ code: "insufficient_money_for_refund" }] }, {
+    diagnostico: { transitorios: 5, post_incerto: false },
+  });
+  assertEquals(quinta.corpo.estornos, { vistos: 1, concluidos: 0, adiados: 0, falhos: 1 });
+  assertEquals(quinta.registro.ordemDeGravacao, ["diagnostico", "final"]);
+  const terminal = quinta.registro.atualizacoesOrderRefunds.find((a) => a.valores.status === "falhou");
+  assertEquals(terminal?.statusFiltro, ["em_processamento"]);
+  assertEquals(/saldo|insufficient|conta/i.test(String(terminal?.valores.ultimo_erro)), false);
+
+  const comCarimbo = await cronComPostRecusado(428, { errors: [{ code: "insufficient_money_for_refund" }] }, {
+    diagnostico: { transitorios: 9, post_incerto: true },
+  });
+  assertEquals(comCarimbo.corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(comCarimbo.registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+});
+
+Deno.test("C3 (D6) - cron: código DESCONHECIDO: falhou, mas só depois do diagnóstico com carimbo; se o diagnóstico não grava, NÃO falhou", async () => {
+  const ok = await cronComPostRecusado(400, { errors: [{ code: "codigo_novo_do_mp" }] });
+  assertEquals(ok.registro.chamadasDiagnostico.map((c) => c.args), [
+    { p_refund_id: "r1", p_mp_codigo: "codigo_novo_do_mp", p_post_incerto: true, p_transitorio: false },
+  ]);
+  assertEquals(ok.registro.ordemDeGravacao, ["diagnostico", "final"]);
+  assertEquals(JSON.stringify(ok.registro.atualizacoesOrderRefunds).includes("codigo_novo_do_mp"), false);
+
+  const semDiagnostico = await cronComPostRecusado(400, { errors: [{ code: "codigo_novo_do_mp" }] }, {
+    erroDiagnostico: { message: "banco fora" },
+  });
+  assertEquals(semDiagnostico.corpo.estornos.falhos, 0);
+  assertEquals(semDiagnostico.registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+});
+
+Deno.test("C4 (D5) - cron: 'em andamento' (movement_operations_pending) fica em_processamento com carimbo e NUNCA vira falhou", async () => {
+  const r = await cronComPostRecusado(409, { errors: [{ code: "movement_operations_pending" }] });
+  assertEquals(r.corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(r.registro.chamadasDiagnostico[0].args.p_post_incerto, true);
+  assertEquals(r.registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+});
+
+Deno.test("C5 (D4) - cron: linha antiga já no regime 'só consulta' (tentativas 5, sem diagnóstico): continua em consulta, sem POST e SEM falhou — o limite novo não a alcança", async () => {
+  const r = await cronComPostRecusado(400, {}, {}, { status: "em_processamento", tentativas: 5 });
+  assertEquals(r.corpo.estornos.falhos, 0);
+  // Só a LEITURA do diagnóstico (tudo nulo/falso, nada incrementa nem carimba);
+  // sem código gravado, a linha segue em consulta.
+  assertEquals(r.registro.chamadasDiagnostico.map((c) => c.args), [
+    { p_refund_id: "r1", p_mp_codigo: null, p_post_incerto: false, p_transitorio: false },
+  ]);
+  assertEquals(r.registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+});
+
+// ── 14/10/2026 (correção da revisão Opus do #855) — dois contadores, o mesmo teto ──
+// O robô para de POSTar com 5 TENTATIVAS (sobem em todo ciclo, até as que nem
+// chegam ao MP); a linha só virava `falhou` na 5ª RECUSA "nada saiu" (sobe só
+// quando o MP responde). Uma consulta que falha no meio descasa os dois e a
+// linha ficava em_processamento para sempre. Estes testes SIMULAM os ciclos do
+// robô com o estado da linha e do diagnóstico acumulando de verdade.
+
+// `post_201_processando`: entrou saldo, o MP aceita o POST (201, order "refunded")
+// com o reembolso DESTA linha em "processing" — sem carimbo, e a gravação do id
+// do MP nunca chega (o fake não guarda `mp_refund_id`, como numa escrita suave
+// que falhou). `consulta_processando`: o GET mostra esse reembolso em andamento.
+type CicloDoMp = "sem_saldo" | "consulta_cai" | "post_500" | "post_201_processando" | "consulta_processando";
+
+async function simularCiclos(ciclos: CicloDoMp[]) {
+  const orderId = "20000000-0000-4000-8000-0000000000dd";
+  const pedido = pedidoFrescoPara({ id: orderId, gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01", total: 50 });
+  const linha = { status: "solicitado", tentativas: 0 };
+  const tabela = { transitorios: 0, postIncerto: false, codigo: null as string | null, existe: false };
+  const historico: string[] = [];
+  const corpoOrder = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "processed",
+    transactions: { payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }] },
+  };
+  for (const ciclo of ciclos) {
+    if (linha.status === "falhou") {
+      historico.push("falhou");
+      continue;
+    }
+    const registro = {
+      chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+      chamouCandidatos: false,
+      chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+      atualizacoesOrderRefunds: [] as Array<{ id: string; valores: Record<string, unknown>; statusFiltro: string[] }>,
+    };
+    const supabase = clienteFalso({
+      candidatos: [],
+      registro,
+      refundsPendentes: [{ id: "r1", order_id: orderId, amount: 50, status: linha.status, tentativas: linha.tentativas, mp_refund_id: null }],
+      resolverPedidoFresco: (id) => (id === orderId ? pedido : null),
+      atualizarOrderRefunds: (_id, valores) => {
+        if (typeof valores.tentativas === "number") linha.tentativas = valores.tentativas;
+        if (typeof valores.status === "string") linha.status = valores.status;
+        return { data: [{ id: "r1" }], error: null };
+      },
+      // O que a tabela de diagnóstico faz de verdade: UPSERT com incremento,
+      // carimbo que nunca sai, código que só é trocado por outro não nulo. A
+      // chamada "de leitura" (tudo nulo/falso) devolve o estado sem mexer.
+      aoRegistrarDiagnostico: (args) => {
+        tabela.existe = true;
+        if (typeof args.p_mp_codigo === "string") tabela.codigo = args.p_mp_codigo;
+        if (args.p_post_incerto === true) tabela.postIncerto = true;
+        if (args.p_transitorio === true) tabela.transitorios++;
+        return { transitorios: tabela.transitorios, post_incerto: tabela.postIncerto, mp_codigo: tabela.codigo };
+      },
+    });
+    const orderComReembolsoEmAndamento = {
+      ...corpoOrder,
+      status: "refunded",
+      transactions: {
+        payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+        refunds: [{ id: "REF-X", amount: "50.00", status: "processing" }],
+      },
+    };
+    const rotasGet = ciclo === "consulta_cai"
+      ? [{ metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 500, corpo: {} }]
+      : [{ metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: ciclo === "consulta_processando" ? orderComReembolsoEmAndamento : corpoOrder }];
+    const rotaPost = ciclo === "post_500"
+      ? { status: 500, corpo: {} }
+      : ciclo === "post_201_processando"
+      ? { status: 201, corpo: orderComReembolsoEmAndamento }
+      : { status: 428, corpo: { errors: [{ code: "insufficient_money_for_refund" }] } };
+    const mp = fetchDubleReconciliacao([
+      ...rotasGet,
+      { metodo: "POST", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund", ...rotaPost },
+    ]);
+    await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+    historico.push(`${linha.status}/t${linha.tentativas}/r${tabela.transitorios}${tabela.postIncerto ? "/carimbo" : ""}`);
+  }
+  return { linha, historico };
+}
+
+Deno.test("CICLOS-1 - a consulta cai no ciclo 4 e 'sem saldo' nos outros: tentativas (5) passam as recusas (4) e mesmo assim a linha vira falhou — não fica presa em_processamento", async () => {
+  const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "consulta_cai", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
+  // P1 do Codex no #888 (15/10/2026): a consulta que cai no ciclo 4 é o
+  // pré-voo do reenvio — ciclo sem envio, NÃO gasta tentativa. Os dois
+  // contadores seguem juntos (t4/r4 no ciclo 5) e a 5ª recusa vira falhou.
+  // O descasamento por um ciclo sem POST que CONTA está em CICLOS-6.
+  assertEquals(r.historico[3], "em_processamento/t3/r3");
+  assertEquals(r.historico[4], "em_processamento/t4/r4");
+  assertEquals(r.linha.status, "falhou");
+  assertEquals(r.historico[5].startsWith("falhou"), true);
+});
+
+Deno.test("CICLOS-2 - sem nenhuma falha no meio o limite continua o de antes: a 5ª recusa vira falhou", async () => {
+  const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
+  assertEquals(r.historico[4].startsWith("falhou"), true);
+});
+
+Deno.test("CICLOS-3 - COM carimbo de incerteza (um POST caiu em 500 no ciclo 4) a linha NUNCA vira falhou: fica em consulta pelos 9 ciclos", async () => {
+  const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "post_500", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
+  assertEquals(r.linha.status, "em_processamento");
+  assertEquals(r.historico.at(-1)?.endsWith("/carimbo"), true);
+});
+
+Deno.test("CICLOS-4 - linha antiga (sem diagnóstico algum, regime 'só consulta' desde antes) continua em consulta: ler o diagnóstico não a transforma em 'nada saiu'", async () => {
+  const r = await simularCiclos(["consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai"]);
+  assertEquals(r.linha.status, "em_processamento");
+});
+
+Deno.test("CICLOS-5 - o saldo ENTRA no ciclo 5 (POST 201, reembolso desta linha em 'processing', id do MP não grava) e no ciclo 6 a consulta o vê em andamento: a linha NÃO vira falhou (o dinheiro está saindo) — fica em consulta por todos os ciclos", async () => {
+  const r = await simularCiclos([
+    "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "post_201_processando",
+    "consulta_processando", "consulta_processando", "consulta_processando",
+  ]);
+  assertEquals(r.historico[3], "em_processamento/t4/r4");
+  assertEquals(r.historico[4], "em_processamento/t5/r4");
+  assertEquals(r.linha.status, "em_processamento");
+  assertEquals(r.historico.some((h) => h.startsWith("falhou")), false);
+});
+
+Deno.test("CICLOS-6 - na linha travada, consulta que FALHA (500) continua em consulta; no ciclo seguinte, com o MP legível e sem reembolso, vira falhou", async () => {
+  // P1 do Codex no #888: o descasamento vem do 1º ciclo — a consulta da
+  // TRANSAÇÃO cai antes de qualquer POST (linha nova, sem pré-voo), e esse ciclo
+  // CONTA. Quatro "sem saldo" depois, a linha está travada com t5/r4.
+  const r = await simularCiclos([
+    "consulta_cai", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo",
+    "consulta_cai", "sem_saldo",
+  ]);
+  assertEquals(r.historico[0], "em_processamento/t1/r0");
+  assertEquals(r.historico[4], "em_processamento/t5/r4");
+  assertEquals(r.historico[5], "em_processamento/t5/r4");
+  assertEquals(r.historico[6].startsWith("falhou"), true);
+});

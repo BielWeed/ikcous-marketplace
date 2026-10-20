@@ -6,8 +6,8 @@
 // "Resetar Simulador" com 24px e rótulos de 8-10px. O jsdom não aplica CSS, então
 // a prova é sobre a classe escrita no arquivo (a medida real é do render do
 // integrador):
-//   a. o botão de ajuda do cabeçalho é um envoltório de 44px (`min-h-11
-//      min-w-11`); o círculo visível mora no <span> interno (padrão A3);
+//   a. os acessos discretos ao guia e aos valores mantêm altura mínima
+//      de 44px, sem o antigo botão de largura completa;
 //   b. os três campos do simulador têm `min-h-11`;
 //   c. "Resetar Simulador" tem `min-h-11` e letra de 11px;
 //   d. nenhum texto abaixo de 11px no arquivo todo (a aba "Conceitos" do guia
@@ -24,6 +24,15 @@ import { describe, expect, it } from "vitest";
 
 const FONTE = readFileSync(
   join(__dirname, "..", "..", "src/views/admin/AdminProductsView.tsx"),
+  "utf8",
+);
+const CSS = readFileSync(
+  join(
+    __dirname,
+    "..",
+    "..",
+    "src/components/admin/products/catalogo-produtos.css",
+  ),
   "utf8",
 );
 
@@ -57,12 +66,44 @@ function tagAntesDe(texto: string, nome: string, ancora: string): string {
 }
 
 describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
-  it("a. o botão de ajuda do cabeçalho é um envoltório de 44px", () => {
+  it("a foto quadrada tem reserva maior e o esqueleto acompanha a grade", () => {
+    const altura = CSS.match(/--produto-altura-compacto:\s*(\d+)px/)?.[1];
+    expect(Number(altura)).toBeGreaterThanOrEqual(360);
+    expect(CSS).toContain(
+      "contain-intrinsic-size: auto var(--produto-altura-compacto)",
+    );
+    expect(CSS).toMatch(
+      /\.produto-esqueleto\.overflow-hidden\s*\{\s*min-height: var\(--produto-altura-compacto\)/,
+    );
+    expect(CSS).toMatch(
+      /\.produto-esqueleto\.overflow-hidden > :first-child\s*\{\s*height: auto;\s*aspect-ratio: 1;/,
+    );
+  });
+
+  it("Fechar faz parte dos itens navegáveis do menu do produto", () => {
+    const fechar = tagAntesDe(FONTE, "DropdownMenuItem", "setAberto(false)");
+    expect(fechar).toContain("onClick={() => setAberto(false)}");
+    expect(fechar).toContain("produto-secundario");
+  });
+
+  it("a. o acesso único ao guia e simulador mantém uma área de toque de 44px", () => {
     const botao = tagAntesDe(FONTE, "button", 'toggleHelp("global-guide")}');
-    expect(botao).toContain("min-h-11");
-    expect(botao).toContain("min-w-11");
-    // o estado aberto/fechado passou para o círculo visível (o <span> interno)
+    const valores = tagAntesDe(
+      FONTE,
+      "button",
+      'onClick={() => toggleHelp("financial-values")}',
+    );
+    for (const acesso of [botao, valores]) {
+      expect(acesso).toContain("min-h-11");
+      expect(acesso).toContain("text-xs");
+      expect(acesso).toContain("focus-visible:outline");
+      expect(acesso).not.toContain("w-full");
+    }
+    expect(
+      FONTE.match(/title="Guia Completo de Métricas e Ajuda"/g),
+    ).toHaveLength(1);
     expect(botao).not.toContain("expandedHelp");
+    expect(valores).toContain('aria-haspopup="dialog"');
   });
 
   it("b. os campos do simulador (custo, preço, estoque) têm min-h-11", () => {
@@ -95,33 +136,20 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
     expect(FONTE).not.toMatch(/text-zinc-[67]00[^"]*uppercase/);
   });
 
-  it("e. nenhum literal com admin-glass carrega classe que ele apaga", () => {
-    const literais: string[] = [];
-    let desde = 0;
-    for (;;) {
-      const i = FONTE.indexOf("admin-glass", desde);
-      if (i === -1) break;
-      const inicio = Math.max(
-        FONTE.lastIndexOf('"', i),
-        FONTE.lastIndexOf("`", i),
-      );
-      const fimAspas = FONTE.indexOf('"', i);
-      const fimCrase = FONTE.indexOf("`", i);
-      const fim = [fimAspas, fimCrase]
-        .filter((n) => n > -1)
-        .sort((a, b) => a - b)[0];
-      literais.push(FONTE.slice(inicio + 1, fim));
-      desde = i + 1;
+  it("e. cartões usam superfícies próprias e os dois modos têm esqueleto", () => {
+    expect(FONTE).not.toContain("admin-glass");
+    const cartoes = [...FONTE.matchAll(/"produto-cartao[^"\n]*"/g)].map(
+      (m) => m[0],
+    );
+    expect(cartoes).toHaveLength(2);
+    for (const cartao of cartoes) {
+      expect(cartao).toContain("bg-[#101013]");
+      expect(cartao).toContain("border-white/10");
+      expect(cartao).not.toMatch(/shadow-lg|shadow-\[|border-y/);
     }
-    expect(literais.length).toBeGreaterThanOrEqual(5);
-
-    for (const literal of literais) {
-      expect(literal, literal).not.toMatch(/(?:^|\s)shadow-lg(?:\s|$)/);
-      expect(literal, literal).not.toMatch(/(?:^|\s)shadow-\[/);
-      expect(literal, literal).not.toMatch(/(?:^|\s)border-y(?:\s|$)/);
-    }
-
-    // o esqueleto segue com admin-glass (seletor `.admin-glass.animate-pulse`)
-    expect(literais.filter((l) => l.includes("animate-pulse")).length).toBe(2);
+    expect(FONTE.match(/produto-esqueleto/g)).toHaveLength(2);
+    expect(FONTE.match(/produto-esqueleto[^"\n]*animate-pulse/g)).toHaveLength(
+      2,
+    );
   });
 });

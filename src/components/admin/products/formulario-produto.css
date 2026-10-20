@@ -1,0 +1,228 @@
+/* Apresentação local do formulário e dos seus modais; sem alterar os primitivos. */
+.produto-formulario,
+.produto-modal {
+  color: #fafafa;
+  background: #08080a;
+}
+
+:is(.produto-formulario, .produto-modal) :is(label, button, p, h3, h4, span) {
+  letter-spacing: normal;
+  text-transform: none;
+  font-style: normal;
+}
+
+:is(.produto-formulario, .produto-modal)
+  :is(
+    .text-zinc-400,
+    .text-zinc-500,
+    .text-zinc-600,
+    .text-zinc-650,
+    .text-zinc-800
+  ) {
+  color: #b2b2bd;
+}
+
+:is(.produto-formulario, .produto-modal) :is(.text-red-500, .text-rose-500) {
+  color: #fda4af;
+}
+
+:is(.produto-formulario, .produto-modal)
+  :is(
+    input:not([type="checkbox"]):not([type="file"]),
+    textarea,
+    [role="combobox"]
+  ) {
+  min-width: 0;
+  min-height: 48px;
+  border-color: #38383f;
+  border-radius: 16px;
+  background: #17171c;
+  color: #fafafa;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+:is(.produto-formulario, .produto-modal) :is(input, textarea)::placeholder {
+  color: #b2b2bd;
+  opacity: 1;
+}
+
+:is(.produto-formulario, .produto-modal)
+  :is(input, textarea, button):focus-visible {
+  outline: 2px solid #8bb4ff;
+  outline-offset: 3px;
+}
+
+:is(.produto-formulario, .produto-modal) label:not(:has(input[type="file"])) {
+  font-weight: 400;
+  color: #b2b2bd;
+}
+
+.produto-formulario .produto-campo {
+  position: relative;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid #38383f;
+  border-radius: 16px;
+  background: #17171c;
+}
+
+.produto-formulario .produto-campo > label {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 1;
+  display: block;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #b2b2bd;
+}
+
+.produto-formulario .produto-campo :is(input, textarea, [role="combobox"]) {
+  min-height: 72px;
+  padding: 32px 12px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.produto-formulario
+  .produto-campo
+  :is(input[name="price"], input[name="stock"]) {
+  min-height: 92px;
+  padding-top: 52px;
+  padding-right: 28px;
+}
+
+.produto-formulario .produto-campo input[name="price"] {
+  padding-left: 38px;
+}
+
+.produto-campo:has(input[name="price"]) .absolute.left-0 {
+  top: 52px;
+  left: 12px;
+  transform: none;
+}
+
+.produto-formulario .produto-campo > span {
+  padding: 0 12px 12px;
+}
+
+.produto-formulario [role="combobox"] > span {
+  white-space: normal;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+.produto-formulario #product-promo-active {
+  flex-shrink: 0;
+  width: 52px;
+  height: 44px;
+  padding: 4px;
+  border: 1px solid #71717a;
+  border-radius: 999px;
+  appearance: none;
+  background: #3f3f46;
+  cursor: pointer;
+}
+
+.produto-formulario #product-promo-active::before {
+  display: block;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  content: "";
+}
+
+.produto-formulario #product-promo-active:checked {
+  border-color: #34d399;
+  background: #10b981;
+}
+
+.produto-formulario #product-promo-active:checked::before {
+  transform: translateX(8px);
+}
+
+.produto-campo:focus-within {
+  border-color: #8bb4ff;
+}
+
+:is(.produto-formulario, .produto-modal)
+  :is(input, textarea)[aria-invalid="true"],
+.produto-formulario .produto-campo:has([aria-invalid="true"]) {
+  border-color: #fda4af;
+}
+
+.produto-formulario input:disabled {
+  color: #b2b2bd;
+  opacity: 1;
+}
+
+.produto-secao > section > button {
+  min-height: 76px;
+  padding: 12px 12px 12px 62px;
+  border: 1px solid #2d2d34;
+  border-radius: 20px;
+  background: #101013;
+}
+
+.produto-secao > section > button > span > span:first-child {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fafafa;
+}
+
+.produto-secao > section > button > span > span:last-child {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.produto-secao > section > button > svg {
+  width: 44px;
+  height: 44px;
+  padding: 12px;
+  border: 1px solid #38383f;
+  border-radius: 14px;
+  background: #1e1e24;
+}
+
+.produto-secao-aviso > section > button {
+  border-color: #795055;
+  background: #25171a;
+}
+
+.produto-secao-aviso > section > button > span > span:last-child {
+  color: #fda4af;
+}
+
+:where(.produto-modal) button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.produto-modal input[type="number"] {
+  appearance: textfield;
+}
+
+.produto-modal input::-webkit-inner-spin-button {
+  appearance: none;
+}
+
+/* As folhas de ajuda são portais compartilhados. Este escopo só existe
+   enquanto o formulário está montado; os componentes comuns ficam intactos. */
+body:has(.produto-formulario) [role="dialog"] h2 {
+  color: #fafafa;
+  font-size: 18px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+body:has(.produto-formulario) [role="dialog"] button.bg-admin-gold {
+  min-height: 56px;
+}

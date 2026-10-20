@@ -13,9 +13,9 @@
 //   function falha fechado com mensagem de configuração — NUNCA inventa
 //   credencial e NUNCA chama a API sem token.
 //
-// SEGURANÇA: as duas actions exigem admin (mesmo verifyIsAdmin do
-// `calculate-shipping` — anon/customer recebem 403 antes de qualquer leitura
-// de pedido). Toda leitura/escrita no banco usa service role.
+// SEGURANÇA: as duas actions exigem o admin de AGORA (`_shared/admin-atual.ts`
+// — anon/customer e papéis contraditórios recebem 403 antes de qualquer
+// leitura de pedido). Toda leitura/escrita no banco usa service role.
 //
 // DINHEIRO: o checkout da etiqueta usa o SALDO da conta do Melhor Envio do
 // lojista. Proteções embutidas:
@@ -32,8 +32,8 @@
 //     segunda chamada devolve a etiqueta existente (`already: true`), então
 //     falha suave de generate/print/tracking não vira segunda compra;
 //   * falha no CHECKOUT com resposta DEFINIDA do ME (HTTP 4xx, ou 200 com
-//     status != paid) remove o item do carrinho do ME (nada fica lá para o
-//     lojista comprar sem querer) e LIBERA a reivindicação — o ME RESPONDEU
+//     status conhecido de não pago) remove o item do carrinho do ME (nada
+//     fica lá para o lojista comprar sem querer) e LIBERA a reivindicação — o ME RESPONDEU
 //     que a compra não fechou, não há ambiguidade de dinheiro; o pedido volta
 //     a poder etiquetar quando o lojista tentar de novo (revisor, bloqueante
 //     A da 2ª rodada, PR #423);
@@ -67,8 +67,10 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { adminAtualDaSessao } from "../_shared/admin-atual.ts"
 import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
 import { cpfDoDestinatario, cpfValido, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
+import { MEDIDA_PADRAO_CM, medidaPositivaDoBanco, PESO_PADRAO_KG } from "../calculate-shipping/regua.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -108,43 +110,49 @@ export async function buscarComTempo(
     tempoMs = 20000,
 ): Promise<Response> {
     const controle = new AbortController()
-    const despertar = setTimeout(() => controle.abort(), tempoMs)
+    let despertar: ReturnType<typeof setTimeout>
+    const prazo = new Promise<never>((_resolve, rejeitar) => {
+        despertar = setTimeout(() => {
+            controle.abort()
+            rejeitar(new DOMException('Tempo de espera do Melhor Envio esgotado.', 'AbortError'))
+        }, tempoMs)
+    })
     try {
-        return await buscar(url, { ...init, signal: controle.signal })
+        return await Promise.race([prazo, (async () => {
+            const resposta = await buscar(url, { ...init, signal: controle.signal })
+            // O prazo cobre também o corpo; cabeçalhos recebidos não encerram a chamada.
+            const corpo = await resposta.arrayBuffer()
+            return new Response(resposta.body === null ? null : corpo, {
+                status: resposta.status,
+                statusText: resposta.statusText,
+                headers: resposta.headers,
+            })
+        })()])
     } finally {
         clearTimeout(despertar)
     }
 }
 
 /**
- * Verifica se quem chamou é admin. MESMA cópia do `calculate-shipping`:
- * valida o JWT com o anon key, sobe o papel de `profiles` com service role.
+ * Verifica se quem chamou é admin AGORA. A regra mora em
+ * `_shared/admin-atual.ts` (auditoria L3, 12/10/2026), a MESMA de
+ * `estornar-pagamento` e do `cancelar` da `criar-pagamento`: sessão validada
+ * no Auth e papel 'admin' em `profiles.role` E em `app_metadata.role`. Papéis
+ * contraditórios (rebaixado em uma fonte só) não compram etiqueta com o saldo
+ * da loja nem leem o pedido.
  */
 async function verifyIsAdmin(
     authHeader: string | null,
     supabaseUrl: string,
     serviceRoleKey: string,
 ): Promise<boolean> {
-    if (!authHeader) return false
-    try {
-        const anonKey = readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
-        const userClient = createClient(supabaseUrl, anonKey, {
-            global: { headers: { Authorization: authHeader } },
-        })
-        const { data: { user }, error: userError } = await userClient.auth.getUser()
-        if (userError || !user) return false
-        const systemClient = createClient(supabaseUrl, serviceRoleKey)
-        const { data: profile, error: profileError } = await systemClient
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
-        if (profileError || !profile) return false
-        return profile.role === 'admin'
-    } catch (err) {
-        console.error('[melhor-envio-etiqueta] Falha no check de admin:', err)
-        return false
-    }
+    const adminId = await adminAtualDaSessao(authHeader, {
+        url: supabaseUrl,
+        chavePublica: readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY'),
+        chaveDeServico: serviceRoleKey,
+        rotulo: '[melhor-envio-etiqueta]',
+    })
+    return adminId !== null
 }
 
 /**
@@ -463,10 +471,10 @@ export function montarProdutosEVolumes(
         const prodId = item.product_id
         const db = mapa.get(prodId)
         const quantidade = Number(item.quantity || 1)
-        const peso = Number(db?.peso_kg ?? 0.3)
-        const largura = Number(db?.largura_cm ?? 15)
-        const altura = Number(db?.altura_cm ?? 15)
-        const comprimento = Number(db?.comprimento_cm ?? 15)
+        const peso = medidaPositivaDoBanco(db?.peso_kg) ?? PESO_PADRAO_KG
+        const largura = medidaPositivaDoBanco(db?.largura_cm) ?? MEDIDA_PADRAO_CM
+        const altura = medidaPositivaDoBanco(db?.altura_cm) ?? MEDIDA_PADRAO_CM
+        const comprimento = medidaPositivaDoBanco(db?.comprimento_cm) ?? MEDIDA_PADRAO_CM
         // Correção pós-revisão Opus (root autorizou): a declaração fiscal é o
         // valor VENDIDO no pedido — o `price` gravado pela RPC
         // (COALESCE(price_override, preco_venda) no momento da compra) —,
@@ -540,7 +548,7 @@ export function montarRemetente(meData: Record<string, any> | null | undefined):
  */
 export function normalizarCheckout(data: Record<string, any>): { pago: boolean; purchaseId?: string; erro?: string } {
     const purchase = data?.purchase || null
-    const status = String(purchase?.status || '').toLowerCase()
+    const status = String(purchase?.status || '').trim().toLowerCase()
     if (purchase?.id && status === 'paid') return { pago: true, purchaseId: purchase.id }
     return {
         pago: false,
@@ -782,10 +790,9 @@ export type DesfechoDoCheckoutReverso =
     | { tipo: 'indeterminado' }
 
 /**
- * Lê o corpo de um checkout 2xx da REVERSA (R2 da revisão de risco). A ida
- * usa `normalizarCheckout`, que trata QUALQUER 200 sem `paid` como recusa —
- * aqui isso soltaria o vínculo de um envio que pode ter sido pago (corpo
- * vazio, `{message}`, formato novo da API, página de gateway com 200).
+ * Lê o corpo de um checkout 2xx da ida ou da reversa. Tratar qualquer 200
+ * sem `paid` como recusa soltaria o vínculo de um envio que pode ter sido
+ * pago (corpo vazio, `{message}`, formato novo da API, página de gateway com 200).
  * Regra: `pago` só com `purchase.status === 'paid'` E `purchase.id`;
  * `recusado` só com um status CONHECIDO de não pago; todo o resto é
  * `indeterminado` — o vínculo fica e o lojista confere a conta do ME.
@@ -2315,10 +2322,13 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             // que substitui a digitação manual. Rastreio vazio não apaga o que
             // já existe (vazio é "ainda não saiu", não "não tem").
             if (tracking && tracking !== pedido.tracking_code) {
-                await supabaseClient
+                const { error: rastreioError } = await supabaseClient
                     .from('marketplace_orders')
                     .update({ tracking_code: tracking })
                     .eq('id', orderId)
+                if (rastreioError) {
+                    return respostaJson({ error: 'Não foi possível salvar o rastreio no pedido. Tente atualizar o rastreio novamente.' }, 500)
+                }
             }
             await gravarEvento(supabaseClient, {
                 order_id: orderId,
@@ -2721,9 +2731,9 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         }
 
         const finalizarComErro = async (mensagem: string, etapa: string): Promise<Response> => {
-            if (etapa === 'checkout') {
-                // O ME RESPONDEU que a compra não fechou (HTTP 4xx, ou 200 com
-                // status != paid — 5xx NUNCA chega aqui: vai para
+            if (etapa === 'checkout' || etapa === 'validacao_pedido') {
+                // Nenhuma compra foi tentada, ou o ME RESPONDEU que não fechou
+                // (HTTP 4xx, ou 200 com status conhecido de não pago — 5xx vai para
                 // finalizarIndeterminado, revisor A′ da 2ª rodada): aqui NÃO há
                 // ambiguidade de dinheiro. Remover o item do carrinho (revisor,
                 // item 4 — nada fica lá para o lojista "comprar o carrinho" sem
@@ -2750,7 +2760,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                     payload: { etapa, label_id: labelId, service, sandbox: isSandbox },
                 })
                 return new Response(JSON.stringify({ error: mensagem }), {
-                    status: 502,
+                    status: etapa === 'validacao_pedido' ? 409 : 502,
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 })
             }
@@ -2828,6 +2838,18 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         // (nit H2 da 3ª rodada).
         let pagoConfirmado = false
         try {
+            // O pedido pode ter sido cancelado ou estornado durante as chamadas externas.
+            const { data: pedidoAtual, error: releituraError } = await supabaseClient
+                .from('marketplace_orders')
+                .select('id, status, payment_status')
+                .eq('id', orderId)
+                .eq('shipping_label_id', labelId)
+                .maybeSingle()
+            const erroAtual = releituraError || !pedidoAtual
+                ? 'Não foi possível confirmar o estado atual do pedido. Nenhuma etiqueta foi paga.'
+                : erroDePedidoParaEtiqueta(pedidoAtual) || erroDePagamentoParaEtiqueta(pedidoAtual.payment_status)
+            if (erroAtual) return await finalizarComErro(erroAtual, 'validacao_pedido')
+
             // 7. Checkout — AQUI consome o saldo. A confirmação explícita é na
             //    tela; a function não re-confirma (a UI é a única porta).
             const checkoutResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/checkout`, {
@@ -2850,6 +2872,9 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 return await finalizarComErro(mensagemDoErroHttp(checkoutResponse.status, 'pagamento da etiqueta'), 'checkout')
             }
             const checkoutData = await checkoutResponse.json()
+            if (classificarCheckoutDaReversa(checkoutData).tipo === 'indeterminado') {
+                return await finalizarIndeterminado('Checkout respondeu sem confirmação reconhecível da compra.', false)
+            }
             const checkout = normalizarCheckout(checkoutData)
             if (!checkout.pago) {
                 return await finalizarComErro(checkout.erro || 'Compra da etiqueta não confirmada.', 'checkout')
@@ -2870,6 +2895,21 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 // Item 1 (3ª rodada): mesma troca do `/me HTTP` acima.
                 console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, motivoDoProvedor(detalhe))
                 return await finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
+            }
+            // Como na reversa, HTTP 200 pode trazer recusa na entrada do envio.
+            // Só status === false é recusa; corpo ausente/ilegível segue como antes.
+            const textoGenerate = await generateResponse.text().catch(() => '')
+            let dadosGenerate: unknown = null
+            try {
+                dadosGenerate = JSON.parse(textoGenerate)
+            } catch {
+                dadosGenerate = null
+            }
+            const entradaGenerate: any = new Map(Object.entries(dadosGenerate && typeof dadosGenerate === 'object' ? dadosGenerate : {})).get(labelId)
+            if (entradaGenerate && typeof entradaGenerate === 'object' && entradaGenerate.status === false) {
+                const motivo = motivoDoProvedor(JSON.stringify({ message: entradaGenerate.message ?? '' }))
+                console.error('[melhor-envio-etiqueta] generate recusado na entrada do envio:', motivo)
+                return await finalizarComErro(`O Melhor Envio recusou a geração da etiqueta: ${motivo}`, 'generate')
             }
 
             // 9. Link de impressão (fallo suave: sem link, a etiqueta existe e o
@@ -2910,15 +2950,23 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
             // 11. Completa o resultado no pedido e grava o histórico. O
             //     `shipping_label_id` JÁ foi gravado na reivindicação (6.5) — este
-            //     update acrescenta url de impressão e rastreio.
-            const { error: updateError } = await supabaseClient
+            //     update acrescenta a url; rastreio só entra se continuar vazio no banco.
+            let { error: updateError } = await supabaseClient
                 .from('marketplace_orders')
                 .update({
                     shipping_label_id: labelId,
                     shipping_label_url: labelUrl,
-                    tracking_code: trackingCode ?? pedido.tracking_code ?? null,
                 })
                 .eq('id', orderId)
+
+            if (!updateError && trackingCode) {
+                const { error: rastreioError } = await supabaseClient
+                    .from('marketplace_orders')
+                    .update({ tracking_code: trackingCode })
+                    .eq('id', orderId)
+                    .is('tracking_code', null)
+                updateError = rastreioError
+            }
 
             if (updateError) {
                 // Etiqueta PAGA e VINCULADA (6.5), mas url/rastreio não subiram:
@@ -2936,7 +2984,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 })
                 return new Response(
                     JSON.stringify({
-                        error: `A etiqueta foi paga no Melhor Envio (id ${labelId}) e está vinculada ao pedido, mas o link de impressão não foi salvo. Reimprima pela sua conta do Melhor Envio; o rastreio pode ser atualizado aqui depois.`,
+                        error: `A etiqueta foi paga no Melhor Envio (id ${labelId}) e está vinculada ao pedido, mas o link de impressão ou o rastreio não foi salvo. Reimprima pela sua conta do Melhor Envio; o rastreio pode ser atualizado aqui depois.`,
                         label_id: labelId,
                         resgate: true,
                     }),

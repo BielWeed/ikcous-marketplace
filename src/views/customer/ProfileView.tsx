@@ -1,6 +1,7 @@
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
+import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { OrderTimeline } from "@/components/ui/custom/OrderTimeline";
 import { ProfileSkeleton } from "@/components/ui/custom/Skeletons";
 import {
@@ -32,6 +33,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  CreditCard,
   Loader2,
   LogOut,
   MapPin,
@@ -72,17 +74,30 @@ const itemVariants = {
 } as const;
 
 import { useStore } from "@/contexts/StoreContext";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import { haptic } from "@/utils/haptic";
 
 interface ProfileViewProps {
   onNavigate: (view: View, id?: string) => void;
   /** A aba fica montada escondida; `true` quando é a aba visível. */
   isActive?: boolean;
+  /**
+   * Atalho do cartão "Pedidos em Andamento" para voltar ao pagamento de um
+   * pedido ainda não pago. Mesma porta do detalhe do pedido; sem ela, o botão
+   * não aparece.
+   */
+  onRetomarPagamento?: (orderId: string) => void;
 }
 
-export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
+export function ProfileView({
+  onNavigate,
+  isActive = true,
+  onRetomarPagamento,
+}: ProfileViewProps) {
   const {
     user,
     profile,
@@ -96,6 +111,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
     fetchAddresses,
     deleteAddress,
     loading: addressesLoading,
+    erroAoCarregar,
   } = useAddresses();
   const { orders, fetchUserOrders } = useOrders(true, false);
   const { config } = useStore();
@@ -126,6 +142,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
   const handleSelectPredefinedAvatar = async (avatar: any) => {
     setIsUpdatingAvatar(true);
     haptic.light();
+    const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
     try {
       const svgUrl = getPredefinedAvatarSvg(
         avatar.emoji,
@@ -141,11 +158,13 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
       console.error("Error setting avatar:", error);
       toast.error("Erro ao salvar avatar.");
     } finally {
+      desmarcar();
       setIsUpdatingAvatar(false);
     }
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const contaDonaId = user?.id;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -166,13 +185,21 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
           return;
         }
 
-        const compressed = await compressImage(base64, 200, 200);
-        const success = await updateProfile({ avatar_url: compressed });
-        if (success) {
-          toast.success("Foto de perfil atualizada!");
-          setIsAvatarModalOpen(false);
+        const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
+        try {
+          const compressed = await compressImage(base64, 200, 200);
+          const success = await updateProfile(
+            { avatar_url: compressed },
+            contaDonaId,
+          );
+          if (success) {
+            toast.success("Foto de perfil atualizada!");
+            setIsAvatarModalOpen(false);
+          }
+          setIsUpdatingAvatar(false);
+        } finally {
+          desmarcar();
         }
-        setIsUpdatingAvatar(false);
       };
       reader.onerror = () => {
         toast.error("Erro ao ler o arquivo.");
@@ -189,6 +216,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
   const handleRemoveAvatar = async () => {
     setIsUpdatingAvatar(true);
     haptic.light();
+    const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
     try {
       const success = await updateProfile({ avatar_url: "REMOVE" });
       if (success) {
@@ -199,6 +227,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
       console.error("Error removing avatar:", error);
       toast.error("Erro ao remover avatar.");
     } finally {
+      desmarcar();
       setIsUpdatingAvatar(false);
     }
   };
@@ -226,6 +255,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
   };
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const contaDonaId = user?.id;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -247,7 +277,10 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
         }
 
         const compressed = await compressCoverImage(base64);
-        const success = await updateProfile({ cover_url: compressed });
+        const success = await updateProfile(
+          { cover_url: compressed },
+          contaDonaId,
+        );
         if (success) {
           toast.success("Capa de perfil personalizada atualizada!");
           setIsCoverModalOpen(false);
@@ -300,7 +333,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
       phone = `55${phone}`;
     }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    globalThis.open(url, "_blank");
+    abrirWhatsapp(url);
     haptic.light();
   };
 
@@ -486,7 +519,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
           <div
             className={`transition-all duration-300 ${!isAddressesExpanded ? "p-3.5" : "p-6"}`}
           >
-            {addressesLoading ? (
+            {addressesLoading && addresses.length === 0 ? (
               <div className="animate-pulse space-y-4">
                 <div className="flex h-28 flex-col justify-between rounded-3xl border border-transparent bg-zinc-50/50 p-6">
                   <div className="flex items-center gap-3">
@@ -504,15 +537,35 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
               </div>
             ) : (
               <>
-                <AddressList
-                  addresses={addresses}
-                  compact={!isAddressesExpanded}
-                  showMaps
-                  onEdit={(addr) => {
-                    onNavigate("address-form", addr.id);
-                  }}
-                  onDelete={deleteAddress}
-                />
+                {erroAoCarregar && (
+                  <div
+                    role="alert"
+                    className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800"
+                  >
+                    <p className="flex-1 text-sm">
+                      Não conseguimos carregar seus endereços agora.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void fetchAddresses()}
+                      disabled={addressesLoading}
+                      className="min-h-11 rounded-xl border border-red-200 px-3 text-xs font-bold hover:bg-red-100 disabled:opacity-50"
+                    >
+                      Tentar de novo
+                    </button>
+                  </div>
+                )}
+                {(addresses.length > 0 || !erroAoCarregar) && (
+                  <AddressList
+                    addresses={addresses}
+                    compact={!isAddressesExpanded}
+                    showMaps
+                    onEdit={(addr) => {
+                      onNavigate("address-form", addr.id);
+                    }}
+                    onDelete={deleteAddress}
+                  />
+                )}
                 {addresses.length > 0 && (
                   <button
                     onClick={() => {
@@ -607,7 +660,34 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
                         </div>
                       </div>
 
-                      <OrderTimeline status={order.status} />
+                      {/* Pedido pago pelo app e ainda não pago: o cartão não
+                          pode parecer um pedido "Recebido" qualquer (em 30
+                          min ele é cancelado). Mesmo selo da lista de pedidos
+                          e mesma regra de "Retomar pagamento" do detalhe. */}
+                      <CustomerPaymentBadge
+                        paymentStatus={order.paymentStatus}
+                        orderStatus={order.status}
+                      />
+
+                      <OrderTimeline
+                        status={order.status}
+                        retiradaNaLoja={order.retiradaNaLoja}
+                      />
+
+                      {onRetomarPagamento &&
+                        podeRetomarPagamento({
+                          status: order.status,
+                          paymentStatus: order.paymentStatus,
+                          logado: !!user,
+                        }) && (
+                          <Button
+                            onClick={() => onRetomarPagamento(order.id)}
+                            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-[10px] font-black uppercase tracking-widest text-white shadow-sm transition-all active:scale-95"
+                          >
+                            <CreditCard className="size-4" aria-hidden="true" />
+                            Retomar pagamento
+                          </Button>
+                        )}
 
                       <div className="flex gap-2 pt-2">
                         <Button
@@ -906,7 +986,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
                               className="size-full object-cover duration-300 animate-in fade-in"
                             />
                           </div>
-                          <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-primary text-white shadow-md transition-colors hover:bg-primary/90">
+                          <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-colors hover:bg-primary/90">
                             <label
                               htmlFor="profile-avatar-upload-icon"
                               className="flex size-full cursor-pointer items-center justify-center"
@@ -920,6 +1000,9 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
                                 onChange={handlePhotoUpload}
                                 disabled={isUpdatingAvatar}
                               />
+                              <span className="sr-only">
+                                Trocar foto de perfil
+                              </span>
                               <Camera className="size-4" />
                             </label>
                           </div>
@@ -945,7 +1028,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
                               onChange={handlePhotoUpload}
                               disabled={isUpdatingAvatar}
                             />
-                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90 active:scale-95">
+                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95">
                               <Camera className="size-3.5" />
                               Escolher Outra Foto
                             </span>
@@ -1075,7 +1158,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
               }}
               className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
                 coverModalTab === "presets"
-                  ? "bg-primary text-white shadow-md"
+                  ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -1089,7 +1172,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
               }}
               className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
                 coverModalTab === "upload"
-                  ? "bg-primary text-white shadow-md"
+                  ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -1208,7 +1291,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
                     haptic.light();
                   }}
                   disabled={isUpdatingCover}
-                  className="flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[9px] font-black font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-primary/90"
+                  className="flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[9px] font-black font-bold uppercase tracking-wider text-primary-foreground shadow-md transition-all hover:bg-primary/90"
                 >
                   {isUpdatingCover ? (
                     <>

@@ -14,7 +14,10 @@ import {
   skusDaGrade,
 } from "@/utils/grade-de-combinacoes";
 import { preencherComSegurado } from "@/utils/grade-valor-segurado";
-import { limparNumero, resolverPrecoDaGrade } from "@/utils/preco-da-grade";
+import {
+  precoPositivoOuVazio,
+  resolverPrecoDaGrade,
+} from "@/utils/preco-da-grade";
 import {
   SEPARADOR_DE_ATRIBUTOS,
   dividirEmAtributos,
@@ -311,7 +314,8 @@ export function ModalVarianteGrade({
         // Aplicar é a lojista decidindo o estoque de TODAS as linhas: o
         // segurado de depois não passa por cima.
         estoqueEditado: linha.estoqueEditado || estoqueAplicado !== "",
-        preco: limparNumero(aplicarPreco) || linha.preco,
+        // Só preço maior que zero: "0.00" é texto não vazio e zerava as linhas.
+        preco: precoPositivoOuVazio(aplicarPreco) || linha.preco,
       })),
     );
     // O que foi aplicado deixa de ser "segurado": sem isto o mesmo valor voltava
@@ -421,19 +425,24 @@ export function ModalVarianteGrade({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-0 backdrop-blur-sm sm:p-5"
         >
           <motion.div
             initial={{ scale: 0.9, y: 20 }}
             animate={{ scale: 1, y: 0 }}
-            className="gpu-accelerated flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-da-grade"
+            className="produto-modal gpu-accelerated flex h-dvh max-h-dvh w-full max-w-lg flex-col overflow-hidden rounded-none border border-white/10 shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-3xl"
           >
-            <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-white/5 bg-zinc-900 p-8 pb-5">
-              <div className="flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
-                <Layers className="size-6 text-emerald-500" />
+            <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-white/5 bg-[#08080a] p-5">
+              <div className="flex size-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-400/10">
+                <Layers className="size-6 text-violet-300" />
               </div>
               <div>
-                <h3 className="text-xl font-black tracking-tight">{titulo}</h3>
+                <h3 id="titulo-da-grade" className="text-xl font-bold">
+                  {titulo}
+                </h3>
                 <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
                   {passo === 1
                     ? "passo 1 de 2 — escolha os valores de cada atributo"
@@ -442,12 +451,15 @@ export function ModalVarianteGrade({
               </div>
             </div>
 
-            <div className="scrollbar-hide flex-1 space-y-6 overflow-y-auto p-8 py-6">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
               {passo === 1 &&
                 grupos.map((grupo, indice) => {
                   const chips = valoresDoGrupo(grupo, variantesExistentes);
                   return (
-                    <div key={grupo.chave} className="space-y-2">
+                    <div
+                      key={grupo.chave}
+                      className="space-y-3 rounded-[20px] border border-white/10 bg-[#101013] p-3"
+                    >
                       <div className="flex items-center gap-2">
                         <label
                           htmlFor={`grade-nome-${indice}`}
@@ -464,7 +476,7 @@ export function ModalVarianteGrade({
                                 prev.filter((g) => g.chave !== grupo.chave),
                               )
                             }
-                            className="flex size-8 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
+                            className="flex size-11 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
                           >
                             <X className="size-4" />
                           </button>
@@ -493,7 +505,7 @@ export function ModalVarianteGrade({
                               className={cn(
                                 "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
                                 grupo.nome === attr
-                                  ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                                  ? "bg-admin-gold/10 border-admin-gold text-admin-gold"
                                   : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
                               )}
                             >
@@ -517,9 +529,9 @@ export function ModalVarianteGrade({
                                 aria-pressed={selecionado}
                                 onClick={() => alternarValor(grupo, chip.valor)}
                                 className={cn(
-                                  "px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all active:scale-95",
+                                  "min-h-11 px-3 py-2 rounded-full text-xs font-bold border transition-all active:scale-95",
                                   selecionado
-                                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                                    ? "bg-admin-gold/10 border-admin-gold text-admin-gold"
                                     : "bg-zinc-950 border-white/5 text-zinc-400 hover:border-white/10",
                                 )}
                               >
@@ -602,12 +614,24 @@ export function ModalVarianteGrade({
               )}
             </div>
 
-            <div className="relative z-10 flex shrink-0 gap-4 border-t border-white/5 bg-zinc-950/40 p-8 pt-5">
+            <div className="relative z-10 flex shrink-0 flex-wrap gap-3 border-t border-white/5 bg-[#101013] p-5">
+              <p className="w-full text-xs text-zinc-400">
+                Alterações ainda não salvas
+              </p>
+              {passo === 2 && (
+                <button
+                  type="button"
+                  onClick={onFechar}
+                  className="min-h-11 w-full rounded-xl border border-white/10 px-3 text-sm text-zinc-300"
+                >
+                  Cancelar
+                </button>
+              )}
               {passo === 2 ? (
                 <button
                   type="button"
                   onClick={() => setPasso(1)}
-                  className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
+                  className="min-h-14 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
                 >
                   ← Voltar
                 </button>
@@ -615,7 +639,7 @@ export function ModalVarianteGrade({
                 <button
                   type="button"
                   onClick={onFechar}
-                  className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
+                  className="min-h-14 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
                 >
                   Cancelar
                 </button>
@@ -624,7 +648,7 @@ export function ModalVarianteGrade({
                 <button
                   type="button"
                   onClick={gerar}
-                  className="flex-[2] rounded-2xl bg-emerald-500 py-4 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
+                  className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-sm font-bold text-[#211a07]"
                 >
                   Gerar grade
                 </button>
@@ -632,7 +656,7 @@ export function ModalVarianteGrade({
                 <button
                   type="button"
                   onClick={efetivar}
-                  className="flex-[2] rounded-2xl bg-emerald-500 py-4 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
+                  className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-sm font-bold text-[#211a07]"
                 >
                   Salvar {linhas.length}{" "}
                   {linhas.length === 1 ? "variação" : "variações"}

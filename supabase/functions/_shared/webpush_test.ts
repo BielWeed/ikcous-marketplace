@@ -12,7 +12,12 @@
  * quando o ambiente o expõe.
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { comTempoLimite, dispararSemEsperarCliente } from "./webpush.ts";
+import {
+  comTempoLimite,
+  dispararSemEsperarCliente,
+  enviarParaInscritos,
+  resumir,
+} from "./webpush.ts";
 
 Deno.test("comTempoLimite: promessa rápida vence a corrida e devolve o valor, sem vazar o setTimeout (sanitizeResources padrão do Deno.test)", async () => {
   const resultado = await comTempoLimite(Promise.resolve("ok"), 50);
@@ -92,4 +97,73 @@ Deno.test("dispararSemEsperarCliente: sem EdgeRuntime no ambiente (o caso do `de
   const nuncaAssenta = new Promise<string>(() => {});
   const resultadoLento = await dispararSemEsperarCliente(nuncaAssenta, 10);
   assertEquals(resultadoLento, undefined, "sem waitUntil, o teto de espera continua valendo — mesmo comportamento de comTempoLimite");
+});
+
+Deno.test("enviarParaInscritos: envio pendurado falha temporariamente e libera o próximo lote", async () => {
+  const tentadas: string[] = [];
+  const removidas: string[] = [];
+  const inscricoes = ["pendurada", "rapida", "proximo-lote"].map((id) => ({
+    endpoint: `https://push.example/${id}`,
+    p256dh: "x",
+    auth: "y",
+  }));
+  const resultado = await comTempoLimite(enviarParaInscritos({
+    servidor: {
+      subscribe: ({ endpoint }: { endpoint: string }) => ({
+        pushTextMessage: () => {
+          tentadas.push(endpoint);
+          return endpoint.endsWith("/pendurada")
+            ? new Promise<void>(() => {})
+            : Promise.resolve();
+        },
+      }),
+    },
+    inscricoes,
+    mensagem: "{}",
+    tamanhoDoLote: 2,
+    tempoLimitePorEnvioMs: 5,
+    aoDetectarMorta: (endpoint: string) => {
+      removidas.push(endpoint);
+      return Promise.resolve({ error: null });
+    },
+  }), 1_000);
+
+  assertEquals(resultado?.length, 3, "o envio pendurado não prende o Promise.all");
+  assertEquals(tentadas, inscricoes.map((sub) => sub.endpoint));
+  assertEquals(resultado?.map((item: { ok: boolean }) => item.ok), [false, true, true]);
+  assertEquals(resultado?.[0].status, null, "timeout é falha temporária");
+  assertEquals(removidas, [], "timeout não invalida a inscrição");
+});
+
+Deno.test("enviarParaInscritos: DELETE resolvido com error não conta como inscrição removida", async () => {
+  const erroDoBanco = { message: "DELETE recusado" };
+  const logs: unknown[][] = [];
+  const consoleError = console.error;
+  console.error = (...args: unknown[]) => { logs.push(args); };
+  try {
+    const itens = await enviarParaInscritos({
+      servidor: {
+        subscribe: () => ({
+          pushTextMessage: () => Promise.reject({ response: new Response(null, { status: 410 }) }),
+        }),
+      },
+      inscricoes: ["falhou", "apagada"].map((id) => ({
+        endpoint: `https://push.example/${id}`,
+        p256dh: "x",
+        auth: "y",
+      })),
+      mensagem: "{}",
+      aoDetectarMorta: (endpoint: string) => Promise.resolve({
+        error: endpoint.endsWith("/falhou") ? erroDoBanco : null,
+      }),
+    });
+
+    assertEquals(itens.map((item: { removida: boolean }) => item.removida), [false, true]);
+    assertEquals(resumir(itens).removidas, 1);
+    assertEquals(resumir(itens).falharam, 2);
+    assertEquals(logs.length, 1, "falha de remoção precisa ser registrada");
+    assertEquals(logs[0][2], erroDoBanco);
+  } finally {
+    console.error = consoleError;
+  }
 });

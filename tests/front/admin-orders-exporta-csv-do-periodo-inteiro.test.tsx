@@ -99,9 +99,10 @@ describe("CSV de todos os pedidos do filtro", () => {
     // Desde 12/09/2026 o botão é compacto: o texto VISÍVEL é só "CSV" e o
     // rótulo por extenso vive no nome acessível (aria-label). Procurar pelo
     // nome acessível é o que continua descrevendo o que o lojista ouve/lê.
-    const encontrado = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (item) =>
-        /Exportar CSV|Gerando CSV/.test(item.getAttribute("aria-label") || ""),
+    const encontrado = Array.from(
+      document.body.querySelectorAll("button"),
+    ).find((item) =>
+      /Exportar CSV|Gerando CSV/.test(item.getAttribute("aria-label") || ""),
     );
     expect(encontrado).toBeDefined();
     return encontrado!;
@@ -114,12 +115,19 @@ describe("CSV de todos os pedidos do filtro", () => {
     // teste falhava 4 em 6 vezes mesmo no código original (medido em
     // 12/09/2026) — a tela ainda carregava, o botão nascia desabilitado e o
     // clique não exportava.
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Filtros e ferramentas"]',
+        )!
+        .click(),
+    );
     const limite = Date.now() + 5000;
     for (;;) {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       });
-      const pronto = Array.from(hospedeiro.querySelectorAll("button")).find(
+      const pronto = Array.from(document.body.querySelectorAll("button")).find(
         (item) =>
           /Exportar CSV/.test(item.getAttribute("aria-label") || "") &&
           !item.disabled,
@@ -205,31 +213,57 @@ describe("CSV de todos os pedidos do filtro", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each([
+  // O banco compara `created_at` com o texto como TIMESTAMPTZ e roda em UTC:
+  // "2026-09-01" cru virava 21:00 de 31/08 em Brasília. A tela manda o INSTANTE
+  // de início e de fim do dia da loja (-03:00), e a busca sem o "#" que o app
+  // mostra antes do número do pedido.
+  const casos = [
     {
       status: "pending",
       busca: "Ana",
+      buscaEnviada: "Ana",
       inicio: "2026-09-01",
       fim: "2026-09-08",
+      inicioEnviado: "2026-09-01T00:00:00-03:00",
+      fimEnviado: "2026-09-08T23:59:59.999-03:00",
       pagamento: "aguardando",
     },
     {
       status: "delivered",
       busca: "José",
+      buscaEnviada: "José",
       inicio: "2026-08-01",
       fim: "2026-08-31",
+      inicioEnviado: "2026-08-01T00:00:00-03:00",
+      fimEnviado: "2026-08-31T23:59:59.999-03:00",
       pagamento: "pago",
     },
-  ])(
-    "baixa 15 linhas e percorre duas páginas com filtro $status e datas ativas",
-    async ({ status, busca, inicio, fim, pagamento }) => {
-      armazem.set("admin_orders_filter_v2", JSON.stringify(status));
-      armazem.set("admin_orders_search_query", JSON.stringify(busca));
-      armazem.set(
-        "admin_orders_date_range",
-        JSON.stringify({ start: inicio, end: fim }),
-      );
-      armazem.set("admin_orders_payment_filter", JSON.stringify(pagamento));
+    {
+      status: "all",
+      busca: "  #3884BE ",
+      buscaEnviada: "3884BE",
+      inicio: "2026-10-14",
+      fim: "2026-10-14",
+      inicioEnviado: "2026-10-14T00:00:00-03:00",
+      fimEnviado: "2026-10-14T23:59:59.999-03:00",
+      pagamento: "all",
+    },
+  ];
+
+  function guardarFiltro(caso: (typeof casos)[number]) {
+    armazem.set("admin_orders_filter_v2", JSON.stringify(caso.status));
+    armazem.set("admin_orders_search_query", JSON.stringify(caso.busca));
+    armazem.set(
+      "admin_orders_date_range",
+      JSON.stringify({ start: caso.inicio, end: caso.fim }),
+    );
+    armazem.set("admin_orders_payment_filter", JSON.stringify(caso.pagamento));
+  }
+
+  it.each(casos)(
+    "baixa 15 linhas e percorre duas páginas com filtro $status e datas ativas ($inicio a $fim, busca '$busca')",
+    async (caso) => {
+      guardarFiltro(caso);
       await montarTela();
       await act(async () => {
         botao().click();
@@ -241,11 +275,11 @@ describe("CSV de todos os pedidos do filtro", () => {
         [0, 1].map((pagina) => ({
           p_page: pagina,
           p_page_size: 100,
-          p_status: status,
-          p_search: busca,
-          p_start_date: inicio,
-          p_end_date: fim,
-          p_payment_status: pagamento,
+          p_status: caso.status,
+          p_search: caso.buscaEnviada,
+          p_start_date: caso.inicioEnviado,
+          p_end_date: caso.fimEnviado,
+          p_payment_status: caso.pagamento,
           // C4.4: a exportação respeita o filtro de canal da lista; sem chip
           // marcado, o hook manda 'all' (e a RPC de 8 args recebe o default).
           p_canal: "all",
@@ -253,6 +287,49 @@ describe("CSV de todos os pedidos do filtro", () => {
       );
     },
   );
+
+  it.each(casos)(
+    "a LISTA da tela manda o mesmo recorte do CSV ($inicio a $fim, busca '$busca')",
+    async (caso) => {
+      guardarFiltro(caso);
+      await montarTela();
+      const chamadasDaLista = () =>
+        mocks.rpc.mock.calls.filter(
+          ([nome, args]) =>
+            nome === "get_admin_orders_paged" && args.p_page_size === 12,
+        );
+      // A lista carrega depois de um atraso (debounce) e o botão do CSV pode
+      // já estar ligado pelo cache da tela anterior: espera a chamada de fato.
+      const limite = Date.now() + 5000;
+      while (chamadasDaLista().length === 0 && Date.now() < limite) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        });
+      }
+      const daLista = chamadasDaLista();
+      expect(daLista.length).toBeGreaterThan(0);
+      for (const [, args] of daLista) {
+        expect(args.p_search).toBe(caso.buscaEnviada);
+        expect(args.p_start_date).toBe(caso.inicioEnviado);
+        expect(args.p_end_date).toBe(caso.fimEnviado);
+      }
+    },
+  );
+
+  it("sem data escolhida a lista e o CSV não mandam limite nenhum", async () => {
+    await montarTela();
+    await act(async () => {
+      botao().click();
+    });
+    const todas = mocks.rpc.mock.calls.filter(
+      ([nome]) => nome === "get_admin_orders_paged",
+    );
+    expect(todas.length).toBeGreaterThan(0);
+    for (const [, args] of todas) {
+      expect(args.p_start_date).toBe("");
+      expect(args.p_end_date).toBe("");
+    }
+  });
 
   it("mantém o botão desabilitado enquanto gera e não baixa arquivo se a segunda página falhar", async () => {
     let liberar!: (valor: Resposta) => void;

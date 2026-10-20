@@ -43,6 +43,9 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const {
+  devolverAoEstadoAnteriorAoCustoDoDia,
+} = require("./sucessoras-da-99.cjs");
 
 const DIR_MIGRATIONS = path.join(
   __dirname,
@@ -59,6 +62,10 @@ const NOME_14 =
   "20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql";
 const M14 = ler(NOME_14);
 const RB14 = ler(`rollback-manual-${NOME_14}`);
+// A SUCESSORA da 14 em get_admin_analytics_v2 (14/10/2026): a cadeia é 99 → 14 → 34. Esta prova mede o
+// estado "14 no ar"; antes de medir, desfaz a 34 (no clone descartável), se ela estiver lá.
+const NOME_34 = "20261234000000_o_lucro_so_conta_produto_com_custo.sql";
+const RB34 = ler(`rollback-manual-${NOME_34}`);
 
 // Os hashes (md5 de prosrc sem \r) lidos do PREFLIGHT de cada migration — a
 // prova de texto amarra cada um ao md5 real do corpo.
@@ -73,6 +80,7 @@ function hashesDoPreflight(sql, assinatura) {
 }
 const ANALYTICS = "public.get_admin_analytics_v2(integer)";
 const H14 = hashesDoPreflight(M14, ANALYTICS);
+const H34 = hashesDoPreflight(ler(NOME_34), ANALYTICS);
 const H99 = hashesDoPreflight(ler(NOME_99), ANALYTICS);
 
 const U_ADMIN = "c0570000-0000-4000-8000-0000000000a1";
@@ -207,6 +215,18 @@ PROVAS.push({
       `INSERT INTO public.profiles (id, full_name, role) VALUES
          ($1, 'Admin Inventário', 'admin'), ($2, 'Cliente Inventário', 'customer')`,
       [U_ADMIN, U_CLIENTE],
+    );
+    // A 20261242000000 (o custo do dia) sucede a 34: devolve o clone ao estado anterior a ela primeiro.
+    await devolverAoEstadoAnteriorAoCustoDoDia(c);
+    // A 20261234000000 (o lucro só conta produto com custo) sucede a 14 no mesmo corpo: o clone volta ao
+    // corpo da 14 antes de medir (o rollback da 34 tem preflight próprio).
+    if ((await catalogo(c, ANALYTICS)).hash === H34.desta) {
+      await c.query(RB34);
+    }
+    assert.equal(
+      (await catalogo(c, ANALYTICS)).hash,
+      H14.desta,
+      "o corpo do analytics não é o da 20261214000000 nem o da sucessora",
     );
     fx.antes = estoque(await analytics(c));
 

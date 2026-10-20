@@ -221,6 +221,22 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     });
   });
 
+  it("WhatsApp colado com zero na frente (034 99999-1234) grava 5534999991234, não outro número", async () => {
+    await abrirTela();
+    await digitarWhatsApp("034 99999-1234");
+    expect(
+      (hospedeiro.querySelector("#settings-whatsapp") as HTMLInputElement)
+        .value,
+    ).toBe("(34) 99999-1234");
+    await clicarSalvarContato();
+
+    expect(updateConfigMock).toHaveBeenCalledTimes(1);
+    expect(updateConfigMock.mock.calls[0][0]).toEqual({
+      whatsappNumber: "5534999991234",
+      shareText: "Confira [nome] por [preco]: [link]",
+    });
+  });
+
   it("WhatsApp apagado grava NULL (o botão de WhatsApp some da loja)", async () => {
     await abrirTela();
     await digitarWhatsApp("");

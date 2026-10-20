@@ -23,7 +23,12 @@ import type { ManifestOptions } from "vite-plugin-pwa";
  */
 export const MANIFESTO_BASE = {
   display: "standalone",
-  orientation: "portrait",
+  // "any": o aparelho decide (gira se a rotação automática estiver ligada).
+  // Com "portrait" o Android travava o app instalado em pé, e a lojista com o
+  // tablet deitado no balcão não conseguia usar o PDV. A tela do PDV é fluxo
+  // vertical rolável (guardado em tests/front/app-instalado-nao-trava-a-
+  // orientacao.test.ts). Não usar "natural": no tablet ele trava deitado.
+  orientation: "any",
   scope: "/",
   id: "/?source=pwa",
   start_url: "/?source=pwa",
@@ -34,14 +39,14 @@ export const MANIFESTO_BASE = {
       name: "Carrinho",
       short_name: "Carrinho",
       description: "Ver itens no carrinho",
-      url: "/?view=cart",
+      url: "/cart",
       icons: [{ src: "/icons/cart-96x96.png", sizes: "96x96" }],
     },
     {
       name: "Favoritos",
       short_name: "Favoritos",
       description: "Ver lista de desejos",
-      url: "/?view=favorites",
+      url: "/favorites",
       icons: [{ src: "/icons/heart-96x96.png", sizes: "96x96" }],
     },
   ],

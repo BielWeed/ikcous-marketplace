@@ -1,15 +1,12 @@
-import { LazyImage } from "@/components/LazyImage";
-import { AdminErrorState } from "@/components/admin/AdminErrorState";
-import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
-import {
-  AdminKpiCarousel,
-  type KpiCardConfig,
-} from "@/components/admin/AdminKpiCarousel";
+import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { BarraDeBusca } from "@/components/admin/BarraDeBusca";
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
+import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +18,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
   DropdownMenu,
@@ -32,12 +28,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCategories } from "@/hooks/useCategories";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { soFotosReais } from "@/lib/foto-do-produto";
+import { mesmaCategoria } from "@/lib/gestao-de-categorias";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
@@ -45,62 +44,51 @@ import {
   precisaDeReposicao,
 } from "@/utils/avisos-do-lojista";
 import { haptic } from "@/utils/haptic";
+import { consumirProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import { motion } from "framer-motion";
 import {
-  Activity,
   AlertTriangle,
   ArrowUpRight,
+  BarChart3,
   BookOpen,
   Calculator,
-  Coins,
+  Camera,
+  ChevronDown,
   Copy,
   DollarSign,
   Edit2,
-  Eye,
-  HelpCircle,
-  Layers,
-  LayoutGrid,
-  List,
-  Loader2,
-  MoreVertical,
   Package,
+  Pause,
   Percent,
+  Play,
   Plus,
   RefreshCw,
   Search,
+  ShoppingBag,
   Sparkles,
   Trash2,
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
+import "@/components/admin/products/catalogo-produtos.css";
 
 let cachedProductsTotal = 0;
 
-// Altura que o cartão do modo detalhado ocupa ANTES de ser desenhado. O
-// `content-visibility: auto` da classe do cartão reservava 440px (src/index.css)
-// e a lista pulava ao rolar. O `!` faz a reserva local vencer a regra do
-// index.css, que vem depois no CSS e tem a mesma especificidade.
-// Os números são a mediana do cartão MEDIDA em Chromium (Inter, nome em 2 linhas,
-// até 3 selos, 12 produtos de texto variado; altura da LINHA da grade, a que
-// empurra a rolagem), com a grade `md:2 lg:3 xl:4` e a coluna de 256px do menu:
-//   abaixo de md  1 coluna, 328-719px de cartão: 486-545 (mediana ~520)
-//   md  768-1023  2 colunas, 344-471px: 562-600 (~580)
-//   lg 1024-1535  3-4 colunas de 213-298px: 716-813 (~770). As 2 caixas de
-//                 métrica empilham de lg em diante (1 coluna), o que deixa o
-//                 cartão ~100-115px mais alto que a reserva antiga de 660px
-//   2xl ≥1536     4 colunas fixas de 280px (o conteúdo para em max-w-7xl): ~720
-// Dentro de cada faixa a altura varia ±6% com a largura; basta: o `auto` do
-// `contain-intrinsic-size` troca a reserva pela altura real assim que o cartão
-// é desenhado uma vez.
-// O esqueleto de carregamento usa os MESMOS números para não haver salto quando
-// os dados chegam. Strings literais de propósito: o Tailwind só gera classe que
-// aparece inteira no fonte. Mudou um número? Mude os dois (o teste confere).
-const RESERVA_DO_CARTAO_DETALHADO =
-  "![contain-intrinsic-size:auto_520px] md:![contain-intrinsic-size:auto_580px] lg:![contain-intrinsic-size:auto_770px] 2xl:![contain-intrinsic-size:auto_720px]";
-const ALTURA_DO_ESQUELETO_DETALHADO =
-  "h-[520px] md:h-[580px] lg:h-[770px] 2xl:h-[720px]";
+// Estimativa inicial do cartão recolhido; `auto` guarda a altura real ao renderizar.
+// O esqueleto reserva o mesmo espaço. A medição no navegador fica para o QA visual.
+const RESERVA_DO_CARTAO_DETALHADO = "![contain-intrinsic-size:auto_210px]";
+const ALTURA_DO_ESQUELETO_DETALHADO = "h-[210px]";
 
 /** Percentual com 1 casa, em pt-BR ("130,2%", nunca "130.15%"): a mesma
  * grafia no cartão do topo, no simulador e no cartão detalhado. */
@@ -110,6 +98,13 @@ function percentualComUmaCasa(valor: number): string {
     maximumFractionDigits: 1,
   })}%`;
 }
+
+// A tela "Gerenciar categorias" só é baixada quando a lojista a abre.
+const GerenciarCategorias = lazy(() =>
+  import("@/components/admin/categorias/GerenciarCategorias").then(
+    (modulo) => ({ default: modulo.GerenciarCategorias }),
+  ),
+);
 
 interface AdminProductsViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -167,10 +162,12 @@ export const AdminProductsView = memo(function AdminProductsView({
   // transição false→true, nunca a cada render enquanto a view já está
   // ativa (senão vira RPC em laço). Mesmo precedente de
   // `AdminOrdersView.tsx:430-436`.
-  const wasActiveRef = useRef(active);
+  // A primeira abertura também é uma ativação: pode receber o resumo
+  // persistido da versão anterior, ainda sem as métricas novas.
+  const wasActiveRef = useRef(false);
   useEffect(() => {
     const wasActive = wasActiveRef.current;
-    wasActiveRef.current = active;
+    wasActiveRef.current = active ?? false;
     if (!active) return;
     if (!stats) {
       fetchExecutiveSummary(false);
@@ -190,6 +187,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     "admin_products_filter_category",
     "all",
   );
+  const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   const [totalProducts, setTotalProducts] = useState(() => cachedProductsTotal);
   const [currentPage, setCurrentPage] = useLocalStorage<number>(
     "admin_products_current_page",
@@ -250,6 +248,20 @@ export const AdminProductsView = memo(function AdminProductsView({
   const effectiveLoading = loading || !hasLoadedOnce;
   const shouldScrollToTop = useRef(false);
 
+  // Logo depois de CADASTRAR um produto novo, a lista abre na página 1 e sem
+  // busca nem categoria: o produto novo é o mais recente, e com o filtro ou a
+  // página de antes a lojista não o veria. Qualquer outra abertura continua
+  // lembrando o estado guardado no aparelho. O aviso vem do formulário e vale
+  // uma vez só (`consumirProdutoNovoCadastrado`).
+  useEffect(() => {
+    if (!active) return;
+    if (!consumirProdutoNovoCadastrado()) return;
+    setSearchTerm("");
+    setFilterCategory("all");
+    setCurrentPage(0);
+    shouldScrollToTop.current = true;
+  }, [active, setSearchTerm, setFilterCategory, setCurrentPage]);
+
   useEffect(() => {
     if (shouldScrollToTop.current) {
       const mainEl =
@@ -263,13 +275,28 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
   }, [products, viewRef]);
 
+  const geracaoDaRecarga = useRef(0);
+  const catalogoMontado = useRef(false);
+  useEffect(() => {
+    catalogoMontado.current = true;
+    return () => {
+      catalogoMontado.current = false;
+      geracaoDaRecarga.current += 1;
+    };
+  }, []);
+
   const loadData = useCallback(
     async (pageToFetch: number) => {
+      if (!catalogoMontado.current) return;
+      const geracao = ++geracaoDaRecarga.current;
       try {
         const result = await loadProducts(pageToFetch, pageSize, {
           search: searchTerm || undefined,
           category: filterCategory === "all" ? undefined : filterCategory,
         });
+        if (!catalogoMontado.current || geracao !== geracaoDaRecarga.current) {
+          return;
+        }
         if (result) {
           setLoadError(false);
           setTotalProducts(result.total);
@@ -280,15 +307,14 @@ export const AdminProductsView = memo(function AdminProductsView({
             setCurrentPage(maxPage);
           }
         } else {
-          // `loadProducts` nunca lança aqui: numa falha real ela já mostrou
-          // `toast.error` e devolveu `null` (abort de uma busca superada
-          // também devolve `null`, sem toast — o pior caso é este banner
-          // aparecer por um instante numa corrida de busca/filtro, e sumir
-          // sozinho na resposta seguinte).
+          // O null da tentativa atual continua sendo falha; o de uma busca
+          // superada já foi ignorado pela geração, sem alterar o estado atual.
           setLoadError(true);
         }
       } finally {
-        setHasLoadedOnce(true);
+        if (catalogoMontado.current && geracao === geracaoDaRecarga.current) {
+          setHasLoadedOnce(true);
+        }
       }
     },
     [loadProducts, pageSize, searchTerm, filterCategory, setCurrentPage],
@@ -301,6 +327,34 @@ export const AdminProductsView = memo(function AdminProductsView({
     }, 320);
     return () => clearTimeout(timer);
   }, [currentPage, searchTerm, filterCategory, active, loadData]);
+
+  // A exclusão pode demorar: quando termina, a recarga usa a página e os
+  // filtros ATUAIS, não os do clique de confirmar.
+  const recarregarAtualRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    recarregarAtualRef.current = () => void loadData(currentPage);
+  }, [loadData, currentPage]);
+
+  // Renomear ou apagar categoria mexe nos produtos (o banco troca o nome neles).
+  // O filtro lembrado no aparelho (`admin_products_filter_category`) guarda o
+  // NOME: se ele era a categoria que mudou, acompanha, senão a lista ficaria
+  // vazia com um chip que não existe mais.
+  // Vale de onde quer que a tela "Gerenciar categorias" tenha sido aberta
+  // (daqui ou do formulário do produto, que fica por baixo desta lista).
+  useAoMudarCategoria((mudanca) => {
+    if (mudanca.tipo === "renomeada") {
+      if (mesmaCategoria(filterCategory, mudanca.de)) {
+        setFilterCategory(mudanca.para); // o efeito acima recarrega a lista
+        return;
+      }
+    } else if (mudanca.tipo === "apagada") {
+      if (mesmaCategoria(filterCategory, mudanca.nome)) {
+        setFilterCategory("all");
+        return;
+      }
+    }
+    if (active) void loadData(currentPage);
+  });
 
   const simulatorMetrics = useMemo(() => {
     const cost = Number.parseFloat(simCost) || 0;
@@ -348,6 +402,22 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   const totalPages = Math.ceil(totalProducts / pageSize);
 
+  // "Nenhum produto" com busca ou categoria escolhida é o filtro que não achou
+  // nada — não o catálogo vazio. A tela diz o que está filtrado e oferece sair.
+  const temBuscaOuFiltro = !!searchTerm || filterCategory !== "all";
+  const descricaoDoFiltro = [
+    searchTerm ? `a busca "${searchTerm}"` : null,
+    filterCategory !== "all" ? `a categoria "${filterCategory}"` : null,
+  ]
+    .filter(Boolean)
+    .join(" e ");
+  const limparBuscaEFiltros = () => {
+    setSearchTerm("");
+    setFilterCategory("all");
+    setCurrentPage(0);
+    shouldScrollToTop.current = true;
+  };
+
   // Lógica de cálculo financeiro global (SWR / Server-Side)
   const financialStats = useMemo(() => {
     // PAINEL-05: `null` quando a analytics nao respondeu — os cartoes
@@ -355,10 +425,39 @@ export const AdminProductsView = memo(function AdminProductsView({
     // nao vale nada; o travessao nao afirma nada).
     const invested = stats?.inventory?.totalCost ?? null;
     const potentialValue = stats?.inventory?.totalValue ?? null;
-    const potentialProfit =
-      invested !== null && potentialValue !== null
-        ? potentialValue - invested
+    const totalRevenue = stats?.inventory?.totalRevenue;
+    const potentialRevenue =
+      typeof totalRevenue === "number" && Number.isFinite(totalRevenue)
+        ? totalRevenue
         : null;
+    const inventory = stats?.inventory;
+    const semCusto = inventory?.revenueWithoutCost;
+    const produtosSemCusto = inventory?.productsWithoutCost;
+    const produtosComCusto = inventory?.productsWithCost;
+    // O resumo antigo não comprova nem a cobertura do custo nem os preços
+    // efetivos das variações. Só apurar lucro após receber o detalhamento novo.
+    const coberturaConferida =
+      typeof invested === "number" &&
+      Number.isFinite(invested) &&
+      invested >= 0 &&
+      typeof potentialValue === "number" &&
+      Number.isFinite(potentialValue) &&
+      potentialValue >= 0 &&
+      potentialRevenue !== null &&
+      typeof semCusto === "number" &&
+      Number.isFinite(semCusto) &&
+      semCusto >= 0 &&
+      typeof produtosSemCusto === "number" &&
+      Number.isInteger(produtosSemCusto) &&
+      produtosSemCusto >= 0 &&
+      typeof produtosComCusto === "number" &&
+      Number.isInteger(produtosComCusto) &&
+      produtosComCusto >= 0 &&
+      Math.abs(potentialRevenue - potentialValue - semCusto) < 0.01;
+    const parcial = coberturaConferida && produtosSemCusto > 0;
+    const semNenhumCusto = parcial && produtosComCusto === 0;
+    const potentialProfit =
+      coberturaConferida && !semNenhumCusto ? potentialValue - invested : null;
     const avgRoi =
       invested !== null && invested > 0 && potentialProfit !== null
         ? (potentialProfit / invested) * 100
@@ -367,6 +466,13 @@ export const AdminProductsView = memo(function AdminProductsView({
     return {
       invested,
       potential: potentialProfit,
+      potentialRevenue,
+      receitaComCusto: coberturaConferida ? potentialValue : null,
+      receitaSemCusto: coberturaConferida ? semCusto : null,
+      produtosSemCusto: coberturaConferida ? produtosSemCusto : null,
+      coberturaConferida,
+      parcial,
+      semNenhumCusto,
       avgRoi,
       totalCount: totalProducts,
     };
@@ -380,25 +486,47 @@ export const AdminProductsView = memo(function AdminProductsView({
     () => [
       {
         id: "capital-alocado",
-        label: "Dinheiro parado em estoque",
+        label: "Custo conhecido em estoque",
         value:
           financialStats.invested !== null
             ? `R$ ${financialStats.invested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
             : "—",
         icon: Wallet,
-        accent: "text-emerald-500",
-        subValue: "Pelo custo",
+        accent: "text-sky-300",
+        subValue: "Quanto custaram os produtos com custo cadastrado",
       },
       {
         id: "lucro-potencial",
-        label: "Lucro se vender tudo",
+        label: "Lucro bruto potencial",
         value:
           financialStats.potential !== null
             ? `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
             : "—",
         icon: TrendingUp,
-        accent: "text-admin-gold",
-        subValue: "Só com custo",
+        accent: "text-emerald-300",
+        subValue: financialStats.parcial
+          ? "Parcial · só produtos com custo cadastrado, antes das despesas"
+          : "Receita com custo cadastrado menos custo · antes das despesas",
+      },
+      {
+        id: "faturamento-potencial",
+        label: "Venda prevista (com custo)",
+        value:
+          financialStats.receitaComCusto !== null
+            ? `R$ ${financialStats.receitaComCusto.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : "—",
+        icon: DollarSign,
+        accent: "text-amber-300",
+        subValue: "Mesmos produtos do custo e do lucro bruto",
+      },
+      {
+        id: "lucro-liquido-potencial",
+        label: "Lucro líquido potencial",
+        value: "Não calculado",
+        icon: Calculator,
+        accent: "text-sky-300",
+        subValue:
+          "Faltam descontos, taxas, frete, impostos e outras despesas da venda",
       },
       {
         id: "roi-portfolio",
@@ -407,22 +535,27 @@ export const AdminProductsView = memo(function AdminProductsView({
           financialStats.avgRoi !== null
             ? percentualComUmaCasa(financialStats.avgRoi)
             : "—",
-        icon: DollarSign,
-        accent: "text-blue-500",
+        icon: BarChart3,
+        accent: "text-violet-300",
         subValue: "Média do estoque com custo",
       },
       {
         id: "produtos-cadastrados",
         label: "Produtos no Catálogo",
-        value: `${totalProducts} itens`,
-        icon: Package,
-        accent: "text-purple-500",
+        value: `${totalProducts} ${totalProducts === 1 ? "item" : "itens"}`,
+        icon: ShoppingBag,
+        accent: "text-indigo-300",
         // PAINEL-09: o número é o total FILTRADO (total_count da RPC com
-        // busca), não o catálogo geral — o subtítulo mentia.
-        subValue: searchTerm ? "Resultados da busca" : "Catálogo Geral",
+        // busca), não o catálogo geral — o subtítulo mentia. Vale também para
+        // o filtro de categoria, não só para a busca.
+        subValue: searchTerm
+          ? "Resultados da busca"
+          : filterCategory !== "all"
+            ? "Só desta categoria"
+            : "Catálogo Geral",
       },
     ],
-    [financialStats, totalProducts, searchTerm], // C2 da 1a revisao: +1 warning sem esta dep
+    [financialStats, totalProducts, searchTerm, filterCategory], // C2 da 1a revisao: +1 warning sem esta dep
   );
 
   // Achado 7 da auditoria de 20/08/2026
@@ -517,6 +650,8 @@ export const AdminProductsView = memo(function AdminProductsView({
       const sucesso = await deleteProduct(productToDelete);
       if (sucesso) {
         haptic.success();
+        // A recarga atualiza o total e corrige a página se ela saiu do limite.
+        recarregarAtualRef.current();
         // Achado da revisão do Achado 7: `AlertDialogAction` do Radix é
         // `Dialog.Close` e fecha o diálogo síncrono no clique, antes de
         // qualquer `await` — mas o `finally` abaixo (`setProductToDelete`)
@@ -573,7 +708,8 @@ export const AdminProductsView = memo(function AdminProductsView({
       // cai no catch de baixo: melhor não duplicar do que duplicar
       // compartilhando arquivo de novo.
       const imagens = await Promise.all(
-        (productToDuplicate.images || []).map((img: string) =>
+        // Sem o marcador "Sem Imagem": produto sem foto duplica sem foto.
+        soFotosReais(productToDuplicate.images).map((img: string) =>
           copiarImagemParaDuplicacao(img),
         ),
       );
@@ -624,11 +760,18 @@ export const AdminProductsView = memo(function AdminProductsView({
         variants: variantes,
       };
 
-      await addProduct(duplicateData);
-      haptic.success();
-      toast.success("Produto Duplicado", {
-        description: "O produto foi duplicado com sucesso.",
-      });
+      const copia = await addProduct(duplicateData);
+      if (copia?.variantesNaoSalvas) {
+        // A cópia já existe e `addProduct` já avisou (com o motivo) que a grade
+        // não foi salva: anunciar sucesso a esconderia, e um segundo aviso aqui
+        // empilharia dois erros para a mesma falha.
+        haptic.error();
+      } else {
+        haptic.success();
+        toast.success("Produto Duplicado", {
+          description: "O produto foi duplicado com sucesso.",
+        });
+      }
       // Mesmo motivo de `confirmDelete`: sem `await` para não alongar a
       // janela entre o clique e o `finally` que fecha o diálogo.
       refreshFinancialStats();
@@ -649,231 +792,266 @@ export const AdminProductsView = memo(function AdminProductsView({
     refreshFinancialStats,
   ]);
 
-  // Removed early return loading block to prevent visual layout shifts
-
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-admin-bg pb-admin lg:pb-12 text-white duration-200 animate-in fade-in"
+      className="produtos-tela pb-admin h-auto text-white"
+      data-categorias={
+        active !== false && gerenciandoCategorias ? "abertas" : undefined
+      }
+      data-guia={
+        active !== false && expandedHelp["global-guide"] ? "aberto" : undefined
+      }
     >
-      <style>{`
-        @keyframes help-vertical-scroll {
-          0% {
-            transform: translateY(0%);
-          }
-          100% {
-            transform: translateY(-50%);
-          }
-        }
-        .help-scroll-active {
-          animation: help-vertical-scroll 18s linear infinite;
-        }
-        .help-scroll-active-long {
-          animation: help-vertical-scroll 28s linear infinite;
-        }
-        .help-scroll-active:hover,
-        .help-scroll-active-long:hover {
-          animation-play-state: paused;
-        }
-      `}</style>
-
-      {/* Header & Main Actions */}
-      <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <AdminPageHeader
-          titulo={NOMES_DO_PAINEL["admin-products"]}
-          acoes={
-            <>
-              <Button
-                disabled={isOffline}
-                className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[11px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"
-                onClick={() => handleLocalNavigate("admin-product-form")}
-              >
-                <Plus className="mr-2 size-4 shrink-0 stroke-[3]" />
-                Novo produto
-              </Button>
-              <Button
-                disabled={isOffline}
-                size="icon"
-                className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:hidden"
-                onClick={() => handleLocalNavigate("admin-product-form")}
-              >
-                <Plus className="size-5 stroke-[3]" />
-              </Button>
-            </>
-          }
-        >
-          <button
-            type="button"
-            onClick={() => toggleHelp("global-guide")}
-            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
-            title="Guia Completo de Métricas e Ajuda"
-          >
-            {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
-            <span
-              aria-hidden="true"
-              className={cn(
-                "flex size-8 items-center justify-center rounded-full border transition-all duration-300",
-                expandedHelp["global-guide"]
-                  ? "bg-admin-gold border-admin-gold/40 text-black shadow-md shadow-admin-gold/10 scale-105"
-                  : "bg-zinc-900/60 border-white/5 text-zinc-500 group-hover:text-white group-hover:border-white/10",
-              )}
-            >
-              <HelpCircle className="size-4.5" />
-            </span>
-          </button>
-          {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
-              tag que ficava verde após a carga. Desde o pedido do Gabriel de
-              02/09 à tarde ele vive AQUI, ao lado direito do título (igual
-              em Pedidos e Clientes), fora do canto da tela. */}
-          <PontoDeOperacao sincronizando={loading} />
-        </AdminPageHeader>
-      </div>
-
-      <div className="space-y-8 p-4 sm:p-6 lg:p-8">
-        {/* Shortcuts Section */}
-        <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-          <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
+      <header className="px-5 pb-4 pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-products"]} />
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="produtos-cupons">
+              <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
+            </div>
+          </div>
         </div>
+        <div className="mt-2 flex items-center gap-2 text-xs text-zinc-400">
+          {loadError ? (
+            <AlertTriangle
+              aria-hidden="true"
+              className="size-3.5 text-red-300"
+            />
+          ) : (
+            <PontoDeOperacao sincronizando={effectiveLoading} />
+          )}
+          <span className={isOffline || loadError ? "text-red-300" : undefined}>
+            {isOffline
+              ? "Sem conexão com o servidor"
+              : loadError
+                ? "Não sincronizou"
+                : effectiveLoading
+                  ? "Recarregando..."
+                  : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
+          </span>
+        </div>
+      </header>
+
+      <div className="space-y-7 px-5">
+        {isOffline && (
+          <div
+            role="status"
+            className="flex gap-3 rounded-2xl border border-red-300/15 bg-red-300/10 p-4 text-sm"
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="size-5 shrink-0 text-red-300"
+            />
+            <div>
+              <p className="font-bold">Sem conexão com o servidor</p>
+              <p className="mt-1 text-zinc-300">
+                Novo produto e ações dos produtos voltam quando a internet
+                voltar.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           <LocalErrorBoundary>
-            <AdminKpiCarousel
-              active={active}
+            <MetricasDoPainel
+              titulo="Métricas de Produtos"
+              legendasDoResumo={[
+                "Custo conhecido",
+                financialStats.parcial
+                  ? "Lucro bruto (parcial)"
+                  : "Lucro bruto",
+                "Venda (com custo)",
+                "Lucro líquido",
+                "Lucro sobre o custo",
+                "Catálogo",
+              ]}
               cards={kpiCards}
               loading={loading && !stats}
-              title="Métricas de Produtos"
             />
           </LocalErrorBoundary>
-        </div>
-
-        {/* Unified Control Bar Compacta — sticky: filha DIRETA do container
-            que contém a lista (sticky só anda dentro do próprio containing
-            block; embrulhada num wrapper da própria altura nunca gruda). */}
-        <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-admin-bg/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-          <div className="flex w-full items-center gap-3">
-            <div className="group relative w-full flex-1">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                {loading || isTyping ? (
-                  <Loader2 className="size-4 animate-spin text-admin-gold" />
-                ) : (
-                  <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
-                )}
-              </div>
-              <label htmlFor="search-assets" className="sr-only">
-                Buscar produtos
-              </label>
-              <DebouncedSearchInput
-                id="search-assets"
-                name="search-assets"
-                placeholder="Buscar produtos..."
-                className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                value={searchTerm}
-                onChange={(val) => {
-                  setSearchTerm(val);
-                  setCurrentPage(0);
-                  shouldScrollToTop.current = true;
-                }}
-                onTyping={setIsTyping}
-                delay={300}
-              />
-            </div>
-
-            {/* O nome diz o que o TOQUE faz (o ícone sozinho não tem nome
-                para o leitor de tela); sem aria-pressed: não é liga/desliga. */}
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label={
-                viewMode === "detailed"
-                  ? "Mostrar em grade"
-                  : "Mostrar em lista com detalhes"
-              }
-              onClick={() =>
-                setViewMode((prev) =>
-                  prev === "detailed" ? "compact" : "detailed",
-                )
-              }
-              className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800"
-            >
-              {viewMode === "detailed" ? (
-                <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+          <FolhaDoPainel
+            aberta={!!expandedHelp["financial-values"]}
+            onFechar={() => toggleHelp("financial-values")}
+            titulo="Entender os valores"
+          >
+            <p role="group" aria-label="Receita bruta potencial">
+              Venda de todo o estoque:{" "}
+              <strong className="text-white">
+                {financialStats.potentialRevenue !== null
+                  ? `R$ ${financialStats.potentialRevenue.toLocaleString(
+                      "pt-BR",
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      },
+                    )}`
+                  : "—"}
+              </strong>
+            </p>
+            <div className="space-y-3 text-sm leading-relaxed text-zinc-300">
+              <p>
+                Estimativa de venda do estoque atual, não dinheiro já recebido.
+              </p>
+              {!financialStats.coberturaConferida ? (
+                <p role="status">
+                  Aguardando a separação dos produtos com e sem custo para
+                  conferir o lucro bruto.
+                </p>
               ) : (
-                <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                <>
+                  {financialStats.parcial ? (
+                    <p className="text-amber-200">
+                      {financialStats.produtosSemCusto}{" "}
+                      {financialStats.produtosSemCusto === 1
+                        ? "produto em estoque está sem custo"
+                        : "produtos em estoque estão sem custo"}
+                      : R${" "}
+                      {financialStats.receitaSemCusto?.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      em vendas previstas entram na receita, mas ficam fora do
+                      custo e do lucro. Cadastre o custo para completar a
+                      estimativa.
+                    </p>
+                  ) : (
+                    <p>Todos os produtos em estoque têm custo cadastrado.</p>
+                  )}
+                  {financialStats.semNenhumCusto ? (
+                    <p>
+                      Nenhum custo cadastrado para o estoque: ainda não é
+                      possível apurar o lucro bruto.
+                    </p>
+                  ) : (
+                    <p>
+                      Receita dos produtos com custo: R${" "}
+                      {financialStats.receitaComCusto?.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      − custo: R${" "}
+                      {financialStats.invested?.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      = lucro bruto{financialStats.parcial ? " parcial" : ""}:
+                      R${" "}
+                      {financialStats.potential?.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                      .
+                    </p>
+                  )}
+                </>
               )}
-            </Button>
-          </div>
-
-          {/* Chips de categoria (pedido do Gabriel, 02/09: a mesma fileira de
-              filtros da tela de Pedidos — substitui o funil dropdown, que era
-              o único jeito de filtrar por categoria). Parte da MESMA âncora
-              da busca: gruda junto com ela. Chips COMPACTOS: o botão mantém
-              h-11 (alvo de toque de 44px, WCAG 2.5.8) e o VISUAL desenha
-              32px via pseudo-elemento; o pseudo vive dentro do botão, então
-              o overflow-x-auto da fileira não o corta. Mesmo molde das
-              telas de Pedidos e Clientes. */}
-          <div className="custom-scrollbar-hidden relative flex w-full snap-x gap-1.5 overflow-x-auto pt-2">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => {
-                  setFilterCategory(cat);
-                  setCurrentPage(0);
-                  shouldScrollToTop.current = true;
-                }}
-                className={cn(
-                  "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-wider transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
-                  filterCategory === cat
-                    ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                    : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
-                )}
-              >
-                {cat === "all" ? "Todas as Categorias" : cat}
-              </button>
-            ))}
+              <p>
+                Lucro líquido é o que sobra depois do custo, descontos, taxas,
+                frete, impostos e outras despesas. Sem esses valores, não
+                calculamos uma estimativa líquida.
+              </p>
+            </div>
+          </FolhaDoPainel>
+          {financialStats.parcial ? (
+            <p role="status" className="text-xs text-amber-200">
+              {financialStats.produtosSemCusto}{" "}
+              {financialStats.produtosSemCusto === 1
+                ? "produto sem custo"
+                : "produtos sem custo"}{" "}
+              · lucro parcial
+            </p>
+          ) : !financialStats.coberturaConferida ? (
+            <p role="status" className="text-xs text-zinc-400">
+              Conferindo custos…
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-x-4">
+            <button
+              type="button"
+              onClick={() => toggleHelp("financial-values")}
+              aria-haspopup="dialog"
+              className="min-h-11 text-xs font-semibold text-violet-300 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
+            >
+              Entender valores
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleHelp("global-guide")}
+              className="flex min-h-11 items-center gap-2 text-xs text-zinc-300 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
+              title="Guia Completo de Métricas e Ajuda"
+            >
+              <BookOpen aria-hidden="true" className="size-4 text-violet-300" />
+              Guia e simulador
+            </button>
           </div>
         </div>
+
+        <BarraDeBusca
+          id="search-assets"
+          name="search-assets"
+          rotulo="Buscar produtos"
+          placeholder="Buscar produto, código…"
+          value={searchTerm}
+          onChange={(val) => {
+            setSearchTerm(val);
+            setCurrentPage(0);
+            shouldScrollToTop.current = true;
+          }}
+          onTyping={setIsTyping}
+          carregando={loading || isTyping}
+          modo={viewMode}
+          onMudarModo={setViewMode}
+          produtos
+          grupo="Categorias dos produtos"
+          tituloFiltro="Categoria"
+          filtrosAtivos={Number(filterCategory !== "all")}
+          opcoes={categories.map((cat) => ({
+            valor: cat,
+            rotulo: cat === "all" ? "Todas as categorias" : cat,
+            selecionada: filterCategory === cat,
+            onClick: () => {
+              setFilterCategory(cat);
+              setCurrentPage(0);
+              shouldScrollToTop.current = true;
+            },
+          }))}
+          onLimpar={temBuscaOuFiltro ? limparBuscaEFiltros : undefined}
+          onGerenciarCategorias={() => setGerenciandoCategorias(true)}
+        />
+        {gerenciandoCategorias && (
+          <Suspense fallback={null}>
+            <GerenciarCategorias
+              aberta
+              onFechar={() => setGerenciandoCategorias(false)}
+            />
+          </Suspense>
+        )}
 
         {/* Grid view of Products as Assets */}
         <LocalErrorBoundary>
           {!effectiveLoading && products?.length === 0 ? null : (
-            <div className="relative min-h-[400px]">
+            <div className="relative" aria-busy={effectiveLoading}>
               {showVisualLoading && <div className="admin-sync-progress-bar" />}
               {viewMode === "detailed" ? (
                 <div
                   key="detailed-grid"
-                  className="grid min-h-[400px] grid-cols-1 gap-8 pb-10 duration-200 animate-in fade-in md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                  className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3"
                 >
                   {effectiveLoading && products.length === 0
                     ? Array.from({ length: 8 }).map((_, i) => (
                         <div
                           key={i}
+                          aria-hidden="true"
                           className={cn(
-                            "admin-glass flex animate-pulse flex-col justify-between space-y-6 rounded-[2.5rem] border border-white/5 p-8",
+                            "produto-esqueleto flex animate-pulse flex-col gap-3 rounded-2xl border border-white/10 bg-[#101013] p-4",
                             ALTURA_DO_ESQUELETO_DETALHADO,
                           )}
                         >
-                          <div className="flex items-start gap-6">
-                            <Skeleton className="size-24 shrink-0 animate-pulse rounded-3xl bg-white/5" />
-                            <div className="flex-1 space-y-3 pt-2">
-                              <Skeleton className="h-5 w-3/4 animate-pulse bg-white/5" />
-                              <Skeleton className="h-3.5 w-1/2 animate-pulse bg-white/5" />
-                              <Skeleton className="h-4.5 w-1/3 animate-pulse rounded-lg bg-white/5" />
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-6">
-                            <Skeleton className="h-16 animate-pulse rounded-2xl bg-white/5" />
-                            <Skeleton className="h-16 animate-pulse rounded-2xl bg-white/5" />
-                          </div>
-                          <div className="flex-1 space-y-4 pt-2">
-                            <div className="flex items-center justify-between">
-                              <Skeleton className="h-3.5 w-1/3 animate-pulse bg-white/5" />
-                              <Skeleton className="h-3.5 w-1/12 animate-pulse bg-white/5" />
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <Skeleton className="h-3.5 w-1/4 animate-pulse bg-white/5" />
-                              <Skeleton className="h-3.5 w-1/4 animate-pulse bg-white/5" />
-                            </div>
-                          </div>
+                          <Skeleton className="h-12 w-full bg-white/5" />
+                          <Skeleton className="h-6 w-3/4 bg-white/5" />
+                          <Skeleton className="h-10 w-full bg-white/5" />
                         </div>
                       ))
                     : products?.map((product) => (
@@ -893,22 +1071,21 @@ export const AdminProductsView = memo(function AdminProductsView({
               ) : (
                 <div
                   key="compact-grid"
-                  className="grid min-h-[250px] grid-cols-2 gap-3 pb-10 duration-200 animate-in fade-in sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                  className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
                 >
                   {effectiveLoading && products.length === 0
                     ? Array.from({ length: 12 }).map((_, i) => (
                         <div
                           key={i}
-                          className="admin-glass flex h-[284px] animate-pulse flex-col justify-between overflow-hidden rounded-3xl border border-white/5"
+                          aria-hidden="true"
+                          className="produto-esqueleto flex min-h-[260px] animate-pulse flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#101013]"
                         >
-                          <Skeleton className="aspect-square w-full animate-pulse bg-white/5" />
-                          <div className="flex flex-col gap-2 p-3">
-                            <Skeleton className="h-3 w-1/3 animate-pulse bg-white/5" />
-                            <Skeleton className="h-3.5 w-3/4 animate-pulse bg-white/5" />
-                            <div className="flex items-baseline justify-between border-t border-white/5 pt-1">
-                              <Skeleton className="h-3 w-1/4 animate-pulse bg-white/5" />
-                              <Skeleton className="h-3.5 w-1/3 animate-pulse bg-white/5" />
-                            </div>
+                          <Skeleton className="h-[60px] w-full bg-white/5" />
+                          <div className="space-y-3 p-3">
+                            <Skeleton className="h-3 w-1/2 bg-white/5" />
+                            <Skeleton className="h-8 w-full bg-white/5" />
+                            <Skeleton className="h-6 w-3/4 bg-white/5" />
+                            <Skeleton className="h-11 w-full bg-white/5" />
                           </div>
                         </div>
                       ))
@@ -931,28 +1108,82 @@ export const AdminProductsView = memo(function AdminProductsView({
           )}
         </LocalErrorBoundary>
 
-        {/* Missão 06 (C2): paginação única do painel */}
-        <PaginacaoAdmin
-          pagina={currentPage}
-          totalPaginas={totalPages}
-          totalItens={totalProducts}
-          itensPorPagina={pageSize}
-          aoMudar={(nova) => {
-            setCurrentPage(nova);
-            shouldScrollToTop.current = true;
-          }}
-        />
+        <div className="relative">
+          {/* Missão 06 (C2): paginação única do painel */}
+          <PaginacaoAdmin
+            className="produtos-paginacao"
+            pagina={currentPage}
+            totalPaginas={totalPages}
+            totalItens={totalProducts}
+            itensPorPagina={pageSize}
+            aoMudar={(nova) => {
+              setCurrentPage(nova);
+              shouldScrollToTop.current = true;
+            }}
+          />
+          {totalProducts > 0 &&
+            (totalPages > 1 ? (
+              <p className="produtos-pagina text-xs font-semibold">
+                {Math.min(currentPage + 1, totalPages)} de {totalPages}
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-center gap-4 text-xs">
+                  <button type="button" disabled className="produto-secundario">
+                    Anterior
+                  </button>
+                  <span className="font-semibold">1 de 1</span>
+                  <button type="button" disabled className="produto-secundario">
+                    Próximo
+                  </button>
+                </div>
+                <p className="mt-3 text-center text-[11px] text-zinc-400">
+                  Todos os resultados estão nesta página.
+                </p>
+              </>
+            ))}
+        </div>
 
         {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
         {!effectiveLoading && !loadError && products?.length === 0 && (
-          <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 px-6 py-12 text-center">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent" />
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-white/10 bg-[#101013] px-5 py-7 text-center">
             <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
-              <Package className="size-6 text-zinc-600" />
+              {temBuscaOuFiltro ? (
+                <Search aria-hidden="true" className="size-6 text-indigo-300" />
+              ) : (
+                <ShoppingBag
+                  aria-hidden="true"
+                  className="size-6 text-indigo-300"
+                />
+              )}
             </div>
-            <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-              Nenhum produto cadastrado
+            <h3 className="text-lg font-bold text-zinc-50">
+              {temBuscaOuFiltro
+                ? "Nenhum produto encontrado"
+                : "Nenhum produto cadastrado"}
             </h3>
+            {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
+                diz o que está filtrado e dá a saída. */}
+            {!temBuscaOuFiltro && (
+              <p className="mt-3 text-sm text-zinc-400">
+                Cadastre seu primeiro produto pelo botão Novo produto.
+              </p>
+            )}
+            {temBuscaOuFiltro && (
+              <>
+                <p className="mt-3 text-sm text-zinc-400">
+                  Nada combina com {descricaoDoFiltro}. Seus produtos continuam
+                  cadastrados.
+                </p>
+                <button
+                  type="button"
+                  onClick={limparBuscaEFiltros}
+                  className="produto-secundario mt-4 w-full"
+                >
+                  Limpar busca e filtros
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -960,29 +1191,72 @@ export const AdminProductsView = memo(function AdminProductsView({
             carregamento: achado 11 avisava que trocar a mentira "vazio" por
             um esqueleto eterno na falha seria trocar uma mentira por outra. */}
         {!effectiveLoading && loadError && products?.length === 0 && (
-          <AdminErrorState
-            title="Erro ao Carregar Produtos"
-            onRetry={() => loadData(currentPage)}
-            isLoading={loading}
-          />
+          <div
+            role="alert"
+            className="rounded-3xl border border-white/10 bg-[#101013] p-6 text-center"
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="mx-auto mb-4 size-11 rounded-2xl bg-red-300/10 p-2 text-red-300"
+            />
+            <h3 className="text-lg font-bold">Erro ao Carregar Produtos</h3>
+            <p className="my-4 text-sm text-zinc-400">
+              A lista não chegou. Confira a internet e tente de novo.
+            </p>
+            <button
+              type="button"
+              onClick={() => loadData(currentPage)}
+              disabled={loading}
+              className="produto-secundario w-full"
+            >
+              <RefreshCw aria-hidden="true" className="size-4" /> Tentar
+              Novamente
+            </button>
+          </div>
         )}
 
+        <AcaoDaBarra ativa={active !== false}>
+          <button
+            type="button"
+            disabled={isOffline}
+            onClick={() => handleLocalNavigate("admin-product-form")}
+            className="produto-principal admin-barra-principal w-full"
+          >
+            <Plus aria-hidden="true" className="size-5" />{" "}
+            {isOffline ? "Novo produto indisponível" : "Novo produto"}
+          </button>
+        </AcaoDaBarra>
+
         {/* Modal de Ajuda Global */}
-        <AdminHelpModal
-          isOpen={!!expandedHelp["global-guide"]}
-          onClose={() => toggleHelp("global-guide")}
-          title="Guia de Métricas & Informações"
+        <FolhaDoPainel
+          aberta={!!expandedHelp["global-guide"]}
+          onFechar={() => toggleHelp("global-guide")}
+          titulo="Guia Completo de Métricas e Ajuda"
+          icone={BookOpen}
+          rodape={
+            <button
+              type="button"
+              onClick={() => toggleHelp("global-guide")}
+              className="produto-secundario w-full"
+            >
+              Fechar
+            </button>
+          }
         >
+          <p className="text-sm text-zinc-400">
+            Entenda os números antes de decidir.
+          </p>
           {/* Tabs Control */}
-          <div className="mb-4 flex shrink-0 gap-2 rounded-2xl border border-white/5 bg-zinc-900/60 p-1">
+          <div className="produtos-abas mb-6 flex shrink-0 gap-2">
             <button
               type="button"
               onClick={() => setHelpTab("concepts")}
+              aria-pressed={helpTab === "concepts"}
               className={cn(
                 "flex-1 flex min-h-11 items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "concepts"
-                  ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/10"
-                  : "text-zinc-400 hover:text-white hover:bg-white/5",
+                  ? "border border-admin-gold bg-admin-gold/10 text-admin-gold"
+                  : "border border-white/10 bg-[#17171c] text-zinc-300 hover:text-white",
               )}
             >
               <BookOpen className="size-3.5" />
@@ -991,11 +1265,12 @@ export const AdminProductsView = memo(function AdminProductsView({
             <button
               type="button"
               onClick={() => setHelpTab("simulator")}
+              aria-pressed={helpTab === "simulator"}
               className={cn(
                 "flex-1 flex min-h-11 items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "simulator"
-                  ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/10"
-                  : "text-zinc-400 hover:text-white hover:bg-white/5",
+                  ? "border border-admin-gold bg-admin-gold/10 text-admin-gold"
+                  : "border border-white/10 bg-[#17171c] text-zinc-300 hover:text-white",
               )}
             >
               <Calculator className="size-3.5" />
@@ -1003,223 +1278,147 @@ export const AdminProductsView = memo(function AdminProductsView({
             </button>
           </div>
 
-          {/* Scrollable Content */}
-          <div className="space-y-6">
+          <div className="produtos-guia space-y-6">
             {helpTab === "concepts" ? (
               <>
-                {/* Seção 1: Indicadores Globais */}
+                <h4 className="sr-only">Indicadores Financeiros Globais</h4>
                 <div className="space-y-3">
-                  <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-                    Indicadores Financeiros Globais
-                  </h4>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="group relative rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-admin-gold/30">
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <div className="rounded-lg bg-admin-gold/10 p-1 text-admin-gold">
-                          <Coins className="size-3.5" />
+                  {[
+                    {
+                      titulo: "Custo conhecido em estoque",
+                      icone: Wallet,
+                      cor: "text-sky-300",
+                      descricao:
+                        "Quanto você pagou pelas unidades que estão no estoque: o dinheiro que está parado no estoque, pelo preço de custo. A conta só considera produtos com custo cadastrado.",
+                      formula: "Custo Unitário × Estoque",
+                    },
+                    {
+                      titulo: "Lucro bruto potencial",
+                      icone: TrendingUp,
+                      cor: "text-emerald-300",
+                      descricao:
+                        "Receita prevista dos produtos com custo, usando o preço de cada variação, menos o que esse estoque custou. A conta só considera produtos com custo cadastrado. Se faltar custo, o lucro é parcial. Não é lucro líquido.",
+                      formula: "(Preço − Custo) × Estoque",
+                    },
+                    {
+                      titulo: "Receita bruta potencial",
+                      icone: DollarSign,
+                      cor: "text-amber-300",
+                      descricao:
+                        "Quanto entraria em vendas de todo o estoque ativo pelo preço de cada variação, inclusive produtos sem custo cadastrado. Ainda não desconta custo, descontos ou despesas.",
+                      formula: "Preço de venda × unidades em estoque",
+                    },
+                    {
+                      titulo: "Lucro líquido potencial",
+                      icone: Calculator,
+                      cor: "text-sky-300",
+                      descricao:
+                        "O que sobraria depois do custo dos produtos e de todas as despesas. Como descontos, taxas, frete, impostos e outras despesas futuras não estão definidos aqui, este valor não é calculado.",
+                      formula: "Receita − custo − descontos − despesas",
+                    },
+                    {
+                      titulo: "Lucro sobre o custo",
+                      icone: BarChart3,
+                      cor: "text-violet-300",
+                      descricao:
+                        "Quanto você lucra para cada R$ 100 que pagou. No catálogo, usa o estoque com custo. Custo zero aparece como —.",
+                      formula: "((Preço − Custo) ÷ Custo) × 100",
+                      exemplo:
+                        "Custo R$10 / Venda R$15 ➜ Lucro sobre o custo = 50,0%",
+                    },
+                    {
+                      titulo: "Margem de Lucro",
+                      icone: Percent,
+                      cor: "text-teal-300",
+                      descricao:
+                        "A parte do preço de venda que corresponde ao lucro bruto.",
+                      formula: "((Preço − Custo) ÷ Preço) × 100",
+                      exemplo: "Custo R$10 / Venda R$15 ➜ Margem = 33,3%",
+                    },
+                    {
+                      titulo: "Lucro bruto do estoque",
+                      icone: ArrowUpRight,
+                      cor: "text-indigo-300",
+                      descricao:
+                        "Lucro bruto possível ao vender o estoque, descontando o custo cadastrado. Sem custo cadastrado aparece como —. Antes de taxas e despesas.",
+                      formula: "(Preço − Custo) × Estoque",
+                    },
+                    {
+                      titulo: "Produtos no Catálogo",
+                      icone: ShoppingBag,
+                      cor: "text-indigo-300",
+                      descricao:
+                        "O total muda com o recorte: Catálogo Geral, Resultados da busca ou Só desta categoria.",
+                      formula: "Total de produtos do recorte consultado",
+                    },
+                    {
+                      titulo: "Estoque e custo",
+                      icone: AlertTriangle,
+                      cor: "text-orange-300",
+                      descricao: `Crítico: estoque ≤ mínimo (padrão ${LIMIAR_PADRAO_DE_ESTOQUE}). Custo Suspeito: até R$ 0,10. Sem Custo Cadastrado: métricas —. Produtos com variações mostram o estoque total da grade.`,
+                      formula: "Estoque ≤ mínimo ➜ Indicador Crítico",
+                    },
+                  ].map(
+                    ({
+                      titulo,
+                      icone: Icone,
+                      cor,
+                      descricao,
+                      formula,
+                      exemplo,
+                    }) => (
+                      <div
+                        key={titulo}
+                        className="rounded-2xl border border-white/10 bg-[#101013] p-4"
+                      >
+                        <div className="flex items-start gap-3">
+                          <Icone
+                            aria-hidden="true"
+                            className={cn(
+                              "size-7 shrink-0 rounded-lg bg-white/5 p-1",
+                              cor,
+                            )}
+                          />
+                          <div className="min-w-0 space-y-2">
+                            <p className="text-sm font-bold text-white">
+                              {titulo}
+                            </p>
+                            <p className="text-sm leading-relaxed text-zinc-400">
+                              {descricao}
+                            </p>
+                            <div className="flex flex-wrap justify-between gap-2 text-[11px] text-zinc-400">
+                              <span>Fórmula:</span>
+                              <span className="break-words">{formula}</span>
+                            </div>
+                            {exemplo && (
+                              <div className="flex flex-wrap justify-between gap-2 text-[11px] text-zinc-400">
+                                <span>Exemplo:</span>
+                                <span>{exemplo}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-[11px] font-black uppercase tracking-wider text-white">
-                          Dinheiro parado em estoque
-                        </p>
                       </div>
-                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-400">
-                        Quanto você pagou pelas unidades que estão no estoque: o
-                        dinheiro que está parado no estoque, pelo preço de
-                        custo. A conta só considera produtos com custo
-                        cadastrado.
-                      </p>
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
-                        <span className="text-[11px] font-bold uppercase text-zinc-400">
-                          Fórmula:
-                        </span>
-                        <span className="font-black text-zinc-300">
-                          Custo Unitário × Estoque
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="group relative rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-admin-gold/30">
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <div className="rounded-lg bg-emerald-500/10 p-1 text-emerald-400">
-                          <TrendingUp className="size-3.5" />
-                        </div>
-                        <p className="text-[11px] font-black uppercase tracking-wider text-white">
-                          Lucro se vender tudo
-                        </p>
-                      </div>
-                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-400">
-                        Quanto você ganharia vendendo pelo preço atual as
-                        unidades que estão no estoque, menos o que elas
-                        custaram. A conta só considera produtos com custo
-                        cadastrado.
-                      </p>
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
-                        <span className="text-[11px] font-bold uppercase text-zinc-400">
-                          Fórmula:
-                        </span>
-                        <span className="font-black text-zinc-300">
-                          (Preço − Custo) × Estoque
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="group relative rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-admin-gold/30">
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <div className="rounded-lg bg-blue-500/10 p-1 text-blue-400">
-                          <Activity className="size-3.5" />
-                        </div>
-                        <p className="text-[11px] font-black uppercase tracking-wider text-white">
-                          Lucro sobre o custo
-                        </p>
-                      </div>
-                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-400">
-                        Quanto o estoque inteiro rende, em percentual, sobre o
-                        que você pagou por ele.
-                      </p>
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
-                        <span className="text-[11px] font-bold uppercase text-zinc-400">
-                          Fórmula:
-                        </span>
-                        <span className="font-black text-zinc-300">
-                          (Lucro se vender tudo ÷ Custo) × 100
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="group relative rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-admin-gold/30">
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <div className="rounded-lg bg-purple-500/10 p-1 text-purple-400">
-                          <Layers className="size-3.5" />
-                        </div>
-                        <p className="text-[11px] font-black uppercase tracking-wider text-white">
-                          Produtos Ativos
-                        </p>
-                      </div>
-                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-400">
-                        Proporção de produtos que estão ativos e visíveis para
-                        compra pelos clientes no catálogo em relação ao total
-                        cadastrado.
-                      </p>
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
-                        <span className="text-[11px] font-bold uppercase text-zinc-400">
-                          Fórmula:
-                        </span>
-                        <span className="font-black text-zinc-300">
-                          (Ativos ÷ Total) × 100
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                    ),
+                  )}
                 </div>
-
-                {/* Seção 2: Métricas de Cada Produto */}
-                <div className="space-y-3 pt-2">
-                  <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-                    Métricas Individuais do Produto
-                  </h4>
-                  <div className="space-y-2.5">
-                    <div className="flex gap-4 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.05)]">
-                      <div className="w-1 shrink-0 rounded-full bg-emerald-500" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <Percent className="size-3.5 text-emerald-400" />
-                          <p className="text-[11px] font-black uppercase tracking-wider text-white">
-                            Margem de Lucro %
-                          </p>
-                        </div>
-                        <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
-                          Indica a porcentagem do preço final de venda que
-                          corresponde ao lucro bruto.
-                        </p>
-                        <div className="flex flex-col gap-1 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-bold uppercase text-zinc-400">
-                              Fórmula:
-                            </span>
-                            <span className="font-black text-emerald-400">
-                              ((Preço − Custo) ÷ Preço) × 100
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-1">
-                            <span className="text-[11px] font-bold uppercase text-zinc-400">
-                              Exemplo:
-                            </span>
-                            <span className="font-medium text-zinc-400">
-                              Custo R$10 / Venda R$15 ➜ Margem = 33,3%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-4 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-blue-500/20 hover:shadow-[0_0_15px_rgba(59,130,246,0.05)]">
-                      <div className="w-1 shrink-0 rounded-full bg-blue-500" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <TrendingUp className="size-3.5 text-blue-400" />
-                          <p className="text-[11px] font-black uppercase tracking-wider text-white">
-                            Lucro sobre o custo %
-                          </p>
-                        </div>
-                        <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
-                          Quanto você lucra para cada R$ 100 que pagou pelo
-                          produto. É diferente da Margem de Lucro, que é
-                          calculada sobre o preço de venda.
-                        </p>
-                        <div className="flex flex-col gap-1 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-bold uppercase text-zinc-400">
-                              Fórmula:
-                            </span>
-                            <span className="font-black text-blue-400">
-                              ((Preço − Custo) ÷ Custo) × 100
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-1">
-                            <span className="text-[11px] font-bold uppercase text-zinc-400">
-                              Exemplo:
-                            </span>
-                            <span className="font-medium text-zinc-400">
-                              Custo R$10 / Venda R$15 ➜ Lucro sobre o custo =
-                              50,0%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-4 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.05)]">
-                      <div className="w-1 shrink-0 rounded-full bg-amber-500" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <AlertTriangle className="size-3.5 text-amber-400" />
-                          <p className="text-[11px] font-black uppercase tracking-wider text-white">
-                            Unidades em Estoque & Alerta Crítico
-                          </p>
-                        </div>
-                        <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
-                          Quantidade física disponível. Quando o estoque chega
-                          ao mínimo do produto ({LIMIAR_PADRAO_DE_ESTOQUE} se
-                          ele não tiver um), um alerta crítico pisca no painel.
-                        </p>
-                        <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
-                          <span className="text-[11px] font-bold uppercase text-zinc-400">
-                            Regra:
-                          </span>
-                          <span className="font-black text-amber-400">
-                            Estoque ≤ mínimo ➜ Indicador Crítico
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setHelpTab("simulator")}
+                  className="produto-secundario w-full"
+                >
+                  <Calculator
+                    aria-hidden="true"
+                    className="size-4 text-violet-300"
+                  />{" "}
+                  Abrir simulador de margem
+                </button>
               </>
             ) : (
               /* Simulador de Lucratividade */
               <div className="space-y-5">
                 <div className="space-y-4 rounded-3xl border border-white/5 bg-zinc-900/20 p-4">
-                  <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                  <h4 className="border-l-2 border-violet-300/50 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                     Parâmetros do Produto
                   </h4>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1241,7 +1440,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simCost}
                           onChange={(e) => setSimCost(e.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
                           placeholder="0.00"
                         />
                       </div>
@@ -1265,7 +1464,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simPrice}
                           onChange={(e) => setSimPrice(e.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
                           placeholder="0.00"
                         />
                       </div>
@@ -1288,7 +1487,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simStock}
                           onChange={(e) => setSimStock(e.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
                           placeholder="0"
                         />
                       </div>
@@ -1311,9 +1510,32 @@ export const AdminProductsView = memo(function AdminProductsView({
 
                 {/* Resultados do Painel Simulador */}
                 <div className="space-y-3">
-                  <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                  <h4 className="border-l-2 border-violet-300/50 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                     Análise de Performance
                   </h4>
+
+                  <div className="rounded-2xl border border-white/10 bg-[#101013] p-4 text-xs text-zinc-400">
+                    <p className="mb-3 text-sm font-bold text-white">
+                      Como interpretar a margem
+                    </p>
+                    <p className="flex justify-between gap-2">
+                      <span className="text-emerald-300">Excelente</span>
+                      <span>≥ 35%</span>
+                    </p>
+                    <p className="mt-2 flex justify-between gap-2">
+                      <span className="text-teal-300">Saudável</span>
+                      <span>20% a &lt; 35%</span>
+                    </p>
+                    <p className="mt-2 flex justify-between gap-2">
+                      <span className="text-orange-300">Apertada</span>
+                      <span>10% a &lt; 20%</span>
+                    </p>
+                    <p className="mt-2 flex justify-between gap-2">
+                      <span className="text-red-300">Crítica</span>
+                      <span>&lt; 10%</span>
+                    </p>
+                    <p className="mt-4">Antes de taxas e outras despesas.</p>
+                  </div>
 
                   {/* Recomendação de Margem */}
                   <div
@@ -1338,94 +1560,54 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </p>
                       <p className="mt-0.5 text-[11px] font-medium leading-normal text-zinc-400">
                         {simulatorMetrics.health === "excellent" &&
-                          "Alta lucratividade por unidade! Ideal para alavancar vendas e suportar taxas operacionais confortavelmente."}
+                          "Margem bruta alta. Ainda é preciso descontar taxas e outras despesas para conhecer o lucro líquido."}
                         {simulatorMetrics.health === "good" &&
-                          "Sua margem está bem equilibrada com a média saudável do mercado de e-commerce."}
+                          "A margem bruta é positiva. Confira as despesas da venda antes de concluir quanto sobra."}
                         {simulatorMetrics.health === "low" &&
                           "Rentabilidade reduzida. Monitore custos extras de frete ou transações para evitar margens negativas."}
                         {simulatorMetrics.health === "danger" &&
-                          "Atenção: Operando abaixo do mínimo recomendado ou em prejuízo líquido. Considere elevar o Preço de Venda."}
+                          "Atenção: margem bruta baixa ou negativa, antes das despesas. Revise o custo e o preço de venda."}
                       </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div
-                      // A casca vai em template, FORA do `cn`: o tailwind-merge 3
-                      // trata `bg-gradient-to-b` como conflito de `bg-zinc-900/70`
-                      // (semântica do Tailwind 4) e apagaria a cor de fundo.
-                      className={`flex min-h-20 min-w-0 flex-col justify-between gap-1 rounded-2xl border bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 ${cn(
-                        simulatorMetrics.health === "excellent" &&
-                          "border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.03)]",
-                        simulatorMetrics.health === "good" &&
-                          "border-teal-500/20 shadow-[0_0_15px_rgba(20,184,166,0.03)]",
-                        simulatorMetrics.health === "low" &&
-                          "border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.03)]",
-                        simulatorMetrics.health === "danger" &&
-                          "border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.03)]",
-                      )}`}
-                    >
-                      <p className="text-xs font-semibold leading-tight text-zinc-300">
-                        Margem de Lucro
-                      </p>
-                      <p
-                        className={cn(
-                          "whitespace-nowrap text-[17px] font-black leading-tight tabular-nums sm:text-[22px]",
-                          simulatorMetrics.health === "excellent" &&
-                            "text-emerald-400",
-                          simulatorMetrics.health === "good" && "text-teal-400",
-                          simulatorMetrics.health === "low" && "text-amber-400",
-                          simulatorMetrics.health === "danger" &&
-                            "text-rose-400",
-                        )}
+                    {[
+                      {
+                        rotulo: "Margem de Lucro",
+                        valor: percentualComUmaCasa(simulatorMetrics.margin),
+                      },
+                      {
+                        rotulo: "Lucro sobre o custo (por unidade)",
+                        valor: percentualComUmaCasa(simulatorMetrics.roi),
+                      },
+                      {
+                        rotulo: "Lucro bruto por unidade",
+                        valor: `R$ ${simulatorMetrics.unitProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+                      },
+                      {
+                        rotulo: "Capital de Lote (Custo)",
+                        valor: `R$ ${simulatorMetrics.totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+                      },
+                    ].map(({ rotulo, valor }, indice) => (
+                      <div
+                        key={rotulo}
+                        className={`flex min-h-20 min-w-0 flex-col justify-between gap-2 rounded-2xl border bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 ${indice === 0 ? (simulatorMetrics.health === "excellent" ? "border-emerald-500/20" : simulatorMetrics.health === "good" ? "border-teal-500/20" : simulatorMetrics.health === "low" ? "border-amber-500/20" : "border-rose-500/20") : "border-white/10"}`}
                       >
-                        {percentualComUmaCasa(simulatorMetrics.margin)}
-                      </p>
-                    </div>
-
-                    <div className="flex min-h-20 min-w-0 flex-col justify-between gap-1 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
-                      <p className="text-xs font-semibold leading-tight text-zinc-300">
-                        Lucro sobre o custo (por unidade)
-                      </p>
-                      <p className="whitespace-nowrap text-[17px] font-black tabular-nums leading-tight text-blue-400 sm:text-[22px]">
-                        {percentualComUmaCasa(simulatorMetrics.roi)}
-                      </p>
-                    </div>
-
-                    <div className="flex min-h-20 min-w-0 flex-col justify-between gap-1 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
-                      <p className="text-xs font-semibold leading-tight text-zinc-300">
-                        Lucro Líquido (Unit.)
-                      </p>
-                      <p className="text-[17px] font-black tabular-nums leading-tight text-white sm:text-[22px]">
-                        R${" "}
-                        <span className="whitespace-nowrap">
-                          {simulatorMetrics.unitProfit.toLocaleString("pt-BR", {
-                            minimumFractionDigits: 2,
-                          })}
-                        </span>
-                      </p>
-                    </div>
-
-                    <div className="flex min-h-20 min-w-0 flex-col justify-between gap-1 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
-                      <p className="text-xs font-semibold leading-tight text-zinc-300">
-                        Capital de Lote (Custo)
-                      </p>
-                      <p className="text-[17px] font-black tabular-nums leading-tight text-zinc-400 sm:text-[22px]">
-                        R${" "}
-                        <span className="whitespace-nowrap">
-                          {simulatorMetrics.totalCost.toLocaleString("pt-BR", {
-                            minimumFractionDigits: 2,
-                          })}
-                        </span>
-                      </p>
-                    </div>
+                        <p className="text-xs font-semibold leading-tight text-zinc-300">
+                          {rotulo}
+                        </p>
+                        <p className="text-[17px] font-black tabular-nums leading-tight sm:text-[22px]">
+                          <span className="whitespace-nowrap">{valor}</span>
+                        </p>
+                      </div>
+                    ))}
                   </div>
 
-                  <div className="relative flex h-20 items-center justify-between overflow-hidden rounded-2xl border border-admin-gold/10 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4">
-                    <div className="absolute inset-0 bg-admin-gold/5" />
+                  <div className="relative flex min-h-20 flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#101013] p-4">
                     <div className="relative z-10">
-                      <p className="text-[11px] font-black uppercase tracking-widest text-admin-gold">
-                        Retorno Total Estimado
+                      <p className="text-[11px] font-bold text-zinc-300">
+                        Lucro bruto do lote simulado
                       </p>
                       <p className="mt-0.5 font-mono text-xl font-black text-white">
                         R${" "}
@@ -1440,7 +1622,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                         })}
                       </p>
                     </div>
-                    <div className="relative z-10 shrink-0 rounded-xl bg-admin-gold/10 p-2 text-admin-gold">
+                    <div className="relative z-10 shrink-0 rounded-xl bg-violet-300/10 p-2 text-violet-300">
                       <TrendingUp className="size-4" />
                     </div>
                   </div>
@@ -1448,32 +1630,40 @@ export const AdminProductsView = memo(function AdminProductsView({
               </div>
             )}
           </div>
-        </AdminHelpModal>
+        </FolhaDoPainel>
 
         {/* Diálogo de Confirmação de Exclusão */}
         <AlertDialog
           open={productToDelete !== null}
           onOpenChange={(open) => !open && setProductToDelete(null)}
         >
-          <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-white/10 bg-[#17171c]">
             <AlertDialogHeader>
-              <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
-                Excluir Produto?
+              <AlertDialogTitle className="text-xl font-bold text-white">
+                <Trash2
+                  aria-hidden="true"
+                  className="mx-auto mb-4 size-12 rounded-2xl bg-red-300/10 p-3 text-red-300"
+                />
+                Confirmar Exclusão
               </AlertDialogTitle>
               <AlertDialogDescription className="text-xs text-zinc-400">
-                Tem certeza que deseja excluir este produto? Esta ação não pode
-                ser desfeita e removerá o item permanentemente do catálogo.
+                “
+                {products.find((p) => p.id === productToDelete)?.name ??
+                  "Este produto"}
+                ” sai do catálogo para sempre. Não dá para desfazer.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="mt-4 gap-2">
-              <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+              <AlertDialogCancel className="produto-secundario w-full">
                 Cancelar
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmDelete}
-                className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
+                aria-label="Excluir Produto: confirmar exclusão"
+                className="produto-perigo w-full"
               >
-                Confirmar Exclusão
+                <Trash2 aria-hidden="true" className="mr-2 size-4" /> Excluir
+                Produto
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1484,25 +1674,31 @@ export const AdminProductsView = memo(function AdminProductsView({
           open={productToDuplicate !== null}
           onOpenChange={(open) => !open && setProductToDuplicate(null)}
         >
-          <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-white/10 bg-[#17171c]">
             <AlertDialogHeader>
-              <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
-                Duplicar Produto?
+              <AlertDialogTitle className="text-xl font-bold text-white">
+                <Copy
+                  aria-hidden="true"
+                  className="mx-auto mb-4 size-12 rounded-2xl bg-violet-300/10 p-3 text-violet-300"
+                />
+                Confirmar Duplicação
               </AlertDialogTitle>
               <AlertDialogDescription className="text-xs text-zinc-400">
-                Deseja realmente duplicar o produto "{productToDuplicate?.name}
-                "? Uma nova cópia será criada desativada.
+                Vamos criar “{productToDuplicate?.name} (Cópia)”, desativada.
+                Você revisa e ativa quando quiser.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="mt-4 gap-2">
-              <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+              <AlertDialogCancel className="produto-secundario w-full">
                 Cancelar
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmDuplicate}
-                className="rounded-xl border-0 bg-admin-gold px-4 py-2 text-xs font-bold text-black hover:bg-admin-gold/90"
+                aria-label="Duplicar Produto: confirmar duplicação"
+                className="produto-principal w-full"
               >
-                Confirmar Duplicação
+                <Copy aria-hidden="true" className="mr-2 size-4" /> Duplicar
+                Produto
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1547,6 +1743,161 @@ interface AdminProductCardProps {
   readonly onPrefetch?: () => void;
 }
 
+/** A mesma foto, ações e nomes acessíveis nos dois modos do catálogo. */
+function FotoDoCatalogo({ product }: { readonly product: any }) {
+  const foto = soFotosReais(product.images)[0];
+  const [fotoComErro, setFotoComErro] = useState<string | null>(null);
+  // A foto fica dentro do gatilho do menu: o aviso de erro não pode criar outro botão.
+  return foto && foto !== fotoComErro ? (
+    <img
+      src={foto}
+      alt={product.name}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFotoComErro(foto)}
+      className={cn(
+        "size-full object-contain",
+        !product.isActive && "opacity-40 grayscale",
+      )}
+    />
+  ) : (
+    <span className="flex size-full flex-col items-center justify-center gap-1 bg-zinc-100 p-2 text-center text-[11px] text-zinc-600">
+      <Camera aria-hidden="true" className="size-5 shrink-0 text-slate-600" />
+      <span>{foto ? "Foto indisponível" : "Sem foto"}</span>
+    </span>
+  );
+}
+
+function MenuDoProduto({
+  product,
+  onNavigate,
+  onToggleStatus,
+  onDuplicate,
+  onDelete,
+  isOffline,
+  children,
+  className,
+}: Omit<AdminProductCardProps, "viewMode" | "onPrefetch"> & {
+  readonly children: React.ReactNode;
+  readonly className: string;
+}) {
+  const [aberto, setAberto] = useState(false);
+  // O menu do Radix abre no primeiro contato do dedo, e como a área é grande
+  // quem rola a lista em cima de uma foto abriria o menu sem querer. No toque
+  // abrimos no clique (que o navegador não dispara depois de uma rolagem);
+  // mouse e teclado seguem o caminho do Radix.
+  const veioDoToque = useRef(false);
+  return (
+    <DropdownMenu open={aberto} onOpenChange={setAberto}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={isOffline}
+          aria-label={`Ações de ${product.name}`}
+          aria-haspopup="menu"
+          aria-expanded={aberto}
+          onPointerDown={(e) => {
+            veioDoToque.current =
+              e.pointerType === "touch" || e.pointerType === "pen";
+            if (veioDoToque.current) e.preventDefault();
+          }}
+          onClick={() => {
+            if (!veioDoToque.current) return;
+            veioDoToque.current = false;
+            setAberto((atual) => !atual);
+          }}
+          className={cn(
+            "produto-gatilho min-h-11 min-w-11 w-full cursor-pointer text-left",
+            className,
+          )}
+        >
+          {children}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="produto-menu z-50 w-80 max-w-[calc(100vw-40px)] rounded-3xl border border-white/10 bg-[#17171c] p-4 text-zinc-100 shadow-2xl"
+      >
+        <div className="mb-3 flex gap-3 border-b border-white/10 pb-4">
+          <div className="size-12 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
+            <FotoDoCatalogo product={product} />
+          </div>
+          <div className="min-w-0">
+            <p className="break-words text-sm font-bold">{product.name}</p>
+            <p className="mt-1 text-xs text-zinc-400">
+              R${" "}
+              {product.price.toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+              })}{" "}
+              · {statusDoProdutoNoPainel(product)} · {product.stock} em estoque
+            </p>
+          </div>
+        </div>
+        <DropdownMenuItem
+          disabled={isOffline}
+          onClick={() => onNavigate("admin-product-form", product.id)}
+          className="produto-menu-item"
+        >
+          <Edit2 aria-hidden="true" className="text-sky-300" />
+          <div>
+            <span>Editar produto</span>
+            <small>Nome, preço, fotos e estoque</small>
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={isOffline}
+          onClick={() => onToggleStatus(product.id, product.isActive)}
+          className="produto-menu-item"
+        >
+          {product.isActive ? (
+            <Pause aria-hidden="true" className="text-orange-300" />
+          ) : (
+            <Play aria-hidden="true" className="text-emerald-300" />
+          )}
+          <div>
+            <span>
+              {product.isActive ? "Pausar Produto" : "Ativar Produto"}
+            </span>
+            <small>
+              {product.isActive
+                ? "Sai da loja na hora"
+                : "Volta para a loja na hora"}
+            </small>
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={isOffline}
+          onClick={() => onDuplicate(product)}
+          className="produto-menu-item"
+        >
+          <Copy aria-hidden="true" className="text-violet-300" />
+          <div>
+            <span>Duplicar Produto</span>
+            <small>Cria uma cópia desativada</small>
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={isOffline}
+          onClick={() => onDelete(product.id)}
+          className="produto-menu-item text-red-300"
+        >
+          <Trash2 aria-hidden="true" />
+          <div>
+            <span>Excluir Produto</span>
+            <small>Pede confirmação · ação irreversível</small>
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => setAberto(false)}
+          className="produto-secundario mt-3 w-full"
+        >
+          Fechar
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 const AdminProductCard = memo(function AdminProductCard({
   product,
   viewMode,
@@ -1557,6 +1908,69 @@ const AdminProductCard = memo(function AdminProductCard({
   isOffline = false,
   onPrefetch,
 }: AdminProductCardProps) {
+  const [maisMetricas, setMaisMetricas] = useState(false);
+  const acoes = {
+    product,
+    onNavigate,
+    onToggleStatus,
+    onDuplicate,
+    onDelete,
+    isOffline,
+  };
+  const editar = () => onNavigate("admin-product-form", product.id);
+  const estado = statusDoProdutoNoPainel(product);
+  const classeDoEstado =
+    estado === "Offline"
+      ? "text-violet-300"
+      : estado === "Esgotado"
+        ? "text-red-300"
+        : "text-zinc-400";
+  const botoes = (detalhado: boolean, custoSuspeito = false) => (
+    <div className="produto-acoes mt-2 flex flex-wrap gap-2">
+      <button
+        type="button"
+        disabled={isOffline}
+        aria-label={`${product.isActive ? "Pausar" : "Ativar"} ${product.name}`}
+        aria-pressed={product.isActive}
+        onClick={() => onToggleStatus(product.id, product.isActive)}
+        className="produto-secundario flex-1 px-2"
+      >
+        <span
+          aria-hidden="true"
+          className={cn("produto-interruptor", product.isActive && "ligado")}
+        />
+        {product.isActive ? "Ativo" : "Ativar"}
+      </button>
+      <button
+        type="button"
+        disabled={isOffline}
+        aria-label={`Editar ${product.name}`}
+        onClick={editar}
+        className="produto-secundario min-w-11 px-3"
+      >
+        <Edit2 aria-hidden="true" className="size-4 text-sky-200" />
+        {detalhado && (custoSuspeito ? "Revisar custo" : "Editar")}
+      </button>
+      {detalhado && (
+        <button
+          type="button"
+          aria-expanded={maisMetricas}
+          aria-controls={`metricas-produto-${product.id}`}
+          onClick={() => setMaisMetricas(!maisMetricas)}
+          className="produto-secundario flex-1 px-2"
+        >
+          {maisMetricas ? "Menos métricas" : "Mais métricas"}
+          <ChevronDown
+            aria-hidden="true"
+            className={cn(
+              "size-4 text-violet-300",
+              maisMetricas && "rotate-180",
+            )}
+          />
+        </button>
+      )}
+    </div>
+  );
   // "Estoque baixo" é UMA regra só no front (a mesma do sino e do aviso de
   // reposição): o mínimo do produto, ou o limiar padrão quando não tem.
   const estoqueBaixo = precisaDeReposicao(
@@ -1584,406 +1998,364 @@ const AdminProductCard = memo(function AdminProductCard({
     // margem (que divide pelo preço) afirma os 100% verdadeiros.
     const hasCost = product.costPrice != null;
     const temCustoPositivo = hasCost && product.costPrice > 0;
-    const margin = !hasCost
-      ? null
-      : product.price > 0
-        ? ((product.price - product.costPrice) / product.price) * 100
-        : 0;
-    const roi = !temCustoPositivo
-      ? null
-      : ((product.price - product.costPrice) / product.costPrice) * 100;
     const invested = !hasCost ? null : product.costPrice * product.stock;
-    const totalProfit = !hasCost
-      ? null
-      : (product.price || 0) * product.stock -
-        product.costPrice * product.stock;
+    const variantesAtivas =
+      product.variants?.filter((v: { active: boolean }) => v.active) ?? [];
+    const receitaDoEstoque =
+      variantesAtivas.length > 0
+        ? variantesAtivas.reduce(
+            (
+              total: number,
+              v: { priceOverride?: number | null; stockIncrement?: number },
+            ) =>
+              total +
+              (v.priceOverride ?? product.price) * (v.stockIncrement ?? 0),
+            0,
+          )
+        : product.price * product.stock;
+    const totalProfit =
+      !hasCost || product.variantsUnavailable
+        ? null
+        : receitaDoEstoque - product.costPrice * product.stock;
 
+    const precoMedio =
+      variantesAtivas.length > 0
+        ? product.stock > 0
+          ? receitaDoEstoque / product.stock
+          : null
+        : product.price;
+    const margin =
+      !hasCost || product.variantsUnavailable || precoMedio === null
+        ? null
+        : precoMedio > 0
+          ? ((precoMedio - product.costPrice) / precoMedio) * 100
+          : variantesAtivas.length > 0
+            ? null
+            : 0;
+    const roi =
+      !temCustoPositivo || product.variantsUnavailable || precoMedio === null
+        ? null
+        : ((precoMedio - product.costPrice) / product.costPrice) * 100;
+
+    const custoSuspeito = hasCost && product.costPrice <= 0.1;
     return (
       <motion.div
         layout
-        // Sem altura fixa: o cartão cresce com o conteúdo (preço, custo, estoque
-        // e "Potencial" nunca ficam escondidos). O `content-visibility: auto`
-        // segue na classe do cartão, com o `contain-intrinsic-size` dela.
-        className="group relative transform-gpu"
+        className="group relative min-w-0"
         onMouseEnter={onPrefetch}
         onTouchStart={onPrefetch}
       >
-        <div className="absolute inset-0 rounded-[2.5rem] bg-gradient-to-br from-admin-gold to-transparent opacity-0 blur-2xl transition-opacity duration-700 group-hover:opacity-5" />
         <div
           className={cn(
-            "admin-glass content-visibility-detailed-card relative flex h-full flex-col overflow-hidden border-white/5 transition-all duration-500 group-hover:border-white/10 sm:rounded-[2.5rem] sm:border-x",
+            "produto-cartao content-visibility-detailed-card rounded-3xl border border-white/10 bg-[#101013] p-3",
             RESERVA_DO_CARTAO_DETALHADO,
           )}
         >
-          {/* Header Action Overlay */}
-          <div className="absolute right-4 top-4 z-20">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-11 rounded-xl border border-white/5 bg-black/40 p-0 text-zinc-500 backdrop-blur-md transition-all hover:bg-black/60 hover:text-white"
-                >
-                  <MoreVertical className="size-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="z-50 min-w-[180px] rounded-2xl border border-white/10 bg-zinc-950/95 p-1.5 shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-3xl">
-                <DropdownMenuItem
-                  disabled={isOffline}
-                  onClick={() => onNavigate("admin-product-form", product.id)}
-                  className="mb-0.5 flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-300 transition-colors focus:bg-white/[0.08] focus:text-white disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <Edit2 className="mr-3 size-4 shrink-0 text-admin-gold" />{" "}
-                  Editar produto
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={isOffline}
-                  onClick={() => onToggleStatus(product.id, product.isActive)}
-                  className="mb-0.5 flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-300 transition-colors focus:bg-white/[0.08] focus:text-white disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <Eye className="mr-3 size-4 shrink-0 text-blue-400" />{" "}
-                  {product.isActive ? "Pausar Produto" : "Ativar Produto"}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={isOffline}
-                  onClick={() => onDuplicate(product)}
-                  className="mb-0.5 flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-300 transition-colors focus:bg-white/[0.08] focus:text-white disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <Copy className="mr-3 size-4 shrink-0 text-purple-400" />{" "}
-                  Duplicar Produto
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={isOffline}
-                  onClick={() => onDelete(product.id)}
-                  className="flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-400 transition-colors focus:bg-rose-500/10 focus:text-rose-500 disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <Trash2 className="mr-3 size-4 shrink-0" /> Excluir Produto
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Main Content */}
-          <div className="flex flex-1 flex-col space-y-8 p-5 sm:p-8">
-            {/* Visual Identity */}
-            <div className="flex items-start gap-4 sm:gap-6">
-              <div className="relative size-20 flex-shrink-0 overflow-hidden rounded-3xl border border-white/5 bg-zinc-900 shadow-2xl transition-transform duration-700 group-hover:scale-105 sm:size-24">
-                <LazyImage
-                  src={product.images[0] || "https://via.placeholder.com/150"}
-                  alt={product.name}
-                  className="size-full object-cover transition-all duration-700"
-                />
-                {!product.isActive && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <Eye className="size-6 text-white/20" />
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1 pt-2">
-                <h4 className="line-clamp-2 break-words pr-12 text-xl font-black leading-[1.2] text-white transition-colors group-hover:text-admin-gold">
-                  {product.name}
-                </h4>
-                <p className="mt-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-                  {product.category}
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Badge
-                    className={cn(
-                      "rounded-lg border px-2.5 py-1 text-[11px] font-black uppercase tracking-widest backdrop-blur-md transition-all",
-                      statusDoProdutoNoPainel(product) === "Em Operação" &&
-                        "border-emerald-500/20 bg-emerald-500/10 text-emerald-500",
-                      statusDoProdutoNoPainel(product) === "Esgotado" &&
-                        "border-rose-500/20 bg-rose-500/10 text-rose-500",
-                      statusDoProdutoNoPainel(product) === "Offline" &&
-                        "border-white/5 bg-zinc-800 text-zinc-400",
-                    )}
-                  >
-                    {statusDoProdutoNoPainel(product)}
+          <MenuDoProduto
+            {...acoes}
+            className="flex items-start gap-3 rounded-xl"
+          >
+            <span
+              data-produto-foto=""
+              className="block size-16 shrink-0 overflow-hidden rounded-xl bg-zinc-100"
+            >
+              <FotoDoCatalogo product={product} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span
+                data-produto-nome=""
+                className="block break-words text-sm font-bold leading-snug"
+              >
+                {product.name}
+              </span>
+              <span className="mt-1 block break-words text-[11px] text-zinc-400">
+                {product.category} ·{" "}
+                <Badge className={cn("produto-status", classeDoEstado)}>
+                  {estado}
+                </Badge>
+                {estoqueBaixo && (
+                  <Badge className="produto-status text-[11px] text-orange-300">
+                    Crítico
                   </Badge>
-                  {!hasCost ? (
-                    <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
-                      Sem Custo Cadastrado
-                    </Badge>
-                  ) : (
-                    product.costPrice <= 0.1 && (
-                      <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
-                        Custo Suspeito
-                      </Badge>
-                    )
-                  )}
-                  {estoqueBaixo && (
-                    <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-500 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
-                      Crítico
-                    </Badge>
-                  )}
-                </div>
-              </div>
+                )}
+              </span>
+              {product.sku && (
+                <span className="mt-1 block break-words text-[11px] text-zinc-400">
+                  Código {product.sku}
+                </span>
+              )}
+              {!hasCost && (
+                <span className="mt-1 block text-[11px] font-semibold text-slate-300">
+                  Sem Custo Cadastrado
+                </span>
+              )}
+            </span>
+          </MenuDoProduto>
+          <h4 className="sr-only">{product.name}</h4>
+          <div className="produto-resumo mt-3 grid grid-cols-3 gap-2">
+            <div className="min-w-0">
+              <p className="text-[11px] text-zinc-400">Preço de Venda</p>
+              <p className="mt-1 text-lg font-bold tabular-nums">
+                R${" "}
+                {product.price.toLocaleString("pt-BR", {
+                  minimumFractionDigits: 2,
+                })}
+              </p>
             </div>
-
-            {/* Operational Metrics Grid */}
-            <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-6 lg:grid-cols-1">
-              <div className="relative min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-colors group-hover:border-white/20">
-                {/* Selo no canto (padrão do KpiCard): o valor usa a largura toda. De lg em
-                    diante a grade é de 1 coluna (o cartão tem 3-4 por linha e a caixa
-                    ficaria com 34-67px úteis) */}
-                <div
-                  className={cn(
-                    "absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border",
-                    margin === null
-                      ? "bg-white/[0.06] border-white/10 text-zinc-400"
-                      : margin >= 20
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
-                        : "bg-rose-500/10 border-rose-500/20 text-rose-500",
-                  )}
-                >
-                  <TrendingUp className="size-3.5" />
-                </div>
-                <p className="mb-3 pr-9 text-xs font-semibold leading-tight text-zinc-300">
-                  Margem de Lucro
-                </p>
+            <div className="min-w-0">
+              <p className="text-[11px] text-zinc-400">
+                {estoqueBaixo
+                  ? `Estoque · mín. ${product.estoqueMinimo ?? LIMIAR_PADRAO_DE_ESTOQUE}`
+                  : product.variants?.length > 0
+                    ? "Estoque total"
+                    : "Estoque"}
+              </p>
+              <p
+                className={cn(
+                  "mt-1 text-lg font-bold tabular-nums",
+                  estoqueBaixo && "text-orange-300",
+                  estado === "Esgotado" && "text-red-300",
+                )}
+              >
+                <span className={cn(estoqueBaixo && "text-orange-300")}>
+                  {product.stock}
+                </span>{" "}
+                un.
+              </p>
+            </div>
+            {!custoSuspeito && (
+              <div className="min-w-0">
+                <p className="text-[11px] text-zinc-400">Margem de Lucro</p>
                 <span
-                  className={cn(
-                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] md:text-xl lg:text-[22px]",
-                    margin === null && "text-zinc-400",
-                    margin !== null && margin >= 40 && "text-emerald-500",
-                    margin !== null &&
-                      margin >= 20 &&
-                      margin < 40 &&
-                      "text-admin-gold",
-                    margin !== null && margin < 20 && "text-rose-500",
-                  )}
+                  data-margem
+                  className="mt-1 block whitespace-nowrap text-lg font-black tabular-nums tracking-tighter"
                 >
                   {margin === null ? "—" : percentualComUmaCasa(margin)}
                 </span>
               </div>
-              <div className="relative min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-colors group-hover:border-white/20">
-                <div className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-400">
-                  <ArrowUpRight className="size-3.5" />
-                </div>
-                <p className="mb-3 pr-9 text-xs font-semibold leading-tight text-zinc-300">
-                  Lucro sobre o custo
-                </p>
-                <span
-                  className={cn(
-                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] md:text-xl lg:text-[22px]",
-                    roi === null && "text-zinc-400",
-                    roi !== null && roi >= 100 && "text-emerald-500",
-                    roi !== null && roi >= 50 && roi < 100 && "text-admin-gold",
-                    roi !== null && roi < 50 && "text-rose-500",
-                  )}
-                >
-                  {roi === null ? "—" : percentualComUmaCasa(roi)}
-                </span>
-              </div>
-            </div>
-
-            {/* Inventory Specs */}
-            <div className="flex flex-1 flex-col gap-4 pt-2">
-              <div className="group/spec flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 transition-colors group-hover/spec:text-zinc-300">
-                  Unidades em Estoque
-                </span>
-                <div className="flex items-center gap-2">
-                  <div className="h-1 w-12 overflow-hidden rounded-full bg-zinc-900">
-                    <div
-                      className={cn(
-                        "h-full transition-all duration-1000",
-                        estoqueBaixo ? "bg-rose-500" : "bg-admin-gold",
-                      )}
-                      style={{ width: `${Math.min(product.stock * 5, 100)}%` }}
-                    />
-                  </div>
-                  <span
-                    className={cn(
-                      "text-xs font-black font-mono",
-                      estoqueBaixo ? "text-rose-500" : "text-white",
-                    )}
-                  >
-                    {product.stock}
-                  </span>
-                </div>
-              </div>
-
-              <div className="group/spec flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 transition-colors group-hover/spec:text-zinc-300">
-                  Dinheiro parado em estoque
-                </span>
-                <span className="font-mono text-xs font-bold text-zinc-400">
-                  {invested === null
-                    ? "—"
-                    : `R$ ${invested.toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                      })}`}
-                </span>
-              </div>
-
-              <div className="mt-auto flex items-end justify-between border-t border-white/5 pt-6">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-admin-gold">
-                    Preço de Venda
-                  </p>
-                  <h4 className="text-3xl font-black tracking-tighter text-white">
-                    R${" "}
-                    {product.price.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </h4>
-                </div>
-                <div className="space-y-1 text-right">
-                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-500">
-                    Potencial
-                  </p>
-                  <p className="text-sm font-black tracking-tight text-white/80">
-                    {totalProfit === null
-                      ? "—"
-                      : `+ R$ ${totalProfit.toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}`}
-                  </p>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
-
-          {/* Footer Gradient Strip */}
-          <div className="h-1.5 w-full bg-gradient-to-r from-zinc-900 via-admin-gold/20 to-zinc-900 transition-all duration-1000 group-hover:via-admin-gold/50" />
+          {custoSuspeito && (
+            <div
+              data-custo-suspeito
+              className="mt-3 flex gap-2 rounded-xl bg-orange-300/10 p-3 text-orange-300"
+            >
+              <AlertTriangle aria-hidden="true" className="size-5 shrink-0" />
+              <div className="min-w-0 text-xs">
+                <p className="font-bold">Margem calculada com custo suspeito</p>
+                <p className="mt-1">
+                  <span
+                    data-margem
+                    className="whitespace-nowrap font-black tabular-nums tracking-tighter"
+                  >
+                    {margin === null ? "—" : percentualComUmaCasa(margin)}
+                  </span>{" "}
+                  · <span>Custo Suspeito</span> de R${" "}
+                  {product.costPrice.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                  })}
+                </p>
+              </div>
+            </div>
+          )}
+          <div
+            id={`metricas-produto-${product.id}`}
+            data-metricas-do-produto
+            hidden={!maisMetricas}
+            className="produto-detalhes mt-3 rounded-2xl bg-[#17171c] p-3 text-[11px]"
+          >
+            {variantesAtivas.length > 0 && (
+              <p className="mb-2 text-zinc-400">
+                Lucro e percentuais consideram o estoque e os preços de cada
+                variação.
+              </p>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              <p>
+                <Package
+                  aria-hidden="true"
+                  className="produto-icone text-slate-300"
+                />
+                Unidades em Estoque
+              </p>
+              <span className="font-bold">{product.stock} un.</span>
+            </div>
+            <div className="my-2 h-1 overflow-hidden rounded-full bg-white/10">
+              <div
+                className={cn(
+                  "h-full rounded-full",
+                  estoqueBaixo ? "bg-orange-300" : "bg-sky-200",
+                )}
+                style={{ width: `${Math.min(product.stock * 5, 100)}%` }}
+              />
+            </div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p>
+                <BarChart3
+                  aria-hidden="true"
+                  className="produto-icone text-violet-300"
+                />
+                Lucro sobre o custo
+              </p>
+              <span
+                data-lucro-sobre-custo
+                className={cn(
+                  "whitespace-nowrap font-black tracking-tighter tabular-nums",
+                  custoSuspeito && "text-orange-300",
+                )}
+              >
+                {roi === null ? "—" : percentualComUmaCasa(roi)}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+              <p>
+                <Wallet
+                  aria-hidden="true"
+                  className="produto-icone text-sky-300"
+                />
+                Dinheiro parado em estoque
+              </p>
+              <span className="font-semibold">
+                {invested === null
+                  ? "—"
+                  : `R$ ${invested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+              <p>
+                <ArrowUpRight
+                  aria-hidden="true"
+                  className="produto-icone text-indigo-300"
+                />
+                Lucro bruto do estoque
+              </p>
+              <span className="font-semibold">
+                {totalProfit === null
+                  ? "—"
+                  : `${totalProfit >= 0 ? "+ " : ""}R$ ${totalProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+              </span>
+            </div>
+            {product.variants?.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <p className="font-semibold">
+                  Estoque total das variações: {product.stock} unidades
+                </p>
+                <p className="break-words text-zinc-400">
+                  {product.variants
+                    .map((v: any) => `${v.value}: ${v.stockIncrement}`)
+                    .join(" · ")}
+                </p>
+              </div>
+            )}
+            {custoSuspeito && (
+              <p className="mt-3 text-orange-300">
+                Indicadores de lucro dependem da revisão do custo.
+              </p>
+            )}
+            {hasCost && !temCustoPositivo && (
+              <p className="mt-2 text-zinc-400">
+                Custo zero: lucro sobre o custo não se aplica.
+              </p>
+            )}
+          </div>
+          {botoes(true, custoSuspeito)}
         </div>
       </motion.div>
     );
   }
 
-  // compact mode
+  // Grade: nome inteiro e preço ancorado ao rodapé de cada linha.
   return (
     <motion.div
       layout
-      className="group relative h-[284px] transform-gpu"
+      className="group relative flex min-w-0"
       onMouseEnter={onPrefetch}
       onTouchStart={onPrefetch}
     >
-      <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-admin-gold to-transparent opacity-0 blur-xl transition-opacity duration-700 group-hover:opacity-5" />
-      <div className="admin-glass content-visibility-compact-card relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/5 transition-all duration-500 group-hover:border-white/10">
-        {/* Image and Action Button */}
-        <div className="relative aspect-square w-full overflow-hidden border-b border-white/5 bg-zinc-900">
-          <LazyImage
-            src={product.images[0] || "https://via.placeholder.com/150"}
-            alt={product.name}
-            className="size-full object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-          {!product.isActive && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-              <Eye className="size-5 text-white/40" />
-            </div>
-          )}
-          {/* Dropdown in the corner of image */}
-          <div className="absolute right-2 top-2 z-10">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex size-11 items-center justify-center rounded-xl border border-white/5 bg-black/60 p-0 text-zinc-400 backdrop-blur-md transition-all hover:bg-black/80 hover:text-white"
-                >
-                  <MoreVertical className="size-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="z-50 min-w-[160px] rounded-2xl border border-white/10 bg-zinc-950/95 p-1.5 shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-3xl">
-                <DropdownMenuItem
-                  disabled={isOffline}
-                  onClick={() => onNavigate("admin-product-form", product.id)}
-                  className="mb-0.5 flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-300 transition-colors focus:bg-white/[0.08] focus:text-white disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <Edit2 className="mr-2 size-3.5 shrink-0 text-admin-gold" />{" "}
-                  Editar produto
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={isOffline}
-                  onClick={() => onToggleStatus(product.id, product.isActive)}
-                  className="mb-0.5 flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-300 transition-colors focus:bg-white/[0.08] focus:text-white disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <Eye className="mr-2 size-3.5 shrink-0 text-blue-400" />{" "}
-                  {product.isActive ? "Pausar Produto" : "Ativar Produto"}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={isOffline}
-                  onClick={() => onDuplicate({ ...product, sold: 0 })}
-                  className="mb-0.5 flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-300 transition-colors focus:bg-white/[0.08] focus:text-white disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <Copy className="mr-2 size-3.5 shrink-0 text-purple-400" />{" "}
-                  Duplicar Produto
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={isOffline}
-                  onClick={() => onDelete(product.id)}
-                  className="flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-400 transition-colors focus:bg-rose-500/10 focus:text-rose-500 disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <Trash2 className="mr-2 size-3.5 shrink-0" /> Excluir Produto
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Badges on image */}
-          <div className="absolute bottom-2 left-2 z-10 flex flex-col gap-1">
-            <Badge
+      <div className="produto-cartao content-visibility-compact-card flex w-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#101013]">
+        <MenuDoProduto
+          {...acoes}
+          className="block shrink-0 overflow-hidden rounded-t-3xl"
+        >
+          <span
+            data-produto-foto=""
+            className="block aspect-square w-full overflow-hidden bg-zinc-100"
+          >
+            <FotoDoCatalogo product={product} />
+          </span>
+          <span className="block min-w-0 p-2.5">
+            <span className="block break-words text-[11px] font-semibold uppercase text-zinc-400">
+              {product.category}
+            </span>
+            <span
+              data-produto-nome=""
               className={cn(
-                "text-[11px] font-black uppercase tracking-widest px-2 py-0.5 rounded border backdrop-blur-md transition-all self-start",
-                statusDoProdutoNoPainel(product) === "Em Operação" &&
-                  "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-                statusDoProdutoNoPainel(product) === "Esgotado" &&
-                  "bg-rose-500/10 text-rose-500 border-rose-500/20",
-                statusDoProdutoNoPainel(product) === "Offline" &&
-                  "bg-zinc-800 text-zinc-400 border-white/5",
+                "mt-1 block break-words text-sm font-bold leading-snug",
+                !product.isActive && "text-zinc-400",
               )}
             >
-              {statusDoProdutoNoPainel(product)}
-            </Badge>
-            {/* Estoque baixo em PALAVRA, não só na cor do número (P-J2): a
-                mesma regra `estoqueBaixo` e o mesmo selo do modo detalhado. */}
-            {estoqueBaixo && (
-              <Badge className="self-start rounded border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
-                Crítico
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* Details */}
-        <div className="flex flex-1 flex-col justify-between gap-2 p-3">
-          <div className="min-w-0">
-            <p className="mb-1 truncate text-[11px] font-black uppercase leading-tight tracking-widest text-zinc-400">
-              {product.category}
-            </p>
-            <h4 className="line-clamp-2 break-words text-xs font-black leading-[1.3] text-white transition-colors group-hover:text-admin-gold">
               {product.name}
-            </h4>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="font-bold uppercase tracking-wider text-zinc-400">
-                Estoque
-              </span>
-              <span
+            </span>
+          </span>
+        </MenuDoProduto>
+        <h4 className="sr-only">{product.name}</h4>
+        <div className="flex min-w-0 flex-1 flex-col px-2.5 pb-2.5">
+          <div className="mt-auto pt-3">
+            <p className="break-words text-xl font-bold tabular-nums">
+              R${" "}
+              {product.price.toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+              })}
+            </p>
+            <div
+              className={cn(
+                "mt-1 flex flex-wrap items-center gap-x-1 text-[11px]",
+                classeDoEstado,
+              )}
+            >
+              {estado === "Offline" ? (
+                <Pause aria-hidden="true" className="size-3.5 shrink-0" />
+              ) : estado === "Esgotado" || estoqueBaixo ? (
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-orange-300"
+                />
+              ) : (
+                <Package aria-hidden="true" className="size-3.5 shrink-0" />
+              )}
+              <Badge
                 className={cn(
-                  "font-black font-mono",
-                  estoqueBaixo ? "text-rose-500" : "text-white",
+                  "produto-status text-[11px]",
+                  estado === "Em Operação" && "sr-only",
                 )}
               >
+                {estado}
+              </Badge>
+              {estoqueBaixo && estado !== "Esgotado" && (
+                <Badge className="produto-status text-[11px] text-orange-300">
+                  Crítico
+                </Badge>
+              )}
+              <span className={cn(estoqueBaixo && "text-orange-300")}>
                 {product.stock}
               </span>
-            </div>
-
-            <div className="flex items-baseline justify-between border-t border-white/5 pt-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-admin-gold">
-                Preço
+              <span>
+                {estado === "Em Operação" && !estoqueBaixo
+                  ? "em estoque"
+                  : "un."}
               </span>
-              <span className="font-mono text-xs font-black text-white">
-                R${" "}
-                {product.price.toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
-              </span>
+              {estoqueBaixo && estado !== "Esgotado" && (
+                <span className="text-orange-300">
+                  · mín. {product.estoqueMinimo ?? LIMIAR_PADRAO_DE_ESTOQUE}
+                </span>
+              )}
             </div>
+            {product.variants?.length > 0 && (
+              <p className="mt-1 text-[11px] text-zinc-400">
+                {product.variants.length} variações
+              </p>
+            )}
+            {botoes(false)}
           </div>
         </div>
       </div>

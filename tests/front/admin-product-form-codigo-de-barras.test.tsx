@@ -110,6 +110,15 @@ function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** A ação persistente é um portal, fora do hospedeiro do formulário. */
+function acoesDoProduto(): HTMLElement {
+  const barra = document.querySelector<HTMLElement>(
+    '[aria-label="Ações do produto"]',
+  );
+  if (!barra) throw new Error("Barra de ações do produto ausente");
+  return barra;
+}
+
 function localizarBotaoPorTexto(
   raizDom: ParentNode,
   texto: string,
@@ -277,6 +286,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
         />,
@@ -292,6 +302,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           productId="prod-edit-1"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
@@ -369,7 +380,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
     await preencherFormularioValido("789 1234 567890");
 
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Publicar")!.click();
+      localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!.click();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
@@ -386,7 +397,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
       "Só letras, números e hífen, de 4 a 64 caracteres.",
     );
 
-    const botao = localizarBotaoPorTexto(hospedeiro, "Publicar")!;
+    const botao = localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!;
     expect(botao.disabled).toBe(true);
 
     await act(async () => {
@@ -403,10 +414,12 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
     expect(document.body.textContent).toContain(
       "Este código já está em outra variação deste produto.",
     );
-    expect(localizarBotaoPorTexto(hospedeiro, "Publicar")!.disabled).toBe(true);
+    expect(localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!.disabled).toBe(
+      true,
+    );
 
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Publicar")!.click();
+      localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!.click();
       await esperarMicrotarefas();
     });
     expect(addProduct).not.toHaveBeenCalled();
@@ -431,7 +444,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
       "Este código já está em Camiseta Azul",
     );
 
-    const botao = localizarBotaoPorTexto(hospedeiro, "Salvar")!;
+    const botao = localizarBotaoPorTexto(acoesDoProduto(), "Salvar")!;
     expect(botao.disabled).toBe(true);
     await act(async () => {
       botao.click();
@@ -458,7 +471,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
     expect(document.body.textContent).not.toContain("Este código já está em");
 
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Salvar")!.click();
+      localizarBotaoPorTexto(acoesDoProduto(), "Salvar")!.click();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
@@ -483,7 +496,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
     expect(document.body.textContent).not.toContain("Este código já está em");
 
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Publicar")!.click();
+      localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!.click();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
@@ -508,7 +521,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
       await vi.advanceTimersByTimeAsync(1100);
     });
 
-    const gravado = armazem.get("ikcous_product_form_draft");
+    const gravado = armazem.get("ikcous_product_form_draft:u-teste");
     expect(gravado).toBeDefined();
     expect(JSON.parse(gravado!).codigoBarras).toBe("7891234567890");
 
@@ -547,7 +560,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
     await efetivarVarianteComCodigo("7892222222222");
 
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Publicar")!.click();
+      localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!.click();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
@@ -617,6 +630,7 @@ describe("AdminProductFormView — C5.2 ressalva da revisão: salvar espera a ch
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
         />,
@@ -639,7 +653,7 @@ describe("AdminProductFormView — C5.2 ressalva da revisão: salvar espera a ch
     await preencherComCodigo();
 
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Publicar")!.click();
+      localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!.click();
       // Só microtarefas — a RPC continua PENDENTE (ninguém resolveu).
       await esperarMicrotarefas();
       await esperarMicrotarefas();
@@ -667,7 +681,7 @@ describe("AdminProductFormView — C5.2 ressalva da revisão: salvar espera a ch
     await preencherComCodigo();
 
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Publicar")!.click();
+      localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!.click();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
     });
@@ -759,6 +773,7 @@ describe("AdminProductFormView — C5.2 ressalva da revisão: erro da variação
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           productId="prod-edit-1"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
@@ -819,7 +834,7 @@ describe("AdminProductFormView — C5.2 ressalva da revisão: erro da variação
 
     // Salvar direto: a variação var-1 tem código que a RPC acusa duplicado.
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Salvar")!.click();
+      localizarBotaoPorTexto(acoesDoProduto(), "Salvar")!.click();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
       await esperarMicrotarefas();

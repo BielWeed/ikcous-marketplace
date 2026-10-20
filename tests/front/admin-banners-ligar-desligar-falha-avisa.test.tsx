@@ -35,6 +35,12 @@ const bannerPublicado = {
   order: 1,
 };
 
+// L10: o rascunho do formulário de banner é do usuário (`:<uid>`) — a tela
+// agora lê o hook de auth, dublado aqui.
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "lojista-1" } }),
+}));
+
 vi.mock("@/hooks/useBanners", () => ({
   useBanners: () => ({
     banners: [bannerPublicado],
@@ -166,7 +172,7 @@ describe("AdminBannersView — alternar ativo do banner avisa o lojista quando f
     const el = hospedeiro.querySelector(
       `#banner-card-active-${bannerPublicado.id}`,
     );
-    expect(el).toBeDefined();
+    expect(el).not.toBeNull();
     return el as HTMLElement;
   }
 

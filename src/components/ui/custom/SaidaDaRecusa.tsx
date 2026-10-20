@@ -48,6 +48,11 @@ const ROTULO_DA_ACAO: Record<AcaoDeRecusa, string> = {
   entrar_na_conta: "Entrar ou criar conta",
   tentar_de_novo: "Tentar de novo",
   conferir_antes: "Ver meus pedidos",
+  // Quem compra SEM CONTA não tem como achar o pedido em "Ver meus pedidos"
+  // (a busca exige e-mail e o número, que ela nunca recebeu). A saída é
+  // reenviar a MESMA compra — segura porque o banco devolve o pedido que já
+  // nasceu para a mesma chave de idempotência.
+  reenviar_mesma_compra: "Tentar de novo",
 };
 
 /**
@@ -69,12 +74,18 @@ interface SaidaDaRecusaProps {
   readonly recusa: RecusaDoPedido;
   readonly onAgir: (acao: AcaoDeRecusa) => void;
   readonly onFechar: () => void;
+  /**
+   * Só passa quando a tela tem como falar com a loja (WhatsApp cadastrado).
+   * Sem isto, o botão não existe — nunca um botão que não leva a lugar nenhum.
+   */
+  readonly onFalarComALoja?: () => void;
 }
 
 export function SaidaDaRecusa({
   recusa,
   onAgir,
   onFechar,
+  onFalarComALoja,
 }: SaidaDaRecusaProps) {
   const { acao, mensagem, produto, disponivel } = recusa;
 
@@ -126,6 +137,15 @@ export function SaidaDaRecusa({
             >
               {ROTULO_POR_ACAO.get(acao)}
             </button>
+            {onFalarComALoja && (
+              <button
+                type="button"
+                onClick={onFalarComALoja}
+                className="ml-2 inline-flex items-center justify-center rounded-md border border-amber-500/60 px-4 py-2 text-sm font-semibold text-amber-100 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+              >
+                Falar com a loja
+              </button>
+            )}
           </div>
         </div>
 

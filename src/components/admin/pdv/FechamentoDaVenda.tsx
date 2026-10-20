@@ -18,6 +18,7 @@
 // fato da venda: mora em estado local, não vai ao rascunho nem ao servidor.
 
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
@@ -35,12 +36,17 @@ import {
 import {
   AlertTriangle,
   Banknote,
+  Check,
+  ChevronLeft,
   CreditCard,
+  LockKeyhole,
   QrCode,
   ShoppingCart,
+  Wallet,
   WifiOff,
 } from "lucide-react";
 import { type ReactElement, useEffect, useState } from "react";
+import "./pdv.css";
 
 export interface PropsDoFechamentoDaVenda {
   readonly estado: EstadoDaVenda;
@@ -177,189 +183,215 @@ export function FechamentoDaVenda({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-white">Fechar venda</h3>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => despachar({ tipo: "etapa_pedida", etapa: "cupom" })}
-        >
-          Voltar ao cupom
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        {FORMAS_DE_PAGAMENTO.map(({ valor, rotulo, Icone }) => (
-          <button
-            key={valor}
+    <section className="pdv-layer" aria-label="Cobrança da venda">
+      <div className="pdv-layer-heading">
+        <div className="flex items-center gap-3">
+          <Button
             type="button"
-            onClick={() =>
-              despachar({ tipo: "pagamento_escolhido", pagamento: valor })
-            }
-            className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 text-xs font-semibold ${
-              estado.pagamento === valor
-                ? "border-admin-gold bg-admin-gold text-black"
-                : "border-zinc-800 bg-zinc-900 text-zinc-300"
-            }`}
+            variant="outline"
+            className="pdv-secondary size-11 shrink-0"
+            aria-label="Voltar à venda"
+            onClick={() => despachar({ tipo: "etapa_pedida", etapa: "cupom" })}
           >
-            <Icone className="size-5" />
-            {rotulo}
-          </button>
-        ))}
+            <ChevronLeft aria-hidden="true" className="pdv-blue size-5" />
+            <span className="sr-only">Voltar à venda</span>
+          </Button>
+          <div>
+            <h2>Fechar venda</h2>
+            <p className="pdv-muted">2 · Cobrança</p>
+          </div>
+        </div>
       </div>
 
-      {pedeConferencia && estado.pagamento !== null && (
-        <div className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-          <input
-            id="conferi-o-pagamento"
-            type="checkbox"
-            checked={conferiu}
-            aria-describedby="conferi-o-pagamento-ajuda"
-            onChange={(e) =>
-              setConferido(
-                e.target.checked && estado.pagamento !== null
-                  ? { pagamento: estado.pagamento, total }
-                  : null,
-              )
-            }
-            className="mt-0.5 size-5 shrink-0 accent-admin-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-admin-gold"
-          />
-          <div className="flex flex-col gap-0.5">
-            <label
-              htmlFor="conferi-o-pagamento"
-              className="text-sm font-semibold text-white"
-            >
-              {ROTULO_DA_CONFERENCIA}
-            </label>
-            <p id="conferi-o-pagamento-ajuda" className="text-xs text-zinc-400">
-              {estado.pagamento === "pix"
-                ? "Abra o app do banco e veja o PIX de R$ "
-                : "Abra o app do banco ou da maquininha e veja o pagamento de R$ "}
-              {reais(total)} entrar antes de registrar.
-            </p>
-          </div>
+      {isOffline && (
+        <div role="alert" className="pdv-notice">
+          <p className="pdv-heading">
+            <WifiOff aria-hidden="true" className="pdv-icon pdv-red" />
+            Sem internet. Venda salva.
+          </p>
+          <p className="pdv-muted">
+            Sem internet agora. A venda fica salva aqui; registre a venda quando
+            a conexão voltar.
+          </p>
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="desconto-da-venda"
-          className="text-xs font-semibold text-zinc-400"
-        >
-          Desconto (R$)
-        </label>
-        <LocalBufferedInput
-          id="desconto-da-venda"
-          value={descontoStr}
-          mask="currency"
-          onFlush={(valor) => {
-            setDescontoStr(valor);
-            atualizarDesconto(valor, motivoStr);
-          }}
-          className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
-        />
+      <div className="pdv-discount">
+        <div className="pdv-card">
+          <label htmlFor="desconto-da-venda" className="pdv-muted">
+            Desconto (R$)
+          </label>
+          <LocalBufferedInput
+            id="desconto-da-venda"
+            disabled={estado.enviando}
+            value={descontoStr}
+            mask="currency"
+            onFlush={(valor) => {
+              setDescontoStr(valor);
+              atualizarDesconto(valor, motivoStr);
+            }}
+            className="pdv-field"
+          />
+          <p className="pdv-muted mt-2">Até R$ {reais(subtotal)}</p>
+        </div>
         {estado.desconto > 0 && (
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor="motivo-do-desconto"
-              className="text-xs font-semibold text-zinc-400"
-            >
+          <div className="pdv-card">
+            <label htmlFor="motivo-do-desconto" className="pdv-muted">
               Motivo do desconto (obrigatório)
             </label>
             <LocalBufferedInput
               id="motivo-do-desconto"
+              maxLength={2000}
+              disabled={estado.enviando}
               value={motivoStr}
               onFlush={(valor) => {
                 setMotivoStr(valor);
                 atualizarDesconto(descontoStr, valor);
               }}
               placeholder="Ex.: cliente fidelidade, mostruário"
-              className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
+              className="pdv-field"
             />
+            <p className="pdv-muted mt-2 flex items-center gap-1">
+              <LockKeyhole aria-hidden="true" className="pdv-pink size-4" />
+              Privado · {motivoStr.length}/2.000
+            </p>
           </div>
         )}
       </div>
 
-      <div className="flex flex-col gap-1 border-t border-zinc-800 pt-3 text-sm">
-        <div className="flex justify-between text-zinc-400">
-          <span>Subtotal</span>
-          <span>R$ {reais(subtotal)}</span>
-        </div>
-        {estado.desconto > 0 && (
-          <div className="flex justify-between text-zinc-400">
-            <span>Desconto</span>
-            <span>- R$ {reais(estado.desconto)}</span>
-          </div>
-        )}
-        <div className="flex justify-between text-lg font-bold text-white">
-          <span>Total</span>
-          <span>R$ {reais(total)}</span>
+      <div className="pdv-stack">
+        <h3 className="pdv-heading">
+          <Wallet aria-hidden="true" className="pdv-icon pdv-teal" />
+          Forma de pagamento
+        </h3>
+        <div className="pdv-payment-grid">
+          {FORMAS_DE_PAGAMENTO.map(({ valor, rotulo, Icone }) => (
+            <button
+              key={valor}
+              type="button"
+              disabled={estado.enviando}
+              aria-pressed={estado.pagamento === valor}
+              onClick={() =>
+                despachar({ tipo: "pagamento_escolhido", pagamento: valor })
+              }
+              className="pdv-payment"
+            >
+              <Icone
+                aria-hidden="true"
+                className={`pdv-icon ${valor === "cash" ? "pdv-green" : valor === "pix" ? "pdv-teal" : "pdv-purple"}`}
+              />
+              <span>{rotulo}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {isOffline && (
-        <p
-          role="alert"
-          className="flex items-center gap-2 rounded-xl border border-red-800/50 bg-red-950/30 p-3 text-xs text-red-200"
-        >
-          <WifiOff className="size-4 shrink-0" />
-          Sem internet agora. O cupom fica salvo aqui; registre a venda quando a
-          conexão voltar.
-        </p>
+      {pedeConferencia && estado.pagamento !== null && (
+        <div className="pdv-stack">
+          <div className="pdv-check">
+            <input
+              id="conferi-o-pagamento"
+              type="checkbox"
+              checked={conferiu}
+              aria-describedby="conferi-o-pagamento-ajuda"
+              onChange={(e) =>
+                setConferido(
+                  e.target.checked && estado.pagamento !== null
+                    ? { pagamento: estado.pagamento, total }
+                    : null,
+                )
+              }
+            />
+            <label htmlFor="conferi-o-pagamento">{ROTULO_DA_CONFERENCIA}</label>
+          </div>
+          <p id="conferi-o-pagamento-ajuda" className="pdv-muted">
+            {estado.pagamento === "pix"
+              ? "Abra o app do banco e veja o PIX de R$ "
+              : "Abra o app do banco ou da maquininha e veja o pagamento de R$ "}
+            {reais(total)} entrar antes de registrar.
+          </p>
+        </div>
       )}
-
       {!isOffline && !validacao.ok && (
-        <p className="flex items-center gap-2 text-xs text-amber-400">
-          <AlertTriangle className="size-3.5 shrink-0" />
+        <p className="pdv-muted flex items-center gap-2">
+          <AlertTriangle
+            aria-hidden="true"
+            className="pdv-orange size-4 shrink-0"
+          />
           {validacao.motivo}
         </p>
       )}
-
       {!isOffline && validacao.ok && faltaConferir && (
-        <p className="flex items-center gap-2 text-xs text-amber-400">
-          <AlertTriangle className="size-3.5 shrink-0" />
+        <p className="pdv-muted flex items-center gap-2">
+          <AlertTriangle
+            aria-hidden="true"
+            className="pdv-orange size-4 shrink-0"
+          />
           Marque &quot;{ROTULO_DA_CONFERENCIA}&quot; para registrar.
         </p>
       )}
-
       {estado.erro && (
-        <p role="alert" className="text-xs text-red-400">
-          {estado.erro}
-          {ultimaFalha?.precisaEntrarDeNovo &&
-            " Saia e entre de novo na conta."}
-        </p>
+        <div role="alert" className="pdv-notice">
+          <p className="pdv-heading">
+            <AlertTriangle aria-hidden="true" className="pdv-icon pdv-red" />
+            Não foi possível registrar a venda
+          </p>
+          <p className="pdv-muted">
+            {estado.erro}
+            {ultimaFalha?.precisaEntrarDeNovo &&
+              " Saia e entre de novo na conta."}
+          </p>
+        </div>
       )}
-
-      {/* Achado "ANTES DE CRESCER" da revisão: sem isto, uma chave já
-          queimada (23505) ficava presa para sempre — todo clique em
-          "Registrar venda" reenviava a MESMA chave morta e repetia a mesma
-          recusa, e não havia botão na tela que girasse a chave (só o "Nova
-          venda" do recibo, fora de alcance enquanto não há recibo). */}
       {ultimaFalha && !ultimaFalha.podeTentarDeNovo && (
         <Button
           type="button"
           variant="outline"
           onClick={limparCupom}
-          className="h-11"
+          className="pdv-secondary"
         >
-          <ShoppingCart className="mr-1.5 size-4" />
+          <ShoppingCart aria-hidden="true" className="pdv-purple size-5" />
           Começar uma venda nova
         </Button>
       )}
-
-      <Button
-        type="button"
-        disabled={desabilitado}
-        onClick={aoClicarRegistrar}
-        // Cor própria do admin (a mesma do botão Vender): o Button padrão
-        // pinta com a cor do TEMA da loja — no tema escuro do molde era
-        // preto sobre preto (relato do dono no celular, 19/09).
-        className="h-12 bg-admin-gold text-base font-bold text-black hover:bg-admin-gold/90"
-      >
-        {estado.enviando ? "Registrando…" : "Registrar venda"}
-      </Button>
-    </div>
+      <AcaoDaBarra aria-label="Registrar a venda">
+        <div className="pdv-footer">
+          <div className="pdv-total pdv-muted">
+            <span>Subtotal</span>
+            <span>R$ {reais(subtotal)}</span>
+          </div>
+          {estado.desconto > 0 && (
+            <div className="pdv-total pdv-muted">
+              <span>Desconto</span>
+              <span>- R$ {reais(estado.desconto)}</span>
+            </div>
+          )}
+          <div className="pdv-total">
+            <span className="pdv-muted">
+              {estado.desconto > 0 ? "Total com desconto" : "Total"}
+            </span>
+            <strong>R$ {reais(total)}</strong>
+          </div>
+          <Button
+            type="button"
+            disabled={desabilitado}
+            onClick={aoClicarRegistrar}
+            className="pdv-primary admin-barra-principal bg-admin-gold text-black"
+          >
+            {desabilitado ? (
+              <LockKeyhole aria-hidden="true" className="size-5" />
+            ) : (
+              <Check aria-hidden="true" className="size-5" />
+            )}
+            {estado.enviando ? "Registrando…" : "Registrar venda"}
+          </Button>
+          {isOffline && (
+            <p className="pdv-muted">
+              Indisponível enquanto estiver sem internet.
+            </p>
+          )}
+        </div>
+      </AcaoDaBarra>
+    </section>
   );
 }

@@ -272,6 +272,11 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     });
   }
 
+  // Curto de propósito: o rótulo do cartão é `line-clamp-2` (AdminKpiCarousel) e
+  // a 360 px cabem ~22 caracteres por linha de rótulo útil; um texto maior
+  // perdia o final ("retirar") cortado pelo clamp.
+  const ROTULO_DO_CARTAO_EM_TRANSITO = "A caminho ou retirada";
+
   /** O valor (h3) do cartão cujo rótulo é exatamente `rotulo`. */
   function valorDoCartao(rotulo: string): string | null {
     const p = Array.from(hospedeiro.querySelectorAll("p")).find(
@@ -293,8 +298,29 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     expect(valorDoCartao("Aguardando pagamento")).toBe(
       String(AGUARDANDO_PAGAMENTO),
     );
-    expect(valorDoCartao("Em trânsito")).toBe(String(EM_TRANSITO));
+    expect(valorDoCartao(ROTULO_DO_CARTAO_EM_TRANSITO)).toBe(
+      String(EM_TRANSITO),
+    );
     expect(valorDoCartao("Finalizados")).toBe(String(FINALIZADOS));
+  });
+
+  // A contagem é `status = 'shipping'`, e na retirada na loja esse status se
+  // lê "Pronto para retirar" na lista (`rotuloDoStatus`). O cartão dizia só
+  // "Em trânsito": a lojista contava 3 retiradas prontas e via "trânsito".
+  it("o cartão de 'shipping' diz as duas coisas: em trânsito OU pronto para retirar", async () => {
+    await montar();
+    await esperarAte(
+      () => valorDoCartao(ROTULO_DO_CARTAO_EM_TRANSITO) === String(EM_TRANSITO),
+    );
+    // Os rótulos antigos não existem mais em nenhum cartão.
+    expect(valorDoCartao("Em trânsito")).toBeNull();
+    expect(valorDoCartao("Em trânsito ou prontos para retirar")).toBeNull();
+  });
+
+  it("o rótulo cabe em 2 linhas a 360 px (até 22 caracteres) e continua dizendo as duas coisas", () => {
+    expect(ROTULO_DO_CARTAO_EM_TRANSITO.length).toBeLessThanOrEqual(22);
+    expect(ROTULO_DO_CARTAO_EM_TRANSITO).toMatch(/caminho/);
+    expect(ROTULO_DO_CARTAO_EM_TRANSITO).toMatch(/retirada/);
   });
 
   it("contagens de milhar saem com ponto pt-BR nos três cartões das consultas: 1.234, 2.345, 3.456", async () => {
@@ -303,17 +329,19 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     // Espera os três assentarem (saírem do "—") e só então compara cada um:
     // um cartão sem formatar reprova na SUA asserção, não em timeout.
     await esperarAte(() =>
-      ["Para preparar", "Aguardando pagamento", "Em trânsito"].every(
-        (rotulo) => {
-          const valor = valorDoCartao(rotulo);
-          return valor !== null && valor !== "—";
-        },
-      ),
+      [
+        "Para preparar",
+        "Aguardando pagamento",
+        ROTULO_DO_CARTAO_EM_TRANSITO,
+      ].every((rotulo) => {
+        const valor = valorDoCartao(rotulo);
+        return valor !== null && valor !== "—";
+      }),
     );
 
     expect(valorDoCartao("Para preparar")).toBe("1.234");
     expect(valorDoCartao("Aguardando pagamento")).toBe("2.345");
-    expect(valorDoCartao("Em trânsito")).toBe("3.456");
+    expect(valorDoCartao(ROTULO_DO_CARTAO_EM_TRANSITO)).toBe("3.456");
   });
 
   it("as contagens são só de cabeçalho (head) em marketplace_orders", async () => {
@@ -395,7 +423,15 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     const contagensAntes = contagensFeitas();
     const listasAntes = loadOrdersEspiao.mock.calls.length;
 
-    const chip = Array.from(hospedeiro.querySelectorAll("button")).find(
+    // No desenho novo os status moram no painel "Filtros": abre pelo botão do topo.
+    const abrir = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      b.getAttribute("aria-label")?.startsWith("Status do pedido"),
+    );
+    expect(abrir).toBeTruthy();
+    await act(async () => {
+      abrir!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const chip = Array.from(document.body.querySelectorAll("button")).find(
       (b) => b.textContent?.trim() === "Em Trânsito",
     );
     expect(chip).toBeTruthy();
@@ -512,7 +548,7 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     await esperarAte(
       () =>
         valorDoCartao("Para preparar") === String(PARA_PREPARAR) &&
-        valorDoCartao("Em trânsito") === String(EM_TRANSITO),
+        valorDoCartao(ROTULO_DO_CARTAO_EM_TRANSITO) === String(EM_TRANSITO),
     );
   }
 
@@ -552,7 +588,9 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     expect(valorDoCartao("Aguardando pagamento")).toBe(
       String(AGUARDANDO_PAGAMENTO),
     );
-    expect(valorDoCartao("Em trânsito")).toBe(String(EM_TRANSITO));
+    expect(valorDoCartao(ROTULO_DO_CARTAO_EM_TRANSITO)).toBe(
+      String(EM_TRANSITO),
+    );
     expect(valorDoCartao("Finalizados")).toBe(String(FINALIZADOS));
   });
 
@@ -611,7 +649,7 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     for (const rotulo of [
       "Para preparar",
       "Aguardando pagamento",
-      "Em trânsito",
+      ROTULO_DO_CARTAO_EM_TRANSITO,
     ]) {
       expect(valorDoCartao(rotulo)).toBe("—");
       expect(valorDoCartao(rotulo)).not.toBe("0");
@@ -625,7 +663,7 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     for (const rotulo of [
       "Para preparar",
       "Aguardando pagamento",
-      "Em trânsito",
+      ROTULO_DO_CARTAO_EM_TRANSITO,
     ]) {
       expect(valorDoCartao(rotulo)).toBe("—");
     }

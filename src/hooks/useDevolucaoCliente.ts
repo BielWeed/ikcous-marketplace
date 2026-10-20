@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   TAMANHO_MAXIMO_DA_FOTO,
   TIPOS_DE_FOTO,
@@ -50,6 +51,8 @@ export interface DevolucaoDoCliente {
     dados: DadosDaSolicitacao,
   ) => Promise<Desfecho<ResultadoSolicitacao>>;
   enviarFoto: (arquivo: File, userId: string) => Promise<Desfecho<string>>;
+  /** Apaga fotos enviadas e não usadas (melhor esforço; nunca lança). */
+  descartarFotos: (caminhos: readonly string[]) => Promise<void>;
   cancelar: (id: string) => Promise<Desfecho>;
   informarEnvio: (id: string, codigo: string) => Promise<Desfecho>;
 }
@@ -79,15 +82,22 @@ export function useDevolucaoCliente(
     useState<ElegibilidadeDevolucao | null>(null);
   const [devolucoes, setDevolucoes] = useState<ResumoDevolucao[]>([]);
   const [atual, setAtual] = useState<DevolucaoDetalhe | null>(null);
+  // Pedido a que os dados acima pertencem: no primeiro render depois da troca
+  // de `orderId` o estado ainda é do pedido anterior (a limpeza roda num efeito).
+  const [idDosDados, setIdDosDados] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(false);
+  const [idDoErro, setIdDoErro] = useState<string | null>(null);
   const ativoRef = useRef(true);
+  const orderIdRef = useRef(orderId);
   // Rodada da leitura: a resposta velha que chega depois da nova não pinta
   // a tela (mesmo padrão de useAvisosDoLojista).
   const rodadaRef = useRef(0);
 
   const carregar = useCallback(async () => {
-    if (!habilitado) return;
+    if (!habilitado || !ativoRef.current || orderIdRef.current !== orderId) {
+      return;
+    }
     const rodada = ++rodadaRef.current;
     const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     setCarregando(true);
@@ -98,12 +108,14 @@ export function useDevolucaoCliente(
       ]);
       if (!valeAinda()) return;
       if (respElegibilidade.error || respLista.error) {
+        setIdDoErro(orderId);
         setErro(true);
         return;
       }
       const lida = lerElegibilidade(respElegibilidade.data);
       const lista = lerDevolucoesDoPedido(respLista.data);
       if (!lida || !lista) {
+        setIdDoErro(orderId);
         setErro(true);
         return;
       }
@@ -118,6 +130,7 @@ export function useDevolucaoCliente(
           ? null
           : lerDevolucaoDetalhe(respDetalhe.data);
         if (!detalhe) {
+          setIdDoErro(orderId);
           setErro(true);
           return;
         }
@@ -126,11 +139,15 @@ export function useDevolucaoCliente(
       setElegibilidade(lida);
       setDevolucoes(lista);
       setAtual(detalhe);
+      setIdDosDados(orderId);
       setErro(false);
     } catch {
       // Inclui o cliente sem `rpc` (dublê de teste antigo) e a rede caída:
       // "não consegui ler" nunca vira "não tem devolução".
-      if (valeAinda()) setErro(true);
+      if (valeAinda()) {
+        setIdDoErro(orderId);
+        setErro(true);
+      }
     } finally {
       if (valeAinda()) setCarregando(false);
     }
@@ -138,16 +155,27 @@ export function useDevolucaoCliente(
 
   useEffect(() => {
     ativoRef.current = true;
+    orderIdRef.current = orderId;
+    // Outro pedido começa sem dados nem erro da leitura anterior.
+    setAtual(null);
+    setElegibilidade(null);
+    setDevolucoes([]);
+    setIdDosDados(null);
+    setIdDoErro(null);
+    setErro(false);
+    setCarregando(false);
     if (habilitado) void carregar();
     return () => {
       ativoRef.current = false;
+      rodadaRef.current += 1;
     };
-  }, [habilitado, carregar]);
+  }, [orderId, habilitado, carregar]);
 
   const solicitar = useCallback(
     async (
       dados: DadosDaSolicitacao,
     ): Promise<Desfecho<ResultadoSolicitacao>> => {
+      const desmarcar = marcarOperacaoSensivel("solicitacao-de-devolucao");
       try {
         const { data, error } = await supabase.rpc("solicitar_devolucao", {
           p_order_id: orderId,
@@ -172,6 +200,8 @@ export function useDevolucaoCliente(
         return { ok: true, valor: resultado };
       } catch (e) {
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
+      } finally {
+        desmarcar();
       }
     },
     [orderId, carregar],
@@ -193,6 +223,7 @@ export function useDevolucaoCliente(
         crypto.randomUUID(),
         pronto.type,
       );
+      const desmarcar = marcarOperacaoSensivel("foto-de-devolucao");
       try {
         const { error } = await supabase.storage
           .from("devolucoes")
@@ -209,13 +240,40 @@ export function useDevolucaoCliente(
           ok: false,
           erro: mensagemDoErro(e, "Não foi possível enviar a foto."),
         };
+      } finally {
+        desmarcar();
       }
     },
     [orderId],
   );
 
+  /**
+   * Apaga do bucket as fotos que o cliente enviou e NÃO usou (tirou da lista,
+   * ou fechou a tela sem concluir). "O melhor possível": a política de DELETE
+   * do bucket (20261216) só deixa apagar foto da própria pasta que nenhuma
+   * devolução referencia, e qualquer falha aqui é ignorada — a limpeza nunca
+   * atrapalha o cliente.
+   */
+  const descartarFotos = useCallback(
+    async (caminhos: readonly string[]): Promise<void> => {
+      if (caminhos.length === 0) return;
+      const desmarcar = marcarOperacaoSensivel(
+        "descarte-de-fotos-de-devolucao",
+      );
+      try {
+        await supabase.storage.from("devolucoes").remove([...caminhos]);
+      } catch {
+        // melhor esforço
+      } finally {
+        desmarcar();
+      }
+    },
+    [],
+  );
+
   const cancelar = useCallback(
     async (id: string): Promise<Desfecho> => {
+      const desmarcar = marcarOperacaoSensivel("cancelamento-de-devolucao");
       try {
         const { data, error } = await supabase.rpc("cancelar_devolucao", {
           p_id: id,
@@ -228,6 +286,8 @@ export function useDevolucaoCliente(
           : { ok: false, erro: ERRO_GENERICO };
       } catch (e) {
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
+      } finally {
+        desmarcar();
       }
     },
     [carregar],
@@ -235,6 +295,7 @@ export function useDevolucaoCliente(
 
   const informarEnvio = useCallback(
     async (id: string, codigo: string): Promise<Desfecho> => {
+      const desmarcar = marcarOperacaoSensivel("envio-de-devolucao");
       try {
         const { data, error } = await supabase.rpc("informar_envio_devolucao", {
           p_id: id,
@@ -248,20 +309,24 @@ export function useDevolucaoCliente(
           : { ok: false, erro: ERRO_GENERICO };
       } catch (e) {
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
+      } finally {
+        desmarcar();
       }
     },
     [carregar],
   );
 
+  const dadosSaoDesteId = idDosDados === orderId;
   return {
-    elegibilidade,
-    devolucoes,
-    atual,
+    elegibilidade: dadosSaoDesteId ? elegibilidade : null,
+    devolucoes: dadosSaoDesteId ? devolucoes : [],
+    atual: dadosSaoDesteId ? atual : null,
     carregando,
-    erro,
+    erro: idDoErro === orderId && erro,
     recarregar: carregar,
     solicitar,
     enviarFoto,
+    descartarFotos,
     cancelar,
     informarEnvio,
   };

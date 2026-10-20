@@ -130,11 +130,35 @@ describe("OrderDetailsView — código de rastreio para quem comprou (#105)", ()
     expect(botaoCopiar).toBeDefined();
 
     const link = [...hospedeiro.querySelectorAll("a")].find((a) =>
-      a.getAttribute("href")?.includes("linkrastreio.com"),
+      a.getAttribute("href")?.includes("melhorrastreio.com.br"),
     );
-    expect(link?.getAttribute("href")).toContain("AA123456789BR");
+    expect(link?.getAttribute("href")).toBe(
+      "https://www.melhorrastreio.com.br/rastreio/AA123456789BR",
+    );
     // Aba nova sem dar ao site de destino acesso à janela do app.
     expect(link?.getAttribute("rel")).toContain("noopener");
+  });
+
+  it("código digitado em blocos (com espaços) vira link sem espaços", async () => {
+    pedidoAtual = { ...pedidoBase, trackingCode: "aa 123 456 789 br" };
+
+    await renderizar();
+
+    const link = [...hospedeiro.querySelectorAll("a")].find((a) =>
+      a.getAttribute("href")?.includes("melhorrastreio.com.br"),
+    );
+    expect(link?.getAttribute("href")).toBe(
+      "https://www.melhorrastreio.com.br/rastreio/AA123456789BR",
+    );
+  });
+
+  it("código só com espaços: nenhum botão Rastrear", async () => {
+    pedidoAtual = { ...pedidoBase, trackingCode: "   " };
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).not.toContain("Rastrear");
+    expect(hospedeiro.querySelector('a[title="Rastrear entrega"]')).toBeNull();
   });
 
   it("pedido SEM código não mostra bloco vazio nem a palavra undefined", async () => {

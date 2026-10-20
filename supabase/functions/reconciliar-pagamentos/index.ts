@@ -82,11 +82,19 @@ import {
   TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
-import { readKey } from "../_shared/webpush.ts";
+import { conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import { comTempoLimite, readKey } from "../_shared/webpush.ts";
 import {
   avisarAdminUmaVez,
   dispararPushContadoReal,
 } from "../_shared/aviso-ao-lojista.ts";
+// 14/10/2026: o lojista fica sabendo quando o CLIENTE cancela (passo próprio,
+// mais abaixo; o porquê de morar nesta rotina está no cabeçalho do módulo).
+import {
+  avisarCancelamentosDoCliente,
+  type ResumoDosCancelamentos,
+  TETO_DO_PASSO_MS,
+} from "../_shared/aviso-de-cancelamento-do-cliente.ts";
 import {
   reconsultarContestacoesPresas,
   type ResumoDaReconsulta,
@@ -97,13 +105,18 @@ import { STATUS_DA_CONTESTACAO } from "../_shared/contestacao.ts";
 // fecha a porta quando não dá para decidir com segurança, é este módulo.
 import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import {
+  aplicarDiagnosticoDoPost,
   autorizacaoPeloBanco,
+  cicloSemEnvioPorPrevoo,
   confirmarPorConsulta,
+  consultarReembolsoDoPedido,
   consultarTransacaoDaOrder,
+  decidirLinhaTravada,
   executarEstorno,
   type LinhaEstorno,
   type PedidoParaEstorno,
   type ResultadoEstorno,
+  TETO_DE_TENTATIVAS_DO_POST,
 } from "../_shared/estorno.ts";
 // FASE 2 (04/10/2026): os efeitos do pagamento confirmado (push ao lojista,
 // comprovante ao cliente, aviso de pagamento atrasado) saem do módulo ÚNICO
@@ -114,6 +127,7 @@ import {
   desfechoComEfeito,
   TETO_DO_PUSH_MS,
 } from "../_shared/efeitos-do-pagamento.ts";
+import { numeroDoPedido } from "../_shared/pedido.ts";
 // Os testes antigos importam estes dois DAQUI: a definição é uma só.
 export {
   assuntoDoAvisoDePagamentoAtrasado,
@@ -123,7 +137,7 @@ export {
 /** Único texto do app que manda o lojista ao painel do MP (Restrições
  * globais do plano) — só depois de 5 tentativas sem confirmação. */
 const TEXTO_LIMITE_DE_TENTATIVAS =
-  "não consegui confirmar a devolução no Mercado Pago depois de 5 tentativas; confira no painel do MP";
+  `não consegui confirmar a devolução no Mercado Pago depois de ${TETO_DE_TENTATIVAS_DO_POST} tentativas; confira no painel do MP`;
 
 /** D4 (ANTES-DE-CRESCER 5, laudo rodada 2 do PR #440): texto leigo para quando
  * o MP CONFIRMOU o estorno mas a NOSSA escrita (RPC `concluir_estorno`)
@@ -149,9 +163,18 @@ const TEXTO_FALHA_AO_REGISTRAR_CONCLUSAO =
 async function gravarDesfechoDoEstorno(
   supabase: ReturnType<typeof createClient>,
   refundId: string,
-  resultado: ResultadoEstorno,
+  resultadoDoExecutor: ResultadoEstorno,
   tentativasAtuais: number,
 ): Promise<"concluido" | "adiado" | "falhou"> {
+  // 14/10/2026 (D4/D5/D6): o diagnóstico do POST (código do MP + carimbo de
+  // incerteza) é gravado ANTES de qualquer desfecho — se não grava, a linha não
+  // vira `falhou`; na 5ª falha "nada saiu" SEM carimbo ela vira `falhou`; com
+  // carimbo, nunca. Uma decisão, dois chamadores (a edge do clique usa a mesma).
+  const resultado = await aplicarDiagnosticoDoPost(
+    (nome, argumentos) => supabase.rpc(nome, argumentos),
+    refundId,
+    resultadoDoExecutor,
+  );
   if (resultado.tipo === "concluido") {
     const { error } = await supabase.rpc("concluir_estorno", {
       p_refund_id: refundId,
@@ -248,6 +271,30 @@ async function gravarDesfechoDoEstorno(
     console.error("reconciliar-pagamentos: falha ao gravar o desfecho terminal do estorno", refundId, error);
   }
   return "falhou";
+}
+
+/**
+ * P1 do Codex no #888 (15/10/2026): o ciclo terminou só pela consulta antes do
+ * reenvio (nada saiu) — a tentativa marcada para ele não conta. Volta
+ * `tentativas` ao valor de antes da marca, CONDICIONADO ao valor que este ciclo
+ * gravou: se outro executor mexeu no meio, 0 linhas e nada é desfeito. Falha
+ * aqui só loga — o pior caso é o de antes (a tentativa conta), nunca um POST.
+ */
+async function desfazerTentativaSemEnvio(
+  supabase: ReturnType<typeof createClient>,
+  refundId: string,
+  tentativaMarcada: number,
+  tentativaAnterior: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("order_refunds")
+    .update({ tentativas: tentativaAnterior })
+    .eq("id", refundId)
+    .in("status", ["em_processamento"])
+    .eq("tentativas", tentativaMarcada);
+  if (error) {
+    console.error("reconciliar-pagamentos: falha ao desfazer a tentativa de um ciclo sem envio", refundId, error);
+  }
 }
 
 const json = (corpo: unknown, status = 200) =>
@@ -379,6 +426,19 @@ async function adotarCartaoCapturadoDoSentinela(args: {
 }
 
 /**
+ * Orçamento de tempo do laço de CONSULTA ao MP, por ciclo (EST-EDGE-DIN-2,
+ * 16/10/2026). A RPC entrega até 100 cobranças e o laço consulta uma por vez,
+ * cada uma com até 15 s de teto: todas expirando seria 1.500 s, muito acima
+ * do limite de execução da Edge Function (150 s no plano gratuito, 400 s no
+ * pago). O processo morria no meio, SEM carimbar o rodízio nem chegar aos
+ * reembolsos, e o ciclo seguinte repetia as mesmas cobranças. Passados ~100 s
+ * do início, o laço para de abrir consultas NOVAS — a consulta em curso
+ * termina — e o handler segue para o carimbo, os avisos e os reembolsos, com
+ * folga para o que vem depois.
+ */
+export const ORCAMENTO_DO_CICLO_MS = 100_000;
+
+/**
  * Mesma costura `handler(req, deps = {})` da Task 4
  * (`webhook-mercadopago/index.ts`): em produção o `serve()` lá embaixo chama
  * `handler(req)` com um único argumento; os testes injetam `supabase` e
@@ -397,6 +457,14 @@ async function handler(
     enviarPushContado?: typeof dispararPushContadoReal;
     // Fixa o seller ID (X-Caller-Id) no teste; ausente: `GET /users/me` do próprio token.
     vendedorId?: string | null;
+    // Teto de espera do passo do aviso de cancelamento (opção da chamada, como
+    // `tetoDoPushMs`): o teste o encurta; em produção vale `TETO_DO_PASSO_MS`.
+    tetoDosCancelamentosMs?: number;
+    // Relógio e orçamento do laço de consulta (EST-EDGE-DIN-2): o teste os
+    // injeta para não esperar 100 s; em produção valem `Date.now` e
+    // `ORCAMENTO_DO_CICLO_MS`.
+    agora?: () => number;
+    orcamentoDoCicloMs?: number;
   } = {},
 ): Promise<Response> {
   // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
@@ -421,6 +489,12 @@ async function handler(
     console.warn("reconciliar-pagamentos: segredo inválido");
     return json({ error: "Não autorizado." }, 401);
   }
+
+  // EST-EDGE-DIN-2: o relógio do ciclo corre desde aqui — resolver credencial
+  // e buscar a fila também gastam o limite de execução da função.
+  const agora = deps.agora ?? Date.now;
+  const orcamentoDoCicloMs = deps.orcamentoDoCicloMs ?? ORCAMENTO_DO_CICLO_MS;
+  const inicioDoCiclo = agora();
 
   const supabase =
     deps.supabase ??
@@ -479,7 +553,25 @@ async function handler(
   // exatamente para pegar o que já falhou uma vez (o webhook não confirmou),
   // então um segundo candidato não pode perder a vez porque o primeiro deu
   // erro de rede.
-  for (const candidatoDaFila of candidatos ?? []) {
+  // EST-EDGE-DIN-2: quantas cobranças da fila ficaram sem consulta por falta
+  // de tempo. Elas NÃO entram em `verificados` nem em `visitados`: sem a
+  // visita carimbada, a fila (`visitado_em ASC NULLS FIRST`) as devolve na
+  // frente no ciclo seguinte — é o rodízio que garante que ninguém fica de
+  // fora para sempre. A invariante confirmados + ignorados + falhas ===
+  // verificados continua valendo (ver o fim da função).
+  let adiadosPorTempo = 0;
+  const filaDoCiclo = candidatos ?? [];
+  for (const [posicaoNaFila, candidatoDaFila] of filaDoCiclo.entries()) {
+    // Ao menos UMA cobrança por ciclo, mesmo com o orçamento já gasto antes
+    // do laço (RPC ou cofre lentos): sem isso um ciclo que sempre estourasse
+    // antes de começar nunca carimbaria nada e repetiria a mesma fila.
+    if (posicaoNaFila > 0 && agora() - inicioDoCiclo >= orcamentoDoCicloMs) {
+      adiadosPorTempo = filaDoCiclo.length - posicaoNaFila;
+      console.warn(
+        `reconciliar-pagamentos: orçamento de tempo do ciclo esgotado (${orcamentoDoCicloMs} ms) — ${adiadosPorTempo} de ${filaDoCiclo.length} cobranças ficam para o próximo ciclo`,
+      );
+      break;
+    }
     // `let`, não `const`: um SENTINELA resolvido para uma cobrança de cartão
     // CAPTURADA troca `gateway_payment_id` pelo id real antes do resto do
     // laço (ver `adotarCartaoCapturadoDoSentinela`, abaixo).
@@ -739,19 +831,8 @@ async function handler(
         continue;
       }
 
-      // CONFERÊNCIA DE VALOR (laudo caça-bugs 31/08, achado A3 + ressalva 1
-      // da revisão do PR #366): a reconciliação atinge PEDIDO VIVO
-      // ('aguardando' + 'pending', migration 20261010000000) — sem esta
-      // porta, um pagamento divergente recusado pelo webhook era confirmado
-      // AQUI depois, por status, sem ninguém olhar o valor: a dobradiça do
-      // outro lado da porta que o webhook fechou. Mesma tolerância, mesma
-      // fonte (resposta autenticada do MP), mesmo "valor ausente = warn e
-      // segue" do webhook — regra em um lugar só (`_shared/mercadopago.ts`).
-      //
-      // Divergente: NÃO chama a RPC e entra em ignorados — o candidato fica
-      // na fila (reconcilia de novo no próximo ciclo) e o dinheiro divergente
-      // cabe ao lojista resolver no painel do MP. Log error, no padrão dos
-      // 'divergente'/'inexistente' da RPC.
+      // Mesma regra base da prova imediata e do webhook: sem valor ou total
+      // válido NÃO confirma. Só conta ignorado; a fila tenta no próximo ciclo.
       if (statusMapeado === "pago" || statusMapeado === "pago_apos_expirar") {
         const { data: linhaDoPedido, error: erroLeituraTotal } = await supabase
           .from("marketplace_orders")
@@ -760,33 +841,44 @@ async function handler(
           .maybeSingle();
         if (erroLeituraTotal) throw erroLeituraTotal;
 
-        const brutoTotal =
-          (linhaDoPedido as Record<string, unknown> | null)?.total ??
+        const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
           (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
-        const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
-
-        if (linhaDoPedido && typeof valorAprovado === "number") {
-          if (
-            Number.isFinite(totalDoPedido) &&
-            Math.abs(valorAprovado - totalDoPedido) > TOLERANCIA_DE_VALOR
-          ) {
+        const conferencia = conferirValorDoPagamento(valorAprovado, brutoTotal);
+        if (!conferencia.provado) {
+          if (conferencia.motivo === "valor_divergente") {
             console.error(
               "reconciliar-pagamentos: VALOR aprovado diverge do total do pedido — candidato NÃO confirmado; conferir no painel do MP",
               {
                 order_id: candidato.order_id,
                 gateway_payment_id: candidato.gateway_payment_id,
                 valorAprovado,
-                totalDoPedido,
+                totalDoPedido: Number(brutoTotal),
               },
             );
-            ignorados++;
-            continue;
+          } else {
+            console.error(
+              "reconciliar-pagamentos: valor não conferido — candidato NÃO confirmado; aguardando reconsulta",
+              {
+                order_id: candidato.order_id,
+                gateway_payment_id: candidato.gateway_payment_id,
+                motivo: conferencia.motivo,
+              },
+            );
+            await comTempoLimite(avisarAdminUmaVez({
+              supabase,
+              enviarPushContado: deps.enviarPushContado ??
+                ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+              chave: `valor_nao_conferido:${candidato.order_id}:${candidato.gateway_payment_id}`,
+              aviso: {
+                title: "Pagamento precisa de conferência",
+                body: `${numeroDoPedido(candidato.order_id)} · valor não conferido; tentando novamente`,
+                url: "/admin-orders",
+              },
+              rotulo: "reconciliar-pagamentos",
+            }), TETO_DO_PUSH_MS);
           }
-        } else if (linhaDoPedido && valorAprovado === undefined) {
-          console.warn(
-            "reconciliar-pagamentos: valor aprovado não veio na resposta do MP — conferência de valor não rodou",
-            candidato.order_id,
-          );
+          ignorados++;
+          continue;
         }
       }
 
@@ -868,6 +960,43 @@ async function handler(
     }
   }
 
+  // ─── PASSO NOVO (14/10/2026): avisa o lojista que o CLIENTE cancelou um pedido
+  // pago. ANTES do passo do estorno, de propósito: o estorno automático vira o
+  // pedido para 'estornado' (o módulo aceita os dois, mas assim o texto sai
+  // com o pedido ainda 'pago', como o cliente o deixou). TRY PRÓPRIO, como os
+  // passos vizinhos: leitura do histórico fora do ar, perfil ilegível ou push
+  // que não sobe só registram — nunca mudam pagamento, estorno nem resposta
+  // (a resposta ganha só a contagem `cancelamentos`). Não depende do token do
+  // Mercado Pago: não fala com ele.
+  //
+  // O PASSO INTEIRO corre contra um TETO (`comTempoLimite`, mesmo mecanismo do
+  // push do laço de pagamentos): o `fetch` do web-push não tem timeout, e um
+  // push service que aceita a conexão e não responde prenderia o handler AQUI,
+  // com a fila de estornos (logo abaixo) sem ser lida — de novo a cada rodada,
+  // por até 24 h por evento. Vencido o teto, `cancelamentos` fica no padrão
+  // (o passo segue em segundo plano; a reserva do aviso expira em 2 min) e o
+  // ciclo vai direto aos estornos.
+  let cancelamentos: ResumoDosCancelamentos = { candidatos: 0, avisados: 0, ignorados: 0, falhas: 0 };
+  try {
+    const resumoDoPasso = await comTempoLimite(avisarCancelamentosDoCliente({
+      supabase,
+      avisar: (chave, aviso) =>
+        avisarAdminUmaVez({
+          supabase,
+          enviarPushContado: deps.enviarPushContado ??
+            ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+          chave,
+          aviso,
+          rotulo: "reconciliar-pagamentos",
+        }),
+      rotulo: "reconciliar-pagamentos",
+    }), deps.tetoDosCancelamentosMs ?? TETO_DO_PASSO_MS);
+    if (resumoDoPasso) cancelamentos = resumoDoPasso;
+    else console.warn("reconciliar-pagamentos: aviso de cancelamento do cliente passou do teto; segue para os estornos");
+  } catch (erro) {
+    console.error("reconciliar-pagamentos: aviso de cancelamento do cliente falhou (não fatal)", erro);
+  }
+
   // ─── PASSO NOVO (Task 4, frente "estorno pelo app"): processa a fila de
   // `order_refunds` pendentes — o cron pega tudo que a edge do clique do
   // lojista (T3) ou o cancelamento automático (T1) deixaram para trás. TRY
@@ -896,12 +1025,12 @@ async function handler(
       // e conclui linha `sistema`.
       .neq("solicitado_por", "sistema")
       .lt("updated_at", doisMinutosAtras)
-      // D4 (ANTES-DE-CRESCER 6, laudo rodada 2 do PR #440): tentativas ASC
-      // ANTES de created_at ASC — sem isso, uma linha TRAVADA (regime "só
-      // consulta" do D2, tentativas=5) ocupa a vaga do LIMIT em todo ciclo,
-      // e uma linha NOVA pode nunca ser vista a partir de 20 pendentes (a
-      // indisponibilidade do MP produz isso sozinha).
+      // D4: tentativas ASC primeiro — uma linha NOVA nunca espera atrás das
+      // travadas. Entre linhas com o mesmo número de tentativas (as travadas
+      // no teto de 5), a última visita gira a fila: a janela de 2 min sozinha
+      // não basta, porque no cron de 10 min as mesmas 20 voltariam elegíveis.
       .order("tentativas", { ascending: true })
+      .order("updated_at", { ascending: true })
       .order("created_at", { ascending: true })
       .limit(20);
     if (erroRefunds) throw erroRefunds;
@@ -955,15 +1084,15 @@ async function handler(
       // POST, mesmo depois de alguém devolver o cofre ao lugar: uma
       // indisponibilidade de configuração teria consumido, sozinha, o
       // orçamento de tentativas de uma devolução de dinheiro. Pular contando
-      // falha deixa a linha intacta para o próximo ciclo.
-      if (!mpToken) {
-        refundsFalhos++;
-        continue;
-      }
+      // falha preserva status e tentativas para o próximo ciclo.
       // Cada linha no seu próprio try: a reconciliação de estornos existe
       // para pegar o que já falhou uma vez — um item não pode custar a vez
       // do seguinte (mesma defesa do laço de pagamentos acima).
       try {
+        if (!mpToken) {
+          refundsFalhos++;
+          continue;
+        }
         // I-B (laudo do PR #438 rodada 2): releitura FRESCA do pedido,
         // DENTRO do laço, por item — NUNCA um SELECT único antes do laço.
         // Duas linhas do mesmo pedido no mesmo lote com um snapshot só
@@ -1065,6 +1194,9 @@ async function handler(
             resultado,
             linha.tentativas,
           );
+          if (cicloSemEnvioPorPrevoo(resultado)) {
+            await desfazerTentativaSemEnvio(supabase, String(refund.id), linha.tentativas, Number(refund.tentativas ?? 0));
+          }
           if (desfecho === "concluido") refundsConcluidos++;
           else if (desfecho === "adiado") refundsAdiados++;
           else refundsFalhos++;
@@ -1121,7 +1253,38 @@ async function handler(
         // `tentativas` para de subir aqui (não precisa passar de 5): quem
         // sobe é só o retry abaixo, que este ramo nunca alcança. `falhou`
         // fica reservado para veredito NEGATIVO explícito do MP.
-        if (tentativasAtuais >= 5) {
+        if (tentativasAtuais >= TETO_DE_TENTATIVAS_DO_POST) {
+          // Correção da revisão Opus do #855: "tentativas" e "recusas nada saiu"
+          // descasam (a tentativa sobe até quando a consulta cai antes do POST).
+          // Toda linha travada passa por aqui: se o banco a trata como "nada
+          // saiu" (sem carimbo de incerteza, último código na lista fechada),
+          // ela vira `falhou` e ganha as saídas (reemitir/por fora); com
+          // carimbo, segue em consulta.
+          const esgotada = await decidirLinhaTravada(
+            (nome, argumentos) => supabase.rpc(nome, argumentos),
+            linhaAtual,
+            // 2ª revisão Opus: só vira `falhou` se o MP, perguntado AGORA (um
+            // GET), prova que não há reembolso desta linha em curso ou feito.
+            () =>
+              consultarReembolsoDoPedido({
+                buscar: buscarEstorno,
+                token: mpToken,
+                pedido,
+                valor: linhaAtual.amount,
+                idsJaReivindicados,
+              }),
+          );
+          if (esgotada) {
+            const desfecho = await gravarDesfechoDoEstorno(
+              supabase,
+              String(refund.id),
+              esgotada,
+              tentativasAtuais,
+            );
+            if (desfecho === "falhou") refundsFalhos++;
+            else refundsAdiados++;
+            continue;
+          }
           const { error: erroLimite } = await supabase
             .from("order_refunds")
             .update({
@@ -1169,6 +1332,11 @@ async function handler(
           resultadoRetry,
           tentativasAtuais + 1,
         );
+        // P1 do Codex no #888: ciclo que parou só na consulta antes do
+        // reenvio não gasta tentativa (senão a linha trava sem envio nenhum).
+        if (cicloSemEnvioPorPrevoo(resultadoRetry)) {
+          await desfazerTentativaSemEnvio(supabase, String(refund.id), tentativasAtuais + 1, tentativasAtuais);
+        }
         if (desfechoRetry === "concluido") refundsConcluidos++;
         else if (desfechoRetry === "adiado") refundsAdiados++;
         else refundsFalhos++;
@@ -1179,6 +1347,22 @@ async function handler(
           erro,
         );
         refundsFalhos++;
+      } finally {
+        // Carimba também saídas antecipadas e falhas antes do executor.
+        // Só metadado de visita; não altera status, tentativa nem dinheiro.
+        // Falha não fatal: o resultado do processamento continua valendo.
+        try {
+          const { error: erroVisita } = await supabase
+            .from("order_refunds")
+            .update({ updated_at: new Date().toISOString() })
+            .eq("id", refund.id)
+            .in("status", ["solicitado", "em_processamento"]);
+          if (erroVisita) {
+            console.error("reconciliar-pagamentos: falha ao carimbar visita da devolução", refund.id, erroVisita);
+          }
+        } catch (erro) {
+          console.error("reconciliar-pagamentos: falha ao carimbar visita da devolução", refund.id, erro);
+        }
       }
     }
   } catch (erro) {
@@ -1229,7 +1413,9 @@ async function handler(
   // a recusa de cartão cuja vaga foi liberada (ignorados — `cobrancasLiberadas`
   // é só o subconjunto que a RPC de fato soltou, fora da soma).
   // Sem essa invariante o corpo não é auditável sem abrir o log: um
-  // candidato "sumiria" do total.
+  // candidato "sumiria" do total. `adiadosPorTempo` (EST-EDGE-DIN-2) é o que
+  // o laço NEM ABRIU por falta de orçamento: fora de `verificados`, e
+  // verificados + adiadosPorTempo === o tamanho da fila entregue pela RPC.
   return json(
     {
       ok: true,
@@ -1238,6 +1424,7 @@ async function handler(
       ignorados,
       falhas,
       cobrancasLiberadas,
+      adiadosPorTempo,
       estornos: {
         vistos: refundsVistos,
         concluidos: refundsConcluidos,
@@ -1245,6 +1432,7 @@ async function handler(
         falhos: refundsFalhos,
       },
       contestacoes,
+      cancelamentos,
     },
     200,
   );

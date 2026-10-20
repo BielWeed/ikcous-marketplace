@@ -1,5 +1,6 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ContatoDaLoja } from "@/components/admin/minha-loja/ContatoDaLoja";
+import { DadosDaEmpresa } from "@/components/admin/minha-loja/DadosDaEmpresa";
 import {
   EnderecoDaLoja,
   type MudancaDoEndereco,
@@ -11,6 +12,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
 import {
   type ChaveDosSeisPassos,
+  alcanceAoMudarOCepDaLoja,
   entradaDosSeisPassos,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
@@ -35,7 +37,9 @@ import type { View } from "@/types";
 // BusinessHoursSection e ContatoDaLoja — desde 22/09/2026 a edição mora só
 // aqui; os acordeões duplicados em Ajustes ("Nome, logo e cores" e
 // "Atendimento") saíram); endereço e descrição são gravados pelo botão
-// "Salvar" desta tela num único updateConfig. O ENDEREÇO é a fonte única da loja (CEP, texto,
+// "Salvar" desta tela num único updateConfig; os DADOS DA EMPRESA (razão
+// social, CNPJ/CPF, e-mail — opcionais, 20261239) têm o Salvar do próprio bloco.
+// O ENDEREÇO é a fonte única da loja (CEP, texto,
 // cidade e UF — EnderecoDaLoja, sem migration: as quatro colunas que já
 // existem); ele só entra no pacote quando a lojista o alterou. O dirty da
 // tela é o OU de todos.
@@ -141,6 +145,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   const [identidadePendente, setIdentidadePendente] = useState(false);
   const [horarioPendente, setHorarioPendente] = useState(false);
   const [contatoPendente, setContatoPendente] = useState(false);
+  const [empresaPendente, setEmpresaPendente] = useState(false);
   const lifecycle = useRef({ mounted: true, active, serial: 0 });
   if (lifecycle.current.active && !active) lifecycle.current.serial++;
   lifecycle.current.active = active;
@@ -179,7 +184,8 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         saving ||
         identidadePendente ||
         horarioPendente ||
-        contatoPendente,
+        contatoPendente ||
+        empresaPendente,
     );
   }, [
     formDirty,
@@ -187,6 +193,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     identidadePendente,
     horarioPendente,
     contatoPendente,
+    empresaPendente,
     onSetDirty,
   ]);
   useEffect(() => {
@@ -225,11 +232,22 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     const enderecoParaGravar = enderecoAlterado
       ? (mudancaEndereco?.valores ?? null)
       : null;
+    // O alcance "só perto da loja" é uma CÓPIA dos 5 primeiros números do CEP:
+    // se o CEP mudou, ele vai junto, NESTA mesma chamada (nunca antes do
+    // Salvar). Alcance vazio, lista ou faixa não são tocados.
+    const alcanceNovo = enderecoParaGravar
+      ? alcanceAoMudarOCepDaLoja(
+          config.originCep,
+          enderecoParaGravar.originCep,
+          config.localCepRange,
+        )
+      : null;
     setSaving(true);
     try {
       const success = await updateConfig(
         {
           ...(enderecoParaGravar ?? {}),
+          ...(alcanceNovo !== null && { localCepRange: alcanceNovo }),
           storeDescription: descricaoDaLojaParaHtml(descricao) || null,
         },
         { isCurrent, silent: true },
@@ -244,7 +262,11 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         setDescricao(descricao.trim());
         // O Salvar do cabeçalho NÃO grava o contato (ele tem o próprio): o aviso
         // diz só o que foi salvo, e o contato pendente segue avisado no topo.
-        toast.success("Endereço e descrição salvos");
+        toast.success(
+          alcanceNovo === null
+            ? "Endereço e descrição salvos"
+            : `Endereço e descrição salvos. Sua entrega acompanhou o novo CEP: CEPs que começam com ${alcanceNovo}.`,
+        );
       } else {
         // silent:true suprime TODOS os toasts de dentro do updateConfig —
         // inclusive o de falha. A falha tem de ser avisada AQUI, com o
@@ -346,6 +368,17 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           >
             <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />O
             contato ainda não foi salvo — use Salvar contato.
+          </p>
+        )}
+        {empresaPendente && (
+          <p
+            role="status"
+            data-empresa-pendente
+            className="mx-auto mt-2 flex w-full max-w-4xl items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-bold text-amber-300"
+          >
+            <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
+            Os dados da empresa ainda não foram salvos — use Salvar dados da
+            empresa.
           </p>
         )}
       </div>
@@ -486,9 +519,18 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           refDoTitulo={guardarTitulo("contato")}
         >
           <ContatoDaLoja
+            ativa={active}
             onDirtyChange={setContatoPendente}
             onSetBackOverride={onSetBackOverride}
           />
+        </BlocoNumerado>
+
+        <BlocoNumerado
+          numero="6"
+          titulo="Dados da empresa (opcional)"
+          descricao="Razão social, CNPJ ou CPF e e-mail de atendimento. Quem compra lê nos Termos, na Política de Privacidade e no rodapé do app. Em branco, nada aparece."
+        >
+          <DadosDaEmpresa onDirtyChange={setEmpresaPendente} />
         </BlocoNumerado>
 
         <p className="px-2 pb-2 text-[11px] leading-relaxed text-zinc-500">

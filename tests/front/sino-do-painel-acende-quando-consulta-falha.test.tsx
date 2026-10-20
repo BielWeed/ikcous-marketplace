@@ -45,6 +45,9 @@ let AVALIACOES_SEM_RESPOSTA = 0;
 let ERRO_NA_CONSULTA_DE_PEDIDOS = false;
 let ERRO_NA_CONSULTA_DE_PERGUNTAS = false;
 let ERRO_NA_CONSULTA_DE_AVALIACOES = false;
+// Consulta de pedidos ENTREGUES sem recebimento marcado (14/10/2026): o erro
+// dela tambem tem de acender o sino por duvida.
+let ERRO_NA_CONSULTA_DE_RECEBIMENTOS = false;
 // Exceção LANÇADA (caminho do `catch`), e não `error` devolvido no objeto —
 // são caminhos diferentes dentro de `fetchInitialCounts`.
 let EXCECAO_NA_CONSULTA_DE_PEDIDOS = false;
@@ -77,12 +80,29 @@ function criarContagemBuilder(
   excecaoPadrao = false,
 ) {
   const builder: any = {};
+  // 14/10/2026: o sino tem uma consulta a mais em `marketplace_orders` — os
+  // pedidos ENTREGUES, pagos na entrega, sem recebimento marcado — que se
+  // distingue pelo `.eq("status", "delivered")`. Aqui ela responde zero (nada
+  // por marcar); as flags de falha desta suite seguem mirando as outras.
+  let ehRecebimento = false;
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
   builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
+  builder.gte = vi.fn(() => builder);
+  builder.eq = vi.fn((coluna: string, valor: string) => {
+    if (coluna === "status" && valor === "delivered") ehRecebimento = true;
+    return builder;
+  });
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão dos vizinhos deste diretório.
   builder.then = (resolve: any, reject?: any) => {
+    if (ehRecebimento) {
+      return Promise.resolve(
+        ERRO_NA_CONSULTA_DE_RECEBIMENTOS
+          ? { count: null, error: new Error("falha simulada de rede") }
+          : { count: 0, error: null },
+      ).then(resolve, reject);
+    }
     if (tabela === "marketplace_orders" && ORDERS_DEFERRED) {
       const deferido = ORDERS_DEFERRED;
       ORDERS_DEFERRED = null;
@@ -198,12 +218,16 @@ async function esperarAte(
 }
 
 /** Monta o painel e devolve o botão do sino (cabeçalho mobile). */
-async function montarPainel(raiz: Root, hospedeiro: HTMLDivElement) {
+async function montarPainel(
+  raiz: Root,
+  hospedeiro: HTMLDivElement,
+  onNavigate = vi.fn(),
+) {
   const { AdminLayout } = await import("@/components/layouts/AdminLayout");
 
   await act(async () => {
     raiz.render(
-      <AdminLayout currentView="admin-dashboard" onNavigate={vi.fn()}>
+      <AdminLayout currentView="admin-dashboard" onNavigate={onNavigate}>
         <div />
       </AdminLayout>,
     );
@@ -238,6 +262,7 @@ describe("AdminLayout — o sino acende quando uma consulta falha, não quando a
     ERRO_NA_CONSULTA_DE_PEDIDOS = false;
     ERRO_NA_CONSULTA_DE_PERGUNTAS = false;
     ERRO_NA_CONSULTA_DE_AVALIACOES = false;
+    ERRO_NA_CONSULTA_DE_RECEBIMENTOS = false;
     EXCECAO_NA_CONSULTA_DE_PEDIDOS = false;
     EXCECAO_NA_CONSULTA_DE_AVALIACOES = false;
     EXCECAO_NA_CONSULTA_DE_PERGUNTAS = false;
@@ -276,13 +301,27 @@ describe("AdminLayout — o sino acende quando uma consulta falha, não quando a
   it("a consulta de pedidos falha, e nada mais está pendente — o sino ACENDE", async () => {
     ERRO_NA_CONSULTA_DE_PEDIDOS = true;
 
-    const sino = await montarPainel(raiz, hospedeiro);
+    const onNavigate = vi.fn();
+    const sino = await montarPainel(raiz, hospedeiro, onNavigate);
     await esperarContagensChegarem();
 
     // Nenhuma pendência real existe (tudo em 0) — se o sino acender, é por
     // causa da falha, não de uma contagem positiva. É exatamente esse o
     // defeito: hoje a falha faz a contagem ficar em 0 e o sino apaga.
     expect(sino.querySelector("span")).toBeTruthy();
+    expect(sino.querySelector("span")?.textContent).toBe("!");
+    expect(sino.getAttribute("title")).toBe("Falha ao conferir avisos");
+    expect(hospedeiro.textContent).toContain("Contagem atual não confirmada.");
+    expect(
+      Array.from(hospedeiro.querySelectorAll("button")).some(
+        (b) => b.textContent === "Ver avisos",
+      ),
+    ).toBe(true);
+    const verAvisos = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent === "Ver avisos",
+    )!;
+    act(() => verAvisos.click());
+    expect(onNavigate).toHaveBeenCalledWith("admin-notifications");
   });
 
   it("há pendência real (pedido pendente), sem falha nenhuma — o sino acende, como já acendia", async () => {
@@ -301,6 +340,10 @@ describe("AdminLayout — o sino acende quando uma consulta falha, não quando a
     // Sem este caso, uma correção que acendesse o sino sempre (para
     // qualquer coisa) passaria nos dois testes de cima também.
     expect(sino.querySelector("span")).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Falha ao conferir avisos");
+    expect(hospedeiro.textContent).not.toContain(
+      "Contagem atual não confirmada.",
+    );
   });
 
   // Ressalva 2 da revisão de 25/08/2026: quatro mutantes construídos contra
@@ -308,6 +351,16 @@ describe("AdminLayout — o sino acende quando uma consulta falha, não quando a
   // `reviewsErr` e no `catch`) mostraram que só o de `ordersErr` era pego —
   // os outros três sobreviviam porque o dublê só sabia simular falha na
   // consulta de pedidos. Estes três casos fecham os pontos que sobreviviam.
+  it("a consulta de pedidos entregues sem recebimento falha (recebimentosErr), e nada mais está pendente — o sino ACENDE", async () => {
+    ERRO_NA_CONSULTA_DE_RECEBIMENTOS = true;
+
+    const sino = await montarPainel(raiz, hospedeiro);
+    await esperarContagensChegarem();
+
+    // Tudo mais em zero e sem falha: se acender, e por causa desta consulta.
+    expect(sino.querySelector("span")).toBeTruthy();
+  });
+
   it("a consulta de perguntas falha (qErr), e nada mais está pendente — o sino ACENDE", async () => {
     ERRO_NA_CONSULTA_DE_PERGUNTAS = true;
 
@@ -354,6 +407,7 @@ describe("AdminLayout — retentativa quando a rodada anterior falhou (ressalva 
     ERRO_NA_CONSULTA_DE_PEDIDOS = false;
     ERRO_NA_CONSULTA_DE_PERGUNTAS = false;
     ERRO_NA_CONSULTA_DE_AVALIACOES = false;
+    ERRO_NA_CONSULTA_DE_RECEBIMENTOS = false;
     EXCECAO_NA_CONSULTA_DE_PEDIDOS = false;
     EXCECAO_NA_CONSULTA_DE_AVALIACOES = false;
     EXCECAO_NA_CONSULTA_DE_PERGUNTAS = false;
@@ -457,6 +511,7 @@ describe("AdminLayout — rodada antiga não sobrescreve rodada nova (ressalva 3
     ERRO_NA_CONSULTA_DE_PEDIDOS = false;
     ERRO_NA_CONSULTA_DE_PERGUNTAS = false;
     ERRO_NA_CONSULTA_DE_AVALIACOES = false;
+    ERRO_NA_CONSULTA_DE_RECEBIMENTOS = false;
     EXCECAO_NA_CONSULTA_DE_PEDIDOS = false;
     EXCECAO_NA_CONSULTA_DE_AVALIACOES = false;
     EXCECAO_NA_CONSULTA_DE_PERGUNTAS = false;

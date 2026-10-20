@@ -1,3 +1,4 @@
+import type { View } from "@/types";
 // @vitest-environment jsdom
 //
 // SELO DE CONEXÃO EM PALAVRAS DE LOJISTA — painel simples, G7a. O selo do
@@ -117,11 +118,11 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     vi.unstubAllGlobals();
   });
 
-  async function montar() {
+  async function montar(currentView: View = "admin-dashboard") {
     const { AdminLayout } = await import("@/components/layouts/AdminLayout");
     await act(async () => {
       raiz.render(
-        <AdminLayout currentView="admin-dashboard" onNavigate={vi.fn()}>
+        <AdminLayout currentView={currentView} onNavigate={vi.fn()}>
           <div />
         </AdminLayout>,
       );
@@ -170,6 +171,41 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     for (const selo of selos()) {
       expect(selo.textContent?.trim()).toBe("Sem internet");
       expect(selo.getAttribute("title")).toBe("Sem conexão com o servidor");
+    }
+  });
+
+  it("offline mantém a explicação abaixo do cabeçalho e explica Novo Banner indisponível", async () => {
+    diagnostico.atual = { isOffline: true, quality: "offline", latency: 0 };
+    await montar("admin-banners");
+    const faixa = hospedeiro.querySelector('[role="alert"]');
+    expect(faixa?.textContent).toContain(
+      "Criação, edição e exclusão de dados estão temporariamente bloqueadas.",
+    );
+    expect(hospedeiro.querySelector("header")?.nextElementSibling).toBe(faixa);
+    const novo = Array.from(hospedeiro.querySelectorAll("header button")).find(
+      (b) => b.textContent?.includes("Novo Banner"),
+    ) as HTMLButtonElement;
+    expect(novo.disabled).toBe(true);
+    expect(novo.textContent).toContain("Novo Banner indisponível");
+    expect(
+      document.getElementById(novo.getAttribute("aria-describedby")!)
+        ?.textContent,
+    ).toBe("Disponível quando a conexão retornar.");
+  });
+
+  it("online preserva a ação Novo Banner e o evento que abre o formulário", async () => {
+    const abrir = vi.fn();
+    window.addEventListener("admin:open-new-banner-dialog", abrir);
+    try {
+      await montar("admin-banners");
+      const novo = Array.from(
+        hospedeiro.querySelectorAll("header button"),
+      ).find((b) => b.textContent === "Novo Banner") as HTMLButtonElement;
+      expect(novo.disabled).toBe(false);
+      act(() => novo.click());
+      expect(abrir).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("admin:open-new-banner-dialog", abrir);
     }
   });
 
@@ -238,6 +274,26 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
       for (const selo of selos()) {
         expect(selo.textContent?.trim()).toBe("Online");
         expect(selo.getAttribute("title")).toBe("Conexão boa");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("de 'sem internet' para 'lenta' o selo diz 'Lenta' — não acende 'Sincronizado' sem ter sincronizado nada", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      diagnostico.atual = { isOffline: true, quality: "offline", latency: 0 };
+      await montar();
+
+      // A rede existe, só está lenta: `isOffline` cai, `quality` vira "slow".
+      diagnostico.atual = { isOffline: false, quality: "slow", latency: 3500 };
+      await montar();
+
+      expect(selos()).toHaveLength(2);
+      for (const selo of selos()) {
+        expect(selo.textContent?.trim()).toBe("Lenta");
+        expect(selo.getAttribute("title")).toBe("Conexão lenta");
       }
     } finally {
       vi.useRealTimers();

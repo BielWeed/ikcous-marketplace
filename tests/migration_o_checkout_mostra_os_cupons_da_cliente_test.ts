@@ -685,10 +685,22 @@ Deno.test("208 composição: a migration entra no FIM de POSTERIORES_A_97 em adm
     const fim = t.indexOf("\n];", ini);
     assert(ini > 0 && fim > ini, `${arq}: sem a lista`);
     const lista = t.slice(ini, fim);
-    const ultimo = [...lista.matchAll(/nome: "([^"]+)"/g)]
-      .map((x) => x[1])
-      .pop();
-    assertEquals(ultimo, NOME, `${arq}: a 208 não é o ÚLTIMO da lista`);
+    const nomes = [...lista.matchAll(/nome: "([^"]+)"/g)].map((x) => x[1]);
+    // "No fim" = depois das entradas que as provas enderecam por indice (a 98 e
+    // as anteriores) e so com migrations MAIS NOVAS depois dela: uma posterior
+    // que entre no fim nao tira a 208 do lugar.
+    const pos = nomes.indexOf(NOME);
+    const pos98 = nomes.indexOf(
+      "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
+    );
+    assert(pos98 >= 0, `${arq}: sem a 98 na lista`);
+    assert(pos > pos98, `${arq}: a 208 não está depois das entradas indexadas`);
+    for (const depois of nomes.slice(pos + 1)) {
+      assert(
+        depois > NOME,
+        `${arq}: ${depois} vem depois da 208 sem ser mais nova`,
+      );
+    }
     assertStringIncludes(lista, "public.admin_cupom_clientes(uuid)");
   }
 });

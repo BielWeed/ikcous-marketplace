@@ -18,7 +18,7 @@ const targets = [
   "src/components/admin/settings/IdentitySettingsSection.tsx",
   "src/lib/prepareIdentityImage.ts",
   "src/lib/uploadIdentityImage.ts",
-  "node_modules/tus-js-client/lib.esm/browser/index.js",
+  "node_modules/tus-js-client/lib/browser/index.js",
   "node_modules/image-dimensions/index.js",
 ];
 const sources = [
@@ -925,7 +925,7 @@ export async function run() {
     assertCoverage(baseline, evidence, evidence.precache);
     const shared = evidence.graph.find(
       (item) =>
-        item.fileName.startsWith("assets/vendor-react-") &&
+        item.fileName.startsWith("assets/vendor-inicio-") &&
         urls.has(item.fileName),
     );
     assert(shared, "SHARED_MUTATION_TARGET_REQUIRED");

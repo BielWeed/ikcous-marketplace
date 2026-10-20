@@ -587,13 +587,44 @@ export const PERIODOS_DO_CRM: readonly {
   /** Como o período anterior é chamado ao lado da variação. */
   readonly comparacao: string;
 }[] = [
-  { id: "hoje", rotulo: "Hoje", comparacao: "vs. ontem" },
+  // "Hoje" só vai até agora: o banco corta o ontem na MESMA hora (migration 20261227000000).
+  { id: "hoje", rotulo: "Hoje", comparacao: "vs. ontem, até esta hora" },
   { id: "7d", rotulo: "7 dias", comparacao: "vs. 7 dias antes" },
   { id: "30d", rotulo: "30 dias", comparacao: "vs. 30 dias antes" },
   { id: "90d", rotulo: "90 dias", comparacao: "vs. 90 dias antes" },
-  { id: "mes", rotulo: "Mês", comparacao: "vs. mês anterior" },
-  { id: "ano", rotulo: "Ano", comparacao: "vs. ano anterior" },
+  // "Mês" e "Ano" NÃO comparam com o mês nem o ano anterior: o banco compara com os mesmos N dias
+  // logo antes do intervalo. O texto exato (com o N) vem de `comparacaoDoPeriodo`.
+  { id: "mes", rotulo: "Mês", comparacao: "vs. os dias antes" },
+  { id: "ano", rotulo: "Ano", comparacao: "vs. os dias antes" },
 ];
+
+/** Quantos dias o intervalo tem, contando o primeiro e o último. */
+export function diasDoIntervalo({ inicio, fim }: IntervaloDeDatas): number {
+  const emMs = (dia: string) => {
+    const [ano, mes, data] = dia.split("-").map(Number);
+    return Date.UTC(ano, mes - 1, data);
+  };
+  return Math.round((emMs(fim) - emMs(inicio)) / 86_400_000) + 1;
+}
+
+/**
+ * O texto ao lado da variação: contra o que o período é comparado. O banco (`crm_visao`) sempre compara
+ * com os MESMOS N dias imediatamente antes do intervalo; só o texto de "Mês" e "Ano" falava outra coisa
+ * ("mês anterior", "ano anterior"). Aqui ele passa a dizer a verdade, com o N do intervalo escolhido.
+ */
+export function comparacaoDoPeriodo(
+  periodo: PeriodoDoCrm,
+  intervalo: IntervaloDeDatas,
+): string {
+  if (periodo === "mes" || periodo === "ano") {
+    const dias = diasDoIntervalo(intervalo);
+    return dias === 1 ? "vs. o dia antes" : `vs. os ${dias} dias antes`;
+  }
+  return (
+    PERIODOS_DO_CRM.find((p) => p.id === periodo)?.comparacao ??
+    "vs. período anterior"
+  );
+}
 
 const FORMATO_DIA_SP = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/Sao_Paulo",

@@ -1,5 +1,9 @@
 import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import {
+  AVISO_DE_DESLIGAR,
+  AVISO_DE_PAUSAR,
+} from "@/lib/aviso-transportadora-sem-pagamento";
 import { lerSupabaseUrl } from "@/lib/env-valores";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
@@ -15,16 +19,19 @@ import {
   Lock,
   RefreshCw,
   Save,
-  ShieldCheck,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  AVISO_BASE_CHAVES_DE_TESTE,
+  AVISO_CHAVES_DE_TESTE,
+  AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE,
   PASSOS_DO_GUIA,
   RECADO_DE_SEGURANCA,
   montarPromptParaAgenteMp,
   urlDeNotificacoesDoWebhook,
 } from "./mercado-pago-conteudo";
+import { CARTAO_AJUSTES, CARTAO_DESTAQUE_AJUSTES } from "./visual-ajustes";
 
 /**
  * Card "Mercado Pago" da tela de Ajustes — peça 20 (14/09/2026, pedido do
@@ -102,6 +109,11 @@ type ConfiguracaoMp = {
   faltando: string[] | null;
   /** O lojista pausou o pagamento pelo app (vence o automático). */
   pausado: boolean;
+  /**
+   * A loja DECLAROU o modo de teste (a edge leu `MP_SANDBOX_PAYER_EMAIL`).
+   * AUSENTE (edge antiga) vale como NÃO declarou: o aviso forte é o padrão.
+   */
+  modo_de_teste?: boolean;
 };
 
 /** O que a edge devolve em salvar/testar/ligar/desligar — só o estado. */
@@ -166,6 +178,7 @@ const TEXTO_DA_FALTA: ReadonlyMap<string, string> = new Map([
   ["access_token", "colar a chave secreta"],
   ["chave_notificacoes", "colar a senha dos avisos"],
   ["teste", "testar a conexão com o Mercado Pago"],
+  ["chave_de_teste", "trocar as chaves de TESTE pelas de PRODUÇÃO"],
 ]);
 
 function textoDaFalta(falta: string): string {
@@ -244,11 +257,11 @@ function Expansor({
         className="group flex min-h-11 w-full items-center justify-between gap-3 p-3 text-left"
       >
         <span className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-admin-gold/10 text-admin-gold ring-1 ring-admin-gold/20">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-sky-400/15 text-sky-300 ring-1 ring-sky-400/30">
             <Icone className="size-3.5" strokeWidth={2.25} />
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-[11px] font-black uppercase tracking-[0.2em] text-white">
+            <span className="block text-base font-bold text-white">
               {titulo}
             </span>
             <span className="block truncate text-[11px] normal-case tracking-normal text-zinc-500">
@@ -276,6 +289,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   onDirtyMudou,
   onPixAlternado,
   abrirChavesGatilho = 0,
+  transportadoraVende = false,
 }: {
   /** Mesma trava das demais seções: avisa o pai para BLOQUEAR o fecho da
    * seção colapsável enquanto houver chave digitada e não salva. */
@@ -299,6 +313,13 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
    * "Formas de pagamento" pede para cair direto nos campos das chaves —
    * abre "Avançado" e "Suas chaves" de uma vez. 0 = ninguém pediu. */
   readonly abrirChavesGatilho?: number;
+  /** A loja tem transportadora de fato OFERECIDA ao cliente de outra cidade
+   * (14/10/2026). O checkout recusa o envio por transportadora sem pagamento
+   * pelo app — então PAUSAR derruba as vendas para fora da cidade, e o
+   * lojista precisa saber ANTES. Com `true`, o clique em Pausar abre um aviso
+   * que deixa confirmar (não bloqueia: pausar é o lado seguro). Ausente ou
+   * `false` (quem não sabe, quem não tem transportadora): Pausar pausa direto. */
+  readonly transportadoraVende?: boolean;
 }) {
   const isOffline = useOnlineStatus();
 
@@ -324,6 +345,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   const [alternandoPix, setAlternandoPix] = useState(false);
   const [avisoPix, setAvisoPix] = useState<string | null>(null);
   const [ecoDaVitrine, setEcoDaVitrine] = useState(false);
+  // O aviso de "a transportadora vai parar de vender", aberto pelo clique em
+  // Pausar quando `transportadoraVende`. Fecha sozinho quando o estado deixa
+  // de ser "ligado" (pausou, o servidor desligou, a leitura mudou) — senão
+  // voltaria aberto na próxima vez que o pagamento fosse retomado.
+  const [confirmandoPausa, setConfirmandoPausa] = useState(false);
 
   // Segunda camada (pedido do dono, 14/09 à noite): guia e chaves em
   // expandidores próprios, ambos FECHADOS por padrão — o grupo abre
@@ -547,6 +573,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         mensagem: string;
         ambiente?: "producao" | "teste" | null;
         conta?: string | null;
+        modo_de_teste?: boolean;
       };
       setConfig((antes) => ({
         ...antes,
@@ -560,6 +587,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           ambiente: resultado.ambiente ?? null,
           conta: resultado.conta ?? null,
         },
+        ...(typeof resultado.modo_de_teste === "boolean"
+          ? { modo_de_teste: resultado.modo_de_teste }
+          : {}),
       }));
       // O servidor também RECONCILIOU o pagamento pelo app com o resultado
       // (liga se passou e não está pausado, desliga se falhou): mostra o que
@@ -603,6 +633,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     setAlternandoPix(true);
     setAvisoPix(null);
     setEcoDaVitrine(false);
+    setConfirmandoPausa(false);
     haptic.medium();
     try {
       const { data, error } = await supabase.functions.invoke(
@@ -625,6 +656,21 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     } finally {
       setAlternandoPix(false);
     }
+  };
+
+  /**
+   * O clique em PAUSAR (14/10/2026). Com transportadora vendendo, pausar
+   * derruba as vendas para fora da cidade (o checkout recusa transportadora
+   * sem pagamento pelo app): o clique só ABRE o aviso, e quem pausa de
+   * verdade é "Pausar mesmo assim". Sem transportadora, pausa direto como
+   * sempre. O aviso nunca bloqueia — pausar é o lado seguro.
+   */
+  const pedirPausa = () => {
+    if (transportadoraVende) {
+      setConfirmandoPausa(true);
+      return;
+    }
+    pausarOuRetomar(false);
   };
 
   // O prompt leva o endereço de notificações DESTA loja (peça 28): é o que
@@ -650,6 +696,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   };
 
   const teste = config.ultimo_teste;
+  // Conta de TESTE (chave que não recebe dinheiro de verdade): vem do `ambiente`
+  // que o servidor apurou. Resposta antiga, sem o campo, não conta como teste.
+  const chaveDeTeste = teste?.conectado === true && teste.ambiente === "teste";
 
   // O ESTADO do recebimento pelo app, lido do que o SERVIDOR devolveu:
   // ligado na ficha manda (é o que o cliente vê); depois a pausa; depois o que
@@ -676,6 +725,61 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         : faltando.length > 0
           ? "faltando"
           : "pronto";
+  // Fecha o aviso de Pausar quando o estado deixa de ser "ligado": pausou, o
+  // servidor desligou por conta própria ou a leitura trouxe outro retrato.
+  const pagamentoLigadoNoServidor = config.pix_ligado;
+  useEffect(() => {
+    if (!pagamentoLigadoNoServidor) setConfirmandoPausa(false);
+  }, [pagamentoLigadoNoServidor]);
+  // O aviso em si: no lugar da linha do botão Pausar (nos dois estados em que
+  // ela existe), com os dois caminhos — voltar sem mexer, ou pausar mesmo assim.
+  // Edge antiga (`servidorDesatualizado`): o botão da tela diz "Desligar", e o
+  // aviso fala a mesma língua.
+  const textoDoAviso = servidorDesatualizado
+    ? AVISO_DE_DESLIGAR
+    : AVISO_DE_PAUSAR;
+  const rotuloDeConfirmar = servidorDesatualizado
+    ? "Desligar mesmo assim"
+    : "Pausar mesmo assim";
+  const avisoDePausar =
+    confirmandoPausa && transportadoraVende && config.pix_ligado ? (
+      <div
+        role="alert"
+        data-aviso-pausar-sem-transportadora=""
+        className={`${CARTAO_DESTAQUE_AJUSTES} space-y-4`}
+      >
+        <p className="flex items-start gap-1.5 text-xs font-bold text-orange-300">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+          {servidorDesatualizado
+            ? "Confirmar desligamento do pagamento pelo app?"
+            : "Pausar o recebimento pelo app?"}
+        </p>
+        <p className="text-sm leading-relaxed text-zinc-300">
+          PIX e cartão (crédito e débito) ficarão indisponíveis para novos
+          pagamentos pelo app. Suas chaves permanecem salvas.
+        </p>
+        <p className="text-sm leading-relaxed text-zinc-300">
+          {textoDoAviso.detalhe}
+        </p>
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={() => setConfirmandoPausa(false)}
+            className="ajustes-secundario min-h-11"
+          >
+            Voltar
+          </button>
+          <button
+            type="button"
+            disabled={alternandoPix || isOffline || testando || salvando}
+            onClick={() => pausarOuRetomar(false)}
+            className="ajustes-primario min-h-11"
+          >
+            {rotuloDeConfirmar}
+          </button>
+        </div>
+      </div>
+    ) : null;
   const listaDoQueFalta = faltando.map(textoDaFalta);
   const faltaTestar = faltando.includes("teste");
   // Pendência que abre "Avançado: chaves do Mercado Pago" sozinho (H6): nada
@@ -721,32 +825,61 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <button
             type="button"
             onClick={ler}
-            className="min-h-11 shrink-0 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-2.5 py-1 font-bold text-admin-gold hover:bg-admin-gold/20"
+            className="ajustes-secundario min-h-11"
           >
             Tentar de novo
           </button>
         </div>
       ) : teste ? (
         <div
-          className={`flex items-center gap-2 rounded-lg border p-2.5 text-xs ${
-            teste.conectado
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              : "border-red-500/30 bg-red-500/10 text-red-300"
+          data-resumo-do-teste=""
+          className={`flex gap-2 rounded-lg border p-2.5 text-xs ${
+            !teste.conectado
+              ? "items-center border-red-500/30 bg-red-500/10 text-red-300"
+              : chaveDeTeste
+                ? "items-start border-orange-500/30 bg-orange-500/10 text-orange-300"
+                : "items-center border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
           }`}
         >
-          {teste.conectado ? (
+          {teste.conectado && !chaveDeTeste ? (
             <CheckCircle2 className="size-4 shrink-0" />
           ) : (
             <AlertCircle className="size-4 shrink-0" />
           )}
-          <span>{teste.mensagem}</span>
+          <span className="space-y-1">
+            <span className="block">{teste.mensagem}</span>
+            {teste.quando && !Number.isNaN(Date.parse(teste.quando)) && (
+              <time
+                dateTime={teste.quando}
+                className="block text-xs text-zinc-300"
+              >
+                Último teste: {new Date(teste.quando).toLocaleString("pt-BR")}
+              </time>
+            )}
+            {/* Conta de TESTE: o resumo não pinta verde nem fica calado. O
+                aviso do servidor (`avisoPix`, logo abaixo) já diz isto
+                quando acabou de chegar; reaberta a tela, é este texto que
+                continua avisando — nunca os dois ao mesmo tempo. */}
+            {chaveDeTeste && !avisoPix && (
+              <span className="block">
+                {config.modo_de_teste === true
+                  ? AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE
+                  : config.pix_ligado
+                    ? AVISO_BASE_CHAVES_DE_TESTE
+                    : AVISO_CHAVES_DE_TESTE}
+              </span>
+            )}
+          </span>
         </div>
       ) : (
         <p className="flex items-center gap-2 text-xs text-zinc-400">
           {config.configurado ? (
             <>
-              <ShieldCheck className="size-4 shrink-0 text-admin-gold" /> Chaves
-              salvas. Falta testar a conexão.
+              <KeyRound
+                aria-hidden="true"
+                className="size-4 shrink-0 text-sky-300"
+              />{" "}
+              Chaves salvas. Falta testar a conexão.
             </>
           ) : (
             "Nenhuma chave do Mercado Pago salva ainda."
@@ -795,7 +928,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <ol className="space-y-3">
             {PASSOS_DO_GUIA.map((passo, indice) => (
               <li key={passo.titulo} className="flex gap-3">
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-admin-gold/15 text-[11px] font-black text-admin-gold ring-1 ring-admin-gold/30">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-xs font-bold text-sky-300 ring-1 ring-sky-400/30">
                   {indice + 1}
                 </span>
                 <span className="min-w-0">
@@ -825,7 +958,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               className={`flex min-h-11 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${
                 copiado
                   ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                  : "border-admin-gold/30 bg-admin-gold/10 text-admin-gold hover:bg-admin-gold/20"
+                  : "border-white/15 bg-[#202026] text-zinc-100 hover:bg-white/10"
               }`}
             >
               {copiado ? (
@@ -863,7 +996,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 placeholder="APP_USR-…"
                 autoComplete="off"
                 spellCheck={false}
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -891,7 +1024,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a chave secreta de produção…"
                 }
                 autoComplete="new-password"
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -922,10 +1055,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a senha dos avisos da sua loja"
                 }
                 autoComplete="new-password"
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
               {!config.mascara_webhook && (
-                <p className="text-[11px] leading-relaxed text-amber-300">
+                <p className="text-[11px] leading-relaxed text-orange-300">
                   Sem a senha dos avisos da sua loja, o pagamento pelo app não é
                   liberado. Testar conexão não confere os avisos; a chave global
                   do app não substitui a sua.
@@ -938,7 +1071,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 type="button"
                 disabled={salvando || carregando || isOffline || alternandoPix}
                 onClick={salvar}
-                className="flex min-h-11 items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
+                className={`flex min-h-11 items-center gap-2 ${dirty ? "ajustes-primario" : "ajustes-secundario"}`}
               >
                 {salvando ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -957,18 +1090,18 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     ? "Salve as chaves primeiro — o teste fala com o Mercado Pago usando o que está salvo."
                     : undefined
                 }
-                className="flex min-h-11 items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-2 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+                className={`flex min-h-11 items-center gap-2 ${dirty ? "ajustes-secundario" : "ajustes-primario"}`}
               >
                 {testando ? (
                   <RefreshCw className="size-3.5 animate-spin" />
                 ) : (
-                  <CheckCircle2 className="size-3.5" />
+                  <RefreshCw aria-hidden="true" className="size-3.5" />
                 )}
                 <span>Testar conexão</span>
               </button>
 
               {dirty && (
-                <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-orange-400">
                   Salve para testar
                 </span>
               )}
@@ -992,7 +1125,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       {!carregando && !erroCarga && (
         <div
           data-estado-recebimento={estadoDoRecebimento}
-          className="space-y-2 rounded-xl border border-white/5 bg-zinc-900/60 p-3"
+          className={`${CARTAO_AJUSTES} space-y-4`}
         >
           <span className="block text-xs font-bold text-white">
             Receber PIX no app
@@ -1009,15 +1142,18 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               {/* Sem "Pix liberado"/"desligado" aqui (H6): o estado REAL
                       que a edge antiga devolveu sobe pelo `onPixAlternado`
                       para o termômetro de Pagamentos; o botão diz a ação. */}
-              {(config.pix_ligado || teste?.conectado) && (
+              {avisoDePausar}
+              {!avisoDePausar && (config.pix_ligado || teste?.conectado) && (
                 <div className="flex justify-end">
                   <button
                     type="button"
                     disabled={
                       alternandoPix || isOffline || testando || salvando
                     }
-                    onClick={() => pausarOuRetomar(!config.pix_ligado)}
-                    className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+                    onClick={() =>
+                      config.pix_ligado ? pedirPausa() : pausarOuRetomar(true)
+                    }
+                    className="ajustes-secundario min-h-11"
                   >
                     {config.pix_ligado
                       ? "Desligar o pagamento pelo app"
@@ -1025,7 +1161,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   </button>
                 </div>
               )}
-              <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+              <p className="flex items-start gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 p-2 text-[11px] leading-relaxed text-orange-300">
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                 <span>
                   O sistema de pagamentos desta loja ainda não foi atualizado.
@@ -1036,7 +1172,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             </div>
           )}
 
-          {estadoDoRecebimento === "recebendo" && (
+          {estadoDoRecebimento === "recebendo" && avisoDePausar}
+          {estadoDoRecebimento === "recebendo" && !avisoDePausar && (
             <div className="flex items-center justify-between gap-3">
               {/* Só o que é verdade: `pagamento_online` liberou o PIX, mas o
                       CARTÃO tem interruptor próprio (`config_pagamento_cartao`,
@@ -1058,8 +1195,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               <button
                 type="button"
                 disabled={alternandoPix || isOffline || testando || salvando}
-                onClick={() => pausarOuRetomar(false)}
-                className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+                onClick={pedirPausa}
+                className="ajustes-secundario min-h-11"
               >
                 Pausar
               </button>
@@ -1067,11 +1204,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           )}
 
           {estadoDoRecebimento === "pausado" && (
-            <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+            <div className={`${CARTAO_DESTAQUE_AJUSTES} space-y-4`}>
               <div className="flex items-center justify-between gap-3">
                 <p
                   role="status"
-                  className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                  className="flex items-center gap-1.5 text-xs font-bold text-orange-300"
                 >
                   <AlertCircle className="size-4 shrink-0" />
                   Pausado por você
@@ -1080,17 +1217,17 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   type="button"
                   disabled={alternandoPix || isOffline || testando || salvando}
                   onClick={() => pausarOuRetomar(true)}
-                  className="min-h-11 shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                  className="ajustes-primario min-h-11"
                 >
                   Retomar
                 </button>
               </div>
-              <p className="text-[11px] leading-relaxed text-amber-200/90">
+              <p className="text-[11px] leading-relaxed text-orange-200/90">
                 Nenhum cliente consegue pagar pelo app enquanto estiver pausado.
                 Salvar ou testar as chaves não religa: toque em Retomar.
               </p>
               {listaDoQueFalta.length > 0 && (
-                <p className="text-[11px] leading-relaxed text-amber-200/90">
+                <p className="text-[11px] leading-relaxed text-orange-200/90">
                   Para receber quando retomar, ainda falta:{" "}
                   {listaDoQueFalta.join(", ")}.
                 </p>
@@ -1102,7 +1239,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             <div className="space-y-1.5">
               <p
                 role="status"
-                className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                className="flex items-center gap-1.5 text-xs font-bold text-orange-300"
               >
                 <AlertCircle className="size-4 shrink-0" />
                 Falta para receber pelo app:
@@ -1119,7 +1256,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             <div className="space-y-1">
               <p
                 role="status"
-                className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                className="flex items-center gap-1.5 text-xs font-bold text-orange-300"
               >
                 <AlertCircle className="size-4 shrink-0" />
                 Tudo preenchido.
@@ -1138,8 +1275,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   esconder a saída. */}
           {estadoDoRecebimento === "recebendo" &&
             listaDoQueFalta.length > 0 && (
-              <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
-                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300">
+              <div className={`${CARTAO_DESTAQUE_AJUSTES} space-y-4`}>
+                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-orange-300">
                   <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                   <span>
                     O pagamento pelo app está ligado, mas ainda falta:{" "}
@@ -1152,12 +1289,12 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     type="button"
                     disabled={testeBloqueado}
                     onClick={testarConexao}
-                    className="flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                    className="flex min-h-11 items-center gap-1.5 rounded-lg border border-orange-400/40 bg-orange-500/15 px-3 py-1.5 text-[11px] font-bold text-orange-200 hover:bg-orange-500/25 active:scale-95 disabled:opacity-40"
                   >
                     {testando ? (
                       <RefreshCw className="size-3.5 animate-spin" />
                     ) : (
-                      <CheckCircle2 className="size-3.5" />
+                      <RefreshCw aria-hidden="true" className="size-3.5" />
                     )}
                     <span>Testar conexão</span>
                   </button>
@@ -1169,7 +1306,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   "desliguei porque o teste não passou"...) vem PRONTO da edge
                   e aparece como veio. */}
           {avisoPix && (
-            <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+            <p
+              role="status"
+              className="flex items-start gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 p-2 text-[11px] leading-relaxed text-orange-300"
+            >
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
               <span>{avisoPix}</span>
             </p>
@@ -1190,7 +1330,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   caso em que o cliente NÃO vê PIX — a tela conta em vez de
                   deixar o lojista descobrir na venda perdida. */}
           {config.pix_ligado && !config.public_key_na_loja && (
-            <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+            <p className="flex items-start gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 p-2 text-[11px] leading-relaxed text-orange-300">
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
               <span>
                 A ficha da loja ainda não carrega esta chave pública — salve as

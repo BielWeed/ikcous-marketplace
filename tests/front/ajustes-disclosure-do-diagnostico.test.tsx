@@ -90,7 +90,7 @@ describe("AdminSettingsView — disclosure do diagnóstico de conexão", () => {
     // Painel simples (E5): o diagnóstico e o indicador "Conexão" moram no
     // MESMO grupo — Ferramentas — e nenhum cartão "Como está sua loja" resta.
     const ferramentas = [...hospedeiro.querySelectorAll("section")].find(
-      (s) => s.querySelector(":scope > h2")?.textContent === "Ferramentas",
+      (s) => s.getAttribute("aria-label") === "Ferramentas",
     );
     expect(ferramentas?.textContent).toContain("Diagnóstico de Conexão");
     expect(ferramentas?.textContent).toContain("Online");

@@ -316,10 +316,73 @@ export function resumir(itens: any[]) {
 }
 
 /**
+ * URGÊNCIA E VALIDADE DO PUSH (RFC 8030, cabeçalhos `Urgency` e `TTL`).
+ *
+ * `pushTextMessage(mensagem, {})` — o que `enviarParaInscritos` sempre fez —
+ * deixa a biblioteca (`@negrel/webpush@0.3.0`, `subscriber.ts`) assumir
+ * `Urgency: normal` e `TTL: 2419200` (28 dias). Num Android em economia de
+ * bateria (Doze), aviso `normal` pode esperar o aparelho "acordar" — o
+ * lojista via o "Pedido novo" horas depois. `high` (valor definido no RFC
+ * 8030 §5.3) pede ao serviço de push que entregue sem esperar.
+ *
+ * `OPCOES_DE_AVISO_AO_LOJISTA` vale para TODO aviso ao lojista — pedido novo,
+ * pedido pago, cancelamento, contestação, cobrança de cartão duplicada,
+ * estorno sem registro, devolução para conferir, cartão órfão. Só a urgência
+ * sobe; o TTL fica no padrão da biblioteca (28 dias), de propósito: vários
+ * desses avisos são o ÚNICO sinal do caso (cartão duplicado, estorno sem
+ * registro, devolução, contestação e cartão órfão não existem no painel de
+ * pedidos, só no console/no extrato do Mercado Pago), e `avisarAdminUmaVez`
+ * dá o aviso por entregue assim que o push service responde 201. Um TTL curto
+ * faria um aparelho desligado perder esse sinal para sempre, em troca de
+ * evitar um "Pedido novo" velho — o defeito aqui era ATRASO, e a urgência o
+ * resolve.
+ *
+ * A campanha para clientes (`send-push`) não passa nada: continua `normal` /
+ * 28 dias, como sempre.
+ */
+export const OPCOES_DE_AVISO_AO_LOJISTA = {
+  urgency: webpush.Urgency.High,
+} as const;
+
+// A corrida limita a espera mesmo se a promessa nunca assentar, e limpa o
+// timer quando a operação termina. Ela não cancela o envio que já começou.
+// Uma resposta tardia não altera a contagem nem dispara limpeza de inscrição.
+// O resultado é INDETERMINADO, não recusa: o texto do motivo diz isso ao
+// lojista, que não deve reenviar a campanha inteira por causa disso.
+async function esperarComLimite<T>(
+  operacao: () => PromiseLike<T>,
+  ms: number,
+): Promise<T> {
+  const erro = new Error(
+    "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
+  );
+  if (ms <= 0) throw erro;
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operacao(),
+      new Promise<never>((_, reject) => {
+        temporizador = setTimeout(() => reject(erro), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
+
+/**
  * Envia em lotes de 100 e devolve UM item por inscrição, na ordem de entrada.
  *
  * `aoDetectarMorta` é injetado para o teste conseguir observar a remoção sem
  * banco. Em produção é o DELETE em push_subscriptions.
+ *
+ * `opcoesDeEnvio` ({ urgency, ttl, topic }) vai direto para `pushTextMessage`.
+ * Ausente, o envio é byte a byte o de antes (`{}`: urgência normal, TTL de 28
+ * dias) — é o caso da campanha para clientes. Ver `OPCOES_DE_AVISO_AO_LOJISTA`.
+ *
+ * Cada envio/remoção espera no máximo `tempoLimitePorEnvioMs`. A campanha
+ * passa também `prazoFinalMs`, que limita toda a espera do lote ao orçamento
+ * restante, inclusive a limpeza em série depois do envio.
  */
 export async function enviarParaInscritos({
   servidor,
@@ -328,8 +391,13 @@ export async function enviarParaInscritos({
   aoDetectarMorta,
   tamanhoDoLote = 100,
   rotulo = "push",
+  opcoesDeEnvio = {},
+  tempoLimitePorEnvioMs = 10_000,
+  prazoFinalMs = Infinity,
 }: any) {
   const itens: any[] = [];
+  const tempoRestante = () =>
+    Math.min(tempoLimitePorEnvioMs, prazoFinalMs - Date.now());
 
   for (let i = 0; i < inscricoes.length; i += tamanhoDoLote) {
     const lote = inscricoes.slice(i, i + tamanhoDoLote);
@@ -341,12 +409,15 @@ export async function enviarParaInscritos({
     const respostas = await Promise.all(
       lote.map(async (sub: any) => {
         try {
-          await servidor
-            .subscribe({
-              endpoint: sub.endpoint,
-              keys: { p256dh: sub.p256dh, auth: sub.auth },
-            })
-            .pushTextMessage(mensagem, {});
+          await esperarComLimite(
+            () => servidor
+              .subscribe({
+                endpoint: sub.endpoint,
+                keys: { p256dh: sub.p256dh, auth: sub.auth },
+              })
+              .pushTextMessage(mensagem, opcoesDeEnvio),
+            tempoRestante(),
+          );
           return { sub, erro: null };
         } catch (erro) {
           return { sub, erro };
@@ -366,7 +437,13 @@ export async function enviarParaInscritos({
       let removida = false;
       if (inscricaoMorta && aoDetectarMorta) {
         try {
-          await aoDetectarMorta(sub.endpoint);
+          const resultado = await esperarComLimite<{ error?: unknown } | void>(
+            () => aoDetectarMorta(sub.endpoint),
+            tempoRestante(),
+          );
+          // PostgREST resolve com { error } mesmo quando o DELETE falha.
+          // Callbacks antigos de teste que retornam void continuam válidos.
+          if (resultado && resultado.error != null) throw resultado.error;
           removida = true;
         } catch (erroDaRemocao) {
           console.error(

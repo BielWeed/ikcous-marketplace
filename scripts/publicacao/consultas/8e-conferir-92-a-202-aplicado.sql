@@ -22,24 +22,44 @@
 -- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
 -- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
 -- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
--- apply da sucessora. Hoje são duas, cada uma POR SI (função independente:
+-- apply da sucessora. Hoje são treze funções (treze migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
---   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja);
---   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo).
--- ATENÇÃO (cadeia futura): cada função tem UMA sucessora no CTE, a da ÚLTIMA migration que a
--- redefine; uma terceira definição troca o hash e uma loja parada no intermediário passa a dar
--- NEGATIVA (falha fechada). Quem escrever a próxima sucessora decide se mantém o intermediário.
--- Para essas duas a linha "corpo final <fn>" aceita o md5 da 20261199 (o do
--- `final`, que é o `esperado`) OU o md5 da sucessora DA PRÓPRIA função (CTE
+--   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
+--                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
+--   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo)
+--                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
+--                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda);
+--   * `fin_dre`                → 20261242000000 (a DRE usa o custo do dia da venda; parte do corpo da 99);
+--   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável)
+--                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
+--   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp);
+--   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento);
+--   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita)
+--                                e, DEPOIS dela, 20261249000000 (o motivo do desconto fica na nota privada);
+--   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento);
+--   * `pedido__saldo_a_estornar`, `solicitar_estorno`, `admin_devolucao_concluir` e
+--     `autorizar_post_do_estorno` → 20261241000000 (o reembolso em dúvida prende o saldo). Estes quatro
+--     NÃO são corpos da 99 (são da 98, da 97 e da 96): o `final` de cada um é o da última de 92..202
+--     que o define, e a cadeia parte dele.
+--   * `registrar_pagamento_recebido` → 20261243000000 (desfazer o recebimento recusa pedido com devolução).
+--     Também NÃO é corpo da 99 (é da 97): o `final` é o da 97 e a cadeia parte dele.
+-- CADEIA (decidido em 14/10/2026, quando `painel_inicio` ganhou a SEGUNDA sucessora, e repetida quando
+-- `get_admin_analytics_v2` e `crm_visao` ganharam a delas, a 20261234000000 e a 20261232000000): o CTE
+-- `sucessoras` guarda TODOS os corpos intermediários e o final de cada função (várias linhas por
+-- função, uma por migration), nunca só o último — uma loja parada no intermediário (a 12, antes da
+-- 28) continua POSITIVA, e o backfill 92-202 dela não fica bloqueado. A próxima migration que
+-- redefinir uma das 61 ACRESCENTA a sua linha (sem trocar as anteriores) e atualiza o teste.
+-- Para essas funções a linha "corpo final <fn>" aceita o md5 da 20261199 (o do
+-- `final`, que é o `esperado`) OU o md5 de QUALQUER sucessora DA PRÓPRIA função (CTE
 -- `sucessoras`); aceito, o `vivo` mostra o `esperado`. O rollback-manual de cada
--- sucessora devolve o corpo da 99, que segue aceito. Nada mais foi afrouxado:
+-- sucessora devolve o corpo da anterior na cadeia (o da 99 para a primeira), que segue aceito. Nada mais foi afrouxado:
 -- corpo estranho (vivo = o md5 dele), função AUSENTE e sobrecarga múltipla
--- (vivo = os md5 separados por vírgula) reprovam igual, e as outras 59 seguem
+-- (vivo = os md5 separados por vírgula) reprovam igual, e as outras 54 seguem
 -- exatas. tests/ci_conferir_banco_test.ts confere os hashes aceitos contra os
 -- arquivos (sucessoras = as migrations depois da 202 que redefinem uma das 61,
 -- com o md5 do corpo; o preflight delas e o rollback-manual citam os dois) e
 -- tests/banco/portao-8e-aceita-sucessoras-viva.cjs roda esta consulta no PG
--- real nos estados 99, só 12, só 14 e árvore inteira, com os negativos.
+-- real nos estados 99, painel parado na 12, só uma sucessora (inclusive só a 30 ou só a 31) e árvore inteira, com os negativos.
 --
 -- Não confere ACL (GRANT/REVOKE) nem a política inteira — isso é o que o
 -- pós-voo de cada migration já afirma dentro da transação; aqui é só "o objeto
@@ -115,8 +135,28 @@ WITH corpos AS (
     ('upsert_store_config', '9c56a9c6953e1d774a1ee97d5d8a7e16')
 ), sucessoras(fn, h, versao) AS (VALUES
     ('painel_inicio', 'f11d22d076c59ab54d1beb280954dd15', '20261212000000'),
-    ('get_admin_analytics_v2', '0a5f8c75bbeeda3777a6a7326a0e281c', '20261214000000')
-), colunas(tabela, coluna) AS (VALUES
+    ('get_admin_analytics_v2', '0a5f8c75bbeeda3777a6a7326a0e281c', '20261214000000'),
+    ('crm_visao', 'c33073503fccc6caa5f1085265501eae', '20261227000000'),
+    ('painel_inicio', 'ad5620273997ba9266f240f272bf399b', '20261228000000'),
+    ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
+    ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
+    ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),
+    ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
+    ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa', '20261235000000'),
+    ('registrar_venda_presencial', '796e0aaeb00b6f5133a54ce12f2df396', '20261249000000'),
+    ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000'),
+    ('pedido__saldo_a_estornar', '99741b4cdbf1e8d8340f80440e6da094', '20261241000000'),
+    ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),
+    ('admin_devolucao_concluir', 'ebb901efff59a53082836a13e053cd1a', '20261241000000'),
+    ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
+    ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
+    ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),
+    ('get_admin_analytics_v2', '5746d8a1df216ca4a5569901c45a2a07', '20261250000000'),
+    ('get_admin_analytics_v2', '060c9ab5b1505dc375b41e4436e9d3a8', '20261251000000'),
+    ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000'),
+    ('registrar_pagamento_recebido', '88270bb1e228c90be73acca03a3cee4e', '20261243000000'),
+    ('upsert_store_config', '391e8e1064400df5aea579f3472b203c', '20261244000000'),
+    ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
     ('order_refunds', 'mp_chargeback_valor_do_caso'),

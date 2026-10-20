@@ -3,7 +3,12 @@ import type {
   EntradaCachePorteiro,
   ResolverLojaNaCaderneta,
 } from "./src/hospedagem/porteiro";
-import { atenderPorteiro, obterFichaValidada } from "./src/hospedagem/porteiro";
+import {
+  atenderPorteiro,
+  documentoDaLoja,
+  obterFichaValidada,
+  respostaManutencao,
+} from "./src/hospedagem/porteiro";
 
 // O `matcher` PRECISA ser um array-LITERAL bem aqui — a Vercel/Next lê
 // `config.matcher` por ANÁLISE ESTÁTICA em tempo de build; qualquer valor
@@ -198,7 +203,8 @@ export default async function middleware(request: Request) {
     // de manutenção do documento. Nunca passthrough para o HTML assado
     // aqui: no build compartilhado o assado é "a loja de ninguém", e
     // servi-lo ao robô sem ficha validada é o MESMO vazamento que a
-    // concordância existe para impedir no documento.
+    // concordância existe para impedir no documento. (O caso "produto não
+    // encontrado", mais abaixo, segue a mesma regra: `semProduto`.)
     if (resultado.tipo === "manutencao") return resultado.resposta;
     const { ficha, caderneta: estadoCaderneta } = resultado;
     const { supabaseUrl, publishableKey: supabaseKey } = ficha.conexao;
@@ -208,6 +214,10 @@ export default async function middleware(request: Request) {
     // host já resolve para o resto da página). A MESMA ficha validada que o
     // documento usa ("uma trava, um lugar") também é a fonte do nome aqui.
     const storeName = ficha.identidade.identity.storeName;
+    // Versão para entrar em HTML: o nome é escrito pelo lojista (mesmo risco
+    // de `name`/`description`). `storeName` cru segue só nos fallbacks que
+    // já passam inteiros por `escaparHtml` (evita escape duplo).
+    const storeNameHtml = escaparHtml(storeName);
     const productId = url.searchParams.get("id");
 
     // `x-ikcous-og` diz QUEM respondeu: sem ele, "o middleware não rodou" e
@@ -218,14 +228,32 @@ export default async function middleware(request: Request) {
     // silencioso em NENHUMA resposta do ramo de robô, nem no sucesso, nem
     // no sem-produto (item 2 do brief T3c) — o 503 acima já leva o header
     // por dentro de `resultado.resposta` (`respostaManutencao`).
-    const passthrough = (motivo: "sem-produto") =>
-      new Response(null, {
-        headers: {
-          "x-middleware-next": "1",
-          "x-ikcous-og": motivo,
-          "x-ikcous-caderneta": estadoCaderneta,
-        },
-      });
+    //
+    // Produto não encontrado (pausado, apagado, inexistente, sem `id` ou
+    // consulta que falhou): ANTES era `x-middleware-next: 1`, e a Vercel
+    // entregava o `/index.html` ASSADO no build — a identidade da loja
+    // PRINCIPAL no quadrinho de prévia de qualquer outra loja (medido
+    // 14/10/2026), e a pessoa que tocava no link caía na página inicial
+    // sem aviso. Agora o robô recebe o documento da PRÓPRIA loja do
+    // endereço (a ficha validada acima, a mesma do navegador): título/og da
+    // loja, sem produto nem preço. Falha ao montá-lo = a mesma 503 de
+    // manutenção do resto do porteiro, NUNCA o HTML assado. Custo: a ficha
+    // já foi obtida (cache por host de 60s) — só se baixa o documento
+    // estático, igual ao navegador.
+    const semProduto = async (): Promise<Response> => {
+      try {
+        return await documentoDaLoja(
+          request,
+          ficha,
+          estadoCaderneta,
+          { fetchImpl: fetch },
+          { "x-ikcous-og": "sem-produto" },
+        );
+      } catch (error) {
+        console.error("[Middleware] Error serving store document:", error);
+        return respostaManutencao("html-indisponivel", estadoCaderneta);
+      }
+    };
 
     if (productId) {
       try {
@@ -293,11 +321,11 @@ export default async function middleware(request: Request) {
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>${name} | ${storeName}</title>
+  <title>${name} | ${storeNameHtml}</title>
   <meta name="description" content="${description}">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | ${storeName}" />
+  <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | ${storeNameHtml}" />
   <meta property="og:description" content="${description}" />
   <meta property="og:type" content="product" />
   <meta property="og:url" content="${escaparHtml(request.url)}" />
@@ -311,7 +339,7 @@ export default async function middleware(request: Request) {
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${name} | ${storeName}" />
+  <meta name="twitter:title" content="${name} | ${storeNameHtml}" />
   <meta name="twitter:description" content="${description}" />
   <meta name="twitter:image" content="${imageUrl}" />
 </head>
@@ -339,7 +367,7 @@ export default async function middleware(request: Request) {
     // É robô, é /product-detail, mas a consulta não devolveu produto
     // (fetch falhou, resposta não-ok — ex.: a Causa 2 acima — ou lista
     // vazia). Regressão do defeito original: isto NÃO pode virar "produto".
-    return passthrough("sem-produto");
+    return semProduto();
   }
 
   // Todo o resto (não é robô no caminho de produto) é um DOCUMENTO — o

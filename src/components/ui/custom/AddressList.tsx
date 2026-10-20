@@ -1,6 +1,16 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Address } from "@/types";
 import { CheckCircle2, Edit, MapPin, Trash2 } from "lucide-react";
-import { memo } from "react";
+import { memo, useState } from "react";
 
 interface AddressListProps {
   addresses: Address[];
@@ -15,16 +25,27 @@ interface AddressListProps {
   showMaps?: boolean;
 }
 
-// Query de LOCAL para o Google: rua+número, bairro, cidade, UF, CEP e Brasil.
+// Query de LOCAL para o Google. Endereço completo (rua, cidade e UF):
+// rua+número, cidade, UF e, só se for específico, o CEP no fim. Incompleto:
+// rua+número, bairro, cidade, UF, CEP e Brasil — o que houver, como
+// localizador de reserva.
 // Dados privados — destinatário, complemento, referência e apelido — NUNCA
 // saem para o Google. Sem rua e sem CEP não há como apontar o mapa: devolve
 // null para o cartão nem montar iframe vazio (a query é texto; o Google
 // geocodifica sozinho — nada de coordenada inventada nem precisão prometida).
 //
-// CEP sai da query quando rua, cidade e UF estão completos: em alguns
-// endereços, combinar bairro+CEP leva o embed clássico a uma busca ambígua
-// (POIs da região em vez do pin do endereço). O CEP segue como fallback
-// nos casos incompletos.
+// No endereço completo o bairro e o "Brasil" ficam de fora (medido no embed
+// real): um nome de bairro que lembra nome de comércio faz o Google listar
+// dezenas de comércios (vários pinos) em vez de apontar UM endereço. Sem o
+// bairro o mesmo endereço dá um pino só. O CEP volta no fim apenas quando é
+// de rua (8 dígitos e NÃO terminado em 000): ele desempata rua repetida em
+// cidade grande. CEP geral da cidade (terminado em 000) não localiza nada.
+function cepEspecificoDoEndereco(cep: string | null | undefined) {
+  const digitos = (cep ?? "").replace(/\D/g, "");
+  if (digitos.length !== 8 || digitos.endsWith("000")) return null;
+  return `${digitos.slice(0, 5)}-${digitos.slice(5)}`;
+}
+
 export function queryMapsDoEndereco(address: Address): string | null {
   // Guarda DIRETA em street ou CEP: um número órfão (rua vazia) não monta
   // query — sem um dos dois não há como apontar o mapa.
@@ -34,20 +55,71 @@ export function queryMapsDoEndereco(address: Address): string | null {
     temRua && address.number?.trim()
       ? `${address.street!.trim()}, ${address.number.trim()}`
       : (address.street?.trim() ?? "");
-  // A omissão do CEP exige rua PRESENTE: sem rua, o CEP é o único
-  // localizador e não pode sair.
-  const omitirCep = Boolean(
+  // A simplificação exige rua PRESENTE: sem rua, bairro e CEP são os únicos
+  // localizadores e não podem sair.
+  const enderecoCompleto = Boolean(
     temRua && address.city?.trim() && address.state?.trim(),
   );
-  const partes = [
-    rua,
-    address.neighborhood?.trim(),
-    address.city?.trim(),
-    address.state?.trim(),
-    omitirCep ? null : address.cep?.trim(),
-    "Brasil",
-  ].filter(Boolean);
-  return encodeURIComponent(partes.join(", "));
+  const partes = enderecoCompleto
+    ? [
+        rua,
+        address.city?.trim(),
+        address.state?.trim(),
+        cepEspecificoDoEndereco(address.cep),
+      ]
+    : [
+        rua,
+        address.neighborhood?.trim(),
+        address.city?.trim(),
+        address.state?.trim(),
+        address.cep?.trim(),
+        "Brasil",
+      ];
+  return encodeURIComponent(partes.filter(Boolean).join(", "));
+}
+
+// Apagar endereço pede confirmação (caçada de 14/10/2026, dado de cliente): a lixeira do cartão é pequena e fica
+// colada no lápis, e apagava na hora, sem "tem certeza?". O toque na lixeira só ABRE esta pergunta; quem apaga é o
+// botão "Apagar" dela. O texto não promete nada sobre os pedidos já feitos: o que cada pedido guarda do endereço
+// depende de quando ele foi feito.
+function ConfirmaApagarEndereco({
+  endereco,
+  onCancelar,
+  onConfirmar,
+}: {
+  endereco: Address | null;
+  onCancelar: () => void;
+  onConfirmar: (id: string) => void;
+}) {
+  return (
+    <AlertDialog
+      open={endereco !== null}
+      onOpenChange={(aberto) => {
+        if (!aberto) onCancelar();
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Apagar este endereço?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {endereco
+              ? `${endereco.name} — ${endereco.street}, ${endereco.number}. Esta ação não pode ser desfeita.`
+              : ""}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (endereco) onConfirmar(endereco.id);
+            }}
+          >
+            Apagar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }
 
 export const AddressList = memo(function AddressList({
@@ -60,6 +132,19 @@ export const AddressList = memo(function AddressList({
   compact = false,
   showMaps = false,
 }: AddressListProps) {
+  // O endereço cuja lixeira foi tocada, enquanto a pergunta está aberta.
+  const [apagando, setApagando] = useState<Address | null>(null);
+  const confirmacao = (
+    <ConfirmaApagarEndereco
+      endereco={apagando}
+      onCancelar={() => setApagando(null)}
+      onConfirmar={(id) => {
+        setApagando(null);
+        onDelete?.(id);
+      }}
+    />
+  );
+
   if (addresses.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 py-8 text-center">
@@ -71,191 +156,195 @@ export const AddressList = memo(function AddressList({
 
   if (compact) {
     return (
-      <div className="space-y-2">
-        {addresses.map((address) => (
-          <div
-            key={address.id}
-            role={selectable ? "button" : undefined}
-            tabIndex={selectable ? 0 : undefined}
-            className={`flex items-center justify-between rounded-2xl border px-3 py-2.5 transition-all duration-300 ${
-              selectable && selectedId === address.id
-                ? "border-zinc-900 bg-zinc-900/5 shadow-sm"
-                : "border-transparent bg-zinc-50/50 hover:bg-zinc-100/50"
-            } ${selectable ? "cursor-pointer active:scale-[0.99]" : ""}`}
-            onClick={() => selectable && onSelect?.(address)}
-            onKeyDown={(e) => {
-              if (selectable && (e.key === "Enter" || e.key === " ")) {
-                e.preventDefault();
-                onSelect?.(address);
-              }
-            }}
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-2.5">
-              <div
-                className={`flex size-7 shrink-0 items-center justify-center rounded-lg shadow-sm ${
-                  selectable && selectedId === address.id
-                    ? "bg-zinc-900 text-white"
-                    : "border border-zinc-100 bg-white text-zinc-400"
-                }`}
-              >
-                <MapPin className="size-3.5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="max-w-[150px] truncate text-[11px] font-bold text-zinc-900">
-                    {address.name}
-                  </span>
-                  {address.is_default && (
-                    <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-emerald-700">
-                      Principal
-                    </span>
-                  )}
-                  {selectable && selectedId === address.id && (
-                    <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-zinc-900">
-                      Selecionado
-                    </span>
-                  )}
+      <>
+        <div className="space-y-2">
+          {addresses.map((address) => (
+            <div
+              key={address.id}
+              role={selectable ? "button" : undefined}
+              tabIndex={selectable ? 0 : undefined}
+              className={`flex items-center justify-between rounded-2xl border px-3 py-2.5 transition-all duration-300 ${
+                selectable && selectedId === address.id
+                  ? "border-zinc-900 bg-zinc-900/5 shadow-sm"
+                  : "border-transparent bg-zinc-50/50 hover:bg-zinc-100/50"
+              } ${selectable ? "cursor-pointer active:scale-[0.99]" : ""}`}
+              onClick={() => selectable && onSelect?.(address)}
+              onKeyDown={(e) => {
+                if (selectable && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  onSelect?.(address);
+                }
+              }}
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                <div
+                  className={`flex size-7 shrink-0 items-center justify-center rounded-lg shadow-sm ${
+                    selectable && selectedId === address.id
+                      ? "bg-zinc-900 text-white"
+                      : "border border-zinc-100 bg-white text-zinc-400"
+                  }`}
+                >
+                  <MapPin className="size-3.5" />
                 </div>
-                <p className="mt-0.5 truncate text-[9px] font-medium text-zinc-400">
-                  {address.street}, {address.number} • {address.city}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="max-w-[150px] truncate text-[11px] font-bold text-zinc-900">
+                      {address.name}
+                    </span>
+                    {address.is_default && (
+                      <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-emerald-700">
+                        Principal
+                      </span>
+                    )}
+                    {selectable && selectedId === address.id && (
+                      <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-zinc-900">
+                        Selecionado
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 truncate text-[9px] font-medium text-zinc-400">
+                    {address.street}, {address.number} • {address.city}
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions or Selected Indicator */}
+              <div className="ml-2 flex shrink-0 items-center gap-1">
+                {selectable && selectedId === address.id ? (
+                  <CheckCircle2 className="size-3.5 text-zinc-900" />
+                ) : null}
+
+                {!selectable && (onEdit || onDelete) && (
+                  <div className="flex items-center gap-0.5">
+                    {onEdit && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEdit?.(address);
+                        }}
+                        className="animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-zinc-400 shadow-sm transition-all duration-200 after:absolute after:-inset-y-2.5 after:-left-2.5 after:right-0 after:content-[''] hover:bg-zinc-900 hover:text-white"
+                        aria-label="Editar"
+                      >
+                        <Edit className="size-2.5" />
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setApagando(address);
+                        }}
+                        className="animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-red-400 shadow-sm transition-all duration-200 after:absolute after:-inset-y-2.5 after:-right-2.5 after:left-0 after:content-[''] hover:bg-red-50 hover:text-red-500"
+                        aria-label="Excluir"
+                      >
+                        <Trash2 className="size-2.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
+          ))}
+        </div>
+        {confirmacao}
+      </>
+    );
+  }
 
-            {/* Actions or Selected Indicator */}
-            <div className="ml-2 flex shrink-0 items-center gap-1">
-              {selectable && selectedId === address.id ? (
-                <CheckCircle2 className="size-3.5 text-zinc-900" />
-              ) : null}
-
-              {!selectable && (onEdit || onDelete) && (
-                <div className="flex items-center gap-0.5">
-                  {onEdit && (
+  return (
+    <>
+      <div className="space-y-3">
+        {addresses.map((address) => {
+          // Seletores (checkout) nunca ganham mapa: mesmo com showMaps passado,
+          // selectable bloqueia — o cartão já é interativo e não vira moldura.
+          const queryMaps =
+            showMaps && !selectable ? queryMapsDoEndereco(address) : null;
+          return (
+            <div
+              key={address.id}
+              role={selectable ? "button" : undefined}
+              tabIndex={selectable ? 0 : undefined}
+              className={`relative rounded-2xl border-2 bg-zinc-50/50 p-4 transition-all duration-500 sm:p-5 ${
+                selectable && selectedId === address.id
+                  ? "z-10 border-zinc-900 bg-white shadow-2xl shadow-zinc-100"
+                  : "border-transparent hover:border-zinc-200 hover:bg-white"
+              } ${selectable ? "cursor-pointer active:scale-[0.98]" : ""}`}
+              onClick={() => selectable && onSelect?.(address)}
+              onKeyDown={(e) => {
+                if (selectable && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  onSelect?.(address);
+                }
+              }}
+            >
+              {/* Header */}
+              <div className="mb-2 flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex size-8 items-center justify-center rounded-xl shadow-sm ${selectable && selectedId === address.id ? "bg-zinc-900 text-white" : "bg-white text-zinc-400"} shrink-0`}
+                  >
+                    <MapPin className="size-4" />
+                  </div>
+                  <div>
+                    <span className="block text-sm font-bold leading-tight text-zinc-900">
+                      {address.name}
+                    </span>
+                    {address.is_default && (
+                      <span className="mt-1 block text-[8px] font-bold uppercase tracking-widest text-emerald-500">
+                        Endereço Principal
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {selectable && selectedId === address.id && (
+                  <CheckCircle2 className="size-5 text-zinc-900 duration-300 animate-in zoom-in-50" />
+                )}
+                {(onEdit || onDelete) && (
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onEdit?.(address);
                       }}
-                      className="animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-zinc-400 shadow-sm transition-all duration-200 after:absolute after:-inset-y-2.5 after:-left-2.5 after:right-0 after:content-[''] hover:bg-zinc-900 hover:text-white"
+                      className="relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
                       aria-label="Editar"
                     >
-                      <Edit className="size-2.5" />
+                      <Edit className="size-3.5" />
                     </button>
-                  )}
-                  {onDelete && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete?.(address.id);
-                      }}
-                      className="animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-red-400 shadow-sm transition-all duration-200 after:absolute after:-inset-y-2.5 after:-right-2.5 after:left-0 after:content-[''] hover:bg-red-50 hover:text-red-500"
-                      aria-label="Excluir"
-                    >
-                      <Trash2 className="size-2.5" />
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {addresses.map((address) => {
-        // Seletores (checkout) nunca ganham mapa: mesmo com showMaps passado,
-        // selectable bloqueia — o cartão já é interativo e não vira moldura.
-        const queryMaps =
-          showMaps && !selectable ? queryMapsDoEndereco(address) : null;
-        return (
-          <div
-            key={address.id}
-            role={selectable ? "button" : undefined}
-            tabIndex={selectable ? 0 : undefined}
-            className={`relative rounded-2xl border-2 bg-zinc-50/50 p-4 transition-all duration-500 sm:p-5 ${
-              selectable && selectedId === address.id
-                ? "z-10 border-zinc-900 bg-white shadow-2xl shadow-zinc-100"
-                : "border-transparent hover:border-zinc-200 hover:bg-white"
-            } ${selectable ? "cursor-pointer active:scale-[0.98]" : ""}`}
-            onClick={() => selectable && onSelect?.(address)}
-            onKeyDown={(e) => {
-              if (selectable && (e.key === "Enter" || e.key === " ")) {
-                e.preventDefault();
-                onSelect?.(address);
-              }
-            }}
-          >
-            {/* Header */}
-            <div className="mb-2 flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className={`flex size-8 items-center justify-center rounded-xl shadow-sm ${selectable && selectedId === address.id ? "bg-zinc-900 text-white" : "bg-white text-zinc-400"} shrink-0`}
-                >
-                  <MapPin className="size-4" />
-                </div>
-                <div>
-                  <span className="block text-sm font-bold leading-tight text-zinc-900">
-                    {address.name}
-                  </span>
-                  {address.is_default && (
-                    <span className="mt-1 block text-[8px] font-bold uppercase tracking-widest text-emerald-500">
-                      Endereço Principal
-                    </span>
-                  )}
-                </div>
+                    {onDelete && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setApagando(address);
+                        }}
+                        className="relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500"
+                        aria-label="Excluir"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-              {selectable && selectedId === address.id && (
-                <CheckCircle2 className="size-5 text-zinc-900 duration-300 animate-in zoom-in-50" />
-              )}
-              {(onEdit || onDelete) && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit?.(address);
-                    }}
-                    className="relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
-                    aria-label="Editar"
-                  >
-                    <Edit className="size-3.5" />
-                  </button>
-                  {onDelete && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete?.(address.id);
-                      }}
-                      className="relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500"
-                      aria-label="Excluir"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
 
-            {/* Details */}
-            <div className="space-y-1 pl-11 text-[11px] font-medium text-zinc-500">
-              <p className="mb-1 text-xs font-bold uppercase tracking-tighter text-zinc-900">
-                {address.recipient_name}
-              </p>
-              <p className="leading-relaxed">
-                {address.street}, {address.number}
-                {address.complement ? ` - ${address.complement}` : ""}
-              </p>
-              <p className="leading-relaxed">
-                {address.neighborhood}, {address.city} - {address.state}
-              </p>
-              <p className="mt-1 text-[9px] font-bold text-zinc-400">
-                CEP: {address.cep}
-              </p>
-            </div>
+              {/* Details */}
+              <div className="space-y-1 pl-11 text-[11px] font-medium text-zinc-500">
+                <p className="mb-1 text-xs font-bold uppercase tracking-tighter text-zinc-900">
+                  {address.recipient_name}
+                </p>
+                <p className="leading-relaxed">
+                  {address.street}, {address.number}
+                  {address.complement ? ` - ${address.complement}` : ""}
+                </p>
+                <p className="leading-relaxed">
+                  {address.neighborhood}, {address.city} - {address.state}
+                </p>
+                <p className="mt-1 text-[9px] font-bold text-zinc-400">
+                  CEP: {address.cep}
+                </p>
+              </div>
 
-            {/* Mapa do endereço (opt-in showMaps, hoje só o Perfil): FORA do
+              {/* Mapa do endereço (opt-in showMaps, hoje só o Perfil): FORA do
               pl-11 — largura interna inteira do cartão. O iframe é decorativo
               (pointer-events none, tabIndex -1: nada de foco invisível); o
               recorte do topo esconde o chip do embed SEM esconder os créditos
@@ -263,33 +352,35 @@ export const AddressList = memo(function AddressList({
               Maps em nova aba — com o apelido no nome acessível para
               distinguir os cartões. Recolher os detalhes desmonta o ramo
               expandido → desmonta o mapa. */}
-            {queryMaps && (
-              <div className="mt-3 overflow-hidden rounded-xl border border-zinc-100">
-                <div className="relative h-40 w-full overflow-hidden">
-                  <iframe
-                    title={`Mapa do endereço ${address.name}`}
-                    src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    credentialless=""
-                    tabIndex={-1}
-                    className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
-                  />
+              {queryMaps && (
+                <div className="mt-3 overflow-hidden rounded-xl border border-zinc-100">
+                  <div className="relative h-40 w-full overflow-hidden">
+                    <iframe
+                      title={`Mapa do endereço ${address.name}`}
+                      src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      credentialless=""
+                      tabIndex={-1}
+                      className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
+                    />
+                  </div>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Abrir no Google Maps — endereço ${address.name}`}
+                    className="flex min-h-9 items-center justify-center gap-1 bg-zinc-50 p-2 text-[10px] font-black uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-900"
+                  >
+                    Abrir no Google Maps
+                  </a>
                 </div>
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`Abrir no Google Maps — endereço ${address.name}`}
-                  className="flex min-h-9 items-center justify-center gap-1 bg-zinc-50 p-2 text-[10px] font-black uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-900"
-                >
-                  Abrir no Google Maps
-                </a>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {confirmacao}
+    </>
   );
 });

@@ -48,8 +48,15 @@
 --     presente; NÃO é evidência das migrations 62..64 — quatro delas
 --     (registrar_venda_presencial, get_admin_orders_paged,
 --     get_admin_orders_cancelados_recentes e upsert_store_config) foram
---     redefinidas na 20261199 e o corpo vivo prova a 99; a evidência de 62..64 é a
---     ACL e o overload acima. tests/ci_conferir_banco_test.ts recalcula cada md5 a
+--     redefinidas na 20261199 e o corpo vivo prova a 99 (registrar_venda_presencial
+--     ganhou a trava pela chave de idempotência na 20261235000000 e depois
+--     o motivo privado na 20261249000000: o corpo vivo prova a 249;
+--     e upsert_store_config foi redefinida de novo na
+--     20261239 — a loja declara razão social, CNPJ/CPF e e-mail de atendimento — e de novo
+--     na 20261244 — a loja escolhe como entrega na cidade e em quantos dias: as chaves
+--     local_delivery_enabled e local_delivery_days —, cujo corpo o vivo prova agora); a
+--     evidência de 62..64 é a ACL e o overload acima.
+--     tests/ci_conferir_banco_test.ts recalcula cada md5 a
 --     partir dos arquivos desta árvore: uma migration futura que redefina uma delas
 --     QUEBRA o CI e obriga a atualizar esta consulta no mesmo PR.
 --   * Comparação por IGUALDADE EXATA, sem parser de prefixo nem coleta de literais:
@@ -109,8 +116,8 @@ WITH corpos AS (
     ('get_admin_orders_paged', '5861dbbe0e9c007a4196f5308c17d763'),
     ('get_product_recommendations', '3de5b27cc17c31301249861b7921a6fe'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
-    ('registrar_venda_presencial', '6a421904a7c99a0e17ca58f2f891c71d'),
-    ('upsert_store_config', '9c56a9c6953e1d774a1ee97d5d8a7e16')
+    ('registrar_venda_presencial', '796e0aaeb00b6f5133a54ce12f2df396'),
+    ('upsert_store_config', '391e8e1064400df5aea579f3472b203c')
 ), acls(fn, esperado) AS (VALUES
     ('buscar_por_codigo_barras', 'anon=false authenticated=true service_role=true public=nao'),
     ('get_admin_orders_cancelados_recentes', 'anon=false authenticated=true service_role=true public=nao'),

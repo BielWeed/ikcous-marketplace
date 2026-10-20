@@ -6,7 +6,6 @@ const fontes = import.meta.glob<string>(
     "/src/views/customer/AddressFormView.tsx",
     "/src/components/ui/custom/Header.tsx",
     "/src/components/pwa/PushNotificationBanner.tsx",
-    "/src/components/pwa/UpdateNotification.tsx",
   ],
   { query: "?raw", import: "default", eager: true },
 );
@@ -16,9 +15,9 @@ const offline = import.meta.glob<string>("/public/offline.html", {
   eager: true,
 });
 
-describe("critério 1 — uma regra de nome para as cinco telas", () => {
-  it("encontra exatamente os cinco arquivos", () => {
-    expect(Object.keys(fontes)).toHaveLength(5);
+describe("critério 1 — uma regra de nome para as quatro telas", () => {
+  it("encontra exatamente os quatro arquivos", () => {
+    expect(Object.keys(fontes)).toHaveLength(4);
   });
 
   for (const [arquivo, fonte] of Object.entries(fontes)) {
@@ -43,7 +42,7 @@ describe("critério 4 — tela estática sem conexão", () => {
       /<img[^>]+src="\/branding\/logo.svg"[^>]+alt=""[^>]+onerror="this.hidden=true"/,
     );
     expect(html).toContain(
-      "Você está offline. Reconecte para continuar navegando.",
+      "Sem internet. Confira sua conexão; vamos tentar de novo sozinhos.",
     );
   });
 });

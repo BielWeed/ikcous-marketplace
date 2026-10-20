@@ -2,15 +2,24 @@
 /**
  * PROVA A10 — o log de push nasce honesto (laudo novos ângulos 01/09).
  *
+ * ESCOPO (15/10/2026): SÓ `reply_review_atomic`. A migration 20261240000000
+ * trocou o corpo das duas sobrecargas de `answer_question_atomic`: a resposta
+ * à PERGUNTA deixou de gravar a linha em `push_notifications_log` e passou a
+ * criar o aviso no sino da cliente (provado por
+ * tests/banco/pergunta-respondida-avisa-viva.cjs). Por isso esta prova NÃO
+ * mede mais `answer_question_atomic`: o marcador "A10: log honesto" deixou de
+ * existir nela, e é esse o motivo de a 20261064 e a 20261065 NUNCA mais serem
+ * reaplicadas (recriariam o corpo antigo por cima do novo).
+ *
  * O que prova, contra o banco VIVO, numa transação com ROLLBACK no fim
  * (resíduo zero):
- *   1. `answer_question_atomic` grava a linha de log com
+ *   1. `reply_review_atomic` grava a linha de log com
  *      `recipient_count = 0` NO CAMINHO DO APP (2 args) e no legado
- *      (3 args); re-editar grava OUTRA linha, também 0 (nunca 1);
- *   2. `reply_review_atomic` idem, nos dois caminhos;
- *   3. as QUATRO assinaturas vivas carregam o marcador
+ *      (3 args);
+ *   2. as DUAS assinaturas vivas de `reply_review_atomic` carregam o marcador
  *      "A10: log honesto" (o mesmo que o VERIFICACOES do db-apply confere);
- *   4. nenhuma linha antiga com a mentira (count = 1) sobrou.
+ *   3. nenhuma linha antiga com a mentira (count = 1) sobrou nos títulos da
+ *      avaliação.
  *
  * Contexto de admin: `SET LOCAL ROLE authenticated` + `request.jwt.claims`
  * com `app_metadata.role = admin` de um perfil admin real — o mesmo padrão
@@ -47,7 +56,7 @@ async function main() {
   try {
     await client.query("BEGIN");
 
-    // ---- massa: produto -> pergunta -> avaliação (filler de NOT NULL) ----
+    // ---- massa: produto -> avaliação (filler de NOT NULL) ----
     const obrigatorias = async (tabela) =>
       (
         await client.query(
@@ -99,12 +108,6 @@ async function main() {
       await client.query("SELECT id FROM profiles WHERE role = 'admin' LIMIT 1")
     ).rows[0].id;
 
-    const perguntaId = await semear("questions", {
-      product_id: `uuid '${produtoId}'`,
-      user_id: `uuid '${adminId}'`,
-      question: "'SONDA A10?'",
-    });
-
     const reviewId = await semear("reviews", {
       product_id: `uuid '${produtoId}'`,
       user_id: `uuid '${adminId}'`,
@@ -133,36 +136,10 @@ async function main() {
         )
       ).rows;
 
-    // ---- 1. pergunta respondida: 0 aparelhos, em AMBOS os caminhos ------
-    // (2 args = o caminho que o front usa; 3 args = legado da 64)
+    // ---- contexto de admin para as respostas à avaliação (a da PERGUNTA saiu deste escopo) ----
     await virarAdmin();
-    await client.query("SELECT public.answer_question_atomic($1, $2)", [
-      perguntaId,
-      "primeira resposta",
-    ]);
-    await client.query("SELECT public.answer_question_atomic($1, $2)", [
-      perguntaId,
-      "resposta editada",
-    ]);
-    await client.query("SELECT public.answer_question_atomic($1, $2, $3)", [
-      perguntaId,
-      "resposta pelo caminho legado",
-      adminId,
-    ]);
-    const linhasPergunta = await logsDaSonda(
-      "Sua pergunta foi respondida!",
-      `/product/${produtoId}`,
-    );
-    asserir(
-      linhasPergunta.length === 3,
-      `pergunta: 3 respostas (2x app + 1x legado) gravaram 3 linhas (${linhasPergunta.length})`,
-    );
-    asserir(
-      linhasPergunta.every((l) => l.recipient_count === 0),
-      "pergunta: TODAS as linhas nascem com recipient_count = 0",
-    );
 
-    // ---- 2. avaliação respondida: 0 aparelhos, nos dois caminhos --------
+    // ---- 1. avaliação respondida: 0 aparelhos, nos dois caminhos --------
     await client.query("SELECT public.reply_review_atomic($1, $2)", [
       reviewId,
       "obrigado pela avaliação!",
@@ -191,7 +168,7 @@ async function main() {
       "avaliação: a réplica legada (3 args, título sem acento) nasce com 0",
     );
 
-    // ---- 3. marcador do contrato nas QUATRO assinaturas vivas -----------
+    // ---- 2. marcador do contrato nas DUAS assinaturas vivas de reply_review_atomic ---
     const comMarcador = async (funcao) =>
       (
         await client.query(
@@ -200,17 +177,15 @@ async function main() {
         )
       ).rows[0].def.includes("A10: log honesto");
     asserir(
-      (await comMarcador("answer_question_atomic(uuid,text)")) &&
-        (await comMarcador("answer_question_atomic(uuid,text,uuid)")) &&
-        (await comMarcador("reply_review_atomic(uuid,text)")) &&
+      (await comMarcador("reply_review_atomic(uuid,text)")) &&
         (await comMarcador("reply_review_atomic(uuid,text,uuid)")),
-      "as QUATRO assinaturas vivas carregam o marcador 'A10: log honesto'",
+      "as DUAS assinaturas vivas de reply_review_atomic carregam o marcador 'A10: log honesto'",
     );
 
-    // ---- 4. limpeza: nenhuma linha com esses títulos segue em 1 ----------
+    // ---- 3. limpeza: nenhuma linha com esses títulos segue em 1 ----------
     const mentira = (
       await client.query(
-        "SELECT count(*)::int AS n FROM push_notifications_log WHERE recipient_count = 1 AND title IN ('Sua pergunta foi respondida!', 'Sua avaliacao foi respondida!', 'Sua avaliação foi respondida!')",
+        "SELECT count(*)::int AS n FROM push_notifications_log WHERE recipient_count = 1 AND title IN ('Sua avaliacao foi respondida!', 'Sua avaliação foi respondida!')",
       )
     ).rows[0].n;
     asserir(

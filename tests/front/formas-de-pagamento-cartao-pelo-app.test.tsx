@@ -44,8 +44,11 @@ import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePa
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// O aviso diz a verdade sobre o teste: ligar vale para a loja inteira, o jeito
+// de conferir com a chave de produção é uma compra pequena com cartão REAL, e
+// cartão de teste só passa com a chave de teste (com a de produção é recusado).
 const TESTE_ANTES =
-  "Antes de ligar para os clientes, faça um pedido de teste com um cartão de teste do Mercado Pago.";
+  "Ao ligar, o cartão já aparece para todos os clientes. Para conferir, faça uma compra de valor baixo com um cartão seu e devolva o valor depois, no Mercado Pago. Cartão de teste só funciona com a chave de teste; com a chave de produção ele é recusado.";
 
 describe("Formas de pagamento — Cartão pelo app", () => {
   let raiz: Root;
@@ -135,6 +138,31 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     expect(debito().getAttribute("data-state")).toBe("unchecked");
     expect(seletorDeParcelas()).toBeUndefined();
     expect(hospedeiro.textContent).toContain(TESTE_ANTES);
+    // Não manda mais fazer "pedido de teste antes de ligar": o interruptor liga
+    // para a loja inteira e o cartão de teste é recusado com chave de produção.
+    expect(hospedeiro.textContent).not.toContain("Antes de ligar");
+    expect(hospedeiro.textContent).not.toMatch(/pedido de teste/i);
+  });
+
+  it("distingue PIX, cartão e dinheiro sem mudar os nomes dos interruptores", async () => {
+    await montar();
+    const pix = interruptor("Pix na entrega ou retirada").closest("label")!;
+    expect(
+      pix.querySelector("svg.icone-pix")?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(pix.querySelector(".lucide-wallet")).toBeNull();
+    expect(hospedeiro.querySelectorAll("svg.icone-pix")).toHaveLength(2);
+    expect(
+      interruptor("Cartão na entrega ou retirada")
+        .closest("label")!
+        .querySelector(".lucide-credit-card"),
+    ).not.toBeNull();
+    expect(
+      interruptor("Dinheiro na entrega ou retirada")
+        .closest("label")!
+        .querySelector(".lucide-banknote"),
+    ).not.toBeNull();
+    expect(banco.rpc).not.toHaveBeenCalled();
   });
 
   it("ligar crédito grava pela RPC e mostra a linha devolvida — com o 'Parcelar em até' 1 a 12x", async () => {

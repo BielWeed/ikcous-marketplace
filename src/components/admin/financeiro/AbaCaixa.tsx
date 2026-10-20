@@ -1,9 +1,11 @@
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
   History,
   Lock,
   LockOpen,
+  Plus,
   Store,
 } from "lucide-react";
 
@@ -22,6 +24,7 @@ import {
   EsqueletoDeLista,
   EstadoDeErro,
   Etiqueta,
+  SeloFinanceiro,
 } from "./partes";
 
 function LinhaDaConta({
@@ -63,9 +66,13 @@ function LinhaDaConta({
 function CaixaAberto({
   caixa,
   abrirFolha,
+  aoNovoLancamento,
+  mostrarAcaoFixa,
 }: {
   readonly caixa: CaixaAtual;
   readonly abrirFolha: AbrirFolha;
+  readonly aoNovoLancamento?: () => void;
+  readonly mostrarAcaoFixa: boolean;
 }) {
   return (
     <>
@@ -74,7 +81,7 @@ function CaixaAberto({
         subtitulo={`${caixa.contaNome} · desde ${formatarDataHora(caixa.abertoEm)}`}
         acao={<Etiqueta tom="sucesso">Aberto</Etiqueta>}
       >
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-7">
           <div className="flex flex-col gap-1">
             <p className={CLASSE_ROTULO_DO_CARTAO}>Esperado na gaveta agora</p>
             <Dinheiro
@@ -82,7 +89,7 @@ function CaixaAberto({
               className="text-4xl font-black tracking-tighter text-white"
             />
             <p className="text-xs font-medium text-zinc-400">
-              Atualiza sozinho a cada venda em dinheiro.
+              Inclui as vendas em dinheiro registradas nesta sessão.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
@@ -95,7 +102,7 @@ function CaixaAberto({
                     contaDoCaixa: caixa.contaId,
                   })
                 }
-                className={CLASSE_BOTAO_SECUNDARIO}
+                className={cn(CLASSE_BOTAO_SECUNDARIO, "text-orange-300")}
               >
                 <ArrowUpFromLine aria-hidden="true" className="size-4" />
                 Sangria
@@ -110,25 +117,44 @@ function CaixaAberto({
                     contaDoCaixa: caixa.contaId,
                   })
                 }
-                className={CLASSE_BOTAO_SECUNDARIO}
+                className={cn(CLASSE_BOTAO_SECUNDARIO, "text-teal-300")}
               >
                 <ArrowDownToLine aria-hidden="true" className="size-4" />
                 Suprimento
               </button>
-              <button
-                type="button"
-                onClick={() => abrirFolha({ tipo: "caixa-fechar", caixa })}
-                className={`${CLASSE_BOTAO_PRIMARIO} col-span-2`}
-              >
-                <Lock aria-hidden="true" className="size-4" />
-                Fechar caixa
-              </button>
+              {!mostrarAcaoFixa && (
+                <button
+                  type="button"
+                  onClick={() => abrirFolha({ tipo: "caixa-fechar", caixa })}
+                  className={`${CLASSE_BOTAO_PRIMARIO} col-span-2`}
+                >
+                  <Lock aria-hidden="true" className="size-4" />
+                  Fechar caixa
+                </button>
+              )}
+              {aoNovoLancamento ? (
+                <button
+                  type="button"
+                  onClick={aoNovoLancamento}
+                  className={`${CLASSE_BOTAO_SECUNDARIO} col-span-2 text-sky-300`}
+                >
+                  <Plus aria-hidden="true" className="size-5" />
+                  Novo lançamento
+                </button>
+              ) : null}
             </div>
           </div>
           <dl
+            id="fin-composicao-do-caixa"
             aria-label="Como o esperado é calculado"
             className={`px-4 py-2 ${CLASSE_CASCA_DO_CARTAO}`}
           >
+            <div className="mb-3 flex items-center gap-3 pt-3">
+              <SeloFinanceiro icone={Store} matiz="#2DD4BF" />
+              <dt className="text-base font-bold text-white">
+                Como o esperado é calculado
+              </dt>
+            </div>
             <LinhaDaConta
               rotulo="Abertura (troco)"
               valor={caixa.valorAbertura}
@@ -158,9 +184,22 @@ function CaixaAberto({
         </div>
       </CartaoSecao>
 
+      {mostrarAcaoFixa ? (
+        <AcaoDaBarra>
+          <button
+            type="button"
+            onClick={() => abrirFolha({ tipo: "caixa-fechar", caixa })}
+            className={`${CLASSE_BOTAO_PRIMARIO} admin-barra-principal w-full`}
+          >
+            <Lock aria-hidden="true" className="size-5" />
+            Fechar caixa
+          </button>
+        </AcaoDaBarra>
+      ) : null}
+
       <CartaoSecao titulo="Movimentos desta sessão">
         {caixa.movimentos.length === 0 ? (
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             Nenhuma sangria ou suprimento ainda. As vendas em dinheiro entram no
             esperado sozinhas.
           </p>
@@ -169,7 +208,7 @@ function CaixaAberto({
             {caixa.movimentos.map((movimento) => (
               <li
                 key={movimento.id}
-                className="flex min-h-12 items-center justify-between gap-3 py-2"
+                className="flex min-h-14 flex-wrap items-start justify-between gap-3 py-4"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <span
@@ -187,7 +226,7 @@ function CaixaAberto({
                     )}
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-white">
+                    <p className="break-words text-sm font-bold text-white">
                       {movimento.descricao}
                     </p>
                     <p className="text-xs text-zinc-400">
@@ -265,8 +304,8 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
         )}
       </div>
       <p className="text-xs font-medium text-zinc-400">{sessao.contaNome}</p>
-      <dl className="grid grid-cols-3 gap-2 text-xs">
-        <div>
+      <dl className="flex flex-col gap-3 text-sm">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
           <dt className={CLASSE_ROTULO_DO_CARTAO}>Esperado</dt>
           <dd className="font-bold text-zinc-100">
             {sessao.esperado === null ? (
@@ -276,7 +315,7 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
             )}
           </dd>
         </div>
-        <div>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
           <dt className={CLASSE_ROTULO_DO_CARTAO}>Contado</dt>
           <dd className="font-bold text-zinc-100">
             {sessao.contado === null ? (
@@ -286,13 +325,13 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
             )}
           </dd>
         </div>
-        <div>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
           <dt className={CLASSE_ROTULO_DO_CARTAO}>Diferença</dt>
           <dd
             className={cn(
               "font-bold",
               situacao === "quebra" && "text-red-300",
-              situacao === "sobra" && "text-amber-200",
+              situacao === "sobra" && "text-orange-300",
               situacao === "bateu" && "text-emerald-300",
             )}
           >
@@ -318,30 +357,53 @@ export function AbaCaixa({
   ativo,
   versao,
   abrirFolha,
+  aoNovoLancamento,
+  mostrarAcaoFixa = false,
 }: {
   readonly ativo: boolean;
   readonly versao: number;
   readonly abrirFolha: AbrirFolha;
+  readonly aoNovoLancamento?: () => void;
+  readonly mostrarAcaoFixa?: boolean;
 }) {
   const atual = useCaixaAtual(ativo, versao);
   const historico = useHistoricoDoCaixa(ativo, versao);
 
   return (
-    <div className="flex flex-col gap-4 lg:gap-6">
+    <div className="flex flex-col gap-7">
       {atual.erro && !atual.dados ? (
         <EstadoDeErro mensagem={atual.erro} aoTentarDeNovo={atual.recarregar} />
       ) : !atual.dados ? (
         <EsqueletoDeLista linhas={3} />
       ) : atual.dados.sessao ? (
-        <CaixaAberto caixa={atual.dados.sessao} abrirFolha={abrirFolha} />
+        <CaixaAberto
+          caixa={atual.dados.sessao}
+          abrirFolha={abrirFolha}
+          aoNovoLancamento={aoNovoLancamento}
+          mostrarAcaoFixa={mostrarAcaoFixa}
+        />
       ) : (
         <CaixaFechado abrirFolha={abrirFolha} />
       )}
 
+      {!atual.dados?.sessao && aoNovoLancamento ? (
+        <AcaoDaBarra ativa={ativo && mostrarAcaoFixa}>
+          <button
+            type="button"
+            aria-label="Novo lançamento"
+            onClick={aoNovoLancamento}
+            className={`${CLASSE_BOTAO_PRIMARIO} admin-barra-principal w-full`}
+          >
+            <Plus aria-hidden="true" className="size-5" />
+            Novo lançamento
+          </button>
+        </AcaoDaBarra>
+      ) : null}
+
       <CartaoSecao
         titulo="Histórico do caixa"
         subtitulo="As últimas 30 sessões"
-        acao={<History aria-hidden="true" className="size-4 text-zinc-600" />}
+        acao={<History aria-hidden="true" className="size-4 text-zinc-400" />}
       >
         {historico.erro && !historico.dados ? (
           <EstadoDeErro
@@ -351,7 +413,7 @@ export function AbaCaixa({
         ) : !historico.dados ? (
           <EsqueletoDeLista linhas={2} />
         ) : historico.dados.length === 0 ? (
-          <p className="text-xs text-zinc-500">Nenhum caixa fechado ainda.</p>
+          <p className="text-xs text-zinc-400">Nenhum caixa fechado ainda.</p>
         ) : (
           <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {historico.dados.map((sessao) => (

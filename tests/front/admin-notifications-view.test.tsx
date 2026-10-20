@@ -22,7 +22,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Aviso } from "@/utils/avisos-do-lojista";
+import { type Aviso, montarAvisos } from "@/utils/avisos-do-lojista";
 
 // Reatribuiveis e lidos no momento da renderizacao: e assim que cada caso
 // troca o retorno do hook sem remontar o dible inteiro.
@@ -125,6 +125,7 @@ function clicarNoAvisoDoTipo(tipo: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   AVISOS = [
     AVISO_DE_PEDIDO,
     AVISO_DE_PERGUNTA,
@@ -193,6 +194,9 @@ describe("AdminNotificationsView", () => {
 
     expect(todosOsAvisos()).toHaveLength(0);
     expect(raizDom.textContent).toContain("Tudo em dia");
+    // O sino acende por devolucao solicitada; a frase que afirma "nada esperando"
+    // tem de listar a devolucao junto com as outras fontes.
+    expect(raizDom.textContent).toContain("devolução");
   });
 
   it("o estoque fica no bloco De olho e os outros tres no Precisa de voce", async () => {
@@ -270,12 +274,12 @@ describe("AdminNotificationsView", () => {
   });
 });
 
-describe("AvisoCard — desenho de botão-linha novo (10/10/2026)", () => {
-  it("o cartão é um botão-linha: rounded-2xl, gradiente, alvo mínimo de 44px", async () => {
+describe("AvisoCard — desenho aprovado v5", () => {
+  it("o cartão é um botão com borda, superfície escura e alvo mínimo de 44px", async () => {
     await montar();
     const cartao = container?.querySelector('[data-aviso="pedido"]');
     expect(cartao).not.toBeNull();
-    for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {
+    for (const classe of ["rounded-2xl", "min-h-11", "bg-[#101013]"]) {
       expect(cartao?.classList.contains(classe)).toBe(true);
     }
     expect(cartao?.className).toContain("border-white/10");
@@ -290,15 +294,15 @@ describe("AvisoCard — desenho de botão-linha novo (10/10/2026)", () => {
     const cartao = container?.querySelector('[data-aviso="pedido"]');
     const rotulo = cartao?.querySelector("span.uppercase");
     expect(rotulo?.className).not.toMatch(/text-zinc-[567]00/);
-    expect(rotulo?.className).toMatch(/text-zinc-[34]00/);
+    expect((cartao as HTMLElement).style.color).toBe("rgb(52, 211, 153)");
+    expect(rotulo?.className).not.toContain("text-zinc-");
     expect(cartao?.querySelector("h3")?.className).toContain("text-[15px]");
   });
 
   it("a legenda do bloco também passa do cinza 500", async () => {
     await montar();
-    const legenda = container?.querySelector(
-      '[data-bloco="de-olho"] h2 + span',
-    );
+    const legenda = container?.querySelector('[data-bloco="de-olho"] p');
+    expect(legenda).not.toBeNull();
     expect(legenda?.className).not.toMatch(/text-zinc-[567]00/);
   });
 
@@ -310,5 +314,282 @@ describe("AvisoCard — desenho de botão-linha novo (10/10/2026)", () => {
     );
     expect(texto).toBeTruthy();
     expect(texto?.className).not.toMatch(/text-zinc-[567]00/);
+  });
+});
+
+// Usa o montador real: não inventa campos que o hook não entrega à tela.
+function oitoTipos() {
+  return montarAvisos({
+    pedidos: [
+      {
+        id: "pedido-1",
+        customer_name: "Maria Cecília de Albuquerque Vasconcelos",
+        total: 128949.9,
+        created_at: "2026-10-17T12:38:00Z",
+      },
+    ],
+    cancelamentosDoCliente: [
+      {
+        id: "cancelamento-1",
+        order_id: "cancelado-1",
+        customer_name: "Nina Duarte",
+        total: 179.9,
+        created_at: "2026-10-17T08:40:00Z",
+        situacao: "reembolso_automatico",
+      },
+    ],
+    devolucoesSolicitadas: 27,
+    pedidosDePrivacidadeAbertos: 12,
+    recebimentosPorMarcar: [
+      {
+        id: "pedido-2DC8F4",
+        customer_name: "Ana Beatriz Castelo Branco de Oliveira",
+        total: 999999.99,
+        updated_at: "2026-10-16T15:20:00Z",
+      },
+    ],
+    perguntasPendentes: 38,
+    avaliacoes: [
+      {
+        id: "av-1",
+        product_id: "prod-1",
+        nomeDoProduto:
+          "Kit de organização para escritório com 24 divisórias e acabamento em madeira natural",
+        rating: 1,
+        created_at: "2026-10-15T17:45:00Z",
+      },
+    ],
+    produtos: [
+      {
+        id: "prod-1",
+        name: "Conjunto de lençóis de algodão egípcio queen com quatro peças e fronha bordada",
+        stock: 0,
+        estoqueMinimo: 5,
+        created_at: "2026-10-17T12:40:00Z",
+      },
+    ],
+  });
+}
+
+describe("Notificações v5 — funções preservadas", () => {
+  it("renderiza os oito tipos, sem mudar nenhum destino nem somar agregados ao sino", async () => {
+    AVISOS = oitoTipos();
+    const antes = JSON.stringify(AVISOS);
+    Object.freeze(AVISOS);
+    await montar();
+    expect(todosOsAvisos().map((no) => no.getAttribute("data-aviso"))).toEqual([
+      "privacidade",
+      "pedido",
+      "devolucao",
+      "recebimento",
+      "pergunta",
+      "avaliacao",
+      "cancelamento",
+      "estoque",
+    ]);
+    expect(avisosDoBloco("precisa-de-voce")).toHaveLength(6);
+    expect(avisosDoBloco("de-olho")).toHaveLength(2);
+    expect(
+      container?.querySelector('[data-bloco="precisa-de-voce"]')?.textContent,
+    ).toContain("6 itens");
+    for (const aviso of AVISOS) {
+      clicarNoAvisoDoTipo(aviso.tipo);
+      expect(onNavigate).toHaveBeenLastCalledWith(
+        aviso.destino.view,
+        aviso.destino.id,
+      );
+    }
+    expect(onNavigate).toHaveBeenCalledTimes(8);
+    expect(JSON.stringify(AVISOS)).toBe(antes);
+  });
+
+  it("prioriza privacidade com uma ação de 56px sem inventar prazo vencido", async () => {
+    AVISOS = oitoTipos();
+    await montar();
+    const primeiro = avisosDoBloco("precisa-de-voce")[0];
+    expect(primeiro?.getAttribute("data-aviso")).toBe("privacidade");
+    expect(primeiro?.tagName).toBe("BUTTON");
+    expect(primeiro?.querySelector(".min-h-14")?.textContent).toContain(
+      "Revisar privacidade",
+    );
+    expect(primeiro?.textContent).toContain(
+      "Responder em Ajustes > Minha loja",
+    );
+    expect(primeiro?.textContent).toContain("Prazo: 15 dias");
+    expect(primeiro?.textContent).not.toContain("prazo vencido");
+    act(() => (primeiro?.querySelector(".min-h-14") as HTMLElement).click());
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings", undefined);
+  });
+
+  it("mostra a pergunta inteira do pagamento, cliente, valor e consequência", async () => {
+    AVISOS = oitoTipos();
+    await montar();
+    const pagamento = container?.querySelector('[data-aviso="recebimento"]');
+    expect(pagamento?.textContent).toContain("Você já recebeu o pagamento?");
+    expect(pagamento?.textContent).toContain(
+      "Ana Beatriz Castelo Branco de Oliveira",
+    );
+    expect(pagamento?.textContent).toMatch(/R\$\s999\.999,99/);
+    expect(pagamento?.textContent).toContain(
+      "marque para a cliente poder pedir devolução",
+    );
+    expect(pagamento?.textContent).toContain("Entregue");
+  });
+
+  it("mantém nomes e detalhes longos inteiros, sem truncar títulos ou ancestrais", async () => {
+    AVISOS = oitoTipos();
+    await montar();
+    expect(container?.textContent).toContain(
+      "Maria Cecília de Albuquerque Vasconcelos",
+    );
+    expect(container?.textContent).toContain(
+      "Conjunto de lençóis de algodão egípcio queen com quatro peças e fronha bordada acabou",
+    );
+    for (const aviso of todosOsAvisos()) {
+      expect(aviso.querySelector("h3")).not.toBeNull();
+      expect(
+        aviso.querySelector(
+          '[class*="truncate"], [class*="line-clamp"], [class*="whitespace-nowrap"]',
+        ),
+      ).toBeNull();
+      expect(aviso.className).toContain("break-words");
+    }
+  });
+
+  it.each([
+    ["pago, o produto já saiu: avise o transporte", "Avise o transporte"],
+    ["pago depois do cancelamento: confira o pedido", "Confira o pedido"],
+  ])("destaca cancelamento pago: %s", async (frase, acao) => {
+    AVISOS = [
+      {
+        ...oitoTipos().find((aviso) => aviso.tipo === "cancelamento")!,
+        detalhe: `R$ 1.249,00 — ${frase}`,
+      },
+    ];
+    await montar();
+    const cancelamento = todosOsAvisos()[0];
+    expect(cancelamento.textContent).toContain(frase);
+    expect(cancelamento.textContent).toContain("R$ 1.249,00");
+    // O hook entrega a mesma frase para pedido pago e para pedido já estornado:
+    // a tela não pode afirmar "Pago" num selo.
+    expect(
+      cancelamento.querySelector("span.rounded-full")?.textContent,
+    ).not.toBe("Pago");
+    expect(cancelamento.innerHTML).not.toContain(">Pago<");
+    expect(
+      cancelamento.querySelector("[data-orientacao]")?.textContent,
+    ).toContain(acao);
+    clicarNoAvisoDoTipo("cancelamento");
+    expect(onNavigate).toHaveBeenCalledWith("admin-orders", "cancelado-1");
+  });
+
+  it("preserva a orientação do cancelamento sem pagamento online", async () => {
+    AVISOS = [
+      {
+        ...oitoTipos().find((aviso) => aviso.tipo === "cancelamento")!,
+        titulo: "Pedido #61AC7D cancelado pela cliente",
+        detalhe: "Não precisa separar nem enviar.",
+      },
+    ];
+    await montar();
+    const aviso = todosOsAvisos()[0];
+    expect(aviso.textContent).toContain("Não precisa separar nem enviar.");
+    expect(aviso.textContent).not.toContain("R$");
+    expect(avisosDoBloco("de-olho")).toHaveLength(1);
+    clicarNoAvisoDoTipo("cancelamento");
+    expect(onNavigate).toHaveBeenCalledWith("admin-orders", "cancelado-1");
+  });
+
+  it("mantém os avisos durante a atualização, anuncia a carga e gira o ícone", async () => {
+    CARREGANDO = true;
+    await montar();
+    expect(todosOsAvisos()).toHaveLength(4);
+    expect(container?.querySelector('[role="status"]')?.textContent).toContain(
+      "Atualizando os avisos...",
+    );
+    expect(
+      container?.querySelector(
+        '[aria-label="Atualizar os avisos"] .animate-spin',
+      ),
+    ).not.toBeNull();
+  });
+
+  it("oferece nova tentativa junto da falha parcial", async () => {
+    FONTES_COM_FALHA = ["estoque", "recebimento"];
+    await montar();
+    const alerta = container?.querySelector('[role="alert"]');
+    expect(alerta?.textContent).toContain("2 fontes sem atualização");
+    expect(alerta?.textContent).toContain(
+      "Não consegui conferir produtos, pagamentos por marcar agora.",
+    );
+    const botao = alerta?.querySelector("button");
+    expect(botao?.textContent).toContain("Atualizar os avisos");
+    act(() => botao?.click());
+    expect(recarregarFalso).toHaveBeenCalledTimes(1);
+    expect(todosOsAvisos()).toHaveLength(4);
+  });
+});
+
+// O lojista fica sabendo quando o CLIENTE cancela (14/10/2026): o tipo novo
+// no sino. Antes, o `Record<TipoDeAviso, ...>` da tela nem compilava com ele.
+describe("AdminNotificationsView — cancelamento do cliente", () => {
+  const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
+  const AVISO_DE_CANCELAMENTO: Aviso = {
+    id: "cancelamento:h1",
+    tipo: "cancelamento",
+    titulo: "Maria Silva cancelou o pedido #4F5A6B",
+    detalhe: "R$ 149,90 — pago, o reembolso é automático",
+    quando: "2026-10-14T11:57:00.000Z",
+    destino: { view: "admin-orders", id: PEDIDO },
+    contaNoCracha: false,
+  };
+
+  it("o cancelamento aparece no sino com o rotulo 'Cancelado', o titulo e a frase do dinheiro", async () => {
+    AVISOS = [AVISO_DE_CANCELAMENTO];
+
+    await montar();
+
+    const linhas = todosOsAvisos();
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].getAttribute("data-aviso")).toBe("cancelamento");
+    expect(linhas[0].textContent).toContain("Cancelado");
+    expect(linhas[0].textContent).toContain(
+      "Maria Silva cancelou o pedido #4F5A6B",
+    );
+    expect(linhas[0].textContent).toContain("pago, o reembolso é automático");
+  });
+
+  it("clicar leva ao PEDIDO cancelado, com o id", async () => {
+    AVISOS = [AVISO_DE_CANCELAMENTO];
+
+    await montar();
+    clicarNoAvisoDoTipo("cancelamento");
+
+    expect(onNavigate).toHaveBeenCalledWith("admin-orders", PEDIDO);
+  });
+
+  it("fica no bloco 'De olho' (nao conta no sino), nao em 'Precisa de voce'", async () => {
+    AVISOS = [AVISO_DE_PEDIDO, AVISO_DE_CANCELAMENTO];
+
+    await montar();
+
+    expect(
+      avisosDoBloco("precisa-de-voce").map((no) =>
+        no.getAttribute("data-aviso"),
+      ),
+    ).toEqual(["pedido"]);
+    expect(
+      avisosDoBloco("de-olho").map((no) => no.getAttribute("data-aviso")),
+    ).toEqual(["cancelamento"]);
+  });
+
+  it("fonte de cancelamento fora do ar: o recado cita 'cancelamentos de clientes' e a tela nao diz 'Tudo em dia'", async () => {
+    FONTES_COM_FALHA = ["cancelamento"];
+    AVISOS = [];
+
+    const raizDom = await montar();
+
+    expect(raizDom.textContent).toContain("cancelamentos de clientes");
+    expect(raizDom.textContent).not.toContain("Tudo em dia");
   });
 });

@@ -163,24 +163,32 @@ describe("AdminOrdersView — Pedidos cabe no celular (onda J, J2)", () => {
     expect(valor).toBe("1.150");
   });
 
-  it("a busca tem placeholder curto 'Buscar…' e nome acessível 'Buscar pedidos'", () => {
+  it("a busca diz os campos disponíveis e mantém o nome acessível 'Buscar pedidos'", () => {
     const campo = hospedeiro.querySelector<HTMLInputElement>("#orders-search");
     expect(campo).toBeTruthy();
-    expect(campo?.placeholder).toBe("Buscar…");
+    expect(campo?.placeholder).toBe("Buscar pedido, cliente…");
     const rotulo = hospedeiro.querySelector('label[for="orders-search"]');
     expect(rotulo?.textContent).toBe("Buscar pedidos");
   });
 
-  it("o botão de WhatsApp do cartão tem alvo de 44px (size-11)", () => {
+  it("o botão de WhatsApp do cartão tem alvo de 44 por 56px", () => {
     const icone = hospedeiro.querySelector("button svg.lucide-message-circle");
     const botao = icone?.closest("button");
     expect(botao).toBeTruthy();
-    expect(botao?.classList.contains("size-11")).toBe(true);
+    expect(botao?.classList.contains("w-11")).toBe(true);
+    expect(botao?.classList.contains("min-h-14")).toBe(true);
     expect(botao?.classList.contains("size-10")).toBe(false);
   });
 
-  it("P-J3: o botão de exportar continua escrito 'CSV'", () => {
-    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+  it("P-J3: o botão de exportar continua escrito 'CSV' nas ferramentas", async () => {
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Filtros e ferramentas"]',
+        )!
+        .click(),
+    );
+    const botao = Array.from(document.body.querySelectorAll("button")).find(
       (b) => b.textContent?.trim() === "CSV",
     );
     expect(botao).toBeTruthy();

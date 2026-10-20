@@ -14,6 +14,8 @@
  * com recargas gravadas antes do conserto) — e os legítimos continuam
  * virando "Sistema Atualizado".
  */
+import { partesDoNucleoSemver } from "./versao-do-servidor";
+
 export type MotivoDeRecarga =
   | "atualizacao-aplicada"
   | "atualizacao-nao-confirmada"
@@ -73,18 +75,96 @@ export function gravaOrigemDeAtualizacao(versao: string): void {
   }
 }
 
+/** A versão que a tentativa de atualização ESPERA encontrar ao chegar (o alvo
+ * lido do servidor antes de instalar). Mesma sessão de aba da origem, pelos
+ * mesmos motivos. */
+export const CHAVE_VERSAO_ESPERADA_DA_ATUALIZACAO =
+  "pwa_update_expected_version";
+
+/** Grava a versão-alvo da tentativa. Sem versão legível não grava nada: sem
+ * expectativa, a prova é só a troca de build (como sempre foi). */
+export function gravaVersaoEsperadaDaAtualizacao(
+  versao: string | null | undefined,
+): void {
+  try {
+    if (versao) {
+      sessionStorage.setItem(CHAVE_VERSAO_ESPERADA_DA_ATUALIZACAO, versao);
+    } else {
+      sessionStorage.removeItem(CHAVE_VERSAO_ESPERADA_DA_ATUALIZACAO);
+    }
+  } catch {
+    // storage indisponível: sem expectativa registrada.
+  }
+}
+
+/** A versão que chegou serve à tentativa? Sem expectativa legível, sim (nada a
+ * contradizer). Com ela, o núcleo semver que chegou tem de ser IGUAL OU MAIOR
+ * (um deploy ainda mais novo no meio do caminho também é sucesso); menor ou
+ * ilegível NÃO é — o boot mostra o neutro, nunca "Pronto". */
+function chegouCompativelComAEsperada(
+  versaoAtual: string,
+  esperada: string | null,
+): boolean {
+  if (!esperada) return true;
+  const alvo = partesDoNucleoSemver(esperada);
+  if (!alvo) return true;
+  const chegou = partesDoNucleoSemver(versaoAtual);
+  if (!chegou) return false;
+  const [cMaior, cMenor, cPatch] = chegou;
+  const [aMaior, aMenor, aPatch] = alvo;
+  if (cMaior !== aMaior) return cMaior > aMaior;
+  if (cMenor !== aMenor) return cMenor > aMenor;
+  return cPatch >= aPatch;
+}
+
+/** O que o boot descobre sobre a atualização que o recarregou. */
+export interface OrigemDaAtualizacao {
+  /** `true` só quando existe origem, ela difere do build atual E a versão que
+   * chegou serve à versão esperada pela tentativa (quando havia uma) — a prova
+   * de que a recarga trouxe o build certo. */
+  readonly trocouDeBuild: boolean;
+  /** O build de onde a atualização partiu, exatamente como foi gravado (a
+   * versão completa, com sufixo). Nulo sem origem gravada. Com `trocouDeBuild`
+   * falso (recarga que não curou) ainda vem preenchido: quem usa para
+   * escolher "o que mudou" só deve olhá-lo quando houve troca. */
+  readonly de: string | null;
+  /** A versão que a tentativa esperava encontrar (nula quando não registrada). */
+  readonly versaoEsperada: string | null;
+}
+
+/** Lê e LIMPA a origem gravada (e a versão esperada), devolvendo a evidência e
+ * de onde ela veio. Sem a chave (nada gravado nesta aba, storage limpo no meio
+ * do caminho ou storage lançando) devolve `trocouDeBuild: false`: sem
+ * evidência, ninguém anuncia atualização. */
+export function consumirOrigemDaAtualizacao(
+  versaoAtual: string,
+): OrigemDaAtualizacao {
+  try {
+    const origem = sessionStorage.getItem(CHAVE_ORIGEM_DE_ATUALIZACAO);
+    const esperada = sessionStorage.getItem(
+      CHAVE_VERSAO_ESPERADA_DA_ATUALIZACAO,
+    );
+    sessionStorage.removeItem(CHAVE_ORIGEM_DE_ATUALIZACAO);
+    sessionStorage.removeItem(CHAVE_VERSAO_ESPERADA_DA_ATUALIZACAO);
+    return {
+      trocouDeBuild:
+        !!origem &&
+        origem !== versaoAtual &&
+        chegouCompativelComAEsperada(versaoAtual, esperada),
+      de: origem || null,
+      versaoEsperada: esperada || null,
+    };
+  } catch {
+    return { trocouDeBuild: false, de: null, versaoEsperada: null };
+  }
+}
+
 /** Lê e LIMPA a origem gravada. `true` só quando existe origem E ela difere
  * do build atual — a prova de que a recarga trouxe outro build. Sem a chave
  * (nada gravado nesta aba, storage limpo no meio do caminho) devolve
  * `false`: sem evidência, ninguém anuncia atualização. */
 export function atualizacaoTrocouDeBuild(versaoAtual: string): boolean {
-  try {
-    const origem = sessionStorage.getItem(CHAVE_ORIGEM_DE_ATUALIZACAO);
-    sessionStorage.removeItem(CHAVE_ORIGEM_DE_ATUALIZACAO);
-    return !!origem && origem !== versaoAtual;
-  } catch {
-    return false;
-  }
+  return consumirOrigemDaAtualizacao(versaoAtual).trocouDeBuild;
 }
 
 const DESCRICOES: Record<MotivoDeRecarga, RecargaDescrita> = {

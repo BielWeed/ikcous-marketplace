@@ -217,7 +217,7 @@ describe("PaymentStatusBadge", () => {
 // client-side sobre a página já carregada (12 pedidos), não sobre os 64+
 // pedidos do banco. "Nenhum pedido da página bate com o filtro" não é
 // "não existe nenhum pedido" — a tela tinha as duas coisas com o MESMO
-// texto ("Ainda não tem nenhum pedido"), que é falso no primeiro caso.
+// texto ("Seus pedidos vão aparecer aqui"), que é falso no primeiro caso.
 function pedidoFake(id: string, paymentStatus: PaymentStatus | null): Order {
   return {
     id,
@@ -270,7 +270,7 @@ describe("AdminOrdersView — estado vazio da lista (Item 1 da revisão)", () =>
     mockTotalOrders = 0;
   });
 
-  it("nenhum pedido da PÁGINA bate com o filtro: mostra o aviso de filtro, não 'Ainda não tem nenhum pedido'", async () => {
+  it("nenhum pedido da PÁGINA bate com o filtro: mostra o aviso de filtro, não 'Seus pedidos vão aparecer aqui'", async () => {
     window.localStorage.setItem(
       "admin_orders_payment_filter",
       JSON.stringify("estornado"),
@@ -289,10 +289,12 @@ describe("AdminOrdersView — estado vazio da lista (Item 1 da revisão)", () =>
     expect(hospedeiro.textContent).toContain(
       "Nenhum pedido com esse filtro de pagamento",
     );
-    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
+    expect(hospedeiro.textContent).not.toContain(
+      "Seus pedidos vão aparecer aqui",
+    );
   });
 
-  it("lista vazia de verdade, SEM filtro ativo: mostra 'Ainda não tem nenhum pedido'", async () => {
+  it("lista vazia de verdade, SEM filtro ativo: mostra 'Seus pedidos vão aparecer aqui'", async () => {
     // O padrão da tela virou "Em Aberto" (`filter = "open"`), que é filtro de
     // verdade: ele exclui cancelado e entregue no banco. Então "sem filtro
     // ativo" deixou de ser o estado inicial e passou a exigir esta semeadura
@@ -313,7 +315,7 @@ describe("AdminOrdersView — estado vazio da lista (Item 1 da revisão)", () =>
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
 
-    expect(hospedeiro.textContent).toContain("Ainda não tem nenhum pedido");
+    expect(hospedeiro.textContent).toContain("Seus pedidos vão aparecer aqui");
     expect(hospedeiro.textContent).not.toContain(
       "Nenhum pedido com esse filtro de pagamento",
     );

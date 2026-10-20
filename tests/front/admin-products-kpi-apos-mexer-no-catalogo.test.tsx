@@ -144,11 +144,13 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   AlertDialogAction: ({
     children,
     onClick,
+    "aria-label": ariaLabel,
   }: {
     children: ReactNode;
     onClick?: () => void;
+    "aria-label"?: string;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} aria-label={ariaLabel}>
       {children}
     </button>
   ),
@@ -229,8 +231,9 @@ function localizarBotaoPorTexto(
   raizDom: ParentNode,
   texto: string,
 ): HTMLButtonElement | undefined {
-  return [...raizDom.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+  return [...raizDom.querySelectorAll("button")].find(
+    (b) =>
+      b.getAttribute("aria-label") === texto || b.textContent?.includes(texto),
   ) as HTMLButtonElement | undefined;
 }
 
@@ -307,6 +310,11 @@ describe("AdminProductsView — achado 7: KPIs rebuscam depois de mexer no catá
 
   async function montar() {
     await renderizar(true);
+    // A abertura agora revalida o snapshot. Os casos abaixo medem apenas
+    // a nova chamada causada por uma ação ou reativação, não esta inicial.
+    expect(fetchExecutiveSummary).toHaveBeenCalledTimes(1);
+    expect(fetchExecutiveSummary).toHaveBeenCalledWith(true);
+    fetchExecutiveSummary.mockClear();
   }
 
   async function excluir() {
@@ -318,7 +326,7 @@ describe("AdminProductsView — achado 7: KPIs rebuscam depois de mexer no catá
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Confirmar Exclusão",
+      "Excluir Produto: confirmar exclusão",
     )!;
     expect(botaoConfirmar).toBeDefined();
     await act(async () => {
@@ -339,7 +347,7 @@ describe("AdminProductsView — achado 7: KPIs rebuscam depois de mexer no catá
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Confirmar Duplicação",
+      "Duplicar Produto: confirmar duplicação",
     )!;
     expect(botaoConfirmar).toBeDefined();
     await act(async () => {

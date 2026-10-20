@@ -202,3 +202,46 @@ describe("decidirRealtimeInsertAdmin (#1508)", () => {
     expect(decisao).toBe("ignorar");
   });
 });
+
+// A tela passa a mandar o INSTANTE de início/fim do dia de Brasília (e não a
+// data crua) — a conferência ao vivo compara como instante, não como texto: o
+// texto "2026-10-15T02:30:00.000Z" é MAIOR que "2026-10-14T23:59:59.999-03:00"
+// mesmo sendo 23h30 do dia 14 em Brasília.
+describe("decidirRealtimeInsertAdmin — período com fuso de Brasília", () => {
+  const INICIO = "2026-10-14T00:00:00-03:00";
+  const FIM = "2026-10-14T23:59:59.999-03:00";
+
+  it("um dia só: pedido das 23h30 de Brasília (já é dia 15 em UTC) é do período e entra", () => {
+    const decisao = decidirRealtimeInsertAdmin(
+      pedido({ createdAt: "2026-10-15T02:30:00.000Z" }),
+      consulta(0, "all", "", INICIO, FIM),
+    );
+    expect(decisao).toBe("inserir");
+  });
+
+  it("um dia só: pedido das 23h59 do dia ANTERIOR em Brasília não é do período", () => {
+    // 02:59 UTC de 14/10 = 23:59 de 13/10 em Brasília. Por texto, parece
+    // dentro ("2026-10-14T02…" >= "2026-10-14T00…").
+    const decisao = decidirRealtimeInsertAdmin(
+      pedido({ createdAt: "2026-10-14T02:59:00.000Z" }),
+      consulta(0, "all", "", INICIO, FIM),
+    );
+    expect(decisao).toBe("ignorar");
+  });
+
+  it("um dia só: pedido de meia-noite do dia seguinte em Brasília fica de fora", () => {
+    const decisao = decidirRealtimeInsertAdmin(
+      pedido({ createdAt: "2026-10-15T03:00:00.000Z" }),
+      consulta(0, "all", "", INICIO, FIM),
+    );
+    expect(decisao).toBe("ignorar");
+  });
+
+  it("o banco devolve a data com fuso (+00:00): continua comparando como instante", () => {
+    const decisao = decidirRealtimeInsertAdmin(
+      pedido({ createdAt: "2026-10-14T15:00:00.123456+00:00" }),
+      consulta(0, "all", "", INICIO, FIM),
+    );
+    expect(decisao).toBe("inserir");
+  });
+});

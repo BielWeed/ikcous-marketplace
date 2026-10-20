@@ -26,11 +26,13 @@ import {
   rotuloStatus,
   textoDoPrazo,
 } from "@/lib/devolucao";
+import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 
 import { AcoesDaDevolucao, BOTAO_SECUNDARIO } from "./AcoesDaDevolucao";
+import { ReembolsoDaDevolucao } from "./ReembolsoDaDevolucao";
 import { SeloDoStatus, SeloDoTipo } from "./SelosDaDevolucao";
 
 const SECAO =
@@ -151,6 +153,14 @@ export function DetalheDaDevolucao({
               ficha={ficha}
               detalhe={detalhe}
               onSujoMudou={aoSujar}
+            />
+
+            <ReembolsoDaDevolucao
+              detalhe={detalhe}
+              aoMudar={() => {
+                void ficha.recarregar();
+                onMudou();
+              }}
             />
 
             {detalhe.status === "concluida" && detalhe.reembolso_manual && (
@@ -345,10 +355,10 @@ export function DetalheDaDevolucao({
                       </a>
                     </Linha>
                   )}
-                  {detalhe.codigo_rastreio && (
+                  {linkDeRastreio(detalhe.codigo_rastreio ?? "") && (
                     <Linha rotulo="Rastreio">
                       <a
-                        href={`https://linkrastreio.com/?codigo=${encodeURIComponent(detalhe.codigo_rastreio)}`}
+                        href={linkDeRastreio(detalhe.codigo_rastreio ?? "")}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-mono text-admin-gold underline-offset-2 hover:underline"

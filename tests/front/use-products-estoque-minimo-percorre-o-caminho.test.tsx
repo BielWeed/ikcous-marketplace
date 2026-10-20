@@ -34,15 +34,22 @@ const mock = vi.hoisted(() => ({
 }));
 
 const RESULTADO_PADRAO = { data: {}, error: null };
-const FILA = "products_offline_updates_queue";
+const FILA = "products_offline_updates_queue:lojista-1";
 
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ isAdmin: true }),
+  useAuth: () => ({ user: { id: "lojista-1" }, isAdmin: true }),
 }));
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    products: [],
+    // O produto está na lista: é daí que a edição offline tira a versão-base.
+    products: [
+      {
+        id: "prod-1",
+        name: "Produto 1",
+        updatedAt: "2026-10-01T10:00:00.000000+00:00",
+      },
+    ],
     loadingProducts: false,
     fetchProducts: mock.fetchProductsContext,
   }),
@@ -66,10 +73,26 @@ vi.mock("sonner", () => ({
 function encadear(resultado: { data?: any; error?: any }) {
   const chain = Promise.resolve(resultado) as Promise<typeof resultado> & {
     eq: () => typeof chain;
+    is: () => unknown;
     select: () => typeof chain;
     single: () => Promise<typeof resultado>;
   };
   chain.eq = () => chain;
+  // A fila offline grava com `.eq(id).eq(versao).is(deleted_at).select(id)` e
+  // exige a linha de volta; o caminho online segue com select().single().
+  chain.is = () => {
+    const daFila = Promise.resolve(resultado) as Promise<typeof resultado> & {
+      eq: () => typeof daFila;
+      select: () => Promise<typeof resultado>;
+    };
+    daFila.eq = () => daFila;
+    daFila.select = () =>
+      Promise.resolve({
+        ...resultado,
+        data: resultado.error ? null : [{ id: "linha" }],
+      });
+    return daFila;
+  };
   chain.select = () => chain;
   chain.single = () => Promise.resolve(resultado);
   return chain;
@@ -87,7 +110,12 @@ vi.mock("@/lib/supabase", () => ({
       update: (payload: any) => encadear(registrar(tabela, "update", payload)),
       upsert: (payload: any) => encadear(registrar(tabela, "upsert", payload)),
     }),
-    auth: { refreshSession: vi.fn() },
+    auth: {
+      refreshSession: vi.fn(),
+      getSession: async () => ({
+        data: { session: { user: { id: "lojista-1" } } },
+      }),
+    },
   },
 }));
 
@@ -97,7 +125,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 type ApiUseProducts = ReturnType<typeof useProducts>;
 
 function Sonda({ onReady }: { onReady: (api: ApiUseProducts) => void }) {
-  const api = useProducts({ autoFetch: false });
+  const api = useProducts({ autoFetch: true });
   useEffect(() => {
     onReady(api);
   });
@@ -211,7 +239,12 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       localStorage.setItem(
         FILA,
         JSON.stringify([
-          { id: "prod-1", updates: { estoqueMinimo: 7 }, timestamp: 1 },
+          {
+            id: "prod-1",
+            updates: { estoqueMinimo: 7 },
+            baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+            timestamp: Date.now(),
+          },
         ]),
       );
       await sincronizar();
@@ -223,7 +256,12 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       localStorage.setItem(
         FILA,
         JSON.stringify([
-          { id: "prod-1", updates: { estoqueMinimo: 0 }, timestamp: 1 },
+          {
+            id: "prod-1",
+            updates: { estoqueMinimo: 0 },
+            baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+            timestamp: Date.now(),
+          },
         ]),
       );
       await sincronizar();
@@ -235,7 +273,12 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       localStorage.setItem(
         FILA,
         JSON.stringify([
-          { id: "prod-1", updates: { estoqueMinimo: null }, timestamp: 1 },
+          {
+            id: "prod-1",
+            updates: { estoqueMinimo: null },
+            baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+            timestamp: Date.now(),
+          },
         ]),
       );
       await sincronizar();
@@ -247,7 +290,12 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       localStorage.setItem(
         FILA,
         JSON.stringify([
-          { id: "prod-1", updates: { name: "Só o nome" }, timestamp: 1 },
+          {
+            id: "prod-1",
+            updates: { name: "Só o nome" },
+            baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+            timestamp: Date.now(),
+          },
         ]),
       );
       await sincronizar();

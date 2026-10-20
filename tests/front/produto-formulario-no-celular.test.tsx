@@ -274,7 +274,7 @@ describe("Formulário de produto cabe no celular (onda J, J3)", () => {
     }
   }
 
-  describe("a. Salvar/Publicar com alvo de 44px e letra de 11px", () => {
+  describe("a. Salvar/Publicar com alvo de 56px e letra de 16px", () => {
     it.each([
       ["produto novo", undefined, "Publicar"],
       ["edição", "prod-1", "Salvar"],
@@ -283,9 +283,9 @@ describe("Formulário de produto cabe no celular (onda J, J3)", () => {
 
       const [botao] = botoes(texto as string);
       expect(botao, `botão ${texto} ausente`).toBeDefined();
-      expect(botao.className).toContain("min-h-11");
+      expect(botao.className).toContain("min-h-14");
       expect(botao.className).toContain("min-w-11");
-      expect(botao.className).toContain("text-[11px]");
+      expect(botao.className).toContain("text-base");
       expect(botao.className).not.toMatch(LETRA_PEQUENA);
     });
   });
@@ -380,7 +380,9 @@ describe("Formulário de produto cabe no celular (onda J, J3)", () => {
           `button[title="${titulo}"]`,
         ) as HTMLButtonElement | null;
         expect(acao, `ação '${titulo}' ausente`).not.toBeNull();
-        expect(acao?.className).toContain("size-11");
+        expect(acao?.className).toContain("min-h-11");
+        expect(acao?.className).toContain("w-full");
+        expect(acao?.textContent).toContain(titulo);
       }
     });
 

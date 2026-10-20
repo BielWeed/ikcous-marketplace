@@ -1,4 +1,4 @@
-import { hexToTailwindHsl } from "@/config/branding";
+import { aplicarCorDaLoja } from "@/config/branding";
 import {
   ContextoDoFreteDaLoja,
   contextoDaLojaParaFrete,
@@ -9,6 +9,10 @@ import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { DataVault } from "@/lib/dataVault";
 import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import {
+  diasDaEntregaPropria,
+  entregaPropriaLigada,
+} from "@/lib/guarda-de-frete";
 import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -59,6 +63,16 @@ interface StoreContextType {
   isLoaded: boolean;
   products: Product[];
   loadingProducts: boolean;
+  /**
+   * `true` quando a ÚLTIMA consulta do catálogo falhou (rede, servidor) e
+   * nenhuma consulta posterior deu certo. Existe para a vitrine separar "a
+   * rede falhou" de "a loja não tem produto" -- as duas deixavam `products`
+   * vazio e `loadingProducts` falso, e a primeira visita com rede ruim
+   * parecia loja vazia. Campo ACRESCENTADO: quem só lê `products` e
+   * `loadingProducts` segue igual. Consulta que respondeu com lista vazia NÃO
+   * é erro.
+   */
+  catalogoErro: boolean;
   /**
    * Devolve `true` se a configuração foi mesmo gravada, `false` se não.
    *
@@ -120,6 +134,13 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   ["free_shipping_min", "numeric"],
   ["shipping_fee", "numeric"],
   ["local_delivery_fee", "numeric"],
+  // "Como entrego na minha cidade" (16/10/2026): entrega própria ligada e o
+  // prazo dela — sem entrada aqui `updateConfig` gravaria a coluna mas o
+  // comparador de "gravou mesmo?" acusaria falha (coluna desconhecida nunca
+  // confirma). Num banco SEM a migration a RPC descarta a chave, a coluna
+  // não volta na linha, e a falha é a resposta certa (não gravou).
+  ["local_delivery_enabled", "boolean"],
+  ["local_delivery_days", "numeric"],
   ["whatsapp_number", "texto"],
   ["share_text", "texto"],
   ["business_hours", "texto"],
@@ -142,6 +163,11 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   // desconhecida nunca fica "confirmada").
   ["store_address", "texto"],
   ["store_description", "texto"],
+  // 20261239000000: razão social, CNPJ/CPF e e-mail de atendimento — mesma
+  // razão: sem entrada aqui o save "grava" mas o comparador acusa falha.
+  ["store_legal_name", "texto"],
+  ["store_legal_document", "texto"],
+  ["store_support_email", "texto"],
   ["origin_cep", "texto"],
   ["shipping_provider", "texto"],
   ["enabled_shipping_methods", "texto_array"],
@@ -310,6 +336,20 @@ function componhaShareText(
   return `Olha que achei na ${storeName}!`;
 }
 
+// Espera (ms) de cada nova tentativa AUTOMÁTICA do catálogo depois de uma
+// falha: crescente e com TETO de 3 -- o tamanho desta lista é o limite, não
+// existe laço. Toque manual em "Tentar de novo" zera a contagem.
+const ESPERAS_DO_CATALOGO_MS: readonly number[] = [2000, 5000, 10000];
+
+// Mesma ideia para a CONFIGURAÇÃO da loja (nome, WhatsApp, frete, cores): na
+// primeira visita com rede ruim a consulta falhava e a loja seguia com a
+// configuração de fábrica até a cliente recarregar a página. Espera crescente
+// e TETO de 3 -- o tamanho da lista é o limite. Rede que volta (`online`) ou
+// aba que volta a ficar visível também tentam de novo, com fôlego novo.
+const ESPERAS_DA_CONFIG_MS: readonly number[] = [1000, 2000, 4000];
+// Rajada de eventos de rede (sinal piscando, aba trocando) não vira rajada de pedidos.
+const MINIMO_ENTRE_RETOMADAS_DA_CONFIG_MS = 3000;
+
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -350,6 +390,51 @@ export function StoreProvider({
   const [isLoaded, setIsLoaded] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [catalogoErro, setCatalogoErro] = useState(false);
+  // Novas tentativas automáticas do catálogo (rede ruim na 1ª visita): no
+  // máximo ESPERAS_DO_CATALOGO_MS.length, com espera crescente, e só se ainda
+  // não há nada na tela quando a espera termina -- quem tem cópia salva no
+  // aparelho já vê a loja e segue com o comportamento de sempre (uma consulta
+  // de fundo, sem insistir).
+  const tentativasDoCatalogoRef = useRef(0);
+  const timerDoCatalogoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const consultaDoCatalogoRef = useRef(0);
+  const catalogoDaRedeAplicadoRef = useRef(false);
+  const produtosNaTelaRef = useRef(0);
+  const buscarProdutosRef = useRef<() => Promise<void>>(async () => {});
+  const montadoRef = useRef(true);
+  // Configuração da loja com rede ruim (ver ESPERAS_DA_CONFIG_MS): `resolvida`
+  // é "já há configuração de verdade na tela" -- cópia do aparelho OU resposta
+  // do servidor (inclusive "ainda não há linha"); `falhou`, a última consulta
+  // não teve resposta (rede, servidor). Só quem falhou SEM nada na tela insiste.
+  const tentativasDaConfigRef = useRef(0);
+  const timerDaConfigRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const configResolvidaRef = useRef(false);
+  const configFalhouRef = useRef(false);
+  const geracaoDaConfigRef = useRef(0);
+  const consultasDaConfigEmVooRef = useRef(0);
+  const ultimaConsultaDaConfigEmRef = useRef(0);
+  const buscarConfigRef = useRef<() => Promise<void>>(async () => {});
+  // Geração da config para a qual já se pediu a releitura que substitui uma
+  // leitura descartada (uma só por geração, mesmo com várias leituras em voo).
+  const releituraPedidaNaGeracaoRef = useRef(-1);
+  const limparTimerDaConfig = useCallback(() => {
+    if (timerDaConfigRef.current) {
+      clearTimeout(timerDaConfigRef.current);
+      timerDaConfigRef.current = null;
+    }
+  }, []);
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+      if (timerDoCatalogoRef.current) {
+        clearTimeout(timerDoCatalogoRef.current);
+        timerDoCatalogoRef.current = null;
+      }
+      limparTimerDaConfig();
+    };
+  }, [limparTimerDaConfig]);
 
   // ── DataVault: Load config from IDB on mount (instant, <5ms) ──
   useEffect(() => {
@@ -373,6 +458,8 @@ export function StoreProvider({
           "singleton",
         );
         if (cachedConfig && !cancelled) {
+          // Já há configuração na tela: a rede ruim não deixa a loja "pelada".
+          configResolvidaRef.current = true;
           const { id: _id, ...configData } = cachedConfig;
           const merged = { ...defaultStoreConfig, ...configData };
           // shareText com nome efetivo — mesmo contrato do mapConfig (o
@@ -388,10 +475,7 @@ export function StoreProvider({
           // que é real e passa). Nada aplica valor cru por fora daqui.
           const corCache = corPrimariaEfetiva(merged);
           if (corCache) {
-            document.documentElement.style.setProperty(
-              "--primary",
-              hexToTailwindHsl(corCache),
-            );
+            aplicarCorDaLoja(corCache);
           }
           // ADMIN-100 (#102): a classe `dark` (e o atributo `data-theme-mode`)
           // NÃO é mexida aqui. App.tsx é o único dono — ele decide com base em
@@ -406,7 +490,13 @@ export function StoreProvider({
 
         // Load products from IDB
         const cachedProducts = await vault.getAll<Product>("products");
-        if (cachedProducts.length > 0 && !cancelled) {
+        // O cofre pode terminar depois da rede: nunca devolver preço/estoque
+        // antigos à vitrine. Consulta pendente ou falha ainda permite o cache.
+        if (
+          cachedProducts.length > 0 &&
+          !cancelled &&
+          !catalogoDaRedeAplicadoRef.current
+        ) {
           setProducts(cachedProducts);
           setLoadingProducts(false);
         }
@@ -450,10 +540,7 @@ export function StoreProvider({
 
   const applyBranding = useCallback((primaryColor?: string | null) => {
     if (primaryColor) {
-      document.documentElement.style.setProperty(
-        "--primary",
-        hexToTailwindHsl(primaryColor),
-      );
+      aplicarCorDaLoja(primaryColor);
     }
   }, []);
 
@@ -611,6 +698,18 @@ export function StoreProvider({
         "storeDescription",
         undefined,
       ),
+      // 20261239000000: quem é a loja (opcional; ausente = a loja não disse).
+      storeLegalName: getVal("store_legal_name", "storeLegalName", undefined),
+      storeLegalDocument: getVal(
+        "store_legal_document",
+        "storeLegalDocument",
+        undefined,
+      ),
+      storeSupportEmail: getVal(
+        "store_support_email",
+        "storeSupportEmail",
+        undefined,
+      ),
       originCep: getVal("origin_cep", "originCep", undefined),
       shippingProvider: getVal(
         "shipping_provider",
@@ -628,6 +727,24 @@ export function StoreProvider({
         defaultStoreConfig.shippingCoverage,
       ),
       localDeliveryFee: Number(localFee),
+      // "Como entrego na minha cidade" (16/10/2026): coluna ausente (banco
+      // sem a migration), nula ou inválida lê como o padrão de hoje —
+      // entrega ligada, 1 dia. Os dois normalizadores são a fonte única
+      // dessa leitura (a mesma que o carimbo do cache de frete usa).
+      localDeliveryEnabled: entregaPropriaLigada(
+        getVal(
+          "local_delivery_enabled",
+          "localDeliveryEnabled",
+          defaultStoreConfig.localDeliveryEnabled,
+        ),
+      ),
+      localDeliveryDays: diasDaEntregaPropria(
+        getVal(
+          "local_delivery_days",
+          "localDeliveryDays",
+          defaultStoreConfig.localDeliveryDays,
+        ),
+      ),
       localCepRange: getVal(
         "local_cep_range",
         "localCepRange",
@@ -674,6 +791,23 @@ export function StoreProvider({
   }, []);
 
   const fetchConfig = useCallback(async () => {
+    const geracao = geracaoDaConfigRef.current;
+    // Esta leitura foi ultrapassada por uma escrita confirmada: o que ela
+    // trouxe é velho, mas os campos que a escrita NÃO tocou (endereço, formas
+    // de pagamento...) só se corrigem relendo — uma releitura por geração.
+    const pedirReleituraDaGeracaoNova = () => {
+      if (releituraPedidaNaGeracaoRef.current === geracaoDaConfigRef.current) {
+        return;
+      }
+      releituraPedidaNaGeracaoRef.current = geracaoDaConfigRef.current;
+      void buscarConfigRef.current();
+    };
+    consultasDaConfigEmVooRef.current += 1;
+    ultimaConsultaDaConfigEmRef.current = Date.now();
+    // Sem resposta do servidor (rede, servidor fora): é o único caso em que a
+    // loja insiste. Resposta de verdade -- inclusive "ainda não há linha" --
+    // encerra a história.
+    let semResposta = false;
     try {
       const tableSource = isAdmin ? "store_config" : "v_store_config";
       const { data, error } = await supabase
@@ -681,8 +815,16 @@ export function StoreProvider({
         .select("*")
         .single();
 
+      // Uma escrita confirmada torna esta leitura anterior ultrapassada.
+      if (geracao !== geracaoDaConfigRef.current) {
+        pedirReleituraDaGeracaoNova();
+        return;
+      }
       if (error) {
         console.error("[StoreContext] Config fetch error:", error);
+        // PGRST116 = "nenhuma linha": o servidor respondeu.
+        if (error.code === "PGRST116") configResolvidaRef.current = true;
+        else semResposta = true;
         if (isAdmin && error.code === "PGRST116") {
           // Initialize if missing (admin only)
           const dbInsert = {
@@ -729,9 +871,14 @@ export function StoreProvider({
             .select()
             .single()) as any;
 
+          if (geracao !== geracaoDaConfigRef.current) {
+            pedirReleituraDaGeracaoNova();
+            return;
+          }
           if (!insertError && newData) {
             const mapped = mapConfig(newData);
             setConfig((prev) => {
+              if (geracao !== geracaoDaConfigRef.current) return prev;
               if (configIgual(mapped, prev)) return prev;
               vaultRef.current
                 ?.put("store_config", { id: "singleton", ...mapped })
@@ -744,6 +891,7 @@ export function StoreProvider({
       } else if (data) {
         const mapped = mapConfig(data);
         setConfig((prev) => {
+          if (geracao !== geracaoDaConfigRef.current) return prev;
           if (configIgual(mapped, prev)) return prev;
           // Sempre pelo singleton: após um onversionchange (outra aba subiu a
           // versão) a conexão que vaultRef segurava está FECHADA — init()
@@ -751,9 +899,10 @@ export function StoreProvider({
           // como o cache offline morreu invisível (defeito confirmado na
           // revisão cruzada 20260825-1050).
           DataVault.init()
-            .then((vault) =>
-              vault.put("store_config", { id: "singleton", ...mapped }),
-            )
+            .then((vault) => {
+              if (geracao !== geracaoDaConfigRef.current) return;
+              return vault.put("store_config", { id: "singleton", ...mapped });
+            })
             .catch((err) =>
               console.warn(
                 "[StoreContext] config não gravada no cache offline:",
@@ -763,18 +912,83 @@ export function StoreProvider({
           return mapped;
         });
         applyBranding(corPrimariaEfetiva(mapped));
+        configResolvidaRef.current = true;
       }
     } catch (err) {
+      if (geracao !== geracaoDaConfigRef.current) {
+        pedirReleituraDaGeracaoNova();
+        return;
+      }
       console.error("[StoreContext] Config error:", err);
+      semResposta = true;
     } finally {
+      consultasDaConfigEmVooRef.current -= 1;
       setIsLoaded(true);
     }
-  }, [isAdmin, mapConfig, applyBranding, configIgual]);
 
-  const fetchProducts = useCallback(async () => {
+    configFalhouRef.current = semResposta;
+    if (!semResposta) {
+      tentativasDaConfigRef.current = 0;
+      limparTimerDaConfig();
+      return;
+    }
+    // Falhou e não há nada na tela (nem cópia do aparelho): agenda a próxima
+    // tentativa, uma só por vez.
+    const espera = ESPERAS_DA_CONFIG_MS.at(tentativasDaConfigRef.current);
+    if (
+      espera !== undefined &&
+      montadoRef.current &&
+      !configResolvidaRef.current &&
+      !timerDaConfigRef.current
+    ) {
+      tentativasDaConfigRef.current += 1;
+      timerDaConfigRef.current = setTimeout(() => {
+        timerDaConfigRef.current = null;
+        // Chegou configuração nesse meio-tempo (cópia salva, outra consulta).
+        if (configResolvidaRef.current) return;
+        if (consultasDaConfigEmVooRef.current > 0) return;
+        void buscarConfigRef.current();
+      }, espera);
+    }
+  }, [isAdmin, mapConfig, applyBranding, configIgual, limparTimerDaConfig]);
+
+  useEffect(() => {
+    buscarConfigRef.current = fetchConfig;
+  }, [fetchConfig]);
+
+  // A rede voltou ou a aba voltou a ficar visível, e a configuração da loja
+  // ainda não chegou: tenta já, com fôlego novo -- mas só uma consulta por vez
+  // e no máximo uma a cada poucos segundos.
+  useEffect(() => {
+    const retomar = () => {
+      if (!configFalhouRef.current || configResolvidaRef.current) return;
+      if (document.visibilityState === "hidden") return;
+      if (consultasDaConfigEmVooRef.current > 0) return;
+      if (
+        Date.now() - ultimaConsultaDaConfigEmRef.current <
+        MINIMO_ENTRE_RETOMADAS_DA_CONFIG_MS
+      ) {
+        return;
+      }
+      limparTimerDaConfig();
+      tentativasDaConfigRef.current = 0;
+      void buscarConfigRef.current();
+    };
+    window.addEventListener("online", retomar);
+    document.addEventListener("visibilitychange", retomar);
+    return () => {
+      window.removeEventListener("online", retomar);
+      document.removeEventListener("visibilitychange", retomar);
+    };
+  }, [limparTimerDaConfig]);
+
+  const buscarProdutos = useCallback(async () => {
     // Stale-While-Revalidate: IDB data already loaded in mount effect.
     // This function always fetches fresh data from Supabase (background revalidation).
 
+    // Só a consulta MAIS RECENTE pode alterar o catálogo, o cache e os avisos:
+    // o efeito de montagem consulta de novo quando a sessão termina de carregar.
+    const minhaConsulta = ++consultaDoCatalogoRef.current;
     try {
       let data: any[] | null = null;
       let error: any = null;
@@ -817,12 +1031,13 @@ export function StoreProvider({
         }
       }
 
+      if (minhaConsulta !== consultaDoCatalogoRef.current) return;
       if (error) throw error;
 
       // SÓ UMA RESPOSTA DE VERDADE SUBSTITUI O CATÁLOGO.
       // `data` nulo aqui não é vitrine vazia: é ausência de resposta (a
       // consulta de admin voltou sem dado e sem erro, e a pública nem chegou a
-      // rodar). Seguir daqui cairia no `else` lá embaixo, que troca o catálogo
+      // rodar). Seguir daqui trocaria o catálogo
       // — inclusive o que veio do cache offline e já está na tela — por lista
       // vazia. Lançar manda para o `catch`, que só registra: o cliente
       // continua vendo os produtos que já estavam lá.
@@ -830,39 +1045,88 @@ export function StoreProvider({
         throw new Error("consulta de produtos voltou sem dados e sem erro");
       }
 
-      if (data.length > 0) {
-        const mapped = (data as any[]).map((item: any) =>
-          mapProductFromDB(item),
-        );
-
-        setProducts((prev) => {
-          if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;
-          // Persist to DataVault (non-blocking)
-          // Pelo singleton e com erro logado — mesma regra dos puts de config
-          // (revisão 20260825-1050): conexão fechada por upgrade de outra aba
-          // reabre no init(), e falha de escrita não pode ser silêncio.
-          DataVault.init()
-            .then(async (vault) => {
-              await vault.replaceAll("products", mapped);
-              await vault.setLastSync("products");
-            })
-            .catch((err) =>
-              console.warn(
-                "[StoreContext] produtos não gravados no cache offline:",
-                err,
-              ),
-            );
-          return mapped;
-        });
-      } else {
-        setProducts((prev) => (prev.length === 0 ? prev : []));
+      // Resposta de verdade (lista vazia inclusive): a falha acabou.
+      tentativasDoCatalogoRef.current = 0;
+      if (timerDoCatalogoRef.current) {
+        clearTimeout(timerDoCatalogoRef.current);
+        timerDoCatalogoRef.current = null;
       }
+      setCatalogoErro(false);
+
+      const mapped = (data as any[]).map((item: any) => mapProductFromDB(item));
+
+      catalogoDaRedeAplicadoRef.current = true;
+      setProducts((prev) => {
+        if (minhaConsulta !== consultaDoCatalogoRef.current) return prev;
+        if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;
+        return mapped;
+      });
+      // Todo sucesso substitui o cache, inclusive vazio ou igual à tela:
+      // a gravação anterior pode ter sido descartada por uma consulta nova.
+      // Erros de consulta nunca chegam a esta gravação.
+      // Pelo singleton e com erro logado — mesma regra dos puts de config
+      // (revisão 20260825-1050): conexão fechada por upgrade de outra aba
+      // reabre no init(), e falha de escrita não pode ser silêncio.
+      DataVault.init()
+        .then(async (vault) => {
+          if (minhaConsulta !== consultaDoCatalogoRef.current) return;
+          await vault.replaceAll("products", mapped);
+          if (minhaConsulta === consultaDoCatalogoRef.current) {
+            await vault.setLastSync("products");
+          }
+        })
+        .catch((err) =>
+          console.warn(
+            "[StoreContext] produtos não gravados no cache offline:",
+            err,
+          ),
+        );
     } catch (err) {
       console.error("[StoreContext] Products fetch error:", err);
+      if (minhaConsulta === consultaDoCatalogoRef.current) {
+        // A vitrine precisa saber que FALHOU -- sem isto, lista vazia + sem
+        // "carregando" é indistinguível de "a loja não tem produto".
+        setCatalogoErro(true);
+        const espera = ESPERAS_DO_CATALOGO_MS[tentativasDoCatalogoRef.current];
+        if (
+          espera !== undefined &&
+          montadoRef.current &&
+          !timerDoCatalogoRef.current
+        ) {
+          tentativasDoCatalogoRef.current += 1;
+          timerDoCatalogoRef.current = setTimeout(() => {
+            timerDoCatalogoRef.current = null;
+            // Cópia salva chegou nesse meio-tempo: não há o que insistir.
+            if (produtosNaTelaRef.current > 0) return;
+            void buscarProdutosRef.current();
+          }, espera);
+        }
+      }
     } finally {
-      setLoadingProducts(false);
+      if (minhaConsulta === consultaDoCatalogoRef.current) {
+        setLoadingProducts(false);
+      }
     }
   }, [isAdmin, loading]);
+
+  useEffect(() => {
+    buscarProdutosRef.current = buscarProdutos;
+  }, [buscarProdutos]);
+  useEffect(() => {
+    produtosNaTelaRef.current = products.length;
+  }, [products]);
+
+  // Porta pública (efeito de montagem, `refresh`, "Tentar de novo" da vitrine,
+  // useProducts): consulta na hora e devolve o fôlego das tentativas
+  // automáticas. As automáticas chamam `buscarProdutos` direto, sem zerar.
+  const fetchProducts = useCallback(async () => {
+    tentativasDoCatalogoRef.current = 0;
+    if (timerDoCatalogoRef.current) {
+      clearTimeout(timerDoCatalogoRef.current);
+      timerDoCatalogoRef.current = null;
+    }
+    await buscarProdutos();
+  }, [buscarProdutos]);
 
   const updateConfig = useCallback(
     async (
@@ -960,6 +1224,14 @@ export function StoreProvider({
           dbUpdates.store_address = updates.storeAddress;
         if (updates.storeDescription !== undefined)
           dbUpdates.store_description = updates.storeDescription;
+        // 20261239000000: quem é a loja (razão social, CNPJ/CPF, e-mail de
+        // atendimento) — pela RPC genérica, fora do pacote de identidade.
+        if (updates.storeLegalName !== undefined)
+          dbUpdates.store_legal_name = updates.storeLegalName;
+        if (updates.storeLegalDocument !== undefined)
+          dbUpdates.store_legal_document = updates.storeLegalDocument;
+        if (updates.storeSupportEmail !== undefined)
+          dbUpdates.store_support_email = updates.storeSupportEmail;
         if (updates.originCep !== undefined)
           dbUpdates.origin_cep = updates.originCep;
         if (updates.shippingProvider !== undefined)
@@ -970,6 +1242,13 @@ export function StoreProvider({
           dbUpdates.shipping_coverage = updates.shippingCoverage;
         if (updates.localDeliveryFee !== undefined)
           dbUpdates.local_delivery_fee = updates.localDeliveryFee;
+        // "Como entrego na minha cidade" (16/10/2026): chave omitida =>
+        // `upsert_store_config` preserva o valor atual; `false` e `0` são
+        // valores (por isso `!== undefined`, nunca truthiness).
+        if (updates.localDeliveryEnabled !== undefined)
+          dbUpdates.local_delivery_enabled = updates.localDeliveryEnabled;
+        if (updates.localDeliveryDays !== undefined)
+          dbUpdates.local_delivery_days = updates.localDeliveryDays;
         if (updates.localCepRange !== undefined)
           dbUpdates.local_cep_range = updates.localCepRange;
         if (updates.homeSections !== undefined)
@@ -1052,6 +1331,7 @@ export function StoreProvider({
         }
 
         if (!current()) return false;
+        geracaoDaConfigRef.current += 1;
         setConfig((prev) => {
           if (!current()) return prev;
           const {
@@ -1114,10 +1394,17 @@ export function StoreProvider({
             err && typeof err === "object" && "message" in err
               ? (err as { message?: unknown }).message
               : undefined;
+          // "Como entrego na minha cidade" (16/10/2026): a trigger
+          // `store_config_so_retirada_exige_retirada` recusa "Só retiro"
+          // (entrega própria desligada) sem a retirada ligada e sem o
+          // endereço da loja — a lojista corrige na própria tela, e o texto
+          // diz como.
           toast.error(
             mensagemCrua === "LOJA_SEM_FORMA_DE_PAGAMENTO"
               ? "Ligue ao menos uma forma de pagamento — o PIX pelo app está desligado"
-              : "Erro ao salvar as configurações",
+              : mensagemCrua === "LOJA_SO_RETIRADA_SEM_RETIRADA"
+                ? "Para entregar só por retirada, ligue a retirada na loja e cadastre o endereço da loja."
+                : "Erro ao salvar as configurações",
           );
         }
         return false;
@@ -1301,6 +1588,7 @@ export function StoreProvider({
       isLoaded,
       products,
       loadingProducts,
+      catalogoErro,
       updateConfig,
       refresh,
       fetchProducts,
@@ -1311,6 +1599,7 @@ export function StoreProvider({
       isLoaded,
       products,
       loadingProducts,
+      catalogoErro,
       updateConfig,
       refresh,
       fetchProducts,
