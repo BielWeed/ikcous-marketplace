@@ -496,14 +496,14 @@ export const AdminProductsView = memo(function AdminProductsView({
       },
       {
         id: "faturamento-potencial",
-        label: "Receita bruta potencial",
+        label: "Venda prevista (com custo)",
         value:
-          financialStats.potentialRevenue !== null
-            ? `R$ ${financialStats.potentialRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          financialStats.receitaComCusto !== null
+            ? `R$ ${financialStats.receitaComCusto.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             : "—",
         icon: DollarSign,
         accent: "text-amber-300",
-        subValue: "Todo o estoque ativo · antes de descontos, taxas e frete",
+        subValue: "Mesmos produtos do custo e do lucro bruto",
       },
       {
         id: "lucro-liquido-potencial",
@@ -848,7 +848,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 financialStats.parcial
                   ? "Lucro bruto (parcial)"
                   : "Lucro bruto",
-                "Receita bruta",
+                "Venda (com custo)",
                 "Lucro líquido",
                 "Lucro sobre o custo",
                 "Catálogo",
@@ -857,77 +857,121 @@ export const AdminProductsView = memo(function AdminProductsView({
               loading={loading && !stats}
             />
           </LocalErrorBoundary>
-          <div className="space-y-2 rounded-2xl border border-white/10 p-3 text-xs leading-relaxed text-zinc-300">
-            <p>
-              Estimativa de venda do estoque atual, não dinheiro já recebido.
-            </p>
-            {!financialStats.coberturaConferida ? (
-              <p role="status">
-                Aguardando a separação dos produtos com e sem custo para
-                conferir o lucro bruto.
-              </p>
-            ) : (
-              <>
-                {financialStats.parcial ? (
-                  <p className="text-amber-200">
-                    {financialStats.produtosSemCusto}{" "}
-                    {financialStats.produtosSemCusto === 1
-                      ? "produto em estoque está sem custo"
-                      : "produtos em estoque estão sem custo"}
-                    : R${" "}
-                    {financialStats.receitaSemCusto?.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}{" "}
-                    em vendas previstas entram na receita, mas ficam fora do
-                    custo e do lucro. Cadastre o custo para completar a
-                    estimativa.
-                  </p>
-                ) : (
-                  <p>Todos os produtos em estoque têm custo cadastrado.</p>
-                )}
-                {financialStats.semNenhumCusto ? (
-                  <p>
-                    Nenhum custo cadastrado para o estoque: ainda não é possível
-                    apurar o lucro bruto.
-                  </p>
-                ) : (
-                  <p>
-                    Receita dos produtos com custo: R${" "}
-                    {financialStats.receitaComCusto?.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}{" "}
-                    − custo: R${" "}
-                    {financialStats.invested?.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}{" "}
-                    = lucro bruto{financialStats.parcial ? " parcial" : ""}: R${" "}
-                    {financialStats.potential?.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                    .
-                  </p>
-                )}
-              </>
-            )}
-            <p>
-              Lucro líquido é o que sobra depois do custo, descontos, taxas,
-              frete, impostos e outras despesas. Sem esses valores, não
-              calculamos uma estimativa líquida.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => toggleHelp("global-guide")}
-            className="produto-secundario w-full"
-            title="Guia Completo de Métricas e Ajuda"
+          <FolhaDoPainel
+            aberta={!!expandedHelp["financial-values"]}
+            onFechar={() => toggleHelp("financial-values")}
+            titulo="Entender os valores"
           >
-            <BookOpen aria-hidden="true" className="size-5 text-violet-300" />{" "}
-            Guia e simulador
-          </button>
+            <p role="group" aria-label="Receita bruta potencial">
+              Venda de todo o estoque:{" "}
+              <strong className="text-white">
+                {financialStats.potentialRevenue !== null
+                  ? `R$ ${financialStats.potentialRevenue.toLocaleString(
+                      "pt-BR",
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      },
+                    )}`
+                  : "—"}
+              </strong>
+            </p>
+            <div className="space-y-3 text-sm leading-relaxed text-zinc-300">
+              <p>
+                Estimativa de venda do estoque atual, não dinheiro já recebido.
+              </p>
+              {!financialStats.coberturaConferida ? (
+                <p role="status">
+                  Aguardando a separação dos produtos com e sem custo para
+                  conferir o lucro bruto.
+                </p>
+              ) : (
+                <>
+                  {financialStats.parcial ? (
+                    <p className="text-amber-200">
+                      {financialStats.produtosSemCusto}{" "}
+                      {financialStats.produtosSemCusto === 1
+                        ? "produto em estoque está sem custo"
+                        : "produtos em estoque estão sem custo"}
+                      : R${" "}
+                      {financialStats.receitaSemCusto?.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      em vendas previstas entram na receita, mas ficam fora do
+                      custo e do lucro. Cadastre o custo para completar a
+                      estimativa.
+                    </p>
+                  ) : (
+                    <p>Todos os produtos em estoque têm custo cadastrado.</p>
+                  )}
+                  {financialStats.semNenhumCusto ? (
+                    <p>
+                      Nenhum custo cadastrado para o estoque: ainda não é
+                      possível apurar o lucro bruto.
+                    </p>
+                  ) : (
+                    <p>
+                      Receita dos produtos com custo: R${" "}
+                      {financialStats.receitaComCusto?.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      − custo: R${" "}
+                      {financialStats.invested?.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      = lucro bruto{financialStats.parcial ? " parcial" : ""}:
+                      R${" "}
+                      {financialStats.potential?.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                      .
+                    </p>
+                  )}
+                </>
+              )}
+              <p>
+                Lucro líquido é o que sobra depois do custo, descontos, taxas,
+                frete, impostos e outras despesas. Sem esses valores, não
+                calculamos uma estimativa líquida.
+              </p>
+            </div>
+          </FolhaDoPainel>
+          {financialStats.parcial ? (
+            <p role="status" className="text-xs text-amber-200">
+              {financialStats.produtosSemCusto}{" "}
+              {financialStats.produtosSemCusto === 1
+                ? "produto sem custo"
+                : "produtos sem custo"}{" "}
+              · lucro parcial
+            </p>
+          ) : !financialStats.coberturaConferida ? (
+            <p role="status" className="text-xs text-zinc-400">
+              Conferindo custos…
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-x-4">
+            <button
+              type="button"
+              onClick={() => toggleHelp("financial-values")}
+              aria-haspopup="dialog"
+              className="min-h-11 text-xs font-semibold text-violet-300 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
+            >
+              Entender valores
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleHelp("global-guide")}
+              className="flex min-h-11 items-center gap-2 text-xs text-zinc-300 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
+              title="Guia Completo de Métricas e Ajuda"
+            >
+              <BookOpen aria-hidden="true" className="size-4 text-violet-300" />
+              Guia e simulador
+            </button>
+          </div>
         </div>
 
         <BarraDeBusca
