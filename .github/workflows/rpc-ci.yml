@@ -313,6 +313,18 @@ jobs:
       # `!cancelled()` só troca o "pare no primeiro erro" por "rode todas e
       # reprove no fim". Sem as migrations aplicadas, nenhuma prova roda (o
       # passo `aplica` já reprovou o job).
+      # Intencao do caixa (frente caixa-db, plano 2026-10-20-noturno-onda2-caixa-db, CX1/CX2):
+      # CX1 = retry do fechamento de S1 depois que S2 abriu nao pode tocar S2; CX2 = sangria
+      # de 50 (saldo 300) repetida com a mesma chave grava UMA transferencia. O seletor
+      # CAIXA_INTENCAO_ALVO e' do INSTRUMENTO (qual RPC a prova chama), nao do banco nem da
+      # guarda. ETAPA A: alvo `legado` (RPCs antigas) -> esperado VERMELHO com [DANO] em CX1
+      # e CX2; [PRECONDICAO]/[INDETERMINADO] nao provam o defeito. A Etapa B troca so o
+      # seletor para `chave` (contrato novo). CLONE proprio.
+      - name: Prova viva da intencao do caixa (CX1/CX2, alvo legado)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        env:
+          CAIXA_INTENCAO_ALVO: legado
+        run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-intencao-viva.cjs
       # Receita com custo usa preco efetivo por variante (251): cobertura, zero legitimo,
       # prejuizo, contrato historico, portoes oficiais, rollback e mutantes. CLONE proprio.
       - name: Prova viva do lucro do estoque (migration 20261251)
