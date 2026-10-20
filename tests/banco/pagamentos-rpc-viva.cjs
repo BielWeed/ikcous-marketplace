@@ -1673,6 +1673,12 @@ const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
 // DENTRO da transação, na ordem inversa da aplicação; o ROLLBACK do fim
 // devolve tudo. Cada uma só é desfeita se estiver no ar.
 const POSTERIORES_A_97 = [
+  // As RPCs novas da 252 usam is_admin_atual; desfazer antes da 99 e suas sucessoras.
+  // O rollback exige os corpos da 99 no caixa e preserva tabela e tentativas.
+  {
+    nome: "20261252000000_o_caixa_preserva_a_intencao.sql",
+    noAr: `SELECT to_regprocedure('public.fin_caixa_fechar_sessao(uuid,numeric,text)') IS NOT NULL AS sim`,
+  },
   // 20261241000000 (o reembolso em duvida prende o saldo) redefine o reemitir e o por fora da 1226 e mais
   // cinco corpos (tests/banco/reembolso-em-duvida-posterior.cjs): com ela no ar o rollback da 1226 recusa
   // (B1_BASELINE_DIVERGENT). E a mais nova: sai PRIMEIRO.
