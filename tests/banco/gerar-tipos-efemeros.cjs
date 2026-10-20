@@ -104,6 +104,20 @@ function classificarStderr(stderr) {
   };
 }
 
+// Só tamanho e presença (número e booleanos): diz qual exigência da saída falhou
+// sem deixar nenhum trecho do stdout atravessar para o log.
+function resumirSaida(stdout) {
+  const texto = typeof stdout === "string" ? stdout : "";
+  return {
+    bytes: Buffer.byteLength(texto, "utf8"),
+    database: /export type Database\s*=/.test(texto),
+    functions: /\bFunctions\s*:/.test(texto),
+    fechar: /\bfin_caixa_fechar_sessao\s*:/.test(texto),
+    movimentar: /\bfin_caixa_movimentar_com_chave\s*:/.test(texto),
+    prefixo_caixa: /\bfin_caixa_/.test(texto),
+  };
+}
+
 function falhaDeEtapa(etapa, retorno = {}) {
   if (!ETAPAS.has(etapa)) return new Error("Falha inesperada.");
   const codigo = retorno.error?.code ?? retorno.code;
@@ -115,6 +129,9 @@ function falhaDeEtapa(etapa, retorno = {}) {
   };
   if (etapa === "RETORNO_CLI") {
     Object.assign(diagnostico, classificarStderr(retorno.stderr));
+  }
+  if (etapa === "VALIDACAO_SAIDA") {
+    diagnostico.saida = resumirSaida(retorno.stdout);
   }
   const mensagem = `TIPOS_EFEMEROS ${JSON.stringify(diagnostico)}`;
   const erro = new Error(mensagem);

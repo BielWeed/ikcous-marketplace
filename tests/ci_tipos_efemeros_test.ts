@@ -270,6 +270,45 @@ Deno.test("diagnóstico: status 1 é retorno CLI, não validação de saída", (
     status: 0,
     codigo: null,
     sinal: null,
+    saida: {
+      bytes: PAYLOAD.length,
+      database: false,
+      functions: false,
+      fechar: false,
+      movimentar: false,
+      prefixo_caixa: false,
+    },
+  });
+});
+
+Deno.test("diagnóstico: saída inválida diz qual exigência falhou sem vazar texto", () => {
+  const semFechar = montar(
+    {},
+    {
+      status: 0,
+      stdout: TIPOS.replace("fin_caixa_fechar_sessao", `${PAYLOAD}_antiga`),
+    },
+  );
+  const msg = assertThrows(() => semFechar.gerar()).message;
+  assertEquals(diagnostico(msg).saida, {
+    bytes: Buffer.byteLength(
+      TIPOS.replace("fin_caixa_fechar_sessao", `${PAYLOAD}_antiga`),
+      "utf8",
+    ),
+    database: true,
+    functions: true,
+    fechar: false,
+    movimentar: true,
+    prefixo_caixa: true,
+  });
+  const vazio = montar({}, { status: 0, stdout: undefined });
+  assertEquals(diagnostico(assertThrows(() => vazio.gerar()).message).saida, {
+    bytes: 0,
+    database: false,
+    functions: false,
+    fechar: false,
+    movimentar: false,
+    prefixo_caixa: false,
   });
 });
 
