@@ -331,6 +331,7 @@ export function AdminFinanceiroView({
       case "caixa-movimentar":
         return (
           <MovimentarCaixaFolha
+            sessaoId={folha.sessaoId}
             movimento={folha.movimento}
             esperado={folha.esperado}
             contaDoCaixa={folha.contaDoCaixa}

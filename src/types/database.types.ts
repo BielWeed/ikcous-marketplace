@@ -3369,6 +3369,14 @@ export type Database = {
         Args: { p_observacao?: string | null; p_valor_contado: number };
         Returns: Json;
       };
+      fin_caixa_fechar_sessao: {
+        Args: {
+          p_observacao?: string;
+          p_sessao_id: string;
+          p_valor_contado: number;
+        };
+        Returns: Json;
+      };
       fin_caixa_historico: {
         Args: { p_limite?: number };
         Returns: Json;
@@ -3377,6 +3385,17 @@ export type Database = {
         Args: {
           p_conta_contrapartida?: string | null;
           p_descricao: string;
+          p_tipo: string;
+          p_valor: number;
+        };
+        Returns: Json;
+      };
+      fin_caixa_movimentar_com_chave: {
+        Args: {
+          p_chave: string;
+          p_conta_contrapartida?: string;
+          p_descricao: string;
+          p_sessao_id: string;
           p_tipo: string;
           p_valor: number;
         };

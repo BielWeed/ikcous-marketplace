@@ -97,6 +97,7 @@ function CaixaAberto({
                 onClick={() =>
                   abrirFolha({
                     tipo: "caixa-movimentar",
+                    sessaoId: caixa.id,
                     movimento: "sangria",
                     esperado: caixa.esperado,
                     contaDoCaixa: caixa.contaId,
@@ -112,6 +113,7 @@ function CaixaAberto({
                 onClick={() =>
                   abrirFolha({
                     tipo: "caixa-movimentar",
+                    sessaoId: caixa.id,
                     movimento: "suprimento",
                     esperado: caixa.esperado,
                     contaDoCaixa: caixa.contaId,

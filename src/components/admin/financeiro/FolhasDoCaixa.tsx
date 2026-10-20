@@ -234,6 +234,7 @@ export function AbrirCaixaFolha({
 
 /** Sangria (tira dinheiro da gaveta) ou suprimento (coloca troco). */
 export function MovimentarCaixaFolha({
+  sessaoId,
   movimento,
   esperado,
   contas,
@@ -242,6 +243,7 @@ export function MovimentarCaixaFolha({
   aoSalvar,
   aoMudarSujo,
 }: {
+  readonly sessaoId: string;
   readonly movimento: "sangria" | "suprimento";
   readonly esperado: number;
   readonly contas: readonly ContaFinanceira[];
@@ -255,6 +257,9 @@ export function MovimentarCaixaFolha({
   const [valor, setValor] = useState("");
   const [descricao, setDescricao] = useState("");
   const [contrapartida, setContrapartida] = useState("");
+  const tentativa = useRef<Readonly<
+    Parameters<typeof movimentarCaixa>[0]
+  > | null>(null);
   const [tentou, setTentou] = useState(false);
   const { enviando, erro, enviar } = useEnvio();
 
@@ -282,7 +287,11 @@ export function MovimentarCaixaFolha({
     setTentou(true);
     if (numero === null || numero <= 0 || numero > VALOR_MAXIMO) return;
     void enviar(async () => {
-      await movimentarCaixa({
+      // Retry pertence à mesma intenção, inclusive se a resposta se perdeu.
+      // Só edição dos campos ou desmontagem da folha descarta esta cópia.
+      tentativa.current ??= Object.freeze({
+        sessaoId,
+        chave: crypto.randomUUID(),
         tipo: movimento,
         valor: numero,
         descricao:
@@ -290,12 +299,19 @@ export function MovimentarCaixaFolha({
           (sangria ? "Sangria do caixa" : "Suprimento do caixa"),
         contaContrapartida: contrapartida || null,
       });
+      const enviada = tentativa.current;
+      const resultado = await movimentarCaixa(enviada);
+      tentativa.current = null;
+      if (resultado.status !== "realizado") {
+        aoSalvar(
+          "Operação localizada no histórico. Confira a situação do lançamento antes de tentar de novo.",
+        );
+        return;
+      }
       confirmarVisualmente({
         titulo: sangria ? "Sangria registrada." : "Suprimento registrado.",
-        descricao:
-          descricao.trim() ||
-          (sangria ? "Sangria do caixa" : "Suprimento do caixa"),
-        valor: numero,
+        descricao: enviada.descricao,
+        valor: enviada.valor,
         sentido: sangria ? -1 : 1,
         linhas: [
           {
@@ -307,7 +323,7 @@ export function MovimentarCaixaFolha({
           {
             rotulo: "Contrapartida",
             texto:
-              contas.find((c) => c.id === contrapartida)?.nome ??
+              contas.find((c) => c.id === enviada.contaContrapartida)?.nome ??
               "Nenhuma conta da loja",
           },
         ],
@@ -343,6 +359,9 @@ export function MovimentarCaixaFolha({
           <LocalBufferedInput
             id="fin-caixa-mov-valor"
             value={valor}
+            onInput={() => {
+              tentativa.current = null;
+            }}
             mask="currency"
             inputMode="numeric"
             placeholder="0,00"
@@ -380,7 +399,10 @@ export function MovimentarCaixaFolha({
           <LocalBufferedInput
             id="fin-caixa-mov-descricao"
             value={descricao}
-            maxLength={200}
+            maxLength={140}
+            onInput={() => {
+              tentativa.current = null;
+            }}
             placeholder={
               sangria ? "Ex.: depósito no banco" : "Ex.: troco para o dia"
             }
@@ -398,7 +420,10 @@ export function MovimentarCaixaFolha({
           <select
             id="fin-caixa-mov-conta"
             value={contrapartida}
-            onChange={(e) => setContrapartida(e.target.value)}
+            onChange={(e) => {
+              tentativa.current = null;
+              setContrapartida(e.target.value);
+            }}
             className={CLASSE_CAMPO}
           >
             <option value="">Nenhuma conta da loja</option>
@@ -461,6 +486,7 @@ export function FecharCaixaFolha({
     if (contado === null || contado < 0 || contado > VALOR_MAXIMO) return;
     void enviar(async () => {
       const fechamento = await fecharCaixa({
+        sessaoId: caixa.id,
         valorContado: contado,
         observacao: observacao.trim() || null,
       });
