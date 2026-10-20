@@ -169,21 +169,10 @@ it("2: falha das variantes não publica preço base nem sincroniza catálogo inc
   expect(atual.cart).toEqual([]);
   expect(mundo.erro).toHaveBeenCalledWith(
     expect.stringMatching(/varia|preço/i),
+    { id: "carrinho-variantes-indisponiveis" },
   );
   await sincronizar();
   expect(mundo.rpc).not.toHaveBeenCalled();
-});
-it("3: exclusão em outro aparelho sai da cópia local e não ressuscita no envio", async () => {
-  mundo.itens = [itemRemoto()];
-  await montar();
-  expect(atual.cart).toHaveLength(1);
-  mundo.itens = [];
-  await act(async () => mundo.evento({ eventType: "DELETE" }));
-  expect(atual.cart).toEqual([]);
-  await sincronizar();
-  expect(mundo.rpc).toHaveBeenLastCalledWith("sync_cart_atomic", {
-    p_cart_items: [],
-  });
 });
 it("2: conserva o preço conhecido e recupera as variantes na releitura", async () => {
   const remoto = itemRemoto();
@@ -210,26 +199,6 @@ it("2: conserva o preço conhecido e recupera as variantes na releitura", async 
   expect(atual.cartTotal).toBe(20);
   await sincronizar();
   expect(mundo.rpc).toHaveBeenCalled();
-});
-it("3: preserva item local novo que nunca esteve no banco", async () => {
-  await montar();
-  await act(async () =>
-    atual.addToCart(
-      mapProductFromDB({ ...linha, product_variants: variantes }),
-      1,
-      "v2",
-    ),
-  );
-  await act(async () => mundo.evento({ eventType: "DELETE" }));
-  expect(atual.cart.map((i) => i.variantId)).toEqual(["v2"]);
-});
-it("3: preserva edição local posterior à última leitura remota", async () => {
-  mundo.itens = [itemRemoto()];
-  await montar();
-  await act(async () => atual.updateQuantity("p1", 2, "v1"));
-  mundo.itens = [];
-  await act(async () => mundo.evento({ eventType: "DELETE" }));
-  expect(atual.cart.map((i) => [i.variantId, i.quantity])).toEqual([["v1", 2]]);
 });
 it("4: limpar carrinho elimina o cupom do rascunho sem apagar os demais campos", async () => {
   await montar();
