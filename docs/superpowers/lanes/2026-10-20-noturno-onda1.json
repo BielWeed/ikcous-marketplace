@@ -1,0 +1,22 @@
+{
+  "plano": "noturno-onda1",
+  "frentes": [
+    {
+      "nome": "qa-rascunho",
+      "descricao": "Preservar rascunho e alvo após envio assíncrono de pergunta/resposta",
+      "posse": [
+        "src/components/ui/custom/ProductQA.tsx",
+        "tests/front/productqa-nao-apaga-rascunho-novo.test.tsx"
+      ]
+    },
+    {
+      "nome": "banner-recorte",
+      "descricao": "Impedir recorte de upload antigo de alterar outro editor de banner",
+      "posse": [
+        "src/views/admin/AdminBannersView.tsx",
+        "tests/front/admin-banners-recorte-nao-troca-editor.test.tsx"
+      ]
+    }
+  ],
+  "liberados": {}
+}
