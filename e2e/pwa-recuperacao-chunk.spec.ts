@@ -4,6 +4,8 @@ import {
   abrirLojaPwa,
   contarBoots,
   esperarBootLimpo,
+  esperarServiceWorkerControlando,
+  esperarServiceWorkerEmEspera,
   lerBoots,
 } from "./pwa-kit";
 
@@ -34,6 +36,9 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
 
   // Boot v1 com SW ativo e precache da versão.
   await abrirLojaPwa(page);
+  // O install abre o cache antes de baixar tudo. Só simula o deploy quando
+  // a v1 terminou de instalar e assumiu esta aba, sem derrubar o seu precache.
+  await esperarServiceWorkerControlando(page);
   const nomeCacheV1 = await page.evaluate(async () => {
     const nomes = (await caches.keys()).filter((n) =>
       n.startsWith("app-cache-"),
@@ -68,16 +73,7 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
     const registro = await navigator.serviceWorker.getRegistration();
     await registro?.update();
   });
-  await expect
-    .poll(
-      () =>
-        page.evaluate(
-          async () =>
-            (await navigator.serviceWorker.getRegistration())?.waiting !== null,
-        ),
-      { timeout: 30_000, message: "o SW da v2 está waiting (poll prévio)" },
-    )
-    .toBe(true);
+  await esperarServiceWorkerEmEspera(page);
 
   // A aba v1 pede o chunk que sumiu — um import() dinâmico real, lançado
   // FORA da promessa do evaluate para virar unhandledrejection DA PÁGINA,

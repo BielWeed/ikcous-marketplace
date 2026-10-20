@@ -399,6 +399,34 @@ export async function abrirLojaPwa(page: Page): Promise<() => string[]> {
   return () => erros;
 }
 
+/** Cache aberto no install não comprova ativação nem controle desta aba. */
+export async function esperarServiceWorkerControlando(
+  page: Page,
+): Promise<void> {
+  await page.waitForFunction(
+    async () => {
+      const registro = await navigator.serviceWorker.getRegistration();
+      return (
+        registro?.active?.state === "activated" &&
+        navigator.serviceWorker.controller === registro.active
+      );
+    },
+    undefined,
+    { timeout: 30_000 },
+  );
+}
+
+/** Ausência de registro ou de waiting nunca significa atualização pronta. */
+export async function esperarServiceWorkerEmEspera(page: Page): Promise<void> {
+  await page.waitForFunction(
+    async () =>
+      (await navigator.serviceWorker.getRegistration())?.waiting?.state ===
+      "installed",
+    undefined,
+    { timeout: 30_000 },
+  );
+}
+
 /** Contador de boots: sobrevive a reloads e navegações NA MESMA ABA via
  * sessionStorage (cada documento nasce com window novo — só o storage da
  * aba atravessa). Contexto novo de teste = aba nova = contador zerado. */
