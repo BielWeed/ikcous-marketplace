@@ -191,7 +191,7 @@ export const AdminQAView = memo(function AdminQAView({
     (pageToFetch: number, silent = false) => {
       getAllQuestions(pageToFetch, pageSize, filter, searchQuery, silent)
         .then((result) => {
-          if (result) {
+          if (result && !result.falhou) {
             setTotalQuestions(result.total);
             const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
             if (pageToFetch > maxPage) {
@@ -340,7 +340,7 @@ export const AdminQAView = memo(function AdminQAView({
 
       toast.success("Resposta enviada com sucesso!");
       setRefreshTrigger((prev) => prev + 1);
-      getAllQuestions(page, pageSize, filter, searchQuery);
+      loadQuestions(page);
       // O sucesso pertence ao texto enviado, não a outro diálogo ou rascunho.
       if (
         formularioAtual.current.selectedQuestion === selectedQuestion &&
@@ -400,7 +400,7 @@ export const AdminQAView = memo(function AdminQAView({
     toast.success("Pergunta excluída");
     setConfirmDeleteId(null);
     setRefreshTrigger((prev) => prev + 1);
-    getAllQuestions(page, pageSize, filter, searchQuery);
+    loadQuestions(page);
   };
 
   const totalPages = Math.ceil(totalQuestions / pageSize);

@@ -1,4 +1,18 @@
 {
+  "1.5.44": {
+    "titulo": "Painel e carrinho mais seguros",
+    "novidades": [],
+    "correcoes": [
+      "Na ficha do cliente, trocar rápido de cliente não mistura os dados nem limpa o carrinho de outra pessoa.",
+      "Ao enviar uma notificação, o destinatário mostrado é sempre o escolhido, e a mensagem nova que você escreve durante o envio não some.",
+      "Ao trocar de cupom no painel, os campos do cupom anterior não ficam misturados.",
+      "Nos banners, a imagem que sobra de um envio é apagada, e dá para enviar o mesmo arquivo de novo.",
+      "Em Perguntas e respostas, ao responder ou excluir a última pergunta de uma página, a tela volta para uma página que existe.",
+      "No endereço, campos obrigatórios preenchidos só com espaços não passam mais.",
+      "No carrinho, se não for possível conferir as variações do produto, o preço base não aparece como se fosse o da variação; limpar o carrinho também limpa o cupom guardado."
+    ],
+    "melhorias": []
+  },
   "1.5.43": {
     "titulo": "Mais segurança ao editar banners e responder perguntas",
     "novidades": [],

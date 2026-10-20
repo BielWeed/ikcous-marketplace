@@ -415,6 +415,24 @@ export const AdminPushView = memo(function AdminPushView({
     body: "",
     url: "/",
   });
+  const notificationAtualRef = useRef(notification);
+  useEffect(() => {
+    notificationAtualRef.current = notification;
+  }, [notification]);
+
+  const limparMensagemEnviada = (enviada: typeof notification) => {
+    const aindaEhEnviada = (atual: typeof notification) =>
+      atual.title === enviada.title &&
+      atual.body === enviada.body &&
+      atual.url === enviada.url;
+    // A conclusão de X não pode apagar Y, escolhida enquanto o envio aguardava.
+    if (!aindaEhEnviada(notificationAtualRef.current)) return;
+    setNotification((atual) =>
+      aindaEhEnviada(atual) ? { title: "", body: "", url: "/" } : atual,
+    );
+    setCustomPath("");
+  };
+
   const { isSupported, subscribe } = usePushNotifications();
   const { recordAction } = useVOR();
   const [isTestSubscribed, setIsTestSubscribed] = useState(false);
@@ -428,7 +446,10 @@ export const AdminPushView = memo(function AdminPushView({
   const [predictedReach, setPredictedReach] = useState<ContagemMedida>(null);
   const rodadaDoAlcanceRef = useRef(0);
   const [history, setHistory] = useState<any[] | null>(null);
-  const [targetUserName, setTargetUserName] = useState<string | null>(null);
+  const [targetUserName, setTargetUserName] = useState<{
+    id: string;
+    nome: string | null;
+  } | null>(null);
   const [destType, setDestType] = useState<string>("home");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [customPath, setCustomPath] = useState<string>("");
@@ -532,6 +553,8 @@ export const AdminPushView = memo(function AdminPushView({
   })();
 
   useEffect(() => {
+    let superada = false;
+    setTargetUserName(null);
     if (targetUserId) {
       setSegment(targetUserId);
       const fetchUserName = async () => {
@@ -540,15 +563,17 @@ export const AdminPushView = memo(function AdminPushView({
           .select("full_name")
           .eq("id", targetUserId)
           .single();
-        if (!error && data) {
-          setTargetUserName(data.full_name);
+        if (!superada && !error && data) {
+          setTargetUserName({ id: targetUserId, nome: data.full_name });
         }
       };
       fetchUserName();
     } else {
-      setTargetUserName(null);
       setSegment("all");
     }
+    return () => {
+      superada = true;
+    };
   }, [targetUserId]);
 
   const fetchSubscribers = useCallback(async () => {
@@ -760,6 +785,8 @@ export const AdminPushView = memo(function AdminPushView({
       return;
     }
 
+    // O objeto deste render é o instantâneo usado por todo o envio.
+    const mensagemEnviada = notification;
     setLoading(true);
     try {
       if (!user) throw new Error("Administrador não autenticado");
@@ -830,8 +857,7 @@ export const AdminPushView = memo(function AdminPushView({
               description:
                 "A mensagem foi registrada como aviso dentro do app — ele vai ver na próxima vez que abrir a loja.",
             });
-            setNotification({ title: "", body: "", url: "/" });
-            setCustomPath("");
+            limparMensagemEnviada(mensagemEnviada);
           } catch (inAppErr) {
             console.error("Error saving in-app notification:", inAppErr);
             toast.error("Não foi possível registrar o aviso para este cliente");
@@ -1042,8 +1068,7 @@ export const AdminPushView = memo(function AdminPushView({
       );
 
       if (envioConfirmado && entregues > 0) {
-        setNotification({ title: "", body: "", url: "/" });
-        setCustomPath("");
+        limparMensagemEnviada(mensagemEnviada);
       }
       fetchHistory();
     } catch (error) {
@@ -1403,7 +1428,10 @@ export const AdminPushView = memo(function AdminPushView({
                         Mensagem para Cliente Específico
                       </p>
                       <p className="text-xs font-bold text-white mt-0.5">
-                        Cliente: {targetUserName || "Carregando..."}
+                        Cliente:{" "}
+                        {(targetUserName?.id === targetUserId &&
+                          targetUserName.nome) ||
+                          "Carregando..."}
                       </p>
                     </div>
                   </div>

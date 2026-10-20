@@ -15,6 +15,10 @@ import {
 import { economiaDaOpcao, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { mapProductFromDB } from "@/lib/mappers";
 import { precoVendido } from "@/lib/preco-vendido";
+import {
+  lerRascunhoDoCheckout,
+  salvarRascunhoDoCheckout,
+} from "@/lib/rascunho-do-checkout";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, Product, ShippingOption } from "@/types";
 import React, {
@@ -476,11 +480,30 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const lido = await lerProdutosEVariacoes(productIds);
             products = lido.produtos;
             variants = lido.variantes;
-            // Sem as variações o catálogo está incompleto: não se aplica ao
-            // carrinho (o carrinho do banco segue sendo montado como antes).
-            if (!lido.variantesFalharam) {
-              catalogo = montarCatalogo(productIds, products, variants);
+            // Sem as variações não há preço confiável para reconstruir o
+            // carrinho remoto. Mantém a cópia local e tenta reler, sem gravar
+            // um carrinho incompleto por cima do banco.
+            if (lido.variantesFalharam) {
+              const faltaPrecoDaVariacao = dbItems.some(
+                (item) =>
+                  item.variant_id &&
+                  !cartRef.current.some(
+                    (local) =>
+                      local.product.id === item.product_id &&
+                      local.product.variants?.some(
+                        (v) => v.id === item.variant_id,
+                      ),
+                  ),
+              );
+              if (faltaPrecoDaVariacao) {
+                toast.error(
+                  "Não foi possível conferir o preço das variações. Tente novamente.",
+                  { id: "carrinho-variantes-indisponiveis" },
+                );
+              }
+              throw new Error("Catálogo de variações indisponível");
             }
+            catalogo = montarCatalogo(productIds, products, variants);
           }
 
           const reconstructedCart: CartItem[] = dbItems
@@ -1151,6 +1174,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
     setSelectedShippingOption(null);
     setShippingCep(null);
+    const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+    if (rascunho) {
+      salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+        ...rascunho,
+        cupom: null,
+        contaDoCupom: null,
+      });
+    }
     removerSeguro(CART_STORAGE_KEY);
     toast.info("Carrinho limpo");
   }, [setSelectedShippingOption]);
