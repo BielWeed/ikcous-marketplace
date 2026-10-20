@@ -13,6 +13,7 @@ import { toast } from "sonner";
 let globalBannersCache: Banner[] | null = null;
 let bannersFetchPromise: Promise<Banner[]> | null = null;
 let lastBannersFetchTime = 0;
+let geracaoDasMutacoesDeBanners = 0;
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
 
 const preloadTopBanner = (items: Banner[]) => {
@@ -118,6 +119,7 @@ export function useBanners(adminMode = false) {
   // ressuscitaria nela no mesmo intervalo.
   const applyLocalBanners = useCallback(
     (items: Banner[]) => {
+      geracaoDasMutacoesDeBanners++;
       globalBannersCache = items;
       lastBannersFetchTime = Date.now();
       persistToVault(items);
@@ -192,11 +194,16 @@ export function useBanners(adminMode = false) {
 
   const fetchBanners = useCallback(
     async (_onlyActive = false, forceRefresh = false) => {
+      const geracao = geracaoDasMutacoesDeBanners;
       // If a network fetch is already active, wait for it (never duplicate parallel fetches)
       if (bannersFetchPromise) {
         try {
           const data = await bannersFetchPromise;
-          setBanners(data);
+          setBanners(
+            geracao === geracaoDasMutacoesDeBanners
+              ? data
+              : globalBannersCache || [],
+          );
           setIsLoaded(true);
         } catch {
           /* fallback */
@@ -214,6 +221,11 @@ export function useBanners(adminMode = false) {
         const query = supabase.from("banners").select("*");
 
         const { data, error } = await query.order("order", { ascending: true });
+
+        // Uma edição local vence a leitura que já estava em voo.
+        if (geracao !== geracaoDasMutacoesDeBanners) {
+          return globalBannersCache || [];
+        }
 
         if (error) {
           console.error("[Banners] Supabase error:", error);
@@ -269,7 +281,11 @@ export function useBanners(adminMode = false) {
 
       try {
         const mappedBanners = await queryPromise;
-        setBanners(mappedBanners);
+        setBanners(
+          geracao === geracaoDasMutacoesDeBanners
+            ? mappedBanners
+            : globalBannersCache || [],
+        );
       } catch (error: any) {
         console.error("[Banners] Error fetching banners:", error.message);
       } finally {
