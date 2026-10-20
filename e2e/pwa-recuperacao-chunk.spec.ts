@@ -1,11 +1,13 @@
 import { expect, test } from "@playwright/test";
 import {
+  esperarServiceWorkerControlando,
+  esperarServiceWorkerEmEspera,
+} from "./pwa-esperas";
+import {
   URL_DO_SERVIDOR,
   abrirLojaPwa,
   contarBoots,
   esperarBootLimpo,
-  esperarServiceWorkerControlando,
-  esperarServiceWorkerEmEspera,
   lerBoots,
 } from "./pwa-kit";
 

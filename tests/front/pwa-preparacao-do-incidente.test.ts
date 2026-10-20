@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   esperarServiceWorkerControlando,
   esperarServiceWorkerEmEspera,
-} from "../../e2e/pwa-kit";
+} from "../../e2e/pwa-esperas";
 import specDoIncidente from "../../e2e/pwa-recuperacao-chunk.spec.ts?raw";
 
 type Estado = {
