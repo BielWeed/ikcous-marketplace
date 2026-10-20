@@ -102,6 +102,7 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     s.nome !== "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql" &&
     s.nome !==
       "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql" &&
+    s.nome !== "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql" &&
     s.nome !== "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
 );
 

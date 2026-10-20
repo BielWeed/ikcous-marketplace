@@ -40,7 +40,16 @@ vi.mock("@/hooks/useProducts", () => ({
 // 30, valor de venda só dos produtos com custo 90 — o lucro é 60.
 vi.mock("@/hooks/useAnalytics", () => ({
   useAnalytics: () => ({
-    stats: { inventory: { totalCost: 30, totalValue: 90 } },
+    stats: {
+      inventory: {
+        totalCost: 30,
+        totalValue: 90,
+        totalRevenue: 90,
+        revenueWithoutCost: 0,
+        productsWithoutCost: 0,
+        productsWithCost: 1,
+      },
+    },
     fetchExecutiveSummary,
   }),
 }));
@@ -150,13 +159,25 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
     });
   }
 
-  it("os cartões dizem 'Pelo custo' e 'Só com custo' (curtos) — nada de 'Capital Líquido' nem 'Margem Bruta'", async () => {
+  it("os cartões separam custo conhecido, lucro bruto e líquido não calculado", async () => {
     await montar();
     const tela = hospedeiro.textContent ?? "";
-    expect(tela).toContain("Dinheiro parado em estoque");
-    expect(tela).toContain("Lucro se vender tudo");
-    expect(folhasComTexto(hospedeiro, "Pelo custo")).toHaveLength(1);
-    expect(folhasComTexto(hospedeiro, "Só com custo")).toHaveLength(1);
+    expect(tela).toContain("Custo conhecido em estoque");
+    expect(tela).toContain("Lucro bruto potencial");
+    expect(tela).toContain("Lucro líquido potencial");
+    expect(tela).toContain("Não calculado");
+    expect(
+      folhasComTexto(
+        hospedeiro,
+        "Quanto custaram os produtos com custo cadastrado",
+      ),
+    ).toHaveLength(1);
+    expect(
+      folhasComTexto(
+        hospedeiro,
+        "Receita com custo cadastrado menos custo · antes das despesas",
+      ),
+    ).toHaveLength(1);
     expect(tela).not.toContain("Pelo custo cadastrado");
     expect(tela).not.toContain("Só produtos com custo");
     expect(tela).not.toContain("Capital Líquido");
@@ -190,7 +211,7 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
     // Jargão e a contradição com a conta (que deixa de fora quem não tem custo).
     expect(pagina).not.toContain("capital líquido imobilizado");
     expect(pagina).not.toContain("todas as unidades");
-    expect(pagina).not.toContain("todos os produtos em estoque");
+    expect(pagina).toContain("Lucro líquido potencial");
     expect(pagina).not.toContain("Produtos sem custo cadastrado ficam de fora");
   });
 });
@@ -210,10 +231,8 @@ describe("o rótulo é verdade no banco: o get_admin_analytics_v2 VIVO só soma 
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .at(-1);
 
-  it("a viva é a 20261250000000 (sucessora da 20261245000000) e o valor de venda continua com o FILTER (WHERE custo IS NOT NULL)", () => {
-    expect(VIVA?.[0]).toContain(
-      "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql",
-    );
+  it("a viva é a 20261251000000 e a receita com preço efetivo continua filtrada por custo conhecido", () => {
+    expect(VIVA?.[0]).toContain("20261251000000");
     const sql = VIVA?.[1] ?? "";
     // a 20261242 só troca de ONDE vem o custo do LUCRO e do ranking (o do dia da venda, senão o de hoje); o estoque
     // segue com o custo de hoje, como a 20261214 deixou.
@@ -221,12 +240,14 @@ describe("o rótulo é verdade no banco: o get_admin_analytics_v2 VIVO só soma 
       "FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit",
     );
     expect(sql).toContain(
-      "COALESCE(SUM(preco_venda * estoque) FILTER (WHERE custo IS NOT NULL), 0)",
+      "COALESCE(SUM(faturamento) FILTER (WHERE custo IS NOT NULL), 0)",
     );
     // A soma sem filtro e APENAS o faturamento novo; totalValue segue protegido.
-    expect(sql).toContain(
-      "COALESCE(SUM(preco_venda * estoque) FILTER (WHERE custo IS NOT NULL), 0),\n        COALESCE(SUM(faturamento), 0)\n    INTO low_stock_count, inv_cost_total, inv_value_total, inv_revenue_total",
-    );
+    expect(sql).toContain("COALESCE(SUM(faturamento), 0)");
+    expect(sql).toContain("FILTER (WHERE custo IS NULL)");
+    expect(sql).toContain("'revenueWithoutCost'");
+    expect(sql).toContain("'productsWithoutCost'");
+    expect(sql).toContain("'productsWithCost'");
     expect(sql).toContain("'totalRevenue', inv_revenue_total");
   });
 });

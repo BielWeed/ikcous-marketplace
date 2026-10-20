@@ -3,7 +3,7 @@
 // PAINEL SIMPLES, onda J2, frente J2-A ("produtos-detalhado-sem-corte").
 // Render num celular simulado mediu que o cartão do modo DETALHADO de Produtos
 // (altura fixa `h-[440px]`, posta por causa do `content-visibility`) cortava o
-// que passava: o "Preço de Venda" e o "Potencial" ficavam escondidos — 45 a
+// que passava: o "Preço de Venda" e o "Lucro bruto do estoque" ficavam escondidos — 45 a
 // 114px a 360/412, 90 a 143px a 768 e 173 a 280px a 1280. O jsdom não aplica
 // CSS, então a prova é sobre as classes; a medida real fica para o render.
 //
@@ -11,8 +11,8 @@
 //      o cartão cresce com o conteúdo;
 //   b. o `content-visibility: auto` continua (a classe do cartão segue lá, com
 //      o `contain-intrinsic-size` dela) — a rolagem da lista não pesa;
-//   c. preço de venda, custo parado, estoque e "Potencial" estão no cartão e o
-//      preço e o "Potencial" dividem o mesmo contêiner (a mesma linha);
+//   c. preço de venda, custo parado, estoque e "Lucro bruto do estoque" estão no cartão e o
+//      preço e o "Lucro bruto do estoque" dividem o mesmo contêiner (a mesma linha);
 //   d. nenhum ancestral do preço corta o excesso por altura fixa;
 //   e. nome longo continua em até 2 linhas (`line-clamp-2`, sem `truncate`).
 //
@@ -266,11 +266,11 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
       expect(texto).toContain("Dinheiro parado em estoque");
       expect(texto).toContain("R$ 20,00");
       expect(texto).toContain("Unidades em Estoque");
-      expect(texto).toContain("Potencial");
+      expect(texto).toContain("Lucro bruto do estoque");
       expect(texto).toContain("+ R$ 10,00");
 
       const preco = rotulo("Preço de Venda");
-      const potencial = rotulo("Potencial");
+      const potencial = rotulo("Lucro bruto do estoque");
       const detalhes = potencial.closest<HTMLElement>(
         "[data-metricas-do-produto]",
       );

@@ -2243,6 +2243,19 @@ const ROL_DA_53B = ROL_DA_53A.map((item) =>
   ),
 );
 
+const ROL_DA_54A = ROL_DA_53A.map((item) =>
+  item.replace(
+    "20261250000000, com o faturamento potencial",
+    "20261251000000, com o lucro do estoque por variante",
+  ),
+);
+const ROL_DA_54B = ROL_DA_54A.map((item) =>
+  item.replace(
+    "20261251000000, com o lucro do estoque por variante",
+    "20261250000000, antes do lucro do estoque por variante",
+  ),
+);
+
 // Lote 49: 20261246000000, catalogo apenas; os dois lados tem o mesmo rol fechado.
 const ROL_DA_49A = [
   "controle: funcoes de public visiveis a este papel",
@@ -2395,6 +2408,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "52b-antes-motivo-do-balcao-base-vigente": ROL_DA_52B,
   "53a-conferir-faturamento-potencial-aplicado": ROL_DA_53A,
   "53b-antes-faturamento-potencial-base-vigente": ROL_DA_53B,
+  "54a-conferir-lucro-do-estoque-aplicado": ROL_DA_54A,
+  "54b-antes-lucro-do-estoque-base-vigente": ROL_DA_54B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 

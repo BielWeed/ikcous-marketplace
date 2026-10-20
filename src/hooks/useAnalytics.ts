@@ -103,6 +103,11 @@ export interface DashboardStats {
     totalValue: number;
     /** Venda prevista de todo o estoque ativo, inclusive sem custo cadastrado. */
     totalRevenue?: number;
+    /** Parte da receita que não permite apurar lucro por faltar custo. */
+    revenueWithoutCost?: number;
+    /** Cobertura do estoque atual; não são os produtos vendidos sem custo da raiz. */
+    productsWithoutCost?: number;
+    productsWithCost?: number;
   };
   averageTicket?: number;
   /** Pedidos com `status = 'delivered'`, desde sempre. Opcional: campo novo

@@ -8,6 +8,8 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 
 - **Faturamento potencial (`faturamento-potencial-viva.cjs`, via `rodar-isolado.cjs`)**: migration 20261250; todo estoque ativo, inclusive sem custo, sem inflar lucro. Variantes ativas substituem o pai, pausados/apagados ficam fora. Rol 53a/53b, ACL e admin atual, idempotência, rollback, CRLF e controle negativo que perde o produto sem custo. Só clone efêmero; não mede lojas reais.
 
+- **Lucro bruto do estoque (`lucro-do-estoque-viva.cjs`, via `rodar-isolado.cjs`)**: migration 20261251, depois da 250. Receita com custo usa o mesmo preco efetivo por variante de totalRevenue; totalCost igual. `inventory.revenueWithoutCost`, `productsWithoutCost` e `productsWithCost` separam cobertura do ESTOQUE (nao o contador da raiz, de vendas). Custo0 conhecido, NULL ausente; override0 valido, NULL herda; variantes inativas fora; estoque efetivo0 nao conta produto. Prova prejuizo, zero conhecido misturado a semcusto, receita total = comcusto + semcusto, historico/ACL/OID/dono/dados iguais, pre/pos-voos fail-closed, reaplicacao/rollback idempotentes e CRLF. Consultas oficiais 54a/54b e ancestrais no corpo novo E no rollback250; portao real APLICAR/NADA/PARAR, rol parcial/duplicado invalido; nove controles negativos. So clone descartavel no CI, nunca lojas reais. As provas ancestrais desfazem a 251 antes da 250 pelo helper `lucro-do-estoque-posterior.cjs`.
+
 ## As provas (`invariantes-dinheiro.cjs`)
 
 - **(a) cupom**: `usage_limit` nunca fica negativo; a vaga do cupom não volta

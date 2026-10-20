@@ -548,6 +548,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "52b-antes-motivo-do-balcao-base-vigente",
   "53a-conferir-faturamento-potencial-aplicado",
   "53b-antes-faturamento-potencial-base-vigente",
+  "54a-conferir-lucro-do-estoque-aplicado",
+  "54b-antes-lucro-do-estoque-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

@@ -2195,6 +2195,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           versao: "20261250000000",
         },
         {
+          fn: "get_admin_analytics_v2",
+          h: "060c9ab5b1505dc375b41e4436e9d3a8",
+          versao: "20261251000000",
+        },
+        {
           fn: "get_admin_customers_paged",
           h: "d6c092c3e0d8069891af795147d65e9e",
           versao: "20261230000000",
@@ -7830,6 +7835,19 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
   assert(ini50 >= 0);
   const abre50 = texto50.indexOf("AS $$", ini50) + 5;
   const corpo50 = texto50.slice(abre50, texto50.indexOf("$$;", abre50));
+  const texto51 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini51 = texto51.indexOf(cabecalhoDepois17("get_admin_analytics_v2"));
+  assert(ini51 >= 0);
+  const abre51 = texto51.indexOf("AS $$", ini51) + 5;
+  const corpo51 = texto51.slice(abre51, texto51.indexOf("$$;", abre51));
+  const shaSucessora51 = {
+    lf: criarHash("sha256").update(corpo51).digest("hex"),
+    crlf: criarHash("sha256").update(corpo51.replace(/\n/g, "\r\n")).digest("hex"),
+  };
   const shaSucessora50 = {
     lf: criarHash("sha256").update(corpo50).digest("hex"),
     crlf: criarHash("sha256")
@@ -7860,6 +7878,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora45.crlf,
                 shaSucessora50.lf,
                 shaSucessora50.crlf,
+                shaSucessora51.lf,
+                shaSucessora51.crlf,
               ]
             : [];
         assertEquals(new Set(todos).size, 6);
@@ -7892,6 +7912,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                     shaSucessora45.crlf,
                     shaSucessora50.lf,
                     shaSucessora50.crlf,
+                    shaSucessora51.lf,
+                    shaSucessora51.crlf,
                     x.lf,
                   ]
                 : [x.lf, x.lf, x.crlf, x.lf],
@@ -14140,7 +14162,7 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       // retirando exatamente as duas fórmulas declaradas, antes de comparar a regra histórica à 44m.
       assertEquals(
         vigente,
-        "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql",
+        "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql",
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
       const funcao = (sql: string) => {
@@ -14157,6 +14179,11 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
           "",
         ),
       )
+        .replace("    inv_revenue_without_cost numeric;\n    inv_products_without_cost bigint;\n    inv_products_with_cost bigint;\n", "")
+        .replace("SUM(faturamento) FILTER (WHERE custo IS NOT NULL)", "SUM(preco_venda * estoque) FILTER (WHERE custo IS NOT NULL)")
+        .replace(",\n        COALESCE(SUM(faturamento) FILTER (WHERE custo IS NULL), 0),\n        COUNT(*) FILTER (WHERE custo IS NULL AND estoque > 0),\n        COUNT(*) FILTER (WHERE custo IS NOT NULL AND estoque > 0)", "")
+        .replace(", inv_revenue_without_cost, inv_products_without_cost, inv_products_with_cost", "")
+        .replace(",\n            'revenueWithoutCost', inv_revenue_without_cost,\n            'productsWithoutCost', inv_products_without_cost,\n            'productsWithCost', inv_products_with_cost", "")
         .replace("    inv_revenue_total numeric;\n", "")
         .replace(",\n        COALESCE(SUM(faturamento), 0)", "")
         .replace(

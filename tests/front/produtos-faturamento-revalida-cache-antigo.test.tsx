@@ -87,7 +87,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     <AdminProductsView onNavigate={navegar} active={active} />
   );
   const faturamento = () =>
-    caixa.querySelector('[aria-label="Faturamento potencial"]')?.textContent;
+    caixa.querySelector('[aria-label="Receita bruta potencial"]')?.textContent;
 
   async function aquecerCache() {
     await act(async () => {
@@ -178,7 +178,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(h.rpc).toHaveBeenCalledTimes(1);
     expect(faturamento()).toContain("—");
     expect(
-      caixa.querySelector('[aria-label="Dinheiro parado em estoque"]')
+      caixa.querySelector('[aria-label="Custo conhecido em estoque"]')
         ?.textContent,
     ).toContain("20,00");
     await act(async () => {
@@ -216,6 +216,144 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     });
     expect(faturamento()).toContain("400,00");
     expect(h.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  const metrica = (rotulo: string) =>
+    caixa.querySelector(`[aria-label="${rotulo}"]`)?.textContent ?? "";
+
+  async function mostrarInventario(inventory: Record<string, number>) {
+    h.rpc.mockResolvedValue({ data: { inventory }, error: null });
+    await act(async () => raiz.render(tela()));
+    const expandir = [...caixa.querySelectorAll("button")].find((botao) =>
+      botao.textContent?.includes("Expandir"),
+    );
+    expect(expandir).toBeDefined();
+    await act(async () => expandir!.click());
+  }
+
+  it("separa receita total, custo e lucro bruto parcial sem inventar lucro líquido", async () => {
+    await mostrarInventario({
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 460,
+      revenueWithoutCost: 300,
+      productsWithoutCost: 1,
+      productsWithCost: 1,
+    });
+    expect(metrica("Receita bruta potencial")).toContain("460,00");
+    expect(metrica("Custo conhecido em estoque")).toContain("100,00");
+    expect(metrica("Lucro bruto potencial")).toContain("60,00");
+    expect(metrica("Lucro bruto potencial")).toContain("Parcial");
+    expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
+    expect(metrica("Lucro líquido potencial")).not.toContain("360,00");
+    expect(caixa.textContent).toContain("300,00");
+    expect(caixa.textContent).toContain("fora do custo e do lucro");
+    expect(caixa.textContent).toContain("160,00");
+    expect(caixa.textContent).toContain("taxas");
+    expect(caixa.textContent).not.toContain("Lucro se vender tudo");
+  });
+
+  it.each([
+    { totalCost: 100, totalValue: 160, totalRevenue: 160, bruto: "60,00" },
+    { totalCost: 100, totalValue: 60, totalRevenue: 60, bruto: "-40,00" },
+    { totalCost: 0, totalValue: 60, totalRevenue: 60, bruto: "60,00" },
+    { totalCost: 0, totalValue: 0, totalRevenue: 0, bruto: "0,00" },
+  ])(
+    "custo zero conhecido e prejuízo não são confundidos com dado ausente: $bruto",
+    async ({ bruto, ...inventory }) => {
+      await mostrarInventario({
+        ...inventory,
+        revenueWithoutCost: 0,
+        productsWithoutCost: 0,
+        productsWithCost: inventory.totalRevenue === 0 ? 0 : 1,
+      });
+      expect(metrica("Lucro bruto potencial")).toContain(bruto);
+      expect(metrica("Lucro bruto potencial")).not.toContain("Parcial");
+      expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
+      expect(caixa.textContent).toContain(
+        "Todos os produtos em estoque têm custo cadastrado",
+      );
+    },
+  );
+
+  it("estoque inteiro sem custo não vira lucro bruto zero conhecido", async () => {
+    await mostrarInventario({
+      totalCost: 0,
+      totalValue: 0,
+      totalRevenue: 300,
+      revenueWithoutCost: 300,
+      productsWithoutCost: 1,
+      productsWithCost: 0,
+    });
+    expect(metrica("Lucro bruto potencial")).toContain("—");
+    expect(metrica("Lucro sobre o custo")).toContain("—");
+    expect(caixa.textContent).toContain(
+      "Nenhum custo cadastrado para o estoque",
+    );
+  });
+
+  it("custo e preço zero medidos não viram ausência quando outro produto está sem custo", async () => {
+    await mostrarInventario({
+      totalCost: 0,
+      totalValue: 0,
+      totalRevenue: 300,
+      revenueWithoutCost: 300,
+      productsWithoutCost: 1,
+      productsWithCost: 1,
+    });
+    expect(metrica("Lucro bruto potencial")).toContain("0,00");
+    expect(metrica("Lucro bruto potencial")).toContain("Parcial");
+    expect(caixa.textContent).not.toContain("Nenhum custo cadastrado");
+  });
+
+  it("guia e simulador não chamam preço menos custo de lucro líquido", async () => {
+    await mostrarInventario({
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 160,
+      revenueWithoutCost: 0,
+      productsWithoutCost: 0,
+      productsWithCost: 1,
+    });
+    const guia = caixa.querySelector<HTMLButtonElement>(
+      'button[title="Guia Completo de Métricas e Ajuda"]',
+    );
+    expect(guia).not.toBeNull();
+    await act(async () => guia!.click());
+    const simulador = [...document.body.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Simulador",
+    );
+    expect(simulador).toBeDefined();
+    await act(async () => simulador!.click());
+    expect(document.body.textContent).toContain("Lucro bruto por unidade");
+    expect(document.body.textContent).not.toContain("Lucro Líquido (Unit.)");
+    expect(document.body.textContent).not.toContain("prejuízo líquido");
+  });
+
+  it("resumo legado ou contraditório não comprova lucro bruto correto", async () => {
+    await mostrarInventario({
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 460,
+    });
+    expect(metrica("Lucro bruto potencial")).toContain("—");
+    expect(caixa.textContent).toContain("Aguardando a separação");
+    h.rpc.mockResolvedValue({
+      data: {
+        inventory: {
+          totalCost: 100,
+          totalValue: 160,
+          totalRevenue: 460,
+          revenueWithoutCost: 100,
+          productsWithoutCost: 1,
+        },
+      },
+      error: null,
+    });
+    clearAnalyticsCache();
+    await act(async () => raiz.render(null));
+    await act(async () => raiz.render(tela()));
+    expect(metrica("Lucro bruto potencial")).toContain("—");
   });
 
   it.each([undefined, 0])(

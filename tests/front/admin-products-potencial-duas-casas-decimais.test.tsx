@@ -2,7 +2,7 @@
 //
 // Achado 14 da auditoria de 20/08/2026
 // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): no cartão
-// detalhado do produto, "Potencial" era o único valor em dinheiro
+// detalhado do produto, "Lucro bruto do estoque" era o único valor em dinheiro
 // formatado com `minimumFractionDigits: 0` — os vizinhos ("Preço de
 // Venda", "Capital Alocado") usam 2. O resultado era "R$ 37,2", que não é
 // um jeito válido de escrever dinheiro em português.
@@ -10,7 +10,7 @@
 // Monta `AdminProductsView` de verdade, mesmo padrão de
 // admin-products-margem-sem-custo.test.tsx — reaproveitado aqui porque já
 // resolveu os mesmos obstáculos de montar esta tela. A visualização padrão
-// é "compact" (não mostra "Potencial"); o teste pré-carrega
+// é "compact" (não mostra "Lucro bruto do estoque"); o teste pré-carrega
 // `admin_products_view_mode = "detailed"` no dublê de `localStorage` para
 // cair direto no cartão detalhado, que é onde o achado 14 vive.
 import { act } from "react";
@@ -263,8 +263,67 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
 
     await montar();
 
-    const potencialTexto = lerValorPeloRotulo("Potencial");
+    const potencialTexto = lerValorPeloRotulo("Lucro bruto do estoque");
     expect(potencialTexto).toBe("+ R$ 37,20");
+  });
+
+  it("lucro do produto usa preço de cada variante ativa, inclusive zero e herança do pai", async () => {
+    montarProduto({
+      price: 100,
+      stock: 5,
+      costPrice: 20,
+      variants: [
+        { id: "v1", active: true, stockIncrement: 2, priceOverride: 60 },
+        { id: "v2", active: true, stockIncrement: 2, priceOverride: 0 },
+        { id: "v3", active: true, stockIncrement: 1 },
+        {
+          id: "ignorada",
+          active: false,
+          stockIncrement: 100,
+          priceOverride: 999,
+        },
+      ],
+    });
+    await montar();
+    // Receita220 − custo100 =120; preço pai×estoque inventaria lucro400.
+    expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("+ R$ 120,00");
+    expect(cartaoDoProduto().querySelector("[data-margem]")?.textContent).toBe(
+      "54,5%",
+    );
+    expect(
+      cartaoDoProduto().querySelector("[data-lucro-sobre-custo]")?.textContent,
+    ).toBe("120,0%");
+  });
+
+  it("prejuízo da variante não recebe um sinal de mais enganoso", async () => {
+    montarProduto({
+      price: 100,
+      stock: 1,
+      costPrice: 20,
+      variants: [
+        { id: "v1", active: true, stockIncrement: 1, priceOverride: 10 },
+      ],
+    });
+    await montar();
+    expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("R$ -10,00");
+  });
+
+  it("sem variantes ativas, lucro do produto volta ao preço e estoque do pai", async () => {
+    montarProduto({
+      price: 100,
+      stock: 3,
+      costPrice: 20,
+      variants: [
+        {
+          id: "pausada",
+          active: false,
+          stockIncrement: 100,
+          priceOverride: 999,
+        },
+      ],
+    });
+    await montar();
+    expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("+ R$ 240,00");
   });
 
   it("valor redondo (sem centavos): mostra 'R$ 100,00', não 'R$ 100' — as duas casas são OBRIGATÓRIAS, como nos vizinhos", async () => {
@@ -273,7 +332,7 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
 
     await montar();
 
-    const potencialTexto = lerValorPeloRotulo("Potencial");
+    const potencialTexto = lerValorPeloRotulo("Lucro bruto do estoque");
     expect(potencialTexto).toBe("+ R$ 100,00");
   });
 });

@@ -73,7 +73,7 @@ WITH alvo(assinatura) AS (
   SELECT 'get_admin_analytics_v2: corpo e o da 20261234000000, com o lucro so de produto com custo (md5)',
          '05eac70f6bd4360c1f71fd373747ad0e',
          -- aceita tambem o corpo da SUCESSORA 20261242000000 (o lucro usa o custo do dia da venda): o `vivo` mostra o esperado
-         COALESCE((SELECT CASE WHEN f.m IN ('05eac70f6bd4360c1f71fd373747ad0e', 'dceb62881ebf8fa404ba3ac295041691', 'ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07')
+         COALESCE((SELECT CASE WHEN f.m IN ('05eac70f6bd4360c1f71fd373747ad0e', 'dceb62881ebf8fa404ba3ac295041691', 'ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8')
                                THEN '05eac70f6bd4360c1f71fd373747ad0e' ELSE f.m END
                      FROM fn f), 'AUSENTE')
   UNION ALL
