@@ -162,10 +162,12 @@ export const AdminProductsView = memo(function AdminProductsView({
   // transição false→true, nunca a cada render enquanto a view já está
   // ativa (senão vira RPC em laço). Mesmo precedente de
   // `AdminOrdersView.tsx:430-436`.
-  const wasActiveRef = useRef(active);
+  // A primeira abertura também é uma ativação: pode receber o resumo
+  // persistido da versão anterior, ainda sem as métricas novas.
+  const wasActiveRef = useRef(false);
   useEffect(() => {
     const wasActive = wasActiveRef.current;
-    wasActiveRef.current = active;
+    wasActiveRef.current = active ?? false;
     if (!active) return;
     if (!stats) {
       fetchExecutiveSummary(false);
