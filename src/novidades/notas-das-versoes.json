@@ -1,4 +1,13 @@
 {
+  "1.5.40": {
+    "titulo": "Faturamento atualizado ao abrir Produtos",
+    "novidades": [],
+    "correcoes": [
+      "O faturamento potencial busca os dados atuais ao abrir Produtos, mesmo quando há um resumo salvo da versão anterior.",
+      "Um resumo antigo carregado do aparelho não substitui os dados novos que já chegaram do servidor."
+    ],
+    "melhorias": []
+  },
   "1.5.39": {
     "titulo": "Faturamento potencial do estoque",
     "novidades": [

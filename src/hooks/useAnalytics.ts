@@ -249,7 +249,9 @@ export function useAnalytics() {
               id: string;
               data: DashboardStats;
             }>("store_config", "admin_dashboard_stats");
-            if (localStats?.data) {
+            // A RPC pode ter terminado enquanto o disco era lido. Nesse
+            // caso o snapshot novo em memória vence a hidratação antiga.
+            if (localStats?.data && !cachedStats) {
               cachedStats = localStats.data;
               setStats(cachedStats);
               broadcastStats(cachedStats);
