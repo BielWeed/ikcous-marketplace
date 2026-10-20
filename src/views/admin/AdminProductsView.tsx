@@ -275,13 +275,28 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
   }, [products, viewRef]);
 
+  const geracaoDaRecarga = useRef(0);
+  const catalogoMontado = useRef(false);
+  useEffect(() => {
+    catalogoMontado.current = true;
+    return () => {
+      catalogoMontado.current = false;
+      geracaoDaRecarga.current += 1;
+    };
+  }, []);
+
   const loadData = useCallback(
     async (pageToFetch: number) => {
+      if (!catalogoMontado.current) return;
+      const geracao = ++geracaoDaRecarga.current;
       try {
         const result = await loadProducts(pageToFetch, pageSize, {
           search: searchTerm || undefined,
           category: filterCategory === "all" ? undefined : filterCategory,
         });
+        if (!catalogoMontado.current || geracao !== geracaoDaRecarga.current) {
+          return;
+        }
         if (result) {
           setLoadError(false);
           setTotalProducts(result.total);
@@ -292,15 +307,14 @@ export const AdminProductsView = memo(function AdminProductsView({
             setCurrentPage(maxPage);
           }
         } else {
-          // `loadProducts` nunca lança aqui: numa falha real ela já mostrou
-          // `toast.error` e devolveu `null` (abort de uma busca superada
-          // também devolve `null`, sem toast — o pior caso é este banner
-          // aparecer por um instante numa corrida de busca/filtro, e sumir
-          // sozinho na resposta seguinte).
+          // O null da tentativa atual continua sendo falha; o de uma busca
+          // superada já foi ignorado pela geração, sem alterar o estado atual.
           setLoadError(true);
         }
       } finally {
-        setHasLoadedOnce(true);
+        if (catalogoMontado.current && geracao === geracaoDaRecarga.current) {
+          setHasLoadedOnce(true);
+        }
       }
     },
     [loadProducts, pageSize, searchTerm, filterCategory, setCurrentPage],

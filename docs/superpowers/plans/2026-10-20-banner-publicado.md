@@ -1,0 +1,10 @@
+# Plano — banner-publicado
+
+Spec: docs/superpowers/specs/2026-10-20-banner-publicado-design.md. Manifesto: docs/superpowers/lanes/2026-10-20-banner-publicado.json.
+Posse exclusiva: src/views/admin/AdminBannersView.tsx e tests/front/admin-banners-salvar-durante-recorte.test.tsx. Sem migration ou compartilhado. Risco de perda de imagem: exige revisão Opus independente no SHA final.
+
+1. Confirmar raiz, branch e SHA com git -C absoluto; divergência significa PARAR antes de registrar faixa. Cada comando PowerShell usa CWD absoluto + comando na mesma chamada; nunca confiar em Set-Location anterior. frente.mjs entrar uma vez, não apagar/refazer âncora. Ler AGENTS, spec, hooks como contrato e testes existentes. Não tocar na frente de caixa nem catálogo.
+2. Escrever teste novo no componente real, mockando somente fronteiras de upload/Storage e exportação da imagem. Ver RED pelo cenário U2 e guardas dos dois modos antes de produção. Usar promessas controladas e fixtures fictícias. Não ligar serviço ou Storage real.
+3. Implementar a exclusão mútua mínima descrita na spec: ambos os botões e handlers protegidos, encerramento confirmado invalida a abertura antiga sem excluir imagem publicada, falha e edição durante salvar preservadas. Evitar refactor de passagem e efeitos dentro de updater. Se usar ref de busy, casar todos os resets/finally com a geração; não reabrir U1.
+4. GREEN novo e regressões próximas, incluindo os sete casos U1; Biome check do teste novo, ESLint escopado, tipos proporcionais sem heap grande ou suíte completa local. Checar fixture tipada completa; Vitest não substitui tipos. Só Edit/Write na posse; nenhum ajuste de teto ou supressão para esconder falha.
+5. frente.mjs conferir e commitar com hooks; sem push/PR/merge por executor. Relatório com SHA, arquivos, RED/GREEN, comandos e limites. Integrador verifica faixa/diff e pede revisão Opus do SHA final; achado volta ao mesmo executor. Depois CI no topo integrado. Diretor factual é a última tarefa antes de promover a entrega.
