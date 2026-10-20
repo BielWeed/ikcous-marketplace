@@ -191,7 +191,7 @@ export const AdminQAView = memo(function AdminQAView({
     (pageToFetch: number, silent = false) => {
       getAllQuestions(pageToFetch, pageSize, filter, searchQuery, silent)
         .then((result) => {
-          if (result) {
+          if (result && !result.falhou) {
             setTotalQuestions(result.total);
             const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
             if (pageToFetch > maxPage) {

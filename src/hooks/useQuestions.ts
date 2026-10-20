@@ -685,11 +685,11 @@ export function useQuestions() {
           error?.message === "Fetch is aborted" ||
           error?.message?.includes("aborted")
         ) {
-          return { questions: [], total: 0 };
+          return { questions: [], total: 0, falhou: true };
         }
         console.error("Error fetching all questions:", error);
         toast.error("Erro ao carregar perguntas.");
-        return { questions: [], total: 0 };
+        return { questions: [], total: 0, falhou: true };
       } finally {
         setLoading(false);
       }

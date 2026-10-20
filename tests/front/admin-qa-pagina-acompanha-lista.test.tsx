@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   perguntas: [] as Question[],
+  recargaFalhou: false,
+  aoEvento: null as (() => void) | null,
 }));
 
 vi.mock("@/hooks/useQuestions", async () => {
@@ -21,6 +23,9 @@ vi.mock("@/hooks/useQuestions", async () => {
           filter: string,
           search: string,
         ) => {
+          if (h.recargaFalhou) {
+            return { questions: [], total: 0, falhou: true };
+          }
           const filtradas = h.perguntas.filter(
             (q) =>
               (filter === "all" || q.answers.length === 0) &&
@@ -75,9 +80,12 @@ vi.mock("@/hooks/useQuestions", async () => {
     return { status: "ok", total: 0, pending: 0, answered: 0, rate: 0 };
   }
 
-  // Não emitir realtime: a recarga da própria ação deve bastar.
-  function subscribeToQuestions() {
-    return () => {};
+  // As ações não dependem de realtime; um teste dispara a recarga cancelada.
+  function subscribeToQuestions(callback: () => void) {
+    h.aoEvento = callback;
+    return () => {
+      h.aoEvento = null;
+    };
   }
 });
 
@@ -103,6 +111,8 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
   let armazem: Map<string, string>;
 
   beforeEach(() => {
+    h.recargaFalhou = false;
+    h.aoEvento = null;
     h.perguntas = Array.from({ length: 21 }, (_, i) => ({
       id: `q-${i + 1}`,
       userId: "cliente-teste",
@@ -225,6 +235,36 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
       expect(hospedeiro.textContent).toContain("Fila de Perguntas Limpa");
     },
   );
+
+  it.each(["excluir", "responder"])(
+    "%s com erro na recarga preserva a página 3 e o total anterior",
+    async (acao) => {
+      await montar();
+      expect(hospedeiro.textContent?.replace(/\s+/g, " ")).toMatch(
+        /Página\s*3\s*de\s*3/,
+      );
+      h.recargaFalhou = true;
+      await agir(acao);
+
+      expect(armazem.get("admin_qa_page")).toBe("2");
+      expect(hospedeiro.textContent?.replace(/\s+/g, " ")).toMatch(
+        /Página\s*3\s*de\s*3/,
+      );
+    },
+  );
+
+  it("recarga cancelada em evento realtime preserva a página e o total", async () => {
+    await montar();
+    h.recargaFalhou = true;
+    expect(h.aoEvento).not.toBeNull();
+    await act(async () => h.aoEvento!());
+
+    expect(armazem.get("admin_qa_page")).toBe("2");
+    expect(hospedeiro.textContent?.replace(/\s+/g, " ")).toMatch(
+      /Página\s*3\s*de\s*3/,
+    );
+    expect(hospedeiro.textContent).toContain("Dúvida número 21?");
+  });
 
   it("corrige uma página salva que já não existe ao abrir a tela", async () => {
     armazem.set("admin_qa_page", "5");
