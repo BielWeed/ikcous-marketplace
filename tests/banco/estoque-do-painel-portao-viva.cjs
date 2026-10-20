@@ -1225,6 +1225,10 @@ async function main() {
         "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
+      [
+        "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

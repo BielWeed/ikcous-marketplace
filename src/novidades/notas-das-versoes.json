@@ -1,4 +1,16 @@
 {
+  "1.5.41": {
+    "titulo": "Custo e lucro do estoque sem confusão",
+    "novidades": [],
+    "correcoes": [
+      "O lucro bruto do estoque usa o preço de cada variação, assim como a previsão de vendas.",
+      "O simulador deixa claro que preço menos custo é lucro bruto, não líquido."
+    ],
+    "melhorias": [
+      "Em Produtos, receita prevista, custo conhecido e lucro bruto aparecem separados, com aviso quando faltam custos.",
+      "O resumo explica a parte da receita que ficou fora do lucro e não inventa lucro líquido sem as despesas da venda."
+    ]
+  },
   "1.5.40": {
     "titulo": "Faturamento atualizado ao abrir Produtos",
     "novidades": [],

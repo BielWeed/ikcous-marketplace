@@ -27,7 +27,7 @@ WITH fn AS (
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo e o da 20261245000000, com o desconto proporcional (md5)',
          'ab25e738a3101cccbb0c09450b660ee0',
-         COALESCE((SELECT CASE WHEN f.m IN ('ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07')
+         COALESCE((SELECT CASE WHEN f.m IN ('ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8')
                                THEN 'ab25e738a3101cccbb0c09450b660ee0' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',

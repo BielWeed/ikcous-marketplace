@@ -27,7 +27,9 @@ WITH fn AS (
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo e o da 20261250000000, com o faturamento potencial (md5)',
          '5746d8a1df216ca4a5569901c45a2a07',
-         COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
+         -- A 251 preserva totalRevenue e sucede a 250; so estes corpos exatos passam.
+         COALESCE((SELECT CASE WHEN f.m IN ('5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8')
+                               THEN '5746d8a1df216ca4a5569901c45a2a07' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',
          'atributos de sempre',

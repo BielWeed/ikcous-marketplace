@@ -136,6 +136,8 @@ on:
       - "scripts/publicacao/consultas/52b-antes-motivo-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/53a-conferir-faturamento-potencial-aplicado.sql"
       - "scripts/publicacao/consultas/53b-antes-faturamento-potencial-base-vigente.sql"
+      - "scripts/publicacao/consultas/54a-conferir-lucro-do-estoque-aplicado.sql"
+      - "scripts/publicacao/consultas/54b-antes-lucro-do-estoque-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -241,6 +243,8 @@ on:
       - "scripts/publicacao/consultas/52b-antes-motivo-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/53a-conferir-faturamento-potencial-aplicado.sql"
       - "scripts/publicacao/consultas/53b-antes-faturamento-potencial-base-vigente.sql"
+      - "scripts/publicacao/consultas/54a-conferir-lucro-do-estoque-aplicado.sql"
+      - "scripts/publicacao/consultas/54b-antes-lucro-do-estoque-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -309,6 +313,11 @@ jobs:
       # `!cancelled()` só troca o "pare no primeiro erro" por "rode todas e
       # reprove no fim". Sem as migrations aplicadas, nenhuma prova roda (o
       # passo `aplica` já reprovou o job).
+      # Receita com custo usa preco efetivo por variante (251): cobertura, zero legitimo,
+      # prejuizo, contrato historico, portoes oficiais, rollback e mutantes. CLONE proprio.
+      - name: Prova viva do lucro do estoque (migration 20261251)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-do-estoque-viva.cjs
       # A prova nova roda primeiro em clone próprio; não depende das fixtures das demais.
       - name: Prova viva do faturamento potencial (migration 20261250)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}

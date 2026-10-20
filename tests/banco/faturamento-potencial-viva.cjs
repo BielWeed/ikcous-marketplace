@@ -121,6 +121,9 @@ async function main() {
       ($3,'Gestor fixture','admin')`,
       [ADMIN, CLIENTE, GESTOR],
     );
+    await require("./lucro-do-estoque-posterior.cjs").desfazerLucroDoEstoqueNaTransacao(
+      c,
+    );
     const estado = await catalogo(c);
     assert.equal(estado.hash, DEPOIS);
     const antes = await analytics(c);

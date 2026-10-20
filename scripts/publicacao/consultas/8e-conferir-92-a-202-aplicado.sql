@@ -152,6 +152,7 @@ WITH corpos AS (
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
     ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),
     ('get_admin_analytics_v2', '5746d8a1df216ca4a5569901c45a2a07', '20261250000000'),
+    ('get_admin_analytics_v2', '060c9ab5b1505dc375b41e4436e9d3a8', '20261251000000'),
     ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000'),
     ('registrar_pagamento_recebido', '88270bb1e228c90be73acca03a3cee4e', '20261243000000'),
     ('upsert_store_config', '391e8e1064400df5aea579f3472b203c', '20261244000000'),

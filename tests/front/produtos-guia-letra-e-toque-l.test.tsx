@@ -79,8 +79,8 @@ describe("Produtos — guia com 44px e letra de 11px (L4)", () => {
     const linhas = [
       ...conceitos.matchAll(/className="[^"]*justify-between[^"]*"/g),
     ];
-    // Sete conceitos e dois exemplos: nove linhas renderizadas a partir de dois moldes.
-    expect(conceitos.match(/formula: /g)).toHaveLength(7);
+    // Nove conceitos (incluindo receita bruta e lucro líquido) e dois exemplos.
+    expect(conceitos.match(/formula: /g)).toHaveLength(9);
     expect(conceitos.match(/exemplo:\s/g)).toHaveLength(2);
     expect(linhas.length).toBe(2);
     for (const linha of linhas) {

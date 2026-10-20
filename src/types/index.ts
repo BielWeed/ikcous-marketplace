@@ -595,6 +595,9 @@ export interface DashboardSummary {
     totalCost: number;
     totalValue: number;
     totalRevenue?: number;
+    revenueWithoutCost?: number;
+    productsWithoutCost?: number;
+    productsWithCost?: number;
   };
 }
 

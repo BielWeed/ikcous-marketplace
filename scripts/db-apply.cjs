@@ -2422,6 +2422,38 @@ const VERIFICACOES = {
   // O motivo do desconto do balcão fica na anotação privada da loja (20261249): a RPC recusa motivo acima de
   // 2000 caracteres, grava o motivo em marketplace_order_internal_notes (uma vez, só venda nova) e mantém a
   // trava pela chave (20261235), os dois gates de admin e a resposta idempotente.
+  "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "COALESCE(SUM(faturamento) FILTER (WHERE custo IS NOT NULL), 0)",
+          vezes: 1,
+        },
+        { texto: "COALESCE(SUM(custo * estoque), 0)", vezes: 1 },
+        { texto: "COALESCE(SUM(faturamento), 0)", vezes: 1 },
+        {
+          texto: "COALESCE(SUM(faturamento) FILTER (WHERE custo IS NULL), 0)",
+          vezes: 1,
+        },
+        {
+          texto: "COUNT(*) FILTER (WHERE custo IS NULL AND estoque > 0)",
+          vezes: 1,
+        },
+        {
+          texto: "COUNT(*) FILTER (WHERE custo IS NOT NULL AND estoque > 0)",
+          vezes: 1,
+        },
+        { texto: "'revenueWithoutCost', inv_revenue_without_cost", vezes: 1 },
+        { texto: "'productsWithoutCost', inv_products_without_cost", vezes: 1 },
+        { texto: "'productsWithCost', inv_products_with_cost", vezes: 1 },
+        { texto: "COALESCE(pv.price_override, p.preco_venda)", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql": [
     {
       funcao: "get_admin_analytics_v2",

@@ -36,7 +36,14 @@ const fetchExecutiveSummary = vi.fn();
 let produtosMock: any[] = [];
 let offlineMock = false;
 let inventarioMock:
-  | { totalCost: number; totalValue: number; totalRevenue?: number }
+  | {
+      totalCost: number;
+      totalValue: number;
+      totalRevenue?: number;
+      revenueWithoutCost?: number;
+      productsWithoutCost?: number;
+      productsWithCost?: number;
+    }
   | undefined;
 
 vi.mock("@/hooks/useProducts", () => ({
@@ -141,7 +148,14 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     offlineMock = false;
-    inventarioMock = { totalCost: 300, totalValue: 690.5, totalRevenue: 990.5 };
+    inventarioMock = {
+      totalCost: 300,
+      totalValue: 690.5,
+      totalRevenue: 990.5,
+      revenueWithoutCost: 300,
+      productsWithoutCost: 1,
+      productsWithCost: 1,
+    };
     loadProducts.mockImplementation(async () => ({
       products: produtosMock,
       total: 1,
@@ -245,7 +259,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
 
   describe("faturamento potencial do estoque", () => {
     function faturamento() {
-      return hospedeiro.querySelector('[aria-label="Faturamento potencial"]');
+      return hospedeiro.querySelector('[aria-label="Receita bruta potencial"]');
     }
 
     it("mostra todo o estoque no resumo sem confundir com o lucro ou a página atual", async () => {
@@ -254,7 +268,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
 
       expect(faturamento()?.textContent).toContain("R$ 990,50");
       expect(
-        hospedeiro.querySelector('[aria-label="Lucro se vender tudo"]')
+        hospedeiro.querySelector('[aria-label="Lucro bruto potencial"]')
           ?.textContent,
       ).toContain("390,50");
       expect(hospedeiro.textContent).toContain("130,2%");
@@ -479,21 +493,22 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       expect(atalho).not.toBeNull();
       expect(metricas.hidden).toBe(false);
       expect(metricas.closest("[hidden]")).toBeNull();
-      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(5);
+      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(6);
       expect(metricas.querySelectorAll("article")).toHaveLength(0);
       expect(atalho?.textContent).toContain("Expandir");
       expect(atalho?.getAttribute("aria-expanded")).toBe("false");
       await act(async () => atalho?.click());
       expect(metricas.hidden).toBe(false);
-      expect(metricas.querySelectorAll("article")).toHaveLength(5);
+      expect(metricas.querySelectorAll("article")).toHaveLength(6);
       expect(
         [...metricas.querySelectorAll("article")].map((el) =>
           el.getAttribute("aria-label"),
         ),
       ).toEqual([
-        "Dinheiro parado em estoque",
-        "Lucro se vender tudo",
-        "Faturamento potencial",
+        "Custo conhecido em estoque",
+        "Lucro bruto potencial",
+        "Receita bruta potencial",
+        "Lucro líquido potencial",
         "Lucro sobre o custo",
         "Produtos no Catálogo",
       ]);
@@ -504,7 +519,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       await act(async () => recolher?.click());
       expect(metricas.hidden).toBe(false);
       expect(metricas.querySelectorAll("article")).toHaveLength(0);
-      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(5);
+      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(6);
       expect(
         metricas.querySelector("button")?.getAttribute("aria-expanded"),
       ).toBe("false");

@@ -416,10 +416,34 @@ export const AdminProductsView = memo(function AdminProductsView({
       typeof totalRevenue === "number" && Number.isFinite(totalRevenue)
         ? totalRevenue
         : null;
+    const inventory = stats?.inventory;
+    const semCusto = inventory?.revenueWithoutCost;
+    const produtosSemCusto = inventory?.productsWithoutCost;
+    const produtosComCusto = inventory?.productsWithCost;
+    // O resumo antigo não comprova nem a cobertura do custo nem os preços
+    // efetivos das variações. Só apurar lucro após receber o detalhamento novo.
+    const coberturaConferida =
+      typeof invested === "number" &&
+      Number.isFinite(invested) &&
+      invested >= 0 &&
+      typeof potentialValue === "number" &&
+      Number.isFinite(potentialValue) &&
+      potentialValue >= 0 &&
+      potentialRevenue !== null &&
+      typeof semCusto === "number" &&
+      Number.isFinite(semCusto) &&
+      semCusto >= 0 &&
+      typeof produtosSemCusto === "number" &&
+      Number.isInteger(produtosSemCusto) &&
+      produtosSemCusto >= 0 &&
+      typeof produtosComCusto === "number" &&
+      Number.isInteger(produtosComCusto) &&
+      produtosComCusto >= 0 &&
+      Math.abs(potentialRevenue - potentialValue - semCusto) < 0.01;
+    const parcial = coberturaConferida && produtosSemCusto > 0;
+    const semNenhumCusto = parcial && produtosComCusto === 0;
     const potentialProfit =
-      invested !== null && potentialValue !== null
-        ? potentialValue - invested
-        : null;
+      coberturaConferida && !semNenhumCusto ? potentialValue - invested : null;
     const avgRoi =
       invested !== null && invested > 0 && potentialProfit !== null
         ? (potentialProfit / invested) * 100
@@ -429,6 +453,12 @@ export const AdminProductsView = memo(function AdminProductsView({
       invested,
       potential: potentialProfit,
       potentialRevenue,
+      receitaComCusto: coberturaConferida ? potentialValue : null,
+      receitaSemCusto: coberturaConferida ? semCusto : null,
+      produtosSemCusto: coberturaConferida ? produtosSemCusto : null,
+      coberturaConferida,
+      parcial,
+      semNenhumCusto,
       avgRoi,
       totalCount: totalProducts,
     };
@@ -442,29 +472,31 @@ export const AdminProductsView = memo(function AdminProductsView({
     () => [
       {
         id: "capital-alocado",
-        label: "Dinheiro parado em estoque",
+        label: "Custo conhecido em estoque",
         value:
           financialStats.invested !== null
             ? `R$ ${financialStats.invested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
             : "—",
         icon: Wallet,
         accent: "text-sky-300",
-        subValue: "Pelo custo",
+        subValue: "Quanto custaram os produtos com custo cadastrado",
       },
       {
         id: "lucro-potencial",
-        label: "Lucro se vender tudo",
+        label: "Lucro bruto potencial",
         value:
           financialStats.potential !== null
             ? `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
             : "—",
         icon: TrendingUp,
         accent: "text-emerald-300",
-        subValue: "Só com custo",
+        subValue: financialStats.parcial
+          ? "Parcial · só produtos com custo cadastrado, antes das despesas"
+          : "Receita com custo cadastrado menos custo · antes das despesas",
       },
       {
         id: "faturamento-potencial",
-        label: "Faturamento potencial",
+        label: "Receita bruta potencial",
         value:
           financialStats.potentialRevenue !== null
             ? `R$ ${financialStats.potentialRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -472,6 +504,15 @@ export const AdminProductsView = memo(function AdminProductsView({
         icon: DollarSign,
         accent: "text-amber-300",
         subValue: "Todo o estoque ativo · antes de descontos, taxas e frete",
+      },
+      {
+        id: "lucro-liquido-potencial",
+        label: "Lucro líquido potencial",
+        value: "Não calculado",
+        icon: Calculator,
+        accent: "text-sky-300",
+        subValue:
+          "Faltam descontos, taxas, frete, impostos e outras despesas da venda",
       },
       {
         id: "roi-portfolio",
@@ -803,9 +844,12 @@ export const AdminProductsView = memo(function AdminProductsView({
             <MetricasDoPainel
               titulo="Métricas de Produtos"
               legendasDoResumo={[
-                "Em estoque",
-                "Lucro potencial",
-                "Faturamento potencial",
+                "Custo conhecido",
+                financialStats.parcial
+                  ? "Lucro bruto (parcial)"
+                  : "Lucro bruto",
+                "Receita bruta",
+                "Lucro líquido",
                 "Lucro sobre o custo",
                 "Catálogo",
               ]}
@@ -813,6 +857,68 @@ export const AdminProductsView = memo(function AdminProductsView({
               loading={loading && !stats}
             />
           </LocalErrorBoundary>
+          <div className="space-y-2 rounded-2xl border border-white/10 p-3 text-xs leading-relaxed text-zinc-300">
+            <p>
+              Estimativa de venda do estoque atual, não dinheiro já recebido.
+            </p>
+            {!financialStats.coberturaConferida ? (
+              <p role="status">
+                Aguardando a separação dos produtos com e sem custo para
+                conferir o lucro bruto.
+              </p>
+            ) : (
+              <>
+                {financialStats.parcial ? (
+                  <p className="text-amber-200">
+                    {financialStats.produtosSemCusto}{" "}
+                    {financialStats.produtosSemCusto === 1
+                      ? "produto em estoque está sem custo"
+                      : "produtos em estoque estão sem custo"}
+                    : R${" "}
+                    {financialStats.receitaSemCusto?.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    em vendas previstas entram na receita, mas ficam fora do
+                    custo e do lucro. Cadastre o custo para completar a
+                    estimativa.
+                  </p>
+                ) : (
+                  <p>Todos os produtos em estoque têm custo cadastrado.</p>
+                )}
+                {financialStats.semNenhumCusto ? (
+                  <p>
+                    Nenhum custo cadastrado para o estoque: ainda não é possível
+                    apurar o lucro bruto.
+                  </p>
+                ) : (
+                  <p>
+                    Receita dos produtos com custo: R${" "}
+                    {financialStats.receitaComCusto?.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    − custo: R${" "}
+                    {financialStats.invested?.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    = lucro bruto{financialStats.parcial ? " parcial" : ""}: R${" "}
+                    {financialStats.potential?.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                    .
+                  </p>
+                )}
+              </>
+            )}
+            <p>
+              Lucro líquido é o que sobra depois do custo, descontos, taxas,
+              frete, impostos e outras despesas. Sem esses valores, não
+              calculamos uma estimativa líquida.
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => toggleHelp("global-guide")}
@@ -1121,7 +1227,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 <div className="space-y-3">
                   {[
                     {
-                      titulo: "Dinheiro parado em estoque",
+                      titulo: "Custo conhecido em estoque",
                       icone: Wallet,
                       cor: "text-sky-300",
                       descricao:
@@ -1129,12 +1235,28 @@ export const AdminProductsView = memo(function AdminProductsView({
                       formula: "Custo Unitário × Estoque",
                     },
                     {
-                      titulo: "Lucro se vender tudo",
+                      titulo: "Lucro bruto potencial",
                       icone: TrendingUp,
                       cor: "text-emerald-300",
                       descricao:
-                        "Quanto você ganharia vendendo o estoque pelo preço atual, menos o que ele custou. A conta só considera produtos com custo cadastrado. Antes de taxas e despesas.",
+                        "Receita prevista dos produtos com custo, usando o preço de cada variação, menos o que esse estoque custou. A conta só considera produtos com custo cadastrado. Se faltar custo, o lucro é parcial. Não é lucro líquido.",
                       formula: "(Preço − Custo) × Estoque",
+                    },
+                    {
+                      titulo: "Receita bruta potencial",
+                      icone: DollarSign,
+                      cor: "text-amber-300",
+                      descricao:
+                        "Quanto entraria em vendas de todo o estoque ativo pelo preço de cada variação, inclusive produtos sem custo cadastrado. Ainda não desconta custo, descontos ou despesas.",
+                      formula: "Preço de venda × unidades em estoque",
+                    },
+                    {
+                      titulo: "Lucro líquido potencial",
+                      icone: Calculator,
+                      cor: "text-sky-300",
+                      descricao:
+                        "O que sobraria depois do custo dos produtos e de todas as despesas. Como descontos, taxas, frete, impostos e outras despesas futuras não estão definidos aqui, este valor não é calculado.",
+                      formula: "Receita − custo − descontos − despesas",
                     },
                     {
                       titulo: "Lucro sobre o custo",
@@ -1156,7 +1278,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       exemplo: "Custo R$10 / Venda R$15 ➜ Margem = 33,3%",
                     },
                     {
-                      titulo: "Potencial",
+                      titulo: "Lucro bruto do estoque",
                       icone: ArrowUpRight,
                       cor: "text-indigo-300",
                       descricao:
@@ -1380,13 +1502,13 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </p>
                       <p className="mt-0.5 text-[11px] font-medium leading-normal text-zinc-400">
                         {simulatorMetrics.health === "excellent" &&
-                          "Alta lucratividade por unidade! Ideal para alavancar vendas e suportar taxas operacionais confortavelmente."}
+                          "Margem bruta alta. Ainda é preciso descontar taxas e outras despesas para conhecer o lucro líquido."}
                         {simulatorMetrics.health === "good" &&
-                          "Sua margem está bem equilibrada com a média saudável do mercado de e-commerce."}
+                          "A margem bruta é positiva. Confira as despesas da venda antes de concluir quanto sobra."}
                         {simulatorMetrics.health === "low" &&
                           "Rentabilidade reduzida. Monitore custos extras de frete ou transações para evitar margens negativas."}
                         {simulatorMetrics.health === "danger" &&
-                          "Atenção: Operando abaixo do mínimo recomendado ou em prejuízo líquido. Considere elevar o Preço de Venda."}
+                          "Atenção: margem bruta baixa ou negativa, antes das despesas. Revise o custo e o preço de venda."}
                       </p>
                     </div>
                   </div>
@@ -1402,7 +1524,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                         valor: percentualComUmaCasa(simulatorMetrics.roi),
                       },
                       {
-                        rotulo: "Lucro Líquido (Unit.)",
+                        rotulo: "Lucro bruto por unidade",
                         valor: `R$ ${simulatorMetrics.unitProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
                       },
                       {
@@ -1427,7 +1549,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   <div className="relative flex min-h-20 flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#101013] p-4">
                     <div className="relative z-10">
                       <p className="text-[11px] font-bold text-zinc-300">
-                        Retorno Total Estimado
+                        Lucro bruto do lote simulado
                       </p>
                       <p className="mt-0.5 font-mono text-xl font-black text-white">
                         R${" "}
@@ -1818,19 +1940,44 @@ const AdminProductCard = memo(function AdminProductCard({
     // margem (que divide pelo preço) afirma os 100% verdadeiros.
     const hasCost = product.costPrice != null;
     const temCustoPositivo = hasCost && product.costPrice > 0;
-    const margin = !hasCost
-      ? null
-      : product.price > 0
-        ? ((product.price - product.costPrice) / product.price) * 100
-        : 0;
-    const roi = !temCustoPositivo
-      ? null
-      : ((product.price - product.costPrice) / product.costPrice) * 100;
     const invested = !hasCost ? null : product.costPrice * product.stock;
-    const totalProfit = !hasCost
-      ? null
-      : (product.price || 0) * product.stock -
-        product.costPrice * product.stock;
+    const variantesAtivas =
+      product.variants?.filter((v: { active: boolean }) => v.active) ?? [];
+    const receitaDoEstoque =
+      variantesAtivas.length > 0
+        ? variantesAtivas.reduce(
+            (
+              total: number,
+              v: { priceOverride?: number | null; stockIncrement?: number },
+            ) =>
+              total +
+              (v.priceOverride ?? product.price) * (v.stockIncrement ?? 0),
+            0,
+          )
+        : product.price * product.stock;
+    const totalProfit =
+      !hasCost || product.variantsUnavailable
+        ? null
+        : receitaDoEstoque - product.costPrice * product.stock;
+
+    const precoMedio =
+      variantesAtivas.length > 0
+        ? product.stock > 0
+          ? receitaDoEstoque / product.stock
+          : null
+        : product.price;
+    const margin =
+      !hasCost || product.variantsUnavailable || precoMedio === null
+        ? null
+        : precoMedio > 0
+          ? ((precoMedio - product.costPrice) / precoMedio) * 100
+          : variantesAtivas.length > 0
+            ? null
+            : 0;
+    const roi =
+      !temCustoPositivo || product.variantsUnavailable || precoMedio === null
+        ? null
+        : ((precoMedio - product.costPrice) / product.costPrice) * 100;
 
     const custoSuspeito = hasCost && product.costPrice <= 0.1;
     return (
@@ -1943,7 +2090,7 @@ const AdminProductCard = memo(function AdminProductCard({
                     data-margem
                     className="whitespace-nowrap font-black tabular-nums tracking-tighter"
                   >
-                    {percentualComUmaCasa(margin ?? 0)}
+                    {margin === null ? "—" : percentualComUmaCasa(margin)}
                   </span>{" "}
                   · <span>Custo Suspeito</span> de R${" "}
                   {product.costPrice.toLocaleString("pt-BR", {
@@ -1959,6 +2106,12 @@ const AdminProductCard = memo(function AdminProductCard({
             hidden={!maisMetricas}
             className="produto-detalhes mt-3 rounded-2xl bg-[#17171c] p-3 text-[11px]"
           >
+            {variantesAtivas.length > 0 && (
+              <p className="mb-2 text-zinc-400">
+                Lucro e percentuais consideram o estoque e os preços de cada
+                variação.
+              </p>
+            )}
             <div className="flex items-center justify-between gap-2">
               <p>
                 <Package
@@ -2016,12 +2169,12 @@ const AdminProductCard = memo(function AdminProductCard({
                   aria-hidden="true"
                   className="produto-icone text-indigo-300"
                 />
-                Potencial
+                Lucro bruto do estoque
               </p>
               <span className="font-semibold">
                 {totalProfit === null
                   ? "—"
-                  : `+ R$ ${totalProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                  : `${totalProfit >= 0 ? "+ " : ""}R$ ${totalProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
               </span>
             </div>
             {product.variants?.length > 0 && (

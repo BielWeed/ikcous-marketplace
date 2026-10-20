@@ -4,6 +4,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 async function desfazerFaturamentoPotencialNaTransacao(c) {
+  await require("./lucro-do-estoque-posterior.cjs").desfazerLucroDoEstoqueNaTransacao(
+    c,
+  );
   const r =
     await c.query(`SELECT COALESCE((SELECT md5(replace(prosrc, chr(13), ''))
     FROM pg_proc WHERE oid = to_regprocedure('public.get_admin_analytics_v2(integer)'))
