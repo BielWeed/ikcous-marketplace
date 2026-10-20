@@ -37,6 +37,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/banco/**"
+      - "tests/banco/gerar-tipos-efemeros.cjs"
+      - "tests/ci_tipos_efemeros_test.ts"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
       # O ensaio da anonimizacao le o SQL direto deste roteiro: mudar o roteiro dispara a prova.
@@ -149,6 +151,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/banco/**"
+      - "tests/banco/gerar-tipos-efemeros.cjs"
+      - "tests/ci_tipos_efemeros_test.ts"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
       - "docs/runbooks/atender-pedido-de-privacidade.md"
@@ -309,6 +313,18 @@ jobs:
       - name: Aplica as migrations do zero
         id: aplica
         run: node tests/banco/aplicar-migrations.cjs supabase/migrations
+      - name: Gera tipos do schema public efêmero
+        id: tipos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/gerar-tipos-efemeros.cjs
+      - name: Guarda tipos do schema public efêmero
+        if: ${{ !cancelled() && steps.tipos.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tipos-public-${{ github.sha }}
+          path: ${{ runner.temp }}/tipos-efemeros
+          if-no-files-found: error
+          retention-days: 1
       # TODAS as provas abaixo rodam mesmo depois de uma vermelha (R2 da
       # revisão Opus de 14d77a5b): sem isto, a 1a prova que falha esconde as
       # seguintes (o "pulado" do Actions), e um vermelho conhecido numa prova
