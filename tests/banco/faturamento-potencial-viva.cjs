@@ -18,6 +18,7 @@ const MIGRATION = ler(NOME);
 const ROLLBACK = ler(`rollback-manual-${NOME}`);
 const ADMIN = "d1500000-0000-4000-8000-000000000001";
 const CLIENTE = "d1500000-0000-4000-8000-000000000002";
+const GESTOR = "d1500000-0000-4000-8000-000000000003";
 const DEPOIS = "5746d8a1df216ca4a5569901c45a2a07";
 const ANTES = "ab25e738a3101cccbb0c09450b660ee0";
 const A = "53a-conferir-faturamento-potencial-aplicado";
@@ -104,13 +105,15 @@ async function main() {
     await c.query(
       `INSERT INTO auth.users(id,email,raw_app_meta_data) VALUES
       ($1,'admin@faturamento.invalid','{"role":"admin"}'::jsonb),
-      ($2,'cliente@faturamento.invalid','{}'::jsonb)`,
-      [ADMIN, CLIENTE],
+      ($2,'cliente@faturamento.invalid','{}'::jsonb),
+      ($3,'gestor@faturamento.invalid','{"role":"admin"}'::jsonb)`,
+      [ADMIN, CLIENTE, GESTOR],
     );
     await c.query(
       `INSERT INTO public.profiles(id,full_name,role) VALUES
-      ($1,'Admin fixture','admin'),($2,'Cliente fixture','customer')`,
-      [ADMIN, CLIENTE],
+      ($1,'Admin fixture','admin'),($2,'Cliente fixture','customer'),
+      ($3,'Gestor fixture','admin')`,
+      [ADMIN, CLIENTE, GESTOR],
     );
     const estado = await catalogo(c);
     assert.equal(estado.hash, DEPOIS);
@@ -221,9 +224,36 @@ async function main() {
         /Acesso negado|permission denied/i,
       );
     }
+    // Um segundo admin prepara o rebaixamento sem desligar os gatilhos de papel.
+    await c.query(
+      "SELECT set_config('app.rpc.user_id',$1,true), set_config('request.jwt.claims',$2,true)",
+      [
+        GESTOR,
+        JSON.stringify({
+          sub: GESTOR,
+          role: "authenticated",
+          app_metadata: { role: "admin" },
+        }),
+      ],
+    );
     await c.query("UPDATE public.profiles SET role='customer' WHERE id=$1", [
       ADMIN,
     ]);
+    // O gatilho sincroniza auth.users; recolocamos apenas essa fonte em admin.
+    await c.query(
+      `UPDATE auth.users SET raw_app_meta_data='{"role":"admin"}'::jsonb WHERE id=$1`,
+      [ADMIN],
+    );
+    assert.deepEqual(
+      (
+        await c.query(
+          `SELECT p.role AS perfil, u.raw_app_meta_data->>'role' AS auth
+           FROM public.profiles p JOIN auth.users u USING(id) WHERE p.id=$1`,
+          [ADMIN],
+        )
+      ).rows[0],
+      { perfil: "customer", auth: "admin" },
+    );
     await assert.rejects(analytics(c), /Acesso negado/i);
     await c.query("UPDATE public.profiles SET role='admin' WHERE id=$1", [
       ADMIN,
@@ -231,6 +261,16 @@ async function main() {
     await c.query(
       "UPDATE auth.users SET raw_app_meta_data='{}'::jsonb WHERE id=$1",
       [ADMIN],
+    );
+    assert.deepEqual(
+      (
+        await c.query(
+          `SELECT p.role AS perfil, u.raw_app_meta_data->>'role' AS auth
+           FROM public.profiles p JOIN auth.users u USING(id) WHERE p.id=$1`,
+          [ADMIN],
+        )
+      ).rows[0],
+      { perfil: "admin", auth: null },
     );
     await assert.rejects(analytics(c), /Acesso negado/i);
     await c.query(
