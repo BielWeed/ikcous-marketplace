@@ -764,6 +764,11 @@ async function main() {
   const linhas = [];
   const titulo = "Prova viva do lucro com desconto (rpc-ci)";
   try {
+    await c.query("BEGIN");
+    await require("./faturamento-potencial-posterior.cjs").desfazerFaturamentoPotencialNaTransacao(
+      c,
+    );
+    await c.query("COMMIT");
     for (const { nome, corpo } of PROVAS) {
       await corpo(c);
       console.log(`  PASSOU ${nome}`);

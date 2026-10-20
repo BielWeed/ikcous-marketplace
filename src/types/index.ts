@@ -594,6 +594,7 @@ export interface DashboardSummary {
   inventory?: {
     totalCost: number;
     totalValue: number;
+    totalRevenue?: number;
   };
 }
 

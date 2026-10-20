@@ -111,7 +111,10 @@ Deno.test("20261245 — a 42 era vigente; posteriores são lista fechada, e o re
     )
     .map((f) => f.name)
     .sort();
-  assert.deepEqual(posteriores, [NOME]);
+  assert.deepEqual(posteriores, [
+    NOME,
+    "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql",
+  ]);
   const sucessoras = require("./banco/sucessoras-da-99.cjs");
   sucessoras.conferirLista();
   const entrada = sucessoras.SUCESSORAS_DA_99.find((s) => s.nome === NOME);

@@ -210,9 +210,9 @@ describe("o rótulo é verdade no banco: o get_admin_analytics_v2 VIVO só soma 
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .at(-1);
 
-  it("a viva é a 20261245000000 (sucessora da 20261242000000, que sucedeu a 20261234000000) e o valor de venda continua com o FILTER (WHERE custo IS NOT NULL)", () => {
+  it("a viva é a 20261250000000 (sucessora da 20261245000000) e o valor de venda continua com o FILTER (WHERE custo IS NOT NULL)", () => {
     expect(VIVA?.[0]).toContain(
-      "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql",
+      "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql",
     );
     const sql = VIVA?.[1] ?? "";
     // a 20261242 só troca de ONDE vem o custo do LUCRO e do ranking (o do dia da venda, senão o de hoje); o estoque
@@ -223,6 +223,10 @@ describe("o rótulo é verdade no banco: o get_admin_analytics_v2 VIVO só soma 
     expect(sql).toContain(
       "COALESCE(SUM(preco_venda * estoque) FILTER (WHERE custo IS NOT NULL), 0)",
     );
-    expect(sql).not.toMatch(/COALESCE\(SUM\(preco_venda \* estoque\), 0\)/);
+    // A soma sem filtro e APENAS o faturamento novo; totalValue segue protegido.
+    expect(sql).toContain(
+      "COALESCE(SUM(preco_venda * estoque) FILTER (WHERE custo IS NOT NULL), 0),\n        COALESCE(SUM(faturamento), 0)\n    INTO low_stock_count, inv_cost_total, inv_value_total, inv_revenue_total",
+    );
+    expect(sql).toContain("'totalRevenue', inv_revenue_total");
   });
 });
