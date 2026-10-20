@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Check, Lock, MessageSquare, Reply, Send } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Question } from "@/hooks/useQuestions";
 import type { View } from "@/types";
@@ -31,6 +31,9 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
   const [newQuestion, setNewQuestion] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+  // Cada edição/abertura é uma intenção nova, mesmo voltando ao mesmo texto.
+  const perguntaVersaoRef = useRef(0);
+  const respostaVersaoRef = useRef(0);
 
   useEffect(() => {
     getQuestionsByProduct(productId);
@@ -51,11 +54,13 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     // texto que a cliente acabou de escrever — em rede fraca ela perdia a
     // pergunta junto com o toast que some em segundos. Só limpa em sucesso,
     // o mesmo contrato que ReviewForm já usa.
+    const versaoEnviada = perguntaVersaoRef.current;
     const enviada = await addQuestion({
       productId,
       question: newQuestion,
     });
-    if (enviada) {
+    if (enviada && perguntaVersaoRef.current === versaoEnviada) {
+      perguntaVersaoRef.current += 1;
       setNewQuestion("");
     }
   };
@@ -64,11 +69,13 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     if (!replyText.trim()) return;
     // Mesma regra do handleAsk: addAnswer devolve false na falha — fechar
     // a caixa e limpar a resposta aí seria jogar fora o texto digitado.
+    const versaoEnviada = respostaVersaoRef.current;
     const respondida = await addAnswer({
       questionId,
       answer: replyText,
     });
-    if (respondida) {
+    if (respondida && respostaVersaoRef.current === versaoEnviada) {
+      respostaVersaoRef.current += 1;
       setReplyText("");
       setReplyingTo(null);
     }
@@ -86,6 +93,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     // answers vem ordenado ascendente por createdAt (useQuestions.ts) -- a
     // mais recente é a última posição, não a primeira. Ver correção #2 da
     // revisão da Trilha 3 (issue #100).
+    respostaVersaoRef.current += 1;
     setReplyText(q.answers.at(-1)?.answer ?? "");
     setReplyingTo(q.id);
   };
@@ -157,7 +165,10 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
               name="newQuestion"
               type="text"
               value={newQuestion}
-              onChange={(e) => setNewQuestion(e.target.value)}
+              onChange={(e) => {
+                perguntaVersaoRef.current += 1;
+                setNewQuestion(e.target.value);
+              }}
               placeholder="Escreva sua dúvida sobre o produto..."
               aria-label="Sua dúvida sobre o produto"
               className="w-full rounded-2xl border border-zinc-200 bg-zinc-50/50 px-4 py-3.5 pr-12 text-sm transition-all duration-300 placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/10"
@@ -399,7 +410,10 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                           name="replyText"
                           type="text"
                           value={replyText}
-                          onChange={(e) => setReplyText(e.target.value)}
+                          onChange={(e) => {
+                            respostaVersaoRef.current += 1;
+                            setReplyText(e.target.value);
+                          }}
                           placeholder="Escreva sua resposta oficial..."
                           aria-label="Resposta oficial da loja"
                           className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 pr-10 text-xs transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary"
@@ -425,6 +439,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                       <div className="flex justify-end">
                         <button
                           onClick={() => {
+                            respostaVersaoRef.current += 1;
                             setReplyingTo(null);
                             setReplyText("");
                           }}
