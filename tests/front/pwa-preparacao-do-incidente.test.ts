@@ -165,4 +165,15 @@ describe("preparação do incidente PWA — espera estado, não existência de c
     expect(waiting).toBeGreaterThan(deploy);
     expect(incidente).toBeGreaterThan(waiting);
   });
+
+  it("o incidente exige ausência real do chunk sem fabricar uma remoção", () => {
+    const ausencia = specDoIncidente.indexOf(
+      "o chunk antigo não está em nenhum cache",
+    );
+    const incidente = specDoIncidente.indexOf("void import(arquivo)");
+    expect(ausencia).toBeGreaterThan(0);
+    expect(incidente).toBeGreaterThan(ausencia);
+    expect(specDoIncidente).toContain("caches.match(arquivo)");
+    expect(specDoIncidente).not.toContain("cache.delete(");
+  });
 });

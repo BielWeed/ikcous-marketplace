@@ -81,19 +81,14 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
   });
   await esperarServiceWorkerEmEspera(page, expect);
 
-  // Com o install realmente completo, o lazy está no precache. Simula o
-  // despejo de UMA entrada antiga, sem limpar o resto nem tocar na v2.
-  const removeuAlvo = await page.evaluate(
-    async ({ cacheV1, arquivo }) => {
-      const cache = await caches.open(cacheV1);
-      return cache.delete(arquivo);
-    },
-    { cacheV1: nomeCacheV1, arquivo: alvo },
+  // Admin*.js fica fora do precache (vite.config.ts). O incidente só é
+  // válido se o lazy também não foi guardado em runtime; não apagar nada
+  // para fabricar a condição nem enfraquecer o install da versão nova.
+  const alvoEmCache = await page.evaluate(
+    async (arquivo) => (await caches.match(arquivo)) !== undefined,
+    alvo,
   );
-  expect(
-    removeuAlvo,
-    "o incidente removeu apenas o chunk antigo do cache",
-  ).toBe(true);
+  expect(alvoEmCache, "o chunk antigo não está em nenhum cache").toBe(false);
   const respostaDoChunk = page.waitForResponse(
     (resposta) => resposta.url() === `${URL_DO_SERVIDOR}${alvo}`,
   );
