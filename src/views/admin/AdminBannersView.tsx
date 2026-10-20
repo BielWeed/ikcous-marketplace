@@ -1003,6 +1003,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       });
       return;
     }
+    const geracaoDoRecorte = geracaoDoEditor.current;
     setIsUploadingAdjusted(true);
     // Mesmo achado do produto (AdminProductFormView-499): o ImageAdjuster
     // exporta webp — nome/tipo fixos ".jpg"/"image/jpeg" mentiam sobre o
@@ -1013,6 +1014,12 @@ export const AdminBannersView = memo(function AdminBannersView({
     const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       const url = await uploadBannerImage(file);
+      // O recorte pertence à abertura que o iniciou, assim como o upload normal.
+      if (geracaoDoRecorte !== geracaoDoEditor.current) {
+        deleteStorageFile(url).catch(() => {});
+        toast.dismiss(loadingToast);
+        return;
+      }
       if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
         deleteStorageFile(formData.imageUrl).catch(() => {});
       }
@@ -1020,11 +1027,17 @@ export const AdminBannersView = memo(function AdminBannersView({
       toast.success("Imagem ajustada com sucesso!", { id: loadingToast });
       setIsAdjusterOpen(false);
     } catch (error) {
+      if (geracaoDoRecorte !== geracaoDoEditor.current) {
+        toast.dismiss(loadingToast);
+        return;
+      }
       console.error("Error uploading adjusted banner image:", error);
       toast.error("Erro ao salvar imagem ajustada", { id: loadingToast });
     } finally {
       fim();
-      setIsUploadingAdjusted(false);
+      if (geracaoDoRecorte === geracaoDoEditor.current) {
+        setIsUploadingAdjusted(false);
+      }
     }
   };
 
@@ -1460,6 +1473,8 @@ export const AdminBannersView = memo(function AdminBannersView({
   const handleOpenDialog = (banner?: Banner) => {
     geracaoDoEditor.current += 1;
     setUploading(false);
+    setIsUploadingAdjusted(false);
+    setIsAdjusterOpen(false);
     setActiveColorElement("titleColor");
     setProductSearch("");
 
