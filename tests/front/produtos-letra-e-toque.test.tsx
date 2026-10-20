@@ -91,7 +91,7 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
     const valores = tagAntesDe(
       FONTE,
       "button",
-      'toggleHelp("financial-values")}',
+      'onClick={() => toggleHelp("financial-values")}',
     );
     for (const acesso of [botao, valores]) {
       expect(acesso).toContain("min-h-11");
