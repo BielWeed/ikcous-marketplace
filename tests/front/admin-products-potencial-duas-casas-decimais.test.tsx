@@ -308,6 +308,28 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
     expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("R$ -10,00");
   });
 
+  it.each([
+    { priceOverride: 0, margem: "—" },
+    { priceOverride: 0.05, margem: "0,0%" },
+  ])(
+    "custo suspeito preserva margem indefinida e zero medido: $margem",
+    async ({ priceOverride, margem }) => {
+      montarProduto({
+        price: 100,
+        stock: 10,
+        costPrice: 0.05,
+        variants: [
+          { id: "v1", active: true, stockIncrement: 10, priceOverride },
+        ],
+      });
+      await montar();
+      expect(
+        cartaoDoProduto().querySelector("[data-custo-suspeito] [data-margem]")
+          ?.textContent,
+      ).toBe(margem);
+    },
+  );
+
   it("sem variantes ativas, lucro do produto volta ao preço e estoque do pai", async () => {
     montarProduto({
       price: 100,

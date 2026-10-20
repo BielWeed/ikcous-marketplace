@@ -2090,7 +2090,7 @@ const AdminProductCard = memo(function AdminProductCard({
                     data-margem
                     className="whitespace-nowrap font-black tabular-nums tracking-tighter"
                   >
-                    {percentualComUmaCasa(margin ?? 0)}
+                    {margin === null ? "—" : percentualComUmaCasa(margin)}
                   </span>{" "}
                   · <span>Custo Suspeito</span> de R${" "}
                   {product.costPrice.toLocaleString("pt-BR", {

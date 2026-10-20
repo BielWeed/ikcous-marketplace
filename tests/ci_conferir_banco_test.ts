@@ -7846,7 +7846,9 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
   const corpo51 = texto51.slice(abre51, texto51.indexOf("$$;", abre51));
   const shaSucessora51 = {
     lf: criarHash("sha256").update(corpo51).digest("hex"),
-    crlf: criarHash("sha256").update(corpo51.replace(/\n/g, "\r\n")).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo51.replace(/\n/g, "\r\n"))
+      .digest("hex"),
   };
   const shaSucessora50 = {
     lf: criarHash("sha256").update(corpo50).digest("hex"),
@@ -14179,11 +14181,26 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
           "",
         ),
       )
-        .replace("    inv_revenue_without_cost numeric;\n    inv_products_without_cost bigint;\n    inv_products_with_cost bigint;\n", "")
-        .replace("SUM(faturamento) FILTER (WHERE custo IS NOT NULL)", "SUM(preco_venda * estoque) FILTER (WHERE custo IS NOT NULL)")
-        .replace(",\n        COALESCE(SUM(faturamento) FILTER (WHERE custo IS NULL), 0),\n        COUNT(*) FILTER (WHERE custo IS NULL AND estoque > 0),\n        COUNT(*) FILTER (WHERE custo IS NOT NULL AND estoque > 0)", "")
-        .replace(", inv_revenue_without_cost, inv_products_without_cost, inv_products_with_cost", "")
-        .replace(",\n            'revenueWithoutCost', inv_revenue_without_cost,\n            'productsWithoutCost', inv_products_without_cost,\n            'productsWithCost', inv_products_with_cost", "")
+        .replace(
+          "    inv_revenue_without_cost numeric;\n    inv_products_without_cost bigint;\n    inv_products_with_cost bigint;\n",
+          "",
+        )
+        .replace(
+          "SUM(faturamento) FILTER (WHERE custo IS NOT NULL)",
+          "SUM(preco_venda * estoque) FILTER (WHERE custo IS NOT NULL)",
+        )
+        .replace(
+          ",\n        COALESCE(SUM(faturamento) FILTER (WHERE custo IS NULL), 0),\n        COUNT(*) FILTER (WHERE custo IS NULL AND estoque > 0),\n        COUNT(*) FILTER (WHERE custo IS NOT NULL AND estoque > 0)",
+          "",
+        )
+        .replace(
+          ", inv_revenue_without_cost, inv_products_without_cost, inv_products_with_cost",
+          "",
+        )
+        .replace(
+          ",\n            'revenueWithoutCost', inv_revenue_without_cost,\n            'productsWithoutCost', inv_products_without_cost,\n            'productsWithCost', inv_products_with_cost",
+          "",
+        )
         .replace("    inv_revenue_total numeric;\n", "")
         .replace(",\n        COALESCE(SUM(faturamento), 0)", "")
         .replace(

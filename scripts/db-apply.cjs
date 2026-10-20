@@ -2426,12 +2426,25 @@ const VERIFICACOES = {
     {
       funcao: "get_admin_analytics_v2",
       esperado: [
-        { texto: "COALESCE(SUM(faturamento) FILTER (WHERE custo IS NOT NULL), 0)", vezes: 1 },
+        {
+          texto:
+            "COALESCE(SUM(faturamento) FILTER (WHERE custo IS NOT NULL), 0)",
+          vezes: 1,
+        },
         { texto: "COALESCE(SUM(custo * estoque), 0)", vezes: 1 },
         { texto: "COALESCE(SUM(faturamento), 0)", vezes: 1 },
-        { texto: "COALESCE(SUM(faturamento) FILTER (WHERE custo IS NULL), 0)", vezes: 1 },
-        { texto: "COUNT(*) FILTER (WHERE custo IS NULL AND estoque > 0)", vezes: 1 },
-        { texto: "COUNT(*) FILTER (WHERE custo IS NOT NULL AND estoque > 0)", vezes: 1 },
+        {
+          texto: "COALESCE(SUM(faturamento) FILTER (WHERE custo IS NULL), 0)",
+          vezes: 1,
+        },
+        {
+          texto: "COUNT(*) FILTER (WHERE custo IS NULL AND estoque > 0)",
+          vezes: 1,
+        },
+        {
+          texto: "COUNT(*) FILTER (WHERE custo IS NOT NULL AND estoque > 0)",
+          vezes: 1,
+        },
         { texto: "'revenueWithoutCost', inv_revenue_without_cost", vezes: 1 },
         { texto: "'productsWithoutCost', inv_products_without_cost", vezes: 1 },
         { texto: "'productsWithCost', inv_products_with_cost", vezes: 1 },
