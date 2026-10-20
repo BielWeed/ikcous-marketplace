@@ -1,4 +1,17 @@
 {
+  "1.5.43": {
+    "titulo": "Calcule o líquido previsto do estoque",
+    "novidades": [
+      "Em Produtos, toque em Calcular líquido e informe o total de despesas previstas para ver quanto pode sobrar."
+    ],
+    "correcoes": [
+      "O líquido deixou de ser um texto fixo: agora desconta as despesas que você informar, inclusive zero quando confirmado."
+    ],
+    "melhorias": [
+      "A simulação indica quando é parcial, permite prejuízo e pede nova confirmação quando o resumo do estoque muda.",
+      "A estimativa vale nesta tela e não altera os lançamentos do Financeiro."
+    ]
+  },
   "1.5.42": {
     "titulo": "Resumo de Produtos mais limpo",
     "novidades": [],

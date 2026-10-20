@@ -261,7 +261,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
     async function faturamento() {
       if (!document.querySelector('[role="dialog"]')) {
         const abrir = [...hospedeiro.querySelectorAll("button")].find(
-          (botao) => botao.textContent?.trim() === "Entender valores",
+          (botao) => botao.textContent?.trim() === "Calcular líquido",
         );
         expect(abrir).toBeDefined();
         await act(async () => abrir!.click());
