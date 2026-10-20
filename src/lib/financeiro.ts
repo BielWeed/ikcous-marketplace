@@ -1744,6 +1744,15 @@ function codigoEMensagem(erro: unknown): {
   };
 }
 
+/** Conflito de uma operação já registrada; não é falha de conexão. */
+export function ehDivergenciaDoCaixa(erro: unknown): boolean {
+  const { codigo, detalhe } = codigoEMensagem(erro);
+  return (
+    codigo === "22023" &&
+    (detalhe === "fechamento_divergente" || detalhe === "tentativa_divergente")
+  );
+}
+
 /**
  * Traduz a falha de uma RPC `fin_*`. As recusas de negócio das RPCs
  * (`RAISE EXCEPTION` com texto em português: "já existe um caixa aberto",
@@ -1755,11 +1764,8 @@ export function mensagemDeErroFinanceiro(erro: unknown): string {
   if (erro instanceof ErroDeFormatoFinanceiro) {
     return "O servidor respondeu num formato que esta versão do app não entende. Atualize o app.";
   }
-  const { codigo, mensagem, detalhe } = codigoEMensagem(erro);
-  if (
-    codigo === "22023" &&
-    (detalhe === "fechamento_divergente" || detalhe === "tentativa_divergente")
-  ) {
+  const { codigo, mensagem } = codigoEMensagem(erro);
+  if (ehDivergenciaDoCaixa(erro)) {
     return "Esta operação já foi registrada com valores diferentes. Confira o histórico antes de tentar de novo.";
   }
   if (

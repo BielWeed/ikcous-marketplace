@@ -20,6 +20,7 @@ import {
 import {
   VALOR_MAXIMO,
   diferencaDoFechamento,
+  ehDivergenciaDoCaixa,
   mensagemDeErroFinanceiro,
   parseValorBR,
 } from "@/lib/financeiro";
@@ -41,6 +42,10 @@ import {
   EstadoDeErro,
   useConfirmacaoFinanceira,
 } from "./partes";
+import {
+  chaveDaTentativaDoCaixa,
+  esquecerTentativaDoCaixa,
+} from "./tentativasDoCaixa";
 
 /** Contas que podem ser gaveta: as do tipo caixa (a de sistema primeiro). */
 function contasDeCaixa(contas: readonly ContaFinanceira[]): ContaFinanceira[] {
@@ -91,22 +96,35 @@ function RodapeDeAcao({
 }
 
 /** Estado de envio com trava síncrona contra toque duplo. */
-function useEnvio() {
+function useEnvio(
+  aoMudarEnviando?: (enviando: boolean) => void,
+  aoDivergir?: (erro: unknown) => Promise<void>,
+) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const trava = useRef(false);
   async function enviar(acao: () => Promise<void>) {
     if (trava.current) return;
     trava.current = true;
+    aoMudarEnviando?.(true);
     setEnviando(true);
     setErro(null);
     try {
       await acao();
     } catch (falha) {
-      setErro(mensagemDeErroFinanceiro(falha));
+      if (aoDivergir && ehDivergenciaDoCaixa(falha)) {
+        try {
+          await aoDivergir(falha);
+        } catch (falhaDaRecarga) {
+          setErro(
+            `${mensagemDeErroFinanceiro(falha)} ${mensagemDeErroFinanceiro(falhaDaRecarga)}`,
+          );
+        }
+      } else setErro(mensagemDeErroFinanceiro(falha));
     } finally {
       trava.current = false;
       setEnviando(false);
+      aoMudarEnviando?.(false);
     }
   }
   return { enviando, erro, enviar };
@@ -234,6 +252,9 @@ export function AbrirCaixaFolha({
 
 /** Sangria (tira dinheiro da gaveta) ou suprimento (coloca troco). */
 export function MovimentarCaixaFolha({
+  autorId,
+  aoReconciliar,
+  aoMudarEnviando,
   sessaoId,
   movimento,
   esperado,
@@ -243,13 +264,16 @@ export function MovimentarCaixaFolha({
   aoSalvar,
   aoMudarSujo,
 }: {
+  readonly autorId: string | null;
+  readonly aoReconciliar: (mensagem: string) => Promise<void>;
+  readonly aoMudarEnviando: (enviando: boolean) => void;
   readonly sessaoId: string;
   readonly movimento: "sangria" | "suprimento";
   readonly esperado: number;
   readonly contas: readonly ContaFinanceira[];
   readonly contaDoCaixa: string | null;
   readonly aoFechar: () => void;
-  readonly aoSalvar: (mensagem: string) => void;
+  readonly aoSalvar: (mensagem: string, tom?: "sucesso" | "informacao") => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
@@ -257,11 +281,19 @@ export function MovimentarCaixaFolha({
   const [valor, setValor] = useState("");
   const [descricao, setDescricao] = useState("");
   const [contrapartida, setContrapartida] = useState("");
-  const tentativa = useRef<Readonly<
-    Parameters<typeof movimentarCaixa>[0]
-  > | null>(null);
+  const chave = useRef<string | null>(null);
   const [tentou, setTentou] = useState(false);
-  const { enviando, erro, enviar } = useEnvio();
+  function esquecer() {
+    esquecerTentativaDoCaixa(autorId, sessaoId, movimento, chave.current);
+    chave.current = null;
+  }
+  const { enviando, erro, enviar } = useEnvio(
+    aoMudarEnviando,
+    async (falha) => {
+      await aoReconciliar(mensagemDeErroFinanceiro(falha));
+      esquecer();
+    },
+  );
 
   useEffect(() => {
     aoMudarSujo(
@@ -287,24 +319,25 @@ export function MovimentarCaixaFolha({
     setTentou(true);
     if (numero === null || numero <= 0 || numero > VALOR_MAXIMO) return;
     void enviar(async () => {
-      // Retry pertence à mesma intenção, inclusive se a resposta se perdeu.
-      // Só edição dos campos ou desmontagem da folha descarta esta cópia.
-      tentativa.current ??= Object.freeze({
+      // Campos podem mudar, identidade não: o servidor devolve o original
+      // ou recusa a divergência, sem gravar uma segunda transferência.
+      chave.current ??= chaveDaTentativaDoCaixa(autorId, sessaoId, movimento);
+      const enviada = {
         sessaoId,
-        chave: crypto.randomUUID(),
+        chave: chave.current,
         tipo: movimento,
         valor: numero,
         descricao:
           descricao.trim() ||
           (sangria ? "Sangria do caixa" : "Suprimento do caixa"),
         contaContrapartida: contrapartida || null,
-      });
-      const enviada = tentativa.current;
+      };
       const resultado = await movimentarCaixa(enviada);
-      tentativa.current = null;
+      esquecer();
       if (resultado.status !== "realizado") {
         aoSalvar(
           "Operação localizada no histórico. Confira a situação do lançamento antes de tentar de novo.",
+          "informacao",
         );
         return;
       }
@@ -359,9 +392,6 @@ export function MovimentarCaixaFolha({
           <LocalBufferedInput
             id="fin-caixa-mov-valor"
             value={valor}
-            onInput={() => {
-              tentativa.current = null;
-            }}
             mask="currency"
             inputMode="numeric"
             placeholder="0,00"
@@ -400,9 +430,6 @@ export function MovimentarCaixaFolha({
             id="fin-caixa-mov-descricao"
             value={descricao}
             maxLength={140}
-            onInput={() => {
-              tentativa.current = null;
-            }}
             placeholder={
               sangria ? "Ex.: depósito no banco" : "Ex.: troco para o dia"
             }
@@ -420,10 +447,7 @@ export function MovimentarCaixaFolha({
           <select
             id="fin-caixa-mov-conta"
             value={contrapartida}
-            onChange={(e) => {
-              tentativa.current = null;
-              setContrapartida(e.target.value);
-            }}
+            onChange={(e) => setContrapartida(e.target.value)}
             className={CLASSE_CAMPO}
           >
             <option value="">Nenhuma conta da loja</option>
@@ -446,11 +470,15 @@ export function MovimentarCaixaFolha({
  * em dinheiro enquanto ela contava).
  */
 export function FecharCaixaFolha({
+  aoReconciliar,
+  aoMudarEnviando,
   caixa,
   aoFechar,
   aoFechado,
   aoMudarSujo,
 }: {
+  readonly aoReconciliar: (mensagem: string) => Promise<void>;
+  readonly aoMudarEnviando: (enviando: boolean) => void;
   readonly caixa: CaixaAtual;
   readonly aoFechar: () => void;
   /** Chamado assim que o servidor confirma (a tela atualiza por baixo). */
@@ -461,7 +489,12 @@ export function FecharCaixaFolha({
   const [observacao, setObservacao] = useState("");
   const [tentou, setTentou] = useState(false);
   const [resultado, setResultado] = useState<FechamentoDeCaixa | null>(null);
-  const { enviando, erro, enviar } = useEnvio();
+  const { enviando, erro, enviar } = useEnvio(
+    aoMudarEnviando,
+    async (falha) => {
+      await aoReconciliar(mensagemDeErroFinanceiro(falha));
+    },
+  );
 
   useEffect(() => {
     aoMudarSujo(

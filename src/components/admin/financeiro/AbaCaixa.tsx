@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   ArrowDownToLine,
@@ -356,12 +358,14 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
  * esperado × contado × diferença; embaixo, o histórico das sessões.
  */
 export function AbaCaixa({
+  aoSessaoAtual,
   ativo,
   versao,
   abrirFolha,
   aoNovoLancamento,
   mostrarAcaoFixa = false,
 }: {
+  readonly aoSessaoAtual?: (id: string | null) => void;
   readonly ativo: boolean;
   readonly versao: number;
   readonly abrirFolha: AbrirFolha;
@@ -370,6 +374,11 @@ export function AbaCaixa({
 }) {
   const atual = useCaixaAtual(ativo, versao);
   const historico = useHistoricoDoCaixa(ativo, versao);
+  useEffect(() => {
+    if (ativo && atual.dados && !atual.carregando && !atual.erro) {
+      aoSessaoAtual?.(atual.dados.sessao?.id ?? null);
+    }
+  }, [ativo, atual.dados, atual.carregando, atual.erro, aoSessaoAtual]);
 
   return (
     <div className="flex flex-col gap-7">

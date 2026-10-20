@@ -339,6 +339,18 @@ export function useHistoricoDoCaixa(
   );
 }
 
+/** Não encerrar uma divergência sem conseguir reler os registros do caixa. */
+export async function conferirCaixaParaReconciliar(): Promise<void> {
+  const [atual, historico] = await Promise.all([
+    supabase.rpc("fin_caixa_atual"),
+    supabase.rpc("fin_caixa_historico", { p_limite: 30 }),
+  ]);
+  if (atual.error) throw atual.error;
+  if (historico.error) throw historico.error;
+  parseCaixaAtual(atual.data);
+  parseCaixaHistorico(historico.data);
+}
+
 // ---------------------------------------------------------------------------
 // Escritas (a view sobe a `versao` depois de cada uma)
 // ---------------------------------------------------------------------------

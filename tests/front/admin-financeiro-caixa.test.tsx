@@ -27,12 +27,20 @@ const { rpcFalso, servidor } = vi.hoisted(() => ({
     caixa: null as Record<string, unknown> | null,
     falhasMovimento: [] as unknown[],
     falhasFechamento: [] as unknown[],
+    falhasLeituraCaixa: [] as unknown[],
     statusMovimento: "realizado",
     replay: false,
+    autorId: "autor-1" as string | null,
+    emVoo: null as Promise<void> | null,
   },
 }));
 vi.mock("@/lib/supabase", () => ({ supabase: { rpc: rpcFalso } }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+}));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: servidor.autorId ? { id: servidor.autorId } : null }),
+}));
 // O gráfico (recharts) não é assunto deste arquivo.
 vi.mock("@/components/admin/financeiro/FluxoDeCaixaGrafico", () => ({
   FluxoDeCaixaGrafico: () => null,
@@ -106,13 +114,17 @@ rpcFalso.mockImplementation(async (nome: string) => {
     case "fin_resumo":
       return { data: RESUMO, error: null };
     case "fin_caixa_atual":
-      return { data: servidor.caixa, error: null };
+      return {
+        data: servidor.caixa,
+        error: servidor.falhasLeituraCaixa.shift() ?? null,
+      };
     case "fin_caixa_historico":
       return { data: [], error: null };
     case "fin_caixa_abrir":
       servidor.caixa = CAIXA_ABERTO;
       return { data: { id: "sessao-1" }, error: null };
     case "fin_caixa_movimentar_com_chave": {
+      await servidor.emVoo;
       const error = servidor.falhasMovimento.shift() ?? null;
       return {
         data: error
@@ -126,6 +138,7 @@ rpcFalso.mockImplementation(async (nome: string) => {
       };
     }
     case "fin_caixa_fechar_sessao": {
+      await servidor.emVoo;
       const error = servidor.falhasFechamento.shift();
       if (error) return { data: null, error };
       servidor.caixa = null;
@@ -196,12 +209,35 @@ describe("Financeiro — abrir e fechar o caixa", () => {
   let onSetDirty: Mock<(dirty: boolean) => void>;
   let onSetBackOverride: Mock<(fn: (() => void) | null) => void>;
 
+  const guardado = new Map<string, string>();
+  let armazenamento: Storage;
+
   beforeEach(async () => {
+    guardado.clear();
+    armazenamento = {
+      getItem: vi.fn((chave: string) => guardado.get(chave) ?? null),
+      setItem: vi.fn((chave: string, valor: string) => {
+        guardado.set(chave, valor);
+      }),
+      removeItem: vi.fn((chave: string) => {
+        guardado.delete(chave);
+      }),
+      key: vi.fn((indice: number) => [...guardado.keys()].at(indice) ?? null),
+      get length() {
+        return guardado.size;
+      },
+      clear: vi.fn(() => guardado.clear()),
+    };
+    vi.stubGlobal("localStorage", armazenamento);
     servidor.caixa = null;
     servidor.falhasMovimento = [];
     servidor.falhasFechamento = [];
+    servidor.falhasLeituraCaixa = [];
     servidor.statusMovimento = "realizado";
     servidor.replay = false;
+    servidor.autorId = "autor-1";
+    servidor.emVoo = null;
+    vi.mocked(toast.info).mockClear();
     vi.mocked(toast.success).mockClear();
     rpcFalso.mockClear();
     onSetDirty = vi.fn<(dirty: boolean) => void>();
@@ -209,6 +245,10 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
+    await montar();
+  });
+
+  async function montar() {
     await act(async () => {
       raiz.render(
         <AdminFinanceiroView
@@ -229,13 +269,21 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       );
     });
     await esperar();
-  });
+  }
+
+  async function remontar() {
+    await act(async () => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    await montar();
+  }
 
   afterEach(() => {
     act(() => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("abre com o contado na conta Caixa da loja e fecha mostrando a quebra", async () => {
@@ -363,8 +411,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(movimentos()).toHaveLength(1);
     const primeira = { ...movimentos()[0] };
     expect(normalizar(folha()?.textContent)).toContain("Confira a conexão");
-    // Uma sessão mais recente no servidor não pode substituir a mostrada.
-    servidor.caixa = { ...CAIXA_ABERTO, id: "sessao-2" };
+    // Sem recarga: o ID pertence ao estado da folha que já estava aberta.
     servidor.replay = true;
     await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
     expect(movimentos()).toEqual([primeira, primeira]);
@@ -373,7 +420,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
   });
 
   it.each(["valor", "descricao", "conta", "editar e voltar"])(
-    "edição de %s depois da falha cria outra intenção",
+    "edição de %s depois da falha conserva a identidade da intenção",
     async (campo) => {
       servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
       await prepararMovimento();
@@ -390,7 +437,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       }
       await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
       expect(movimentos()).toHaveLength(2);
-      expect(movimentos()[1].p_chave).not.toBe(primeira.p_chave);
+      expect(movimentos()[1].p_chave).toBe(primeira.p_chave);
       expect(movimentos()[1]).toMatchObject({
         p_sessao_id: primeira.p_sessao_id,
         p_tipo: primeira.p_tipo,
@@ -402,22 +449,48 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     },
   );
 
-  it("conflito da tentativa mostra aviso e mantém chave e dados no retry", async () => {
+  it("divergência reconcilia: avisa, recarrega o original, fecha e apaga a chave sem reenviar", async () => {
+    servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+    await prepararMovimento();
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    const primeira = { ...movimentos()[0] };
     servidor.falhasMovimento.push({
       code: "22023",
       details: "tentativa_divergente",
       message: "conflito técnico",
     });
-    await prepararMovimento();
+    servidor.caixa = {
+      ...CAIXA_ABERTO,
+      movimentos: [
+        {
+          id: "original-1",
+          tipo: "sangria",
+          valor: 50,
+          descricao: "Original do servidor",
+        },
+      ],
+    };
+    const leiturasAntes = rpcFalso.mock.calls.filter(
+      ([nome]) => nome === "fin_caixa_atual",
+    ).length;
+    await digitar("fin-caixa-mov-valor", "6000");
     await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
-    expect(movimentos()).toHaveLength(1);
-    const primeira = { ...movimentos()[0] };
-    expect(normalizar(folha()?.textContent)).toContain(
-      "Confira o histórico antes de tentar de novo",
+    expect(movimentos()).toHaveLength(2);
+    expect(movimentos()[1].p_chave).toBe(primeira.p_chave);
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("Confira o histórico antes de tentar de novo"),
     );
-    expect(normalizar(folha()?.textContent)).not.toContain("conexão");
+    expect(folha()).toBeNull();
+    expect(guardado.size).toBe(0);
+    expect(
+      rpcFalso.mock.calls.filter(([nome]) => nome === "fin_caixa_atual").length,
+    ).toBeGreaterThan(leiturasAntes);
+    expect(normalizar(hospedeiro.textContent)).toContain(
+      "Original do servidor",
+    );
+    await reabrirMovimento();
     await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
-    expect(movimentos()).toEqual([primeira, primeira]);
+    expect(movimentos()[2].p_chave).not.toBe(primeira.p_chave);
     semRpcAntiga();
   });
 
@@ -448,58 +521,273 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     },
   );
 
-  it.each([
-    {
-      code: "22023",
-      details: "fechamento_divergente",
-      message: "conflito técnico",
-    },
-    { code: "PGRST202", message: "Could not find the function" },
-  ])(
-    "fechamento recusado mantém a sessão exibida e não usa a RPC antiga (%j)",
-    async (falha) => {
-      await abrirSessao();
-      await clicar(botaoEm(hospedeiro, "Fechar caixa"));
-      await digitar("fin-caixa-contado", "47000");
-      servidor.falhasFechamento.push(falha);
-      await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
-      const texto = normalizar(folha()?.textContent);
-      expect(texto).toContain(
-        falha.code === "22023"
-          ? "Confira o histórico antes de tentar de novo"
-          : "O Financeiro ainda não foi instalado",
-      );
-      servidor.caixa = { ...CAIXA_ABERTO, id: "sessao-2" };
-      servidor.replay = true;
-      await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
-      const chamadas = rpcFalso.mock.calls.filter(
-        ([nome]) => nome === "fin_caixa_fechar_sessao",
-      );
-      expect(chamadas).toHaveLength(2);
-      expect(chamadas[0][1]).toEqual({
-        p_sessao_id: "sessao-1",
-        p_valor_contado: 470,
-        p_observacao: undefined,
-      });
-      expect(chamadas[1][1]).toEqual(chamadas[0][1]);
-      expect(normalizar(folha()?.textContent)).toContain(
-        "Fechamento registrado.",
-      );
-      semRpcAntiga();
+  it("fechamento com RPC ausente preserva a sessão da folha sem usar a antiga", async () => {
+    const falha = { code: "PGRST202", message: "Could not find the function" };
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    await digitar("fin-caixa-contado", "47000");
+    servidor.falhasFechamento.push(falha);
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+    const texto = normalizar(folha()?.textContent);
+    expect(texto).toContain("O Financeiro ainda não foi instalado");
+    // A sessão é a capturada pela folha; não simulamos recarga neste caso.
+    servidor.replay = true;
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+    const chamadas = rpcFalso.mock.calls.filter(
+      ([nome]) => nome === "fin_caixa_fechar_sessao",
+    );
+    expect(chamadas).toHaveLength(2);
+    expect(chamadas[0][1]).toEqual({
+      p_sessao_id: "sessao-1",
+      p_valor_contado: 470,
+      p_observacao: undefined,
+    });
+    expect(chamadas[1][1]).toEqual(chamadas[0][1]);
+    expect(normalizar(folha()?.textContent)).toContain(
+      "Fechamento registrado.",
+    );
+    semRpcAntiga();
+  });
+
+  async function reabrirMovimento(movimento = "Sangria") {
+    await clicar(botaoEm(hospedeiro, movimento));
+    await digitar("fin-caixa-mov-valor", "5000");
+  }
+
+  it.each([false, true])(
+    "falha + fechar + reabrir conserva chave (remonta tela: %s)",
+    async (remonta) => {
+      servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+      await prepararMovimento();
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      const primeira = { ...movimentos()[0] };
+      expect([...guardado.values()]).toEqual([primeira.p_chave]);
+      const nome = [...guardado.keys()][0];
+      expect(nome).toContain("autor-1");
+      expect(nome).toContain("sessao-1");
+      expect(nome).toContain("sangria");
+      await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
+      if (remonta) await remontar();
+      await reabrirMovimento();
+      await digitar("fin-caixa-mov-valor", "6000");
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      expect(movimentos()).toHaveLength(2);
+      expect(movimentos()[1].p_chave).toBe(primeira.p_chave);
+      expect(movimentos()[1].p_valor).toBe(60);
     },
   );
 
-  it("fechar a folha descarta a tentativa mesmo após uma falha", async () => {
+  it.each([false, true])(
+    "confirmação/replay limpa a chave e próxima intenção é nova (replay: %s)",
+    async (replay) => {
+      servidor.replay = replay;
+      await prepararMovimento();
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      const primeira = { ...movimentos()[0] };
+      expect(guardado.size).toBe(0);
+      await reabrirMovimento();
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      expect(movimentos()[1].p_chave).not.toBe(primeira.p_chave);
+    },
+  );
+
+  it("não expira identidade pelo relógio", async () => {
     servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
     await prepararMovimento();
     await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
-    expect(movimentos()).toHaveLength(1);
+    const primeira = { ...movimentos()[0] };
     await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
-    await clicar(botaoEm(hospedeiro, "Sangria"));
-    await digitar("fin-caixa-mov-valor", "5000");
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 365 * 86400000);
+    await remontar();
+    await reabrirMovimento();
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    expect(movimentos()[1].p_chave).toBe(primeira.p_chave);
+  });
+
+  it.each(["sessao-2", null])(
+    "sessão atual muda para %s: elimina a chave da anterior",
+    async (id) => {
+      servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+      await prepararMovimento();
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      const primeira = { ...movimentos()[0] };
+      expect(guardado.size).toBe(1);
+      servidor.caixa = id ? { ...CAIXA_ABERTO, id } : null;
+      await remontar();
+      expect(guardado.size).toBe(0);
+      if (!id) await abrirSessao();
+      await reabrirMovimento();
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      expect(movimentos()[1].p_chave).not.toBe(primeira.p_chave);
+      expect(movimentos()[1].p_sessao_id).toBe(id ?? "sessao-1");
+    },
+  );
+
+  it("outro autor e outro tipo não herdam a chave pendente", async () => {
+    servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+    await prepararMovimento();
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    const primeira = { ...movimentos()[0] };
+    await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
+    await reabrirMovimento("Suprimento");
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar suprimento"));
+    expect(movimentos()[1].p_chave).not.toBe(primeira.p_chave);
+    servidor.autorId = "autor-2";
+    await remontar();
+    await reabrirMovimento();
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    expect(movimentos()[2].p_chave).not.toBe(primeira.p_chave);
+  });
+
+  it.each(["leitura", "escrita", "remoção", "acesso"])(
+    "armazenamento bloqueado na %s mantém chave em memória e tela utilizável",
+    async (etapa) => {
+      if (etapa === "acesso")
+        Object.defineProperty(globalThis, "localStorage", {
+          configurable: true,
+          get: () => {
+            throw new Error("blocked");
+          },
+        });
+      if (etapa === "leitura")
+        vi.mocked(armazenamento.getItem).mockImplementation(() => {
+          throw new Error("blocked");
+        });
+      if (etapa === "escrita")
+        vi.mocked(armazenamento.setItem).mockImplementation(() => {
+          throw new Error("quota");
+        });
+      if (etapa === "remoção")
+        vi.mocked(armazenamento.removeItem).mockImplementation(() => {
+          throw new Error("blocked");
+        });
+      servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+      await prepararMovimento();
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      await digitar("fin-caixa-mov-valor", "6000");
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      expect(movimentos()).toHaveLength(2);
+      expect(movimentos()[1].p_chave).toBe(movimentos()[0].p_chave);
+      expect(folha()).toBeNull();
+    },
+  );
+
+  it("sem autor usa memória e não grava UUID no armazenamento", async () => {
+    servidor.autorId = null;
+    await remontar();
+    servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+    await prepararMovimento();
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    await digitar("fin-caixa-mov-valor", "6000");
     await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
     expect(movimentos()).toHaveLength(2);
-    expect(movimentos()[1].p_chave).not.toBe(movimentos()[0].p_chave);
+    expect(movimentos()[1].p_chave).toBe(movimentos()[0].p_chave);
+    expect(guardado.size).toBe(0);
+  });
+
+  it("HTTP local sem randomUUID gera UUID v4 com getRandomValues", async () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues: globalThis.crypto.getRandomValues.bind(
+        globalThis.crypto,
+      ),
+    });
+    await prepararMovimento();
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    expect(movimentos()).toHaveLength(1);
+    expect(movimentos()[0].p_chave).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+  });
+
+  it.each(["movimento", "fechamento"])(
+    "Voltar e fechar ficam bloqueados durante envio do %s",
+    async (tipo) => {
+      if (tipo === "movimento") await prepararMovimento();
+      else {
+        await abrirSessao();
+        await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+        await digitar("fin-caixa-contado", "47000");
+      }
+      let liberar!: () => void;
+      servidor.emVoo = new Promise<void>((resolve) => {
+        liberar = resolve;
+      });
+      const painel = folha() as HTMLElement;
+      await clicar(
+        botaoEm(
+          painel,
+          tipo === "movimento" ? "Registrar sangria" : "Fechar caixa",
+        ),
+      );
+      await clicar(botaoEm(painel, "Voltar"));
+      expect(folha()).toBe(painel);
+      const atualizador = onSetBackOverride.mock.calls.at(
+        -1,
+      )?.[0] as unknown as () => () => void;
+      await act(async () => atualizador()());
+      expect(folha()).toBe(painel);
+      await clicar(botaoEm(painel, "Close"));
+      expect(folha()).toBe(painel);
+      await act(async () => liberar());
+      await esperar();
+      expect(
+        tipo === "movimento"
+          ? folha() === null
+          : normalizar(folha()?.textContent).includes("Fechamento registrado."),
+      ).toBe(true);
+    },
+  );
+
+  it("divergência do fechamento avisa, fecha e recarrega sem reenvio automático", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    await digitar("fin-caixa-contado", "47000");
+    servidor.falhasFechamento.push({
+      code: "22023",
+      details: "fechamento_divergente",
+      message: "conflito técnico",
+    });
+    servidor.caixa = null;
+    const antes = rpcFalso.mock.calls.filter(
+      ([nome]) => nome === "fin_caixa_atual",
+    ).length;
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+    expect(folha()).toBeNull();
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("Confira o histórico antes de tentar de novo"),
+    );
+    expect(normalizar(hospedeiro.textContent)).toContain("Caixa fechado");
+    expect(
+      rpcFalso.mock.calls.filter(([nome]) => nome === "fin_caixa_atual").length,
+    ).toBeGreaterThan(antes);
+    expect(
+      rpcFalso.mock.calls.filter(
+        ([nome]) => nome === "fin_caixa_fechar_sessao",
+      ),
+    ).toHaveLength(1);
+    semRpcAntiga();
+  });
+
+  it("divergência sem recarga confiável não apaga a identidade nem libera outra transferência", async () => {
+    servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+    await prepararMovimento();
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    const primeira = { ...movimentos()[0] };
+    servidor.falhasMovimento.push({
+      code: "22023",
+      details: "tentativa_divergente",
+      message: "conflito técnico",
+    });
+    servidor.falhasLeituraCaixa.push(new TypeError("Failed to fetch"));
+    await digitar("fin-caixa-mov-valor", "6000");
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    expect(movimentos()[1].p_chave).toBe(primeira.p_chave);
+    expect([...guardado.values()]).toEqual([primeira.p_chave]);
+    expect(folha()).not.toBeNull();
+    expect(normalizar(folha()?.textContent)).toContain(
+      "Confira o histórico antes de tentar de novo",
+    );
+    expect(movimentos()).toHaveLength(2);
   });
 
   it("limita a descrição a 140 caracteres", async () => {
@@ -522,7 +810,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       vi.mocked(toast.success).mockClear();
       await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
       expect(movimentos()).toHaveLength(1);
-      expect(toast.success).toHaveBeenCalledWith(
+      expect(toast.info).toHaveBeenCalledWith(
         "Operação localizada no histórico. Confira a situação do lançamento antes de tentar de novo.",
       );
       expect(toast.success).not.toHaveBeenCalledWith("Sangria registrada.");
