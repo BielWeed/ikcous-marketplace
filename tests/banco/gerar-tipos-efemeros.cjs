@@ -8,10 +8,57 @@ const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
 
 const CLI = "2.121.0";
 const MAX_BUFFER = 4 * 1024 * 1024;
+const ETAPAS = new Set([
+  "GUARDA_AMBIENTE",
+  "SPAWN",
+  "RETORNO_CLI",
+  "VALIDACAO_SAIDA",
+  "ESCRITA",
+]);
+const CODIGOS = new Set([
+  "ENOENT",
+  "EACCES",
+  "EPERM",
+  "ETIMEDOUT",
+  "ENOBUFS",
+  "ENOMEM",
+  "EINVAL",
+  "ENOSPC",
+  "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+]);
+const SINAIS = new Set(["SIGTERM", "SIGKILL", "SIGINT", "SIGABRT"]);
+// Só mensagens criadas aqui podem atravessar o catch CLI; prefixo não é prova.
+const diagnosticos = new WeakMap();
+
+function falhaDeEtapa(etapa, retorno = {}) {
+  if (!ETAPAS.has(etapa)) return new Error("Falha inesperada.");
+  const codigo = retorno.error?.code ?? retorno.code;
+  const diagnostico = {
+    etapa,
+    status: Number.isSafeInteger(retorno.status) ? retorno.status : null,
+    codigo: CODIGOS.has(codigo) ? codigo : null,
+    sinal: SINAIS.has(retorno.signal) ? retorno.signal : null,
+  };
+  const mensagem = `TIPOS_EFEMEROS ${JSON.stringify(diagnostico)}`;
+  const erro = new Error(mensagem);
+  diagnosticos.set(erro, mensagem);
+  return erro;
+}
 
 function gerarTiposEfemeros() {
-  // A guarda compartilhada é sempre a primeira operação, inclusive antes do fs.
-  const url = lerDatabaseUrlEfemera();
+  const erroGuarda = falhaDeEtapa("GUARDA_AMBIENTE");
+  const relatar = console.error;
+  let url;
+  try {
+    // A guarda é síncrona e usa process.exit. Seu diagnóstico original inclui
+    // hostname: trocar só a impressão impede vazar entrada até nessa saída direta.
+    console.error = () => relatar(diagnosticos.get(erroGuarda));
+    url = lerDatabaseUrlEfemera();
+  } catch {
+    throw erroGuarda;
+  } finally {
+    console.error = relatar;
+  }
   const { CI, GITHUB_SHA, RUNNER_TEMP, PATH } = process.env;
   if (
     CI !== "true" ||
@@ -19,9 +66,7 @@ function gerarTiposEfemeros() {
     !RUNNER_TEMP ||
     !isAbsolute(RUNNER_TEMP)
   ) {
-    throw new Error(
-      "RECUSADO: exige CI, SHA completo e pasta temporária absoluta.",
-    );
+    throw erroGuarda;
   }
 
   let resultado;
@@ -59,12 +104,11 @@ function gerarTiposEfemeros() {
         },
       },
     );
-  } catch {
-    throw new Error("Falha ao executar o gerador de tipos efêmeros.");
+  } catch (erro) {
+    throw falhaDeEtapa("SPAWN", erro);
   }
   if (resultado.error || resultado.status !== 0 || resultado.signal) {
-    // Nunca anexar error.message, stdout ou stderr: podem conter a conexão.
-    throw new Error("CLI de tipos efêmeros falhou ou excedeu seus limites.");
+    throw falhaDeEtapa("RETORNO_CLI", resultado);
   }
   const tipos = resultado.stdout;
   if (
@@ -75,9 +119,7 @@ function gerarTiposEfemeros() {
     !/\bfin_caixa_fechar_sessao\s*:/.test(tipos) ||
     !/\bfin_caixa_movimentar_com_chave\s*:/.test(tipos)
   ) {
-    throw new Error(
-      "Saída de tipos inválida: Database e RPCs do caixa são obrigatórios.",
-    );
+    throw falhaDeEtapa("VALIDACAO_SAIDA", resultado);
   }
 
   const metadata = {
@@ -87,16 +129,20 @@ function gerarTiposEfemeros() {
     sha256: createHash("sha256").update(tipos, "utf8").digest("hex"),
   };
   const pasta = join(RUNNER_TEMP, "tipos-efemeros");
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- RUNNER_TEMP absoluto do Actions, com nome de saída constante.
-  fs.mkdirSync(pasta, { recursive: true });
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- Mesmo diretório temporário validado; nunca src/types.
-  fs.writeFileSync(join(pasta, "database.types.ts"), tipos, "utf8");
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- Metadata sem DSN no mesmo diretório do artefato.
-  fs.writeFileSync(
-    join(pasta, "metadata.json"),
-    `${JSON.stringify(metadata, null, 2)}\n`,
-    "utf8",
-  );
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- RUNNER_TEMP absoluto do Actions, com nome de saída constante.
+    fs.mkdirSync(pasta, { recursive: true });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Mesmo diretório temporário validado; nunca src/types.
+    fs.writeFileSync(join(pasta, "database.types.ts"), tipos, "utf8");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Metadata sem DSN no mesmo diretório do artefato.
+    fs.writeFileSync(
+      join(pasta, "metadata.json"),
+      `${JSON.stringify(metadata, null, 2)}\n`,
+      "utf8",
+    );
+  } catch (erro) {
+    throw falhaDeEtapa("ESCRITA", erro);
+  }
   return metadata;
 }
 
@@ -105,9 +151,10 @@ module.exports = { gerarTiposEfemeros };
 if (require.main === module) {
   try {
     gerarTiposEfemeros();
-  } catch {
+  } catch (erro) {
     console.error(
-      "Geração de tipos efêmeros recusada ou malsucedida; nenhum upload autorizado.",
+      diagnosticos.get(erro) ??
+        "Geração de tipos efêmeros recusada ou malsucedida; nenhum upload autorizado.",
     );
     process.exitCode = 1;
   }
