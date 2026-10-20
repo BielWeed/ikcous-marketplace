@@ -66,7 +66,9 @@ vi.mock("@/components/ui/custom/ImageAdjuster", () => ({
       type="button"
       data-testid="confirmar-recorte"
       disabled={props.isSubmitting}
-      onClick={() => void props.onConfirm(new Blob(["recorte"], { type: "image/webp" }))}
+      onClick={() =>
+        void props.onConfirm(new Blob(["recorte"], { type: "image/webp" }))
+      }
     >
       Confirmar recorte
     </button>
@@ -85,10 +87,12 @@ const esperar = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 function uploadPendente() {
   let resolver!: (url: string) => void;
   let rejeitar!: (erro: Error) => void;
-  uploadBannerImage.mockReturnValueOnce(new Promise<string>((resolve, reject) => {
-    resolver = resolve;
-    rejeitar = reject;
-  }));
+  uploadBannerImage.mockReturnValueOnce(
+    new Promise<string>((resolve, reject) => {
+      resolver = resolve;
+      rejeitar = reject;
+    }),
+  );
   return { resolver, rejeitar };
 }
 
@@ -101,22 +105,32 @@ describe("recorte de banner não atravessa gerações do editor", () => {
     uploadBannerImage.mockReset();
     deleteStorageFile.mockReset().mockResolvedValue(undefined);
     updateBanner.mockResolvedValue(undefined);
-    toastLoading.mockImplementation(() => `toast-${toastLoading.mock.calls.length}`);
+    toastLoading.mockImplementation(
+      () => `toast-${toastLoading.mock.calls.length}`,
+    );
     vi.spyOn(window.history, "back").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("IntersectionObserver", ObserverStub);
     vi.stubGlobal("ResizeObserver", ObserverStub);
     vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: false, media: query, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }));
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
-      setItem: (chave: string, valor: string) => { armazem.set(chave, valor); },
-      removeItem: (chave: string) => { armazem.delete(chave); },
+      setItem: (chave: string, valor: string) => {
+        armazem.set(chave, valor);
+      },
+      removeItem: (chave: string) => {
+        armazem.delete(chave);
+      },
     });
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -140,7 +154,9 @@ describe("recorte de banner não atravessa gerações do editor", () => {
   }
 
   async function editar(indice: number) {
-    const botao = hospedeiro.querySelectorAll<HTMLButtonElement>('button[title="Editar"]').item(indice);
+    const botao = hospedeiro
+      .querySelectorAll<HTMLButtonElement>('button[title="Editar"]')
+      .item(indice);
     if (!botao) throw new Error("Botão Editar ausente");
     await act(async () => botao.click());
     await act(async () => esperar());
@@ -156,7 +172,9 @@ describe("recorte de banner não atravessa gerações do editor", () => {
   }
 
   function confirmar() {
-    const botao = hospedeiro.querySelector<HTMLButtonElement>('[data-testid="confirmar-recorte"]');
+    const botao = hospedeiro.querySelector<HTMLButtonElement>(
+      '[data-testid="confirmar-recorte"]',
+    );
     if (!botao) throw new Error("Ajustador ausente");
     return botao;
   }
@@ -173,15 +191,21 @@ describe("recorte de banner não atravessa gerações do editor", () => {
 
   async function trocarParaB() {
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
     });
-    expect(hospedeiro.querySelector('[data-testid="confirmar-recorte"]')).toBeNull();
+    expect(
+      hospedeiro.querySelector('[data-testid="confirmar-recorte"]'),
+    ).toBeNull();
     await clicar("Cancelar");
     await editar(1);
   }
 
   function imagem() {
-    return hospedeiro.querySelector<HTMLImageElement>('img[alt="Preview Thumbnail"]')?.src;
+    return hospedeiro.querySelector<HTMLImageElement>(
+      'img[alt="Preview Thumbnail"]',
+    )?.src;
   }
 
   it("Escape, cancelar A e abrir B impede que o sucesso tardio de A troque B", async () => {
@@ -195,32 +219,44 @@ describe("recorte de banner não atravessa gerações do editor", () => {
     expect(toastSuccess).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
     expect(toastDismiss).toHaveBeenCalledWith("toast-1");
-    expect(deleteStorageFile.mock.calls).toEqual([["https://loja.test/recorte-a.webp"]]);
+    expect(deleteStorageFile.mock.calls).toEqual([
+      ["https://loja.test/recorte-a.webp"],
+    ]);
     await clicar("Salvar Banner");
-    expect(updateBanner).toHaveBeenCalledWith("banner-b", expect.objectContaining({
-      imageUrl: banners[1].imageUrl, title: "",
-    }));
+    expect(updateBanner).toHaveBeenCalledWith(
+      "banner-b",
+      expect.objectContaining({
+        imageUrl: banners[1].imageUrl,
+        title: "",
+      }),
+    );
   });
 
-  it.each(["sucesso", "falha"] as const)("finally antigo (%s) não desliga o recorte pendente de B", async (resultado) => {
-    await montar();
-    await editar(0);
-    const a = await iniciarRecorte();
-    await trocarParaB();
-    const b = await iniciarRecorte();
-    await act(async () => {
-      if (resultado === "sucesso") a.resolver("https://loja.test/recorte-a.webp");
-      else a.rejeitar(new Error("Falha A"));
-    });
-    expect(confirmar().disabled).toBe(true);
-    expect(imagem()).toBe(banners[1].imageUrl);
-    expect(toastSuccess).not.toHaveBeenCalled();
-    expect(toastError).not.toHaveBeenCalled();
-    await act(async () => b.resolver("https://loja.test/recorte-b.webp"));
-    expect(imagem()).toBe("https://loja.test/recorte-b.webp");
-    expect(hospedeiro.querySelector('[data-testid="confirmar-recorte"]')).toBeNull();
-    expect(toastSuccess).toHaveBeenCalledTimes(1);
-  });
+  it.each(["sucesso", "falha"] as const)(
+    "finally antigo (%s) não desliga o recorte pendente de B",
+    async (resultado) => {
+      await montar();
+      await editar(0);
+      const a = await iniciarRecorte();
+      await trocarParaB();
+      const b = await iniciarRecorte();
+      await act(async () => {
+        if (resultado === "sucesso")
+          a.resolver("https://loja.test/recorte-a.webp");
+        else a.rejeitar(new Error("Falha A"));
+      });
+      expect(confirmar().disabled).toBe(true);
+      expect(imagem()).toBe(banners[1].imageUrl);
+      expect(toastSuccess).not.toHaveBeenCalled();
+      expect(toastError).not.toHaveBeenCalled();
+      await act(async () => b.resolver("https://loja.test/recorte-b.webp"));
+      expect(imagem()).toBe("https://loja.test/recorte-b.webp");
+      expect(
+        hospedeiro.querySelector('[data-testid="confirmar-recorte"]'),
+      ).toBeNull();
+      expect(toastSuccess).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("desativar a tela invalida A mesmo depois de reativar e abrir B", async () => {
     await montar();
@@ -232,7 +268,9 @@ describe("recorte de banner não atravessa gerações do editor", () => {
     await act(async () => a.resolver("https://loja.test/recorte-a.webp"));
     expect(imagem()).toBe(banners[1].imageUrl);
     expect(toastSuccess).not.toHaveBeenCalled();
-    expect(deleteStorageFile.mock.calls).toEqual([["https://loja.test/recorte-a.webp"]]);
+    expect(deleteStorageFile.mock.calls).toEqual([
+      ["https://loja.test/recorte-a.webp"],
+    ]);
   });
 
   it("recorte atual adota a imagem e não apaga a imagem publicada", async () => {
@@ -242,7 +280,9 @@ describe("recorte de banner não atravessa gerações do editor", () => {
     await act(async () => a.resolver("https://loja.test/recorte-a.webp"));
     expect(imagem()).toBe("https://loja.test/recorte-a.webp");
     expect(deleteStorageFile).not.toHaveBeenCalled();
-    expect(toastSuccess).toHaveBeenCalledWith("Imagem ajustada com sucesso!", { id: "toast-1" });
+    expect(toastSuccess).toHaveBeenCalledWith("Imagem ajustada com sucesso!", {
+      id: "toast-1",
+    });
   });
 
   it("falha atual preserva imagem e ajustador e libera nova tentativa", async () => {
@@ -253,7 +293,9 @@ describe("recorte de banner não atravessa gerações do editor", () => {
     expect(imagem()).toBe(banners[0].imageUrl);
     expect(confirmar().disabled).toBe(false);
     expect(deleteStorageFile).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalledWith("Erro ao salvar imagem ajustada", { id: "toast-1" });
+    expect(toastError).toHaveBeenCalledWith("Erro ao salvar imagem ajustada", {
+      id: "toast-1",
+    });
   });
 
   it("falha ao limpar órfão não altera B nem apaga outra imagem", async () => {
@@ -264,7 +306,9 @@ describe("recorte de banner não atravessa gerações do editor", () => {
     deleteStorageFile.mockRejectedValueOnce(new Error("Falha da limpeza"));
     await act(async () => a.resolver("https://loja.test/recorte-a.webp"));
     expect(imagem()).toBe(banners[1].imageUrl);
-    expect(deleteStorageFile.mock.calls).toEqual([["https://loja.test/recorte-a.webp"]]);
+    expect(deleteStorageFile.mock.calls).toEqual([
+      ["https://loja.test/recorte-a.webp"],
+    ]);
     expect(toastError).not.toHaveBeenCalled();
   });
 });
