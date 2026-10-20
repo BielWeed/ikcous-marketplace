@@ -5085,7 +5085,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <Button
                     onClick={handleSubmit}
                     disabled={
-                      uploading || isUploadingAdjusted || isSubmitting || isOffline
+                      uploading ||
+                      isUploadingAdjusted ||
+                      isSubmitting ||
+                      isOffline
                     }
                     className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
                   >
@@ -5140,7 +5143,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <Button
                       onClick={handleSubmit}
                       disabled={
-                        uploading || isUploadingAdjusted || isSubmitting || isOffline
+                        uploading ||
+                        isUploadingAdjusted ||
+                        isSubmitting ||
+                        isOffline
                       }
                       className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
                     >
