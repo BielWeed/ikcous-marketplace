@@ -1681,7 +1681,7 @@ const POSTERIORES_A_97 = [
   },
   // 20261241000000 (o reembolso em duvida prende o saldo) redefine o reemitir e o por fora da 1226 e mais
   // cinco corpos (tests/banco/reembolso-em-duvida-posterior.cjs): com ela no ar o rollback da 1226 recusa
-  // (B1_BASELINE_DIVERGENT). E a mais nova: sai PRIMEIRO.
+  // (B1_BASELINE_DIVERGENT). Sai depois da 252, antes das demais abaixo.
   REEMBOLSO_EM_DUVIDA,
   // As sucessoras da 99 (20261212, 20261214 — redefinem corpos dela;
   // tests/banco/sucessoras-da-99.cjs), na ordem inversa da aplicação: com
