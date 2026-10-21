@@ -206,11 +206,15 @@
     "lote 3 da rodada da noite, job 116278628983 'Catraca de lint'): 'eslint warnings 405 /",
     "teto 406 / baixou -1 — abaixe o teto'. No mesmo run o Biome acusou 15 (teto 13): os 2",
     "erros eram do lote (template literal sem interpolação e uma linha fora do formatador em",
-    "tests/front/sw-toque-no-aviso.test.ts), consertados no mesmo PR; o teto do Biome NÃO subiu."
+    "tests/front/sw-toque-no-aviso.test.ts), consertados no mesmo PR; o teto do Biome NÃO subiu.",
+    "",
+    "21/10/2026 — warnings de eslint de 405 para 311. Medido no CI do PR #1040,",
+    "run 39609527051, job 119254423286, e confirmado pela catraca local. Os 11 erros",
+    "novos do Biome eram imports/formatação; corrigidos sem aumentar o teto de 13."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 405
+    "warnings": 311
   },
   "biome": {
     "errors": 13,

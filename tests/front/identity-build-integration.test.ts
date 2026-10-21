@@ -6,9 +6,8 @@ import os from "node:os";
 import path from "node:path";
 // @ts-expect-error The installed jsdom has no type package; no dependency is added for this test.
 import { JSDOM } from "jsdom";
-import { createServer } from "vite";
 import sharp from "sharp";
-import { identityRevision } from "../../src/lib/storeIdentity";
+import { createServer } from "vite";
 import type { ResolvedConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
@@ -22,6 +21,7 @@ import {
 import { createIdentityBuildFixture } from "../../scripts/identityBuildFixture";
 import type { BuildIdentitySnapshot } from "../../src/config/buildIdentityContract";
 import { nomeCurtoDaLoja } from "../../src/config/nomeCurtoDaLoja";
+import { identityRevision } from "../../src/lib/storeIdentity";
 
 vi.mock("../../scripts/identityBuildFixture", { spy: true });
 const roots: string[] = [];
@@ -142,13 +142,20 @@ describe("artefato real de Vite/PWA", () => {
     const original = await originalFixture("aurora");
     const marca = await sharp({
       create: { width: 64, height: 128, channels: 4, background: "#863B50" },
-    }).png().toBuffer();
+    })
+      .png()
+      .toBuffer();
     const bytes = await sharp({
       create: {
-        width: 192, height: 192, channels: 4,
+        width: 192,
+        height: 192,
+        channels: 4,
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       },
-    }).composite([{ input: marca, left: 64, top: 32 }]).png().toBuffer();
+    })
+      .composite([{ input: marca, left: 64, top: 32 }])
+      .png()
+      .toBuffer();
     const sha256 = hash(bytes);
     const assetPath = `v1/${sha256}/192.png`;
     const identity = {
@@ -157,7 +164,9 @@ describe("artefato real de Vite/PWA", () => {
         ...original.identity.assets,
         icon_192: {
           ...original.identity.assets.icon_192,
-          path: assetPath, sha256, bytes: bytes.length,
+          path: assetPath,
+          sha256,
+          bytes: bytes.length,
         },
       },
       urls: {

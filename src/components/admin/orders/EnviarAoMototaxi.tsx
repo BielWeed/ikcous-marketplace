@@ -5,6 +5,7 @@ import {
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { useMototaxi } from "@/hooks/useMototaxi";
 import { ID_ENTREGA_LOCAL } from "@/lib/guarda-de-frete";
+import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 
 export function EnviarAoMototaxi({
@@ -29,7 +30,7 @@ export function EnviarAoMototaxi({
     <div className="space-y-2 border-t border-admin-border pt-4">
       <a
         aria-label="Enviar ao mototáxi"
-        href={`https://wa.me/${numero}?text=${encodeURIComponent(mensagemMototaxi(order, loja))}`}
+        href={`${linkWhatsappDoCliente(numero)}?text=${encodeURIComponent(mensagemMototaxi(order, loja))}`}
         target="_blank"
         rel="noopener noreferrer"
         className="flex min-h-12 items-center justify-center gap-2 rounded-full border border-admin-border bg-zinc-900 px-4 text-sm font-bold text-white transition-colors hover:bg-zinc-800"

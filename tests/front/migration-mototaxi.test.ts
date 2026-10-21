@@ -56,13 +56,20 @@ it("salva pela RPC autenticada com papel atual, payload restrito e CHECK BR", ()
   );
   expect(sql).toContain("config_mototaxi_whatsapp_check");
 });
-it("rollback preserva o contato e não reescreve funções ou views antigas", () => {
+it("rollback preserva o contato, apaga só a função e a política e não reescreve views antigas", () => {
   const sql = ler(`supabase/migrations/rollback-manual-${nome}`);
   expect(sql).toContain("B1_BASELINE_DIVERGENT");
   expect(sql).toContain("REVOKE ALL ON public.config_mototaxi");
   expect(sql).toContain("REVOKE ALL ON FUNCTION public.salvar_config_mototaxi");
+  // Função e política usam as portas da 20261197000000: deixá-las inertes bloquearia o rollback da 97.
+  expect(sql).toContain(
+    "DROP POLICY IF EXISTS config_mototaxi_admin_select ON public.config_mototaxi;",
+  );
+  expect(sql).toContain(
+    "DROP FUNCTION IF EXISTS public.salvar_config_mototaxi(text, text);",
+  );
   expect(sql).not.toMatch(
-    /DROP\s+(TABLE|COLUMN|VIEW|FUNCTION)|DELETE FROM|TRUNCATE/i,
+    /DROP\s+(TABLE|COLUMN|VIEW|SCHEMA)|DELETE FROM|TRUNCATE|ALTER TABLE|CREATE OR REPLACE/i,
   );
 });
 it("congela o corpo novo na consulta e passa fase zero sem escrever no banco", () => {

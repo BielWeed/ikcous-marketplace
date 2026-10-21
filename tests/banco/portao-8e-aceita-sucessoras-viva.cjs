@@ -96,6 +96,11 @@ const {
 // A 20261244000000 (a loja escolhe como entrega na cidade: a SEGUNDA sucessora de upsert_store_config, a cadeia 99 -> 39 -> 44)
 // tem a PROVA PRÓPRIA em tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs (a 8e POSITIVA com ela no ar e desfeita);
 // aqui `noEstado` também a desfaz antes de montar o estado (o módulo "posterior" dela, a mesma régua da 20261242).
+// A 20261310000000 (o estilo do card de frete gratis: a TERCEIRA sucessora de upsert_store_config, a cadeia 99 -> 39 -> 44 -> 1310)
+// sai do rol pela MESMA razao da 44: o `hashVigente` dela e' o corpo da 44, nao o da 99, entao nao e' elo desta cadeia (39).
+// A consulta 8e ja traz o par dela; a migration em si e' provada em tests/banco/estilo-card-frete-viva.cjs (60a/60b). Aqui
+// o `noEstado` a desfaz antes de montar o estado (desfazerEntregaNaCidadeNaTransacao chama estilo-card-frete-posterior.cjs),
+// como faz com a 44: esta prova mede a 8e sobre a cadeia da 99, sem a 44 nem a 1310 no ar.
 const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
   (s) =>
     s.nome !== "20261280000000_o_balcao_registra_so_o_total_conferido.sql" &&
@@ -105,7 +110,8 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
       "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql" &&
     s.nome !==
       "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql" &&
-    s.nome !== "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
+    s.nome !== "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql" &&
+    s.nome !== "20261310000000_estilo_do_card_de_frete.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");

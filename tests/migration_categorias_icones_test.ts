@@ -33,6 +33,7 @@ Deno.test("300: migration aditiva, chaves iguais às do código e sem mudar ACL 
   existe();
   const sql = ler(dir + nome);
   assertStringIncludes(sql, "ADD COLUMN IF NOT EXISTS icone text");
+  assert(sql.trimEnd().endsWith("NOTIFY pgrst, 'reload schema';"));
   const chaves = [
     ...ler("src/lib/icones-de-categoria.tsx").matchAll(/^ {2}(\w+): \[/gm),
   ]

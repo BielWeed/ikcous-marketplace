@@ -286,7 +286,9 @@ describe("fronteira da configuração de identidade", () => {
     expect(snapshot.localUrls.badge_96).toBe("/icons/badge-96x96.png");
     // A manifestação completa é conferida no teste de integração; aqui o
     // preparo precisa incluir a reserva no publicDir mesmo sem logo derivável.
-    expect(await fs.stat(path.join(result.publicDir, snapshot.localUrls.badge_96))).toBeTruthy();
+    expect(
+      await fs.stat(path.join(result.publicDir, snapshot.localUrls.badge_96)),
+    ).toBeTruthy();
     expect(JSON.parse(result.define!.__APP_VERSION__)).toBe(
       snapshot.deliveryVersion,
     );

@@ -787,6 +787,14 @@
       "porque": "Configuracao da loja (painel do lojista): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
     },
     {
+      "funcao": "public.salvar_config_mototaxi(p_whatsapp text, p_nome text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Contato do mototaxi (painel do lojista, migration 20261330000000): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin() E o admin ATUAL (recusa o resto com 42501); PUBLIC e anon seguem sem EXECUTE; o visitante nao a executa."
+    },
+    {
       "funcao": "public.salvar_config_pagamento_cartao(p_credito boolean, p_debito boolean, p_parcelas_max integer)",
       "executa": ["authenticated"],
       "tipo": "volatil",

@@ -121,9 +121,12 @@ describe("push usa a imagem da própria entrega", () => {
           ? {}
           : {
               match: vi.fn(),
-              open: falha === "cache-falhou" ? erro : async () => ({
-                match: async () => ({ json: erro }),
-              }),
+              open:
+                falha === "cache-falhou"
+                  ? erro
+                  : async () => ({
+                      match: async () => ({ json: erro }),
+                    }),
             },
       );
       const waitUntil = vi.fn();
@@ -143,7 +146,9 @@ describe("push usa a imagem da própria entrega", () => {
     const waitUntil = vi.fn();
     push({
       data: {
-        json: () => { throw new Error("JSON inválido"); },
+        json: () => {
+          throw new Error("JSON inválido");
+        },
         text: () => "Aviso textual",
       },
       waitUntil,

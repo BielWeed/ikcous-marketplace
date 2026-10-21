@@ -5,7 +5,6 @@ import path from "node:path";
 import sharp from "sharp";
 import type { LocalIdentityUrls } from "../src/config/buildIdentityContract";
 import { BADGE_NEUTRO } from "../src/config/fichaDaLojaContract";
-import { prepararBadgeDaIdentidade } from "./prepareIdentityBadge";
 import type { DownloadedStoreIdentity } from "../src/lib/publicStoreIdentity";
 import {
   cloneStoreIdentity,
@@ -16,6 +15,7 @@ import type {
   IdentityAsset,
   PublicStoreIdentity,
 } from "../src/lib/storeIdentity";
+import { prepararBadgeDaIdentidade } from "./prepareIdentityBadge";
 
 export interface PrepareIdentityBuildOptions {
   downloaded: DownloadedStoreIdentity;
