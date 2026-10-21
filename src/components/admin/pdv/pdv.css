@@ -88,7 +88,7 @@
   color: var(--lit-t-ff94bc, #ff94bc);
 }
 .pdv-orange {
-  color: var(--lit-t-ffae70, #ffae70);
+  color: #fbbf24;
 }
 .pdv-red {
   color: var(--lit-t-ff9999, #ff9999);
@@ -303,7 +303,7 @@
   font-variant-numeric: tabular-nums;
 }
 .pdv-added {
-  color: var(--lit-t-5ee2d0, #5ee2d0);
+  color: var(--lit-t-3ddc97, #3ddc97);
   font-size: 11px;
 }
 .pdv-resumo-qtd {

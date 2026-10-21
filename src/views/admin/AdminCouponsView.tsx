@@ -32,6 +32,7 @@ import {
   cupomPodeCobrirACompraInteira,
 } from "@/lib/cupom-que-cobre-a-compra";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { type RotuloDeCupom, rotuloDoCupom } from "@/utils/status-do-cupom";
@@ -81,7 +82,7 @@ const itemVariants: Variants = {
 // não pode continuar com a mesma cara de "Ativo").
 const classesDoSeloPorRotulo: Record<RotuloDeCupom, string> = {
   Ativo: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-  Expirado: "border-orange-400/20 bg-orange-400/10 text-orange-300",
+  Expirado: `border-zinc-500/20 bg-zinc-500/10 ${classeDoTexto("neutro")}`,
   Inativo: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
   Esgotado: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
 };
@@ -483,11 +484,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         {isOffline && (
           <div
             role="status"
-            className="flex gap-3 rounded-[20px] border border-orange-300/20 bg-orange-300/5 p-4 text-sm leading-relaxed"
+            className="flex gap-3 rounded-[20px] border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-relaxed"
           >
             <CloudOff
               aria-hidden="true"
-              className="size-5 shrink-0 text-orange-300"
+              className={`size-5 shrink-0 ${classeDoTexto("negativo")}`}
             />
             <div>
               <p className="font-bold text-zinc-50">Você está offline</p>
@@ -682,7 +683,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         </span>
                       </div>
                       {indisponivel && (
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-orange-300">
+                        <p
+                          className={`mt-1 flex items-center gap-1.5 text-xs ${classeDoTexto("atencao")}`}
+                        >
                           <LockKeyhole
                             aria-hidden="true"
                             className="size-3.5"
@@ -693,7 +696,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         </p>
                       )}
                       {cupomPodeCobrirACompraInteira(coupon) && (
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-orange-300">
+                        <p
+                          className={`mt-1 flex items-center gap-1.5 text-xs ${classeDoTexto("atencao")}`}
+                        >
                           <AlertCircle
                             aria-hidden="true"
                             className="size-3.5 shrink-0"
@@ -803,15 +808,19 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                             {coupon.active ? "Ligada" : "Desligada"}
                           </p>
                           {cupomPodeCobrirACompraInteira(coupon) && (
-                            <p className="text-sm leading-relaxed text-orange-200">
+                            <p
+                              className={`text-sm leading-relaxed ${classeDoTexto("atencao")}`}
+                            >
                               {lojaSoRecebePeloApp
                                 ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
                                 : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
                             </p>
                           )}
                           {indisponivel && (
-                            <div className="rounded-2xl border border-orange-300/20 bg-orange-300/5 p-3">
-                              <p className="font-bold text-orange-300">
+                            <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-3">
+                              <p
+                                className={`font-bold ${classeDoTexto("atencao")}`}
+                              >
                                 Cupom indisponível
                               </p>
                               <p className="mt-1 leading-relaxed">

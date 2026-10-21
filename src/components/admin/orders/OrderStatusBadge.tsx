@@ -1,3 +1,4 @@
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import type { CanalDaVenda, OrderStatus, PaymentStatus } from "@/types";
 import { CheckCircle, Clock, Package, Truck, XCircle } from "lucide-react";
 import type React from "react";
@@ -17,44 +18,42 @@ export const statusConfig: Record<
   pending: {
     label: "Novo Pedido",
     icon: Package,
-    color: "text-blue-400",
-    bgColor: "bg-blue-500/10",
-    borderColor: "border-blue-500/20",
-    className: "text-blue-400",
+    color: classeDoTexto("info"),
+    bgColor: "bg-sky-500/10",
+    borderColor: "border-sky-500/20",
+    className: classeDoTexto("info"),
   },
   processing: {
     label: "Em Separação",
     icon: Clock,
-    color: "text-amber-400",
+    color: classeDoTexto("atencao"),
     bgColor: "bg-amber-500/10",
     borderColor: "border-amber-500/20",
-    className: "text-amber-400",
+    className: classeDoTexto("atencao"),
   },
   shipping: {
     label: "Em Trânsito",
     icon: Truck,
-    color: "text-indigo-400",
-    bgColor: "bg-indigo-500/10",
-    borderColor: "border-indigo-500/20",
-    className: "text-indigo-400",
+    color: classeDoTexto("info"),
+    bgColor: "bg-sky-500/10",
+    borderColor: "border-sky-500/20",
+    className: classeDoTexto("info"),
   },
   delivered: {
     label: "Finalizado",
     icon: CheckCircle,
-    color: "text-emerald-400",
+    color: classeDoTexto("positivo"),
     bgColor: "bg-emerald-500/10",
     borderColor: "border-emerald-500/20",
-    className: "text-emerald-400",
+    className: classeDoTexto("positivo"),
   },
   cancelled: {
     label: "Cancelado",
     icon: XCircle,
-    // zinc-400 (e nao 500): sobre o fundo escuro do painel o 500 dava ~3,6:1,
-    // abaixo do minimo AA de 4,5:1; o 400 da ~6,7:1.
-    color: "text-zinc-400",
-    bgColor: "bg-zinc-500/10",
-    borderColor: "border-zinc-500/20",
-    className: "text-zinc-400",
+    color: classeDoTexto("negativo"),
+    bgColor: "bg-red-500/10",
+    borderColor: "border-red-500/20",
+    className: classeDoTexto("negativo"),
   },
 };
 
@@ -101,16 +100,7 @@ export const OrderStatusBadge = memo(function OrderStatusBadge({
 }: Readonly<OrderStatusBadgeProps>) {
   const cfg = statusConfig[status || "pending"] || statusConfig.pending;
   const cartao = tamanho === "cartao";
-  const corDoCartao =
-    status === "processing"
-      ? "bg-violet-300/10 text-violet-300"
-      : status === "shipping"
-        ? "bg-cyan-300/10 text-cyan-300"
-        : status === "cancelled"
-          ? "bg-red-400/10 text-red-300"
-          : status === "delivered"
-            ? "bg-emerald-300/10 text-emerald-300"
-            : "bg-indigo-300/10 text-indigo-300";
+  const corDoCartao = `${cfg.bgColor} ${cfg.color}`;
 
   return (
     <div
@@ -177,32 +167,32 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
     aguardando: {
       label: "Aguardando pagamento",
       shortLabel: "Aguardando pgto.",
-      color: "text-amber-400",
+      color: classeDoTexto("atencao"),
       bgColor: "bg-amber-500/10",
       borderColor: "border-amber-500/20",
     },
     pago: {
       label: "Pago",
-      color: "text-emerald-400",
+      color: classeDoTexto("positivo"),
       bgColor: "bg-emerald-500/10",
       borderColor: "border-emerald-500/20",
     },
     recusado: {
       label: "Recusado",
-      color: "text-rose-400",
-      bgColor: "bg-rose-500/10",
-      borderColor: "border-rose-500/20",
+      color: classeDoTexto("negativo"),
+      bgColor: "bg-red-500/10",
+      borderColor: "border-red-500/20",
     },
     expirado: {
       label: "Expirado",
-      color: "text-zinc-400",
+      color: classeDoTexto("neutro"),
       bgColor: "bg-zinc-500/10",
       borderColor: "border-zinc-500/20",
     },
     estornado: {
       label: "Estornado — precisa de atenção",
       shortLabel: "Estornado",
-      color: "text-red-400",
+      color: classeDoTexto("negativo"),
       bgColor: "bg-red-500/10",
       borderColor: "border-red-500/40",
       needsAttention: true,
@@ -217,7 +207,7 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
       // causa que às vezes é outra.
       label: "Pago fora do fluxo — precisa de atenção",
       shortLabel: "Pago fora do fluxo",
-      color: "text-red-400",
+      color: classeDoTexto("negativo"),
       bgColor: "bg-red-500/10",
       borderColor: "border-red-500/40",
       needsAttention: true,
@@ -228,14 +218,14 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
     // `pago`.
     recebido_na_entrega: {
       label: "Recebido na entrega",
-      color: "text-emerald-400",
+      color: classeDoTexto("positivo"),
       bgColor: "bg-emerald-500/10",
       borderColor: "border-emerald-500/20",
     },
     sem_cobranca: {
       label: "Sem cobrança online",
       // Mesmo motivo do "Cancelado": zinc-500 ficava abaixo de 4,5:1.
-      color: "text-zinc-400",
+      color: classeDoTexto("neutro"),
       bgColor: "bg-zinc-500/10",
       borderColor: "border-zinc-500/20",
     },

@@ -25,6 +25,7 @@ import {
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus } from "@/types";
@@ -364,7 +365,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             "mb-2 flex items-start gap-1.5 rounded-xl p-2 text-xs leading-relaxed",
             order.status === "cancelled"
               ? "bg-red-400/10 text-red-300"
-              : "bg-orange-300/10 text-orange-300",
+              : `bg-amber-400/10 ${classeDoTexto("atencao")}`,
           )}
         >
           {order.status === "cancelled" ? (
@@ -397,7 +398,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
       {isOffline && (
         <p
           role="status"
-          className="mb-2 flex items-start gap-2 rounded-xl bg-orange-300/10 p-2 text-xs text-orange-300"
+          className={`mb-2 flex items-start gap-2 rounded-xl bg-red-400/10 p-2 text-xs ${classeDoTexto("negativo")}`}
         >
           <WifiOff aria-hidden="true" className="size-4 shrink-0" />
           <span>
@@ -665,7 +666,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   painel === "cancelar"
                     ? "border-red-300/15 bg-red-400/10 text-red-200"
                     : painel === "avancar"
-                      ? "border-orange-300/15 bg-orange-300/10 text-orange-200"
+                      ? `border-amber-400/15 bg-amber-400/10 ${classeDoTexto("atencao")}`
                       : "border-emerald-300/15 bg-emerald-300/10 text-emerald-200",
                 )}
               >
