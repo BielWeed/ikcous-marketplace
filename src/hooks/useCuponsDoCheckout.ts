@@ -9,6 +9,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { arredondarParaCentavos } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -69,7 +70,9 @@ export function useCuponsDoCheckout({ subtotal, userId, ligado }: Parametros) {
         // `rpc` devolve um construtor "thenable", não uma Promise.
         Promise.resolve(
           supabase.rpc("cupons_do_checkout", {
-            p_subtotal: Math.max(Number.isFinite(valor) ? valor : 0, 0),
+            p_subtotal: arredondarParaCentavos(
+              Math.max(Number.isFinite(valor) ? valor : 0, 0),
+            ),
           }),
         ),
         PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
