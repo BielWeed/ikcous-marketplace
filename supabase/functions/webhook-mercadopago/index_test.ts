@@ -3079,6 +3079,39 @@ Deno.test("comprovante chama DIRETO a reserva no supabase do webhook — não de
 // Pedido base reaproveita UUID_PEDIDO/ID_ORDER_TESTE já definidos acima.
 // =============================================================================
 
+for (const rota of ["payment", "order"] as const) {
+  for (const statusRefund of ["processing", "in_process", "rejected"]) {
+    for (const paymentStatus of ["pago", "pago_apos_expirar", "aguardando"]) {
+      Deno.test(`L3a-W1 - ${rota}: refund ${statusRefund} não estorna pedido já recebido (${paymentStatus})`, async () => {
+        const registro = { chamadasRpc: [], chamadasConcluirEstorno: [], insertsOrderRefunds: [] };
+        const id = rota === "payment" ? "999" : ID_ORDER_TESTE;
+        const pedido = {
+          id: UUID_PEDIDO, gateway_payment_id: id, total: 100, valor_estornado: 0,
+          payment_status: paymentStatus, paid_at: "2026-10-21T00:00:00Z", status: "shipping",
+        };
+        const supabase = clienteFalso({ pedido, registro });
+        const refund = { id: "REF-L3A", amount: 100, status: statusRefund };
+        const fetchImpl = fetchConsulta(200, {
+          id, external_reference: UUID_PEDIDO, status: "refunded", status_detail: "refunded",
+          total_amount: "100.00", transaction_amount: 100,
+          transactions: { payments: [{ id: "PAY-L3A", amount: "100.00" }], refunds: [refund] },
+          refunds: [refund],
+        });
+        const resposta = await handler(
+          await requisicaoAssinada(id, { corpoExtra: { type: rota } }),
+          { supabase, fetchImpl },
+        );
+        assertEquals(resposta.status, 200);
+        assertEquals(registro.chamadasRpc, [], "refund sem desfecho não chama confirmar_pagamento");
+        assertEquals(registro.chamadasConcluirEstorno, []);
+        assertEquals(registro.insertsOrderRefunds, []);
+        assertEquals(pedido.payment_status, paymentStatus);
+        assertEquals(pedido.valor_estornado, 0);
+      });
+    }
+  }
+}
+
 // A1: sem um refund concluído no ledger, o caminho legado não pode encerrar
 // um pedido nunca confirmado. O banco é quem fecha reserva e entrada juntos.
 for (const rota of ["payment", "order"] as const) {
@@ -3193,6 +3226,7 @@ Deno.test("W1 - payment 'refunded' com linha em_processamento de 100 -> concluir
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-1");
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r1");
   assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(registro.chamadasRpc, [], "mesmo concluído, estorno é decidido só pelo ledger");
 });
 
 Deno.test("W2 - order 'processed'+'partially_refunded' com refund de 30 e linha 'solicitado' de 30 -> concluída com r2; responde 200 'estorno_parcial_registrado' SEM confirmar_pagamento com status inventado", async () => {
@@ -3422,6 +3456,7 @@ Deno.test("W3 - order 'refunded' SEM linha, refund processed 100 (r3) -> UMA lin
   assertEquals(linhasDoRefund(registro, "r3").length, 1);
   assertEquals((registro as any).valorEstornadoAcumulado, 100);
   assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.chamadasRpc, [], "conclusão e replay não usam confirmar_pagamento");
 });
 
 // =============================================================================
@@ -5582,7 +5617,7 @@ Deno.test("MUT-Y (dinheiro já saiu) - linha 'sistema' em_processamento de charg
 // `CHECK (amount > 0)` no banco -> 500 em laço -> o MP reenvia para sempre).
 // =============================================================================
 
-Deno.test("PROBE-E (ANTES-DE-CRESCER-1) - refund 'processed' sem 'amount' legível -> zero inserts, zero RPC de estorno, 200, e o resto do handler roda (confirmar_pagamento do 'refunded' acontece)", async () => {
+Deno.test("PROBE-E (ANTES-DE-CRESCER-1) - refund 'processed' sem 'amount' legível -> zero inserts, zero RPC de estorno, 200, sem confirmar_pagamento", async () => {
   const registro = {
     chamadasRpc: [] as any[],
     chamadasConcluirEstorno: [] as any[],
@@ -5621,11 +5656,9 @@ Deno.test("PROBE-E (ANTES-DE-CRESCER-1) - refund 'processed' sem 'amount' legív
   assertEquals(resposta.status, 200);
   assertEquals(registro.insertsOrderRefunds.length, 0);
   assertEquals(registro.chamadasConcluirEstorno.length, 0);
-  // O resto do handler roda: confirmar_pagamento é chamada com o status do
-  // 'refunded' (a falha ao registrar o desfecho do estorno NUNCA bloqueia o
-  // resto do fluxo).
-  assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_status, "estornado");
+  // L3a-W1: valor ilegível não autoriza estornar pelo caminho legado.
+  assertEquals(registro.chamadasRpc, []);
+  assertEquals(pedido.payment_status, "pago");
 });
 
 // =============================================================================
@@ -5666,7 +5699,7 @@ Deno.test("ANTES-DE-CRESCER-2 (Lote A) - chargeback pela rota 'payment' (pagamen
 // o valor PRESENTE mas nulo/vazio, que só o `<= 0` pega.
 // =============================================================================
 
-Deno.test("PROBE-E2 (rodada 3) - refund 'processed' com amount: null -> zero inserts, zero RPC de estorno, 200, e o resto do handler roda", async () => {
+Deno.test("PROBE-E2 (rodada 3) - refund 'processed' com amount: null -> zero inserts, zero RPC de estorno, 200, sem confirmar_pagamento", async () => {
   const registro = {
     chamadasRpc: [] as any[],
     chamadasConcluirEstorno: [] as any[],
@@ -5705,9 +5738,9 @@ Deno.test("PROBE-E2 (rodada 3) - refund 'processed' com amount: null -> zero ins
   assertEquals(resposta.status, 200);
   assertEquals(registro.insertsOrderRefunds.length, 0);
   assertEquals(registro.chamadasConcluirEstorno.length, 0);
-  // O resto do handler roda mesmo com o refund pulado.
-  assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_status, "estornado");
+  // L3a-W1: refund pulado pelo ledger não altera pedido já pago.
+  assertEquals(registro.chamadasRpc, []);
+  assertEquals(pedido.payment_status, "pago");
 });
 
 Deno.test("PROBE-E3 (rodada 3) - refund 'processed' com amount: '' -> zero inserts (Number('') também é 0, não NaN)", async () => {
@@ -7972,13 +8005,13 @@ for (const principal of ["37.27", "40.86"]) {
   }
 }
 
-Deno.test("REV1 webhook: estorno da order financiada já paga passa pela mesma conferência; Pix e à vista não", async () => {
-  for (const [tipo, parcelas, estado, esperado] of [
-    ["credit_card", 2, "pago", true],
-    ["credit_card", 2, "pago_apos_expirar", true],
-    ["credit_card", 2, "aguardando", false],
-    ["credit_card", 1, "pago", false],
-    ["bank_transfer", 2, "pago", false],
+Deno.test("REV1 webhook: refund financiado sem desfecho não chama confirmar_pagamento, nem para pedido já pago", async () => {
+  for (const [tipo, parcelas, estado] of [
+    ["credit_card", 2, "pago"],
+    ["credit_card", 2, "pago_apos_expirar"],
+    ["credit_card", 2, "aguardando"],
+    ["credit_card", 1, "pago"],
+    ["bank_transfer", 2, "pago"],
   ]) {
     ambienteDoWebhook();
     const registro = { chamadasRpc: [], chamadasAviso: [] };
@@ -7996,11 +8029,11 @@ Deno.test("REV1 webhook: estorno da order financiada já paga passa pela mesma c
       supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
     });
     assertEquals(r.status, 200);
-    assertEquals(registro.chamadasRpc.map((c) => c.args.p_status), esperado ? ["estornado"] : [], `${tipo}/${parcelas}/${estado}`);
+    assertEquals(registro.chamadasRpc, [], `${tipo}/${parcelas}/${estado}`);
   }
 });
 
-Deno.test("REV1 webhook: pedido já estornado aceita o refund financiado e alcança a RPC de estorno", async () => {
+Deno.test("REV1 webhook: pedido já estornado não repete refund financiado pelo confirmar_pagamento", async () => {
   ambienteDoWebhook();
   const registro = { chamadasRpc: [], chamadasAviso: [] };
   const supabase = clienteFalso({ rpcResultado: "estornado", registro,
@@ -8016,9 +8049,7 @@ Deno.test("REV1 webhook: pedido já estornado aceita o refund financiado e alcan
     supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
   });
   assertEquals(r.status, 200);
-  assertEquals(registro.chamadasRpc.map((c) => ({
-    pedido: c.args.p_order_id, pagamento: c.args.p_payment_id, status: c.args.p_status,
-  })), [{ pedido: UUID_PEDIDO, pagamento: ID_ORDER_CARTAO_MP, status: "estornado" }]);
+  assertEquals(registro.chamadasRpc, []);
 });
 
 for (const [rotulo, campo] of [

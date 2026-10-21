@@ -41,6 +41,29 @@ Deno.test("conferência compartilhada: mantém total numérico em string e toler
   assertEquals(conferirValorDoPagamento(149.94, 150), { provado: false, motivo: "valor_divergente" });
 });
 
+for (const [valor, total, esperado] of [
+  [59.699999999999996, 59.75, true],
+  [59.75, 59.699999999999996, true],
+  [100.05, 100, true],
+  [99.95, 100, true],
+  [59.69, 59.75, false],
+  [59.81, 59.75, false],
+]) {
+  Deno.test(`conferência em centavos: ${valor} contra ${total} → ${esperado}`, () => {
+    assertEquals(conferirValorDoPagamento(valor, total).provado, esperado);
+  });
+}
+
+Deno.test("conferência em centavos: captura à vista no limite de cinco centavos", () => {
+  const order = {
+    total_paid_amount: "59.70",
+    transactions: { payments: [{ payment_method: { type: "credit_card", installments: 1 } }] },
+  };
+  assertEquals(conferirValorDoPagamento(59.65, 59.65, order).provado, true);
+  order.total_paid_amount = "59.71";
+  assertEquals(conferirValorDoPagamento(59.65, 59.65, order).provado, false);
+});
+
 const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 const OUTRO_PEDIDO = "9e9e9e9e-1111-2222-3333-444455556666";
 const VAGA = "ORD01JS2V6CM8KJ0EC4H502TGK1WP";

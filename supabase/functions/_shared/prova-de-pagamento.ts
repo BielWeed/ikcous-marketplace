@@ -158,7 +158,10 @@ export function conferirValorDoPagamento(
   if (parcelado && Math.round(valor * 100) < Math.round(total * 100)) {
     return { provado: false, motivo: "valor_divergente" };
   }
-  if (Math.abs(valor - total) > TOLERANCIA_DE_VALOR && (!order || !jurosCompativeis(valor, total, order))) {
+  const totalEmCentavos = Math.round(total * 100);
+  const toleranciaEmCentavos = Math.round(TOLERANCIA_DE_VALOR * 100);
+  if (Math.abs(Math.round(valor * 100) - totalEmCentavos) > toleranciaEmCentavos &&
+    (!order || !jurosCompativeis(valor, total, order))) {
     return { provado: false, motivo: "valor_divergente" };
   }
   // Captura parcial ou acima do teto não confirma. Principal exato não
@@ -166,7 +169,7 @@ export function conferirValorDoPagamento(
   if (order && orderEhDeCartao(order) && presente(valorCapturado(order))) {
     const pago = comoNumero(valorCapturado(order));
     if ((parcelado && (pago === null || Math.round(pago * 100) < Math.round(total * 100))) ||
-      (pago !== null && pago > total + TOLERANCIA_DE_VALOR &&
+      (pago !== null && Math.round(pago * 100) - totalEmCentavos > toleranciaEmCentavos &&
         (!parcelado || Math.round(pago * 100) > Math.floor(Math.round(total * 100) * TETO_DE_JUROS)))) {
       return { provado: false, motivo: "valor_divergente" };
     }
