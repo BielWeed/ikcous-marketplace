@@ -578,11 +578,13 @@ describe("atenderPorteiro — /identidade.json e /manifest.webmanifest", () => {
       purpose: "monochrome",
     });
     expect(
-      manifest.icons.slice(0, 3).every((icone: { src: string }) =>
-        icone.src.startsWith(
-          "https://projetoaaaaaaaaaaaaa.supabase.co/storage/",
+      manifest.icons
+        .slice(0, 3)
+        .every((icone: { src: string }) =>
+          icone.src.startsWith(
+            "https://projetoaaaaaaaaaaaaa.supabase.co/storage/",
+          ),
         ),
-      ),
     ).toBe(true);
   });
 

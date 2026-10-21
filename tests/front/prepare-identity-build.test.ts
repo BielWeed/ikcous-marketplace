@@ -226,16 +226,22 @@ describe("badge monocromático da identidade", () => {
         const bytes = await fs.readFile(path.join(prepared.publicDir, url));
         const metadata = await sharp(bytes).metadata();
         expect(metadata).toMatchObject({
-          format: "png", width: 96, height: 96, hasAlpha: true,
+          format: "png",
+          width: 96,
+          height: 96,
+          hasAlpha: true,
         });
         const { data, info } = await sharp(bytes)
-          .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
         expect(data[3]).toBe(0);
         expect(data[(48 * 96 + 48) * info.channels + 3]).toBe(
           modo === "alpha" ? 128 : 255,
         );
         for (let p = 0; p < data.length; p += 4) {
-          if (data[p + 3] > 0) expect([...data.subarray(p, p + 3)]).toEqual([255, 255, 255]);
+          if (data[p + 3] > 0)
+            expect([...data.subarray(p, p + 3)]).toEqual([255, 255, 255]);
         }
       } finally {
         await prepared.dispose();
@@ -243,31 +249,47 @@ describe("badge monocromático da identidade", () => {
     },
   );
 
-  it.each(["ambiguo", "vazio"] as const)("logo %s usa reserva neutra sem inventar desenho", async (modo) => {
-    const prepared = await prepararComIcone(modo);
-    try {
-      expect(Reflect.get(prepared.localUrls, "badge_96")).toBe("/icons/badge-96x96.png");
-    } finally {
-      await prepared.dispose();
-    }
-  });
+  it.each(["ambiguo", "vazio"] as const)(
+    "logo %s usa reserva neutra sem inventar desenho",
+    async (modo) => {
+      const prepared = await prepararComIcone(modo);
+      try {
+        expect(Reflect.get(prepared.localUrls, "badge_96")).toBe(
+          "/icons/badge-96x96.png",
+        );
+      } finally {
+        await prepared.dispose();
+      }
+    },
+  );
 
   it("publica a reserva real branca/transparente (não aposentada pelo preparo)", async () => {
-    const reserva = await fs.readFile(path.resolve("public/icons/badge-96x96.png"));
+    const reserva = await fs.readFile(
+      path.resolve("public/icons/badge-96x96.png"),
+    );
     await put("icons/badge-96x96.png", reserva);
     const prepared = await prepararComIcone("vazio");
     try {
-      const publicada = await fs.readFile(path.join(prepared.publicDir, "icons/badge-96x96.png"));
+      const publicada = await fs.readFile(
+        path.join(prepared.publicDir, "icons/badge-96x96.png"),
+      );
       expect(publicada).toEqual(reserva);
       expect(await sharp(publicada).metadata()).toMatchObject({
-        format: "png", width: 96, height: 96, hasAlpha: true,
+        format: "png",
+        width: 96,
+        height: 96,
+        hasAlpha: true,
       });
-      const { data } = await sharp(publicada).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const { data } = await sharp(publicada)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
       const alphas = [...data].filter((_, p) => p % 4 === 3);
       expect(Math.min(...alphas)).toBe(0);
       expect(Math.max(...alphas)).toBe(255);
       for (let p = 0; p < data.length; p += 4) {
-        if (data[p + 3] > 0) expect([...data.subarray(p, p + 3)]).toEqual([255, 255, 255]);
+        if (data[p + 3] > 0)
+          expect([...data.subarray(p, p + 3)]).toEqual([255, 255, 255]);
       }
     } finally {
       await prepared.dispose();

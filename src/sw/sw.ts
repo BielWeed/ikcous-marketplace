@@ -799,7 +799,10 @@ setInterval(() => {
 // mesmo dispositivo (SW não é limpo por navegação). Por isso, mesmo achando
 // a ficha no cache próprio, só ela é aceita se `ficha.host` bater com
 // `self.location.hostname` — senão, ícone assado (nunca a ficha de outra loja).
-async function resolverIconesDaLoja(): Promise<{ icon: string; badge: string }> {
+async function resolverIconesDaLoja(): Promise<{
+  icon: string;
+  badge: string;
+}> {
   try {
     const cache = await caches.open(IDENTIDADE_CACHE_NAME);
     const resposta = await cache.match(CAMINHO_IDENTIDADE_JSON);

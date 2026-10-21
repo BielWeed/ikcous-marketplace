@@ -1,8 +1,10 @@
+import type { LocalIdentityUrls } from "../config/buildIdentityContract";
 import type {
   ConfiguracaoDaLoja,
   FichaDaLoja,
 } from "../config/fichaDaLojaContract";
 import { CAMINHO_IDENTIDADE_JSON } from "../config/fichaDaLojaContract";
+import { BADGE_NEUTRO } from "../config/fichaDaLojaContract";
 // O PORTEIRO — o `middleware.ts` estendido que monta o HTML de cada loja na
 // borda, por HOST, a partir de um único build compartilhado (etapa 2 da
 // escala, 11/09/2026). Desenho aprovado em
@@ -14,8 +16,6 @@ import { CAMINHO_IDENTIDADE_JSON } from "../config/fichaDaLojaContract";
 import { escapeHtml, identityHtml } from "../config/identidadeNoHtml";
 import { MANIFESTO_BASE } from "../config/manifestoBase";
 import { nomeCurtoDaLoja } from "../config/nomeCurtoDaLoja";
-import type { LocalIdentityUrls } from "../config/buildIdentityContract";
-import { BADGE_NEUTRO } from "../config/fichaDaLojaContract";
 import { cleanEnvVar } from "../lib/env-publico-valores";
 import { resolverValoresPublicosSupabase } from "../lib/env-publico-valores";
 import { readPublicStoreIdentity } from "../lib/publicStoreIdentity";
