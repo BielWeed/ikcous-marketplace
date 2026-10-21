@@ -1,21 +1,15 @@
 import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { completarSerieDe14Dias, formatarData, formatarMoeda } from "@/lib/crm";
+import { tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { PontoDaSerieDiaria } from "@/types/painel";
-import {
-  BarChart3,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  List,
-} from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, List } from "lucide-react";
 import { type PointerEvent, useId, useState } from "react";
 import {
   BOTAO_INICIO,
-  CARTAO_INICIO,
   FalhaDoInicio,
-  TituloDoInicio,
   VALOR_INICIO,
+  valorNaCor,
 } from "./visualDoInicio";
 
 const DATA_CURTA = new Intl.DateTimeFormat("pt-BR", {
@@ -28,7 +22,11 @@ const dataCurta = (dia: string) =>
     .replace(" de ", " ")
     .replace(".", "");
 
-/** HTML puro: a mesma série, agora também escolhida por setas e tabela. */
+/**
+ * HTML puro: a série dos 14 dias, escolhida por toque, setas e tabela. Mora
+ * dentro do cartão "Este mês": barras neutras e só o último dia na cor do
+ * valor vendido naquele dia: verde quando há vendas, sem barra quando zero.
+ */
 export function SerieDe14Dias({
   serie,
   carregando,
@@ -74,14 +72,18 @@ export function SerieDe14Dias({
     <section
       aria-labelledby="inicio-serie-titulo"
       aria-busy={carregando && serieCompleta.length === 0}
-      className="min-w-0"
+      className="min-w-0 border-t border-admin-border pt-3"
     >
-      <TituloDoInicio id="inicio-serie-titulo" icone={BarChart3} tom="azul">
-        Vendas pagas · 14 dias
-      </TituloDoInicio>
+      <h3
+        id="inicio-serie-titulo"
+        className="mb-2 text-sm font-medium text-zinc-400"
+      >
+        Últimos 14 dias
+        <span className="sr-only"> · vendas pagas por dia</span>
+      </h3>
       {carregando && serieCompleta.length === 0 ? (
-        <div className={CARTAO_INICIO}>
-          <div className="premium-shimmer h-28 rounded-xl" aria-hidden="true" />
+        <div>
+          <div className="premium-shimmer h-24 rounded-xl" aria-hidden="true" />
           <p className="mt-3 text-sm text-zinc-400">Carregando as vendas…</p>
         </div>
       ) : serieCompleta.length === 0 ? (
@@ -91,7 +93,7 @@ export function SerieDe14Dias({
             <p aria-live="polite">—</p>
           </FalhaDoInicio>
         ) : (
-          <div className={CARTAO_INICIO}>
+          <div>
             <p className="text-base font-semibold text-white">
               Sem vendas registradas nos últimos 14 dias.
             </p>
@@ -101,7 +103,7 @@ export function SerieDe14Dias({
           </div>
         )
       ) : (
-        <div className={`${CARTAO_INICIO} space-y-3`}>
+        <div className="space-y-3">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -117,11 +119,13 @@ export function SerieDe14Dias({
               aria-atomic="true"
               className="min-w-0 flex-1 text-center"
             >
-              <span className="block text-sm font-semibold text-blue-300">
+              <span className="block text-sm font-semibold text-zinc-300">
                 {formatarData(pontoMarcado?.dia)}
                 {pontoMarcado?.dia === diaDeHoje ? " · Hoje" : ""}
               </span>
-              <strong className={`mt-1 block text-xl ${VALOR_INICIO}`}>
+              <strong
+                className={`mt-1 block text-xl ${tomDoValor(pontoMarcado?.receita) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
+              >
                 {formatarMoeda(pontoMarcado?.receita)}
               </strong>
             </p>
@@ -159,51 +163,29 @@ export function SerieDe14Dias({
                 >
                   <div
                     data-testid="serie-14d-grafico"
-                    className="relative flex h-28 items-end rounded bg-white/[0.02]"
+                    className="relative flex h-24 items-end rounded bg-white/[0.02]"
                   >
                     {temVenda ? (
                       <div
                         data-testid="serie-14d-barra"
                         className={cn(
                           "w-full rounded-t-[5px]",
-                          indice === selecionado
-                            ? "bg-blue-300"
-                            : hoje
-                              ? "bg-slate-300"
-                              : "bg-slate-400",
+                          indice === serieCompleta.length - 1
+                            ? "bg-emerald-400"
+                            : indice === selecionado
+                              ? "bg-zinc-300"
+                              : "bg-zinc-600",
                         )}
                         style={{ height: `${Math.max(6, alturaPct)}%` }}
                       />
                     ) : null}
                     {indice === selecionado ? (
-                      <span className="absolute inset-x-0 -bottom-1 h-0.5 bg-blue-300" />
+                      <span className="absolute inset-x-0 -bottom-1 h-0.5 bg-zinc-300" />
                     ) : null}
                   </div>
                 </div>
               );
             })}
-          </div>
-          <div
-            className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-400"
-            aria-hidden="true"
-          >
-            <span className="flex items-center gap-1">
-              <span className="size-2 rounded-sm bg-slate-400" />
-              Outros dias
-            </span>
-            {pontoMarcado?.dia !== diaDeHoje &&
-            serieCompleta.some((ponto) => ponto.dia === diaDeHoje) ? (
-              <span className="flex items-center gap-1">
-                <span className="size-2 rounded-sm bg-slate-300" />
-                Hoje
-              </span>
-            ) : null}
-            <span className="flex items-center gap-1">
-              <span className="size-2 rounded-sm bg-blue-300" />
-              {pontoMarcado?.dia === diaDeHoje
-                ? "Hoje · selecionado"
-                : "Selecionado"}
-            </span>
           </div>
           <div
             className="flex justify-between gap-3 text-xs text-zinc-400"
@@ -230,14 +212,16 @@ export function SerieDe14Dias({
               </dt>
               <dd
                 data-testid="serie-14d-pico"
-                className={`mt-1 text-sm ${VALOR_INICIO}`}
+                className={`mt-1 text-sm ${tomDoValor(maximo) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
               >
                 {formatarMoeda(maximo)}
               </dd>
             </div>
             <div className="min-w-0">
               <dt className="text-xs text-zinc-400">Total · 14 dias</dt>
-              <dd className={`mt-1 text-sm ${VALOR_INICIO}`}>
+              <dd
+                className={`mt-1 text-sm ${tomDoValor(total) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
+              >
                 {formatarMoeda(total)}
               </dd>
             </div>
@@ -252,83 +236,89 @@ export function SerieDe14Dias({
             <List className="size-5" aria-hidden="true" />
             {tabelaAberta ? "Esconder tabela" : "Ver os 14 dias em tabela"}
           </button>
-          <table
-            id={tabelaId}
-            className={
-              tabelaAberta
-                ? "w-full table-fixed border-separate border-spacing-y-2 text-sm"
-                : "sr-only"
-            }
-          >
-            <caption className="text-left font-semibold text-white">
-              Vendas pagas por dia nos últimos 14 dias
-            </caption>
-            <thead className="sr-only">
-              <tr>
-                <th scope="col">Dia</th>
-                <th scope="col">Vendas pagas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {serieCompleta.map((ponto, indice) => (
-                <tr
-                  key={ponto.dia}
-                  className={
-                    indice === selecionado
-                      ? "bg-blue-300/10"
-                      : "bg-white/[0.03]"
-                  }
-                >
-                  <td className="rounded-l-xl p-2 text-zinc-400">
-                    {tabelaAberta ? (
-                      <button
-                        type="button"
-                        aria-label={`Selecionar ${formatarData(ponto.dia)}${ponto.dia === diaDeHoje ? " · Hoje" : ""}`}
-                        aria-pressed={indice === selecionado}
-                        onClick={() => setMarcado(indice)}
-                        className="flex min-h-11 w-full items-center gap-1 text-left text-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
-                      >
-                        <span data-testid="serie-14d-rotulo">
-                          <span
-                            data-testid="serie-14d-rotulo-dia"
-                            className={
-                              ponto.dia === diaDeHoje
-                                ? "text-[12px] font-bold text-blue-300"
-                                : "text-[12px] text-zinc-400"
-                            }
-                          >
-                            {ponto.dia === diaDeHoje
-                              ? "Hoje"
-                              : ponto.dia.slice(8, 10)}
-                          </span>{" "}
-                          <span
-                            data-testid="serie-14d-rotulo-mes"
-                            className="text-[12px] text-zinc-400"
-                          >
-                            {dataCurta(ponto.dia).split(" ")[1]}
-                          </span>
-                        </span>
-                        {indice === selecionado ? (
-                          <Check
-                            className="size-4 shrink-0"
-                            aria-hidden="true"
-                          />
-                        ) : null}
-                      </button>
-                    ) : (
-                      <>
-                        {formatarData(ponto.dia)}
-                        {ponto.dia === diaDeHoje ? " · Hoje" : ""}
-                      </>
-                    )}
-                  </td>
-                  <td className={`rounded-r-xl p-2 text-right ${VALOR_INICIO}`}>
-                    {formatarMoeda(ponto.receita)}
-                  </td>
+          {/* A tabela fechada é sr-only (posição absoluta): o recorte do envoltório
+              impede que o conteúdo dela crie rolagem lateral em tela estreita. */}
+          <div className="relative overflow-hidden">
+            <table
+              id={tabelaId}
+              className={
+                tabelaAberta
+                  ? "w-full table-fixed border-separate border-spacing-y-2 text-sm"
+                  : "sr-only"
+              }
+            >
+              <caption className="text-left font-semibold text-white">
+                Vendas pagas por dia nos últimos 14 dias
+              </caption>
+              <thead className="sr-only">
+                <tr>
+                  <th scope="col">Dia</th>
+                  <th scope="col">Vendas pagas</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {serieCompleta.map((ponto, indice) => (
+                  <tr
+                    key={ponto.dia}
+                    className={
+                      indice === selecionado
+                        ? "bg-white/[0.06]"
+                        : "bg-white/[0.03]"
+                    }
+                  >
+                    <td className="rounded-l-xl p-2 text-zinc-400">
+                      {tabelaAberta ? (
+                        <button
+                          type="button"
+                          aria-label={`Selecionar ${formatarData(ponto.dia)}${ponto.dia === diaDeHoje ? " · Hoje" : ""}`}
+                          aria-pressed={indice === selecionado}
+                          onClick={() => setMarcado(indice)}
+                          className="flex min-h-11 w-full items-center gap-1 text-left text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                        >
+                          <span data-testid="serie-14d-rotulo">
+                            <span
+                              data-testid="serie-14d-rotulo-dia"
+                              className={
+                                ponto.dia === diaDeHoje
+                                  ? "text-[12px] font-bold text-white"
+                                  : "text-[12px] text-zinc-400"
+                              }
+                            >
+                              {ponto.dia === diaDeHoje
+                                ? "Hoje"
+                                : ponto.dia.slice(8, 10)}
+                            </span>{" "}
+                            <span
+                              data-testid="serie-14d-rotulo-mes"
+                              className="text-[12px] text-zinc-400"
+                            >
+                              {dataCurta(ponto.dia).split(" ")[1]}
+                            </span>
+                          </span>
+                          {indice === selecionado ? (
+                            <Check
+                              className="size-4 shrink-0"
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                        </button>
+                      ) : (
+                        <>
+                          {formatarData(ponto.dia)}
+                          {ponto.dia === diaDeHoje ? " · Hoje" : ""}
+                        </>
+                      )}
+                    </td>
+                    <td
+                      className={`rounded-r-xl p-2 text-right ${tomDoValor(ponto.receita) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
+                    >
+                      {formatarMoeda(ponto.receita)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>

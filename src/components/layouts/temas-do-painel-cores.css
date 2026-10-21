@@ -90,7 +90,6 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .from-\[\#23171F\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:#fff1f2 var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema="claro"]) .from-\[\#25191D\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:#fff1f2 var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema="claro"]) .from-\[\#2C2838\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:#f5f3ff var(--tw-gradient-from-position)}
-:where(html.admin-mode[data-admin-tema]) .from-slate-800\/90:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-raised) / 0.9) var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema]) .from-white\/\[0\.05\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-text) / 0.05) var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema]) .from-white\/\[0\.06\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-text) / 0.06) var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema]) .from-zinc-800:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-raised)) var(--tw-gradient-from-position)}
@@ -183,7 +182,6 @@
 :where(html.admin-mode[data-admin-tema]) .text-zinc-800:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema="claro"]) .to-\[\#151115\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-to:#ffe4e6 var(--tw-gradient-to-position)}
 :where(html.admin-mode[data-admin-tema]) .to-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-to:hsl(var(--admin-border-strong)) var(--tw-gradient-to-position)}
-:where(html.admin-mode[data-admin-tema]) .to-zinc-900\/80:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-to:hsl(var(--admin-bg) / 0.8) var(--tw-gradient-to-position)}
 :where(html.admin-mode[data-admin-tema]) .to-zinc-950:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-to:hsl(var(--admin-bg)) var(--tw-gradient-to-position)}
 :where(html.admin-mode[data-admin-tema]) .to-zinc-950\/80:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-to:hsl(var(--admin-bg) / 0.8) var(--tw-gradient-to-position)}
 :where(html.admin-mode[data-admin-tema]) .\[\&_\.text-admin-gold\]\:text-zinc-300:where(:not([data-tema-fixo], [data-tema-fixo] *)) .text-admin-gold{color:hsl(var(--admin-text-2))}
@@ -271,9 +269,7 @@
 :where(html.admin-mode[data-admin-tema]) .focus-visible\:outline-white\/60:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){outline-color:hsl(var(--admin-text) / 0.6)}
 :where(html.admin-mode[data-admin-tema="claro"]) .focus-visible\:ring-red-300:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .focus-visible\:ring-sky-300:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:#0284c7}
-:where(html.admin-mode[data-admin-tema="claro"]) .focus-visible\:ring-teal-300:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:#0d9488}
 :where(html.admin-mode[data-admin-tema="claro"]) .focus-visible\:ring-violet-300:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:#7c3aed}
-:where(html.admin-mode[data-admin-tema]) .focus-visible\:ring-white:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:hsl(var(--admin-text))}
 :where(html.admin-mode[data-admin-tema]) .enabled\:hover\:border-white\/25:enabled:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.25)}
 :where(html.admin-mode[data-admin-tema]) .disabled\:bg-zinc-900:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-bg))}
 :where(html.admin-mode[data-admin-tema]) .disabled\:from-zinc-800:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-raised)) var(--tw-gradient-from-position)}
