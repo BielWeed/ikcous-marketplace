@@ -141,14 +141,14 @@ export const StrategicIntelligenceBlocks = memo(
                 return (
                   <li key={entry.name} className="min-h-[52px]">
                     <div className="flex items-start justify-between gap-2">
-                      <span className="min-w-0 text-[13px] font-semibold text-admin-text-2">
+                      <span className="text-admin-text-2 min-w-0 text-[13px] font-semibold">
                         {entry.name}
                       </span>
-                      <span className="text-right text-[13px] font-extrabold tabular-nums text-admin-text">
+                      <span className="text-admin-text text-right text-[13px] font-extrabold tabular-nums">
                         {formatCurrency(entry.value)}
                       </span>
                     </div>
-                    <p className="text-[11px] text-admin-text-soft">
+                    <p className="text-admin-text-soft text-[11px]">
                       {entry.orders != null && <>{entry.orders} pedidos · </>}
                       {percentage}%
                       {expandido && !!entry.avg_ticket && (
@@ -172,12 +172,12 @@ export const StrategicIntelligenceBlocks = memo(
                 );
               })}
             </ul>
-            {safeCategoryData.length > 0 && (
+            {safeCategoryData.length > 3 && (
               <button
                 type="button"
                 aria-expanded={expandido}
                 onClick={() => setExpandido(!expandido)}
-                className="mt-2 min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold text-admin-text"
+                className="text-admin-text mt-2 min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold"
               >
                 {expandido
                   ? "Recolher"
@@ -185,7 +185,7 @@ export const StrategicIntelligenceBlocks = memo(
               </button>
             )}
             {expandido && (
-              <p className="mt-2 text-[11px] text-admin-text-soft">
+              <p className="text-admin-text-soft mt-2 text-[11px]">
                 Faturamento Total: {formatCurrency(totalRevenue)}
               </p>
             )}

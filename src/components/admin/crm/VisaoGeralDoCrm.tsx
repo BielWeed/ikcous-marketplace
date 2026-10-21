@@ -161,6 +161,21 @@ export function VisaoGeralDoCrm({
   ];
   return (
     <div className="space-y-4">
+      {!carregando && erroDaVisao && visao && !offline && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 text-xs text-amber-300"
+        >
+          <p>Não deu para atualizar · mostrando a última busca</p>
+          <button
+            type="button"
+            onClick={aoTentar}
+            className="min-h-11 shrink-0 px-2 font-bold"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      )}
       <MetricasDoPainel
         titulo="Números do período"
         legendasDoResumo={["Receita", "Pedidos"]}
@@ -213,7 +228,7 @@ export function VisaoGeralDoCrm({
             <button
               type="button"
               onClick={() => onNavigate("admin-pdv")}
-              className="min-h-11 rounded-xl bg-admin-gold-fill px-4 text-xs font-bold text-admin-gold-ink"
+              className="bg-admin-gold-fill text-admin-gold-ink min-h-11 rounded-xl px-4 text-xs font-bold"
             >
               Vender no balcão
             </button>

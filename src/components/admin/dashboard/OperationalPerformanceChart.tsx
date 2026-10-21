@@ -147,14 +147,29 @@ export const OperationalPerformanceChart = memo(
           className,
         )}
       >
-        <header className="flex h-11 shrink-0 items-center justify-between gap-1">
+        <header className="flex min-h-11 shrink-0 items-center justify-between gap-1">
           <div className="min-w-0">
-            <h2 className="text-[15px] font-bold text-admin-text">
+            <h2 className="text-admin-text text-[15px] font-bold">
               Histórico da loja
             </h2>
-            <p className="text-xs text-admin-text-soft">
-              Não muda com o período lá de cima
-            </p>
+            {chartMode === "roi" && semCusto > 0 ? (
+              <div className="text-xs text-amber-300">
+                <p>{avisoProdutosSemCusto(semCusto)}</p>
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin-products")}
+                    className="min-h-11 font-bold text-admin-gold"
+                  >
+                    Cadastrar custo
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-admin-text-soft text-xs">
+                Não muda com o período lá de cima
+              </p>
+            )}
           </div>
           {!loading &&
             (stats?.growth !== undefined ||
@@ -215,8 +230,8 @@ export const OperationalPerformanceChart = memo(
           ) : chartMode === "revenue" ? (
             <>
               <div className="min-w-0 pr-1">
-                <p className="text-[11px] text-admin-text-soft">Faturamento</p>
-                <p className="text-base font-extrabold tabular-nums text-admin-text">
+                <p className="text-admin-text-soft text-[11px]">Faturamento</p>
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
                   R${" "}
                   {periodTotals.revenue.toLocaleString("pt-BR", {
                     maximumFractionDigits: 0,
@@ -224,14 +239,14 @@ export const OperationalPerformanceChart = memo(
                 </p>
               </div>
               <div className="min-w-0 px-2">
-                <p className="text-[11px] text-admin-text-soft">Pedidos</p>
-                <p className="text-base font-extrabold tabular-nums text-admin-text">
+                <p className="text-admin-text-soft text-[11px]">Pedidos</p>
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
                   {periodTotals.orders}
                 </p>
               </div>
               <div className="min-w-0 pl-2">
-                <p className="text-[11px] text-admin-text-soft">Valor médio</p>
-                <p className="text-base font-extrabold tabular-nums text-admin-text">
+                <p className="text-admin-text-soft text-[11px]">Valor médio</p>
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
                   R${" "}
                   {periodTotals.avgTicket.toLocaleString("pt-BR", {
                     maximumFractionDigits: 0,
@@ -242,10 +257,10 @@ export const OperationalPerformanceChart = memo(
           ) : (
             <>
               <div className="min-w-0 pr-1">
-                <p className="text-[11px] text-admin-text-soft">
+                <p className="text-admin-text-soft text-[11px]">
                   Estoque (custo)
                 </p>
-                <p className="text-base font-extrabold tabular-nums text-admin-text">
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
                   R${" "}
                   {(stats.inventory?.totalCost ?? 0).toLocaleString("pt-BR", {
                     maximumFractionDigits: 0,
@@ -253,10 +268,10 @@ export const OperationalPerformanceChart = memo(
                 </p>
               </div>
               <div className="min-w-0 px-2">
-                <p className="text-[11px] text-admin-text-soft">
+                <p className="text-admin-text-soft text-[11px]">
                   Lucro acumulado
                 </p>
-                <p className="text-base font-extrabold tabular-nums text-admin-text">
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
                   R${" "}
                   {processedRoiData[
                     processedRoiData.length - 1
@@ -268,10 +283,10 @@ export const OperationalPerformanceChart = memo(
               {!!stats.inventory?.totalCost &&
                 stats.inventory.totalCost > 0 && (
                   <div className="min-w-0 pl-2">
-                    <p className="text-[11px] text-admin-text-soft">
+                    <p className="text-admin-text-soft text-[11px]">
                       Recuperado
                     </p>
-                    <p className="text-base font-extrabold tabular-nums text-admin-text">
+                    <p className="text-admin-text text-base font-extrabold tabular-nums">
                       {(
                         ((processedRoiData[processedRoiData.length - 1]
                           ?.cumulativeProfit ?? 0) /
@@ -299,7 +314,7 @@ export const OperationalPerformanceChart = memo(
               <div className="flex size-16 items-center justify-center rounded-2xl border border-admin-gold/10 bg-admin-gold/5">
                 <BarChart3 className="size-8 text-admin-gold/30" />
               </div>
-              <p className="text-center text-[11px] font-semibold text-admin-text-soft">
+              <p className="text-admin-text-soft text-center text-[11px] font-semibold">
                 Nenhum dado disponível no período
               </p>
             </div>
@@ -365,7 +380,7 @@ export const OperationalPerformanceChart = memo(
                         return (
                           <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-admin-border px-2.5 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-admin-border backdrop-blur-3xl">
                             <div className="flex items-center gap-2">
-                              <span className="whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em] text-admin-text-soft">
+                              <span className="text-admin-text-soft whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em]">
                                 {data.full_date || data.date}
                               </span>
                               <div className="h-px flex-1 bg-white/10" />
@@ -375,7 +390,7 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5">
                                 <div className="size-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-admin-text-soft">
+                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
                                     Receita
                                   </span>
                                   <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
@@ -391,7 +406,7 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1">
                                 <div className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-admin-text-soft">
+                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
                                     Pedidos
                                   </span>
                                   <span className="mt-0.5 text-[11px] font-black italic leading-tight tracking-tighter text-emerald-500">
@@ -510,7 +525,7 @@ export const OperationalPerformanceChart = memo(
                         return (
                           <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-admin-border px-2.5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-admin-border backdrop-blur-3xl">
                             <div className="flex items-center gap-2">
-                              <span className="whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em] text-admin-text-soft">
+                              <span className="text-admin-text-soft whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em]">
                                 {data.full_date || data.date}
                               </span>
                               <div className="h-px flex-1 bg-white/10" />
@@ -520,7 +535,7 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5">
                                 <div className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-admin-text-soft">
+                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
                                     Lucro Acumulado
                                   </span>
                                   <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
@@ -539,7 +554,7 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5">
                                 <div className="size-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-admin-text-soft">
+                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
                                     Valor Investido (Estoque)
                                   </span>
                                   <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">

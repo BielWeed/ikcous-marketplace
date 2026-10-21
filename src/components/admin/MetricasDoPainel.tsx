@@ -137,17 +137,17 @@ export function MetricasDoPainel({
               className="flex h-[76px] items-center justify-between gap-2 px-3"
             >
               <div className="min-w-0">
-                <p className="text-[13px] font-bold text-admin-text">
+                <p className="text-admin-text text-[13px] font-bold">
                   Não deu para buscar os números
                 </p>
-                <p className="text-[11px] text-admin-text-soft">
+                <p className="text-admin-text-soft text-[11px]">
                   Confira a internet e tente de novo.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={relatorio.aoTentar}
-                className="min-h-11 shrink-0 rounded-xl border border-solid border-admin-border bg-admin-raised px-2 text-[11px] font-bold text-admin-text"
+                className="text-admin-text min-h-11 shrink-0 rounded-xl border border-solid border-admin-border bg-admin-raised px-2 text-[11px] font-bold"
               >
                 Tentar de novo
               </button>
@@ -162,7 +162,7 @@ export function MetricasDoPainel({
                   className="metricas-painel-destaque min-w-0"
                 >
                   <div className="flex min-h-7 items-start justify-between gap-1">
-                    <p className="text-xs font-semibold leading-[14px] text-admin-text-2">
+                    <p className="text-admin-text-2 text-xs font-semibold leading-[14px]">
                       {legendasDoResumo.at(i) ?? card.label}
                     </p>
                     {card.content}
@@ -191,7 +191,7 @@ export function MetricasDoPainel({
             </div>
           )}
           <div className="metricas-painel-secundarias flex h-10 items-center justify-between gap-1">
-            <div className="min-w-0 text-[11px] leading-[14px] text-admin-text-soft">
+            <div className="text-admin-text-soft min-w-0 text-[11px] leading-[14px]">
               {loading ? esqueleto : relatorio.rodape}
             </div>
             {relatorio.ajuda ?? entender}

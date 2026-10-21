@@ -108,7 +108,7 @@ export function TileDeKpi({
             )}
           </p>
         )}
-        <div className="flex min-w-0 items-start text-[11px] leading-[14px] text-admin-text-soft">
+        <div className="text-admin-text-soft flex min-w-0 items-start text-[11px] leading-[14px]">
           {carregando ? (
             <span
               aria-hidden="true"

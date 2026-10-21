@@ -110,7 +110,7 @@ function BlocoDeCanal({
       aria-label={`Detalhes ${rotuloDoCanal(canal.canal)}`}
       className="min-h-[132px] min-w-0 space-y-2 rounded-2xl border border-admin-border bg-admin-surface p-3"
     >
-      <h3 className="flex items-center gap-1 text-xs font-bold text-admin-text-2">
+      <h3 className="text-admin-text-2 flex items-center gap-1 text-xs font-bold">
         <estilo.icone
           className={cn("size-4 shrink-0", estilo.cor)}
           aria-hidden="true"
@@ -128,7 +128,7 @@ function BlocoDeCanal({
           <dl className="space-y-1 text-[11px]">
             <div className="flex flex-wrap justify-between gap-x-1">
               <dt className="text-admin-text-soft">Pedidos</dt>
-              <dd className="font-bold tabular-nums text-admin-text">
+              <dd className="text-admin-text font-bold tabular-nums">
                 {formatarInteiro(canal.pedidos)}{" "}
                 {fatiaPedidos != null && (
                   <span className="text-zinc-400">
@@ -139,13 +139,13 @@ function BlocoDeCanal({
             </div>
             <div className="flex flex-wrap justify-between gap-x-1">
               <dt className="text-admin-text-soft">Valor médio</dt>
-              <dd className="font-bold tabular-nums text-admin-text">
+              <dd className="text-admin-text font-bold tabular-nums">
                 {formatarMoeda(canal.ticketMedio)}
               </dd>
             </div>
           </dl>
           {diffTicket != null && diffTicket !== 0 && (
-            <p className="border-t border-admin-border pt-2 text-[11px] text-admin-text-soft">
+            <p className="text-admin-text-soft border-t border-admin-border pt-2 text-[11px]">
               <strong
                 className={
                   diffTicket > 0 ? "text-emerald-300" : "text-amber-300"
@@ -201,18 +201,18 @@ function CartaoDeFormas({
             return (
               <li key={f.forma} className="min-h-[52px] space-y-1">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-1 text-[13px] font-bold text-admin-text-2">
+                  <span className="text-admin-text-2 flex min-w-0 items-center gap-1 text-[13px] font-bold">
                     <estilo.icone
                       className="size-4 shrink-0 text-zinc-400"
                       aria-hidden="true"
                     />
                     {rotuloDaFormaDePagamento(f.forma)}
                   </span>
-                  <span className="text-right text-[13px] font-extrabold tabular-nums text-admin-text">
+                  <span className="text-admin-text text-right text-[13px] font-extrabold tabular-nums">
                     {formatarMoeda(f.receita)}
                   </span>
                 </div>
-                <p className="text-[11px] text-admin-text-soft">
+                <p className="text-admin-text-soft text-[11px]">
                   <span className="sr-only">
                     {formatarPercentual(fatia, 0)} ·{" "}
                   </span>
@@ -245,7 +245,7 @@ function CartaoDeFormas({
           type="button"
           aria-expanded={expandido}
           onClick={() => setExpandido(!expandido)}
-          className="mt-2 min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold text-admin-text"
+          className="text-admin-text mt-2 min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold"
         >
           {expandido ? "Recolher" : "Ver todas as formas"}
         </button>
@@ -279,6 +279,21 @@ export function CanaisDoCrm({
     visao?.formas.reduce((soma, f) => soma + f.receita, 0) ?? 0;
   return (
     <div className="space-y-4">
+      {!carregando && erro && visao && !offline && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 text-xs text-amber-300"
+        >
+          <p>Não deu para atualizar · mostrando a última busca</p>
+          <button
+            type="button"
+            onClick={aoTentar}
+            className="min-h-11 shrink-0 px-2 font-bold"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      )}
       <MetricasDoPainel
         titulo="App × loja física"
         legendasDoResumo={["App (online)", "Loja física"]}
@@ -290,7 +305,7 @@ export function CanaisDoCrm({
           icon: estiloDoCanal(c.canal as "online" | "presencial").icone,
           content:
             visao && totalReceita > 0 ? (
-              <span className="text-xs font-bold text-admin-text-soft">
+              <span className="text-admin-text-soft text-xs font-bold">
                 {formatarPercentual(
                   percentualDoTotal(c.receita, totalReceita),
                   0,
@@ -333,7 +348,7 @@ export function CanaisDoCrm({
           ),
           barra: (
             <div
-              className="absolute bottom-1 left-3 right-3 flex h-[5px] gap-px overflow-hidden rounded-full bg-admin-raised"
+              className="absolute inset-x-3 bottom-1 flex h-[5px] gap-px overflow-hidden rounded-full bg-admin-raised"
               aria-hidden="true"
             >
               {[online, presencial]
@@ -353,48 +368,52 @@ export function CanaisDoCrm({
           ),
         }}
       />
-      <section aria-label="Cada canal">
-        <h2 className="mb-2 flex h-7 items-center gap-2 text-[11px] font-extrabold tracking-[0.12em] text-admin-text-soft">
-          <span
-            aria-hidden="true"
-            className="size-1.5 rounded-full bg-admin-gold"
-          />
-          CADA CANAL
-        </h2>
-        {esqueleto ? (
-          <div
-            aria-hidden="true"
-            className="premium-shimmer h-[132px] rounded-2xl"
-          />
-        ) : (
-          <ul className="grid grid-cols-2 gap-2">
-            {[online, presencial].map((c) => (
-              <BlocoDeCanal
-                key={c.canal}
-                canal={c}
-                totalPedidos={totalPedidos}
-                ticketGeral={ticketGeral}
+      {!falha && (
+        <>
+          <section aria-label="Cada canal">
+            <h2 className="text-admin-text-soft mb-2 flex h-7 items-center gap-2 text-[11px] font-extrabold tracking-[0.12em]">
+              <span
+                aria-hidden="true"
+                className="size-1.5 rounded-full bg-admin-gold"
               />
-            ))}
-          </ul>
-        )}
-      </section>
-      {visao && totalReceita <= 0 && totalFormas <= 0 && (
-        <EstadoVazioDoCrm
-          titulo="Nenhuma venda paga neste período"
-          texto="Troque o período no topo ou registre uma venda do balcão."
-          acao={
-            <button
-              type="button"
-              onClick={() => onNavigate("admin-pdv")}
-              className="min-h-11 rounded-xl bg-admin-gold-fill px-4 text-xs font-bold text-admin-gold-ink"
-            >
-              Vender no balcão
-            </button>
-          }
-        />
+              CADA CANAL
+            </h2>
+            {esqueleto ? (
+              <div
+                aria-hidden="true"
+                className="premium-shimmer h-[132px] rounded-2xl"
+              />
+            ) : (
+              <ul className="grid grid-cols-2 gap-2">
+                {[online, presencial].map((c) => (
+                  <BlocoDeCanal
+                    key={c.canal}
+                    canal={c}
+                    totalPedidos={totalPedidos}
+                    ticketGeral={ticketGeral}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+          {visao && totalReceita <= 0 && totalFormas <= 0 && (
+            <EstadoVazioDoCrm
+              titulo="Nenhuma venda paga neste período"
+              texto="Troque o período no topo ou registre uma venda do balcão."
+              acao={
+                <button
+                  type="button"
+                  onClick={() => onNavigate("admin-pdv")}
+                  className="bg-admin-gold-fill text-admin-gold-ink min-h-11 rounded-xl px-4 text-xs font-bold"
+                >
+                  Vender no balcão
+                </button>
+              }
+            />
+          )}
+          <CartaoDeFormas formas={visao?.formas ?? []} carregando={esqueleto} />
+        </>
       )}
-      <CartaoDeFormas formas={visao?.formas ?? []} carregando={esqueleto} />
     </div>
   );
 }

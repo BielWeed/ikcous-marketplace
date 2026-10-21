@@ -215,7 +215,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
           </button>
         </AdminPageHeader>
       </div>
-      <p className="px-4 text-xs text-admin-text-soft sm:px-6">
+      <p className="text-admin-text-soft px-4 text-xs sm:px-6">
         Vendas pagas · app e balcão
       </p>
 

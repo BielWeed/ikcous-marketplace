@@ -116,18 +116,8 @@ describe("tela do lucro avisa produtos sem custo", () => {
     await act(async () => {
       botao?.click();
     });
-    // O aviso foi para o "i" do histórico; a guarda continua conferindo a folha real.
-    await act(async () =>
-      hospedeiro
-        .querySelector<HTMLButtonElement>(
-          '[aria-label="Entender Histórico da loja"]',
-        )!
-        .click(),
-    );
-    return (
-      (hospedeiro.textContent ?? "") +
-      (document.querySelector('[role="dialog"]')?.textContent ?? "")
-    );
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    return hospedeiro.textContent ?? "";
   }
 
   async function montaTop(s: DashboardStats) {
@@ -169,7 +159,7 @@ describe("tela do lucro avisa produtos sem custo", () => {
       const ir = vi.fn();
       await montaGrafico(stats({ productsWithoutCost: 2 }), ir);
       const link = Array.from(
-        document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'),
+        hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
       ).find((b) => b.textContent?.includes("Cadastrar custo"));
       expect(link).toBeTruthy();
       await act(async () => {

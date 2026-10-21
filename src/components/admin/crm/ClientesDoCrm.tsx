@@ -244,7 +244,7 @@ function GradeDeSegmentos({
         <button
           type="button"
           onClick={aoRecolher}
-          className="min-h-11 rounded-xl bg-admin-raised px-3 text-xs font-bold text-admin-text"
+          className="text-admin-text min-h-11 rounded-xl bg-admin-raised px-3 text-xs font-bold"
         >
           Recolher
         </button>
@@ -428,7 +428,7 @@ function LinhaDoCliente({
           {nome.charAt(0).toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="break-words text-sm font-bold text-admin-text">
+          <p className="text-admin-text break-words text-sm font-bold">
             {nome}
           </p>
           <div className="lg:hidden">
@@ -436,7 +436,7 @@ function LinhaDoCliente({
           </div>
         </div>
         {!semDadoDeCompra && (
-          <div className="shrink-0 text-right text-[11px] text-admin-text-soft lg:hidden">
+          <div className="text-admin-text-soft shrink-0 text-right text-[11px] lg:hidden">
             <p>
               {formatarInteiro(cliente.pedidos)}{" "}
               {cliente.pedidos === 1 ? "pedido" : "pedidos"}
@@ -705,8 +705,10 @@ export function ClientesDoCrm({
           ),
           ajuda: (
             <ExplicacaoDoRelatorio titulo="Clientes da loja">
-              A lista e os grupos olham a história da loja. A busca e o grupo
-              filtram a lista; o período das outras abas não muda estes números.
+              Quem já comprou (app e balcão), quem pediu e não pagou e quem
+              criou conta sem comprar — com WhatsApp e ficha a um toque. A lista
+              e os grupos olham a história da loja. A busca e o grupo filtram a
+              lista; o período das outras abas não muda estes números.
             </ExplicacaoDoRelatorio>
           ),
         }}
@@ -714,7 +716,7 @@ export function ClientesDoCrm({
       <div className="flex min-w-0 gap-2">
         <div className="relative min-w-0 flex-1">
           <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-admin-text-soft"
+            className="text-admin-text-soft pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
             aria-hidden="true"
           />
           <label htmlFor="crm-busca-cliente" className="sr-only">

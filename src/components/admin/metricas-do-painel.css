@@ -1,10 +1,22 @@
 /* Tokens tipográficos dos relatórios; não dependem do mapa de cores literais. */
-.text-admin-text { color: hsl(var(--admin-text, 240 10% 96.1%)); }
-.text-admin-text-2 { color: hsl(var(--admin-text-2, 240 4.9% 83.9%)); }
-.text-admin-text-soft { color: hsl(var(--admin-text-soft, 240 6.8% 65.5%)); }
-.bg-admin-text-faint { background-color: hsl(var(--admin-text-soft, 240 6.8% 65.5%)); }
-.bg-admin-gold-fill { background-color: hsl(var(--admin-gold-fill, var(--admin-gold))); }
-.text-admin-gold-ink { color: hsl(240deg 10% 3.9%); }
+.text-admin-text {
+  color: hsl(var(--admin-text, 240 10% 96.1%));
+}
+.text-admin-text-2 {
+  color: hsl(var(--admin-text-2, 240 4.9% 83.9%));
+}
+.text-admin-text-soft {
+  color: hsl(var(--admin-text-soft, 240 6.8% 65.5%));
+}
+.bg-admin-text-faint {
+  background-color: hsl(var(--admin-text-soft, 240 6.8% 65.5%));
+}
+.bg-admin-gold-fill {
+  background-color: hsl(var(--admin-gold-fill, var(--admin-gold)));
+}
+.text-admin-gold-ink {
+  color: hsl(240deg 10% 3.9%);
+}
 
 .metricas-painel.metricas-relatorio .metricas-painel-principais {
   padding: 8px 12px;

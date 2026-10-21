@@ -177,14 +177,14 @@ function FunilEmEtapas({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
           {i > 0 && (
             <ChevronRight
               aria-hidden="true"
-              className="size-3 shrink-0 text-admin-text-soft"
+              className="text-admin-text-soft size-3 shrink-0"
             />
           )}
           <div className="min-h-14 min-w-0 flex-1 rounded-xl border border-admin-border bg-admin-raised py-1 text-center">
-            <p className="text-2xl font-extrabold tabular-nums text-admin-text">
+            <p className="text-admin-text text-2xl font-extrabold tabular-nums">
               {formatarInteiro(etapa.valor)}
             </p>
-            <p className="text-[11px] text-admin-text-soft">
+            <p className="text-admin-text-soft text-[11px]">
               {etapa.unidadeCurta}
             </p>
           </div>
@@ -260,7 +260,7 @@ function Pipeline({
                       <estilo.icone className={cn("size-4", estilo.cor)} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-xs font-bold text-admin-text">
+                      <span className="text-admin-text block text-xs font-bold">
                         {rotuloDoStatusDoPedido(etapa.status)}
                       </span>
                       {parado ? (
@@ -293,7 +293,7 @@ function Pipeline({
             type="button"
             aria-expanded={expandido}
             onClick={() => setExpandido(!expandido)}
-            className="min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold text-admin-text"
+            className="text-admin-text min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold"
           >
             {expandido ? "Recolher" : "Ver tudo"}
           </button>
@@ -343,6 +343,21 @@ export function FunilEPedidosDoCrm({
   });
   return (
     <div className="space-y-4">
+      {!carregando && erro && visao && !offline && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 text-xs text-amber-300"
+        >
+          <p>Não deu para atualizar · mostrando a última busca</p>
+          <button
+            type="button"
+            onClick={aoTentar}
+            className="min-h-11 shrink-0 px-2 font-bold"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      )}
       <MetricasDoPainel
         titulo="Funil do app"
         legendasDoResumo={["Conversão em venda", "Pedidos pagos"]}
@@ -414,27 +429,34 @@ export function FunilEPedidosDoCrm({
           ),
         }}
       />
-      <CartaoDoCrm
-        id="crm-funil"
-        titulo="Do carrinho ao pagamento"
-        descricao="Só o app · neste período"
-        className="min-h-[132px]"
-      >
-        {esqueleto ? (
-          <div className="premium-shimmer h-14 rounded-xl" aria-hidden="true" />
-        ) : medidas.length === 0 ? (
-          <EstadoVazioDoCrm titulo="Ainda não há dados do funil do app" />
-        ) : (
-          <FunilEmEtapas medidas={medidas} />
-        )}
-      </CartaoDoCrm>
-      {esqueleto ? (
-        <div
-          className="premium-shimmer min-h-[282px] rounded-2xl"
-          aria-hidden="true"
-        />
-      ) : (
-        <Pipeline etapas={visao?.pipeline ?? []} onNavigate={onNavigate} />
+      {!falha && (
+        <>
+          <CartaoDoCrm
+            id="crm-funil"
+            titulo="Do carrinho ao pagamento"
+            descricao="Só o app · neste período"
+            className="min-h-[132px]"
+          >
+            {esqueleto ? (
+              <div
+                className="premium-shimmer h-14 rounded-xl"
+                aria-hidden="true"
+              />
+            ) : medidas.length === 0 ? (
+              <EstadoVazioDoCrm titulo="Ainda não há dados do funil do app" />
+            ) : (
+              <FunilEmEtapas medidas={medidas} />
+            )}
+          </CartaoDoCrm>
+          {esqueleto ? (
+            <div
+              className="premium-shimmer min-h-[282px] rounded-2xl"
+              aria-hidden="true"
+            />
+          ) : (
+            <Pipeline etapas={visao?.pipeline ?? []} onNavigate={onNavigate} />
+          )}
+        </>
       )}
     </div>
   );

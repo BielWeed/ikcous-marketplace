@@ -68,7 +68,7 @@ export const TopProductsList = memo(function TopProductsList({
                     className="flex min-h-[52px] w-full items-center gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold"
                   >
                     <span
-                      className={`flex size-[22px] shrink-0 items-center justify-center rounded-full border text-[11px] font-bold ${idx === 0 ? "border-admin-gold text-admin-gold" : "border-admin-border bg-admin-raised text-admin-text-soft"}`}
+                      className={`flex size-[22px] shrink-0 items-center justify-center rounded-full border text-[11px] font-bold ${idx === 0 ? "border-admin-gold text-admin-gold" : "text-admin-text-soft border-admin-border bg-admin-raised"}`}
                     >
                       {idx + 1}
                     </span>
@@ -83,17 +83,17 @@ export const TopProductsList = memo(function TopProductsList({
                       />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="break-words text-[13px] font-semibold text-admin-text-2">
+                      <p className="text-admin-text-2 break-words text-[13px] font-semibold">
                         {displayName}
                       </p>
-                      <p className="text-[11px] text-admin-text-soft">
+                      <p className="text-admin-text-soft text-[11px]">
                         {item.quantity}{" "}
                         {item.quantity === 1
                           ? "unidade vendida"
                           : "unidades vendidas"}
                       </p>
                     </div>
-                    <span className="text-right text-[13px] font-extrabold tabular-nums text-admin-text">
+                    <span className="text-admin-text text-right text-[13px] font-extrabold tabular-nums">
                       R${" "}
                       {Number(item.total || 0).toLocaleString("pt-BR", {
                         minimumFractionDigits: 2,
@@ -110,13 +110,13 @@ export const TopProductsList = memo(function TopProductsList({
             type="button"
             aria-expanded={expandido}
             onClick={() => setExpandido(!expandido)}
-            className="mt-2 min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold text-admin-text"
+            className="text-admin-text mt-2 min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold"
           >
-            {expandido ? "Recolher" : "Ver os 5 produtos"}
+            {expandido ? "Recolher" : `Ver os ${products.length} produtos`}
           </button>
         )}
         {!loading && semCusto > 0 && (
-          <div className="pt-2 text-[11px] text-admin-text-soft">
+          <div className="text-admin-text-soft pt-2 text-[11px]">
             <p>{avisoProdutosSemCusto(semCusto)}</p>
             <button
               type="button"

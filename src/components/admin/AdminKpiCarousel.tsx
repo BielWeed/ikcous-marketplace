@@ -292,7 +292,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
         aria-roledescription="carrossel"
         className="min-w-0"
       >
-        <h2 className="flex h-6 items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-admin-text-soft">
+        <h2 className="text-admin-text-soft flex h-6 items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.12em]">
           <span
             aria-hidden="true"
             className="size-1.5 rounded-full bg-admin-gold"
@@ -333,7 +333,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
             type="button"
             aria-expanded={isExpanded}
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex min-h-11 items-center gap-1 rounded-full border border-solid border-admin-border bg-admin-raised px-3 text-xs font-bold text-admin-text"
+            className="text-admin-text flex min-h-11 items-center gap-1 rounded-full border border-solid border-admin-border bg-admin-raised px-3 text-xs font-bold"
           >
             {isExpanded ? (
               <Minimize2 className="size-3.5" aria-hidden="true" />

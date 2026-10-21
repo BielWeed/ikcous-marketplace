@@ -17,7 +17,7 @@ export function ExplicacaoDoRelatorio({
         aria-label={`Entender ${titulo}`}
         aria-haspopup="dialog"
         onClick={() => setAberta(true)}
-        className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-admin-text-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold"
+        className="text-admin-text-soft inline-flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold"
       >
         <Info className="size-4" aria-hidden="true" />
       </button>
@@ -26,7 +26,7 @@ export function ExplicacaoDoRelatorio({
         onClose={() => setAberta(false)}
         title={titulo}
       >
-        <div className="text-xs leading-relaxed text-admin-text-2">
+        <div className="text-admin-text-2 text-xs leading-relaxed">
           {children}
         </div>
       </AdminHelpModal>

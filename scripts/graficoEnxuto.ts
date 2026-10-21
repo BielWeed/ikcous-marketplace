@@ -14,8 +14,8 @@ import type { Plugin } from "vite";
  * consultados pelo Recharts mesmo quando não estão na árvore React. Não são
  * substitutos funcionais: as guardas em grafico-enxuto-contrato.test.ts
  * REPROVAM se o app começar a pedir um deles, outra curva ou escala/range.
- * A prova diferencial SVG cobre os três componentes reais, inclusive o
- * Sector ativo e o Label central das categorias. Ao atualizar a dependência,
+ * A prova diferencial SVG cobre os gráficos reais do painel e seus
+ * helpers compartilhados. Ao atualizar a dependência,
  * revisar estes caminhos e repetir a prova antes de alterar a versão abaixo.
  */
 const VERSAO_RECHARTS = "2.15.4";
