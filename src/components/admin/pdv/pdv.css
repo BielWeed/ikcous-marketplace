@@ -848,13 +848,14 @@
   padding: 0;
 }
 .pdv[data-etapa="fechamento"] .pdv-layer-heading {
-  padding-right: 40px;
+  padding-right: 52px;
 }
 .pdv[data-etapa="fechamento"] .pdv-layer-heading h2 {
   font-size: 22px;
 }
 .pdv[data-etapa="fechamento"] .pdv-cancel {
-  width: 40px;
+  width: 44px;
+  min-height: 44px;
   padding: 4px;
   font-size: 0;
 }
@@ -906,8 +907,8 @@
     display: none;
   }
   .pdv[data-etapa="fechamento"] .pdv-layer-heading button[data-slot] {
-    width: 40px;
-    min-height: 40px;
+    width: 44px;
+    min-height: 44px;
     padding: 4px;
   }
   .pdv[data-etapa="fechamento"] .pdv-cupom {
@@ -936,7 +937,7 @@
     margin: 0;
   }
   .pdv-discount .pdv-field {
-    min-height: 28px;
+    min-height: 44px;
     padding: 2px 6px;
     font-size: 14px;
   }
@@ -951,7 +952,7 @@
     font-size: 13px;
   }
   .pdv-payment {
-    min-height: 40px;
+    min-height: 44px;
     padding: 4px 10px;
     border-radius: 14px;
   }
@@ -980,6 +981,40 @@
   .pdv-variation-options .pdv-result {
     min-height: 40px;
     padding: 4px 10px;
+  }
+}
+/* Fechamento em tela deitada: a navegação inferior (64px) e a faixa de
+   status da barra tomavam ~1/3 da altura e sobravam ~40px de corpo. Enquanto
+   o fechamento está aberto a navegação some (Voltar e Cancelar continuam na
+   tela) e a reserva da barra encolhe os mesmos 4rem da linha escondida. */
+@media (max-height: 420px) and (max-width: 1023px) {
+  body:has(.pdv[data-etapa="fechamento"]) [data-admin-abas] {
+    display: none;
+  }
+  body:has(.pdv[data-etapa="fechamento"]) .admin-prateleira:not(:empty)::after {
+    display: none;
+  }
+  .pdv-viewport[data-etapa="fechamento"] {
+    padding-bottom: calc(var(--admin-tab-pb, 6.25rem) - 4rem + 8px);
+  }
+  /* Barra do fechamento em uma linha só: total, aviso e botão lado a lado
+     (eram duas linhas: aviso em cima, total e botão embaixo). */
+  .pdv-footer:has(.pdv-checkout-status) {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr);
+    column-gap: 12px;
+  }
+  .pdv-footer:has(.pdv-checkout-status) > .pdv-total:not(.pdv-muted) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .pdv-footer:has(.pdv-checkout-status) .pdv-checkout-status {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+  }
+  .pdv-footer:has(.pdv-checkout-status) > .pdv-sale-action {
+    grid-column: 3;
+    grid-row: 1;
   }
 }
 @media (max-height: 680px) {

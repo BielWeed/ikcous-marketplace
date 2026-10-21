@@ -43,6 +43,25 @@ function botao(texto: string) {
   )!;
 }
 
+// Lê o pdv.css (sem comentários) e devolve os corpos de todas as regras cujo
+// seletor é exatamente `seletor`, inclusive as que moram dentro de @media.
+function regrasDoCss() {
+  const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+  const corposDa = (seletor: string, trecho = css): string[] => {
+    const achados: string[] = [];
+    for (const m of trecho.matchAll(/(?:^|\n)([^{}@\n][^{}]*)\{([^}]*)\}/g)) {
+      if ((m[1] ?? "").replace(/\s+/g, " ").trim() === seletor)
+        achados.push(m[2] ?? "");
+    }
+    expect(achados.length, seletor).toBeGreaterThan(0);
+    return achados;
+  };
+  return { css, corposDa, corpoDa: (s: string) => corposDa(s).join("\n") };
+}
+
 it("reserva a barra medida sem impedir a rolagem do conteúdo em telas baixas", () => {
   const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8");
   expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*height: 100%/);
@@ -65,19 +84,7 @@ it("reserva a barra medida sem impedir a rolagem do conteúdo em telas baixas", 
 // a lista de itens (e a busca, e a escolha de cliente) ia a ZERO em celular
 // deitado, e sem rolagem no `.pdv-viewport` a balconista não alcançava nada.
 it("em tela baixa nenhuma região vai a altura zero e a tela rola em vez de cortar", () => {
-  const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8").replace(
-    /\/\*[\s\S]*?\*\//g,
-    "",
-  );
-  const corpoDa = (seletor: string): string => {
-    const achados: string[] = [];
-    for (const m of css.matchAll(/(?:^|\n)([^{}@\n][^{}]*)\{([^}]*)\}/g)) {
-      if ((m[1] ?? "").replace(/\s+/g, " ").trim() === seletor)
-        achados.push(m[2] ?? "");
-    }
-    expect(achados.length, seletor).toBeGreaterThan(0);
-    return achados.join("\n");
-  };
+  const { corpoDa } = regrasDoCss();
   const pisoEmRem = (corpo: string): number =>
     Number(/min-height:\s*([\d.]+)rem/.exec(corpo)?.[1] ?? 0);
 
@@ -102,6 +109,70 @@ it("em tela baixa nenhuma região vai a altura zero e a tela rola em vez de cort
       corpoDa('.pdv[data-modo="buscar"] .pdv-cupom[data-resumo="false"]'),
     ),
   ).toBeGreaterThanOrEqual(7);
+});
+
+// ATENÇÃO: de novo, só a FORMA do CSS. A prova real é a medida em Chrome nas
+// telas 667x336 e 568x320 (corpo do fechamento: antes 49px e 33px, depois 157px
+// e 141px) e nas telas em pé 360x800, 390x844 e 768x1024 (iguais às de antes).
+it("no fechamento deitado a navegação inferior sai e a reserva da barra encolhe junto", () => {
+  const { css, corpoDa } = regrasDoCss();
+  // Só celular deitado: a navegação inferior nem existe a partir de 1024px.
+  const deitado = "@media (max-height: 420px) and (max-width: 1023px)";
+  const inicio = css.indexOf(deitado);
+  expect(inicio).toBeGreaterThan(-1);
+  const bloco = css.slice(inicio, css.indexOf("\n}\n", inicio));
+  const escondeAbas =
+    'body:has(.pdv[data-etapa="fechamento"]) [data-admin-abas]';
+  expect(bloco).toContain(escondeAbas);
+  expect(corpoDa(escondeAbas)).toMatch(/display:\s*none/);
+  // A reserva perde exatamente a linha escondida: 4rem = h-16 da navegação.
+  const reserva = corpoDa('.pdv-viewport[data-etapa="fechamento"]');
+  expect(reserva).toMatch(/padding-bottom:[^;]*var\(--admin-tab-pb[^;]*- 4rem/);
+  const layout = readFileSync("src/components/layouts/AdminLayout.tsx", "utf8");
+  expect(layout).toMatch(/className="[^"]*\bh-16\b[^"]*"\s+data-admin-abas/);
+  // O total, o aviso e o botão da barra ocupam uma linha só.
+  const barra = corpoDa(".pdv-footer:has(.pdv-checkout-status)");
+  expect(barra).toMatch(/grid-template-columns:\s*auto /);
+  expect(
+    corpoDa(".pdv-footer:has(.pdv-checkout-status) > .pdv-sale-action"),
+  ).toMatch(/grid-row:\s*1;/);
+});
+
+it("os controles de pagamento do fechamento em tela baixa têm alvo de toque de 44px", () => {
+  const { css, corposDa } = regrasDoCss();
+  // Só o trecho de tela baixa: em tela alta os controles têm outro tamanho.
+  const inicio = css.indexOf("@media (max-height: 900px) {");
+  expect(inicio).toBeGreaterThan(-1);
+  const baixa = css.slice(inicio, css.indexOf("\n}\n", inicio));
+  const alturas = (corpo: string) => /min-height:\s*(\d+)px/.exec(corpo)?.[1];
+  const larguras = (corpo: string) =>
+    /(?:^|\s)width:\s*(\d+)px/.exec(corpo)?.[1];
+  const voltar =
+    '.pdv[data-etapa="fechamento"] .pdv-layer-heading button[data-slot]';
+  const cancelar = '.pdv[data-etapa="fechamento"] .pdv-cancel';
+
+  for (const seletor of [".pdv-payment", ".pdv-discount .pdv-field", voltar]) {
+    const corpos = corposDa(seletor, baixa);
+    for (const corpo of corpos) {
+      const altura = alturas(corpo);
+      if (altura) expect(Number(altura), seletor).toBeGreaterThanOrEqual(44);
+    }
+    expect(
+      corpos.some((c) => alturas(c)),
+      seletor,
+    ).toBe(true);
+  }
+  // Voltar e Cancelar também tinham 40px de largura; o cancelar fica fora do
+  // trecho de tela baixa (vale para todo o fechamento).
+  for (const corpo of corposDa(voltar, baixa)) {
+    const largura = larguras(corpo);
+    if (largura) expect(Number(largura), voltar).toBeGreaterThanOrEqual(44);
+  }
+  for (const corpo of corposDa(cancelar)) {
+    const largura = larguras(corpo);
+    if (largura) expect(Number(largura), cancelar).toBeGreaterThanOrEqual(44);
+    expect(Number(alturas(corpo)), cancelar).toBeGreaterThanOrEqual(44);
+  }
 });
 
 it("fechamento e variações montam os corpos roláveis sem levar a barra de ações junto", async () => {
