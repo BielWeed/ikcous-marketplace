@@ -89,7 +89,7 @@ import {
   Loader2,
   Package,
   RefreshCw,
-  RotateCcw,
+  Undo2,
   Store,
   Truck,
   WifiOff,
@@ -1617,7 +1617,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       ref={viewRef}
       className="pb-admin h-auto bg-admin-bg font-sans text-white lg:pb-12"
     >
-      <header className="admin-topo-cabecalho flex h-[76px] items-center justify-between gap-3 px-5">
+      <header className="admin-topo-cabecalho flex h-[76px] items-center justify-between gap-3 px-5 max-[360px]:grid max-[360px]:h-auto max-[360px]:grid-cols-[minmax(0,1fr)_44px_44px] max-[360px]:gap-2 max-[360px]:py-4 min-[361px]:max-[390px]:gap-2 min-[361px]:max-[390px]:px-3">
         <div className="min-w-0">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-orders"]} />
           <div className="mt-1 flex items-center gap-2">
@@ -1631,17 +1631,21 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             </span>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 max-[360px]:contents min-[361px]:max-[390px]:gap-1">
           <button
             type="button"
             aria-label={`Devoluções${devolucoesAbertas ? `, ${devolucoesAbertas} em andamento` : ""}`}
             title="Devoluções"
             onClick={() => abrirDevolucoes()}
-            className={`${BOTAO_PEDIDOS} relative size-11 p-0 text-pink-300`}
+            className={cn(
+              BOTAO_PEDIDOS,
+              "relative h-11 shrink-0 gap-1.5 rounded-full px-3.5 text-[13px] max-[360px]:order-1 max-[360px]:col-span-3 max-[360px]:justify-self-end",
+            )}
           >
-            <RotateCcw aria-hidden="true" className="size-5" />
-            {Boolean(devolucoesAbertas) && (
-              <span className="absolute -right-1 -top-1 rounded-full bg-pink-300 px-1.5 text-[11px] font-bold text-zinc-950">
+            <Undo2 aria-hidden="true" className="size-[18px]" />
+            <span>Devoluções</span>
+            {(devolucoesAbertas ?? 0) > 0 && (
+              <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-zinc-950">
                 {devolucoesAbertas}
               </span>
             )}
