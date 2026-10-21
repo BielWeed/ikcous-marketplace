@@ -2044,6 +2044,15 @@ const VERIFICACOES = {
   // respeitando a substituída, cada chamador trocado para a função de saldo ou para a regra, a recusa do POST da linha
   // liberada por fora, o texto novo do aviso ao cliente e, nas duas saídas de 7 dias, a frase de confirmação, a espera
   // e o risco_de_dobro. O resto (tabela, EXECUTE, atributos) o DO de conferência da migration aborta o apply se divergir.
+  "20261343000000_o_reembolso_manual_respeita_a_reserva.sql": [
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        { texto: "v_disponivel := public.pedido__saldo_a_estornar(v_o.id);", vezes: 1 },
+        { texto: "passa do que ainda pode ser devolvido deste pedido (R$ %).", vezes: 2 },
+      ],
+    },
+  ],
   "20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql": [
     {
       funcao: "order_refund__pode_ter_saido",
@@ -3195,7 +3204,8 @@ const VERIFICACOES = {
         // Achado 3: desconta o reembolso manual JÁ CONCLUÍDO de outra
         // devolução do mesmo pedido (marcador atualizado — o antigo parava
         // em `- v_em_voo;`).
-        "v_disponivel := v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo - v_ja_manual;",
+        // A 241 e a 343 usam a regra unica do saldo; uma unica chamada em ambos os corpos.
+        { texto: "v_disponivel := public.pedido__saldo_a_estornar(v_o.id);", vezes: 1 },
         // Achado 4: stock_returned_at só desliga o REESTOQUE do item — não
         // bloqueia mais a conclusão inteira (o bloqueio antigo virou
         // comentário; sem este marcador, a trava certa podia sumir de novo

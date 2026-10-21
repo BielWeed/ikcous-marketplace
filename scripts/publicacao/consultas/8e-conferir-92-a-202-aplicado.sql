@@ -150,6 +150,7 @@ WITH corpos AS (
     ('pedido__saldo_a_estornar', '99741b4cdbf1e8d8340f80440e6da094', '20261241000000'),
     ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),
     ('admin_devolucao_concluir', 'ebb901efff59a53082836a13e053cd1a', '20261241000000'),
+    ('admin_devolucao_concluir', 'ea651d52157521c0fe7ffccc948b4b1a', '20261343000000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
     ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),

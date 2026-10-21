@@ -83,6 +83,8 @@ const CAMINHO_ROLLBACK = path.join(
 // md5(replace(prosrc, E'\r', '')) dos corpos ANTES desta migration (medidos
 // no banco nascido das migrations até a 20261194000000) — o rollback tem de
 // voltar exatamente a eles.
+// Estes hashes sao os ANTERIORES a 97, nao o topo atual. A 343 sai antes da 241
+// pelo helper reembolso-em-duvida-posterior.cjs; nao substituir a prova historica.
 const HASH_ANTERIOR = {
   "public.solicitar_estorno(uuid,numeric,text)":
     "ee9fe85d9b18b0e38e23cf48dd3b1111",

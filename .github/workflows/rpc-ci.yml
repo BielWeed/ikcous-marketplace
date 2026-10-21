@@ -152,6 +152,8 @@ on:
       - "scripts/publicacao/consultas/59b-antes-online-sem-forma-base-vigente.sql"
       - "scripts/publicacao/consultas/60a-conferir-estilo-card-frete-aplicado.sql"
       - "scripts/publicacao/consultas/60b-antes-estilo-card-frete-base-vigente.sql"
+      - "scripts/publicacao/consultas/67a-conferir-reembolso-manual-reserva-aplicado.sql"
+      - "scripts/publicacao/consultas/67b-antes-reembolso-manual-reserva.sql"
       - "scripts/publicacao/consultas/61a-conferir-icones-das-categorias-aplicado.sql"
       - "scripts/publicacao/consultas/61b-antes-icones-das-categorias.sql"
       - "scripts/publicacao/consultas/62a-conferir-mototaxi-aplicado.sql"
@@ -277,6 +279,8 @@ on:
       - "scripts/publicacao/consultas/59b-antes-online-sem-forma-base-vigente.sql"
       - "scripts/publicacao/consultas/60a-conferir-estilo-card-frete-aplicado.sql"
       - "scripts/publicacao/consultas/60b-antes-estilo-card-frete-base-vigente.sql"
+      - "scripts/publicacao/consultas/67a-conferir-reembolso-manual-reserva-aplicado.sql"
+      - "scripts/publicacao/consultas/67b-antes-reembolso-manual-reserva.sql"
       - "scripts/publicacao/consultas/61a-conferir-icones-das-categorias-aplicado.sql"
       - "scripts/publicacao/consultas/61b-antes-icones-das-categorias.sql"
       - "scripts/publicacao/consultas/62a-conferir-mototaxi-aplicado.sql"
@@ -361,6 +365,9 @@ jobs:
       # `!cancelled()` só troca o "pare no primeiro erro" por "rode todas e
       # reprove no fim". Sem as migrations aplicadas, nenhuma prova roda (o
       # passo `aplica` já reprovou o job).
+      - name: Prova viva do reembolso manual com reserva (343)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-manual-reserva-viva.cjs
       - name: Prova viva dos icones de categoria e ACL preservada (300)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-icones-viva.cjs

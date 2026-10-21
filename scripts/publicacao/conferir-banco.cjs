@@ -2411,7 +2411,15 @@ const ROL_DA_61B = [
   "categorias.icone: ausente ou text nulavel preservada",
   "categorias_icone_check: ausente",
 ];
+const ROL_DA_67 = [
+  "admin_devolucao_concluir: unica assinatura conhecida",
+  "admin_devolucao_concluir: corpo exato (md5)",
+  "admin_devolucao_concluir: atributos preservados",
+  "admin_devolucao_concluir: authenticated permitido, PUBLIC e anon sem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "67a-conferir-reembolso-manual-reserva-aplicado": ROL_DA_67,
+  "67b-antes-reembolso-manual-reserva": ROL_DA_67,
   "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
   "61b-antes-icones-das-categorias": ROL_DA_61B,
   "62a-conferir-mototaxi-aplicado": [

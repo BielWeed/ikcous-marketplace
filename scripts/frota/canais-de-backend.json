@@ -5,6 +5,12 @@
   "validadeDaEvidenciaHoras": 6,
   "provasDeObjetos": [
     {
+      "consulta": "67a-conferir-reembolso-manual-reserva-aplicado",
+      "versoes": ["20261343000000"],
+      "ausenciaConfirmadaPor": "67b-antes-reembolso-manual-reserva",
+      "_comentario": "ADITIVA: apenas corpo de admin_devolucao_concluir, mesma assinatura e ACL. Saldo unico inclusive no manual apos 180 dias. Rollback restaura byte a byte a 241 e reabre o defeito; nenhuma aplicacao nesta frente."
+    },
+    {
       "consulta": "8e-conferir-92-a-202-aplicado",
       "versoes": [
         "20261192000000",
