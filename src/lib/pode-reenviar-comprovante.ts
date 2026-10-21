@@ -3,14 +3,12 @@ import type { Order } from "@/types";
 /**
  * Quando o botão "Reenviar comprovante" do detalhe do pedido pode aparecer.
  *
- * O botão chama a edge `send-order-confirmation`, que NÃO olha o status do
- * pedido e reserva o ÚNICO e-mail de confirmação dele
- * (`reivindicar_email_de_confirmacao`, vale só na 1ª vez — o mesmo e-mail que
- * o aviso de "pagamento depois do cancelamento" e o de "pagamento confirmado"
- * precisam). O texto que a edge monta depende só de `payment_method` e
- * `payment_status` (`enviarComprovantePedido`, `_shared/comprovante.ts`):
- * forma `online` com pagamento diferente de `pago` sai como "aguardando a
- * confirmação do pagamento". Por isso:
+ * O botão chama a edge `send-order-confirmation`, que exige sessão do dono
+ * ou de admin atual. O miolo `enviarComprovantePedido` também verifica o
+ * pagamento: online diferente de `pago` é recusado ANTES de reservar o
+ * ÚNICO e-mail do pedido (`reivindicar_email_de_confirmacao`). A mesma
+ * reserva é usada pelos avisos de pagamento confirmado e atrasado.
+ * A tela só oferece o botão quando o comprovante faz sentido:
  *
  *  - `pago` (online com o dinheiro confirmado): o e-mail é o comprovante de
  *    verdade — o botão aparece.
@@ -18,11 +16,10 @@ import type { Order } from "@/types";
  *    entrega ou na retirada): comprovante comum, sem cobrança online — aparece.
  *  - qualquer outro caso (aguardando, recusado, expirado, estornado, pago depois
  *    de expirar; `online` sem status; forma de entrega com status de cobrança
- *    online): o toque gastaria a vaga com o e-mail errado, e o de "pago" nunca
- *    mais sairia — não aparece.
+ *    online): não aparece. No online, o backend também protege a reserva.
  *
- * Conservador de propósito: na dúvida o botão some, porque a vaga do e-mail
- * não tem volta. Só decide a TELA; a edge não muda.
+ * Conservador de propósito: na dúvida o botão some. Esta função só decide
+ * a TELA; a autorização e a proteção da reserva continuam no backend.
  */
 export function podeReenviarComprovante(
   pedido: Pick<Order, "paymentMethod" | "paymentStatus">,

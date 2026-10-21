@@ -312,6 +312,129 @@ Deno.test("montarResposta traduz cada desfecho para o status certo", () => {
   assertEquals(montarResposta({ ok: false, motivo: "sem_pedido" }).status, 200);
 });
 
+// --- autorização HTTP: nunca confiar só no UUID ou nas claims do JWT ------
+for (const caso of [
+  { nome: "sem sessão", token: "", usuario: null, dono: "dono", admin: null, status: 401 },
+  { nome: "token inválido", token: "invalido", usuario: null, dono: "dono", admin: null, status: 401 },
+  { nome: "outro cliente", token: "valido", usuario: "outro", dono: "dono", admin: null, status: 403 },
+  { nome: "admin rebaixado", token: "valido", usuario: "antigo-admin", dono: "dono", admin: null, status: 403 },
+  { nome: "dono", token: "valido", usuario: "dono", dono: "dono", admin: null, status: 200 },
+  { nome: "admin atual", token: "valido", usuario: "admin", dono: "dono", admin: "admin", status: 200 },
+  { nome: "pedido convidado não pertence a outro cliente", token: "valido", usuario: "outro", dono: null, admin: null, status: 403 },
+]) {
+  Deno.test(`handler: ${caso.nome} — só dono/admin pode disparar o comprovante`, async () => {
+    let envios = 0;
+    const supabase = {
+      auth: { getUser: async (token: string) => {
+        assertEquals(token, caso.token);
+        return { data: { user: caso.usuario ? { id: caso.usuario } : null }, error: null };
+      } },
+      from: (tabela: string) => {
+        assertEquals(tabela, "marketplace_orders");
+        return { select: () => ({ eq: (coluna: string, valor: string) => {
+          assertEquals([coluna, valor], ["id", PEDIDO.id]);
+          return { maybeSingle: async () => ({ data: { user_id: caso.dono }, error: null }) };
+        } }) };
+      },
+    };
+    const resposta = await handler(new Request("http://localhost", {
+      method: "POST",
+      headers: caso.token ? { Authorization: `Bearer ${caso.token}` } : {},
+      body: JSON.stringify({ orderId: PEDIDO.id }),
+    }), {
+      supabase: supabase as never,
+      adminAtual: async () => caso.admin,
+      enviarComprovante: async () => { envios++; return { ok: true }; },
+    });
+    assertEquals(resposta.status, caso.status);
+    assertEquals(envios, caso.status === 200 ? 1 : 0);
+  });
+}
+
+for (const [papelAuth, papelPerfil, status] of [
+  ["admin", "admin", 200],
+  ["admin", "customer", 403],
+  ["customer", "admin", 403],
+]) {
+  Deno.test(`handler porta REAL de admin: Auth=${papelAuth}, perfil=${papelPerfil} → ${status}`, async () => {
+    const nomes = ["SUPABASE_URL", "SUPABASE_SECRET_KEYS", "SUPABASE_PUBLISHABLE_KEYS"];
+    const anteriores = new Map(nomes.map(nome => [nome, Deno.env.get(nome)]));
+    Deno.env.set(nomes[0], "https://loja.exemplo.test");
+    Deno.env.set(nomes[1], '{"default":"sb_secret_teste"}');
+    Deno.env.set(nomes[2], '{"default":"sb_publishable_teste"}');
+    let envios = 0;
+    const rotas: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      rotas.push(url.pathname);
+      let corpo: unknown;
+      if (url.pathname === "/auth/v1/user") {
+        corpo = { id: "admin-atual", app_metadata: { role: papelAuth } };
+      } else if (url.pathname === "/rest/v1/marketplace_orders") {
+        corpo = { user_id: "dono" };
+      } else if (url.pathname === "/rest/v1/profiles") {
+        corpo = { role: papelPerfil };
+      } else {
+        throw new Error(`Rede inesperada: ${url.pathname}`);
+      }
+      return new Response(JSON.stringify(corpo), { headers: { "Content-Type": "application/json" } });
+    };
+    try {
+      const resposta = await handler(new Request("http://localhost", {
+        method: "POST",
+        headers: { Authorization: "Bearer sessao-de-teste" },
+        body: JSON.stringify({ orderId: PEDIDO.id }),
+      }), {
+        fetchImpl,
+        enviarComprovante: async () => { envios++; return { ok: true }; },
+      });
+      assertEquals(resposta.status, status);
+      assertEquals(envios, status === 200 ? 1 : 0);
+      assertEquals(rotas, ["/auth/v1/user", "/rest/v1/marketplace_orders", "/auth/v1/user", "/rest/v1/profiles"]);
+    } finally {
+      nomes.forEach(nome => restaurar(nome, anteriores.get(nome)));
+    }
+  });
+}
+
+Deno.test("M9: pedido inexistente e pedido alheio devolvem a mesma resposta 403", async () => {
+  const respostas = [];
+  let envios = 0;
+  for (const pedido of [null, { user_id: "outro-cliente" }]) {
+    const supabase = {
+      auth: { getUser: async () => ({ data: { user: { id: "cliente" } }, error: null }) },
+      from: (tabela: string) => {
+        assertEquals(tabela, "marketplace_orders");
+        return { select: (campos: string) => {
+          assertEquals(campos, "user_id");
+          return { eq: (coluna: string, valor: string) => {
+            assertEquals([coluna, valor], ["id", PEDIDO.id]);
+            return { maybeSingle: async () => ({ data: pedido, error: null }) };
+          } };
+        } };
+      },
+    };
+    const resposta = await handler(new Request("http://localhost", {
+      method: "POST",
+      headers: { Authorization: "Bearer sessao-de-teste" },
+      body: JSON.stringify({ orderId: PEDIDO.id }),
+    }), {
+      supabase: supabase as never,
+      adminAtual: async () => null,
+      enviarComprovante: async () => { envios++; return { ok: true }; },
+    });
+    assertEquals(resposta.status, 403);
+    respostas.push({
+      status: resposta.status,
+      headers: [...resposta.headers],
+      corpo: await resposta.json(),
+    });
+  }
+  assertEquals(respostas[0], respostas[1]);
+  assertEquals(respostas[0].corpo, { ok: false, motivo: "nao_autorizado" });
+  assertEquals(envios, 0);
+});
+
 // --- handler: a chave de service role sumindo do ambiente -----------------
 
 /** Devolve a variavel ao estado anterior. Ternario como comando e erro de lint. */
@@ -379,16 +502,15 @@ Deno.test("handler: nenhuma chave de service role no ambiente (nem a nova SUPABA
 // NOVA) e SUPABASE_SERVICE_ROLE_KEY ausente (a LEGADA, como fica no dia em
 // que ela for desligada):
 //   - código migrado (`readKey`): acha a chave em SUPABASE_SECRET_KEYS,
-//     `createClient` NÃO lança, o handler segue para
-//     `enviarComprovantePedido`, que recusa por falta de SMTP configurado
-//     no ambiente de teste → 502 / "sem_remetente".
+//     `createClient` NÃO lança e o handler chega à porta de sessão:
+//     sem Authorization → 401 / "nao_autorizado", sem rede.
 //   - código pré-migração (`Deno.env.get` direto na legada): a variável
 //     está apagada, `createClient(url, undefined)` lança "supabaseKey is
 //     required.", cai no catch → 502 / "envio_falhou".
 // Medido nas duas versões antes de escrever esta asserção (cópia isolada em
 // scratchpad, nunca neste arquivo): real → sem_remetente; mutante (a troca
 // revertida para a chamada legada) → envio_falhou.
-Deno.test("handler: com a chave NOVA presente e só a legada ausente, o client se monta (prova que leu SUPABASE_SECRET_KEYS, não a variável legada) e a falha vira sem_remetente, não envio_falhou", async () => {
+Deno.test("handler: com a chave NOVA presente e só a legada ausente, o client se monta e chega à porta de sessão (401), não envio_falhou", async () => {
   const urlAnterior = Deno.env.get("SUPABASE_URL");
   const legadaAnterior = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const novaAnterior = Deno.env.get("SUPABASE_SECRET_KEYS");
@@ -413,9 +535,9 @@ Deno.test("handler: com a chave NOVA presente e só a legada ausente, o client s
     );
     const corpo = await resposta.json();
 
-    assertEquals(resposta.status, 502);
+    assertEquals(resposta.status, 401);
     assertEquals(corpo.ok, false);
-    assertEquals(corpo.motivo, "sem_remetente");
+    assertEquals(corpo.motivo, "nao_autorizado");
   } finally {
     restaurar("SUPABASE_URL", urlAnterior);
     restaurar("SUPABASE_SERVICE_ROLE_KEY", legadaAnterior);

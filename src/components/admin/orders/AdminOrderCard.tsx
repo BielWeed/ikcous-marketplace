@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { PerguntaDoRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import {
   OrderStatusBadge,
@@ -650,6 +651,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 </button>
               )}
             </div>
+          ) : painel === "receber" ? (
+            <PerguntaDoRecebimento
+              total={order.total || 0}
+              disabled={bloqueado || !faltaReceber}
+              aoCancelar={() => setPainel(null)}
+              aoConfirmar={() => void executar(undefined, true)}
+            />
           ) : (
             <>
               <h3 className="text-lg font-bold">
@@ -694,18 +702,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 <button
                   type="button"
                   disabled={
-                    bloqueado ||
-                    (painel === "cancelar" && !podeCancelar) ||
-                    (painel === "receber" && !faltaReceber)
+                    bloqueado || (painel === "cancelar" && !podeCancelar)
                   }
                   onClick={() =>
                     void executar(
-                      painel === "cancelar"
-                        ? "cancelled"
-                        : painel === "receber"
-                          ? undefined
-                          : destinoConfirmado,
-                      painel === "receber" || painel === "entregar",
+                      painel === "cancelar" ? "cancelled" : destinoConfirmado,
+                      painel === "entregar",
                     )
                   }
                   className={

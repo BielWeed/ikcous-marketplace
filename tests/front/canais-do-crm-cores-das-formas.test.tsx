@@ -20,7 +20,14 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { rotuloDaFormaDePagamento } from "@/lib/crm";
 import type { KpisDoCrm, VisaoDoCrm } from "@/types/crm";
+
+it("forma desconhecida derivada do financeiro tem o mesmo rótulo neutro no CRM", () => {
+  expect(rotuloDaFormaDePagamento("online_desconhecido")).toBe(
+    "Pagamento online (forma não identificada)",
+  );
+});
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

@@ -542,6 +542,8 @@ export const FORMAS_DO_LANCAMENTO: readonly string[] = [
 
 export function rotuloDaForma(forma: string | null | undefined): string {
   switch (forma) {
+    case "online_desconhecido":
+      return "Pagamento online (forma não identificada)";
     case "online":
       return "Online (Mercado Pago)";
     case "pix":
