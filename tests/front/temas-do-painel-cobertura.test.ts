@@ -186,8 +186,6 @@ const MANTIDAS = new Map<string, string>([
   ["bg-zinc-300", SERIE],
   ["bg-zinc-400", SERIE],
   ["data-[state=checked]:bg-zinc-300", SERIE],
-  ["from-zinc-300", MEDALHA],
-  ["via-zinc-400", MEDALHA],
   ["disabled:from-zinc-300", MEDALHA],
   ["disabled:to-zinc-400", MEDALHA],
   ["via-zinc-900", PREVIA_ESCURA],
