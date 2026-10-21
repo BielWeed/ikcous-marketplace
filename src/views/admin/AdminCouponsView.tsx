@@ -484,7 +484,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         {isOffline && (
           <div
             role="status"
-            className="flex gap-3 rounded-[20px] border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-relaxed"
+            className="flex gap-3 rounded-[20px] border border-admin-border p-4 text-sm leading-relaxed"
           >
             <CloudOff
               aria-hidden="true"
@@ -817,7 +817,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                             </p>
                           )}
                           {indisponivel && (
-                            <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-3">
+                            <div className="rounded-2xl border border-admin-border p-3">
                               <p
                                 className={`font-bold ${classeDoTexto("atencao")}`}
                               >

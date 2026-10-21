@@ -88,7 +88,7 @@
   color: var(--lit-t-ff94bc, #ff94bc);
 }
 .pdv-orange {
-  color: #fbbf24;
+  color: var(--lit-t-fbbf24, #fbbf24);
 }
 .pdv-red {
   color: var(--lit-t-ff9999, #ff9999);

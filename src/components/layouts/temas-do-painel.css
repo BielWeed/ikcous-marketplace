@@ -61,6 +61,7 @@ html.admin-mode[data-admin-tema="claro"] {
   --lit-t-cbc3dd: #5b5b68;
   --lit-t-d4d4dc: #121217;
   --lit-t-f4c43f: #8a5a00;
+  --lit-t-fbbf24: #92400e;
   --lit-t-f4f4f5: #121217;
   --lit-t-f5f5f7: #121217;
   --lit-t-fafafa: #121217;
@@ -136,6 +137,13 @@ html.admin-mode[data-admin-tema="confortavel"] {
   --lit-b-a1a1ad: #b3a68f;
   --lit-b-b6b6c2: #b3a68f;
   --lit-b-d4d4dc: #eadfc8;
+}
+
+/* Vermelho de estado: AA também sobre a superfície elevada do Confortável.
+   Escuro e Claro continuam usando seus tons originais. */
+:where(html.admin-mode[data-admin-tema="confortavel"])
+  .text-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *)) {
+  color: #fca5a5;
 }
 
 /* Componentes compartilhados (botão, diálogo, seletor, aviso do sonner) leem os

@@ -108,14 +108,18 @@ export const OrderStatusBadge = memo(function OrderStatusBadge({
 }: Readonly<OrderStatusBadgeProps>) {
   const cfg = statusConfig[status || "pending"] || statusConfig.pending;
   const cartao = tamanho === "cartao";
-  const corDoCartao = `${cfg.bgColor} ${cfg.color}`;
+  const corDoCartao = cfg.color;
 
   return (
     <div
       className={`flex items-center rounded-full ${
-        cartao ? "gap-1.5 px-2.5 py-1" : "px-2 py-0.5"
-      } ${cartao ? corDoCartao : cfg.bgColor} ${className || ""}`}
+        cartao ? "gap-1.5 px-2.5 py-1" : "gap-1.5 px-2 py-0.5"
+      } ${corDoCartao} ${className || ""}`}
     >
+      <span
+        aria-hidden="true"
+        className="size-1.5 shrink-0 rounded-full bg-current"
+      />
       <span
         className={`${
           cartao

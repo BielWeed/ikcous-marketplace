@@ -364,8 +364,8 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           className={cn(
             "mb-2 flex items-start gap-1.5 rounded-xl p-2 text-xs leading-relaxed",
             order.status === "cancelled"
-              ? "bg-red-400/10 text-red-300"
-              : `bg-amber-400/10 ${classeDoTexto("atencao")}`,
+              ? classeDoTexto("negativo")
+              : classeDoTexto("atencao"),
           )}
         >
           {order.status === "cancelled" ? (
@@ -398,7 +398,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
       {isOffline && (
         <p
           role="status"
-          className={`mb-2 flex items-start gap-2 rounded-xl bg-red-400/10 p-2 text-xs ${classeDoTexto("negativo")}`}
+          className={`mb-2 flex items-start gap-2 rounded-xl p-2 text-xs ${classeDoTexto("negativo")}`}
         >
           <WifiOff aria-hidden="true" className="size-4 shrink-0" />
           <span>
@@ -662,14 +662,20 @@ export const AdminOrderCard = memo(function AdminOrderCard({
               </h3>
               <p
                 className={cn(
-                  "rounded-2xl border p-4 text-sm leading-relaxed",
-                  painel === "cancelar"
-                    ? "border-red-300/15 bg-red-400/10 text-red-200"
-                    : painel === "avancar"
-                      ? `border-amber-400/15 bg-amber-400/10 ${classeDoTexto("atencao")}`
-                      : "border-emerald-300/15 bg-emerald-300/10 text-emerald-200",
+                  "rounded-2xl border border-admin-border p-4 text-sm leading-relaxed",
+                  classeDoTexto(
+                    painel === "cancelar"
+                      ? "negativo"
+                      : painel === "avancar"
+                        ? "atencao"
+                        : "positivo",
+                  ),
                 )}
               >
+                <TriangleAlert
+                  aria-hidden="true"
+                  className="mr-2 inline size-4 align-text-bottom"
+                />
                 {painel === "cancelar"
                   ? textoCancelamento
                   : painel === "avancar"

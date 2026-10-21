@@ -2,6 +2,7 @@
 // âmbar = atenção, azul = informação, cinza = neutro. Contraste WCAG AA
 // (>= 4.5:1) medido com os hex reais do Tailwind v3 sobre o fundo de cada
 // superfície (painel #0B0B0D, loja #FFFFFF).
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -101,6 +102,32 @@ describe("contraste WCAG AA (>= 4.5:1)", () => {
     "text-sky-700": "#0369a1",
     "text-zinc-600": "#52525b",
   };
+  it("vermelho do Confortável tem contraste nas superfícies reais sem mudar os outros temas", () => {
+    const css = readFileSync(
+      new URL(
+        "../../src/components/layouts/temas-do-painel.css",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const regra = css.match(
+      /:where\(html\.admin-mode\[data-admin-tema="confortavel"\]\)\s+\.text-red-400:where\([^{}]+\)\s*\{\s*color:\s*(#[a-f0-9]{6})/,
+    );
+    expect(regra).not.toBeNull();
+    const vermelho = regra?.[1] ?? "#f87171";
+    for (const fundo of [
+      "#24211c",
+      "#2f2b25",
+      "#3a352e",
+      "#433c34",
+      "#36363d",
+    ]) {
+      expect(contraste(vermelho, fundo), fundo).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(css).not.toMatch(/data-admin-tema="claro"[^{}]+\.text-red-400/);
+    expect(contraste("#b91c1c", "#e9e9ee")).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("painel sobre #0B0B0D", () => {
     for (const t of TONS) {
       const hex = painel[classeDoTexto(t, "painel")];
