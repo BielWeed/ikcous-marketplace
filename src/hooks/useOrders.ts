@@ -3,6 +3,7 @@ import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
   CHAVE_BASE_DA_FILA_DE_PEDIDOS,
   chaveDoUsuario,
@@ -2788,10 +2789,7 @@ export function useOrders(
     let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
     let onlineTimeout: ReturnType<typeof setTimeout> | undefined;
 
-    const bc =
-      typeof window !== "undefined"
-        ? new BroadcastChannel("ikcous_orders_realtime")
-        : null;
+    const bc = criarCanalDeAbas("ikcous_orders_realtime");
     // Listener ÚNICO, anexado independente de liderança (achado C2 da
     // revisão de 26/08/2026 — antes só a aba NÃO-líder ouvia, e só para
     // "order_change"). `processarMensagemBroadcast` decide o que fazer com

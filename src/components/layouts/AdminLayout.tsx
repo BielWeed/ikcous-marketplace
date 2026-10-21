@@ -21,6 +21,7 @@ import {
   isViewTransitionSupported,
   useViewTransition,
 } from "@/hooks/useViewTransition";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import {
@@ -197,10 +198,7 @@ export function AdminLayout({
         }
       }, ATRASO_COALESCENCIA_BADGES_MS);
     };
-    const bc =
-      typeof window !== "undefined"
-        ? new BroadcastChannel("ikcous_admin_layout_badges")
-        : null;
+    const bc = criarCanalDeAbas("ikcous_admin_layout_badges");
     let bcListener: ((event: MessageEvent) => void) | null = null;
 
     const fetchInitialCounts = async () => {

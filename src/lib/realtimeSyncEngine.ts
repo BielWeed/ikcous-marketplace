@@ -16,6 +16,7 @@
  * @module realtimeSyncEngine
  */
 
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { cupomDoBanco } from "@/lib/cupom-do-banco";
 import { DataVault, type StoreName } from "@/lib/dataVault";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
@@ -242,10 +243,7 @@ const JANELA_MINIMA_ENTRE_GATILHOS_MS = 60_000;
 let _ultimoGatilhoDeRodada = 0;
 let _connectivityListeners: (() => void) | null = null;
 const _listeners = new Set<SyncCallback>();
-const bc =
-  typeof window !== "undefined" && typeof BroadcastChannel !== "undefined"
-    ? new BroadcastChannel("ikcous_realtime_db_sync")
-    : null;
+const bc = criarCanalDeAbas("ikcous_realtime_db_sync");
 
 // ─── Engine ──────────────────────────────────────────────────────────────────
 

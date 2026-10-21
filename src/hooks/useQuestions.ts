@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { supabase } from "@/lib/supabase";
 import {
   cachedQuestionsData,
@@ -92,10 +93,7 @@ const updateQuestionsCache = (productId: string, newQuestions: Question[]) => {
   }
 };
 
-const bc =
-  typeof window !== "undefined" && typeof BroadcastChannel !== "undefined"
-    ? new BroadcastChannel("ikcous_questions_sync")
-    : null;
+const bc = criarCanalDeAbas("ikcous_questions_sync");
 
 /**
  * C4 (laudo novos-ângulos 01/09): decide se um evento de resposta acorda a
