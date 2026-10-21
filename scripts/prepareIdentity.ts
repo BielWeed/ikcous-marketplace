@@ -3,6 +3,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
+import type { LocalIdentityUrls } from "../src/config/buildIdentityContract";
+import { BADGE_NEUTRO } from "../src/config/fichaDaLojaContract";
+import { prepararBadgeDaIdentidade } from "./prepareIdentityBadge";
 import type { DownloadedStoreIdentity } from "../src/lib/publicStoreIdentity";
 import {
   cloneStoreIdentity,
@@ -27,7 +30,7 @@ export interface PreparedIdentityBuild {
   readonly codeVersion: string;
   readonly codeSha: string;
   readonly deliveryVersion: string;
-  readonly localUrls: PublicStoreIdentity["urls"];
+  readonly localUrls: LocalIdentityUrls;
   readonly dispose: () => Promise<void>;
 }
 
@@ -391,6 +394,19 @@ export async function prepareIdentityBuild(
     if (!ogFile) throw invalid();
     if (ogFile.mediaType !== "image/png") throw invalid();
     await verifiedWrite(path.join(publicDir, "og-image.png"), ogFile.bytes);
+    // Derivado só do PNG desta identidade, validado e hasheado acima.
+    // Não entra em branding_assets: nenhum upload, RPC ou schema novo.
+    const iconFile = files.find(
+      (file) => file.path === identity.assets.icon_192.path,
+    );
+    if (!iconFile) throw invalid();
+    const badge = await prepararBadgeDaIdentidade(iconFile.bytes);
+    const badgePath = badge ? `v1/${hash(badge)}/badge-96x96.png` : undefined;
+    if (badge && badgePath)
+      await verifiedWrite(
+        path.join(publicDir, "store-identity", badgePath),
+        badge,
+      );
     const local = (asset: IdentityAsset) => `/store-identity/${asset.path}`;
     const localUrls = Object.freeze({
       originals: Object.freeze(identity.assets.originals.map(local)),
@@ -399,6 +415,7 @@ export async function prepareIdentityBuild(
       favicon: local(identity.assets.favicon),
       apple_touch: local(identity.assets.apple_touch),
       icon_192: local(identity.assets.icon_192),
+      badge_96: badgePath ? `/store-identity/${badgePath}` : BADGE_NEUTRO,
       icon_512: local(identity.assets.icon_512),
       maskable_512: local(identity.assets.maskable_512),
       og: local(identity.assets.og),

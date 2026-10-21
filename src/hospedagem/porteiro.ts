@@ -14,6 +14,8 @@ import { CAMINHO_IDENTIDADE_JSON } from "../config/fichaDaLojaContract";
 import { escapeHtml, identityHtml } from "../config/identidadeNoHtml";
 import { MANIFESTO_BASE } from "../config/manifestoBase";
 import { nomeCurtoDaLoja } from "../config/nomeCurtoDaLoja";
+import type { LocalIdentityUrls } from "../config/buildIdentityContract";
+import { BADGE_NEUTRO } from "../config/fichaDaLojaContract";
 import { cleanEnvVar } from "../lib/env-publico-valores";
 import { resolverValoresPublicosSupabase } from "../lib/env-publico-valores";
 import { readPublicStoreIdentity } from "../lib/publicStoreIdentity";
@@ -939,7 +941,7 @@ function passthroughPorteiro(): Response {
 }
 
 function iconesManifestParaUrls(
-  localUrls: PublicStoreIdentity["urls"],
+  localUrls: LocalIdentityUrls,
 ): Array<{ src: string; sizes: string; type: string; purpose?: string }> {
   return [
     { src: localUrls.icon_192, sizes: "192x192", type: "image/png" },
@@ -949,6 +951,13 @@ function iconesManifestParaUrls(
       sizes: "512x512",
       type: "image/png",
       purpose: "maskable",
+    },
+    {
+      // Ficha antiga/remota sem derivado: só marca neutra, nunca a do build.
+      src: localUrls.badge_96 ?? BADGE_NEUTRO,
+      sizes: "96x96",
+      type: "image/png",
+      purpose: "monochrome",
     },
   ];
 }
