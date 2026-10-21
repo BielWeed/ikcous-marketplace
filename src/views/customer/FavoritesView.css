@@ -56,10 +56,10 @@ label:has(> select[aria-label="Ordem dos favoritos"]:focus-visible) {
   color: hsl(var(--muted-foreground));
 }
 .dark .favorites-product-card .text-emerald-700 {
-  color: #34d399;
+  @apply text-emerald-400;
 }
 .dark .favorites-product-card .text-rose-600 {
-  color: #fb7185;
+  @apply text-rose-400;
 }
 .favorites-product-card h3 button {
   min-height: 44px;

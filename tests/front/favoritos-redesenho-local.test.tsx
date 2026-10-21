@@ -120,7 +120,7 @@ describe("Favoritos — desenho aprovado com controles locais", () => {
     expect(container.querySelector("h1")?.textContent).toBe("Favoritos");
     expect(container.textContent).toContain("3 produtos que você salvou");
     const acao = botao("Ver mais produtos");
-    expect(acao.getAttribute("aria-label")).toBe("Descobrir mais produtos");
+    expect(acao.getAttribute("aria-label")).toBe("Ver mais produtos");
     expect(container.contains(acao)).toBe(false);
     expect(acao.closest(".bottom-docked-navigation")).not.toBeNull();
     expect(
@@ -170,15 +170,14 @@ describe("Favoritos — desenho aprovado com controles locais", () => {
     expect(botao("Com desconto 1").getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("não oferece categoria única nem desconto inexistente ou preço original igual", () => {
+  it("oferece categoria única com contagem, sem inventar desconto com preço original igual", () => {
     montar([favoritos[2]]);
     expect(container.textContent).toContain("1 produto que você salvou");
     expect(container.textContent).not.toContain("Com desconto");
-    expect(
-      [...container.querySelectorAll("button")].some((b) =>
-        b.textContent?.includes("Papelaria"),
-      ),
-    ).toBe(false);
+    expect(botao("Todas 1").getAttribute("aria-pressed")).toBe("true");
+    tocar("Papelaria 1");
+    expect(nomes()).toEqual(["Agenda"]);
+    expect(botao("Papelaria 1").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("inclui brinde com preço zero no desconto e não inventa promoção com preço original menor", () => {
@@ -202,7 +201,7 @@ describe("Favoritos — desenho aprovado com controles locais", () => {
   it("não deixa a ação fixa da tela inativa por cima de outra tela", () => {
     montar(favoritos, false);
     expect(
-      document.body.querySelector('[aria-label="Descobrir mais produtos"]'),
+      document.body.querySelector('[aria-label="Ver mais produtos"]'),
     ).toBeNull();
   });
 });

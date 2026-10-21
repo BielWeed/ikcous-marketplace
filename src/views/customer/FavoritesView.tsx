@@ -377,7 +377,7 @@ export const FavoritesView = React.memo(function FavoritesView({
         >
           Todas {favorites.length}
         </button>
-        {categorias.size > 1 &&
+        {categorias.size > 0 &&
           Array.from(categorias, ([nome, quantidade]) => (
             <button
               key={nome}
@@ -488,7 +488,7 @@ export const FavoritesView = React.memo(function FavoritesView({
                       onNavigate("home");
                     }}
                     type="button"
-                    aria-label="Descobrir mais produtos"
+                    aria-label="Ver mais produtos"
                     className="group pointer-events-auto flex min-h-[52px] w-full items-center justify-center gap-6 rounded-full border border-border bg-card px-4 text-sm font-semibold text-card-foreground transition-colors hover:bg-muted active:scale-95"
                   >
                     Ver mais produtos
