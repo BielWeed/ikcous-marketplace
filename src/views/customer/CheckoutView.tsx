@@ -6627,12 +6627,16 @@ export function CheckoutViewDaConta({
                               ) : (
                                 <>
                                   {economiaDoFrete > 0 && (
-                                    <span className="mr-1 text-zinc-400 line-through">
-                                      R${" "}
-                                      {(shipping + economiaDoFrete)
-                                        .toFixed(2)
-                                        .replace(".", ",")}
-                                    </span>
+                                    <>
+                                      <span className="sr-only">de </span>
+                                      <span className="mr-1 text-zinc-500 line-through">
+                                        R${" "}
+                                        {(shipping + economiaDoFrete)
+                                          .toFixed(2)
+                                          .replace(".", ",")}
+                                      </span>
+                                      <span className="sr-only">por </span>
+                                    </>
                                   )}
                                   {shipping > 0
                                     ? `R$ ${shipping.toFixed(2).replace(".", ",")}`

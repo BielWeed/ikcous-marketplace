@@ -330,9 +330,14 @@ describe("CheckoutView — economia do frete e conta visível na barra de baixo"
       const entrega = valorDaLinha("Entrega");
       if (gratis) {
         expect(entrega.textContent).toContain("Grátis");
-        expect(entrega.querySelector(".line-through")?.textContent).toContain(
-          "R$ 10,00",
-        );
+        const riscado = entrega.querySelector(".line-through")!;
+        expect(riscado.textContent).toContain("R$ 10,00");
+        expect(riscado.classList.contains("text-zinc-500")).toBe(true);
+        expect(
+          [...entrega.querySelectorAll(".sr-only")].map((el) =>
+            el.textContent?.trim(),
+          ),
+        ).toEqual(["de", "por"]);
       } else {
         expect(entrega.querySelector(".line-through")).toBeNull();
       }

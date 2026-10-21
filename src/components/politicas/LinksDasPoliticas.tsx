@@ -7,9 +7,10 @@ import { haptic } from "@/utils/haptic";
 
 // Por padrão, os links ficam na segunda linha e têm caixa de 44px
 // (`inline-flex min-h-11`), sem invadir o botão Finalizar com margem negativa.
-// Em `emLinha` (checkout), `inline p-0` mantém os links dentro da frase:
-// `min-h-11` não dá altura ao elemento inline. A área de toque acompanha
-// o texto — exceção para links em frases da WCAG 2.5.8 —, não tem 44px.
+// Em `emLinha` (checkout), os links seguem dentro da frase, sem o <br />.
+// Mesmo com `inline p-0`, o <button> funciona como inline-block e
+// `min-h-11` mantém o alvo de toque de 44px. Preservamos esse alvo:
+// ele deixa a frase e a barra mais altas; não é altura apenas de texto.
 //
 // CORES: estes dois componentes moram sobre superfícies BRANCAS fixas (a barra
 // do Finalizar, o cartão do cadastro, a página do produto — todas `bg-white`
