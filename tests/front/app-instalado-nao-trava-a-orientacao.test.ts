@@ -5,9 +5,9 @@
 // (No iPhone o valor é ignorado; no navegador comum a tela já gira.)
 //
 // "any" deixa o aparelho decidir: gira se a pessoa deixou a rotação
-// automática ligada. A página do PDV pode ter altura limitada, desde que
-// fechamento e escolha de variação preservem rolagem interna alcançável.
-// Não mede a tela num aparelho real.
+// automática ligada. Este teste guarda a estrutura e as regras de rolagem:
+// título e resumo também pertencem ao corpo do fechamento, não à parte fixa.
+// Não mede a altura disponível nem o alcance físico; isso exige navegador.
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { MANIFESTO_BASE } from "@/config/manifestoBase";
@@ -50,6 +50,16 @@ describe("a tela do PDV funciona deitada sem cortar conteúdo", () => {
       expect(bloco, classe).toMatch(/overflow-y:\s*(auto|scroll)/);
       expect(bloco, classe).toMatch(/overscroll-behavior:\s*contain/);
     }
+  });
+
+  it("título e resumo do fechamento ficam dentro do corpo que rola", () => {
+    const codigo = ler("src/components/admin/pdv/FechamentoDaVenda.tsx");
+    const inicio = codigo.indexOf('className="pdv-checkout-body"');
+    const barra = codigo.indexOf('<AcaoDaBarra aria-label="Registrar a venda"');
+    const corpo = codigo.slice(inicio, barra);
+    expect(inicio).toBeGreaterThan(-1);
+    expect(corpo).toContain('className="pdv-layer-heading"');
+    expect(corpo).toContain('className="pdv-cupom pdv-stack"');
   });
 
   it("encontrou os arquivos do PDV", () => {

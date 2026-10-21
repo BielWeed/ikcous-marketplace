@@ -190,25 +190,6 @@ export function FechamentoDaVenda({
 
   return (
     <section className="pdv-layer pdv-checkout" aria-label="Cobrança da venda">
-      <div className="pdv-layer-heading">
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            className="pdv-secondary size-11 shrink-0"
-            aria-label="Voltar à venda"
-            onClick={() => despachar({ tipo: "etapa_pedida", etapa: "cupom" })}
-          >
-            <ChevronLeft aria-hidden="true" className="pdv-blue size-5" />
-            <span className="sr-only">Voltar à venda</span>
-          </Button>
-          <div>
-            <h2>Fechar venda</h2>
-            <p className="pdv-muted">Cobrança</p>
-          </div>
-        </div>
-      </div>
-
       <div ref={corpoRef} className="pdv-checkout-body">
         {estado.erro && (
           <div role="alert" className="pdv-notice">
@@ -246,6 +227,46 @@ export function FechamentoDaVenda({
             </p>
           </div>
         )}
+
+        <div className="pdv-layer-heading">
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="pdv-secondary size-11 shrink-0"
+              aria-label="Voltar à venda"
+              onClick={() =>
+                despachar({ tipo: "etapa_pedida", etapa: "cupom" })
+              }
+            >
+              <ChevronLeft aria-hidden="true" className="pdv-blue size-5" />
+              <span className="sr-only">Voltar à venda</span>
+            </Button>
+            <div>
+              <h2>Fechar venda</h2>
+              <p className="pdv-muted">Cobrança</p>
+            </div>
+          </div>
+        </div>
+
+        <section
+          className="pdv-cupom pdv-stack"
+          aria-label="Itens da venda"
+          data-resumo="true"
+        >
+          <div className="pdv-heading">
+            <ShoppingCart aria-hidden="true" className="size-5" />
+            <h3 className="flex-1">Venda atual</h3>
+            <span className="pdv-muted">
+              {estado.itens.length}{" "}
+              {estado.itens.length === 1 ? "item" : "itens"}
+            </span>
+            <strong className="text-sm">R$ {reais(subtotal)}</strong>
+          </div>
+          {estado.cliente.tipo !== "sem_cliente" && (
+            <p className="pdv-muted">Cliente: {estado.cliente.nome}</p>
+          )}
+        </section>
 
         <div className="pdv-discount">
           <div className="pdv-card">

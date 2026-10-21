@@ -96,7 +96,6 @@
   font-size: 14px;
 }
 .pdv[data-etapa="escolha_de_variacao"] .pdv-cupom,
-.pdv[data-etapa="escolha_de_variacao"] .pdv-page-heading,
 .pdv[data-etapa="escolha_de_variacao"] .pdv-cancel {
   display: none;
 }
@@ -941,6 +940,15 @@
   .pdv-check label {
     min-height: 40px;
     font-size: 12px;
+  }
+}
+@media (max-height: 420px) {
+  .pdv-footer[data-etapa="escolha_de_variacao"] .pdv-client-chip {
+    display: none;
+  }
+  .pdv-variation-options .pdv-result {
+    min-height: 40px;
+    padding: 4px 10px;
   }
 }
 @media (max-height: 680px) {

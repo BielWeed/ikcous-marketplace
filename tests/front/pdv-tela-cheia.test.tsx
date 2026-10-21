@@ -72,6 +72,11 @@ it("fechamento e variações montam os corpos roláveis sem levar a barra de aç
   );
   const corpo = host.querySelector(".pdv-checkout-body")!;
   expect(corpo).not.toBeNull();
+  expect(corpo.querySelector(".pdv-layer-heading")).not.toBeNull();
+  expect(corpo.querySelector(".pdv-cupom")?.textContent).toContain(
+    "Venda atual",
+  );
+  expect(corpo.querySelector(".pdv-cupom")?.textContent).toContain("R$ 10,00");
   expect(corpo.querySelector(".pdv-payment-grid")).not.toBeNull();
   expect(corpo.querySelector("#conferi-o-pagamento")).not.toBeNull();
   expect(corpo.querySelector('[role="alert"]')?.textContent).toContain(
@@ -129,6 +134,53 @@ it("fechamento e variações montam os corpos roláveis sem levar a barra de aç
   ).not.toBeNull();
   expect(variacoes.querySelector(".pdv-variation-cancel")).toBeNull();
   expect(variacoes.querySelector(".pdv-sale-action")).toBeNull();
+});
+
+it("o resumo aparece uma só vez no fechamento e Cancelar fica fora da rolagem", async () => {
+  const estado = {
+    ...inicial,
+    etapa: "fechamento" as const,
+    cliente: {
+      tipo: "avulso" as const,
+      nome: "Pessoa de teste",
+      whatsapp: "11999990000",
+    },
+  };
+  await act(async () =>
+    raiz.render(
+      <>
+        <CupomDaVenda
+          estado={estado}
+          subtotal={10}
+          despachar={vi.fn()}
+          onNavigate={vi.fn()}
+          limparCupom={vi.fn()}
+          feedback={null}
+        />
+        <FechamentoDaVenda
+          estado={estado}
+          despachar={vi.fn()}
+          aoRegistrarVenda={vi.fn()}
+          limparCupom={vi.fn()}
+        />
+      </>,
+    ),
+  );
+  expect(host.querySelectorAll(".pdv-cupom")).toHaveLength(1);
+  expect(
+    host.querySelector(".pdv-checkout-body .pdv-cupom")?.textContent,
+  ).toContain("Pessoa de teste");
+  expect(host.querySelector(".pdv-checkout-body .pdv-cancel")).toBeNull();
+  expect(host.querySelector(".pdv-cancel")).not.toBeNull();
+});
+
+it("a escolha de variação mantém o título principal acessível", () => {
+  const view = readFileSync("src/views/admin/AdminPdvView.tsx", "utf8");
+  const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8");
+  expect(view).toContain('estado.etapa === "cupom" ? "" : "sr-only"');
+  expect(css).not.toMatch(
+    /\.pdv\[data-etapa="escolha_de_variacao"\] \.pdv-page-heading[^}]*display:\s*none/,
+  );
 });
 
 it("controles compactos mantêm alvos de toque de pelo menos 40px", () => {

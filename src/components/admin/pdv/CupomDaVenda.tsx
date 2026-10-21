@@ -269,143 +269,144 @@ export function CupomDaVenda({
         </div>
       )}
 
-      <section
-        className="pdv-cupom pdv-stack"
-        aria-label="Itens da venda"
-        data-resumo={
-          estado.etapa === "cliente" || estado.etapa === "fechamento"
-        }
-      >
-        <div className="pdv-heading">
-          <ShoppingCart aria-hidden="true" className="size-5" />
-          <h3 className="flex-1">Venda atual</h3>
-          <span className="pdv-muted">
-            {estado.itens.length} {estado.itens.length === 1 ? "item" : "itens"}
-          </span>
-          {(estado.etapa === "cliente" || estado.etapa === "fechamento") && (
-            <strong className="text-sm">R$ {reais(subtotal)}</strong>
-          )}
-        </div>
-        {(estado.etapa === "cliente" || estado.etapa === "fechamento") &&
-          estado.cliente.tipo !== "sem_cliente" && (
-            <p className="pdv-muted">Cliente: {estado.cliente.nome}</p>
-          )}
-        {estado.itens.length === 0 ? (
-          <div className="pdv-card pdv-stack pdv-empty">
-            <p className="pdv-heading">Bipe o primeiro produto</p>
-            <p className="pdv-muted">
-              Os itens aparecem aqui, com quantidade e total.
-            </p>
-            <span className="sr-only">Nenhum item na venda ainda.</span>
+      {estado.etapa !== "fechamento" && (
+        <section
+          className="pdv-cupom pdv-stack"
+          aria-label="Itens da venda"
+          data-resumo={estado.etapa === "cliente"}
+        >
+          <div className="pdv-heading">
+            <ShoppingCart aria-hidden="true" className="size-5" />
+            <h3 className="flex-1">Venda atual</h3>
+            <span className="pdv-muted">
+              {estado.itens.length}{" "}
+              {estado.itens.length === 1 ? "item" : "itens"}
+            </span>
+            {estado.etapa === "cliente" && (
+              <strong className="text-sm">R$ {reais(subtotal)}</strong>
+            )}
           </div>
-        ) : (
-          <ul>
-            {estado.itens.map((item) => {
-              const destacado = estado.ultimaEntrada?.chave === item.chave;
-              return (
-                <li
-                  key={item.chave}
-                  data-destacado={destacado ? "true" : "false"}
-                  className="pdv-item"
-                >
-                  {item.imagem ? (
-                    <img
-                      src={item.imagem}
-                      alt={item.nome}
-                      className="pdv-item-image"
-                    />
-                  ) : (
-                    <div className="pdv-item-image flex items-center justify-center bg-admin-raised">
-                      <PackagePlus
-                        aria-hidden="true"
-                        className="pdv-purple size-5"
+          {estado.etapa === "cliente" &&
+            estado.cliente.tipo !== "sem_cliente" && (
+              <p className="pdv-muted">Cliente: {estado.cliente.nome}</p>
+            )}
+          {estado.itens.length === 0 ? (
+            <div className="pdv-card pdv-stack pdv-empty">
+              <p className="pdv-heading">Bipe o primeiro produto</p>
+              <p className="pdv-muted">
+                Os itens aparecem aqui, com quantidade e total.
+              </p>
+              <span className="sr-only">Nenhum item na venda ainda.</span>
+            </div>
+          ) : (
+            <ul>
+              {estado.itens.map((item) => {
+                const destacado = estado.ultimaEntrada?.chave === item.chave;
+                return (
+                  <li
+                    key={item.chave}
+                    data-destacado={destacado ? "true" : "false"}
+                    className="pdv-item"
+                  >
+                    {item.imagem ? (
+                      <img
+                        src={item.imagem}
+                        alt={item.nome}
+                        className="pdv-item-image"
                       />
-                    </div>
-                  )}
-                  <div className="pdv-item-info">
-                    <strong>
-                      <span className="pdv-resumo-qtd">
-                        {item.quantidade} ×{" "}
+                    ) : (
+                      <div className="pdv-item-image flex items-center justify-center bg-admin-raised">
+                        <PackagePlus
+                          aria-hidden="true"
+                          className="pdv-purple size-5"
+                        />
+                      </div>
+                    )}
+                    <div className="pdv-item-info">
+                      <strong>
+                        <span className="pdv-resumo-qtd">
+                          {item.quantidade} ×{" "}
+                        </span>
+                        {item.nome}
+                      </strong>
+                      {item.variacao && (
+                        <span className="pdv-muted">{item.variacao} · </span>
+                      )}
+                      {destacado && (
+                        <span className="pdv-added">
+                          <Check aria-hidden="true" className="inline size-3" />{" "}
+                          Adicionado
+                        </span>
+                      )}
+                      <span className="pdv-muted pdv-unit-price">
+                        R$ {reais(item.preco)} / un.
                       </span>
-                      {item.nome}
-                    </strong>
-                    {item.variacao && (
-                      <span className="pdv-muted">{item.variacao} · </span>
-                    )}
-                    {destacado && (
-                      <span className="pdv-added">
-                        <Check aria-hidden="true" className="inline size-3" />{" "}
-                        Adicionado
-                      </span>
-                    )}
-                    <span className="pdv-muted pdv-unit-price">
-                      R$ {reais(item.preco)} / un.
-                    </span>
-                  </div>
-                  <div className="pdv-item-controls">
-                    <div className="pdv-quantity">
-                      <button
-                        type="button"
-                        aria-label={
-                          item.quantidade === 1
-                            ? `Remover ${item.nome} da venda`
-                            : `Diminuir quantidade de ${item.nome}`
-                        }
-                        disabled={estado.enviando}
-                        onClick={() =>
-                          item.quantidade === 1
-                            ? despachar({
-                                tipo: "item_removido",
-                                chave: item.chave,
-                              })
-                            : despachar({
-                                tipo: "quantidade_alterada",
-                                chave: item.chave,
-                                delta: -1,
-                              })
-                        }
-                        className={`pdv-touch ${item.quantidade === 1 ? "pdv-red" : ""}`}
-                      >
-                        {item.quantidade === 1 ? (
-                          <Trash2 aria-hidden="true" className="size-4" />
-                        ) : (
-                          <Minus aria-hidden="true" className="size-4" />
-                        )}
-                      </button>
-                      <span>{item.quantidade}</span>
-                      <button
-                        type="button"
-                        aria-label={`Aumentar quantidade de ${item.nome}`}
-                        disabled={
-                          estado.enviando || item.quantidade >= item.estoque
-                        }
-                        onClick={() =>
-                          despachar({
-                            tipo: "quantidade_alterada",
-                            chave: item.chave,
-                            delta: 1,
-                          })
-                        }
-                        className="pdv-touch pdv-teal"
-                      >
-                        <Plus aria-hidden="true" className="size-5" />
-                      </button>
                     </div>
-                    <span className="pdv-line-total">
-                      R$ {reais(item.preco * item.quantidade)}
-                    </span>
-                    {item.quantidade >= item.estoque && (
-                      <p className="pdv-muted pdv-stock-limit w-full">
-                        Limite do estoque · {item.estoque} un.
-                      </p>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                    <div className="pdv-item-controls">
+                      <div className="pdv-quantity">
+                        <button
+                          type="button"
+                          aria-label={
+                            item.quantidade === 1
+                              ? `Remover ${item.nome} da venda`
+                              : `Diminuir quantidade de ${item.nome}`
+                          }
+                          disabled={estado.enviando}
+                          onClick={() =>
+                            item.quantidade === 1
+                              ? despachar({
+                                  tipo: "item_removido",
+                                  chave: item.chave,
+                                })
+                              : despachar({
+                                  tipo: "quantidade_alterada",
+                                  chave: item.chave,
+                                  delta: -1,
+                                })
+                          }
+                          className={`pdv-touch ${item.quantidade === 1 ? "pdv-red" : ""}`}
+                        >
+                          {item.quantidade === 1 ? (
+                            <Trash2 aria-hidden="true" className="size-4" />
+                          ) : (
+                            <Minus aria-hidden="true" className="size-4" />
+                          )}
+                        </button>
+                        <span>{item.quantidade}</span>
+                        <button
+                          type="button"
+                          aria-label={`Aumentar quantidade de ${item.nome}`}
+                          disabled={
+                            estado.enviando || item.quantidade >= item.estoque
+                          }
+                          onClick={() =>
+                            despachar({
+                              tipo: "quantidade_alterada",
+                              chave: item.chave,
+                              delta: 1,
+                            })
+                          }
+                          className="pdv-touch pdv-teal"
+                        >
+                          <Plus aria-hidden="true" className="size-5" />
+                        </button>
+                      </div>
+                      <span className="pdv-line-total">
+                        R$ {reais(item.preco * item.quantidade)}
+                      </span>
+                      {item.quantidade >= item.estoque && (
+                        <p className="pdv-muted pdv-stock-limit w-full">
+                          Limite do estoque · {item.estoque} un.
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
 
       {limparCupom && temVendaParaCancelar && confirmandoCancelamento && (
         <div role="group" aria-label="Cancelar venda" className="pdv-notice">
@@ -449,7 +450,7 @@ export function CupomDaVenda({
         ativa={estado.etapa !== "fechamento"}
         aria-label="Fechamento da venda"
       >
-        <div className="pdv-footer">
+        <div className="pdv-footer" data-etapa={estado.etapa}>
           <Button
             type="button"
             variant="outline"

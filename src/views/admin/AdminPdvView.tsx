@@ -594,7 +594,7 @@ export function AdminPdvView({
 
   return (
     // A altura vem do painel (100dvh menos seu cabeçalho). A reserva medida
-    // de AcaoDaBarra fica DENTRO dela; só as listas ganham rolagem.
+    // de AcaoDaBarra fica DENTRO dela; listas e corpos de etapa rolam por dentro.
     <div
       className="pdv pdv-viewport"
       data-etapa={estado.etapa}
@@ -602,7 +602,7 @@ export function AdminPdvView({
       data-modo={modoDeProduto}
     >
       <div
-        className={`pdv-page-heading ${estado.etapa === "cupom" || estado.etapa === "escolha_de_variacao" ? "" : "sr-only"}`}
+        className={`pdv-page-heading ${estado.etapa === "cupom" ? "" : "sr-only"}`}
       >
         <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-pdv"]} />
         <p className="pdv-muted">balcão</p>
