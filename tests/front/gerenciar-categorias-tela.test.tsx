@@ -107,6 +107,7 @@ const espera = () => new Promise<void>((r) => setTimeout(r, 0));
 
 // O catálogo que o painel serve (public/icons/categorias.json): a tela o busca por fetch ao abrir o seletor.
 const CATALOGO: { chave: string; d: string }[] = JSON.parse(
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do próprio repositório, não entrada de usuário
   readFileSync(
     join(__dirname, "..", "..", "public", "icons", "categorias.json"),
     "utf8",

@@ -18,6 +18,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const CATALOGO: { chave: string; nome: string; grupo: string; d: string }[] =
   JSON.parse(
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do próprio repositório, não entrada de usuário
     readFileSync(
       join(__dirname, "..", "..", "public", "icons", "categorias.json"),
       "utf8",
@@ -339,6 +340,20 @@ describe("SeletorDeIcone", () => {
       expect(host.querySelector('[role="status"]')).toBeNull();
       expect(tem("Ícone Blusa para Vestuário")).toBe(true);
     });
+  });
+
+  it("o rótulo nunca quebra no meio da palavra: coluna de 5.5rem+ e quebra só em último caso", async () => {
+    await montar();
+    await abrir();
+    const grade = host.querySelector("fieldset [class*='grid-cols']");
+    const minimo = grade?.className.match(/minmax\(([\d.]+)rem/)?.[1];
+    // a maior palavra do catálogo ("Rasteirinha", 11 letras) precisa caber inteira
+    expect(Number(minimo)).toBeGreaterThanOrEqual(5.5);
+    for (const peca of host.querySelectorAll("fieldset button")) {
+      const rotulo = peca.querySelector("span");
+      expect(rotulo?.className).toContain("break-words");
+      expect(rotulo?.className).not.toContain("anywhere");
+    }
   });
 
   it("gravação em andamento: nenhuma peça responde (fieldset desabilitado) e todas têm toque de 44px", async () => {

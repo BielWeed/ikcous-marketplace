@@ -22,6 +22,7 @@ const GRUPOS = [
 ];
 // Igual ao da CHECK categorias_icone_forma_check (migration 20261351000000): sem "+" nem expoente.
 const ALFABETO = /^[MmLlHhVvCcSsQqTtAaZz0-9.,\- ]+$/;
+// eslint-disable-next-line security/detect-unsafe-regex -- grupos curtos separados por "-" literal, sem sobreposicao (linear); entrada e o catalogo local
 const CHAVE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const MAX_D = 360;
 const MIN_ICONES = 90;
@@ -31,6 +32,7 @@ const erro = (chave, msg) => erros.push(`${chave}: ${msg}`);
 
 let lista;
 try {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho dado por quem roda a ferramenta local
   lista = JSON.parse(fs.readFileSync(arquivo, "utf8"));
 } catch (e) {
   console.error(`FALHA: nao leu ${arquivo}: ${e.message}`);

@@ -17,7 +17,8 @@
       ".playwright-mcp",
       ".loki",
       "test-results",
-      "src/components/layouts/temas-do-painel-cores.css"
+      "src/components/layouts/temas-do-painel-cores.css",
+      "public/icons/categorias.json"
     ]
   },
   "formatter": {

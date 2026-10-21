@@ -116,6 +116,7 @@ const comForma = (name: string, iconeForma: unknown, icone?: string | null) =>
     iconeForma,
   }) as Category;
 const caminhoDoChip = (indice = 1) => {
+  // eslint-disable-next-line security/detect-object-injection -- índice numérico interno do teste, não entrada de usuário
   const desenho = host.querySelectorAll("svg")[indice];
   return desenho?.querySelector("path")?.getAttribute("d");
 };

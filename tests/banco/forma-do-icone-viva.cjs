@@ -9,6 +9,7 @@ const { Client } = require("pg");
 const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
 const ROOT = path.resolve(__dirname, "../..");
 const ARQ = "20261351000000_a_categoria_ganha_a_forma_do_icone.sql";
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do próprio repositório, não entrada de usuário
 const ler = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 const migration = ler(`supabase/migrations/${ARQ}`);
 const rollback = ler(`supabase/migrations/rollback-manual-${ARQ}`);

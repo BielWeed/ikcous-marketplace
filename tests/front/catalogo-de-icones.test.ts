@@ -15,6 +15,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const CATALOGO_BRUTO: unknown = JSON.parse(
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do próprio repositório, não entrada de usuário
   readFileSync(
     join(__dirname, "..", "..", "public", "icons", "categorias.json"),
     "utf8",

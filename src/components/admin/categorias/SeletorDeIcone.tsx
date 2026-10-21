@@ -93,9 +93,7 @@ function Peca({
       className={`${PECA} ${escolhida ? PECA_ESCOLHIDA : PECA_COMUM}`}
     >
       {children}
-      <span className="line-clamp-2 w-full [overflow-wrap:anywhere]">
-        {rotulo}
-      </span>
+      <span className="line-clamp-2 w-full break-words">{rotulo}</span>
     </button>
   );
 }
@@ -109,7 +107,7 @@ function Secao({
       <h4 className="mb-2 text-[11px] font-black uppercase tracking-widest text-zinc-500">
         {titulo}
       </h4>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(4rem,1fr))] gap-2">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
         {children}
       </div>
     </section>

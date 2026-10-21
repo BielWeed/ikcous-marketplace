@@ -111,6 +111,7 @@ Deno.test("351: registros de publicação completos e róis recusam linhas falta
   for (const consulta of [a, b]) {
     const caminho = `scripts/publicacao/consultas/${consulta}.sql`;
     const sql = ler(caminho);
+    // eslint-disable-next-line security/detect-object-injection -- chave de uma lista fixa do próprio teste
     const rol = rois[consulta];
     assertEquals(contarStatements(sql), 1);
     assert(rol?.length >= 4, consulta);
