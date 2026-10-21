@@ -39,6 +39,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+const {
+  desfazerRastreioDoConvidadoNaTransacao,
+} = require("./rastreio-do-convidado-posterior.cjs");
 
 const MIGRATIONS = path.resolve(
   __dirname,
@@ -587,6 +590,9 @@ prova(
   "ORDEM DE DESFAZER: (a) so com a 20261217 o rollback dela funciona como antes; (b) com a 20261220 aplicada ele RECUSA mandando rodar o rollback da 20261220 antes, sem escrever; (c) rollback da 20261220 e depois o da 20261217 funciona, e a 20261217 reaplica",
   () =>
     emTransacao(async () => {
+      // O estado e' o de uma loja que tem a 20261217 e a 20261220 mas ainda NAO a 20261341/20261342 (o pre-voo da
+      // 20261217 so aceita o corpo dela na v2): as duas posteriores saem antes, pelos rollbacks-manuais delas.
+      await desfazerRastreioDoConvidadoNaTransacao(C);
       const corposAtuais = async () =>
         Object.fromEntries(
           await Promise.all(

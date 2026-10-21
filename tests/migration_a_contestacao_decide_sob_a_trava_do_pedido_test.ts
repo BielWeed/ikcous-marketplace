@@ -385,6 +385,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/categorias-icones-viva.cjs",
     // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.
     "tests/banco/mototaxi-viva.cjs",
+    // 20261340000000: as politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete exigem o admin de agora (papeis reais, controle, sem recursao, rollback, consultas 64a/64b).
+    "tests/banco/admin-atual-perfis-viva.cjs",
+    // 20261341000000 e 20261342000000: o codigo do convidado trava a linha na tentativa (corridas reais, controle) e o rastreio nao devolve a nota do pedido (rollback, pre-voo, consultas 65a/65b e 66a/66b).
+    "tests/banco/rastreio-do-convidado-viva.cjs",
     // 20261252: sessao explicita, chave idempotente, corridas e mutantes do caixa.
     "tests/banco/caixa-intencao-viva.cjs",
     // 20261260000000: o cartao guarda o motivo da recusa (portao 56a/56b decide certo; so o Postgres efemero).

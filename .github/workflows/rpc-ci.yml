@@ -160,6 +160,12 @@ on:
       - "scripts/publicacao/consultas/61b-antes-icones-das-categorias.sql"
       - "scripts/publicacao/consultas/62a-conferir-mototaxi-aplicado.sql"
       - "scripts/publicacao/consultas/62b-antes-mototaxi-ausente.sql"
+      - "scripts/publicacao/consultas/64a-conferir-politicas-de-perfil-e-endereco-aplicado.sql"
+      - "scripts/publicacao/consultas/64b-antes-politicas-de-perfil-e-endereco-is-admin.sql"
+      - "scripts/publicacao/consultas/65a-conferir-codigo-do-convidado-trava-a-linha-aplicado.sql"
+      - "scripts/publicacao/consultas/65b-antes-codigo-do-convidado-corpo-da-1217.sql"
+      - "scripts/publicacao/consultas/66a-conferir-rastreio-do-convidado-sem-nota-aplicado.sql"
+      - "scripts/publicacao/consultas/66b-antes-rastreio-do-convidado-corpo-da-1341.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -289,6 +295,12 @@ on:
       - "scripts/publicacao/consultas/61b-antes-icones-das-categorias.sql"
       - "scripts/publicacao/consultas/62a-conferir-mototaxi-aplicado.sql"
       - "scripts/publicacao/consultas/62b-antes-mototaxi-ausente.sql"
+      - "scripts/publicacao/consultas/64a-conferir-politicas-de-perfil-e-endereco-aplicado.sql"
+      - "scripts/publicacao/consultas/64b-antes-politicas-de-perfil-e-endereco-is-admin.sql"
+      - "scripts/publicacao/consultas/65a-conferir-codigo-do-convidado-trava-a-linha-aplicado.sql"
+      - "scripts/publicacao/consultas/65b-antes-codigo-do-convidado-corpo-da-1217.sql"
+      - "scripts/publicacao/consultas/66a-conferir-rastreio-do-convidado-sem-nota-aplicado.sql"
+      - "scripts/publicacao/consultas/66b-antes-rastreio-do-convidado-corpo-da-1341.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -417,6 +429,21 @@ jobs:
       - name: Prova viva do contato privado do mototaxi
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/mototaxi-viva.cjs
+      # Migration 20261340000000 (as politicas de perfil, endereco, carrinho, push, notificacao, analytics e
+      # credenciais de frete exigem o admin de agora): nas 13 politicas o ex-admin com JWT velho le 0 linhas e nao
+      # escreve (CONTROLE: na politica antiga le e escreve); admin atual como antes; a cliente comum o proprio e um
+      # terceiro nada; leitura de perfil sem recursao (e, com o dono da funcao sujeito a RLS, nenhum admin
+      # reconhecido); rollback byte a byte; pre-voo recusando sem escrever. CLONE proprio.
+      - name: Prova viva do admin atual nas politicas de perfil e endereco (migration 20261340000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-perfis-viva.cjs
+      # Migrations 20261341000000 (o codigo do convidado trava a linha na tentativa) e 20261342000000 (o rastreio
+      # do convidado nao devolve a nota do pedido): N chamadas paralelas com codigo errado somam no maximo 5
+      # avaliacoes (CONTROLE: o corpo da 1217 deixa passar mais); o fluxo legitimo segue igual; a nota nao sai (CONTROLE:
+      # o corpo da 1341 devolve); rollbacks byte a byte; pre-voos; consultas 65a/65b e 66a/66b. CLONE proprio.
+      - name: Prova viva do rastreio do convidado (migrations 20261341000000 e 20261342000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/rastreio-do-convidado-viva.cjs
       - name: Prova viva do estilo do card de frete
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estilo-card-frete-viva.cjs

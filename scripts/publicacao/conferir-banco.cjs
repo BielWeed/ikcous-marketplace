@@ -2417,6 +2417,40 @@ const ROL_DA_67 = [
   "admin_devolucao_concluir: atributos preservados",
   "admin_devolucao_concluir: authenticated permitido, PUBLIC e anon sem",
 ];
+// 64a/64b (20261340000000): o mesmo rol nos dois sentidos; so o rotulo da linha das politicas muda.
+const ROL_DA_64A = [
+  "controle: catalogo publico visivel",
+  "perfil, endereco e notificacoes: 13 politicas com a porta do admin atual",
+  "portas do admin atual: corpos, dono e EXECUTE",
+  "tabelas das 13 politicas: RLS ligada e sem FORCE",
+];
+const ROL_DA_64B = [
+  "controle: catalogo publico visivel",
+  "perfil, endereco e notificacoes: 13 politicas com a porta is_admin de antes",
+  "portas do admin atual: corpos, dono e EXECUTE",
+  "tabelas das 13 politicas: RLS ligada e sem FORCE",
+];
+// 65a/65b/66a/66b (20261341000000 e 20261342000000): corpo de get_orders_by_otp_v2 por md5 + atributos.
+const ROL_DA_65A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_orders_by_otp_v2: corpo trava a linha do codigo (20261341000000 ou sucessora, md5)",
+  "get_orders_by_otp_v2: assinatura, atributos e EXECUTE preservados",
+];
+const ROL_DA_65B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_orders_by_otp_v2: corpo da 20261217000000 (base anterior, md5)",
+  "get_orders_by_otp_v2: assinatura, atributos e EXECUTE preservados",
+];
+const ROL_DA_66A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_orders_by_otp_v2: corpo sem a nota do pedido (20261342000000, md5)",
+  "get_orders_by_otp_v2: assinatura, atributos e EXECUTE preservados",
+];
+const ROL_DA_66B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_orders_by_otp_v2: corpo da 20261341000000 (base anterior, md5)",
+  "get_orders_by_otp_v2: assinatura, atributos e EXECUTE preservados",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "68a-conferir-avanco-status-esperado-aplicado": [
     "avancar_status_do_pedido: unica assinatura conhecida",
@@ -2447,6 +2481,12 @@ const ROL_FECHADO_POR_CONSULTA = {
     "mototaxi: tabela e RPC ausentes",
     "contato privado: fora da configuracao publica",
   ],
+  "64a-conferir-politicas-de-perfil-e-endereco-aplicado": ROL_DA_64A,
+  "64b-antes-politicas-de-perfil-e-endereco-is-admin": ROL_DA_64B,
+  "65a-conferir-codigo-do-convidado-trava-a-linha-aplicado": ROL_DA_65A,
+  "65b-antes-codigo-do-convidado-corpo-da-1217": ROL_DA_65B,
+  "66a-conferir-rastreio-do-convidado-sem-nota-aplicado": ROL_DA_66A,
+  "66b-antes-rastreio-do-convidado-corpo-da-1341": ROL_DA_66B,
   "60a-conferir-estilo-card-frete-aplicado": ROL_DA_60,
   "60b-antes-estilo-card-frete-base-vigente": ROL_DA_60,
   "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,

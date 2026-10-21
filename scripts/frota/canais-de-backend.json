@@ -337,6 +337,25 @@
       "_comentario": "Contato privado do mototaxi em tabela propria com RLS admin ATUAL; nenhuma alteracao a store_config/view/upsert. Banco antes do front em cada loja; nao aplicar nesta frente. 62b exige objetos ausentes, 62a confere corpo/ACL/RLS/estrutura sem ler contato. Rollback revoga acesso sem apagar contato; nao e ausencia e nao autoriza reaplicacao automatica."
     },
     {
+      "consulta": "64a-conferir-politicas-de-perfil-e-endereco-aplicado",
+      "versoes": ["20261340000000"],
+      "ausenciaConfirmadaPor": "64b-antes-politicas-de-perfil-e-endereco-is-admin",
+      "conferenciasAntesDoApply": ["8b-papeis-contraditorios"],
+      "_comentario": "Migration ADITIVA 20261340 (permissao + dado de cliente): ALTER POLICY em 13 politicas (profiles, user_addresses, push_subscriptions, cart_items, notificacoes, push_notifications_log, analytics_events, store_shipping_credentials) trocando a porta is_admin() (JWT) por rls_admin_atual() (admin nas duas fontes, lido agora); o ramo do proprio dono fica igual; nenhuma linha e lida ou reescrita, nenhum GRANT. ORDEM: depois da 20261197000000/20261202000000 (o pre-voo recusa sem rls_admin_atual). EFEITO ACEITO: quem e admin so no app_metadata ou so no profiles perde a leitura destas tabelas, por isso exigir a 8b (papeis contraditorios) com zero linhas ANTES de aplicar em cada loja; cada linha e decisao do dono. 64b exige as 13 politicas com is_admin() (estado de antes) e 64a as 13 com rls_admin_atual(), mais corpos/dono/EXECUTE das funcoes de porta e RLS ligada sem FORCE nas 8 tabelas; ambas so catalogo, rol fechado de 4 linhas. ROLLBACK: rollback-manual-20261340000000 devolve as 13 expressoes de antes e recusa se o estado vivo nao for o desta migration. Prova com papeis reais em tests/banco/admin-atual-perfis-viva.cjs (Postgres efemero do CI), nao em lojas reais."
+    },
+    {
+      "consulta": "65a-conferir-codigo-do-convidado-trava-a-linha-aplicado",
+      "versoes": ["20261341000000"],
+      "ausenciaConfirmadaPor": "65b-antes-codigo-do-convidado-corpo-da-1217",
+      "_comentario": "Migration ADITIVA 20261341 (autenticacao do convidado): CREATE OR REPLACE de get_orders_by_otp_v2 com FOR UPDATE OF v na leitura da linha do codigo, para que chamadas paralelas com codigo errado nao somem mais que 5 avaliacoes; mesma assinatura, SECURITY DEFINER, search_path e ACL (anon/authenticated/service_role); nenhuma linha de codigo ou pedido e reescrita. ORDEM: depois da 20261217000000 (o pre-voo aceita o corpo da 1217 ou o desta). 65b exige o corpo da 1217; 65a exige o desta migration OU o da sucessora 20261342000000 (que preserva a trava), mais atributos e EXECUTE; ambas so catalogo, rol fechado de 3 linhas. ROLLBACK: rollback-manual-20261341000000 devolve o corpo da 1217 byte a byte e recusa se o corpo vivo nao for o desta. Prova de N chamadas paralelas em tests/banco/rastreio-do-convidado-viva.cjs (Postgres efemero do CI)."
+    },
+    {
+      "consulta": "66a-conferir-rastreio-do-convidado-sem-nota-aplicado",
+      "versoes": ["20261342000000"],
+      "ausenciaConfirmadaPor": "66b-antes-rastreio-do-convidado-corpo-da-1341",
+      "_comentario": "Migration ADITIVA 20261342 (dado de cliente): CREATE OR REPLACE de get_orders_by_otp_v2 sem a chave notes no pedido devolvido ao convidado (a nota interna do pedido nao sai mais pelo rastreio); mesma assinatura, atributos e ACL; NENHUM dado e migrado, limpo ou apagado (a coluna marketplace_orders.notes segue como esta). Nenhum arquivo do front le notes desta resposta. ORDEM: depois da 20261341000000 (o pre-voo aceita o corpo da 1341 ou o desta). 66b exige o corpo da 1341; 66a exige o corpo desta; ambas so catalogo, rol fechado de 3 linhas. ROLLBACK: rollback-manual-20261342000000 devolve o corpo da 1341 byte a byte (a nota volta a sair) e recusa se o corpo vivo nao for o desta."
+    },
+    {
       "consulta": "67a-conferir-reembolso-manual-reserva-aplicado",
       "versoes": ["20261343000000"],
       "ausenciaConfirmadaPor": "67b-antes-reembolso-manual-reserva",
