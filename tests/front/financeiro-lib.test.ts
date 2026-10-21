@@ -77,6 +77,59 @@ it("receita da DRE usa só as linhas do banco, incluindo receita manual", () => 
   expect(dre.lucroLiquido).toBe(800);
 });
 
+it.each([
+  { online: 600, balcao: 0 },
+  { online: 0, balcao: 400 },
+  { online: 0, balcao: 0 },
+])(
+  "DRE completa canais zerados ausentes: app=$online, balcão=$balcao",
+  ({ online, balcao }) => {
+    const canais = [
+      { grupo: "receita", categoria: "Vendas pelo app", valor: online },
+      { grupo: "receita", categoria: "Vendas na loja física", valor: balcao },
+    ];
+    const manual = {
+      grupo: "receita",
+      categoria: "Receita manual",
+      valor: 100,
+    };
+    const dre = parseDre({
+      receita_online: online,
+      receita_balcao: balcao,
+      receita_bruta: online + balcao + 100,
+      lucro_liquido: 80,
+      linhas: [...canais.filter((canal) => canal.valor > 0), manual],
+    });
+    const sublinhas = sublinhasDaDre(dre, "receita_bruta");
+    expect(sublinhas).toHaveLength(3);
+    expect(sublinhas).toEqual(
+      expect.arrayContaining(
+        [...canais, manual].map((linha) => ({
+          rotulo: linha.categoria,
+          valor: linha.valor,
+        })),
+      ),
+    );
+    expect(dre.receitaBruta).toBe(online + balcao + 100);
+    expect(dre.lucroLiquido).toBe(80);
+  },
+);
+
+it("DRE não duplica canal zerado já devolvido pelo banco", () => {
+  const dre = parseDre({
+    receita_online: 0,
+    receita_balcao: 400,
+    linhas: [
+      { grupo: "receita", categoria: "Vendas pelo app", valor: 0 },
+      { grupo: "receita", categoria: "Vendas na loja física", valor: 400 },
+    ],
+  });
+  expect(sublinhasDaDre(dre, "receita_bruta")).toEqual([
+    { rotulo: "Vendas pelo app", valor: 0 },
+    { rotulo: "Vendas na loja física", valor: 400 },
+  ]);
+});
+
 it("caixa transporta estorno externo sem recalcular esperado e assume zero se ausente", () => {
   const dados = {
     id: "sessao-1",

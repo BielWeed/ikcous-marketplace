@@ -1443,6 +1443,16 @@ export function sublinhasDaDre(
       sublinhas.push({ rotulo: l.categoria, valor });
     }
   }
+  if (chave === "receita_bruta") {
+    for (const [valor, rotulo] of [
+      [dre.receitaOnline, "Vendas pelo app"],
+      [dre.receitaBalcao, "Vendas na loja física"],
+    ] as const) {
+      if (valor === 0 && !sublinhas.some((l) => l.rotulo === rotulo)) {
+        sublinhas.push({ rotulo, valor: 0 });
+      }
+    }
+  }
   return sublinhas;
 }
 
