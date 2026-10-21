@@ -286,7 +286,10 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
           Como chega no WhatsApp de quem recebe
         </span>
 
-        <div className="relative mx-auto flex h-[420px] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-admin-border bg-[#0b141a] shadow-2xl">
+        <div
+          data-tema-fixo=""
+          className="relative mx-auto flex h-[420px] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-admin-border bg-[#0b141a] shadow-2xl"
+        >
           <div className="z-10 flex shrink-0 items-center justify-between border-b border-[#222e35]/50 bg-[#1f2c34] px-3.5 py-2">
             <div className="flex items-center gap-2.5">
               <div className="relative flex size-8 shrink-0 items-center justify-center rounded-full border border-admin-gold/30 bg-admin-gold/15 text-[11px] font-black text-admin-gold">

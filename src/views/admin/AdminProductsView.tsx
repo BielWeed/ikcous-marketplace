@@ -1761,7 +1761,10 @@ function FotoDoCatalogo({ product }: { readonly product: any }) {
       )}
     />
   ) : (
-    <span className="flex size-full flex-col items-center justify-center gap-1 bg-zinc-100 p-2 text-center text-[11px] text-zinc-600">
+    <span
+      data-tema-fixo=""
+      className="flex size-full flex-col items-center justify-center gap-1 bg-zinc-100 p-2 text-center text-[11px] text-zinc-600"
+    >
       <Camera aria-hidden="true" className="size-5 shrink-0 text-slate-600" />
       <span>{foto ? "Foto indisponível" : "Sem foto"}</span>
     </span>

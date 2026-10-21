@@ -1,4 +1,5 @@
 import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
+import { useTemaDoPainelNaRaiz } from "@/components/admin/temaDoPainel";
 import {
   ContextoDaBarra,
   useBarraAcoplada,
@@ -59,6 +60,9 @@ import {
   WifiOff,
 } from "lucide-react";
 import React from "react";
+
+import "./temas-do-painel.css";
+import "./temas-do-painel-cores.css";
 
 /**
  * Pedidos que ainda exigem ação do lojista — alias de `STATUS_PARA_PREPARAR`
@@ -133,12 +137,9 @@ export function AdminLayout({
   const { loadOrders } = useOrders(false, true);
   const { isLeader } = useLeaderElection();
 
-  React.useEffect(() => {
-    document.documentElement.classList.add("admin-mode");
-    return () => {
-      document.documentElement.classList.remove("admin-mode");
-    };
-  }, []);
+  // `admin-mode` + o tema escolhido (Escuro/Claro/Confortável) na <html>, antes da
+  // primeira pintura; ao sair do painel os dois saem (a vitrine nunca os recebe).
+  useTemaDoPainelNaRaiz();
 
   const [pendingOrdersCount, setPendingOrdersCount] = React.useState(0);
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);

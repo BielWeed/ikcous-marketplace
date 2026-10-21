@@ -44,6 +44,7 @@ function IdentidadeCliente({
             className="object-cover"
           />
           <AvatarFallback
+            data-tema-fixo=""
             className={cn(
               "text-sm font-bold text-white",
               CORES_DO_AVATAR.at(

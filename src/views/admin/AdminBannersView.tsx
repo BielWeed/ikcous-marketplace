@@ -2679,7 +2679,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                         className="size-full object-cover"
                       />
                     ) : (
-                      <div className="flex size-full items-center justify-center bg-gradient-to-br from-zinc-800 via-zinc-900 to-black p-4 text-center">
+                      <div
+                        data-tema-fixo=""
+                        className="flex size-full items-center justify-center bg-gradient-to-br from-zinc-800 via-zinc-900 to-black p-4 text-center"
+                      >
                         <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-600">
                           {bannerMode === "simple"
                             ? "Insira uma imagem de banner para pré-visualizar"

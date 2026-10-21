@@ -34,6 +34,7 @@ import {
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { IconePix } from "@/components/admin/primitivos/IconePix";
+import { AparenciaDoPainel } from "@/components/admin/settings/AparenciaDoPainel";
 import {
   CartaoPeloAppBloco,
   FormasDePagamentoSection,
@@ -1134,7 +1135,17 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   chave="aparencia"
                   onNavigate={onNavigate}
                   subtitulos={subtitulos}
-                />
+                >
+                  {/* Cores do PRÓPRIO painel (Escuro, Claro, Confortável), só
+                  neste aparelho: não mexe na vitrine dos clientes. */}
+                  <SecaoColapsavel
+                    titulo="Aparência do painel"
+                    subtitulo="Escuro, claro ou confortável, só neste aparelho"
+                    icone={Palette}
+                  >
+                    <AparenciaDoPainel />
+                  </SecaoColapsavel>
+                </GrupoDeAjustes>
 
                 {/* Entrega e frete: só a PORTA para a tela de Frete e o
                 subtítulo do grupo (H5, painel simples, 09/10/2026). As

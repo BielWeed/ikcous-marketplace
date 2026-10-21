@@ -1,7 +1,7 @@
 /* Apresentação local do formulário e dos seus modais; sem alterar os primitivos. */
 .produto-formulario,
 .produto-modal {
-  color: #fafafa;
+  color: var(--lit-t-fafafa, #fafafa);
   background: hsl(var(--admin-bg));
 }
 
@@ -19,11 +19,11 @@
     .text-zinc-650,
     .text-zinc-800
   ) {
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
 }
 
 :is(.produto-formulario, .produto-modal) :is(.text-red-500, .text-rose-500) {
-  color: #fda4af;
+  color: var(--lit-t-fda4af, #fda4af);
 }
 
 :is(.produto-formulario, .produto-modal)
@@ -37,25 +37,25 @@
   border-color: hsl(var(--admin-border-strong));
   border-radius: 16px;
   background: hsl(var(--admin-raised));
-  color: #fafafa;
+  color: var(--lit-t-fafafa, #fafafa);
   font-size: 14px;
   font-weight: 400;
 }
 
 :is(.produto-formulario, .produto-modal) :is(input, textarea)::placeholder {
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
   opacity: 1;
 }
 
 :is(.produto-formulario, .produto-modal)
   :is(input, textarea, button):focus-visible {
-  outline: 2px solid #8bb4ff;
+  outline: 2px solid var(--lit-t-8bb4ff, #8bb4ff);
   outline-offset: 3px;
 }
 
 :is(.produto-formulario, .produto-modal) label:not(:has(input[type="file"])) {
   font-weight: 400;
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
 }
 
 .produto-formulario .produto-campo {
@@ -78,7 +78,7 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
 }
 
 .produto-formulario .produto-campo :is(input, textarea, [role="combobox"]) {
@@ -123,10 +123,10 @@
   width: 52px;
   height: 44px;
   padding: 4px;
-  border: 1px solid #71717a;
+  border: 1px solid var(--lit-b-71717a, #71717a);
   border-radius: 999px;
   appearance: none;
-  background: #3f3f46;
+  background: var(--lit-b-3f3f46, #3f3f46);
   cursor: pointer;
 }
 
@@ -159,7 +159,7 @@
 }
 
 .produto-formulario input:disabled {
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
   opacity: 1;
 }
 
@@ -174,7 +174,7 @@
 .produto-secao > section > button > span > span:first-child {
   font-size: 16px;
   font-weight: 700;
-  color: #fafafa;
+  color: var(--lit-t-fafafa, #fafafa);
 }
 
 .produto-secao > section > button > span > span:last-child {
@@ -193,12 +193,12 @@
 }
 
 .produto-secao-aviso > section > button {
-  border-color: #795055;
-  background: #25171a;
+  border-color: var(--lit-b-795055, #795055);
+  background: var(--lit-b-25171a, #25171a);
 }
 
 .produto-secao-aviso > section > button > span > span:last-child {
-  color: #fda4af;
+  color: var(--lit-t-fda4af, #fda4af);
 }
 
 :where(.produto-modal) button {
@@ -217,7 +217,7 @@
 /* As folhas de ajuda são portais compartilhados. Este escopo só existe
    enquanto o formulário está montado; os componentes comuns ficam intactos. */
 body:has(.produto-formulario) [role="dialog"] h2 {
-  color: #fafafa;
+  color: var(--lit-t-fafafa, #fafafa);
   font-size: 18px;
   letter-spacing: normal;
   text-transform: none;

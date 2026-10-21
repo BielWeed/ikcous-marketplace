@@ -132,6 +132,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
+      data-tema-fixo=""
       className="fixed inset-0 z-[100] flex flex-col bg-zinc-950/70 text-zinc-100 backdrop-blur-xl"
     >
       {/* Modal Header — fundo mais sólido que o véu do overlay para o texto
