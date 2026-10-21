@@ -2323,6 +2323,23 @@ const ROL_DA_52B = [
   "marketplace_order_internal_notes: dono certo, fora do realtime e sem ACL de coluna",
   "dependencias: marketplace_orders, portas do admin de agora e funcao do carimbo",
 ];
+// Lote 56: 20261260000000, catalogo apenas; tabela privada do diagnostico do cartao. Os dois lados tem rol proprio:
+// a 56a descreve a tabela PRESENTE e fechada ao servidor, a 56b prova a AUSENCIA dela (o rollback derruba a tabela).
+const ROL_DA_56A = [
+  "controle: funcoes de public visiveis a este papel",
+  "tentativas_cartao_diagnostico: forma conhecida (colunas, restricoes, valores padrao, comentario)",
+  "tentativas_cartao_diagnostico: indices (o unico do par mp_order_id e mp_payment_id e o da consulta por pedido), todos validos",
+  "tentativas_cartao_diagnostico: so servidor (service_role com SELECT, INSERT e UPDATE; nada a anon, authenticated e PUBLIC)",
+  "tentativas_cartao_diagnostico: RLS ligada (sem FORCE) e nenhuma politica",
+  "tentativas_cartao_diagnostico: dono certo, sem gatilho, fora do realtime e sem ACL de coluna",
+  "dependencias: marketplace_orders (id uuid) e os papeis anon, authenticated e service_role",
+];
+const ROL_DA_56B = [
+  "controle: funcoes de public visiveis a este papel",
+  "tentativas_cartao_diagnostico: tabela, indices e restricao unica ainda nao existem",
+  "dependencias: marketplace_orders (id uuid) existe",
+  "dependencias: os papeis anon, authenticated e service_role existem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
@@ -2410,6 +2427,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "53b-antes-faturamento-potencial-base-vigente": ROL_DA_53B,
   "54a-conferir-lucro-do-estoque-aplicado": ROL_DA_54A,
   "54b-antes-lucro-do-estoque-base-vigente": ROL_DA_54B,
+  "56a-conferir-motivo-da-recusa-do-cartao-aplicado": ROL_DA_56A,
+  "56b-antes-motivo-da-recusa-do-cartao-base-vigente": ROL_DA_56B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
