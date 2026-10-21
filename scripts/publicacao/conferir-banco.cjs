@@ -2458,6 +2458,18 @@ const ROL_DA_74A = [
   "gatilhos: funcoes sem EXECUTE para PUBLIC, anon, authenticated e service_role",
   "gatilhos: BEFORE INSERT OR UPDATE OF codigo_barras ligados nas duas tabelas",
 ];
+const ROL_DA_63A = [
+  "categorias: RLS ativa e quatro policies originais",
+  "categorias: leitura publica e UPDATE authenticated por grant de tabela",
+  "categorias.icone e categorias_icone_check: 14 chaves da 20261300000000 intactas",
+  "categorias.icone_forma: text nulavel sem default",
+  "categorias_icone_forma_check: so path SVG ate 400 caracteres e validada",
+];
+const ROL_DA_63B = [
+  ...ROL_DA_63A.slice(0, 3),
+  "categorias.icone_forma: ausente",
+  "categorias_icone_forma_check: ausente",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "68a-conferir-avanco-status-esperado-aplicado": [
     "avancar_status_do_pedido: unica assinatura conhecida",
@@ -2473,6 +2485,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   ],
   "67a-conferir-reembolso-manual-reserva-aplicado": ROL_DA_67,
   "67b-antes-reembolso-manual-reserva": ROL_DA_67,
+  "63a-conferir-forma-do-icone-aplicado": ROL_DA_63A,
+  "63b-antes-forma-do-icone-ausente": ROL_DA_63B,
   "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
   "61b-antes-icones-das-categorias": ROL_DA_61B,
   "62a-conferir-mototaxi-aplicado": [

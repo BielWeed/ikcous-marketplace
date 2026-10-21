@@ -25,6 +25,7 @@ interface LinhaDeCategoria {
   ativo: boolean;
   created_at: string;
   icone?: string | null;
+  icone_forma?: string | null;
 }
 
 const { rpcMock, fromMock, escritasNaTabela, banco } = vi.hoisted(() => ({
@@ -96,6 +97,8 @@ beforeEach(() => {
                 alvo.ativo = payload.ativo as boolean;
               if (alvo && "icone" in payload)
                 alvo.icone = payload.icone as string | null;
+              if (alvo && "icone_forma" in payload)
+                alvo.icone_forma = payload.icone_forma as string | null;
               return { data: alvo ? [{ id }] : [], error: null };
             },
           }),
@@ -245,6 +248,79 @@ describe("useCategories — ícone opcional", () => {
       await t.hook().updateCategory("c1", { icone: null });
     });
     expect(t.hook().categories[0].icone).toBeNull();
+    t.desmontar();
+  });
+
+  it("lê a forma do catálogo (icone_forma) e tolera banco ou cache sem a coluna", async () => {
+    banco.categorias[0].icone_forma = "M3 3h18v18H3z";
+    const t = await montar();
+    expect(t.hook().categories[0].iconeForma).toBe("M3 3h18v18H3z");
+    expect(t.hook().categories[1].iconeForma).toBeNull();
+    t.desmontar();
+  });
+
+  it("escolha do catálogo grava forma e chave NO MESMO pedido e atualiza as duas no retrato local", async () => {
+    banco.categorias[0].icone = "casa";
+    const t = await montar();
+    await act(async () => {
+      await t
+        .hook()
+        .updateCategory("c1", { icone: null, iconeForma: "M0 0h.01" });
+    });
+    expect(escritasNaTabela).toEqual([
+      { operacao: "update", payload: { icone: null, icone_forma: "M0 0h.01" } },
+    ]);
+    expect(t.hook().categories[0].icone).toBeNull();
+    expect(t.hook().categories[0].iconeForma).toBe("M0 0h.01");
+    // voltar a um clássico: a forma sai no mesmo pedido
+    await act(async () => {
+      await t.hook().updateCategory("c1", { icone: "moda", iconeForma: null });
+    });
+    expect(escritasNaTabela[1]).toEqual({
+      operacao: "update",
+      payload: { icone: "moda", icone_forma: null },
+    });
+    expect(t.hook().categories[0].icone).toBe("moda");
+    expect(t.hook().categories[0].iconeForma).toBeNull();
+    t.desmontar();
+  });
+
+  it("só a forma no pedido não toca na chave antiga (e o contrário)", async () => {
+    banco.categorias[0].icone = "casa";
+    const t = await montar();
+    await act(async () => {
+      await t.hook().updateCategory("c1", { iconeForma: "M1 1" });
+    });
+    expect(escritasNaTabela[0].payload).toEqual({ icone_forma: "M1 1" });
+    expect(t.hook().categories[0].icone).toBe("casa");
+    expect(t.hook().categories[0].iconeForma).toBe("M1 1");
+    t.desmontar();
+  });
+
+  it("forma que o banco recusa (CHECK) não muda o retrato local e a falha sobe", async () => {
+    const t = await montar();
+    const original = fromMock.getMockImplementation();
+    fromMock.mockImplementation((tabela: string) => ({
+      ...(original?.(tabela) ?? {}),
+      update: () => ({
+        eq: () => ({
+          select: async () => ({
+            data: null,
+            error: { code: "23514", message: "violates check constraint" },
+          }),
+        }),
+      }),
+    }));
+    let falha: unknown;
+    await act(async () => {
+      try {
+        await t.hook().updateCategory("c1", { icone: null, iconeForma: "<x>" });
+      } catch (e) {
+        falha = e;
+      }
+    });
+    expect(falha).toBeTruthy();
+    expect(t.hook().categories[0].iconeForma ?? null).toBeNull();
     t.desmontar();
   });
 

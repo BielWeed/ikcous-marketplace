@@ -20,6 +20,11 @@ let categoriesFetchPromise: Promise<Category[]> | null = null;
 let lastCategoriesFetchTime = 0;
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
 
+/** A lista que já está em memória (nenhum pedido): quem só quer DESENHAR a categoria a lê daqui. */
+export function categoriasEmMemoria(): Category[] | null {
+  return globalCategoriesCache;
+}
+
 // Cada tela que lê as categorias tem a SUA cópia (a lista de produtos, o
 // formulário do produto, banners, devolução). Renomear, esconder ou apagar numa
 // delas precisa chegar nas outras NA HORA, sem esperar o Realtime nem o
@@ -218,7 +223,11 @@ export function useCategories() {
               .order("nome");
             error = antiga.error;
             data =
-              antiga.data?.map((item) => ({ ...item, icone: null })) ?? null;
+              antiga.data?.map((item) => ({
+                ...item,
+                icone: null,
+                icone_forma: null,
+              })) ?? null;
           }
           if (error) throw error;
 
@@ -229,6 +238,8 @@ export function useCategories() {
             description: item.descricao || "",
             isActive: item.ativo ?? true,
             icone: item.icone ?? null,
+            // Cache ou banco sem a coluna: cai no `icone` e na dedução pelo nome.
+            iconeForma: item.icone_forma ?? null,
             createdAt: item.created_at,
           }));
           globalCategoriesCache = adaptedCategories;
@@ -498,15 +509,26 @@ export function useCategories() {
         if (updates.isActive !== undefined) {
           await setCategoryActive(id, updates.isActive);
         }
-        if (updates.icone !== undefined) {
+        if (updates.icone !== undefined || updates.iconeForma !== undefined) {
           if (!navigator.onLine) {
             throw new ErroDeCategoria(
               "Conecte-se à internet para mudar o ícone.",
             );
           }
+          // As duas colunas vão no MESMO UPDATE: a escolha nunca fica pela metade
+          // (a forma nova com a chave antiga, ou o contrário).
+          const mudanca: {
+            icone?: string | null;
+            icone_forma?: string | null;
+          } = {};
+          const naLista: Partial<Category> = {};
+          if (updates.icone !== undefined)
+            mudanca.icone = naLista.icone = updates.icone;
+          if (updates.iconeForma !== undefined)
+            mudanca.icone_forma = naLista.iconeForma = updates.iconeForma;
           const { data, error } = await supabase
             .from("categorias")
-            .update({ icone: updates.icone })
+            .update(mudanca)
             .eq("id", id)
             .select("id");
           if (error) throw error;
@@ -516,9 +538,7 @@ export function useCategories() {
             );
           }
           aplicarNaLista((lista) =>
-            lista.map((c) =>
-              c.id === id ? { ...c, icone: updates.icone } : c,
-            ),
+            lista.map((c) => (c.id === id ? { ...c, ...naLista } : c)),
           );
           avisarMudancaDeCategorias();
         }

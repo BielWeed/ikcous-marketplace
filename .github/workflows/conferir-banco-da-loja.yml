@@ -231,6 +231,8 @@ on:
           - 66b-antes-rastreio-do-convidado-corpo-da-1341
           - 74a-conferir-codigo-de-barras-entre-tabelas-aplicado
           - 74b-antes-codigo-de-barras-entre-tabelas-ausente
+          - 63a-conferir-forma-do-icone-aplicado
+          - 63b-antes-forma-do-icone-ausente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

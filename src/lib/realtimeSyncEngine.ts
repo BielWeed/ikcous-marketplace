@@ -75,6 +75,7 @@ export const TABLE_CONFIGS: TableConfig[] = [
       description: raw.descricao || "",
       isActive: raw.ativo ?? true,
       icone: raw.icone ?? null,
+      iconeForma: raw.icone_forma ?? null,
       createdAt: raw.created_at,
     }),
   },
