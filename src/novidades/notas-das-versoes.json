@@ -1,4 +1,32 @@
 {
+  "1.5.48": {
+    "titulo": "Relatórios novos, ícones de categoria, favoritos e pagamentos mais seguros",
+    "novidades": [
+      "Os relatórios foram reorganizados: o líquido previsto considera as despesas que você cadastra, e os detalhes ficam acessíveis sem mudar os números.",
+      "Nas categorias, você escolhe o ícone entre mais de cem desenhos, com busca e grupos. A loja mostra o ícone escolhido.",
+      "A tela de favoritos foi redesenhada, com filtros que ficam só no aparelho.",
+      "Em Clientes, os grupos têm filtros mais claros e avisam quando algo falha ao carregar.",
+      "No painel, o contato do mototáxi avisa quando não foi possível ler o número."
+    ],
+    "correcoes": [
+      "Se a tela de pagamento for recarregada no meio da compra, o app reconhece que é a mesma compra e não cobra duas vezes.",
+      "O pagamento por PIX recusado ou estornado encerra a tela com uma mensagem clara.",
+      "O cupom passa a ser calculado em centavos exatos, sem diferença de arredondamento.",
+      "Devolução parcial feita antes de o pagamento ser confirmado agora comprova o pagamento, e a devolução integral de um pedido que nunca foi pago fica registrada no financeiro.",
+      "O reembolso manual respeita o saldo reservado, e o avanço de status do pedido confere se o pedido ainda está no status esperado.",
+      "Ao salvar um produto, o painel não sobrescreve mais um estoque que mudou durante a edição.",
+      "O app abre normalmente em celulares antigos e guarda a configuração completa da loja para uso sem internet.",
+      "O código do convidado para acompanhar o pedido não pode mais ser testado em paralelo, e o rastreio sem login não mostra mais a nota interna do pedido.",
+      "O painel deixa de reconhecer como administrador quem foi rebaixado, mesmo que ainda tenha um login antigo ativo.",
+      "O mesmo código de barras não pode mais ser usado em um produto e em uma variação ao mesmo tempo."
+    ],
+    "melhorias": [
+      "O aviso de lucro explica que o custo usado é o atual, e o custo da mercadoria negativo aparece como crédito.",
+      "A tela de finalizar compra ficou mais legível em celulares estreitos.",
+      "O botão do WhatsApp usa o ícone oficial, e o texto secundário do tema escuro ficou mais legível.",
+      "O Balcão tem alvos de toque maiores."
+    ]
+  },
   "1.5.47": {
     "titulo": "Telas redesenhadas: Finalizar compra, Balcão, categorias e mototáxi",
     "novidades": [
