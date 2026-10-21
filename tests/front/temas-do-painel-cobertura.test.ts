@@ -211,9 +211,24 @@ describe("mapa das cores soltas do painel", () => {
     const soft = lerClasse("text-zinc-400");
     expect(soft && regrasDaClasse(soft)).toEqual([
       expect.objectContaining({
+        escopo: "ambos",
+        declaracao: "color:hsl(var(--admin-text-soft))",
+      }),
+      expect.objectContaining({
+        escopo: "escuro",
         declaracao: "color:hsl(var(--admin-text-soft))",
       }),
     ]);
+  });
+
+  it("Escuro não acrescenta variante ancestral que poderia tingir um descendente de tema fixo", () => {
+    // A classe text-zinc-500 do alvo já tem remapeamento próprio e sua exclusão.
+    const c = lerClasse("[&_.text-zinc-500]:text-zinc-400");
+    const regras = c && regrasDaClasse(c);
+    expect(Array.isArray(regras)).toBe(true);
+    if (Array.isArray(regras)) {
+      expect(regras.filter((r) => r.escopo === "escuro")).toEqual([]);
+    }
   });
 
   it("branco translúcido vira tinta do texto do tema (no claro, escurece em vez de clarear)", () => {
@@ -259,6 +274,10 @@ describe("mapa das cores soltas do painel", () => {
     const p = lerClasse("placeholder:text-zinc-600");
     expect(p && regrasDaClasse(p)).toEqual([
       expect.objectContaining({
+        seletor: `.placeholder\\:text-zinc-600${FORA_DO_SIMULADOR}::placeholder`,
+      }),
+      expect.objectContaining({
+        escopo: "escuro",
         seletor: `.placeholder\\:text-zinc-600${FORA_DO_SIMULADOR}::placeholder`,
       }),
     ]);

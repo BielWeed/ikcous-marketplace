@@ -1,7 +1,7 @@
 /* GERADO por tests/front/temas-do-painel-gerador.ts — NAO edite a mao.
  * Regenere: GERAR_TEMAS=1 npx vitest run tests/front/temas-do-painel-cobertura.test.ts
  * Cada regra troca UMA classe solta do painel (feita para fundo escuro) por um
- * token do tema Claro/Confortavel. Tema Escuro = nenhuma regra. O prefixo pesa
+ * token do tema. No Escuro, so texto zinc-400 a 700 muda. O prefixo pesa
  * zero (:where) de proposito: a cascata fica igual a do Tailwind. */
 :where(html.admin-mode[data-admin-tema="claro"]) .bg-\[\#192A31\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:#e0f2fe}
 :where(html.admin-mode[data-admin-tema="confortavel"]) .bg-\[\#192A31\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-raised))}
@@ -154,14 +154,20 @@
 :where(html.admin-mode[data-admin-tema]) .text-zinc-300:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-2))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-350:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .text-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-50:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .text-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-500\/50:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft) / 0.5)}
+:where(html.admin-mode:not([data-admin-tema])) .text-zinc-500\/50:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-550:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-600:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .text-zinc-600:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-650:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-700:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .text-zinc-700:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-700\/50:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft) / 0.5)}
+:where(html.admin-mode:not([data-admin-tema])) .text-zinc-700\/50:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .text-zinc-800:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema="claro"]) .to-\[\#151115\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-to:#ffe4e6 var(--tw-gradient-to-position)}
 :where(html.admin-mode[data-admin-tema]) .to-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-to:hsl(var(--admin-border-strong)) var(--tw-gradient-to-position)}
@@ -186,10 +192,15 @@
 :where(html.admin-mode[data-admin-tema]) .data-\[state\=checked\]\:bg-admin-gold[data-state="checked"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill))}
 :where(html.admin-mode[data-admin-tema]) .data-\[state\=unchecked\]\:bg-zinc-700[data-state="unchecked"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-hover))}
 :where(html.admin-mode[data-admin-tema]) .empty\:before\:text-zinc-500:empty:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .empty\:before\:text-zinc-500:empty:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .placeholder\:text-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .placeholder\:text-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .placeholder\:text-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .placeholder\:text-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .placeholder\:text-zinc-600:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .placeholder\:text-zinc-600:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .placeholder\:text-zinc-700:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .placeholder\:text-zinc-700:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .placeholder\:text-zinc-800:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .selection\:bg-admin-gold\/30:where(:not([data-tema-fixo], [data-tema-fixo] *))::selection{background-color:hsl(var(--admin-gold-fill) / 0.3)}
 :where(html.admin-mode[data-admin-tema="claro"]) .selection\:text-emerald-200:where(:not([data-tema-fixo], [data-tema-fixo] *))::selection{color:#065f46}
@@ -250,7 +261,9 @@
 :where(html.admin-mode[data-admin-tema]) .enabled\:hover\:border-white\/25:enabled:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.25)}
 :where(html.admin-mode[data-admin-tema]) .disabled\:bg-zinc-900:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-bg))}
 :where(html.admin-mode[data-admin-tema]) .disabled\:text-zinc-400:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .disabled\:text-zinc-400:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .disabled\:text-zinc-600:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .disabled\:text-zinc-600:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .group:hover .group-hover\:bg-admin-gold\/10:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
 :where(html.admin-mode[data-admin-tema="claro"]) .group:hover .group-hover\:text-emerald-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}
 :where(html.admin-mode[data-admin-tema="claro"]) .group:hover .group-hover\:text-emerald-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}
@@ -261,6 +274,7 @@
 :where(html.admin-mode[data-admin-tema]) .group:hover .group-hover\:text-zinc-200:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text))}
 :where(html.admin-mode[data-admin-tema]) .group:hover .group-hover\:text-zinc-300:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-2))}
 :where(html.admin-mode[data-admin-tema]) .group:hover .group-hover\:text-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
+:where(html.admin-mode:not([data-admin-tema])) .group:hover .group-hover\:text-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .group\/th:hover .group-hover\/th\:text-white:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text))}
 :where(html.admin-mode[data-admin-tema="claro"]) .group\/upload:hover .group-hover\/upload\:text-emerald-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}
 :where(html.admin-mode[data-admin-tema="claro"]) .group\/upload:hover .group-hover\/upload\:text-emerald-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}
@@ -279,5 +293,6 @@
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-rose-500:hover.hover\:text-white:hover{color:#fff}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-rose-700:hover.text-white{color:#fff}
 @media (min-width:1024px){:where(html.admin-mode[data-admin-tema]) .lg\:text-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}}
+@media (min-width:1024px){:where(html.admin-mode:not([data-admin-tema])) .lg\:text-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}}
 @media (min-width:640px){:where(html.admin-mode[data-admin-tema]) .sm\:bg-zinc-950:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-bg))}}
 @media (min-width:640px){:where(html.admin-mode[data-admin-tema]) .sm\:divide-zinc-800\/30:where(:not([data-tema-fixo], [data-tema-fixo] *)) > :not([hidden]) ~ :not([hidden]){border-color:hsl(var(--admin-border))}}

@@ -17,6 +17,7 @@
    lê o código-fonte do próprio repositório (caminho constante); só leitura */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { parse } from "postcss";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -223,14 +224,14 @@ const CSS_BASE = lerFonte("src/index.css");
 describe("tema do painel — a vitrine não recebe nem sofre o tema", () => {
   const semComentarios = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "");
 
-  it("todo seletor de temas-do-painel.css exige html.admin-mode[data-admin-tema…]", () => {
+  it("todo seletor de temas-do-painel.css exige admin-mode e delimita o tema", () => {
     const seletores = [...semComentarios(CSS_TOKENS).matchAll(/([^{}]+)\{/g)]
       .map((m) => m[1].trim())
       .filter(Boolean);
     expect(seletores.length).toBeGreaterThan(4);
     for (const s of seletores) {
       expect(s, s).toMatch(
-        /^(?:html\.admin-mode\[data-admin-tema|:where\(html\.admin-mode\[data-admin-tema(?:="(?:claro|confortavel|escuro)")?\]\))/,
+        /^(?:html\.admin-mode\[data-admin-tema|:where\(html\.admin-mode(?:\[data-admin-tema(?:="(?:claro|confortavel|escuro)")?\]|:not\(\[data-admin-tema\]\))\))/,
       );
     }
   });
@@ -242,9 +243,17 @@ describe("tema do painel — a vitrine não recebe nem sofre o tema", () => {
       .filter(Boolean);
     expect(linhas.length).toBeGreaterThan(200);
     for (const l of linhas) {
-      expect(l, l.slice(0, 120)).toMatch(
-        /^(?:@media [^{]+\{)?:where\(html\.admin-mode\[data-admin-tema(?:="(?:claro|confortavel)")?\]\) /,
-      );
+      const regra = l.replace(/^@media [^{]+\{/, "");
+      const prefixos = [
+        ":where(html.admin-mode[data-admin-tema]) ",
+        ':where(html.admin-mode[data-admin-tema="claro"]) ',
+        ':where(html.admin-mode[data-admin-tema="confortavel"]) ',
+        ":where(html.admin-mode:not([data-admin-tema])) ",
+      ];
+      expect(
+        prefixos.some((p) => regra.startsWith(p)),
+        l.slice(0, 120),
+      ).toBe(true);
     }
   });
 
@@ -357,6 +366,119 @@ describe("tema do painel — contraste medido", () => {
       expect(contraste(t.soft, t.raised)).toBeGreaterThanOrEqual(4.5);
     });
   }
+
+  it("Escuro: zinc-400 a 700 usam texto suave AA nas superfícies reais, sem clarear títulos", () => {
+    raizHtml.classList.add("admin-mode");
+    const folha = parse(CSS_TOKENS);
+    const cores = parse(CSS_CORES);
+    const fundos = [
+      [9, 9, 11], // Ficha do cliente: bg-zinc-950.
+      [30, 30, 35], // Minha loja e Frete: superfície observada na tela.
+      ...["surface", "raised", "hover", "nav"].map((nome) =>
+        hslParaRgb(tokenDe(CSS_BASE, ":root {", nome)),
+      ),
+    ];
+    const antigos = {
+      "text-zinc-400": "#a1a1aa",
+      "text-zinc-500": "#71717a",
+      "text-zinc-600": "#52525b",
+      "text-zinc-700": "#3f3f46",
+      "text-zinc-500/50": "#71717a",
+      "text-zinc-700/50": "#3f3f46",
+    };
+    const tokenNaRaiz = (): string | undefined => {
+      let valor: string | undefined;
+      folha.walkRules((regra) => {
+        if (raizHtml.matches(regra.selector)) {
+          regra.walkDecls("--admin-text-soft", (d) => {
+            valor = d.value;
+          });
+        }
+      });
+      return valor;
+    };
+
+    for (const [classe, antiga] of Object.entries(antigos)) {
+      const el = document.createElement("span");
+      el.className = classe;
+      document.body.appendChild(el);
+      try {
+        let tinta = hexParaRgb(antiga);
+        let alfa = classe.endsWith("/50") ? 0.5 : 1;
+        cores.walkRules((regra) => {
+          if (regra.parent?.type !== "root" || !el.matches(regra.selector))
+            return;
+          regra.walkDecls("color", (d) => {
+            if (d.value === "hsl(var(--admin-text-soft))") {
+              const canais = tokenNaRaiz();
+              expect(canais, "token suave definido no Escuro").toBeDefined();
+              tinta = hslParaRgb(canais as string);
+              alfa = 1;
+            }
+          });
+        });
+        for (const fundo of fundos) {
+          const composta = tinta.map(
+            (v, i) => v * alfa + fundo[i] * (1 - alfa),
+          );
+          expect(
+            contraste(composta, fundo),
+            `${classe} sobre rgb(${fundo.join(",")})`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+        expect(luminancia(tinta)).toBeLessThan(luminancia(escuro.text));
+      } finally {
+        el.remove();
+      }
+    }
+  });
+
+  it("o remapeamento Escuro não alcança vitrine, outros temas nem tema fixo", () => {
+    const folha = parse(CSS_CORES);
+    const el = document.createElement("span");
+    el.className = "text-zinc-500";
+    const fixo = document.createElement("div");
+    fixo.setAttribute("data-tema-fixo", "");
+    document.body.append(fixo, el);
+    const regrasEscuras: string[] = [];
+    folha.walkRules((regra) => {
+      if (regra.selector.includes("html.admin-mode:not([data-admin-tema])")) {
+        regrasEscuras.push(regra.selector);
+        expect(regra.selector).toContain(
+          ":not([data-tema-fixo], [data-tema-fixo] *)",
+        );
+      }
+    });
+    const alcancado = () => regrasEscuras.some((s) => el.matches(s));
+    try {
+      expect(regrasEscuras.length).toBeGreaterThan(0);
+      expect(alcancado()).toBe(false); // Vitrine.
+      raizHtml.classList.add("admin-mode");
+      expect(alcancado()).toBe(true);
+      for (const tema of ["claro", "confortavel"]) {
+        raizHtml.dataset.adminTema = tema;
+        expect(alcancado()).toBe(false);
+      }
+      raizHtml.removeAttribute("data-admin-tema");
+      el.setAttribute("data-tema-fixo", "");
+      expect(alcancado()).toBe(false);
+      el.removeAttribute("data-tema-fixo");
+      fixo.appendChild(el);
+      expect(alcancado()).toBe(false);
+      const grupo = document.createElement("div");
+      grupo.className = "[&_.text-zinc-500]:text-zinc-400";
+      document.body.appendChild(grupo);
+      try {
+        grupo.appendChild(fixo);
+        expect(alcancado()).toBe(false); // Variante ancestral também respeita o alvo fixo.
+      } finally {
+        grupo.remove();
+      }
+    } finally {
+      el.remove();
+      fixo.remove();
+    }
+  });
 
   it("claro e confortável: destaque dourado >= 4,5:1 sobre cartão e elevado", () => {
     for (const nome of ["claro", "confortavel"] as const) {
