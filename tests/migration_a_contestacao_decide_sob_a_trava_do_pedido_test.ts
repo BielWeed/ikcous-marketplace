@@ -305,6 +305,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/admin-atual-rls-viva.cjs",
     "tests/banco/devolucoes-viva.cjs",
     "tests/banco/cartao-online-viva.cjs",
+    // 20261370: conta de sistema, legado preservado e rollback do caixa.
+    "tests/banco/caixa-conta-da-loja-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -407,6 +409,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/faturamento-potencial-viva.cjs",
     "tests/banco/devolucoes-viva.cjs",
     "tests/banco/cartao-online-viva.cjs",
+    // 20261370: conta de sistema, legado preservado e rollback do caixa.
+    "tests/banco/caixa-conta-da-loja-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",
