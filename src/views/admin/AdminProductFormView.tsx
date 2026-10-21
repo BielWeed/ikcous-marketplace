@@ -2022,7 +2022,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         }
       }
     }
-    requestAnimationFrame(() => document.getElementById(id)?.focus());
+    requestAnimationFrame(() => {
+      const campo = document.getElementById(id);
+      campo?.focus();
+      // O cabeçalho agora prende: centralizar impede que ele cubra o erro.
+      campo?.scrollIntoView?.({ block: "center" });
+    });
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -2635,7 +2640,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const avisoAvancado = skuError || codigoBarrasError || estoqueMinimoError;
 
   return (
-    <div className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-hidden text-white lg:pb-12">
+    <div className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12">
       {gerenciandoCategorias && (
         <Suspense fallback={null}>
           <GerenciarCategorias

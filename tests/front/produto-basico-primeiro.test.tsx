@@ -800,6 +800,8 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       await clicar(botaoDaSecao("Avançado"));
       expect(estaAberta("Avançado")).toBe(false);
 
+      const rolarParaOCampo = vi.fn();
+      campo("product-sku").scrollIntoView = rolarParaOCampo;
       const botaoDoMotivo = motivo().querySelector("button");
       expect(botaoDoMotivo).not.toBeNull();
       expect(botaoDoMotivo?.getAttribute("type")).toBe("button");
@@ -812,6 +814,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
 
       expect(estaAberta("Avançado")).toBe(true);
       expect(document.activeElement).toBe(campo("product-sku"));
+      expect(rolarParaOCampo).toHaveBeenCalledWith({ block: "center" });
       expect(addProduct).not.toHaveBeenCalled();
     });
 
