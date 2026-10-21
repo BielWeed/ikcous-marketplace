@@ -72,6 +72,17 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  "20261370000000_o_caixa_abre_so_na_conta_da_loja.sql": {
+    funcao: "fin_caixa_abrir",
+    esperado: [
+      "IF NOT public.is_admin() THEN",
+      "IF NOT public.is_admin_atual() THEN",
+      "IF p_conta_id IS NOT NULL AND p_conta_id <> 'f1000000-0000-4000-8000-000000000001'::uuid THEN",
+      "Contas personalizadas não recebem as vendas do balcão.",
+      "WHERE id = COALESCE(p_conta_id, 'f1000000-0000-4000-8000-000000000001'::uuid) FOR UPDATE;",
+      "INSERT INTO public.fin_caixa_sessoes (conta_id, valor_abertura, aberto_por)",
+    ],
+  },
   // 20261341: a linha do codigo e travada na leitura (FOR UPDATE OF v). A 20261340 so troca expressoes de
   // politica (ALTER POLICY), sem funcao: fica de fora do mapa, como a 20261197 e a 20261202.
   "20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql": {

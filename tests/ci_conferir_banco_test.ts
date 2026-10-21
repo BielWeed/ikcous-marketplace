@@ -2165,6 +2165,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           versao: "20261232000000",
         },
         {
+          fn: "fin_caixa_abrir",
+          h: "28ab512e291378a01d110e298af7a402",
+          versao: "20261370000000",
+        },
+        {
           fn: "fin_dre",
           h: "afc3e13805ce37819cfdcd094043087c",
           versao: "20261242000000",
