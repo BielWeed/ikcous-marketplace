@@ -18,7 +18,7 @@ export function PreviaImagemPropria({
           data-tema-fixo=""
           className="flex size-full items-center justify-center bg-gradient-to-br from-zinc-800 via-zinc-900 to-black p-4 text-center"
         >
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-600">
+          <span className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-600">
             {!comTexto
               ? "Insira uma imagem de banner para pré-visualizar"
               : "Envie uma imagem para pré-visualizar"}
@@ -60,7 +60,7 @@ export function PreviaImagemPropria({
             >
               {formData.badgeText && (
                 <span
-                  className="w-max rounded-md bg-[#FFBF00] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-black shadow-md self-start"
+                  className="w-max rounded-md bg-admin-gold px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-black shadow-md self-start"
                   style={{
                     alignSelf:
                       formData.templateType === "split_center" ||
@@ -84,7 +84,7 @@ export function PreviaImagemPropria({
                   color: formData.titleColor || "#FFFFFF",
                   textShadow:
                     formData.templateType === "neon_glow"
-                      ? `0 0 12px ${formData.titleColor || "#FFBF00"}`
+                      ? `0 0 12px ${formData.titleColor || "hsl(var(--admin-gold-fill, var(--admin-gold)))"}`
                       : "0 2px 4px rgba(0,0,0,0.6)",
                 }}
               >
@@ -93,7 +93,7 @@ export function PreviaImagemPropria({
 
               <p
                 className={cn(
-                  "text-[9px] sm:text-xs font-medium leading-snug opacity-90 transition-colors line-clamp-2",
+                  "text-[11px] sm:text-xs font-medium leading-snug opacity-90 transition-colors line-clamp-2",
                   formData.fontFamily || "font-sans",
                 )}
                 style={{
@@ -109,15 +109,17 @@ export function PreviaImagemPropria({
                 <div className="mt-0.5">
                   <span
                     className={cn(
-                      "inline-block rounded-lg px-2.5 py-0.5 text-[8px] sm:text-[9.5px] font-black uppercase tracking-wider shadow-lg transition-transform motion-safe:hover:scale-105",
+                      "inline-block rounded-lg px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider shadow-lg transition-transform motion-safe:hover:scale-105",
                       formData.fontFamily || "font-sans",
                     )}
                     style={{
-                      backgroundColor: formData.buttonBgColor || "#FFBF00",
+                      backgroundColor:
+                        formData.buttonBgColor ||
+                        "hsl(var(--admin-gold-fill, var(--admin-gold)))",
                       color: formData.buttonTextColor || "#000000",
                       boxShadow:
                         formData.templateType === "neon_glow"
-                          ? `0 0 10px ${formData.buttonBgColor || "#FFBF00"}`
+                          ? `0 0 10px ${formData.buttonBgColor || "hsl(var(--admin-gold-fill, var(--admin-gold)))"}`
                           : undefined,
                     }}
                   >
