@@ -320,6 +320,27 @@ describe("gráfico dos 14 dias", () => {
     dia: new Date(Date.UTC(2026, 9, 8 + i)).toISOString().slice(0, 10),
     receita: 10 + i,
   }));
+  it.each([0, 10])(
+    "pico e total de 14 dias com receita diária %s ficam cinza só quando zero",
+    (receita) => {
+      montar(
+        <SerieDe14Dias
+          serie={serie.map((p) => ({ ...p, receita }))}
+          carregando={false}
+        />,
+      );
+      const valores = tela.querySelectorAll("dl dd");
+      expect(valores).toHaveLength(2);
+      expect(texto(valores[0])).toBe(receita === 0 ? "R$ 0,00" : "R$ 10,00");
+      expect(texto(valores[1])).toBe(receita === 0 ? "R$ 0,00" : "R$ 140,00");
+      for (const valor of valores) {
+        expect
+          .soft(valor.className)
+          .toContain(receita === 0 ? "text-zinc-400" : "text-white");
+      }
+    },
+  );
+
   it.each([0, 23])(
     "dia selecionado e tabela: receita %s fica cinza só quando zero",
     (receita) => {

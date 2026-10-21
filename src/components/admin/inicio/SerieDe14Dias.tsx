@@ -212,14 +212,16 @@ export function SerieDe14Dias({
               </dt>
               <dd
                 data-testid="serie-14d-pico"
-                className={`mt-1 text-sm ${VALOR_INICIO}`}
+                className={`mt-1 text-sm ${tomDoValor(maximo) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
               >
                 {formatarMoeda(maximo)}
               </dd>
             </div>
             <div className="min-w-0">
               <dt className="text-xs text-zinc-400">Total · 14 dias</dt>
-              <dd className={`mt-1 text-sm ${VALOR_INICIO}`}>
+              <dd
+                className={`mt-1 text-sm ${tomDoValor(total) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
+              >
                 {formatarMoeda(total)}
               </dd>
             </div>
