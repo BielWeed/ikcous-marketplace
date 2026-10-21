@@ -142,6 +142,8 @@ on:
       - "scripts/publicacao/consultas/54b-antes-lucro-do-estoque-base-vigente.sql"
       - "scripts/publicacao/consultas/55a-conferir-intencao-do-caixa-aplicado.sql"
       - "scripts/publicacao/consultas/55b-antes-intencao-do-caixa-base-vigente.sql"
+      - "scripts/publicacao/consultas/56a-conferir-motivo-da-recusa-do-cartao-aplicado.sql"
+      - "scripts/publicacao/consultas/56b-antes-motivo-da-recusa-do-cartao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -253,6 +255,8 @@ on:
       - "scripts/publicacao/consultas/54b-antes-lucro-do-estoque-base-vigente.sql"
       - "scripts/publicacao/consultas/55a-conferir-intencao-do-caixa-aplicado.sql"
       - "scripts/publicacao/consultas/55b-antes-intencao-do-caixa-base-vigente.sql"
+      - "scripts/publicacao/consultas/56a-conferir-motivo-da-recusa-do-cartao-aplicado.sql"
+      - "scripts/publicacao/consultas/56b-antes-motivo-da-recusa-do-cartao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -345,6 +349,11 @@ jobs:
         env:
           CAIXA_INTENCAO_ALVO: chave
         run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-intencao-viva.cjs
+      # Portao 56: base anterior do zero, apply real, CHECK afrouxada e rollback em banco novo.
+      # BLOQUEANTE; so o Postgres efemero do job, com os mesmos gatilhos das consultas 56a/56b.
+      - name: Prova viva do portao do motivo da recusa do cartao (consultas 56a e 56b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/motivo-da-recusa-portao-viva.cjs
       # Receita com custo usa preco efetivo por variante (251): cobertura, zero legitimo,
       # prejuizo, contrato historico, portoes oficiais, rollback e mutantes. CLONE proprio.
       - name: Prova viva do lucro do estoque (migration 20261251)
