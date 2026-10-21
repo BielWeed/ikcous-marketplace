@@ -1,19 +1,22 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { LojaProntaEEstoqueBaixo } from "@/components/admin/dashboard/LojaProntaEEstoqueBaixo";
 import { AtalhosDoInicio } from "@/components/admin/inicio/AtalhosDoInicio";
 import { CartaoDaAssinatura } from "@/components/admin/inicio/CartaoDaAssinatura";
 import { CartaoDeAvisosDoAparelho } from "@/components/admin/inicio/CartaoDeAvisosDoAparelho";
+import { DataDeHoje } from "@/components/admin/inicio/DataDeHoje";
+import { DinheiroNasContas } from "@/components/admin/inicio/DinheiroNasContas";
+import { EstadoDaConexao } from "@/components/admin/inicio/EstadoDaConexao";
 import { HojeNaLoja } from "@/components/admin/inicio/HojeNaLoja";
 import { NumerosDoMes } from "@/components/admin/inicio/NumerosDoMes";
 import { ParaFazer } from "@/components/admin/inicio/ParaFazer";
 import { PerfilDaLoja } from "@/components/admin/inicio/PerfilDaLoja";
 import { SerieDe14Dias } from "@/components/admin/inicio/SerieDe14Dias";
 import {
-  ACAO_PRINCIPAL_INICIO,
   BOTAO_INICIO,
   CARTAO_INICIO,
+  CARTAO_LISTA_INICIO,
+  TituloDoInicio,
 } from "@/components/admin/inicio/visualDoInicio";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { buildIdentity } from "@/config/buildIdentity";
@@ -25,14 +28,13 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
-import { formatarInteiro } from "@/lib/crm";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
-import { AlertCircle, HelpCircle, Package, RefreshCw } from "lucide-react";
+import { AlertCircle, HelpCircle, RefreshCw } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -175,83 +177,69 @@ export const AdminDashboardView = memo(function AdminDashboardView({
 
   const semNumeros = carregando && !painel;
 
+  const lucro = painel?.mes.lucroEstimado ?? null;
+
   return (
     <div
       ref={viewRef}
       className="pb-admin h-auto bg-admin-bg text-white selection:bg-emerald-500/30 lg:pb-12"
     >
-      <div className="px-5 pt-6 lg:grid lg:grid-cols-[1fr_auto] lg:items-center lg:gap-x-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
-          <AdminPageHeader
-            titulo={NOMES_DO_PAINEL["admin-dashboard"]}
-            acoes={
-              <>
-                <button
-                  type="button"
-                  disabled={carregando || isOffline}
-                  onClick={() => void atualizar()}
-                  className="flex min-h-11 items-center gap-2 rounded-2xl border border-teal-300/15 bg-teal-300/5 px-3 text-sm font-semibold text-teal-300 transition-colors hover:bg-teal-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300 disabled:opacity-50"
-                  aria-label="Sincronizar os números do Início"
-                >
-                  <RefreshCw
-                    className={cn("size-5", carregando && "animate-spin")}
-                    aria-hidden="true"
-                  />
-                  Sincronizar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMostrarAjuda(true)}
-                  className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
-                  title="Como ler o Início"
-                  aria-label="Como ler o Início"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="flex size-11 items-center justify-center rounded-full border border-violet-300/15 bg-violet-300/10 text-violet-300"
-                  >
-                    <HelpCircle className="size-5" aria-hidden="true" />
-                  </span>
-                </button>
-              </>
-            }
+      <div className="flex items-start justify-between gap-3 px-5 pt-6">
+        <div className="min-w-0 [&_h1]:text-[2rem] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-dashboard"]} />
+          <DataDeHoje className="mt-1.5 text-sm text-zinc-400" />
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={carregando || isOffline}
+              onClick={() => void atualizar()}
+              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:opacity-50"
+              aria-label="Sincronizar os números do Início"
+              title="Sincronizar os números do Início"
+            >
+              <span
+                aria-hidden="true"
+                className="flex size-10 items-center justify-center rounded-full border border-admin-border bg-admin-raised text-zinc-200"
+              >
+                <RefreshCw
+                  className={cn(
+                    "size-5",
+                    carregando && "animate-spin motion-reduce:animate-none",
+                  )}
+                />
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMostrarAjuda(true)}
+              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+              title="Como ler o Início"
+              aria-label="Como ler o Início"
+            >
+              <span
+                aria-hidden="true"
+                className="flex size-10 items-center justify-center rounded-full border border-admin-border bg-admin-raised text-zinc-200"
+              >
+                <HelpCircle className="size-5" aria-hidden="true" />
+              </span>
+            </button>
+          </div>
+          <EstadoDaConexao
+            offline={isOffline}
+            carregando={carregando}
+            falhou={erro !== null}
           />
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-sm text-zinc-400">
-          <PontoDeOperacao sincronizando={carregando} />
-          <span>
-            {isOffline
-              ? "Sem internet · os valores podem estar desatualizados"
-              : carregando
-                ? "Atualizando sua loja…"
-                : erro
-                  ? "Não foi possível atualizar os números"
-                  : "Conectado"}
-          </span>
-        </div>
-        <div className="mt-3 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0 lg:max-w-md">
-          <LocalErrorBoundary
-            fallback={
-              <PerfilDaLoja
-                nome={nomeDaLoja(null)}
-                logoUrl={null}
-                cidade={null}
-                uf={null}
-                responsavel={responsavel}
-              />
-            }
-          >
-            <PerfilDaLojaComDados responsavel={responsavel} />
-          </LocalErrorBoundary>
         </div>
       </div>
 
-      <div className="space-y-7 px-5 pt-7">
+      <div className="space-y-6 px-5 pt-6">
         {erro && !carregando ? (
           <div role="alert" className={`${CARTAO_INICIO} space-y-3`}>
             <div className="flex items-start gap-3">
               <AlertCircle
-                className="mt-1 size-5 shrink-0 text-pink-300"
+                className="mt-1 size-5 shrink-0 text-red-400"
                 aria-hidden="true"
               />
               <div className="min-w-0">
@@ -275,8 +263,8 @@ export const AdminDashboardView = memo(function AdminDashboardView({
         ) : null}
 
         {/* A ordem de leitura do celular também ordena as três colunas do computador. */}
-        <div className="space-y-7 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
-          <div className="min-w-0 space-y-7">
+        <div className="space-y-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+          <div className="min-w-0 space-y-6">
             {painel?.mes.pedidos === 0 &&
             painel.hoje.pedidos === 0 &&
             painel.pendencias.pedidosParaPreparar === 0 ? (
@@ -294,22 +282,8 @@ export const AdminDashboardView = memo(function AdminDashboardView({
               <HojeNaLoja
                 hoje={painel?.hoje ?? null}
                 carregando={semNumeros}
-                acaoPrincipal={
-                  (painel?.pendencias.pedidosParaPreparar ?? 0) > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => onNavigate("admin-orders")}
-                      className={ACAO_PRINCIPAL_INICIO}
-                    >
-                      <Package className="size-5 shrink-0" aria-hidden="true" />
-                      Preparar{" "}
-                      {formatarInteiro(painel?.pendencias.pedidosParaPreparar)}{" "}
-                      {painel?.pendencias.pedidosParaPreparar === 1
-                        ? "pedido"
-                        : "pedidos"}
-                    </button>
-                  ) : null
-                }
+                paraPreparar={painel?.pendencias.pedidosParaPreparar ?? null}
+                onPreparar={() => onNavigate("admin-orders")}
               />
             </LocalErrorBoundary>
             <LocalErrorBoundary>
@@ -320,53 +294,85 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 preparoEmDestaque
               />
             </LocalErrorBoundary>
-            {/* Montar só à vista preserva a releitura da permissão do aparelho. */}
-            {ativo ? (
-              <LocalErrorBoundary>
-                <CartaoDeAvisosDoAparelho aoFechar={focarNoTitulo} />
-              </LocalErrorBoundary>
-            ) : null}
           </div>
-          <div className="min-w-0 space-y-7">
+          <div className="min-w-0 space-y-6">
             <AtalhosDoInicio
               ativa={ativo}
               onNavigate={onNavigate}
               aoPrepararDestino={prefetchView}
             />
             <LocalErrorBoundary>
-              <NumerosDoMes
+              <NumerosDoMes painel={painel} carregando={semNumeros}>
+                <LocalErrorBoundary>
+                  <SerieDe14Dias
+                    serie={painel?.serie14d ?? []}
+                    carregando={semNumeros}
+                    falhou={painel === null && erro !== null}
+                    onTentarDeNovo={() => void atualizar()}
+                    tomDoUltimoDia={
+                      lucro !== null && lucro < 0 ? "negativo" : "positivo"
+                    }
+                  />
+                </LocalErrorBoundary>
+              </NumerosDoMes>
+            </LocalErrorBoundary>
+          </div>
+          <div className="min-w-0 space-y-6">
+            <LocalErrorBoundary>
+              <DinheiroNasContas
                 painel={painel}
                 carregando={semNumeros}
                 onNavigate={onNavigate}
               />
             </LocalErrorBoundary>
-            <LocalErrorBoundary>
-              <SerieDe14Dias
-                serie={painel?.serie14d ?? []}
-                carregando={semNumeros}
-                falhou={painel === null && erro !== null}
-                onTentarDeNovo={() => void atualizar()}
-              />
-            </LocalErrorBoundary>
-          </div>
-          <div className="min-w-0 space-y-7">
-            <LocalErrorBoundary>
-              <CartaoDaAssinatura
-                assinatura={assinatura}
-                lida={assinaturaLida}
-                carregando={carregando}
-                erro={erroAssinatura}
-                onTentarDeNovo={() => void atualizar()}
-              />
-            </LocalErrorBoundary>
-            <LocalErrorBoundary>
-              <SecaoLojaProntaEEstoqueBaixo
-                estoqueBaixo={painel?.pendencias.estoqueBaixo ?? null}
-                estoqueCarregando={semNumeros}
-                onNavigate={onNavigate}
-                onTentarDeNovo={() => void atualizar()}
-              />
-            </LocalErrorBoundary>
+            <section
+              aria-labelledby="inicio-sua-loja-titulo"
+              className="min-w-0"
+            >
+              <TituloDoInicio id="inicio-sua-loja-titulo">
+                Sua loja
+              </TituloDoInicio>
+              <div
+                className={`${CARTAO_LISTA_INICIO} divide-y divide-admin-border`}
+              >
+                <LocalErrorBoundary
+                  fallback={
+                    <PerfilDaLoja
+                      nome={nomeDaLoja(null)}
+                      logoUrl={null}
+                      cidade={null}
+                      uf={null}
+                      responsavel={responsavel}
+                    />
+                  }
+                >
+                  <PerfilDaLojaComDados responsavel={responsavel} />
+                </LocalErrorBoundary>
+                <LocalErrorBoundary>
+                  <CartaoDaAssinatura
+                    assinatura={assinatura}
+                    lida={assinaturaLida}
+                    carregando={carregando}
+                    erro={erroAssinatura}
+                    onTentarDeNovo={() => void atualizar()}
+                  />
+                </LocalErrorBoundary>
+                {/* Montar só à vista preserva a releitura da permissão do aparelho. */}
+                {ativo ? (
+                  <LocalErrorBoundary>
+                    <CartaoDeAvisosDoAparelho aoFechar={focarNoTitulo} />
+                  </LocalErrorBoundary>
+                ) : null}
+                <LocalErrorBoundary>
+                  <SecaoLojaProntaEEstoqueBaixo
+                    estoqueBaixo={painel?.pendencias.estoqueBaixo ?? null}
+                    estoqueCarregando={semNumeros}
+                    onNavigate={onNavigate}
+                    onTentarDeNovo={() => void atualizar()}
+                  />
+                </LocalErrorBoundary>
+              </div>
+            </section>
           </div>
         </div>
       </div>

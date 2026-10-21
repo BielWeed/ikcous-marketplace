@@ -183,8 +183,6 @@ const MANTIDAS = new Map<string, string>([
   ["border-zinc-955", INEXISTENTE],
   ["text-zinc-555", INEXISTENTE],
   ["text-zinc-655", INEXISTENTE],
-  ["bg-slate-300", SERIE],
-  ["bg-slate-400", SERIE],
   ["bg-zinc-300", SERIE],
   ["bg-zinc-400", SERIE],
   ["data-[state=checked]:bg-zinc-300", SERIE],

@@ -34,6 +34,14 @@ export function EstadoDeOperacaoProvider({
   );
 }
 
+/**
+ * A medição única de conexão do painel (a mesma que pinta o ponto), para telas
+ * que dizem o estado em palavras. `null` fora do AdminLayout.
+ */
+export function useEstadoDeOperacaoDoPainel(): EstadoDeOperacao | null {
+  return useContext(EstadoDeOperacaoContext);
+}
+
 function PontoComEstado({
   estado,
   sincronizando = false,

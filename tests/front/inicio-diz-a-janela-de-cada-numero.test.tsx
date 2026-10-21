@@ -146,11 +146,11 @@ describe("Início: cada número diz o conceito e a janela", () => {
     expect(pagina).toMatch(/4\s*vendas/);
     // O lucro vem do DRE do Financeiro: não ganha o rótulo de vendas.
     expect(pagina).toContain("Lucro estimado");
-    // ...e o tile do lucro (entre o seu rótulo e o do saldo) não herda a
+    // ...e o lucro (entre o seu rótulo e o gráfico dos 14 dias) não herda a
     // régua de crm__vendas.
     const tileDoLucro = pagina.slice(
       pagina.indexOf("Lucro estimado"),
-      pagina.indexOf("Saldo em contas"),
+      pagina.indexOf("Últimos 14 dias"),
     );
     expect(tileDoLucro).toContain("Margem estimada");
     expect(tileDoLucro).not.toContain("Vendas pagas");
@@ -163,6 +163,13 @@ describe("Início: cada número diz o conceito e a janela", () => {
     act(() => raiz.unmount());
     hospedeiro.remove();
     await montar({ ...PAINEL, mes: { ...PAINEL.mes, receita: 0 } });
+    // O link "Como é calculado o lucro" abre a explicação no mesmo lugar.
+    const como = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      texto(b).includes("Como é calculado o lucro"),
+    );
+    expect(como?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => como?.click());
+    expect(como?.getAttribute("aria-expanded")).toBe("true");
     expect(texto(hospedeiro)).toContain(
       "Desconta estornos, devoluções, custos e despesas, mesmo não pagas. Sem custo cadastrado, usa R$ 0 de custo.",
     );
@@ -214,9 +221,9 @@ describe("Início: cada número diz o conceito e a janela", () => {
     );
     expect(texto(serie)).toContain("Vendas pagas por dia nos últimos 14 dias");
     expect(texto(serie)).not.toContain("Receita por dia");
-    // O conceito também está visível no título, não só na tabela sr-only.
-    expect(texto(serie?.querySelector("h2") ?? null)).toBe(
-      "Vendas pagas · 14 dias",
+    // O conceito também está no título do gráfico, não só na tabela sr-only.
+    expect(texto(serie?.querySelector("#inicio-serie-titulo") ?? null)).toBe(
+      "Últimos 14 dias · vendas pagas por dia",
     );
 
     const ajuda = hospedeiro.querySelector<HTMLButtonElement>(

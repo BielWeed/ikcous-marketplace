@@ -359,9 +359,8 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     expect(hospedeiro.textContent).toContain("Cadastro completo");
     expect(hospedeiro.textContent).toContain("6 de 6 passos concluídos");
     expect(hospedeiro.textContent).not.toContain("Próximo passo");
-    expect(hospedeiro.textContent).toContain(
-      "Sua loja está pronta para vender?",
-    );
+    // O título da linha no cartão "Sua loja" é "Loja pronta" (mockup aprovado).
+    expect(hospedeiro.textContent).toContain("Loja pronta");
     expect(botaoDaLista()?.getAttribute("aria-expanded")).toBe("false");
     expect(linhasDaLista()).toHaveLength(0);
     // O card de estoque continua ao lado.
