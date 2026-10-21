@@ -329,6 +329,13 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     const previa = normalizar(folhaFechar.textContent);
     expect(previa).toMatch(/Contado ?R\$ 470,00/);
     expect(previa).toMatch(/Quebra ?−R\$ 10,50/);
+    const quebra = [...folhaFechar.querySelectorAll("dt")].find(
+      (el) => el.textContent === "Quebra",
+    );
+    expect(quebra?.nextElementSibling?.classList.contains("text-red-400")).toBe(
+      true,
+    );
+    expect(quebra?.parentElement?.className).not.toMatch(/bg-red-|border-red-/);
 
     await clicar(botaoEm(folhaFechar, "Fechar caixa"));
 
@@ -347,6 +354,30 @@ describe("Financeiro — abrir e fechar o caixa", () => {
 
     await clicar(botaoEm(folha() as HTMLElement, "Concluir"));
     expect(folha()).toBeNull();
+  });
+
+  it("aviso de sangria acima do esperado usa âmbar sem bloco pintado", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Sangria"));
+    await digitar("fin-caixa-mov-valor", "50000");
+    const aviso = [...folha()!.querySelectorAll("p")].find((el) =>
+      el.textContent?.includes("É mais do que o esperado"),
+    )!;
+    expect.soft(aviso.classList.contains("text-amber-400")).toBe(true);
+    expect.soft(aviso.className).not.toMatch(/bg-orange-|border-orange-/);
+  });
+
+  it.each([
+    { valor: "49050", rotulo: "Sobra", cor: "text-amber-400" },
+    { valor: "48050", rotulo: "Bateu", cor: "text-emerald-400" },
+  ])("prévia $rotulo usa $cor", async ({ valor, rotulo, cor }) => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    await digitar("fin-caixa-contado", valor);
+    const dt = [...folha()!.querySelectorAll("dt")].find(
+      (el) => el.textContent === rotulo,
+    )!;
+    expect(dt.nextElementSibling?.classList.contains(cor)).toBe(true);
   });
 
   async function abrirSessao() {

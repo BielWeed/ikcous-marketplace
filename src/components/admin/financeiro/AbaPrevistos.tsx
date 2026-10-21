@@ -21,6 +21,7 @@ import {
   totaisDosPrevistos,
 } from "@/lib/financeiro";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { DataIso, LancamentoPrevisto } from "@/types/financeiro";
 import type { AbrirFolha, LadoDosPrevistos } from "./navegacao";
@@ -34,7 +35,6 @@ import {
   EstadoVazio,
   Etiqueta,
   Segmentado,
-  SeloFinanceiro,
 } from "./partes";
 
 const SECOES: readonly { situacao: SituacaoDoVencimento; titulo: string }[] = [
@@ -84,20 +84,24 @@ function CartaoDoPrevisto({
   return (
     <li
       className={cn(
-        "flex min-w-0 flex-col rounded-3xl border bg-admin-surface p-4",
-        vencido
-          ? "border-red-400/25"
-          : situacao === "hoje"
-            ? "border-orange-300/25"
-            : "border-admin-border",
+        "flex min-w-0 flex-col rounded-3xl border border-admin-border bg-admin-surface p-4",
       )}
     >
       <div className="flex flex-col items-start gap-3">
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-base font-bold leading-snug text-white">
-            <SeloFinanceiro
-              icone={Clock}
-              matiz={situacao === "hoje" ? "#FF9F5A" : "#FF8BB2"}
+            <Clock
+              aria-hidden="true"
+              className={cn(
+                "size-5 shrink-0",
+                classeDoTexto(
+                  vencido
+                    ? "negativo"
+                    : situacao === "hoje"
+                      ? "atencao"
+                      : "neutro",
+                ),
+              )}
             />
             <span className="min-w-0 flex-1 break-words">{item.descricao}</span>
             {parcela ? <Etiqueta>{parcela}</Etiqueta> : null}
@@ -109,11 +113,13 @@ function CartaoDoPrevisto({
           <p
             className={cn(
               "mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium",
-              vencido
-                ? "text-red-300"
-                : situacao === "hoje"
-                  ? "text-orange-300"
-                  : "text-zinc-400",
+              classeDoTexto(
+                vencido
+                  ? "negativo"
+                  : situacao === "hoje"
+                    ? "atencao"
+                    : "neutro",
+              ),
             )}
           >
             <CalendarClock aria-hidden="true" className="size-3.5" />
@@ -130,7 +136,7 @@ function CartaoDoPrevisto({
           sentido={lado === "entrada" ? 1 : -1}
           className={cn(
             "text-2xl font-bold",
-            lado === "entrada" ? "text-emerald-300" : "text-red-300",
+            classeDoTexto(lado === "entrada" ? "positivo" : "negativo"),
           )}
         />
       </div>
@@ -274,7 +280,10 @@ export function AbaPrevistos({
             <Dinheiro
               valor={totais.total}
               sentido={aReceber ? 1 : -1}
-              className="mt-4 block text-3xl font-bold text-white"
+              className={cn(
+                "mt-4 block text-3xl font-bold",
+                classeDoTexto(aReceber ? "positivo" : "negativo"),
+              )}
             />
             <dl className="mt-6 flex flex-col gap-4 text-sm">
               <div className="flex flex-wrap justify-between gap-2">

@@ -24,6 +24,7 @@ import {
   mensagemDeErroFinanceiro,
   parseValorBR,
 } from "@/lib/financeiro";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import {
   CONTA_CAIXA_DA_LOJA,
@@ -418,7 +419,12 @@ export function MovimentarCaixaFolha({
           </dl>
         ) : null}
         {passaDoEsperado ? (
-          <p className="flex items-start gap-2 rounded-xl border border-orange-400/20 bg-orange-400/5 p-3 text-xs text-orange-300">
+          <p
+            className={cn(
+              "flex items-start gap-2 rounded-xl p-3 text-xs",
+              classeDoTexto("atencao"),
+            )}
+          >
             <AlertTriangle
               aria-hidden="true"
               className="mt-0.5 size-4 shrink-0"
@@ -683,11 +689,7 @@ function ComparativoDoFechamento({
           situacao === null
             ? "flex flex-wrap items-baseline justify-between gap-2 border-t border-admin-border py-3"
             : cn(
-                "flex flex-wrap items-baseline justify-between gap-2 rounded-2xl border p-3",
-                situacao === "quebra" && "border-red-500/30 bg-red-500/10",
-                situacao === "sobra" && "border-orange-400/30 bg-orange-400/10",
-                situacao === "bateu" &&
-                  "border-emerald-500/30 bg-emerald-500/10",
+                "flex flex-wrap items-baseline justify-between gap-2 border-t border-admin-border py-3",
               )
         }
       >
@@ -695,9 +697,9 @@ function ComparativoDoFechamento({
         <dd
           className={cn(
             "text-2xl font-bold",
-            situacao === "quebra" && "text-red-300",
-            situacao === "sobra" && "text-orange-300",
-            situacao === "bateu" && "text-emerald-300",
+            situacao === "quebra" && classeDoTexto("negativo"),
+            situacao === "sobra" && classeDoTexto("atencao"),
+            situacao === "bateu" && classeDoTexto("positivo"),
           )}
         >
           {diferenca === null ? "—" : <Dinheiro valor={diferenca} comSinal />}

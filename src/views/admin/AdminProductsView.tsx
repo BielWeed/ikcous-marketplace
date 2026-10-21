@@ -1,10 +1,13 @@
-import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { BarraDeBusca } from "@/components/admin/BarraDeBusca";
-import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
+import {
+  type MetricaDoPainel,
+  MetricasDoPainel,
+} from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
+import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
 import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
@@ -38,6 +41,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import { mesmaCategoria } from "@/lib/gestao-de-categorias";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
@@ -484,7 +488,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     return ["all", ...dbCategories.map((c) => c.name)];
   }, [dbCategories]);
 
-  const kpiCards = useMemo<readonly KpiCardConfig[]>(
+  const kpiCards = useMemo<readonly MetricaDoPainel[]>(
     () => [
       {
         id: "capital-alocado",
@@ -506,7 +510,8 @@ export const AdminProductsView = memo(function AdminProductsView({
             ? `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
             : "—",
         icon: TrendingUp,
-        accent: "text-emerald-300",
+        accent: classeDoTexto("neutro"),
+        tom: tomDoValor(financialStats.potential),
         subValue: financialStats.parcial
           ? "Parcial · só produtos com custo cadastrado, antes das despesas"
           : "Receita com custo cadastrado menos custo · antes das despesas",
@@ -1370,7 +1375,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     {
                       titulo: "Estoque e custo",
                       icone: AlertTriangle,
-                      cor: "text-orange-300",
+                      cor: classeDoTexto("atencao"),
                       descricao: `Crítico: estoque ≤ mínimo (padrão ${LIMIAR_PADRAO_DE_ESTOQUE}). Custo Suspeito: até R$ 0,10. Sem Custo Cadastrado: métricas —. Produtos com variações mostram o estoque total da grade.`,
                       formula: "Estoque ≤ mínimo ➜ Indicador Crítico",
                     },
@@ -1543,7 +1548,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <span>20% a &lt; 35%</span>
                     </p>
                     <p className="mt-2 flex justify-between gap-2">
-                      <span className="text-orange-300">Apertada</span>
+                      <span className={classeDoTexto("atencao")}>Apertada</span>
                       <span>10% a &lt; 20%</span>
                     </p>
                     <p className="mt-2 flex justify-between gap-2">
@@ -1554,25 +1559,22 @@ export const AdminProductsView = memo(function AdminProductsView({
                   </div>
 
                   {/* Recomendação de Margem */}
-                  <div
-                    className={cn(
-                      "p-3.5 rounded-2xl border transition-all duration-300 flex items-start gap-3 relative overflow-hidden",
-                      simulatorMetrics.health === "excellent" &&
-                        "bg-emerald-950/20 border-emerald-500/20 text-emerald-400",
-                      simulatorMetrics.health === "good" &&
-                        "bg-teal-950/20 border-teal-500/20 text-teal-400",
-                      simulatorMetrics.health === "low" &&
-                        "bg-amber-950/20 border-amber-500/20 text-amber-400",
-                      simulatorMetrics.health === "danger" &&
-                        "bg-rose-950/20 border-rose-500/20 text-rose-400",
-                    )}
-                  >
+                  <div className="relative flex items-start gap-3 overflow-hidden rounded-2xl border border-admin-border p-3.5">
                     <div className="shrink-0 rounded-xl border border-admin-border bg-white/5 p-1.5">
                       <Sparkles className="size-4 animate-pulse" />
                     </div>
                     <div>
                       <p className="text-[11px] font-black uppercase tracking-wider">
-                        {simulatorMetrics.healthLabel}
+                        <EstadoComPonto
+                          tom={
+                            simulatorMetrics.health === "danger"
+                              ? "negativo"
+                              : simulatorMetrics.health === "low"
+                                ? "atencao"
+                                : "positivo"
+                          }
+                          texto={simulatorMetrics.healthLabel}
+                        />
                       </p>
                       <p className="mt-0.5 text-[11px] font-medium leading-normal text-zinc-400">
                         {simulatorMetrics.health === "excellent" &&
@@ -1591,29 +1593,40 @@ export const AdminProductsView = memo(function AdminProductsView({
                     {[
                       {
                         rotulo: "Margem de Lucro",
+                        cor: classeDoTexto(tomDoValor(simulatorMetrics.margin)),
                         valor: percentualComUmaCasa(simulatorMetrics.margin),
                       },
                       {
                         rotulo: "Lucro sobre o custo (por unidade)",
+                        cor: classeDoTexto(tomDoValor(simulatorMetrics.roi)),
                         valor: percentualComUmaCasa(simulatorMetrics.roi),
                       },
                       {
                         rotulo: "Lucro bruto por unidade",
+                        cor: classeDoTexto(
+                          tomDoValor(simulatorMetrics.unitProfit),
+                        ),
                         valor: `R$ ${simulatorMetrics.unitProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
                       },
                       {
                         rotulo: "Capital de Lote (Custo)",
+                        cor: "text-white",
                         valor: `R$ ${simulatorMetrics.totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
                       },
-                    ].map(({ rotulo, valor }, indice) => (
+                    ].map(({ rotulo, valor, cor }) => (
                       <div
                         key={rotulo}
-                        className={`flex min-h-20 min-w-0 flex-col justify-between gap-2 rounded-2xl border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-4 ${indice === 0 ? (simulatorMetrics.health === "excellent" ? "border-emerald-500/20" : simulatorMetrics.health === "good" ? "border-teal-500/20" : simulatorMetrics.health === "low" ? "border-amber-500/20" : "border-rose-500/20") : "border-admin-border"}`}
+                        className="flex min-h-20 min-w-0 flex-col justify-between gap-2 rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-4"
                       >
                         <p className="text-xs font-semibold leading-tight text-zinc-300">
                           {rotulo}
                         </p>
-                        <p className="text-[17px] font-black tabular-nums leading-tight sm:text-[22px]">
+                        <p
+                          className={cn(
+                            "text-[17px] font-black tabular-nums leading-tight sm:text-[22px]",
+                            cor,
+                          )}
+                        >
                           <span className="whitespace-nowrap">{valor}</span>
                         </p>
                       </div>
@@ -1625,7 +1638,14 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <p className="text-[11px] font-bold text-zinc-300">
                         Lucro bruto do lote simulado
                       </p>
-                      <p className="mt-0.5 font-mono text-xl font-black text-white">
+                      <p
+                        className={cn(
+                          "mt-0.5 font-mono text-xl font-black",
+                          classeDoTexto(
+                            tomDoValor(simulatorMetrics.totalProfit),
+                          ),
+                        )}
+                      >
                         R${" "}
                         {simulatorMetrics.totalProfit.toLocaleString("pt-BR", {
                           minimumFractionDigits: 2,
@@ -1869,7 +1889,7 @@ function MenuDoProduto({
           className="produto-menu-item"
         >
           {product.isActive ? (
-            <Pause aria-hidden="true" className="text-orange-300" />
+            <Pause aria-hidden="true" className={classeDoTexto("atencao")} />
           ) : (
             <Play aria-hidden="true" className="text-emerald-300" />
           )}
@@ -1942,8 +1962,8 @@ const AdminProductCard = memo(function AdminProductCard({
     estado === "Offline"
       ? "text-violet-300"
       : estado === "Esgotado"
-        ? "text-red-300"
-        : "text-zinc-400";
+        ? classeDoTexto("negativo")
+        : classeDoTexto("neutro");
   const botoes = (detalhado: boolean, custoSuspeito = false) => (
     <div className="produto-acoes mt-2 flex flex-wrap gap-2">
       <button
@@ -2093,7 +2113,12 @@ const AdminProductCard = memo(function AdminProductCard({
                   {estado}
                 </Badge>
                 {estoqueBaixo && (
-                  <Badge className="produto-status text-[11px] text-orange-300">
+                  <Badge
+                    className={cn(
+                      "produto-status text-[11px]",
+                      classeDoTexto("atencao"),
+                    )}
+                  >
                     Crítico
                   </Badge>
                 )}
@@ -2132,11 +2157,11 @@ const AdminProductCard = memo(function AdminProductCard({
               <p
                 className={cn(
                   "mt-1 text-lg font-bold tabular-nums",
-                  estoqueBaixo && "text-orange-300",
-                  estado === "Esgotado" && "text-red-300",
+                  estoqueBaixo && classeDoTexto("atencao"),
+                  estado === "Esgotado" && classeDoTexto("negativo"),
                 )}
               >
-                <span className={cn(estoqueBaixo && "text-orange-300")}>
+                <span className={cn(estoqueBaixo && classeDoTexto("atencao"))}>
                   {product.stock}
                 </span>{" "}
                 un.
@@ -2147,7 +2172,10 @@ const AdminProductCard = memo(function AdminProductCard({
                 <p className="text-[11px] text-zinc-400">Margem de Lucro</p>
                 <span
                   data-margem
-                  className="mt-1 block whitespace-nowrap text-lg font-black tabular-nums tracking-tighter"
+                  className={cn(
+                    "mt-1 block whitespace-nowrap text-lg font-black tabular-nums tracking-tighter",
+                    classeDoTexto(tomDoValor(margin)),
+                  )}
                 >
                   {margin === null ? "—" : percentualComUmaCasa(margin)}
                 </span>
@@ -2157,7 +2185,10 @@ const AdminProductCard = memo(function AdminProductCard({
           {custoSuspeito && (
             <div
               data-custo-suspeito
-              className="mt-3 flex gap-2 rounded-xl bg-orange-300/10 p-3 text-orange-300"
+              className={cn(
+                "mt-3 flex gap-2 rounded-xl p-3",
+                classeDoTexto("atencao"),
+              )}
             >
               <AlertTriangle aria-hidden="true" className="size-5 shrink-0" />
               <div className="min-w-0 text-xs">
@@ -2165,7 +2196,10 @@ const AdminProductCard = memo(function AdminProductCard({
                 <p className="mt-1">
                   <span
                     data-margem
-                    className="whitespace-nowrap font-black tabular-nums tracking-tighter"
+                    className={cn(
+                      "whitespace-nowrap font-black tabular-nums tracking-tighter",
+                      classeDoTexto(tomDoValor(margin)),
+                    )}
                   >
                     {margin === null ? "—" : percentualComUmaCasa(margin)}
                   </span>{" "}
@@ -2203,7 +2237,7 @@ const AdminProductCard = memo(function AdminProductCard({
               <div
                 className={cn(
                   "h-full rounded-full",
-                  estoqueBaixo ? "bg-orange-300" : "bg-sky-200",
+                  estoqueBaixo ? "bg-amber-400" : "bg-sky-200",
                 )}
                 style={{ width: `${Math.min(product.stock * 5, 100)}%` }}
               />
@@ -2220,7 +2254,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 data-lucro-sobre-custo
                 className={cn(
                   "whitespace-nowrap font-black tracking-tighter tabular-nums",
-                  custoSuspeito && "text-orange-300",
+                  classeDoTexto(tomDoValor(roi)),
                 )}
               >
                 {roi === null ? "—" : percentualComUmaCasa(roi)}
@@ -2248,7 +2282,12 @@ const AdminProductCard = memo(function AdminProductCard({
                 />
                 Lucro bruto do estoque
               </p>
-              <span className="font-semibold">
+              <span
+                className={cn(
+                  "font-semibold",
+                  classeDoTexto(tomDoValor(totalProfit)),
+                )}
+              >
                 {totalProfit === null
                   ? "—"
                   : `${totalProfit >= 0 ? "+ " : ""}R$ ${totalProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
@@ -2267,7 +2306,7 @@ const AdminProductCard = memo(function AdminProductCard({
               </div>
             )}
             {custoSuspeito && (
-              <p className="mt-3 text-orange-300">
+              <p className={cn("mt-3", classeDoTexto("atencao"))}>
                 Indicadores de lucro dependem da revisão do custo.
               </p>
             )}
@@ -2337,7 +2376,12 @@ const AdminProductCard = memo(function AdminProductCard({
               ) : estado === "Esgotado" || estoqueBaixo ? (
                 <AlertTriangle
                   aria-hidden="true"
-                  className="size-3.5 shrink-0 text-orange-300"
+                  className={cn(
+                    "size-3.5 shrink-0",
+                    classeDoTexto(
+                      estado === "Esgotado" ? "negativo" : "atencao",
+                    ),
+                  )}
                 />
               ) : (
                 <Package aria-hidden="true" className="size-3.5 shrink-0" />
@@ -2351,11 +2395,16 @@ const AdminProductCard = memo(function AdminProductCard({
                 {estado}
               </Badge>
               {estoqueBaixo && estado !== "Esgotado" && (
-                <Badge className="produto-status text-[11px] text-orange-300">
+                <Badge
+                  className={cn(
+                    "produto-status text-[11px]",
+                    classeDoTexto("atencao"),
+                  )}
+                >
                   Crítico
                 </Badge>
               )}
-              <span className={cn(estoqueBaixo && "text-orange-300")}>
+              <span className={cn(estoqueBaixo && classeDoTexto("atencao"))}>
                 {product.stock}
               </span>
               <span>
@@ -2364,7 +2413,7 @@ const AdminProductCard = memo(function AdminProductCard({
                   : "un."}
               </span>
               {estoqueBaixo && estado !== "Esgotado" && (
-                <span className="text-orange-300">
+                <span className={classeDoTexto("atencao")}>
                   · mín. {product.estoqueMinimo ?? LIMIAR_PADRAO_DE_ESTOQUE}
                 </span>
               )}
