@@ -80,6 +80,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  type ComponentProps,
   memo,
   useEffect,
   useMemo,
@@ -329,7 +330,7 @@ const situacaoDoBanner = (
   banner: Banner,
 ): { rotulo: string; ponto: string; texto: string } => {
   if (!banner.active) {
-    return { rotulo: "Pausado", ponto: "bg-zinc-500", texto: "text-zinc-500" };
+    return { rotulo: "Pausado", ponto: "bg-zinc-500", texto: "text-zinc-400" };
   }
   const agora = new Date();
   if (banner.startDate && new Date(banner.startDate) > agora) {
@@ -388,6 +389,24 @@ interface CartaoDoBannerProps {
   readonly onExcluir: (id: string, imageUrl: string) => void;
 }
 
+function InterruptorDoBanner({
+  id,
+  ...props
+}: ComponentProps<typeof Switch> & { id: string }) {
+  return (
+    <label
+      htmlFor={id}
+      className="flex size-11 shrink-0 cursor-pointer items-center justify-center"
+    >
+      <Switch
+        {...props}
+        id={id}
+        className="data-[state=checked]:bg-admin-accent data-[state=unchecked]:bg-admin-border-strong dark:data-[state=unchecked]:bg-admin-border-strong [&_[data-slot=switch-thumb]]:bg-zinc-50"
+      />
+    </label>
+  );
+}
+
 const CartaoDoBanner = memo(function CartaoDoBanner({
   banner,
   posicaoCurta,
@@ -409,7 +428,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
     <div
       className={cn(
         "group relative w-full max-w-full overflow-hidden rounded-2xl border border-admin-border bg-admin-surface transition-colors duration-300 hover:border-white/[0.12] hover:bg-admin-raised",
-        !banner.active && "opacity-60",
+        !banner.active && "bg-admin-bg",
       )}
     >
       <div
@@ -449,17 +468,18 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
             <div className="flex min-w-0 items-baseline gap-2">
               <h3
                 className={cn(
-                  "min-w-0 max-w-full truncate font-semibold text-white",
+                  "min-w-0 max-w-full truncate font-semibold",
+                  banner.active ? "text-white" : "text-zinc-400",
                   detalhado ? "text-sm sm:text-base" : "text-sm",
                 )}
               >
                 {banner.title || "Campanha sem Título"}
               </h3>
-              <span className="shrink-0 font-mono text-[11px] text-zinc-500">
+              <span className="shrink-0 font-mono text-[11px] text-zinc-400">
                 #{banner.order}
               </span>
               {posicaoCurta && (
-                <span className="hidden shrink-0 text-[11px] text-zinc-500 sm:inline">
+                <span className="hidden shrink-0 text-[11px] text-zinc-400 sm:inline">
                   · {posicaoCurta}
                 </span>
               )}
@@ -477,7 +497,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
             </div>
 
             {banner.link && (
-              <div className="flex min-w-0 items-center gap-1 font-mono text-[11px] text-zinc-500">
+              <div className="flex min-w-0 items-center gap-1 font-mono text-[11px] text-zinc-400">
                 <ExternalLink className="size-2.5 shrink-0" />
                 <span className="min-w-0 truncate">{banner.link}</span>
               </div>
@@ -505,7 +525,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="shrink-0 font-mono text-[11px] text-zinc-500">
+                    <span className="shrink-0 font-mono text-[11px] text-zinc-400">
                       {Math.round(pct)}%
                     </span>
                   </div>
@@ -515,8 +535,8 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
         </div>
 
         {/* Controles: ordem · exibir · editar · excluir */}
-        <div className="flex items-center justify-between gap-2 border-t border-admin-border pt-2.5">
-          <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-admin-border pt-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <div className="flex items-center rounded-lg border border-admin-border bg-admin-raised p-0.5">
               <button
                 onClick={() => onMover(banner, "up")}
@@ -545,16 +565,15 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
             </div>
 
             <div className="flex items-center gap-1.5 rounded-lg border border-admin-border bg-admin-raised px-2 py-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                 Exibir
               </span>
-              <Switch
+              <InterruptorDoBanner
                 id={`banner-card-active-${banner.id}`}
                 checked={banner.active}
                 onCheckedChange={() => onAlternar(banner)}
                 disabled={isProcessing || isOffline}
                 aria-label={`Exibir ${banner.title || "banner"}`}
-                className="min-h-11 min-w-11 data-[state=checked]:bg-admin-accent"
               />
             </div>
           </div>
@@ -2064,9 +2083,11 @@ export const AdminBannersView = memo(function AdminBannersView({
     )
       return;
     setMostrarProdutos(false);
-    const orfa = imagemEnviadaNaoSalvaRef.current;
-    if (orfa) deleteStorageFile(orfa).catch(() => {});
-    imagemEnviadaNaoSalvaRef.current = null;
+    if (modelo) {
+      const orfa = imagemEnviadaNaoSalvaRef.current;
+      if (orfa) deleteStorageFile(orfa).catch(() => {});
+      imagemEnviadaNaoSalvaRef.current = null;
+    }
     setFormData((prev) => ({
       ...prev,
       productId: produto.id,
@@ -2117,7 +2138,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                 O que aparece no topo, meio e base da sua loja.
               </p>
               <Button
-                className="min-h-12 w-full rounded-2xl bg-white text-zinc-950 hover:bg-zinc-200"
+                className="min-h-12 w-full rounded-2xl bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current hover:bg-white"
                 disabled={isOffline || !isLoaded}
                 onClick={() => handleOpenDialog()}
               >
@@ -2316,7 +2337,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     Descartar
                   </Button>
                   <Button
-                    className="min-h-11 bg-white text-zinc-950"
+                    className="min-h-11 bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current"
                     onClick={() => {
                       const imagem = draftToRecover.formData.imageUrl;
                       const arquivoDoRascunho =
@@ -2479,7 +2500,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           onChange={(e) => setProductSearch(e.target.value)}
                         />
                         <div className="max-h-60 space-y-2 overflow-y-auto">
-                          {filteredProducts.map((p) => (
+                          {filteredProducts.slice(0, 20).map((p) => (
                             <div
                               key={p.id}
                               className="flex items-center justify-between gap-2 rounded-xl border border-admin-border bg-admin-surface px-3"
@@ -2497,6 +2518,12 @@ export const AdminBannersView = memo(function AdminBannersView({
                               </span>
                             </div>
                           ))}
+                          {filteredProducts.length > 20 && (
+                            <p className="text-xs text-zinc-400" role="status">
+                              mostrando 20 de {filteredProducts.length}: refine
+                              a busca
+                            </p>
+                          )}
                           {filteredProducts.length === 0 && (
                             <p className="text-sm">
                               Nenhum produto correspondente encontrado. Você
@@ -2581,11 +2608,11 @@ export const AdminBannersView = memo(function AdminBannersView({
                               overlayColor: c.hex,
                             }))
                           }
-                          className="flex min-h-11 min-w-11 flex-col items-center gap-1 rounded-xl border border-admin-border bg-admin-surface p-2 text-xs text-white"
+                          className="flex min-h-11 min-w-11 flex-col items-center gap-1 rounded-xl border border-admin-border bg-admin-surface p-2 text-xs text-white ring-1 ring-inset ring-admin-border-strong"
                         >
                           <span
                             className={cn(
-                              "size-8 rounded-full border border-admin-border-strong",
+                              "size-8 rounded-full shadow-[inset_0_0_0_1px_hsl(var(--admin-border-strong))]",
                               formData.overlayColor === c.hex &&
                                 "ring-2 ring-current ring-offset-2 ring-offset-admin-bg",
                             )}
@@ -2654,13 +2681,12 @@ export const AdminBannersView = memo(function AdminBannersView({
                     />
                     <div className="flex min-h-11 items-center justify-between">
                       <Label htmlFor="banner-active">Banner ativo</Label>
-                      <Switch
+                      <InterruptorDoBanner
                         id="banner-active"
                         checked={formData.active ?? true}
                         onCheckedChange={(active) =>
                           setFormData((prev) => ({ ...prev, active }))
                         }
-                        className="min-h-11 min-w-11 data-[state=checked]:bg-admin-accent"
                       />
                     </div>
                     <section className="space-y-3">
@@ -2761,9 +2787,8 @@ export const AdminBannersView = memo(function AdminBannersView({
                         <Label htmlFor="banner-scheduling-toggle">
                           Programar datas
                         </Label>
-                        <Switch
+                        <InterruptorDoBanner
                           id="banner-scheduling-toggle"
-                          className="min-h-11 min-w-11 data-[state=checked]:bg-admin-accent"
                           checked={!!(formData.startDate || formData.endDate)}
                           onCheckedChange={(checked) => {
                             if (checked) handleApplyDatePreset("24h");
@@ -2864,10 +2889,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                           <Label htmlFor="banner-textos">
                             Textos sobre a imagem
                           </Label>
-                          <Switch
+                          <InterruptorDoBanner
                             id="banner-textos"
                             checked={bannerMode === "complete"}
-                            className="min-h-11 min-w-11 data-[state=checked]:bg-admin-accent"
                             onCheckedChange={(checked) =>
                               escolherOModo(checked ? "complete" : "simple")
                             }
@@ -2944,7 +2968,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                               <Label htmlFor="banner-show-overlay">
                                 Exibir textos e botão
                               </Label>
-                              <Switch
+                              <InterruptorDoBanner
                                 id="banner-show-overlay"
                                 checked={formData.showTextOverlay !== false}
                                 onCheckedChange={(showTextOverlay) =>
@@ -2953,7 +2977,6 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     showTextOverlay,
                                   }))
                                 }
-                                className="min-h-11 min-w-11 data-[state=checked]:bg-admin-accent"
                               />
                             </div>
                             <Label htmlFor="banner-old-layout">
@@ -3057,7 +3080,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                       type="button"
                                       title={c.name}
                                       aria-label={c.name}
-                                      className="min-h-11 min-w-11 rounded-xl border border-admin-border-strong"
+                                      className="min-h-11 min-w-11 rounded-xl border border-admin-border-strong ring-1 ring-inset ring-admin-border-strong"
                                       style={{ backgroundColor: c.hex }}
                                       onClick={() =>
                                         setFormData((prev) => ({
@@ -3166,7 +3189,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                 </details>
                 <div className="flex flex-col gap-2">
                   <Button
-                    className="min-h-12 w-full rounded-2xl bg-white text-zinc-950 hover:bg-zinc-200"
+                    className="min-h-12 w-full rounded-2xl bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current hover:bg-white"
                     onClick={handleSubmit}
                     disabled={ocupadoComImagem || isOffline}
                   >
@@ -3221,7 +3244,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <Layout className="size-4 text-emerald-500" />
                   Imagem Promocional
                 </div>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-zinc-400">
                   Ideal usar proporção horizontal de 21:9. Imagens com boa
                   legibilidade aumentam a conversão.
                 </p>
@@ -3232,7 +3255,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <ExternalLink className="size-4 text-zinc-200" />
                   Link de Destino
                 </div>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-zinc-400">
                   A página do app para onde o cliente será levado ao tocar no
                   banner (por exemplo, um produto ou uma categoria).
                 </p>
@@ -3243,7 +3266,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <ArrowUp className="size-4 text-sky-500" />
                   Sequência / Ordenação
                 </div>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-zinc-400">
                   Prioridade de exibição na fila de slides. Ordene usando os
                   controles simples no painel.
                 </p>
@@ -3254,7 +3277,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <Sparkles className="size-4 text-purple-500" />
                   Status de Exibição
                 </div>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-zinc-400">
                   Suspenda ou ative a visibilidade de qualquer campanha
                   instantaneamente usando o botão de alternar.
                 </p>
@@ -3309,7 +3332,7 @@ export const AdminBannersView = memo(function AdminBannersView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="min-h-11 rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="min-h-11 rounded-xl border-0 bg-admin-raised px-4 py-2 text-xs font-bold text-zinc-200 hover:bg-admin-hover hover:text-white dark:bg-admin-raised dark:hover:bg-admin-hover">
               Voltar e ajustar
             </AlertDialogCancel>
             <AlertDialogAction
@@ -3318,7 +3341,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                 setConfirmarFimVencido(false);
                 handleSubmit();
               }}
-              className="min-h-11 rounded-xl border-0 bg-white px-4 py-2 text-xs font-bold text-black hover:bg-zinc-200"
+              className="min-h-11 rounded-xl border-0 bg-white px-4 py-2 text-xs font-bold text-black ring-1 ring-inset ring-admin-border-strong hover:bg-white"
             >
               Salvar mesmo assim
             </AlertDialogAction>
@@ -3342,12 +3365,12 @@ export const AdminBannersView = memo(function AdminBannersView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="min-h-11 rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="min-h-11 rounded-xl border-0 bg-admin-raised px-4 py-2 text-xs font-bold text-zinc-200 hover:bg-admin-hover hover:text-white dark:bg-admin-raised dark:hover:bg-admin-hover">
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeleteBanner}
-              className="min-h-11 bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
+              className="min-h-11 bg-red-600 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
             >
               Excluir Banner
             </AlertDialogAction>

@@ -35,7 +35,7 @@ export function EscolherCriacaoDoBanner({
           Recomendado · Escolha um modelo e seu produto. Sem criar uma arte.
         </p>
         <Button
-          className="min-h-11 w-full bg-white text-zinc-950 hover:bg-zinc-200"
+          className="min-h-11 w-full bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current hover:bg-white"
           onClick={() => aoEscolher("modelos")}
         >
           Modelo pronto

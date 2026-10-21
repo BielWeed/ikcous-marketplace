@@ -38,9 +38,9 @@ export function GaleriaDeBanners({
             aria-pressed={grupo === id}
             onClick={() => definirGrupo(id)}
             className={cn(
-              "min-h-11 rounded-full border border-admin-border px-3 text-sm",
+              "min-h-11 rounded-full border border-admin-border px-3 text-sm ring-1 ring-inset ring-admin-border-strong",
               grupo === id
-                ? "bg-white text-zinc-950"
+                ? "bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current"
                 : "bg-admin-surface text-zinc-400",
             )}
           >
@@ -82,7 +82,7 @@ export function GaleriaDeBanners({
               type="button"
               aria-pressed={modelo === m.id}
               onClick={() => definirModelo(m.id)}
-              className="min-h-11 w-full text-left text-sm font-semibold text-white"
+              className="min-h-11 w-full rounded-lg text-left text-sm font-semibold text-white ring-1 ring-inset ring-admin-border-strong"
             >
               {m.nome}
             </button>
@@ -91,7 +91,7 @@ export function GaleriaDeBanners({
         ))}
       </div>
       <Button
-        className="min-h-11 w-full bg-white text-zinc-950 hover:bg-zinc-200"
+        className="min-h-11 w-full bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current hover:bg-white"
         onClick={() => aoEscolher(modelo)}
       >
         Usar o modelo {nome}

@@ -16,7 +16,15 @@ const uploadBannerImage = vi.fn();
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
 const deleteStorageFile = vi.fn().mockResolvedValue(undefined);
-const lista = vi.hoisted(() => ({ banners: [] as unknown[] }));
+const lista = vi.hoisted(() => ({
+  banners: [] as unknown[],
+  products: [] as {
+    id: string;
+    name: string;
+    images: string[];
+    price: number;
+  }[],
+}));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "lojista-1" } }),
 }));
@@ -35,14 +43,7 @@ vi.mock("@/hooks/useBanners", () => ({
 }));
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
-    products: [
-      {
-        id: "produto-1",
-        name: "Camiseta teste",
-        images: ["https://loja.test/produto.webp"],
-        price: 89.9,
-      },
-    ],
+    products: lista.products,
   }),
 }));
 vi.mock("@/hooks/useCoupons", () => ({ useCoupons: () => ({}) }));
@@ -83,6 +84,14 @@ describe("novo editor de banners prontos", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    lista.products = [
+      {
+        id: "produto-1",
+        name: "Camiseta teste",
+        images: ["https://loja.test/produto.webp"],
+        price: 89.9,
+      },
+    ];
     lista.banners = [
       {
         id: "antigo",
@@ -149,6 +158,126 @@ describe("novo editor de banners prontos", () => {
     });
     await act(async () => new Promise((r) => setTimeout(r, 250)));
   }
+  it("ações do cartão podem quebrar a linha sem diminuir os botões", async () => {
+    await montar();
+    const excluir = host.querySelector<HTMLButtonElement>(
+      'button[title="Excluir"]',
+    )!;
+    const editar = host.querySelector<HTMLButtonElement>(
+      'button[title="Editar"]',
+    )!;
+    const acoes = excluir.parentElement!.parentElement!;
+    expect(acoes.classList.contains("flex-wrap")).toBe(true);
+    for (const botao of [excluir, editar]) {
+      expect(botao.classList.contains("size-11")).toBe(true);
+    }
+  });
+  it("cartão pausado mantém texto legível sem opacidade no conjunto", async () => {
+    lista.banners = [
+      {
+        id: "pausado",
+        title: "Pausado teste",
+        imageUrl: "https://loja.test/banner.webp",
+        position: "home_top",
+        active: false,
+        order: 1,
+        link: "/product-detail?id=p-1",
+      },
+    ];
+    await montar();
+    const cartao = host
+      .querySelector('button[title="Excluir"]')!
+      .closest(".group")!;
+    expect(cartao.classList.contains("opacity-60")).toBe(false);
+    expect(cartao.querySelector(".text-zinc-500")).toBeNull();
+    expect(
+      cartao.querySelector("h3")!.classList.contains("text-zinc-400"),
+    ).toBe(true);
+    await act(async () =>
+      host.querySelector<HTMLButtonElement>('button[title="Excluir"]')!.click(),
+    );
+    const cancelar = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Cancelar",
+    )!;
+    expect(cancelar.classList.contains("text-zinc-200")).toBe(true);
+    expect(cancelar.classList.contains("bg-admin-raised")).toBe(true);
+    expect(cancelar.classList.contains("dark:bg-admin-raised")).toBe(true);
+    const confirmar = [
+      ...document.querySelectorAll('[role="alertdialog"] button'),
+    ].find((b) => b.textContent?.trim().includes("Excluir"))!;
+    expect(confirmar.classList.contains("bg-red-600")).toBe(true);
+  });
+  it("botões principais e chips mantêm contorno independente da borda base", async () => {
+    await montar();
+    await clicar("Novo Banner");
+    const verificarAnel = (botao: Element) => {
+      for (const classe of [
+        "ring-1",
+        "ring-inset",
+        "ring-admin-border-strong",
+      ]) {
+        expect(botao.classList.contains(classe), classe).toBe(true);
+      }
+    };
+    verificarAnel(
+      [...host.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Modelo pronto",
+      )!,
+    );
+    await clicar("Modelo pronto");
+    for (const botao of host.querySelectorAll(
+      '[aria-label="Tipos de modelo"] button',
+    )) {
+      verificarAnel(botao);
+    }
+    await clicar("Usar o modelo Destaque");
+    verificarAnel(
+      [...host.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Salvar Banner",
+      )!,
+    );
+    verificarAnel(
+      [...host.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Loja",
+      )!,
+    );
+  });
+  it("chips de cor da imagem própria também mantêm contorno", async () => {
+    await montar();
+    await act(async () =>
+      host.querySelector<HTMLButtonElement>('button[title="Editar"]')!.click(),
+    );
+    const cores = host.querySelectorAll("button[aria-label][style]");
+    expect(cores.length).toBeGreaterThan(0);
+    for (const cor of cores) {
+      expect(cor.classList.contains("ring-1")).toBe(true);
+      expect(cor.classList.contains("ring-inset")).toBe(true);
+      expect(cor.classList.contains("ring-admin-border-strong")).toBe(true);
+    }
+  });
+  it("switch do cartão mantém trilho pequeno em alvo transparente de 44 px", async () => {
+    await montar();
+    const interruptor =
+      host.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    expect(interruptor.classList.contains("min-h-11")).toBe(false);
+    expect(interruptor.classList.contains("min-w-11")).toBe(false);
+    const alvo = interruptor.closest("label")!;
+    expect(alvo).not.toBeNull();
+    expect(alvo.htmlFor).toBe(interruptor.id);
+    expect(alvo.classList.contains("size-11")).toBe(true);
+    expect(
+      interruptor.classList.contains(
+        "data-[state=unchecked]:bg-admin-border-strong",
+      ),
+    ).toBe(true);
+    expect(
+      interruptor.classList.contains(
+        "dark:data-[state=unchecked]:bg-admin-border-strong",
+      ),
+    ).toBe(true);
+    await act(async () => alvo.click());
+    expect(updateBanner).toHaveBeenCalledWith("antigo", { active: false });
+  });
   it("modelo → produto → salvar grava foto, destino, textos e cor da loja", async () => {
     await modelo();
     await clicar("Camiseta teste");
@@ -204,6 +333,79 @@ describe("novo editor de banners prontos", () => {
       }),
     );
   });
+  async function enviarFoto() {
+    uploadBannerImage.mockResolvedValueOnce("https://loja.test/enviada.webp");
+    const entrada = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(entrada, "files", {
+      value: [new File(["imagem"], "banner.webp", { type: "image/webp" })],
+      configurable: true,
+    });
+    await act(async () =>
+      entrada.dispatchEvent(new Event("change", { bubbles: true })),
+    );
+  }
+  it("imagem própria → produto sem modelo preserva o upload ao salvar", async () => {
+    await montar();
+    await clicar("Novo Banner");
+    await clicar("Usar minha imagem");
+    await enviarFoto();
+    await clicar("Abrir Produto");
+    await clicar("Camiseta teste");
+    expect(deleteStorageFile).not.toHaveBeenCalled();
+    await clicar("Salvar Banner");
+    expect(addBanner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageUrl: "https://loja.test/enviada.webp",
+        productId: "produto-1",
+        link: "/product-detail?id=produto-1",
+      }),
+    );
+    expect(deleteStorageFile).not.toHaveBeenCalled();
+  });
+  it("produto com modelo substitui o upload e apaga apenas a órfã", async () => {
+    await modelo();
+    await enviarFoto();
+    await clicar("Camiseta teste");
+    expect(deleteStorageFile.mock.calls).toEqual([
+      ["https://loja.test/enviada.webp"],
+    ]);
+    await clicar("Salvar Banner");
+    expect(addBanner).toHaveBeenCalledWith(
+      expect.objectContaining({ imageUrl: "https://loja.test/produto.webp" }),
+    );
+    expect(deleteStorageFile).toHaveBeenCalledTimes(1);
+  });
+  it.each([20, 21, 35])(
+    "limita a busca com %s produtos e avisa só quando há mais",
+    async (total) => {
+      lista.products = Array.from({ length: total }, (_, i) => ({
+        id: `p-${i}`,
+        name: `Produto ${i + 1}`,
+        price: 10,
+        images: ["https://loja.test/produto.webp"],
+      }));
+      await modelo();
+      const busca = () => host.querySelector("#banner-product-search")!;
+      const resultados = () =>
+        [...busca().parentElement!.querySelectorAll("button")].filter((b) =>
+          b.textContent?.startsWith("Produto "),
+        );
+      expect(resultados()).toHaveLength(20);
+      expect(
+        host.textContent?.includes(`mostrando 20 de ${total}: refine a busca`),
+      ).toBe(total > 20);
+      await campo("#banner-product-search", "Produto 21");
+      expect(resultados()).toHaveLength(total > 20 ? 1 : 0);
+      expect(host.textContent).not.toContain("refine a busca");
+      if (total > 20) {
+        await clicar("Produto 21");
+        await clicar("Salvar Banner");
+        expect(addBanner).toHaveBeenCalledWith(
+          expect.objectContaining({ productId: "p-20" }),
+        );
+      }
+    },
+  );
   it("limita os quatro textos sem limitar o link", async () => {
     await modelo();
     for (const [id, limite] of [

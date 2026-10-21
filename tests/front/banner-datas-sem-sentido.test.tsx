@@ -370,8 +370,19 @@ describe("AdminBannersView: datas sem sentido", () => {
     await escolherDatas(new Date(agora - 5 * dia), new Date(agora - 2 * dia));
     await salvar();
 
+    const confirmar = botaoComTexto(document.body, "Salvar mesmo assim");
+    expect(confirmar).toBeDefined();
+    for (const classe of [
+      "min-h-11",
+      "ring-1",
+      "ring-inset",
+      "ring-admin-border-strong",
+    ]) {
+      expect(confirmar!.classList.contains(classe), classe).toBe(true);
+    }
+
     await act(async () => {
-      botaoComTexto(document.body, "Salvar mesmo assim")?.click();
+      confirmar!.click();
       await esperar();
       await esperar();
     });
