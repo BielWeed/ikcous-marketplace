@@ -161,7 +161,9 @@ describe("Financeiro — DRE", () => {
           ...hospedeiro.querySelectorAll("[data-rotulo-do-kpi]"),
         ].find((el) => el.textContent === rotulo)!;
         const quadro = etiqueta.parentElement!.cloneNode(true) as HTMLElement;
-        quadro.querySelectorAll(".sr-only, [hidden]").forEach((el) => el.remove());
+        quadro
+          .querySelectorAll(".sr-only, [hidden]")
+          .forEach((el) => el.remove());
         const texto = normalizar(quadro.textContent);
         const aviso =
           "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado";

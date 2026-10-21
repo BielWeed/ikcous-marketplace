@@ -31,13 +31,13 @@ afterEach(() => {
 });
 
 describe("AjudaDoCrm — ranking de lucro e produto sem custo", () => {
-  it("explica visivelmente onde ver o lucro que já desconta devoluções e reembolsos", () => {
+  it("explica visivelmente onde ver o lucro que desconta devolução parcial e estorno", () => {
     act(() => raiz.render(<AjudaDoCrm isOpen onClose={() => {}} />));
     const visivel = document.body.cloneNode(true) as HTMLElement;
     visivel.querySelectorAll(".sr-only, [hidden]").forEach((el) => el.remove());
     const texto = (visivel.textContent ?? "").replace(/\s+/g, " ");
     expect(texto).toContain(
-      "O lucro dos gráficos é antes de devoluções e reembolsos; a DRE do Financeiro já desconta esses valores.",
+      "No lucro dos gráficos, devolução parcial e estorno só são descontados na aba Resultado do Financeiro.",
     );
   });
 

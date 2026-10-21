@@ -130,7 +130,7 @@ describe("tela do lucro avisa produtos sem custo", () => {
 
   describe("OperationalPerformanceChart", () => {
     it.each([undefined, 0, 3])(
-      "o lucro avisa visivelmente que não desconta devoluções mesmo com %s produtos sem custo",
+      "o lucro avisa visivelmente sobre devolução parcial e estorno mesmo com %s produtos sem custo",
       async (semCusto) => {
         await act(async () =>
           raiz.render(
@@ -142,15 +142,19 @@ describe("tela do lucro avisa produtos sem custo", () => {
           ),
         );
         const aviso =
-          "Lucro das vendas, antes de devoluções e reembolsos (a DRE do Financeiro já desconta)";
+          "Lucro das vendas. Devolução parcial e estorno só são descontados na aba Resultado do Financeiro.";
         expect(hospedeiro.textContent).not.toContain(aviso);
         const retorno = [...hospedeiro.querySelectorAll("button")].find((b) =>
           b.textContent?.includes("Retorno do estoque"),
         )!;
         await act(async () => retorno.click());
         const visivel = hospedeiro.cloneNode(true) as HTMLElement;
-        visivel.querySelectorAll(".sr-only, [hidden]").forEach((el) => el.remove());
-        expect((visivel.textContent ?? "").replace(/\s+/g, " ")).toContain(aviso);
+        visivel
+          .querySelectorAll(".sr-only, [hidden]")
+          .forEach((el) => el.remove());
+        expect((visivel.textContent ?? "").replace(/\s+/g, " ")).toContain(
+          aviso,
+        );
         expect(visivel.textContent).toContain("Lucro Acumulado");
       },
     );
