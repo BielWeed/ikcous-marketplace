@@ -381,6 +381,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   const PROVAS_DO_DINHEIRO = [
     // 20261300000000: icones de categoria, CHECK, ACL/RLS e rollback sem perda.
     "tests/banco/categorias-icones-viva.cjs",
+    // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.
+    "tests/banco/mototaxi-viva.cjs",
     // 20261252: sessao explicita, chave idempotente, corridas e mutantes do caixa.
     "tests/banco/caixa-intencao-viva.cjs",
     // 20261260000000: o cartao guarda o motivo da recusa (portao 56a/56b decide certo; so o Postgres efemero).
