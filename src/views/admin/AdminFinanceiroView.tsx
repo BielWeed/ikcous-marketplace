@@ -70,9 +70,11 @@ import {
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
+import { useAuth } from "@/hooks/useAuth";
 import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   ContextoDoCacheFinanceiro,
+  conferirCaixaParaReconciliar,
   useCategoriasFinanceiras,
   useContasFinanceiras,
   useValoresOcultos,
@@ -131,6 +133,8 @@ export function AdminFinanceiroView({
   onSetBackOverride,
 }: AdminFinanceiroViewProps) {
   const ativo = active;
+  const { user } = useAuth();
+  const sessaoAtual = useRef<string | null | undefined>(undefined);
   const [cache] = useState(() => new Map<string, unknown>());
   const hoje = useDiaDeSaoPaulo(ativo);
 
@@ -183,15 +187,23 @@ export function AdminFinanceiroView({
     (enviando: boolean) => {
       if (geracaoDaFolha.current === numeroDaFolha) {
         folhaEmEnvio.current = enviando;
+        if (
+          !enviando &&
+          folha?.tipo === "caixa-movimentar" &&
+          sessaoAtual.current !== undefined &&
+          sessaoAtual.current !== folha.sessaoId
+        )
+          fecharFolha();
       }
     },
-    [numeroDaFolha],
+    [numeroDaFolha, folha, fecharFolha],
   );
   const invalidar = useCallback(() => setVersao((v) => v + 1), []);
   const aoSalvar = useCallback(
-    (mensagem: string) => {
+    (mensagem: string, tom: "sucesso" | "informacao" = "sucesso") => {
       invalidar();
-      toast.success(mensagem);
+      if (tom === "informacao") toast.info(mensagem);
+      else toast.success(mensagem);
       // A resposta pertence à folha que iniciou a escrita, mesmo que outra
       // já tenha aberto. Atualizar os dados não deve apagar o formulário novo.
       if (geracaoDaFolha.current !== numeroDaFolha) return;
@@ -199,6 +211,22 @@ export function AdminFinanceiroView({
       fecharFolha();
     },
     [invalidar, fecharFolha, numeroDaFolha],
+  );
+  const aoReconciliarCaixa = useCallback(
+    async (mensagem: string) => {
+      await conferirCaixaParaReconciliar();
+      aoSalvar(mensagem, "informacao");
+    },
+    [aoSalvar],
+  );
+  const aoSessaoAtual = useCallback(
+    (id: string | null) => {
+      sessaoAtual.current = id;
+      if (folha?.tipo === "caixa-movimentar" && folha.sessaoId !== id) {
+        fecharFolha();
+      }
+    },
+    [folha, fecharFolha],
   );
   const abrirPedido = useCallback(
     (pedidoId: string) => {
@@ -331,6 +359,11 @@ export function AdminFinanceiroView({
       case "caixa-movimentar":
         return (
           <MovimentarCaixaFolha
+            key={user?.id ?? "sem-autor"}
+            autorId={user?.id ?? null}
+            aoMudarEnviando={aoMudarEnviando}
+            aoReconciliar={aoReconciliarCaixa}
+            sessaoId={folha.sessaoId}
             movimento={folha.movimento}
             esperado={folha.esperado}
             contaDoCaixa={folha.contaDoCaixa}
@@ -343,6 +376,8 @@ export function AdminFinanceiroView({
       case "caixa-fechar":
         return (
           <FecharCaixaFolha
+            aoMudarEnviando={aoMudarEnviando}
+            aoReconciliar={aoReconciliarCaixa}
             caixa={folha.caixa}
             aoFechar={fecharFolha}
             aoFechado={() => {
@@ -519,6 +554,7 @@ export function AdminFinanceiroView({
                 </TabsContent>
                 <TabsContent value="caixa">
                   <AbaCaixa
+                    aoSessaoAtual={aoSessaoAtual}
                     ativo={ativo}
                     versao={versao}
                     abrirFolha={abrirFolha}

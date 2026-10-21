@@ -2394,6 +2394,49 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261252: sessão explícita e chave global de tentativa. Os hashes completos,
+  // atributos e ACL são conferidos pela 55a e pelo DO final da migration.
+  "20261252000000_o_caixa_preserva_a_intencao.sql": [
+    {
+      funcao: "fin_caixa_fechar_sessao",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "SELECT * INTO v_s FROM public.fin_caixa_sessoes WHERE id = p_sessao_id FOR UPDATE;",
+          vezes: 1,
+        },
+        { texto: "v_s.fechado_por IS NOT DISTINCT FROM auth.uid()", vezes: 1 },
+        { texto: "v_s.valor_contado IS NOT DISTINCT FROM v_contado", vezes: 1 },
+        { texto: "v_s.observacao IS NOT DISTINCT FROM v_obs", vezes: 1 },
+        { texto: "DETAIL = 'fechamento_divergente'", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_caixa_movimentar_com_chave",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "SELECT * INTO v_s FROM public.fin_caixa_sessoes WHERE id = p_sessao_id FOR UPDATE;",
+          vezes: 1,
+        },
+        { texto: "ON CONFLICT (chave) DO NOTHING;", vezes: 1 },
+        { texto: "v_t.sessao_id IS DISTINCT FROM v_s.id", vezes: 1 },
+        { texto: "v_t.autor IS DISTINCT FROM v_autor", vezes: 1 },
+        { texto: "v_t.tipo IS DISTINCT FROM p_tipo", vezes: 1 },
+        { texto: "v_t.valor IS DISTINCT FROM v_valor", vezes: 1 },
+        { texto: "v_t.descricao IS DISTINCT FROM v_desc", vezes: 1 },
+        {
+          texto: "v_t.contrapartida_id IS DISTINCT FROM v_contra_id",
+          vezes: 1,
+        },
+        { texto: "DETAIL = 'tentativa_divergente'", vezes: 1 },
+      ],
+    },
+  ],
   // Uma tentativa cria o conjunto de parcelas uma única vez (20261246).
   "20261246000000_o_lancamento_repetido_nao_duplica.sql": [
     {

@@ -203,6 +203,8 @@ on:
           - 53b-antes-faturamento-potencial-base-vigente
           - 54a-conferir-lucro-do-estoque-aplicado
           - 54b-antes-lucro-do-estoque-base-vigente
+          - 55a-conferir-intencao-do-caixa-aplicado
+          - 55b-antes-intencao-do-caixa-base-vigente
           - 56a-conferir-motivo-da-recusa-do-cartao-aplicado
           - 56b-antes-motivo-da-recusa-do-cartao-base-vigente
           - 9a-conferir-60-a-66-aplicado

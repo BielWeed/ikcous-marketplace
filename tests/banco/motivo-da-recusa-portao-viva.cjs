@@ -109,9 +109,11 @@ async function montarBase() {
   try {
     const nomes = fs
       .readdirSync(MIGRATIONS, { withFileTypes: true })
-      .filter((e) => e.isFile() && /^\d{14}_.*\.sql$/.test(e.name))
+      .filter((e) => e.isFile() && e.name.endsWith(".sql"))
       .map((e) => e.name)
-      .filter((n) => n.slice(0, 14) < VERSAO)
+      // Mesma regra do aplicar-migrations.cjs: rollback-manual nao e migration
+      // e a ordem e a do nome (duas migrations antigas tem versao de 13 digitos).
+      .filter((n) => !n.startsWith("rollback-") && n < NOME)
       .sort();
     assert.ok(nomes.length > 0, "base anterior nao pode estar vazia");
     for (const n of nomes) {

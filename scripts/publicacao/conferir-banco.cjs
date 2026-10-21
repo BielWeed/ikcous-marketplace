@@ -2256,6 +2256,26 @@ const ROL_DA_54B = ROL_DA_54A.map((item) =>
   ),
 );
 
+// Lote 55: 20261252, catálogo apenas; rollback preserva a tabela privada.
+const ROL_DA_55A = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_caixa_fechar_sessao: corpo conhecido (md5)",
+  "fin_caixa_movimentar_com_chave: corpo conhecido (md5)",
+  "rpcs novas do caixa: atributos e dependencias de sempre",
+  "rpcs novas do caixa: EXECUTE de authenticated e service_role, PUBLIC e anon sem",
+  "rpcs antigas do caixa: corpo de sempre (md5)",
+  "fin_caixa_movimento_tentativas: forma conhecida",
+  "fin_caixa_movimento_tentativas: so servidor, RLS e nenhuma politica",
+];
+const ROL_DA_55B = [
+  "controle: funcoes de public visiveis a este papel",
+  "rpcs novas do caixa: ausentes",
+  "rpcs antigas do caixa: corpo de sempre (md5)",
+  "rpcs antigas do caixa: EXECUTE de authenticated e service_role, PUBLIC e anon sem",
+  "fin_caixa_movimento_tentativas: forma conhecida",
+  "fin_caixa_movimento_tentativas: so servidor, RLS e nenhuma politica",
+];
+
 // Lote 49: 20261246000000, catalogo apenas; os dois lados tem o mesmo rol fechado.
 const ROL_DA_49A = [
   "controle: funcoes de public visiveis a este papel",
@@ -2427,6 +2447,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "53b-antes-faturamento-potencial-base-vigente": ROL_DA_53B,
   "54a-conferir-lucro-do-estoque-aplicado": ROL_DA_54A,
   "54b-antes-lucro-do-estoque-base-vigente": ROL_DA_54B,
+  "55a-conferir-intencao-do-caixa-aplicado": ROL_DA_55A,
+  "55b-antes-intencao-do-caixa-base-vigente": ROL_DA_55B,
   "56a-conferir-motivo-da-recusa-do-cartao-aplicado": ROL_DA_56A,
   "56b-antes-motivo-da-recusa-do-cartao-base-vigente": ROL_DA_56B,
 };

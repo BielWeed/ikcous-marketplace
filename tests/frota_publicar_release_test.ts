@@ -166,6 +166,7 @@ const A51 = "51a-conferir-notes-do-pedido-fechada-aplicado";
 const B51 = "51b-antes-notes-do-pedido-base-vigente";
 const A53 = "53a-conferir-faturamento-potencial-aplicado";
 const A54 = "54a-conferir-lucro-do-estoque-aplicado";
+const A55 = "55a-conferir-intencao-do-caixa-aplicado";
 const A56 = "56a-conferir-motivo-da-recusa-do-cartao-aplicado";
 const A52 = "52a-conferir-motivo-do-balcao-privado-aplicado";
 const B52 = "52b-antes-motivo-do-balcao-base-vigente";
@@ -3063,6 +3064,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     A52,
     A53,
     A54,
+    A55,
     A56,
   ]);
 });

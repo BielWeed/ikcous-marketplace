@@ -289,6 +289,12 @@
       "_comentario": "UMA migration ADITIVA, APPLY NORMAL, depois da 250 e banco ANTES do front. totalValue usa o mesmo faturamento efetivo por variante, so onde custo e conhecido; totalCost e totalRevenue preservados. inventory.revenueWithoutCost, productsWithoutCost e productsWithCost medem cobertura de custo do ESTOQUE (nao vendas historicas): custo0 conhecido, NULL ausente, contagens apenas com estoque efetivo>0. Sem backfill, dado, ACL ou assinatura alterados. 54a/54b: catalogo, rol fechado de 4 linhas, corpos exatos da 251/250; desconhecido recusa. Pre/pos-voos e idempotencia com hashes reais; rollback-manual-20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql restaura a 250 byte a byte, antes de desfazer ancestrais. 8e/17a/35a/45a/48a/53a aceitam apenas sucessor conhecido, sem alterar criterios historicos. Prova viva e controles negativos em tests/banco/lucro-do-estoque-viva.cjs no CI; nao mede lojas reais."
     },
     {
+      "consulta": "55a-conferir-intencao-do-caixa-aplicado",
+      "versoes": ["20261252000000"],
+      "ausenciaConfirmadaPor": "55b-antes-intencao-do-caixa-base-vigente",
+      "_comentario": "Migration aditiva 20261252: sessao explicita no fechamento e chave idempotente no movimento do caixa. Provar 55a; se negativa, exigir 55b positiva e mais nova antes de aplicar, depois repetir 55a. Sem backfill ou aplicacao automatica; RPCs antigas preservadas, cliente novo depende de publicacao do banco antes do front."
+    },
+    {
       "consulta": "56a-conferir-motivo-da-recusa-do-cartao-aplicado",
       "versoes": ["20261260000000"],
       "ausenciaConfirmadaPor": "56b-antes-motivo-da-recusa-do-cartao-base-vigente",
