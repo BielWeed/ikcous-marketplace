@@ -236,6 +236,7 @@ describe("CheckoutView — selos de pagamento usam text-emerald-700 (contraste A
   });
 
   it("cupom aplicado + pedido concluído (pagamento na entrega): o selo 'Vantagem Ativa' troca de tom", async () => {
+    createOrder.mockResolvedValueOnce({ id: "ped-999", totalAmount: 85 });
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
     await act(async () => {
