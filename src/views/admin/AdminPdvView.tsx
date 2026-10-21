@@ -57,7 +57,7 @@ import type { Leitura } from "@/lib/leitor/decodificador";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
-import { ScanBarcode, Search } from "lucide-react";
+import { Keyboard, ScanBarcode, Search } from "lucide-react";
 import {
   type KeyboardEvent,
   type ReactElement,
@@ -212,9 +212,9 @@ export function AdminPdvView({
     return () => onSetDirty?.(false);
   }, [onSetDirty]);
 
-  const [modoDeProduto, setModoDeProduto] = useState<"bipar" | "buscar">(
-    "bipar",
-  );
+  const [modoDeProduto, setModoDeProduto] = useState<
+    "bipar" | "digitar" | "buscar"
+  >("bipar");
 
   function limparCupom(): void {
     limparCupomDaVenda();
@@ -580,30 +580,32 @@ export function AdminPdvView({
       return;
     }
     evento.preventDefault();
+    const modos = ["bipar", "digitar", "buscar"] as const;
+    const indice = modos.indexOf(modoDeProduto);
     const proximo =
       evento.key === "Home"
-        ? "bipar"
+        ? modos[0]
         : evento.key === "End"
-          ? "buscar"
-          : modoDeProduto === "bipar"
-            ? "buscar"
-            : "bipar";
+          ? modos[2]
+          : modos[(indice + (evento.key === "ArrowRight" ? 1 : 2)) % 3];
     setModoDeProduto(proximo);
     document.getElementById(`modo-${proximo}-produto`)?.focus();
   };
 
   return (
-    // pb-admin lg:pb-12 — o MESMO respiro das outras telas do admin: sem ele,
-    // no navegador do celular o "Registrar venda" (último elemento da última
-    // etapa) ficava por trás da barra de navegação fixa, e a rolagem termina
-    // exatamente ali — relato do dono em teste real no aparelho (19/09):
-    // "os botões não têm rolagem suficiente para eu poder clicar".
-    <div className="pdv pb-admin lg:pb-12">
+    // A altura vem do painel (100dvh menos seu cabeçalho). A reserva medida
+    // de AcaoDaBarra fica DENTRO dela; só as listas ganham rolagem.
+    <div
+      className="pdv pdv-viewport"
+      data-etapa={estado.etapa}
+      data-com-itens={estado.itens.length > 0}
+      data-modo={modoDeProduto}
+    >
       <div
         className={`pdv-page-heading ${estado.etapa === "cupom" || estado.etapa === "escolha_de_variacao" ? "" : "sr-only"}`}
       >
         <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-pdv"]} />
-        <p className="pdv-muted mt-2">Venda presencial · balcão</p>
+        <p className="pdv-muted">balcão</p>
       </div>
 
       {estado.etapa === "cupom" && (
@@ -623,7 +625,20 @@ export function AdminPdvView({
             onClick={() => setModoDeProduto("bipar")}
           >
             <ScanBarcode aria-hidden="true" className="pdv-cyan size-5" />
-            <span>Bipar produto</span>
+            <span>Câmera</span>
+          </button>
+          <button
+            id="modo-digitar-produto"
+            type="button"
+            role="tab"
+            aria-selected={modoDeProduto === "digitar"}
+            tabIndex={modoDeProduto === "digitar" ? 0 : -1}
+            aria-controls="leitor-do-balcao"
+            onKeyDown={teclarNosModos}
+            onClick={() => setModoDeProduto("digitar")}
+          >
+            <Keyboard aria-hidden="true" className="size-5" />
+            <span>Digitar</span>
           </button>
           <button
             id="modo-buscar-produto"
@@ -636,15 +651,19 @@ export function AdminPdvView({
             onClick={() => setModoDeProduto("buscar")}
           >
             <Search aria-hidden="true" className="pdv-blue size-5" />
-            <span>Buscar produto</span>
+            <span>Buscar</span>
           </button>
         </div>
       )}
       <div
         id="leitor-do-balcao"
         role="tabpanel"
-        aria-labelledby="modo-bipar-produto"
-        hidden={estado.etapa !== "cupom" || modoDeProduto !== "bipar"}
+        aria-labelledby={
+          modoDeProduto === "digitar"
+            ? "modo-digitar-produto"
+            : "modo-bipar-produto"
+        }
+        hidden={estado.etapa !== "cupom" || modoDeProduto === "buscar"}
       >
         <LeitorDeCodigo
           // Gate por `active` (nova-tela.md, molde AdminProductsView): quando
@@ -657,8 +676,15 @@ export function AdminPdvView({
           }
           lerTeclado={active === false ? false : estado.etapa === "cupom"}
           aoLer={aoLerCodigo}
+          entradaManual={
+            active !== false &&
+            estado.etapa === "cupom" &&
+            modoDeProduto === "digitar"
+          }
+          segmentado
+          compacto={estado.itens.length > 0}
           titulo="Bipar produto"
-          dica="Aponte a câmera para o código de barras — ou digite embaixo"
+          dica="Aponte para o código de barras"
         />
       </div>
 
