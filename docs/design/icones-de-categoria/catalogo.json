@@ -1,0 +1,1364 @@
+[
+  {
+    "chave": "blusa",
+    "nome": "Blusa",
+    "grupo": "Roupas",
+    "palavras": [
+      "blusa",
+      "bata",
+      "social feminina",
+      "manga longa",
+      "top"
+    ],
+    "d": "M9 3 4 6 2 13l4 1 1-3v10h10V11l1 3 4-1-2-7-5-3-3 4Z"
+  },
+  {
+    "chave": "camiseta",
+    "nome": "Camiseta",
+    "grupo": "Roupas",
+    "palavras": [
+      "camiseta",
+      "camisa basica",
+      "t shirt",
+      "tshirt",
+      "baby look",
+      "manga curta"
+    ],
+    "d": "M8 3 3 5 2 10l3 1 1-2v12h12V9l1 2 3-1-1-5-5-2a4 4 0 0 1-8 0Z"
+  },
+  {
+    "chave": "regata",
+    "nome": "Regata",
+    "grupo": "Roupas",
+    "palavras": [
+      "regata",
+      "camisole",
+      "alca",
+      "musculosa",
+      "top alca"
+    ],
+    "d": "M7 3v6q0 3-2 4.5V21h14v-7.5Q17 12 17 9V3M7 3q5 8 10 0"
+  },
+  {
+    "chave": "body",
+    "nome": "Body",
+    "grupo": "Roupas",
+    "palavras": [
+      "body",
+      "bodysuit",
+      "collant"
+    ],
+    "d": "M8 2v5q0 3-2 5l3 4v5h6v-5l3-4q-2-2-2-5V2M8 2q4 5 8 0"
+  },
+  {
+    "chave": "camisa",
+    "nome": "Camisa",
+    "grupo": "Roupas",
+    "palavras": [
+      "camisa",
+      "camisa social",
+      "social",
+      "polo",
+      "botoes"
+    ],
+    "d": "M9 3 3 6l2 5 2-1v11h10V10l2 1 2-5-6-3-3 4ZM12 7v14M9 3l3 4 3-4"
+  },
+  {
+    "chave": "vestido",
+    "nome": "Vestido",
+    "grupo": "Roupas",
+    "palavras": [
+      "vestido",
+      "longo",
+      "festa",
+      "midi",
+      "mini vestido"
+    ],
+    "d": "M9 2 8 10 4 21h16L16 10 15 2M8 10h8M9 2q3 4 6 0"
+  },
+  {
+    "chave": "saia",
+    "nome": "Saia",
+    "grupo": "Roupas",
+    "palavras": [
+      "saia",
+      "saia midi",
+      "saia longa",
+      "plissada"
+    ],
+    "d": "M7 4h10l4 16H3ZM10 4 8 20M14 4l2 16"
+  },
+  {
+    "chave": "calca",
+    "nome": "Calça",
+    "grupo": "Roupas",
+    "palavras": [
+      "calca",
+      "calca social",
+      "alfaiataria",
+      "pantalona",
+      "pantacourt"
+    ],
+    "d": "M7 2h10l1 20h-5l-1-12-1 12H6ZM7 6h10"
+  },
+  {
+    "chave": "short",
+    "nome": "Short",
+    "grupo": "Roupas",
+    "palavras": [
+      "short",
+      "shorts",
+      "hot pant",
+      "short saia"
+    ],
+    "d": "M6 5h12l2 12h-6l-2-6-2 6H4ZM6 8h12"
+  },
+  {
+    "chave": "bermuda",
+    "nome": "Bermuda",
+    "grupo": "Roupas",
+    "palavras": [
+      "bermuda",
+      "bermuda masculina",
+      "cargo",
+      "tactel"
+    ],
+    "d": "M6 3h12l2 17h-6l-2-9-2 9H4ZM6 7h12"
+  },
+  {
+    "chave": "jeans",
+    "nome": "Jeans",
+    "grupo": "Roupas",
+    "palavras": [
+      "jeans",
+      "jeans feminino",
+      "jeans masculino",
+      "denim",
+      "brim"
+    ],
+    "d": "M7 2h10l1 20h-5l-1-13-1 13H6ZM7 5h10M12 5v4M7 8q2 0 3 2m7-2q-2 0-3 2"
+  },
+  {
+    "chave": "macacao",
+    "nome": "Macacão",
+    "grupo": "Roupas",
+    "palavras": [
+      "macacao",
+      "macaquinho",
+      "jardineira",
+      "jumpsuit"
+    ],
+    "d": "M9 2v4M15 2v4M8 6h8l1 5 2 11h-5l-2-8-2 8H5l2-11Z"
+  },
+  {
+    "chave": "conjunto",
+    "nome": "Conjunto",
+    "grupo": "Roupas",
+    "palavras": [
+      "conjunto",
+      "conjuntinho",
+      "kit roupa",
+      "duas pecas",
+      "look"
+    ],
+    "d": "M9 2 6 3 5 8l2 1v1h10V9l2-1-1-5-3-1a3 3 0 0 1-6 0ZM7 14h10l3 8H4Z"
+  },
+  {
+    "chave": "jaqueta",
+    "nome": "Jaqueta",
+    "grupo": "Roupas",
+    "palavras": [
+      "jaqueta",
+      "bomber",
+      "corta vento",
+      "jaqueta jeans",
+      "couro"
+    ],
+    "d": "M9 3 4 5 2 18h4l1-7v10h10v-10l1 7h4L20 5l-5-2-3 3ZM12 6v15"
+  },
+  {
+    "chave": "casaco",
+    "nome": "Casaco",
+    "grupo": "Roupas",
+    "palavras": [
+      "casaco",
+      "sobretudo",
+      "trench",
+      "sobretudo longo",
+      "parka"
+    ],
+    "d": "M9 2 5 4 4 17h3l1-4v9h8v-9l1 4h3L20 4l-4-2-4 6ZM12 8v14"
+  },
+  {
+    "chave": "moletom",
+    "nome": "Moletom",
+    "grupo": "Roupas",
+    "palavras": [
+      "moletom",
+      "blusao",
+      "hoodie",
+      "canguru",
+      "agasalho"
+    ],
+    "d": "M9 3 4 5 2 17h4l1-4v8h10v-8l1 4h4L20 5l-5-2M9 3q-1 5 3 6 4-1 3-6M10.5 10v2m3-2v2M8 16h8"
+  },
+  {
+    "chave": "blazer",
+    "nome": "Blazer",
+    "grupo": "Roupas",
+    "palavras": [
+      "blazer",
+      "paleto",
+      "terno",
+      "alfaiataria",
+      "social"
+    ],
+    "d": "M9 2 4 4 3 20h4l1-6v7h8v-7l1 6h4L20 4l-5-2M9 2l3 8 3-8M12 10v11M12 15h.01"
+  },
+  {
+    "chave": "colete",
+    "nome": "Colete",
+    "grupo": "Roupas",
+    "palavras": [
+      "colete",
+      "colete puffer",
+      "sem manga",
+      "alfaiataria"
+    ],
+    "d": "M8 3 6 6v15h12V6l-2-3-4 6ZM12 9v12M8 16h3"
+  },
+  {
+    "chave": "cardigan",
+    "nome": "Cardigan",
+    "grupo": "Roupas",
+    "palavras": [
+      "cardigan",
+      "casaquinho",
+      "tricot",
+      "trico",
+      "malha",
+      "sueter",
+      "la"
+    ],
+    "d": "M9 3 4 5 2 18h4l1-7v10h10v-10l1 7h4L20 5l-5-2-3 7ZM12 10v11M14.5 13h.01M14.5 17h.01M9.5 13h.01M9.5 17h.01"
+  },
+  {
+    "chave": "cropped",
+    "nome": "Cropped",
+    "grupo": "Roupas",
+    "palavras": [
+      "cropped",
+      "top curto",
+      "tomara que caia",
+      "blusinha"
+    ],
+    "d": "M8 3 3 5l1 6 3 1v3h10v-3l3-1 1-6-5-2a4 4 0 0 1-8 0ZM12 19h.01"
+  },
+  {
+    "chave": "legging",
+    "nome": "Legging",
+    "grupo": "Roupas",
+    "palavras": [
+      "legging",
+      "fuseau",
+      "calca fitness",
+      "calca justa",
+      "cotton"
+    ],
+    "d": "M8 2h8l1 8-1.5 12h-2.5L12 10l-1 12H8.5L7 10ZM8 5.5h8"
+  },
+  {
+    "chave": "sutia",
+    "nome": "Sutiã",
+    "grupo": "Roupas íntimas e praia",
+    "palavras": [
+      "sutia",
+      "top fitness",
+      "lingerie",
+      "bojo",
+      "sutia de renda"
+    ],
+    "d": "M7 3v5M17 3v5M3 8h18c0 6-3 9-6 9-2 0-3-2-3-4 0 2-1 4-3 4-3 0-6-3-6-9Z"
+  },
+  {
+    "chave": "calcinha",
+    "nome": "Calcinha",
+    "grupo": "Roupas íntimas e praia",
+    "palavras": [
+      "calcinha",
+      "lingerie",
+      "fio dental",
+      "tanga",
+      "cueca feminina"
+    ],
+    "d": "M3 6h18l-1 4c-4 1-6 4-8 8-2-4-4-7-8-8Z"
+  },
+  {
+    "chave": "cueca",
+    "nome": "Cueca",
+    "grupo": "Roupas íntimas e praia",
+    "palavras": [
+      "cueca",
+      "boxer",
+      "sunga boxer",
+      "cueca box"
+    ],
+    "d": "M4 5h16l1 12q-5 1-8-1l-1-4-1 4q-3 2-8 1ZM4 8h16"
+  },
+  {
+    "chave": "meia",
+    "nome": "Meia",
+    "grupo": "Roupas íntimas e praia",
+    "palavras": [
+      "meia",
+      "meias",
+      "soquete",
+      "meia calca",
+      "sapatilha meia"
+    ],
+    "d": "M8 3h7v9l5 3c2 1 3 4 1 6-2 1-4 0-6-1L8 14ZM8 7h7"
+  },
+  {
+    "chave": "pijama",
+    "nome": "Pijama",
+    "grupo": "Roupas íntimas e praia",
+    "palavras": [
+      "pijama",
+      "camisola",
+      "dormir",
+      "noite",
+      "robe",
+      "baby doll"
+    ],
+    "d": "M20 14.5A8.5 8.5 0 1 1 9.5 4 7 7 0 0 0 20 14.5ZM17 2v4M15 4h4"
+  },
+  {
+    "chave": "biquini",
+    "nome": "Biquíni",
+    "grupo": "Roupas íntimas e praia",
+    "palavras": [
+      "biquini",
+      "moda praia",
+      "bikini",
+      "praia",
+      "tomara que caia"
+    ],
+    "d": "M2 4l6 1-3 7ZM22 4l-6 1 3 7ZM8 5q4 3 8 0M5 15h14l-4 6h-2l-1-2-1 2H9Z"
+  },
+  {
+    "chave": "maio",
+    "nome": "Maiô",
+    "grupo": "Roupas íntimas e praia",
+    "palavras": [
+      "maio",
+      "moda praia",
+      "body praia",
+      "piscina",
+      "natacao"
+    ],
+    "d": "M8 2v5q0 3 2 4.5L7 15l2 7h6l2-7-3-3.5q2-1.5 2-4.5V2M8 2q4 6 8 0"
+  },
+  {
+    "chave": "sunga",
+    "nome": "Sunga",
+    "grupo": "Roupas íntimas e praia",
+    "palavras": [
+      "sunga",
+      "moda praia masculina",
+      "praia",
+      "piscina"
+    ],
+    "d": "M3 5h18l-1 5q-4 1-6 5h-4q-2-4-6-5ZM3 8h18"
+  },
+  {
+    "chave": "canga",
+    "nome": "Canga",
+    "grupo": "Roupas íntimas e praia",
+    "palavras": [
+      "canga",
+      "saida de praia",
+      "pareo",
+      "kimono praia",
+      "toalha praia"
+    ],
+    "d": "M3 4q4 2 9 0t9 0v12q-4 2-9 0t-9 0ZM6 17v4m4-3v3m4-3v4m4-5v4"
+  },
+  {
+    "chave": "tenis",
+    "nome": "Tênis",
+    "grupo": "Calçados",
+    "palavras": [
+      "tenis",
+      "sneaker",
+      "esportivo",
+      "corrida",
+      "casual"
+    ],
+    "d": "M2 18v-6q3 0 5-2l1-3 4 4q8 0 10 4v3ZM2 15h20M10 8l2 2m1-.5 2 2"
+  },
+  {
+    "chave": "sapato-social",
+    "nome": "Sapato social",
+    "grupo": "Calçados",
+    "palavras": [
+      "sapato",
+      "social",
+      "oxford",
+      "mocassim",
+      "sapato masculino"
+    ],
+    "d": "M3 8v9h18v-2q0-3-4-3.5L12 11 9 8Q5 9 3 8ZM3 14h6"
+  },
+  {
+    "chave": "salto-alto",
+    "nome": "Salto alto",
+    "grupo": "Calçados",
+    "palavras": [
+      "salto",
+      "scarpin",
+      "salto alto",
+      "stiletto",
+      "sapato feminino"
+    ],
+    "d": "M4 4q0 7 5 11l8 2q4 1 4 3-6 0-10-2l-2-1-.5 5H5L5.5 13Q4 9 4 4Z"
+  },
+  {
+    "chave": "sandalia",
+    "nome": "Sandália",
+    "grupo": "Calçados",
+    "palavras": [
+      "sandalia",
+      "sandalia salto",
+      "anabela",
+      "plataforma",
+      "papete"
+    ],
+    "d": "M3 20h5v-3h13v3ZM8 17l2-9 3 9M10 12l8 5"
+  },
+  {
+    "chave": "rasteirinha",
+    "nome": "Rasteirinha",
+    "grupo": "Calçados",
+    "palavras": [
+      "rasteirinha",
+      "rasteira",
+      "sandalia rasteira",
+      "sandalia plana"
+    ],
+    "d": "M3 17h18v2H3ZM4 17q3-7 8-7l2 7M12 10l7 3q2 1 2 4"
+  },
+  {
+    "chave": "chinelo",
+    "nome": "Chinelo",
+    "grupo": "Calçados",
+    "palavras": [
+      "chinelo",
+      "havaiana",
+      "slide",
+      "chinelo de dedo",
+      "flip flop"
+    ],
+    "d": "M12 22c-3 0-5-2-5-5V8c0-3 2-6 5-6s5 3 5 6v9c0 3-2 5-5 5ZM12 6v6M8 14l4-2 4 2"
+  },
+  {
+    "chave": "bota",
+    "nome": "Bota",
+    "grupo": "Calçados",
+    "palavras": [
+      "bota",
+      "coturno",
+      "botina",
+      "cano alto",
+      "montaria"
+    ],
+    "d": "M8 2h7v9l4.5 3Q22 15 22 18v3H6l2-5ZM8 7h7"
+  },
+  {
+    "chave": "sapatilha",
+    "nome": "Sapatilha",
+    "grupo": "Calçados",
+    "palavras": [
+      "sapatilha",
+      "bailarina",
+      "flat",
+      "sapato rasteiro"
+    ],
+    "d": "M3 15q0-3 3-4 5 1 8-3 2 4 7 5 1 3-1 4-8 1-17-2ZM8 11q3 2 6 0"
+  },
+  {
+    "chave": "bolsa",
+    "nome": "Bolsa",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "bolsa",
+      "bolsa feminina",
+      "tiracolo",
+      "clutch",
+      "tote"
+    ],
+    "d": "M4 8h16l1 12H3ZM8 8V6a4 4 0 0 1 8 0v2"
+  },
+  {
+    "chave": "mochila",
+    "nome": "Mochila",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "mochila",
+      "mochila escolar",
+      "bagpack",
+      "backpack"
+    ],
+    "d": "M6 9a6 6 0 0 1 12 0v11q0 2-2 2H8q-2 0-2-2ZM10 3.5q2-1.5 4 0M9 15h6v4H9ZM6 11h12"
+  },
+  {
+    "chave": "carteira",
+    "nome": "Carteira",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "carteira",
+      "porta cartao",
+      "porta documentos",
+      "porta moedas"
+    ],
+    "d": "M3 6q0-2 2-2h12v4M3 6v12q0 2 2 2h15V8H5Q3 8 3 6ZM21 12h-5a2 2 0 0 0 0 4h5Z"
+  },
+  {
+    "chave": "necessaire",
+    "nome": "Necessaire",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "necessaire",
+      "estojo",
+      "frasqueira",
+      "porta maquiagem"
+    ],
+    "d": "M3 10h18v9q0 2-2 2H5q-2 0-2-2ZM3 10q0-3 3-3h12q3 0 3 3M10 7V4h4v3M9 15h6"
+  },
+  {
+    "chave": "mala",
+    "nome": "Mala",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "mala",
+      "mala de viagem",
+      "bagagem",
+      "viagem"
+    ],
+    "d": "M4 7h16v12H4ZM9 7V4h6v3M9 11v4M15 11v4M8 19v2m8-2v2"
+  },
+  {
+    "chave": "cinto",
+    "nome": "Cinto",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "cinto",
+      "cinta",
+      "fivela",
+      "cinto de couro"
+    ],
+    "d": "M2 9h20v6H2ZM8 7h8v10H8ZM12 12h.01"
+  },
+  {
+    "chave": "oculos",
+    "nome": "Óculos",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "oculos",
+      "oculos de grau",
+      "armacao",
+      "grau",
+      "leitura"
+    ],
+    "d": "M3 14a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M13 14a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M11 14q1-1 2 0M3 14 2 8m19 6 1-6"
+  },
+  {
+    "chave": "oculos-de-sol",
+    "nome": "Óculos de sol",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "oculos de sol",
+      "solar",
+      "aviador",
+      "sol",
+      "ray ban"
+    ],
+    "d": "M2 8h20M3 8v4q0 4 4 4t4-4V8M13 8v4q0 4 4 4t4-4V8M11 10q1-1 2 0"
+  },
+  {
+    "chave": "chapeu",
+    "nome": "Chapéu",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "chapeu",
+      "chapeu de praia",
+      "palha",
+      "panama",
+      "bucket"
+    ],
+    "d": "M7 14V9a5 5 0 0 1 10 0v5M2 15q10 4 20 0-2-1-5-1H7q-3 0-5 1ZM7 11h10"
+  },
+  {
+    "chave": "bone",
+    "nome": "Boné",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "bone",
+      "cap",
+      "viseira",
+      "trucker",
+      "aba reta"
+    ],
+    "d": "M4 17q0-10 9-10 5 0 6 8q3 0 3 2ZM12 7V5.5"
+  },
+  {
+    "chave": "gorro",
+    "nome": "Gorro",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "gorro",
+      "touca",
+      "beanie",
+      "toca"
+    ],
+    "d": "M10 4a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M5 14a7 7 0 0 1 14 0M4 14h16v5H4Z"
+  },
+  {
+    "chave": "lenco",
+    "nome": "Lenço",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "lenco",
+      "bandana",
+      "echarpe",
+      "xale",
+      "pashmina"
+    ],
+    "d": "M4 6h16l-8 13ZM4 6 2 4m18 2 2-2M12 10h.01"
+  },
+  {
+    "chave": "cachecol",
+    "nome": "Cachecol",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "cachecol",
+      "manta",
+      "pescoceira",
+      "inverno",
+      "gola"
+    ],
+    "d": "M4 6q8 5 16 0v4q-8 5-16 0ZM14 13v8h4v-9M14 18h4"
+  },
+  {
+    "chave": "luvas",
+    "nome": "Luvas",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "luva",
+      "luvas",
+      "inverno",
+      "mitten"
+    ],
+    "d": "M6 21v-4l-2-5q0-2 2-1l2 2V4q0-2 2 0v6V3q0-2 2 0v7V4q0-2 2 0v7V6q0-2 2 0v8q0 5-4 7Z"
+  },
+  {
+    "chave": "gravata",
+    "nome": "Gravata",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "gravata",
+      "gravata borboleta",
+      "social",
+      "terno"
+    ],
+    "d": "M10 3h4l1 4H9ZM9 7l-1.5 11L12 22l4.5-4L15 7"
+  },
+  {
+    "chave": "guarda-chuva",
+    "nome": "Guarda-chuva",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "guarda chuva",
+      "sombrinha",
+      "chuva"
+    ],
+    "d": "M3 12a9 9 0 0 1 18 0q-1.5-1.5-3-1.5T15 12q-1.5-1.5-3-1.5T9 12q-1.5-1.5-3-1.5T3 12ZM12 3V2M12 12v7q0 2-2 2t-2-2"
+  },
+  {
+    "chave": "laco-de-cabelo",
+    "nome": "Laço de cabelo",
+    "grupo": "Bolsas e acessórios",
+    "palavras": [
+      "laco",
+      "tiara",
+      "xuxinha",
+      "presilha",
+      "fita cabelo",
+      "acessorio cabelo"
+    ],
+    "d": "M12 12 4 7q-1 5 0 10ZM12 12l8-5q1 5 0 10ZM10.5 10.5h3v3h-3Z"
+  },
+  {
+    "chave": "colar",
+    "nome": "Colar",
+    "grupo": "Joias e relógios",
+    "palavras": [
+      "colar",
+      "gargantilha",
+      "corrente",
+      "pingente",
+      "choker"
+    ],
+    "d": "M4 3q0 11 8 14 8-3 8-14M12 17l-2 2.5 2 2.5 2-2.5Z"
+  },
+  {
+    "chave": "brinco",
+    "nome": "Brinco",
+    "grupo": "Joias e relógios",
+    "palavras": [
+      "brinco",
+      "argola",
+      "brincos",
+      "ear cuff"
+    ],
+    "d": "M9.5 4.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0M12 10c-3 3-4 5-4 7a4 4 0 0 0 8 0c0-2-1-4-4-7Z"
+  },
+  {
+    "chave": "anel",
+    "nome": "Anel",
+    "grupo": "Joias e relógios",
+    "palavras": [
+      "anel",
+      "alianca",
+      "solitario",
+      "aneis"
+    ],
+    "d": "M6 15a6 6 0 1 0 12 0a6 6 0 1 0 -12 0M9 6l1.5-3h3L15 6l-3 3Z"
+  },
+  {
+    "chave": "pulseira",
+    "nome": "Pulseira",
+    "grupo": "Joias e relógios",
+    "palavras": [
+      "pulseira",
+      "bracelete",
+      "tornozeleira",
+      "braceletes"
+    ],
+    "d": "M3 8a9 3 0 1 0 18 0 9 3 0 1 0-18 0ZM3 8v8a9 3 0 0 0 18 0V8"
+  },
+  {
+    "chave": "relogio",
+    "nome": "Relógio",
+    "grupo": "Joias e relógios",
+    "palavras": [
+      "relogio",
+      "relogio de pulso",
+      "analogico",
+      "pulso"
+    ],
+    "d": "M7 12a5 5 0 1 0 10 0a5 5 0 1 0 -10 0M9 7l.5-5h5l.5 5M9 17l.5 5h5l.5-5M12 9.5v2.5l1.5 1"
+  },
+  {
+    "chave": "joia",
+    "nome": "Joia",
+    "grupo": "Joias e relógios",
+    "palavras": [
+      "joia",
+      "joias",
+      "diamante",
+      "bijuteria",
+      "semijoia",
+      "pedra"
+    ],
+    "d": "M6 3h12l4 6-10 12L2 9ZM2 9h20M9 3l3 6 3-6M12 21 9 9m3 12 3-12"
+  },
+  {
+    "chave": "coroa",
+    "nome": "Coroa",
+    "grupo": "Joias e relógios",
+    "palavras": [
+      "coroa",
+      "tiara princesa",
+      "realeza",
+      "rainha"
+    ],
+    "d": "M3 18 2 7l5 4 5-7 5 7 5-4-1 11ZM3 21h18"
+  },
+  {
+    "chave": "perfume",
+    "nome": "Perfume",
+    "grupo": "Beleza e perfumaria",
+    "palavras": [
+      "perfume",
+      "colonia",
+      "fragrancia",
+      "eau de parfum",
+      "deo colonia"
+    ],
+    "d": "M6 11h12v10H6ZM10 11V8h4v3M9 4h6v4H9ZM17 6h3M17 4l2-1"
+  },
+  {
+    "chave": "batom",
+    "nome": "Batom",
+    "grupo": "Beleza e perfumaria",
+    "palavras": [
+      "batom",
+      "labial",
+      "gloss",
+      "lip tint",
+      "labios"
+    ],
+    "d": "M7 21v-6h10v6ZM8 15v-3h8v3M10 12V7l4-4v9"
+  },
+  {
+    "chave": "esmalte",
+    "nome": "Esmalte",
+    "grupo": "Beleza e perfumaria",
+    "palavras": [
+      "esmalte",
+      "unha",
+      "manicure",
+      "base",
+      "nail"
+    ],
+    "d": "M7 12h10v8q0 2-2 2H9q-2 0-2-2ZM10 12V8h4v4ZM10 2h4v6h-4Z"
+  },
+  {
+    "chave": "espelho",
+    "nome": "Espelho",
+    "grupo": "Beleza e perfumaria",
+    "palavras": [
+      "espelho",
+      "espelho de mao",
+      "espelhinho"
+    ],
+    "d": "M6 9a6 6 0 1 0 12 0a6 6 0 1 0 -12 0M10.5 15.5v6h3v-6M9 7q1-2 3-2"
+  },
+  {
+    "chave": "escova-de-cabelo",
+    "nome": "Escova de cabelo",
+    "grupo": "Beleza e perfumaria",
+    "palavras": [
+      "escova",
+      "escova de cabelo",
+      "pente",
+      "cabelo",
+      "escova raquete"
+    ],
+    "d": "M12 2c-4 0-6 3-6 6s2 6 6 6 6-3 6-6-2-6-6-6ZM10.5 14l-.5 8h4l-.5-8M10 6h.01M14 6h.01M12 9h.01M10 11h.01M14 11h.01"
+  },
+  {
+    "chave": "secador",
+    "nome": "Secador",
+    "grupo": "Beleza e perfumaria",
+    "palavras": [
+      "secador",
+      "secador de cabelo",
+      "chapinha",
+      "prancha",
+      "modelador"
+    ],
+    "d": "M4 4h10l6 2v6l-6 2H4q-2 0-2-2V6q0-2 2-2ZM7 14l1 8h4l1-8"
+  },
+  {
+    "chave": "creme",
+    "nome": "Creme",
+    "grupo": "Beleza e perfumaria",
+    "palavras": [
+      "creme",
+      "hidratante",
+      "pote",
+      "cuidados com a pele",
+      "skin care",
+      "mascara facial"
+    ],
+    "d": "M4 9h16v10q0 2-2 2H6q-2 0-2-2ZM5 5h14v4H5ZM8 14h8"
+  },
+  {
+    "chave": "shampoo",
+    "nome": "Shampoo",
+    "grupo": "Beleza e perfumaria",
+    "palavras": [
+      "shampoo",
+      "condicionador",
+      "frasco",
+      "sabonete liquido",
+      "locao"
+    ],
+    "d": "M8 9h8v11q0 2-2 2h-4q-2 0-2-2ZM8 9q0-2 2-2h4q2 0 2 2M12 7V3h4l1 1M10 14h4"
+  },
+  {
+    "chave": "maquiagem",
+    "nome": "Maquiagem",
+    "grupo": "Beleza e perfumaria",
+    "palavras": [
+      "maquiagem",
+      "paleta",
+      "sombra",
+      "make",
+      "base maquiagem",
+      "po compacto"
+    ],
+    "d": "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M6.5 10a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M13.5 10a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M7 16h10"
+  },
+  {
+    "chave": "bebe",
+    "nome": "Bebê",
+    "grupo": "Infantil",
+    "palavras": [
+      "bebe",
+      "body de bebe",
+      "recem nascido",
+      "enxoval",
+      "macacao bebe",
+      "infantil"
+    ],
+    "d": "M8 3 3 5l1 5 3-1v8q0 2 2 2h6q2 0 2-2V9l3 1 1-5-5-2a4 4 0 0 1-8 0ZM10 20v1m4-1v1"
+  },
+  {
+    "chave": "mamadeira",
+    "nome": "Mamadeira",
+    "grupo": "Infantil",
+    "palavras": [
+      "mamadeira",
+      "bico",
+      "copo infantil",
+      "garrafinha",
+      "amamentacao"
+    ],
+    "d": "M8 10h8v10q0 2-2 2h-4q-2 0-2-2ZM8 10h8M12 10c-2 0-2-4 0-4s2 4 0 4M12 6V3M10 15h2m-2 3h2"
+  },
+  {
+    "chave": "chupeta",
+    "nome": "Chupeta",
+    "grupo": "Infantil",
+    "palavras": [
+      "chupeta",
+      "bico de chupeta",
+      "prendedor de chupeta"
+    ],
+    "d": "M5 10a7 3 0 1 0 14 0 7 3 0 1 0-14 0ZM10 8Q10 3 12 3t2 5M9 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"
+  },
+  {
+    "chave": "ursinho",
+    "nome": "Ursinho",
+    "grupo": "Infantil",
+    "palavras": [
+      "ursinho",
+      "urso",
+      "pelucia",
+      "bicho de pelucia",
+      "teddy"
+    ],
+    "d": "M5 13a7 7 0 1 0 14 0a7 7 0 1 0 -14 0M4 6.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0M15 6.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0M10 15q2 2 4 0M9.5 11h.01M14.5 11h.01"
+  },
+  {
+    "chave": "bloco-de-montar",
+    "nome": "Bloco de montar",
+    "grupo": "Infantil",
+    "palavras": [
+      "bloco",
+      "lego",
+      "montar",
+      "brinquedo de montar",
+      "blocos"
+    ],
+    "d": "M3 12h18v8H3ZM6 12V9h4v3M14 12V9h4v3"
+  },
+  {
+    "chave": "carrinho-de-brinquedo",
+    "nome": "Carrinho de brinquedo",
+    "grupo": "Infantil",
+    "palavras": [
+      "carrinho",
+      "carro",
+      "miniatura",
+      "hot wheels",
+      "brinquedo"
+    ],
+    "d": "M3 17v-5l3-1 2-5h8l2 5 3 1v5h-2M10 17h4M6 11h12M4.5 17a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0M14.5 17a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0"
+  },
+  {
+    "chave": "boneca",
+    "nome": "Boneca",
+    "grupo": "Infantil",
+    "palavras": [
+      "boneca",
+      "bonecas",
+      "barbie",
+      "brinquedo menina",
+      "bebe reborn"
+    ],
+    "d": "M9 5a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M9 10h6l3 11H6ZM9 12 5 15m10-3 4 3"
+  },
+  {
+    "chave": "sofa",
+    "nome": "Sofá",
+    "grupo": "Casa e decoração",
+    "palavras": [
+      "sofa",
+      "sala",
+      "poltrona",
+      "estofado",
+      "movel"
+    ],
+    "d": "M5 10V8q0-2 2-2h10q2 0 2 2v2M3 12q0-2 2-2t2 2v1h10v-1q0-2 2-2t2 2v5H3ZM5 17v2m14-2v2"
+  },
+  {
+    "chave": "cama",
+    "nome": "Cama",
+    "grupo": "Casa e decoração",
+    "palavras": [
+      "cama",
+      "colchao",
+      "quarto",
+      "roupa de cama",
+      "lencol",
+      "cobertor"
+    ],
+    "d": "M3 5v15M21 20v-6q0-3-3-3h-9v3H3M3 17h18M6.5 11h.01"
+  },
+  {
+    "chave": "panela",
+    "nome": "Panela",
+    "grupo": "Casa e decoração",
+    "palavras": [
+      "panela",
+      "cozinha",
+      "utensilios",
+      "frigideira",
+      "cacarola"
+    ],
+    "d": "M5 10h14v8q0 3-3 3H8q-3 0-3-3ZM3 12h2m14 0h2M4 10q0-3 8-3t8 3M12 7V5"
+  },
+  {
+    "chave": "prato-e-talheres",
+    "nome": "Prato e talheres",
+    "grupo": "Casa e decoração",
+    "palavras": [
+      "prato",
+      "talher",
+      "talheres",
+      "louca",
+      "mesa posta",
+      "jantar",
+      "copa"
+    ],
+    "d": "M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M3 3v4q0 2 1.5 2M6 3v4q0 2-1.5 2M4.5 9V21M20 21V3q-3 2-3 7v1h3"
+  },
+  {
+    "chave": "lampada",
+    "nome": "Lâmpada",
+    "grupo": "Casa e decoração",
+    "palavras": [
+      "lampada",
+      "iluminacao",
+      "luminaria",
+      "abajur",
+      "luz"
+    ],
+    "d": "M12 2c-4 0-7 3-7 7 0 3 2 4.5 3 6.5V17h8v-1.5c1-2 3-3.5 3-6.5 0-4-3-7-7-7ZM9 20h6M10 13l2-3 2 3"
+  },
+  {
+    "chave": "vaso-de-planta",
+    "nome": "Vaso de planta",
+    "grupo": "Casa e decoração",
+    "palavras": [
+      "vaso",
+      "planta",
+      "jardim",
+      "flor",
+      "decoracao verde"
+    ],
+    "d": "M6 14h12l-1.5 7h-9ZM5 14h14M12 14V8M12 11q-5 0-6-6 5 0 6 6ZM12 9q1-5 6-5 0 5-6 5"
+  },
+  {
+    "chave": "toalha",
+    "nome": "Toalha",
+    "grupo": "Casa e decoração",
+    "palavras": [
+      "toalha",
+      "banho",
+      "toalha de banho",
+      "toalha de rosto",
+      "mesa banho"
+    ],
+    "d": "M5 3h14v15H5ZM5 7h14M5 11h14M8 18v3m4-3v3m4-3v3"
+  },
+  {
+    "chave": "quadro",
+    "nome": "Quadro",
+    "grupo": "Casa e decoração",
+    "palavras": [
+      "quadro",
+      "moldura",
+      "arte",
+      "parede",
+      "decoracao parede",
+      "porta retrato"
+    ],
+    "d": "M3 4h18v16H3ZM6 7h12v10H6ZM7.5 15l3.5-4 2.5 3 2-2 2 3"
+  },
+  {
+    "chave": "celular",
+    "nome": "Celular",
+    "grupo": "Tecnologia",
+    "palavras": [
+      "celular",
+      "smartphone",
+      "telefone",
+      "capinha",
+      "iphone"
+    ],
+    "d": "M7 2h10q1 0 1 1v18q0 1-1 1H7q-1 0-1-1V3q0-1 1-1ZM11 19h2"
+  },
+  {
+    "chave": "fone-de-ouvido",
+    "nome": "Fone de ouvido",
+    "grupo": "Tecnologia",
+    "palavras": [
+      "fone",
+      "fone de ouvido",
+      "headphone",
+      "headset",
+      "audio"
+    ],
+    "d": "M4 15v-3a8 8 0 0 1 16 0v3M4 14h3v6H5q-1 0-1-1ZM20 14h-3v6h2q1 0 1-1Z"
+  },
+  {
+    "chave": "notebook",
+    "nome": "Notebook",
+    "grupo": "Tecnologia",
+    "palavras": [
+      "notebook",
+      "laptop",
+      "computador",
+      "informatica",
+      "pc"
+    ],
+    "d": "M5 5h14v11H5ZM2 19h20"
+  },
+  {
+    "chave": "camera",
+    "nome": "Câmera",
+    "grupo": "Tecnologia",
+    "palavras": [
+      "camera",
+      "fotografia",
+      "filmadora",
+      "foto",
+      "gopro"
+    ],
+    "d": "M3 8h4l2-3h6l2 3h4v12H3ZM8.5 14a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0"
+  },
+  {
+    "chave": "smartwatch",
+    "nome": "Smartwatch",
+    "grupo": "Tecnologia",
+    "palavras": [
+      "smartwatch",
+      "relogio inteligente",
+      "band",
+      "apple watch"
+    ],
+    "d": "M8 7h8q2 0 2 2v6q0 2-2 2H8q-2 0-2-2V9q0-2 2-2ZM9 7l.5-4h5l.5 4M9 17l.5 4h5l.5-4M12 10v2.5l1.5 1"
+  },
+  {
+    "chave": "carregador",
+    "nome": "Carregador",
+    "grupo": "Tecnologia",
+    "palavras": [
+      "carregador",
+      "cabo",
+      "usb",
+      "tomada",
+      "fonte",
+      "power bank"
+    ],
+    "d": "M9 2v5M15 2v5M6 7h12v4q0 5-6 5t-6-5ZM12 16v6"
+  },
+  {
+    "chave": "caixa-de-som",
+    "nome": "Caixa de som",
+    "grupo": "Tecnologia",
+    "palavras": [
+      "caixa de som",
+      "bluetooth",
+      "alto falante",
+      "som",
+      "speaker"
+    ],
+    "d": "M6 2h12q1 0 1 1v18q0 1-1 1H6q-1 0-1-1V3q0-1 1-1ZM8 15a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M10.5 6.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0"
+  },
+  {
+    "chave": "bola",
+    "nome": "Bola",
+    "grupo": "Esporte e lazer",
+    "palavras": [
+      "bola",
+      "basquete",
+      "futebol",
+      "volei",
+      "esporte"
+    ],
+    "d": "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M3 12h18M12 3v18M5.5 5.5q5 6.5 0 13m13-13q-5 6.5 0 13"
+  },
+  {
+    "chave": "haltere",
+    "nome": "Haltere",
+    "grupo": "Esporte e lazer",
+    "palavras": [
+      "haltere",
+      "academia",
+      "musculacao",
+      "peso",
+      "treino"
+    ],
+    "d": "M2 10v4M5 7v10M19 7v10M22 10v4M5 12h14"
+  },
+  {
+    "chave": "bicicleta",
+    "nome": "Bicicleta",
+    "grupo": "Esporte e lazer",
+    "palavras": [
+      "bicicleta",
+      "bike",
+      "ciclismo",
+      "pedal"
+    ],
+    "d": "M2 16a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M14 16a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M6 16l4-8h5l3 8M10 8l3 8M15 8l-1-3h2"
+  },
+  {
+    "chave": "camping",
+    "nome": "Camping",
+    "grupo": "Esporte e lazer",
+    "palavras": [
+      "camping",
+      "barraca",
+      "tenda",
+      "mochila de viagem",
+      "acampamento",
+      "trilha"
+    ],
+    "d": "M2 20 12 4l10 16ZM9 20l3-6 3 6"
+  },
+  {
+    "chave": "presente",
+    "nome": "Presente",
+    "grupo": "Outros",
+    "palavras": [
+      "presente",
+      "gift",
+      "kit presente",
+      "caixa de presente",
+      "lembrancinha"
+    ],
+    "d": "M3 9h18v4H3ZM5 13v8h14v-8M12 9v12M12 9C8 9 6 7 7.5 5.5S11.5 6 12 9c.5-3 3.5-4.5 4.5-3.5S16 9 12 9"
+  },
+  {
+    "chave": "etiqueta",
+    "nome": "Etiqueta",
+    "grupo": "Outros",
+    "palavras": [
+      "etiqueta",
+      "tag",
+      "preco",
+      "outros",
+      "diversos",
+      "variedades"
+    ],
+    "d": "M3 12V4q0-1 1-1h8l9 9q1 1 0 2l-7 7q-1 1-2 0ZM8 8h.01"
+  },
+  {
+    "chave": "estrela",
+    "nome": "Estrela",
+    "grupo": "Outros",
+    "palavras": [
+      "estrela",
+      "favoritos",
+      "destaque",
+      "novidade",
+      "top"
+    ],
+    "d": "M12 2.5l2.8 6 6.4.8-4.7 4.4 1.2 6.4-5.7-3.2-5.7 3.2 1.2-6.4L2.8 9.3l6.4-.8Z"
+  },
+  {
+    "chave": "coracao",
+    "nome": "Coração",
+    "grupo": "Outros",
+    "palavras": [
+      "coracao",
+      "amor",
+      "namorados",
+      "favorito",
+      "love"
+    ],
+    "d": "M12 21C5 16 2.5 12.5 2.5 8.5A4.8 4.8 0 0 1 12 6a4.8 4.8 0 0 1 9.5 2.5C21.5 12.5 19 16 12 21Z"
+  },
+  {
+    "chave": "sacola",
+    "nome": "Sacola de compras",
+    "grupo": "Outros",
+    "palavras": [
+      "sacola",
+      "compras",
+      "shopping",
+      "sacola de papel",
+      "loja"
+    ],
+    "d": "M5 7h14l1 14H4ZM9 10V6a3 3 0 0 1 6 0v4"
+  },
+  {
+    "chave": "caixa",
+    "nome": "Caixa de produto",
+    "grupo": "Outros",
+    "palavras": [
+      "caixa",
+      "pacote",
+      "embalagem",
+      "encomenda",
+      "produto"
+    ],
+    "d": "M12 2 3 6.5v11L12 22l9-4.5v-11ZM3 6.5 12 11l9-4.5M12 11v11M7.5 4.3 16.5 8.7"
+  },
+  {
+    "chave": "tesoura",
+    "nome": "Tesoura",
+    "grupo": "Outros",
+    "palavras": [
+      "tesoura",
+      "costura",
+      "aviamentos",
+      "armarinho",
+      "artesanato"
+    ],
+    "d": "M3.5 6a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0M3.5 18a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0M8 7.5 21 18M8 16.5 21 6"
+  },
+  {
+    "chave": "carrinho-de-compras",
+    "nome": "Carrinho de compras",
+    "grupo": "Outros",
+    "palavras": [
+      "carrinho de compras",
+      "carrinho",
+      "mercado",
+      "comprar"
+    ],
+    "d": "M2 3h3l2.5 12h11L21 7H6M7.5 20a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0M15.5 20a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0"
+  },
+  {
+    "chave": "promocao",
+    "nome": "Promoção",
+    "grupo": "Outros",
+    "palavras": [
+      "promocao",
+      "oferta",
+      "desconto",
+      "liquidacao",
+      "saldao",
+      "outlet",
+      "porcentagem"
+    ],
+    "d": "M19 5 5 19M5 7a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"
+  }
+]
