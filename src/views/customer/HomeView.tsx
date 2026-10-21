@@ -596,7 +596,7 @@ export const HomeView = React.memo(function HomeView({
         {/* Integrated Filter Bar - Premium Glassmorphism & STICKY */}
         <div
           className={cn(
-            "sticky top-[-2px] z-40 -mx-4 px-4 pb-1.5 pt-0 bg-white/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5 gpu-accelerated",
+            "sticky top-[-2px] z-40 -mx-3 px-3 sm:-mx-4 sm:px-4 pb-1.5 pt-0 bg-white/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5 gpu-accelerated",
             scrollProgress > 20
               ? "shadow-sm border-b border-zinc-200/60"
               : "border-b border-transparent",

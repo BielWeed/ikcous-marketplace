@@ -1410,7 +1410,7 @@ export const ProductView = React.memo(function ProductView({
             {/* Luxury Segmented Tabs - iOS Style & STICKY */}
             <div
               className={cn(
-                "sticky top-0 z-40 transition-all duration-300 -mx-6 px-6 py-1 flex flex-col border-b mb-4",
+                "sticky top-0 z-40 transition-all duration-300 -mx-5 px-5 py-1 flex flex-col border-b mb-4",
                 scrolled
                   ? "bg-white/80 backdrop-blur-md border-zinc-200/60 shadow-sm"
                   : "bg-transparent border-transparent",
