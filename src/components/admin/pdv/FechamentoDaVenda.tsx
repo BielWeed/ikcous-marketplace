@@ -270,7 +270,14 @@ export function FechamentoDaVenda({
                 .map((item) => item.nome)
                 .join(", ")}
             </span>
-            {estado.itens.length > 2 && <span>+{estado.itens.length - 2}</span>}
+            {estado.itens.length > 2 && (
+              <span
+                role="img"
+                aria-label={`Mais ${estado.itens.length - 2} ${estado.itens.length === 3 ? "produto" : "produtos"} na venda`}
+              >
+                +{estado.itens.length - 2}
+              </span>
+            )}
           </p>
           {estado.cliente.tipo !== "sem_cliente" && (
             <p className="pdv-muted">Cliente: {estado.cliente.nome}</p>
