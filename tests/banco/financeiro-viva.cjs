@@ -1389,6 +1389,95 @@ PROVAS.push({
   },
 });
 
+PROVAS.push({
+  nome: "(forma desconhecida) online sem método não entra como PIX; resumo e extrato preservam valores",
+  corpo: async (cliente) => {
+    for (const [metodo, forma] of [
+      [null, "online_desconhecido"],
+      ["pix", "pix"],
+      ["credito", "credito"],
+      ["debito", "debito"],
+    ]) {
+      assert.equal(
+        await rpc(
+          cliente,
+          "SELECT public.fin__forma_do_pedido('online', $1) AS r",
+          [metodo],
+        ),
+        forma,
+      );
+    }
+    for (const [metodo, forma] of [
+      ["cash", "dinheiro"],
+      ["pix", "pix"],
+      ["card", "cartao"],
+      ["x", "outro"],
+    ]) {
+      assert.equal(
+        await rpc(
+          cliente,
+          "SELECT public.fin__forma_do_pedido($1, NULL) AS r",
+          [metodo],
+        ),
+        forma,
+      );
+    }
+    await logar(cliente, U_ADMIN);
+    await cliente.query("BEGIN");
+    try {
+      const resumo = () =>
+        rpc(cliente, "SELECT public.fin_resumo($1, $2) AS r", [
+          estado.inicio,
+          estado.hoje,
+        ]);
+      const antes = await resumo();
+      const desconhecido = "5eeeeeee-0000-0000-0000-000000000001";
+      const pix = "5eeeeeee-0000-0000-0000-000000000002";
+      await pedido(cliente, desconhecido, {
+        total: 80,
+        pagamento: "online",
+        paymentStatus: "pago",
+        paidAt: new Date(),
+        status: "processing",
+      });
+      await pedido(cliente, pix, {
+        total: 20,
+        pagamento: "online",
+        metodoOnline: "pix",
+        paymentStatus: "pago",
+        paidAt: new Date(),
+        status: "processing",
+      });
+      const depois = await resumo();
+      const valorDaForma = (r, forma) =>
+        num(r.por_forma.find((f) => f.forma === forma)?.valor || 0);
+      assert.equal(
+        num(
+          valorDaForma(depois, "online_desconhecido") -
+            valorDaForma(antes, "online_desconhecido"),
+        ),
+        80,
+      );
+      assert.equal(
+        num(valorDaForma(depois, "pix") - valorDaForma(antes, "pix")),
+        20,
+      );
+      assert.equal(num(depois.entradas - antes.entradas), 100);
+      const extrato = await rpc(
+        cliente,
+        "SELECT public.fin_extrato($1, $2) AS r",
+        [estado.inicio, estado.hoje],
+      );
+      const linha = extrato.find((m) => m.id === `pedido:${desconhecido}`);
+      assert.equal(linha.forma_pagamento, "online_desconhecido");
+      assert.equal(linha.conta_id, MP);
+      assert.equal(num(linha.valor), 80);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const cliente = new Client({ connectionString: url });

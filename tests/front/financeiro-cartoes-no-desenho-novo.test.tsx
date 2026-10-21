@@ -315,6 +315,28 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     }
   });
 
+  it("Visão: forma online desconhecida tem rótulo neutro, separada do PIX", async () => {
+    rpcFalso.mockImplementation(async (nome: string) => ({
+      data:
+        nome === "fin_resumo"
+          ? {
+              ...RESUMO,
+              por_forma: [
+                { forma: "online_desconhecido", valor: 80 },
+                { forma: "pix", valor: 20 },
+              ],
+            }
+          : [],
+      error: null,
+    }));
+    await montar(<AdminFinanceiroView active={true} onNavigate={vi.fn()} />);
+    expect(hospedeiro.textContent).toContain(
+      "Pagamento online (forma não identificada)",
+    );
+    expect(hospedeiro.textContent).toContain("PIX");
+    expect(hospedeiro.textContent).not.toContain("online_desconhecido");
+  });
+
   it("Visão: mini-cartões de vencido, próximos 7 dias e saldo por conta", async () => {
     await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
 
