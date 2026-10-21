@@ -2,6 +2,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { configurarTextos } from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn<(file: File) => Promise<string>>();
 const deleteStorageFile = vi.fn<(url: string) => Promise<void>>();
@@ -163,7 +164,7 @@ describe("uploads de banner limpam a imagem substituída e o seletor", () => {
     if (!editar) throw new Error("Botão Editar ausente");
     await act(async () => editar.click());
     await act(async () => esperar());
-    if (modo === "Completo") await clicar("Completo");
+    if (modo === "Completo") await configurarTextos(true);
   }
 
   function input() {

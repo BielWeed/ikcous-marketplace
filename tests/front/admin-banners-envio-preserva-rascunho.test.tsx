@@ -3,6 +3,11 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  abrirMaisOpcoes,
+  configurarTextos,
+  escolherImagemPropria,
+} from "./helpers/editor-de-banner";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -187,6 +192,7 @@ describe("AdminBannersView — envio preserva edição posterior", () => {
     await act(async () => {
       botaoNovoBanner.click();
     });
+    await escolherImagemPropria();
 
     // Diálogo aberto (botão "Salvar Banner" só existe dentro dele) e em
     // modo de criação.
@@ -245,7 +251,7 @@ describe("AdminBannersView — envio preserva edição posterior", () => {
       await act(async () => editar.click());
       await act(async () => esperarMicrotarefas());
       await titulo("Título A");
-      await clicarTexto("3Destino");
+      await abrirMaisOpcoes();
       let concluir!: () => void;
       updateBanner.mockImplementationOnce(
         () =>
@@ -258,7 +264,7 @@ describe("AdminBannersView — envio preserva edição posterior", () => {
         bannerPublicado.id,
         expect.objectContaining({ title: "Título A" }),
       );
-      await clicarTexto("✓Conteúdo");
+      await abrirMaisOpcoes();
       await titulo("Título B", descarregar);
       const chave = "admin_banner_form_draft:lojista-1";
       localStorage.setItem(chave, "rascunho pendente");
@@ -271,7 +277,7 @@ describe("AdminBannersView — envio preserva edição posterior", () => {
       // Descarrega o buffer antes do segundo salvamento.
       await titulo("Título B");
       updateBanner.mockResolvedValueOnce(undefined);
-      await clicarTexto("3Destino");
+      await abrirMaisOpcoes();
       await clicarTexto("Salvar Alterações");
       expect(updateBanner).toHaveBeenLastCalledWith(
         bannerPublicado.id,
@@ -293,14 +299,14 @@ describe("AdminBannersView — envio preserva edição posterior", () => {
         }),
     );
     await clicarTexto("Salvar Banner");
-    await clicarTexto("Completo");
+    await configurarTextos(true);
     await titulo("Título B");
     await act(async () => concluir({ id: "banner-novo" }));
     expect(
       (document.getElementById("banner-title") as HTMLInputElement).value,
     ).toBe("Título B");
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
-    await clicarTexto("3Destino");
+    await abrirMaisOpcoes();
     updateBanner.mockResolvedValueOnce(undefined);
     await clicarTexto("Salvar Alterações");
     expect(addBanner).toHaveBeenCalledTimes(1);

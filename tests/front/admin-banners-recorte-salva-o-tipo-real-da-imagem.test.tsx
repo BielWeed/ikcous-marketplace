@@ -30,6 +30,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherImagemPropria } from "./helpers/editor-de-banner";
 
 // O onConfirm do ImageAdjuster mockado é capturado aqui — `vi.hoisted`
 // roda antes dos factories de vi.mock.
@@ -219,6 +220,7 @@ describe("AdminBannersView — recorte confirmado chega ao upload com o tipo REA
     await act(async () => {
       botaoNovoBanner.click();
     });
+    await escolherImagemPropria();
     expect(localizarBotaoPorTexto(hospedeiro, "Salvar Banner")).toBeDefined();
 
     const arquivoOriginal = new File(["conteudo"], "original.jpg", {

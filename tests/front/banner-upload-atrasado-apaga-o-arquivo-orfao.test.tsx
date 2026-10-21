@@ -330,8 +330,8 @@ describe("limpeza do arquivo órfão de upload atrasado de banner", () => {
         expect(deleteStorageFile.mock.calls).toEqual([
           ["https://loja.test/nova-a.jpg"],
         ]);
-        // O upload de B segue no ar: o editor mostra "Enviando Imagem..." no lugar da prévia.
-        expect(imagemDoEditor()).toBeUndefined();
+        // O upload de B segue pendente; a prévia anterior fica visível, sem liberar o envio.
+        expect(imagemDoEditor()).toBe("https://loja.test/banner-b.jpg");
         expect(hospedeiro.textContent).toContain("Enviando Imagem...");
         expect(campoDeUpload().disabled).toBe(true);
         await act(async () => uploadB.resolver("https://loja.test/nova-b.jpg"));

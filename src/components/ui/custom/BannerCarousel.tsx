@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { modeloDoBanner } from "@/lib/banner-modelos";
 import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
 import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
@@ -6,6 +7,7 @@ import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
 import { memo, useCallback, useEffect, useState } from "react";
+import { BannerPronto } from "./BannerPronto";
 
 interface BannerCarouselProps {
   banners: Banner[];
@@ -180,145 +182,161 @@ export const BannerCarousel = memo(function BannerCarousel({
               }
               aria-label={`${index + 1} de ${validBanners.length}: ${banner.title || ""}`}
             >
-              <LazyImage
-                src={banner.imageUrl}
-                alt={banner.title || ""}
-                className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105"
-                priority={index === 0}
-                // Banner ocupa a largura toda; era o pior caso (PNG de 1340 kB).
-                sizes={IMAGEM_DO_BANNER.sizes}
-                quality={IMAGEM_DO_BANNER.quality}
-              />
-              {/* Dynamic Custom Overlay & Content */}
-              {(() => {
-                const hasOverlayText =
-                  banner.showTextOverlay !== false &&
-                  ((banner.title && banner.title.trim() !== "") ||
-                    (banner.subtitle && banner.subtitle.trim() !== "") ||
-                    (banner.buttonText && banner.buttonText.trim() !== "") ||
-                    (banner.badgeText && banner.badgeText.trim() !== ""));
+              {modeloDoBanner(banner.templateType) ? (
+                <BannerPronto
+                  banner={banner}
+                  prioridade={index === 0}
+                  varios={validBanners.length > 1}
+                />
+              ) : (
+                <>
+                  <LazyImage
+                    src={banner.imageUrl}
+                    alt={banner.title || ""}
+                    className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105"
+                    priority={index === 0}
+                    // Banner ocupa a largura toda; era o pior caso (PNG de 1340 kB).
+                    sizes={IMAGEM_DO_BANNER.sizes}
+                    quality={IMAGEM_DO_BANNER.quality}
+                  />
+                  {/* Dynamic Custom Overlay & Content */}
+                  {(() => {
+                    const hasOverlayText =
+                      banner.showTextOverlay !== false &&
+                      ((banner.title && banner.title.trim() !== "") ||
+                        (banner.subtitle && banner.subtitle.trim() !== "") ||
+                        (banner.buttonText &&
+                          banner.buttonText.trim() !== "") ||
+                        (banner.badgeText && banner.badgeText.trim() !== ""));
 
-                if (!hasOverlayText) return null;
+                    if (!hasOverlayText) return null;
 
-                return (
-                  <>
-                    <div
-                      className="absolute inset-0 transition-opacity"
-                      style={{
-                        backgroundColor: banner.overlayColor || "#000000",
-                        opacity:
-                          banner.overlayOpacity !== undefined
-                            ? banner.overlayOpacity / 100
-                            : 0.4,
-                      }}
-                    />
-                    {classeDoScrimDoBanner(banner.templateType) !== "" && (
-                      <div
-                        aria-hidden="true"
-                        className={cn(
-                          "pointer-events-none absolute inset-0",
-                          classeDoScrimDoBanner(banner.templateType),
-                        )}
-                      />
-                    )}
-                    <div
-                      className={cn(
-                        "absolute inset-0 flex flex-col p-8 text-white sm:p-12 justify-end select-none",
-                        banner.templateType === "split_center" &&
-                          "items-center justify-center text-center",
-                        banner.templateType === "split_right" &&
-                          "items-end justify-end text-right",
-                        banner.templateType === "split_left" &&
-                          "items-start justify-end text-left",
-                        banner.templateType === "glassmorphic" &&
-                          "justify-center p-6 text-center",
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "max-w-2xl space-y-3 flex flex-col",
-                          banner.templateType === "glassmorphic" &&
-                            "bg-black/40 backdrop-blur-md border border-white/10 rounded-3xl p-6 sm:p-8 text-center items-center mx-auto",
-                        )}
-                      >
-                        {banner.badgeText && banner.badgeText.trim() !== "" && (
-                          <span
+                    return (
+                      <>
+                        <div
+                          className="absolute inset-0 transition-opacity"
+                          style={{
+                            backgroundColor: banner.overlayColor || "#000000",
+                            opacity:
+                              banner.overlayOpacity !== undefined
+                                ? banner.overlayOpacity / 100
+                                : 0.4,
+                          }}
+                        />
+                        {classeDoScrimDoBanner(banner.templateType) !== "" && (
+                          <div
+                            aria-hidden="true"
                             className={cn(
-                              "inline-block rounded-full bg-[#FFBF00] text-black px-3.5 py-1 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-1 w-fit",
-                              banner.templateType === "split_right" &&
-                                "self-end",
-                              banner.templateType === "split_center" &&
-                                "mx-auto",
+                              "pointer-events-none absolute inset-0",
+                              classeDoScrimDoBanner(banner.templateType),
                             )}
-                          >
-                            {banner.badgeText}
-                          </span>
+                          />
                         )}
-
-                        {banner.title && banner.title.trim() !== "" && (
-                          <h2
-                            className={cn(
-                              "text-2xl font-black leading-none tracking-tighter drop-shadow-2xl sm:text-4xl",
-                              banner.fontFamily === "font-serif" &&
-                                "font-serif",
-                              banner.fontFamily === "font-mono" && "font-mono",
-                              banner.fontFamily === "font-display" &&
-                                "font-display font-black uppercase",
-                              banner.templateType === "neon_glow" &&
-                                "text-shadow-[0_0_10px_rgba(255,191,0,0.8)]",
-                            )}
-                            style={{
-                              color: banner.titleColor || undefined,
-                              textShadow:
-                                banner.templateType === "neon_glow"
-                                  ? `0 0 8px ${banner.titleColor || "#FFBF00"}`
-                                  : undefined,
-                            }}
-                          >
-                            {banner.title}
-                          </h2>
-                        )}
-
-                        {banner.subtitle && banner.subtitle.trim() !== "" && (
-                          <p
-                            className="max-w-full truncate text-xs font-medium text-zinc-300 drop-shadow-md sm:text-sm"
-                            style={{ color: banner.subtitleColor || undefined }}
-                          >
-                            {banner.subtitle}
-                          </p>
-                        )}
-
-                        {banner.buttonText &&
-                          banner.buttonText.trim() !== "" && (
-                            <button
-                              type="button"
-                              className={cn(
-                                "mt-2 rounded-xl px-4 py-2 text-xs font-extrabold uppercase tracking-widest transition-transform duration-300 active:scale-95 w-fit shadow-md",
-                                banner.templateType === "split_right" &&
-                                  "self-end",
-                                banner.templateType === "split_center" &&
-                                  "mx-auto",
-                                banner.templateType === "neon_glow" &&
-                                  "animate-pulse",
-                              )}
-                              style={{
-                                backgroundColor:
-                                  banner.buttonBgColor || "#FFBF00",
-                                color: banner.buttonTextColor || "#000000",
-                                boxShadow:
-                                  banner.templateType === "neon_glow"
-                                    ? `0 0 12px ${banner.buttonBgColor || "#FFBF00"}`
-                                    : undefined,
-                              }}
-                            >
-                              {banner.buttonText}
-                            </button>
+                        <div
+                          className={cn(
+                            "absolute inset-0 flex flex-col p-8 text-white sm:p-12 justify-end select-none",
+                            banner.templateType === "split_center" &&
+                              "items-center justify-center text-center",
+                            banner.templateType === "split_right" &&
+                              "items-end justify-end text-right",
+                            banner.templateType === "split_left" &&
+                              "items-start justify-end text-left",
+                            banner.templateType === "glassmorphic" &&
+                              "justify-center p-6 text-center",
                           )}
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
+                        >
+                          <div
+                            className={cn(
+                              "max-w-2xl space-y-3 flex flex-col",
+                              banner.templateType === "glassmorphic" &&
+                                "bg-black/40 backdrop-blur-md border border-white/10 rounded-3xl p-6 sm:p-8 text-center items-center mx-auto",
+                            )}
+                          >
+                            {banner.badgeText &&
+                              banner.badgeText.trim() !== "" && (
+                                <span
+                                  className={cn(
+                                    "inline-block rounded-full bg-[#FFBF00] text-black px-3.5 py-1 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-1 w-fit",
+                                    banner.templateType === "split_right" &&
+                                      "self-end",
+                                    banner.templateType === "split_center" &&
+                                      "mx-auto",
+                                  )}
+                                >
+                                  {banner.badgeText}
+                                </span>
+                              )}
+
+                            {banner.title && banner.title.trim() !== "" && (
+                              <h2
+                                className={cn(
+                                  "text-2xl font-black leading-none tracking-tighter drop-shadow-2xl sm:text-4xl",
+                                  banner.fontFamily === "font-serif" &&
+                                    "font-serif",
+                                  banner.fontFamily === "font-mono" &&
+                                    "font-mono",
+                                  banner.fontFamily === "font-display" &&
+                                    "font-display font-black uppercase",
+                                  banner.templateType === "neon_glow" &&
+                                    "text-shadow-[0_0_10px_rgba(255,191,0,0.8)]",
+                                )}
+                                style={{
+                                  color: banner.titleColor || undefined,
+                                  textShadow:
+                                    banner.templateType === "neon_glow"
+                                      ? `0 0 8px ${banner.titleColor || "#FFBF00"}`
+                                      : undefined,
+                                }}
+                              >
+                                {banner.title}
+                              </h2>
+                            )}
+
+                            {banner.subtitle &&
+                              banner.subtitle.trim() !== "" && (
+                                <p
+                                  className="max-w-full truncate text-xs font-medium text-zinc-300 drop-shadow-md sm:text-sm"
+                                  style={{
+                                    color: banner.subtitleColor || undefined,
+                                  }}
+                                >
+                                  {banner.subtitle}
+                                </p>
+                              )}
+
+                            {banner.buttonText &&
+                              banner.buttonText.trim() !== "" && (
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "mt-2 rounded-xl px-4 py-2 text-xs font-extrabold uppercase tracking-widest transition-transform duration-300 active:scale-95 w-fit shadow-md",
+                                    banner.templateType === "split_right" &&
+                                      "self-end",
+                                    banner.templateType === "split_center" &&
+                                      "mx-auto",
+                                    banner.templateType === "neon_glow" &&
+                                      "animate-pulse",
+                                  )}
+                                  style={{
+                                    backgroundColor:
+                                      banner.buttonBgColor || "#FFBF00",
+                                    color: banner.buttonTextColor || "#000000",
+                                    boxShadow:
+                                      banner.templateType === "neon_glow"
+                                        ? `0 0 12px ${banner.buttonBgColor || "#FFBF00"}`
+                                        : undefined,
+                                  }}
+                                >
+                                  {banner.buttonText}
+                                </button>
+                              )}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </>
+              )}
             </div>
           ))}
         </div>

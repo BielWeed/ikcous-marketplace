@@ -34,6 +34,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherImagemPropria } from "./helpers/editor-de-banner";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -224,6 +225,7 @@ describe("AdminBannersView — Escape com o ImageAdjuster aberto fecha só o rec
     await act(async () => {
       botaoNovoBanner.click();
     });
+    await escolherImagemPropria();
     expect(localizarBotaoPorTexto(hospedeiro, "Salvar Banner")).toBeDefined();
 
     const arquivo = new File(["conteudo"], "imagem-em-ajuste.jpg", {
