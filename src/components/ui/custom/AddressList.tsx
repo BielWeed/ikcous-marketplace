@@ -278,29 +278,29 @@ export const AddressList = memo(function AddressList({
               }}
             >
               {/* Header */}
-              <div className="mb-2 flex items-start justify-between">
-                <div className="flex items-center gap-3">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
                   <div
                     className={`flex size-8 items-center justify-center rounded-xl shadow-sm ${selectable && selectedId === address.id ? "bg-zinc-900 text-white" : "bg-white text-zinc-400"} shrink-0`}
                   >
                     <MapPin className="size-4" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <span className="block text-sm font-bold leading-tight text-zinc-900">
                       {address.name}
                     </span>
                     {address.is_default && (
-                      <span className="mt-1 block text-[8px] font-bold uppercase tracking-widest text-emerald-500">
+                      <span className="mt-1 block text-[11px] font-bold uppercase tracking-widest text-emerald-500">
                         Endereço Principal
                       </span>
                     )}
                   </div>
                 </div>
                 {selectable && selectedId === address.id && (
-                  <CheckCircle2 className="size-5 text-zinc-900 duration-300 animate-in zoom-in-50" />
+                  <CheckCircle2 className="size-5 shrink-0 text-zinc-900 duration-300 animate-in zoom-in-50" />
                 )}
                 {(onEdit || onDelete) && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -339,7 +339,7 @@ export const AddressList = memo(function AddressList({
                 <p className="leading-relaxed">
                   {address.neighborhood}, {address.city} - {address.state}
                 </p>
-                <p className="mt-1 text-[9px] font-bold text-zinc-400">
+                <p className="mt-1 text-[11px] font-bold text-zinc-400">
                   CEP: {address.cep}
                 </p>
               </div>

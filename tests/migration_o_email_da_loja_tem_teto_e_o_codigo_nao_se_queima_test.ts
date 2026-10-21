@@ -291,17 +291,30 @@ Deno.test("reivindicar: tetos nomeados (10, 40), pedido pago conta sem recusar, 
 
 Deno.test("v2: sem DEFAULT (nenhuma sobrecarga ambigua no PostgREST) e so ela tem esse nome na arvore", () => {
   assert.doesNotMatch(cabecalho(depois.get_orders_by_otp_v2), /\bDEFAULT\b/i);
-  let definicoes = 0;
+  // So ha UMA assinatura (os 4 text, sem DEFAULT): a 20261217 a cria e as sucessoras 20261341/20261342 (e os rollbacks
+  // delas, que devolvem o corpo anterior) so a REDEFINEM com a mesma lista de argumentos — nenhuma sobrecarga nova.
+  const definicoes: Record<string, string> = {};
   for (const e of Deno.readDirSync(new URL("supabase/migrations/", DIR))) {
     if (!e.isFile || !e.name.endsWith(".sql")) continue;
     const t = ler(e.name);
-    definicoes += [
-      ...semComentarios(t).matchAll(
-        /CREATE (?:OR REPLACE )?FUNCTION public\.get_orders_by_otp_v2\(/g,
-      ),
-    ].length;
+    for (const m of semComentarios(t).matchAll(
+      /CREATE (?:OR REPLACE )?FUNCTION public\.get_orders_by_otp_v2\(([^)]*)\)/g,
+    ))
+      definicoes[e.name] = m[1].replace(/["\s]+/g, " ").trim();
   }
-  assert.equal(definicoes, 1);
+  assert.deepEqual(Object.keys(definicoes).sort(), [
+    "20261217000000_o_email_da_loja_tem_teto_e_o_codigo_nao_se_queima.sql",
+    "20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql",
+    "20261342000000_o_rastreio_do_convidado_nao_devolve_a_nota_do_pedido.sql",
+    "rollback-manual-20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql",
+    "rollback-manual-20261342000000_o_rastreio_do_convidado_nao_devolve_a_nota_do_pedido.sql",
+  ]);
+  assert.equal(
+    new Set(Object.values(definicoes)).size,
+    1,
+    JSON.stringify(definicoes),
+  );
+  assert.doesNotMatch(Object.values(definicoes)[0], /\bDEFAULT\b/i);
 });
 
 Deno.test("privilegios: tabela fechada, apoio so do servidor, v2 para o convidado, e a conferencia final aborta se errar", () => {

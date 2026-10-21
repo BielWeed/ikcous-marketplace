@@ -169,15 +169,62 @@ describe("useOrders — a fila offline não reativa pedido cancelado/entregue", 
     await reconectar();
 
     expect(rpcMock).toHaveBeenCalledTimes(1);
-    expect(rpcMock).toHaveBeenCalledWith("update_order_status_atomic", {
+    expect(rpcMock).toHaveBeenCalledWith("avancar_status_do_pedido", {
+      p_status_esperado: "pending",
       p_order_id: "pedido-A",
       p_new_status: "processing",
       p_notes: null,
-      p_silent: false,
     });
     expect(localStorage.getItem(chave)).toBeNull();
     expect(toast.success).toHaveBeenCalledWith(
       "Todas as atualizações de status de pedidos foram sincronizadas!",
+      { id: toastId },
+    );
+  });
+
+  it("M8: nao aplica processing por cima de shipping quando a fila guardou pending", async () => {
+    respostaDaReleitura = { data: { status: "shipping" }, error: null };
+    localStorage.setItem(
+      chave,
+      JSON.stringify([{ ...itemDeAvanco, statusEsperado: "pending" }]),
+    );
+    await montar();
+    await reconectar();
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(localStorage.getItem(chave)).toBeNull();
+  });
+
+  it("M8: sem linha na releitura, conserva a fila com esperado em vez de descartar por conflito", async () => {
+    respostaDaReleitura = { data: null, error: null };
+    const item = { ...itemDeAvanco, statusEsperado: "pending" };
+    localStorage.setItem(chave, JSON.stringify([item]));
+    await montar();
+    await reconectar();
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem(chave) ?? "null")).toEqual([item]);
+  });
+
+  it("M8: conflito depois da releitura descarta o item e nao tenta para sempre", async () => {
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: {
+        code: "P0001",
+        message: "pedido_status_mudou: pending -> shipping",
+      },
+    });
+    localStorage.setItem(
+      chave,
+      JSON.stringify([{ ...itemDeAvanco, statusEsperado: "pending" }]),
+    );
+    await montar();
+    await reconectar();
+    expect(rpcMock).toHaveBeenCalledWith(
+      "avancar_status_do_pedido",
+      expect.objectContaining({ p_status_esperado: "pending" }),
+    );
+    expect(localStorage.getItem(chave)).toBeNull();
+    expect(toast.info).toHaveBeenCalledWith(
+      "O pedido mudou de situação enquanto você olhava. Atualize e tente de novo.",
       { id: toastId },
     );
   });

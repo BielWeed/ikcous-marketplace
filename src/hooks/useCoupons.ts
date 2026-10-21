@@ -13,6 +13,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { arredondarParaCentavos } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon } from "@/types";
 import type { Database } from "@/types/database.types";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
@@ -96,7 +97,7 @@ async function consultarCupom(
     "validate_coupon_secure_v2" as any,
     {
       p_code: code,
-      p_subtotal: subtotal,
+      p_subtotal: arredondarParaCentavos(subtotal),
     } as any,
   );
 

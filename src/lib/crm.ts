@@ -1128,7 +1128,7 @@ export const FAIXAS_DE_SEGMENTOS_DO_CRM: readonly FaixaDeSegmentosDoCrm[] = [
  */
 export function textoDoFiltroDeSegmento(
   segmento: SegmentoCrm | null,
-  clientes: number,
+  clientes: number | null,
 ): string | null {
   if (!segmento) return null;
   return `Mostrando: ${infoDoSegmento(segmento).rotulo} · ${formatarInteiro(clientes)}`;

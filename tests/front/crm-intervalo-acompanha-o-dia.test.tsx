@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+// A geometria do carrossel é verificada à parte; esta suíte verifica dados/navegação.
+vi.mock("embla-carousel-react", () => ({
+  default: () => [vi.fn(), undefined],
+}));
 //
 // O intervalo do CRM ("Hoje", "7 dias", "30 dias"…) era calculado uma vez por
 // escolha de período: tela aberta, ou voltando do segundo plano, depois da

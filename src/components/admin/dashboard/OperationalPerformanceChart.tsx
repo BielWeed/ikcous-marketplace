@@ -1,3 +1,4 @@
+import { ExplicacaoDoRelatorio } from "@/components/admin/crm/ExplicacaoDoRelatorio";
 import { SUPERFICIE_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
@@ -9,7 +10,7 @@ import {
   avisoProdutosSemCusto,
   produtosSemCusto,
 } from "@/utils/produtos-sem-custo";
-import { Activity, BarChart3 } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { memo, useEffect, useMemo, useState, useTransition } from "react";
 import {
   Area,
@@ -138,212 +139,178 @@ export const OperationalPerformanceChart = memo(
     }, [filteredRevenueHistory, stats?.inventory?.totalCost]);
 
     return (
-      <div
+      <section
+        aria-label="Histórico da loja"
         className={cn(
           SUPERFICIE_DO_CRM,
-          "pt-4 pb-6 px-4 sm:pt-5 sm:pb-10 sm:px-10 space-y-4 sm:space-y-6 relative overflow-hidden group",
+          "relative flex min-h-[404px] min-w-0 flex-col gap-2 overflow-hidden p-4",
           className,
         )}
       >
-        <div className="absolute -bottom-20 -right-20 size-96 rounded-full bg-admin-gold/[0.02] blur-[100px]" />
-
-        <div className="relative z-10 flex flex-row items-center justify-between px-2 sm:px-0">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
-            <div>
-              <h3 className="text-sm font-semibold leading-snug text-white">
-                Performance
-              </h3>
-              <div className="mt-0.5 flex items-center gap-2">
-                <span className="size-1.5 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)]" />
-                <p className="text-xs leading-relaxed text-zinc-400">
-                  {chartMode === "revenue"
-                    ? "Fluxo operacional"
-                    : "Retorno sobre estoque"}
+        <header className="flex min-h-11 shrink-0 items-center justify-between gap-1">
+          <div className="min-w-0">
+            <h2 className="text-admin-text text-[15px] font-bold">
+              Histórico da loja
+            </h2>
+            {chartMode === "roi" && semCusto > 0 ? (
+              <div className="text-xs text-amber-300">
+                <p>{avisoProdutosSemCusto(semCusto)}</p>
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin-products")}
+                    className="min-h-11 font-bold text-admin-gold"
+                  >
+                    Cadastrar custo
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-admin-text-soft text-xs">
+                Não muda com o período lá de cima
+              </p>
+            )}
+          </div>
+          {!loading &&
+            (stats?.growth !== undefined ||
+              stats?.today?.revenueTrend !== undefined) && (
+              <span className="hidden text-[11px] font-bold text-emerald-300 sm:inline">
+                {(stats?.growth ?? stats?.today?.revenueTrend ?? 0) >= 0
+                  ? "+"
+                  : ""}
+                {(stats?.growth ?? stats?.today?.revenueTrend ?? 0).toFixed(1)}%
+              </span>
+            )}
+          <ExplicacaoDoRelatorio titulo="Histórico da loja">
+            Conta pelo dia em que o pedido foi feito, por isso pode ficar um
+            pouco diferente da Receita lá de cima.
+            {semCusto > 0 && (
+              <div className="mt-3">
+                <p>{avisoProdutosSemCusto(semCusto)}</p>
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin-products")}
+                    className="min-h-11 font-bold text-admin-gold"
+                  >
+                    Cadastrar custo
+                  </button>
+                )}
+              </div>
+            )}
+          </ExplicacaoDoRelatorio>
+        </header>
+        <div
+          role="group"
+          aria-label="Gráfico do histórico"
+          className="grid h-11 shrink-0 grid-cols-2 gap-1 rounded-xl bg-admin-raised"
+        >
+          {(["revenue", "roi"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={chartMode === mode}
+              onClick={() => handleChartModeChange(mode)}
+              className={cn(
+                "min-h-11 rounded-xl px-1 text-xs font-bold",
+                chartMode === mode
+                  ? "border border-solid border-admin-border bg-admin-surface text-admin-text"
+                  : "text-admin-text-soft",
+              )}
+            >
+              {mode === "revenue" ? "Vendas" : "Retorno do estoque"}
+            </button>
+          ))}
+        </div>
+        <div className="grid h-11 shrink-0 grid-cols-3 divide-x divide-admin-border">
+          {loading || !stats ? (
+            [0, 1, 2].map((i) => (
+              <span key={i} className="premium-shimmer m-2 h-6 rounded" />
+            ))
+          ) : chartMode === "revenue" ? (
+            <>
+              <div className="min-w-0 pr-1">
+                <p className="text-admin-text-soft text-[11px]">Faturamento</p>
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
+                  R${" "}
+                  {periodTotals.revenue.toLocaleString("pt-BR", {
+                    maximumFractionDigits: 0,
+                  })}
                 </p>
               </div>
-            </div>
-
-            {!loading &&
-              (stats?.growth !== undefined ||
-                stats?.today?.revenueTrend !== undefined) && (
-                <div className="hidden items-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 sm:flex">
-                  <Activity className="size-3 text-emerald-500" />
-                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-emerald-500">
-                    {(stats?.growth ?? stats?.today?.revenueTrend ?? 0) >= 0
-                      ? "+"
-                      : ""}
-                    {(stats?.growth ?? stats?.today?.revenueTrend ?? 0).toFixed(
-                      1,
-                    )}
-                    %
-                  </span>
-                </div>
-              )}
-          </div>
-
-          <div className="relative z-30 flex flex-col items-end gap-3 sm:flex-row sm:items-center">
-            {/* Timeframe Selectors */}
-            <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-admin-border bg-white/5 p-1">
-              {(["30", "90", "all"] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => handleTimeframeChange(t)}
-                  className={cn(
-                    "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all select-none",
-                    timeframe === t
-                      ? "bg-white text-black shadow-lg"
-                      : "text-zinc-400 hover:text-white hover:bg-white/5",
-                  )}
-                >
-                  {t === "all" ? "Tudo" : `${t}D`}
-                </button>
-              ))}
-            </div>
-
-            {/* Toggle Chart Mode Buttons */}
-            <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1 rounded-2xl border border-admin-border bg-white/5 p-1 sm:gap-2">
-              <button
-                onClick={() => handleChartModeChange("revenue")}
-                className={cn(
-                  "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all select-none",
-                  chartMode === "revenue"
-                    ? "bg-white text-black shadow-lg"
-                    : "text-zinc-400 hover:text-white hover:bg-white/5",
+              <div className="min-w-0 px-2">
+                <p className="text-admin-text-soft text-[11px]">Pedidos</p>
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
+                  {periodTotals.orders}
+                </p>
+              </div>
+              <div className="min-w-0 pl-2">
+                <p className="text-admin-text-soft text-[11px]">Valor médio</p>
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
+                  R${" "}
+                  {periodTotals.avgTicket.toLocaleString("pt-BR", {
+                    maximumFractionDigits: 0,
+                  })}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="min-w-0 pr-1">
+                <p className="text-admin-text-soft text-[11px]">
+                  Estoque (custo)
+                </p>
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
+                  R${" "}
+                  {(stats.inventory?.totalCost ?? 0).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 0,
+                  })}
+                </p>
+              </div>
+              <div className="min-w-0 px-2">
+                <p className="text-admin-text-soft text-[11px]">
+                  Lucro acumulado
+                </p>
+                <p className="text-admin-text text-base font-extrabold tabular-nums">
+                  R${" "}
+                  {processedRoiData[
+                    processedRoiData.length - 1
+                  ]?.cumulativeProfit.toLocaleString("pt-BR", {
+                    maximumFractionDigits: 0,
+                  }) ?? "0"}
+                </p>
+              </div>
+              {!!stats.inventory?.totalCost &&
+                stats.inventory.totalCost > 0 && (
+                  <div className="min-w-0 pl-2">
+                    <p className="text-admin-text-soft text-[11px]">
+                      Recuperado
+                    </p>
+                    <p className="text-admin-text text-base font-extrabold tabular-nums">
+                      {(
+                        ((processedRoiData[processedRoiData.length - 1]
+                          ?.cumulativeProfit ?? 0) /
+                          stats.inventory.totalCost) *
+                        100
+                      ).toFixed(0)}
+                      %
+                    </p>
+                  </div>
                 )}
-              >
-                Faturamento
-              </button>
-              <button
-                onClick={() => handleChartModeChange("roi")}
-                className={cn(
-                  "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all select-none",
-                  chartMode === "roi"
-                    ? "bg-emerald-500 text-black shadow-lg"
-                    : "text-zinc-400 hover:text-white hover:bg-white/5",
-                )}
-              >
-                Retorno do estoque
-              </button>
-            </div>
-          </div>
+            </>
+          )}
         </div>
 
-        {loading || !stats ? (
-          <div className="relative z-10 mt-2 flex h-4 animate-pulse select-none flex-wrap items-center gap-x-5 gap-y-1.5 px-2 sm:h-5 sm:px-0">
-            <div className="h-3.5 w-32 rounded-lg bg-white/5" />
-            <div className="h-3.5 w-20 rounded-lg bg-white/5" />
-            <div className="h-3.5 w-28 rounded-lg bg-white/5" />
-          </div>
-        ) : (
-          <div className="relative z-10 mt-2 flex h-auto select-none flex-wrap items-center gap-x-5 gap-y-1.5 px-2 text-[11px] font-bold uppercase tracking-wider text-zinc-400 duration-300 animate-in fade-in slide-in-from-top-2 sm:h-5 sm:px-0 sm:text-xs">
-            {chartMode === "revenue" ? (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-emerald-500" />
-                  <span>
-                    Faturamento Total:{" "}
-                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
-                      R${" "}
-                      {periodTotals.revenue.toLocaleString("pt-BR", {
-                        maximumFractionDigits: 0,
-                      })}
-                    </strong>
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-zinc-400" />
-                  <span>
-                    Pedidos:{" "}
-                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
-                      {periodTotals.orders}
-                    </strong>
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-admin-gold" />
-                  <span>
-                    Valor médio por venda:{" "}
-                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
-                      R${" "}
-                      {periodTotals.avgTicket.toLocaleString("pt-BR", {
-                        maximumFractionDigits: 0,
-                      })}
-                    </strong>
-                  </span>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" />
-                  <span>
-                    Estoque At. (Custo):{" "}
-                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
-                      R${" "}
-                      {(stats.inventory?.totalCost ?? 0).toLocaleString(
-                        "pt-BR",
-                        { maximumFractionDigits: 0 },
-                      )}
-                    </strong>
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
-                  <span>
-                    Lucro Acumulado:{" "}
-                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
-                      R${" "}
-                      {processedRoiData[
-                        processedRoiData.length - 1
-                      ]?.cumulativeProfit.toLocaleString("pt-BR", {
-                        maximumFractionDigits: 0,
-                      }) ?? "0"}
-                    </strong>
-                  </span>
-                </div>
-                {stats.inventory?.totalCost &&
-                  stats.inventory.totalCost > 0 && (
-                    <div className="flex items-center gap-1 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-extrabold normal-case text-emerald-400">
-                      <span>
-                        Recup:{" "}
-                        {(
-                          ((processedRoiData[processedRoiData.length - 1]
-                            ?.cumulativeProfit ?? 0) /
-                            stats.inventory.totalCost) *
-                          100
-                        ).toFixed(0)}
-                        %
-                      </span>
-                    </div>
-                  )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* O lucro só soma produto COM custo cadastrado (migration 20261234):
-            quem ficou de fora é dito aqui, perto do "Lucro Acumulado". */}
-        {!loading && stats && chartMode === "roi" && semCusto > 0 && (
-          <p className="relative z-10 px-2 text-[11px] leading-relaxed text-zinc-400 sm:px-0">
-            {avisoProdutosSemCusto(semCusto)}
-            {onNavigate && (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  onClick={() => onNavigate("admin-products")}
-                  className="font-semibold text-admin-gold underline-offset-2 hover:underline"
-                >
-                  Cadastrar custo
-                </button>
-              </>
-            )}
+        {!loading && stats && chartMode === "roi" && (
+          <p className="text-admin-text-soft shrink-0 text-[11px] leading-tight">
+            Lucro das vendas. Devolução parcial e estorno só são descontados na
+            aba Resultado do Financeiro.
           </p>
         )}
 
         <div
           className={cn(
-            "h-[200px] sm:h-[300px] w-full min-w-0 overflow-hidden relative z-10 px-0 transition-opacity duration-300",
+            "relative z-10 h-[150px] w-full min-w-0 shrink-0 overflow-hidden transition-opacity duration-300",
             isPending && "opacity-60",
           )}
         >
@@ -354,7 +321,7 @@ export const OperationalPerformanceChart = memo(
               <div className="flex size-16 items-center justify-center rounded-2xl border border-admin-gold/10 bg-admin-gold/5">
                 <BarChart3 className="size-8 text-admin-gold/30" />
               </div>
-              <p className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-600">
+              <p className="text-admin-text-soft text-center text-[11px] font-semibold">
                 Nenhum dado disponível no período
               </p>
             </div>
@@ -381,8 +348,11 @@ export const OperationalPerformanceChart = memo(
                     dataKey="date"
                     axisLine={false}
                     tickLine={false}
-                    fontSize={9}
-                    tick={{ fill: "#71717a", fontWeight: 900 }}
+                    fontSize={11}
+                    tick={{
+                      fill: "hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
+                      fontWeight: 500,
+                    }}
                     tickFormatter={(val) => {
                       const part = val.split("-");
                       return part.length >= 3 ? `${part[2]}/${part[1]}` : val;
@@ -392,14 +362,18 @@ export const OperationalPerformanceChart = memo(
                   <YAxis
                     axisLine={false}
                     tickLine={false}
-                    fontSize={8}
-                    tick={{ fill: "#71717a", fontWeight: 900 }}
+                    fontSize={11}
+                    tick={{
+                      fill: "hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
+                      fontWeight: 500,
+                    }}
                     tickFormatter={(val) =>
                       val >= 1000
                         ? `R$ ${(val / 1000).toFixed(0)}k`
                         : `R$ ${val}`
                     }
-                    width={45}
+                    width={48}
+                    tickCount={3}
                   />
                   <Tooltip
                     cursor={{ fill: "rgba(16, 185, 129, 0.05)", radius: 8 }}
@@ -413,7 +387,7 @@ export const OperationalPerformanceChart = memo(
                         return (
                           <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-admin-border px-2.5 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-admin-border backdrop-blur-3xl">
                             <div className="flex items-center gap-2">
-                              <span className="whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em] text-white/50">
+                              <span className="text-admin-text-soft whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em]">
                                 {data.full_date || data.date}
                               </span>
                               <div className="h-px flex-1 bg-white/10" />
@@ -423,7 +397,7 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5">
                                 <div className="size-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-white/40">
+                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
                                     Receita
                                   </span>
                                   <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
@@ -439,7 +413,7 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1">
                                 <div className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-emerald-500/50">
+                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
                                     Pedidos
                                   </span>
                                   <span className="mt-0.5 text-[11px] font-black italic leading-tight tracking-tighter text-emerald-500">
@@ -456,11 +430,10 @@ export const OperationalPerformanceChart = memo(
                   />
                   <Bar
                     dataKey="revenue"
-                    fill="#10b981"
+                    fill="hsl(var(--admin-accent))"
                     radius={[6, 6, 6, 6]}
-                    opacity={0.3}
                     barSize={20}
-                    className="cursor-pointer transition-opacity hover:opacity-60"
+                    className="cursor-pointer"
                     isAnimationActive={!isMobile}
                   />
                 </BarChart>
@@ -519,8 +492,11 @@ export const OperationalPerformanceChart = memo(
                     dataKey="date"
                     axisLine={false}
                     tickLine={false}
-                    fontSize={9}
-                    tick={{ fill: "#71717a", fontWeight: 900 }}
+                    fontSize={11}
+                    tick={{
+                      fill: "hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
+                      fontWeight: 500,
+                    }}
                     tickFormatter={(val) => {
                       const part = val.split("-");
                       return part.length >= 3 ? `${part[2]}/${part[1]}` : val;
@@ -530,14 +506,18 @@ export const OperationalPerformanceChart = memo(
                   <YAxis
                     axisLine={false}
                     tickLine={false}
-                    fontSize={8}
-                    tick={{ fill: "#71717a", fontWeight: 900 }}
+                    fontSize={11}
+                    tick={{
+                      fill: "hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
+                      fontWeight: 500,
+                    }}
                     tickFormatter={(val) =>
                       val >= 1000
                         ? `R$ ${(val / 1000).toFixed(0)}k`
                         : `R$ ${val}`
                     }
-                    width={45}
+                    width={48}
+                    tickCount={3}
                   />
                   <Tooltip
                     cursor={{
@@ -552,7 +532,7 @@ export const OperationalPerformanceChart = memo(
                         return (
                           <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-admin-border px-2.5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-admin-border backdrop-blur-3xl">
                             <div className="flex items-center gap-2">
-                              <span className="whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em] text-white/50">
+                              <span className="text-admin-text-soft whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em]">
                                 {data.full_date || data.date}
                               </span>
                               <div className="h-px flex-1 bg-white/10" />
@@ -562,7 +542,7 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5">
                                 <div className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-emerald-500/70">
+                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
                                     Lucro Acumulado
                                   </span>
                                   <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
@@ -581,7 +561,7 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5">
                                 <div className="size-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-amber-500/70">
+                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
                                     Valor Investido (Estoque)
                                   </span>
                                   <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
@@ -606,7 +586,7 @@ export const OperationalPerformanceChart = memo(
                   <Area
                     type="monotone"
                     dataKey="cumulativeProfit"
-                    stroke="#10b981"
+                    stroke="hsl(var(--admin-accent))"
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#colorProfit)"
@@ -643,7 +623,29 @@ export const OperationalPerformanceChart = memo(
             </div>
           )}
         </div>
-      </div>
+        <div
+          role="group"
+          aria-label="Janela do histórico"
+          className="mt-auto grid h-11 shrink-0 grid-cols-3 gap-1 rounded-xl bg-admin-raised"
+        >
+          {(["30", "90", "all"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              aria-pressed={timeframe === t}
+              onClick={() => handleTimeframeChange(t)}
+              className={cn(
+                "min-h-11 rounded-xl text-xs font-bold",
+                timeframe === t
+                  ? "border border-solid border-admin-border bg-admin-surface text-admin-text"
+                  : "text-admin-text-soft",
+              )}
+            >
+              {t === "all" ? "Tudo" : `${t} dias`}
+            </button>
+          ))}
+        </div>
+      </section>
     );
   },
 );

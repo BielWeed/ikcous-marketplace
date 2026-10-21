@@ -98,10 +98,17 @@ describe("nota do gráfico de categorias (par com a 20261063000000)", () => {
       // cláusula para outra frase da tela passava). A nota é localizada pelo
       // seu sujeito ("Total deste gráfico") e as cláusulas conferidas dentro
       // dela.
-      const notas = Array.from(hospedeiro.querySelectorAll("p")).map(
-        (p) => p.textContent ?? "",
+      await act(async () =>
+        hospedeiro
+          .querySelector<HTMLButtonElement>(
+            '[aria-label="Entender Vendas por categoria"]',
+          )!
+          .click(),
       );
-      const nota = notas.find((tx) => tx.includes("Total deste gráfico"));
+      const notas = Array.from(
+        document.querySelectorAll('[role="dialog"] p'),
+      ).map((p) => p.textContent ?? "");
+      const nota = notas.find((tx) => tx.includes("Total desta lista"));
       expect(nota).toBeDefined();
 
       // Cláusula atual (pós-20261063, sem o card removido em 28/09/2026):

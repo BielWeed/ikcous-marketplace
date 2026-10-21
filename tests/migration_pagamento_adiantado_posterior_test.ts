@@ -91,3 +91,65 @@ Deno.test("o helper da 270 fixa os hashes reais de ida e volta e confere a resta
     ANTIGO,
   );
 });
+
+Deno.test("a sucessora da 270 (20261349) cai ANTES dela: o helper da 270 chama o da 349 primeiro e o da 349 fixa os hashes de ida e volta", () => {
+  const texto270 = ler(`tests/banco/${MODULO}`);
+  const chamada = texto270.indexOf(
+    "desfazerReconciliacaoDoEntregueNaTransacao(",
+  );
+  assert.ok(
+    chamada > 0,
+    "falta chamar a sucessora 349 dentro do helper da 270",
+  );
+  assert.ok(
+    chamada < texto270.indexOf("PAGAMENTO_ADIANTADO.noAr", chamada),
+    "a sucessora cai antes de medir a 270",
+  );
+  const MODULO_349 = "reconciliacao-do-entregue-posterior.cjs";
+  assert.ok(
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Caminho fixo desta prova, sem entrada externa.
+    existsSync(new URL(`banco/${MODULO_349}`, import.meta.url)),
+    "falta o helper da sucessora 349",
+  );
+  const texto349 = ler(`tests/banco/${MODULO_349}`);
+  const NOME_349 =
+    "20261349000000_o_pedido_entregue_antes_da_confirmacao_entra_na_reconciliacao.sql";
+  const NOVO_349 = "350e732dbae6ba45bede77c08e0db6d8";
+  assert.ok(texto349.includes(`"${NOME_349}"`));
+  assert.ok(texto349.includes(NOVO_349), "no ar é o corpo da 349");
+  assert.ok(
+    texto349.includes("aed09ec910825168a3217b2e308824c5"),
+    "o corpo restaurado da fila é o da 270",
+  );
+  assert.ok(texto349.includes("assert.equal("));
+  assert.ok(
+    texto349.includes("return false"),
+    "uma segunda chamada não reaplica o rollback",
+  );
+  const hashFila = (sql: string) => {
+    const tag = "$candidatos$";
+    const inicio = sql.lastIndexOf(
+      "CREATE OR REPLACE FUNCTION public.pagamentos_a_reconciliar(",
+    );
+    const abre = sql.indexOf(tag, inicio) + tag.length;
+    const fecha = sql.indexOf(tag, abre);
+    return createHash("md5")
+      .update(sql.slice(abre, fecha).replace(/\r/g, ""))
+      .digest("hex");
+  };
+  assert.equal(hashFila(ler(`supabase/migrations/${NOME_349}`)), NOVO_349);
+  assert.equal(
+    hashFila(ler(`supabase/migrations/rollback-manual-${NOME_349}`)),
+    "aed09ec910825168a3217b2e308824c5",
+  );
+  // A prova P1/P2 (pagamentos-rpc-viva) também desfaz a 349 antes de medir o rollback da 270.
+  const pagamentos = ler("tests/banco/pagamentos-rpc-viva.cjs");
+  const p = pagamentos.indexOf("(P1/P2)");
+  assert.ok(p > 0);
+  assert.ok(
+    pagamentos.indexOf(
+      "await desfazerReconciliacaoDoEntregueNaTransacao(c);",
+      p,
+    ) > p,
+  );
+});

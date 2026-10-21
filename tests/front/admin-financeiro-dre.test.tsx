@@ -129,7 +129,7 @@ describe("Financeiro — DRE", () => {
 
     // O CMV avisa que parte dele é estimada pelo custo ATUAL dos produtos (o servidor diz `cmv_estimado`).
     expect(normalizar(linha("cmv").textContent)).toContain(
-      "Inclui estimativa pelo custo atual",
+      "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado",
     );
 
     // A receita bruta já abre separando app e loja física.
@@ -146,6 +146,65 @@ describe("Financeiro — DRE", () => {
     await montar({ inicio: "2026-09-01", fim: "2026-09-30" });
     expect(normalizar(linha("cmv").textContent)).not.toContain("estimativa");
     expect(normalizar(linha("cmv").textContent)).toContain("R$ 3.800,00");
+  });
+
+  it.each([true, false])(
+    "os quadros de lucro avisam da estimativa só quando cmv_estimado = %s",
+    async (estimado) => {
+      rpcFalso.mockResolvedValue({
+        data: { ...DRE, cmv_estimado: estimado },
+        error: null,
+      });
+      await montar({ inicio: "2026-09-01", fim: "2026-09-30" });
+      for (const rotulo of ["Lucro líquido", "Lucro bruto"]) {
+        const etiqueta = [
+          ...hospedeiro.querySelectorAll("[data-rotulo-do-kpi]"),
+        ].find((el) => el.textContent === rotulo)!;
+        const quadro = etiqueta.parentElement!.cloneNode(true) as HTMLElement;
+        quadro
+          .querySelectorAll(".sr-only, [hidden]")
+          .forEach((el) => el.remove());
+        const texto = normalizar(quadro.textContent);
+        const aviso =
+          "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado";
+        if (estimado) expect(texto, rotulo).toContain(aviso);
+        else expect(texto, rotulo).not.toContain("estimativa");
+        expect(texto, rotulo).toContain(
+          rotulo === "Lucro líquido"
+            ? "Margem líquida 19,0%"
+            : "Margem bruta 60,0%",
+        );
+      }
+    },
+  );
+
+  it("mês a mês preserva o crédito de custo e o soma ao custo dos outros meses", async () => {
+    rpcFalso.mockImplementation((_nome, parametros) =>
+      Promise.resolve({
+        data: {
+          ...DRE,
+          cmv:
+            parametros.p_fim === "2026-07-31"
+              ? 100
+              : parametros.p_inicio === "2026-08-01"
+                ? -60
+                : 40,
+        },
+        error: null,
+      }),
+    );
+    await montar({ inicio: "2026-07-01", fim: "2026-08-31" });
+    const mensal = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Mês a mês",
+    )!;
+    await act(async () => mensal.click());
+    await esperar();
+    const custo = [...hospedeiro.querySelectorAll("tbody tr")].find((el) =>
+      el.querySelector("th")?.textContent?.includes("Custo das mercadorias"),
+    )!;
+    expect(
+      [...custo.querySelectorAll("td")].map((el) => normalizar(el.textContent)),
+    ).toEqual(["−R$ 100,00", "R$ 60,00", "−R$ 40,00"]);
   });
 
   it("despesas fixas abrem as categorias por baixo", async () => {

@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+// A geometria do carrossel é verificada à parte; esta suíte verifica dados/navegação.
+vi.mock("embla-carousel-react", () => ({
+  default: () => [vi.fn(), undefined],
+}));
 //
 // Dashboard CRM (rota `admin-crm`, 26/09/2026). Monta a tela de verdade com
 // o Supabase dublado e prova:
@@ -226,13 +230,27 @@ describe("Dashboard CRM", () => {
       ["Mês", "2026-09-01"],
       ["Hoje", "2026-09-26"],
       ["7 dias", "2026-09-20"],
+      ["90 dias", "2026-06-29"],
       ["Ano", "2026-01-01"],
     ];
     for (const [chip, inicio] of esperados) {
       const antes = chamadasDe("crm_visao").length;
-      await act(async () => {
-        botao(hospedeiro, chip).click();
-      });
+      if (chip === "Ano" || chip === "90 dias") {
+        await act(async () =>
+          hospedeiro
+            .querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
+            .dispatchEvent(
+              new MouseEvent("pointerdown", { bubbles: true, button: 0 }),
+            ),
+        );
+        const item = [
+          ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+        ].find((e) => texto(e) === chip)!;
+        expect(item).toBeTruthy();
+        await act(async () => item.click());
+      } else {
+        await act(async () => botao(hospedeiro, chip).click());
+      }
       await esperarAte(() => chamadasDe("crm_visao").length > antes);
       expect(chamadasDe("crm_visao").at(-1)).toEqual({
         p_inicio: inicio,
@@ -244,11 +262,11 @@ describe("Dashboard CRM", () => {
 
   it('N3 da re-revisão: a legenda "vs. 30 dias antes" usa text-zinc-400, não text-zinc-500', async () => {
     await montar();
-    const legenda = Array.from(hospedeiro.querySelectorAll("p")).find((el) =>
-      texto(el).includes("vs. 30 dias antes"),
-    );
+    const legenda = Array.from(
+      hospedeiro.querySelectorAll(".metricas-painel-secundarias > div"),
+    ).find((el) => texto(el).includes("vs. 30 dias antes"));
     expect(legenda).not.toBeUndefined();
-    expect(legenda?.classList.contains("text-zinc-400")).toBe(true);
+    expect(legenda?.classList.contains("text-admin-text-soft")).toBe(true);
     expect(legenda?.classList.contains("text-zinc-500")).toBe(false);
   });
 
@@ -261,7 +279,11 @@ describe("Dashboard CRM", () => {
     expect(pagina).toContain("Taxa de recompra");
     expect(pagina).toContain("33,3%");
     expect(pagina).toContain("Receita em risco");
-    expect(pagina).toContain("Histórico completo da loja");
+    expect(
+      hospedeiro.querySelector(
+        'section[aria-label="Histórico completo da loja"]',
+      ),
+    ).not.toBeNull();
     // O carrossel "Métricas principais" (KpiSummaryCards) saiu da tela
     // (28/09/2026): duplicava estes mesmos 8 números do período. Este
     // componente NÃO é dublado neste teste — se alguém voltar a importá-lo
@@ -306,8 +328,24 @@ describe("Dashboard CRM", () => {
     // visitas/produtos_vistos são SEMPRE null no banco de verdade — a nota
     // tem de citar os dois, não ficar muda (achado da revisão: a conta
     // antiga nunca comparava essas duas etapas).
-    expect(texto(painel("funil"))).toContain(
+    await act(async () =>
+      painel("funil")!
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Entender Funil do app"]',
+        )!
+        .click(),
+    );
+    expect(texto(document.querySelector('[role="dialog"]'))).toContain(
       "Visitas e produtos vistos ainda não são medidos.",
+    );
+    await act(async () =>
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[role="dialog"] button',
+        ),
+      ]
+        .find((b) => texto(b) === "Entendi")!
+        .click(),
     );
     await act(async () => botao(painel("funil")!, "Em separação").click());
     expect(onNavigate).toHaveBeenLastCalledWith("admin-orders");
@@ -396,7 +434,7 @@ describe("Dashboard CRM", () => {
     expect(tablist.className).not.toContain("overflow-x-auto");
     expect(grupoPeriodo.className).not.toContain("overflow-x-auto");
     expect(tablist.className).toContain("grid-cols-4");
-    expect(grupoPeriodo.className).toContain("grid-cols-6");
+    expect(grupoPeriodo.className).toContain("grid-cols-5");
 
     const spanCurto = (botao: HTMLElement) =>
       Array.from(botao.querySelectorAll("span")).find((s) =>
@@ -420,15 +458,25 @@ describe("Dashboard CRM", () => {
     expect(texto(spanCurto(abaVisao!)), "span do rótulo curto").toBe("Visão");
     expect(abaVisao!.getAttribute("aria-label")).toMatch(/^Visão/);
 
-    const periodo90Dias = Array.from(
-      grupoPeriodo.querySelectorAll("button"),
-    ).find((b) => texto(b).trim() === "90 dias");
-    expect(
-      periodo90Dias,
-      '"90 dias" sumiu ou virou rótulo curto ("90d"?)',
-    ).not.toBeUndefined();
-    expect(periodo90Dias!.hasAttribute("aria-label")).toBe(false);
-    expect(spanCurto(periodo90Dias!)).toBeNull();
+    const mais = grupoPeriodo.querySelector<HTMLButtonElement>(
+      '[aria-haspopup="menu"]',
+    )!;
+    expect(mais).toBeTruthy();
+    await act(async () =>
+      mais.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, button: 0 }),
+      ),
+    );
+    const periodo90Dias = [
+      ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ].find((e) => texto(e) === "90 dias");
+    expect(periodo90Dias).toBeTruthy();
+    expect(periodo90Dias!.textContent).toBe("90 dias");
+    await act(async () =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
   });
 
   it("'Ver quem pode não voltar' na Visão geral abre Clientes já filtrado", async () => {
@@ -510,6 +558,120 @@ describe("Dashboard CRM", () => {
     ) as HTMLButtonElement;
     expect(retry.className).toContain("border-solid");
   });
+
+  it.each(["grupo", "busca"])(
+    "Clientes: Todos não confunde total filtrado por %s com total geral",
+    async (filtro) => {
+      h.respostas.set("crm_clientes", {
+        data: { ...CLIENTES, total: 23 },
+        error: null,
+      });
+      await montar();
+      const aba = hospedeiro.querySelector(
+        "#crm-aba-clientes",
+      ) as HTMLButtonElement;
+      await act(async () => aba.click());
+      await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+      const painel = hospedeiro.querySelector(
+        "#crm-painel-clientes",
+      ) as HTMLElement;
+      const filtros = painel.querySelector('[aria-label="Filtrar por grupo"]')!;
+      const todos = filtros.querySelector("button")!;
+      expect(texto(todos).trim()).toBe("Todos 23");
+
+      if (filtro === "grupo") {
+        h.respostas.set("crm_clientes", {
+          data: { total: 3, clientes: [CLIENTES.clientes[1]] },
+          error: null,
+        });
+        await act(async () =>
+          botao(filtros as HTMLElement, "Podem não voltar").click(),
+        );
+        await esperarAte(() => !texto(painel).includes("Ana Souza"));
+        expect(texto(todos).trim()).toBe("Todos");
+        expect(texto(painel)).toContain("Na lista filtrada");
+        return;
+      }
+      h.respostas.set("crm_clientes", {
+        data: { total: 1, clientes: [CLIENTES.clientes[0]] },
+        error: null,
+      });
+      const campo = painel.querySelector(
+        "#crm-busca-cliente",
+      ) as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      await act(async () => {
+        setter?.call(campo, "ana");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await esperarAte(() => !texto(painel).includes("Bruno do Balcão"));
+      expect(texto(todos).trim()).toBe("Todos");
+      expect(texto(painel)).toContain("Na lista filtrada");
+    },
+    8000,
+  );
+
+  it("Clientes recebe a falha do resumo e permite buscar os grupos de novo", async () => {
+    h.respostas.set("crm_visao", {
+      data: null,
+      error: { message: "Falha de rede" },
+    });
+    await montar();
+    await act(async () =>
+      (
+        hospedeiro.querySelector("#crm-aba-clientes") as HTMLButtonElement
+      ).click(),
+    );
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    const painel = hospedeiro.querySelector(
+      "#crm-painel-clientes",
+    ) as HTMLElement;
+    expect(texto(painel)).toContain("Não deu para buscar os números");
+    const filtros = painel.querySelector('[aria-label="Filtrar por grupo"]')!;
+    expect(texto(botao(filtros as HTMLElement, "Melhores clientes"))).toContain(
+      "—",
+    );
+    h.respostas.set("crm_visao", { data: VISAO, error: null });
+    await act(async () => botao(painel, "Tentar de novo").click());
+    await esperarAte(() =>
+      texto(botao(filtros as HTMLElement, "Melhores clientes")).includes("4"),
+    );
+    expect(texto(painel)).not.toContain("Não deu para buscar os números");
+  }, 8000);
+
+  it("Clientes avisa quando a atualização dos grupos falha e preserva os dados guardados", async () => {
+    await montar();
+    await act(async () =>
+      (
+        hospedeiro.querySelector("#crm-aba-clientes") as HTMLButtonElement
+      ).click(),
+    );
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    await esperarAte(() => !botao(hospedeiro, "Sincronizar").disabled);
+    h.respostas.set("crm_visao", {
+      data: null,
+      error: { message: "Falha de rede" },
+    });
+    await act(async () => botao(hospedeiro, "Sincronizar").click());
+    const painel = hospedeiro.querySelector(
+      "#crm-painel-clientes",
+    ) as HTMLElement;
+    await esperarAte(() =>
+      texto(painel).includes(
+        "Não deu para atualizar · mostrando a última busca",
+      ),
+    );
+    const aviso = painel.querySelector('[role="alert"]') as HTMLElement;
+    expect(texto(botao(aviso, "Tentar de novo"))).toContain("Tentar de novo");
+    expect(texto(botao(painel, "Melhores clientes"))).toContain("4");
+    h.respostas.set("crm_visao", { data: VISAO, error: null });
+    await act(async () => botao(aviso, "Tentar de novo").click());
+    await esperarAte(() => !botao(hospedeiro, "Sincronizar").disabled);
+    expect(texto(painel)).not.toContain("Não deu para atualizar");
+  }, 8000);
 
   it("Clientes: 'Mostrando: Podem não voltar · N' usa o total filtrado pela busca, não o bruto do segmento", async () => {
     // esperarAte mede o próprio timeout com Date.now(), que este describe

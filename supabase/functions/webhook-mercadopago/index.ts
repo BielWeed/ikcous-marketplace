@@ -97,6 +97,7 @@ import {
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { avisarJurosSemParcelaConferida, conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import { devolucaoParcialProvaPagamento } from "../_shared/devolucao-parcial.ts";
 import { registrarDiagnosticoDoCartao } from "../_shared/diagnostico-do-cartao.ts";
 import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
 import {
@@ -1790,22 +1791,33 @@ async function handler(
     return json({ ok: true, resultado: "contestacao_no_ledger" }, 200);
   }
 
+  // P1 (21/10/2026): devolução PARCIAL de um pedido que o app ainda não
+  // confirmou. Só a rota `order` (a Orders API; é nela que `processed:
+  // partially_refunded` mapeia para `null`). A decisão precisa do pedido relido
+  // do banco, que é lido mais abaixo — por isso a resposta de "estorno parcial
+  // registrado" só sai de lá quando a regra não prova o pagamento.
+  let devolucaoParcialAAvaliar = false;
   if (statusMapeado === null) {
     // PEDIDO-05: `processed:partially_refunded` mapeia para `null` de
     // propósito — o passo acima JÁ registrou o desfecho (se houver linha
     // pendente ou refund externo). Responder diferente do "status
     // desconhecido" genérico: 200 com rótulo próprio, log info (não warn).
     if (statusDetailDoEstorno === "partially_refunded") {
-      console.log(
-        "webhook-mercadopago: estorno parcial registrado",
-        dataIdStr,
-        rota,
-        statusBrutoParaLog,
-      );
-      return json({ ok: true, resultado: "estorno_parcial_registrado" }, 200);
+      if (rota === "order" && corpoConsultado) {
+        devolucaoParcialAAvaliar = true;
+      } else {
+        console.log(
+          "webhook-mercadopago: estorno parcial registrado",
+          dataIdStr,
+          rota,
+          statusBrutoParaLog,
+        );
+        return json({ ok: true, resultado: "estorno_parcial_registrado" }, 200);
+      }
+    } else {
+      console.warn("webhook-mercadopago: status desconhecido do MP", dataIdStr, rota, statusBrutoParaLog);
+      return json({ ok: true, ignorado: "status desconhecido" }, 200);
     }
-    console.warn("webhook-mercadopago: status desconhecido do MP", dataIdStr, rota, statusBrutoParaLog);
-    return json({ ok: true, ignorado: "status desconhecido" }, 200);
   }
 
   // CORREÇÃO DOS TRÊS ELOS (achado de auditoria, 21/08/2026): `criar-pagamento`
@@ -1912,6 +1924,40 @@ async function handler(
       erroLeituraPedido,
     );
     return json({ error: "Erro ao consultar o pedido." }, 500);
+  }
+
+  // P1 (21/10/2026): DEVOLUÇÃO PARCIAL ANTES DA CONFIRMAÇÃO. O passo do ledger
+  // (acima) já registrou o dinheiro devolvido — se ele falhasse, o 500 teria
+  // saído antes de chegar aqui, então confirmar abaixo nunca precede o registro.
+  // Só se devolve dinheiro de pagamento APROVADO: uma devolução parcial
+  // concluída, de uma cobrança que é a GRAVADA no pedido, com o valor original
+  // igual ao total, sobre um pedido que ainda espera (aguardando/expirado, sem
+  // `paid_at`), prova a aprovação. Sem ela o pedido expirava em 30 min com a
+  // venda paga (o mapa traduz `processed:partially_refunded` para `null` de
+  // propósito, para a parcial não apagar a venda inteira dos relatórios — esse
+  // mapa NÃO muda). Prova aceita → segue o caminho de 'pago' deste arquivo
+  // (conferência de valor, RPC sob FOR UPDATE, efeitos), que decide 'pago' ×
+  // 'pago_apos_expirar' e é idempotente. Qualquer dúvida mantém o 200 de antes.
+  if (devolucaoParcialAAvaliar) {
+    const provaDaParcial = devolucaoParcialProvaPagamento({
+      order: corpoConsultado,
+      pedido: linhaDoPedido ? { ...(linhaDoPedido as Record<string, unknown>), id: orderId } : null,
+    });
+    if (!provaDaParcial.provado) {
+      console.log(
+        "webhook-mercadopago: estorno parcial registrado",
+        dataIdStr,
+        rota,
+        statusBrutoParaLog,
+        provaDaParcial.motivo,
+      );
+      return json({ ok: true, resultado: "estorno_parcial_registrado" }, 200);
+    }
+    console.warn(
+      "webhook-mercadopago: devolução parcial concluída ANTES da confirmação prova o pagamento — confirmando o pedido",
+      { orderId, idOrder: idParaRpc, valorOriginal: provaDaParcial.valorOriginal, devolvido: provaDaParcial.devolvido },
+    );
+    statusMapeado = "pago";
   }
 
   // A1: concluir_estorno fecha atomicamente a reserva nunca confirmada

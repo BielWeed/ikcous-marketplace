@@ -39,6 +39,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { parseValorBR } from "@/lib/financeiro";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import { mesmaCategoria } from "@/lib/gestao-de-categorias";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
@@ -484,6 +485,37 @@ export const AdminProductsView = memo(function AdminProductsView({
     };
   }, [stats, totalProducts]);
 
+  const [despesasDigitadas, setDespesasDigitadas] = useState("");
+  // Simulação explícita desta tela, vinculada ao resumo usado na confirmação.
+  // Uma resposta nova do servidor exige reconfirmar as despesas; não ratear DRE histórica.
+  const [despesasDoEstoque, setDespesasDoEstoque] = useState<{
+    base: typeof stats;
+    centavos: number;
+  } | null>(null);
+  const despesasEmReais = parseValorBR(despesasDigitadas);
+  const despesasEmCentavos =
+    despesasEmReais !== null ? Math.round(despesasEmReais * 100) : null;
+  const brutoEmCentavos =
+    financialStats.potential !== null
+      ? Math.round(financialStats.potential * 100)
+      : null;
+  const despesasValidas =
+    despesasEmCentavos !== null &&
+    despesasEmCentavos >= 0 &&
+    Number.isSafeInteger(despesasEmCentavos);
+  const podeEstimarLiquido =
+    despesasValidas &&
+    brutoEmCentavos !== null &&
+    Number.isSafeInteger(brutoEmCentavos) &&
+    Number.isSafeInteger(brutoEmCentavos - (despesasEmCentavos ?? 0));
+  const liquidoEstimado =
+    despesasDoEstoque !== null &&
+    despesasDoEstoque.base === stats &&
+    brutoEmCentavos !== null &&
+    Number.isSafeInteger(brutoEmCentavos - despesasDoEstoque.centavos)
+      ? (brutoEmCentavos - despesasDoEstoque.centavos) / 100
+      : null;
+
   const categories = useMemo(() => {
     return ["all", ...dbCategories.map((c) => c.name)];
   }, [dbCategories]);
@@ -529,12 +561,24 @@ export const AdminProductsView = memo(function AdminProductsView({
       },
       {
         id: "lucro-liquido-potencial",
-        label: "Lucro líquido potencial",
-        value: "Não calculado",
+        // O rótulo é o que o lojista vê na tela (o subtítulo é só de leitor de
+        // tela): com despesas aplicadas ele diz "estimado", e "(parcial)" vem
+        // do mesmo caminho do lucro bruto.
+        label:
+          liquidoEstimado !== null
+            ? "Lucro líquido estimado"
+            : "Lucro líquido potencial",
+        parcial: liquidoEstimado !== null && financialStats.parcial,
+        value:
+          liquidoEstimado !== null
+            ? `R$ ${liquidoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : "Não calculado",
         icon: Calculator,
         accent: "text-sky-300",
         subValue:
-          "Faltam descontos, taxas, frete, impostos e outras despesas da venda",
+          liquidoEstimado !== null
+            ? `Estimado${financialStats.parcial ? " · Parcial" : ""} · despesas informadas nesta tela`
+            : "Toque em Entender valores e informe as despesas previstas",
       },
       {
         id: "roi-portfolio",
@@ -563,7 +607,13 @@ export const AdminProductsView = memo(function AdminProductsView({
             : "Catálogo Geral",
       },
     ],
-    [financialStats, totalProducts, searchTerm, filterCategory], // C2 da 1a revisao: +1 warning sem esta dep
+    [
+      financialStats,
+      liquidoEstimado,
+      totalProducts,
+      searchTerm,
+      filterCategory,
+    ],
   );
 
   // Achado 7 da auditoria de 20/08/2026
@@ -913,8 +963,72 @@ export const AdminProductsView = memo(function AdminProductsView({
           <FolhaDoPainel
             aberta={!!expandedHelp["financial-values"]}
             onFechar={() => toggleHelp("financial-values")}
-            titulo="Entender os valores"
+            titulo="Calcular líquido do estoque"
           >
+            <form
+              className="space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!podeEstimarLiquido || despesasEmCentavos === null) return;
+                setDespesasDoEstoque({
+                  base: stats,
+                  centavos: despesasEmCentavos,
+                });
+              }}
+            >
+              <label
+                htmlFor="despesas-previstas-estoque"
+                className="block text-sm font-semibold text-white"
+              >
+                Despesas previstas (R$)
+              </label>
+              <p id="ajuda-despesas-estoque" className="text-xs text-zinc-300">
+                Total para vender os produtos com custo deste resumo: taxas,
+                frete, impostos e demais despesas. Digite 0 se não houver.
+              </p>
+              <input
+                id="despesas-previstas-estoque"
+                name="despesas-previstas-estoque"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={despesasDigitadas}
+                onChange={(event) => setDespesasDigitadas(event.target.value)}
+                aria-describedby="ajuda-despesas-estoque"
+                className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-base text-white"
+                placeholder="Ex.: 100,00"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  disabled={!podeEstimarLiquido}
+                  className="produto-principal disabled:opacity-50"
+                >
+                  Aplicar estimativa
+                </button>
+                <button
+                  type="button"
+                  className="produto-secundario"
+                  onClick={() => {
+                    setDespesasDoEstoque(null);
+                    setDespesasDigitadas("");
+                  }}
+                >
+                  Limpar estimativa
+                </button>
+              </div>
+              <p role="status" className="text-sm text-white">
+                {liquidoEstimado !== null
+                  ? `Líquido estimado${financialStats.parcial ? " (parcial)" : ""}: R$ ${liquidoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : financialStats.potential === null
+                    ? "Aguarde os custos para calcular o líquido."
+                    : "Informe as despesas e aplique a estimativa."}
+              </p>
+              <p className="text-xs text-zinc-400">
+                Simulação nesta tela. Não altera o Financeiro; confirme
+                novamente se o resumo for atualizado.
+              </p>
+            </form>
             <p role="group" aria-label="Receita bruta potencial">
               Venda de todo o estoque:{" "}
               <strong className="text-white">

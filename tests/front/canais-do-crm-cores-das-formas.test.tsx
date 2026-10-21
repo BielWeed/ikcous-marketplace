@@ -116,6 +116,11 @@ describe("CanaisDoCrm — paleta das formas de pagamento não colide com a ident
       );
     });
 
+    await act(async () =>
+      [...hospedeiro.querySelectorAll("button")]
+        .find((b) => texto(b) === "Ver todas as formas")!
+        .click(),
+    );
     const credito = corDaBarra("Cartão de crédito");
     const cartao = corDaBarra("Cartão");
     const debito = corDaBarra("Cartão de débito");
@@ -236,54 +241,30 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
     });
   }
 
-  it("resumo do período: superfície nova, rótulo em frase normal e valor de 18px branco", async () => {
+  it("resumo fixo: App e Loja em destaque; totais só no rodapé, sem o terceiro KPI duplicado", async () => {
     await montar();
-
-    const secao = hospedeiro.querySelector("section")!;
-    const superficie = secao.querySelector("div") as HTMLElement;
-    expect(superficie.classList.contains("border-admin-border")).toBe(true);
-    expect(superficie.classList.contains("bg-admin-surface")).toBe(true);
-    expect(superficie.classList.contains("bg-gradient-to-b")).toBe(true);
-    expect(superficie.classList.contains("bg-zinc-900/60")).toBe(false);
-
-    const rotulo = Array.from(secao.querySelectorAll("p")).find(
-      (p) => texto(p) === "Total vendido",
-    )!;
-    expect(rotulo.classList.contains("text-xs")).toBe(true);
-    expect(rotulo.classList.contains("font-semibold")).toBe(true);
-    expect(rotulo.classList.contains("text-zinc-300")).toBe(true);
-    expect(rotulo.classList.contains("uppercase")).toBe(false);
-
-    const valor = rotulo.nextElementSibling as HTMLElement;
-    expect(valor.classList.contains("text-white")).toBe(true);
-    // Faixa de 3 colunas (~102px úteis a 390px): 18px no celular, 20px de sm.
-    expect(valor.classList.contains("text-lg")).toBe(true);
-    expect(valor.classList.contains("sm:text-xl")).toBe(true);
-    expect(valor.classList.contains("text-[22px]")).toBe(false);
+    const resumo = hospedeiro.querySelector(".metricas-relatorio")!;
+    expect(resumo).not.toBeNull();
+    const valores = [...resumo.querySelectorAll("h3")].map((e) => texto(e));
+    expect(valores).toEqual(["R$ 800,00", "R$ 200,00"]);
+    expect(resumo.textContent).toContain("Total");
+    expect(resumo.textContent).toContain("Pedidos");
+    expect(resumo.textContent).not.toContain("Total vendido");
   });
 
-  it("bloco de canal: superfície nova e rótulos Pedidos / Valor médio em frase normal", async () => {
+  it("cada canal: dois cartões, Pedidos e Valor médio em frase normal, sem truncar dinheiro", async () => {
     await montar();
-
-    const bloco = hospedeiro.querySelector(
-      'section[aria-labelledby="crm-canais-titulo"] ul > li > div',
-    ) as HTMLElement;
-    expect(bloco.classList.contains("border-admin-border")).toBe(true);
-    expect(bloco.classList.contains("bg-admin-surface")).toBe(true);
-    expect(bloco.classList.contains("bg-gradient-to-b")).toBe(true);
-    expect(bloco.classList.contains("bg-zinc-950")).toBe(false);
-
-    const dts = Array.from(bloco.querySelectorAll("dt"));
-    expect(dts.map((d) => texto(d).trim())).toEqual([
-      "Pedidos",
-      "Valor médio por venda",
-    ]);
-    for (const dt of dts) {
-      expect(dt.classList.contains("uppercase")).toBe(false);
-      expect(dt.classList.contains("text-xs")).toBe(true);
-      expect(dt.classList.contains("text-zinc-300")).toBe(true);
+    const blocos = hospedeiro.querySelectorAll(
+      'section[aria-label="Cada canal"] li',
+    );
+    expect(blocos).toHaveLength(2);
+    for (const bloco of blocos) {
+      expect(bloco.classList.contains("bg-admin-surface")).toBe(true);
+      expect([...bloco.querySelectorAll("dt")].map((e) => texto(e))).toEqual([
+        "Pedidos",
+        "Valor médio",
+      ]);
+      expect(bloco.querySelector(".truncate")).toBeNull();
     }
-    // Nada de texto de 11px dentro do bloco.
-    expect(bloco.innerHTML).not.toMatch(/text-\[11px\]/);
   });
 });

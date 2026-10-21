@@ -37,6 +37,8 @@ import {
 type ModoDaDre = "periodo" | "mensal";
 
 const MAXIMO_DE_MESES = 12;
+const AVISO_CUSTO_ESTIMADO =
+  "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado";
 
 function RotuloDaLinha({
   linha,
@@ -55,7 +57,7 @@ function RotuloDaLinha({
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span>{linha.rotulo}</span>
       {estimado ? (
-        <Etiqueta tom="aviso">Inclui estimativa pelo custo atual</Etiqueta>
+        <Etiqueta tom="aviso">{AVISO_CUSTO_ESTIMADO}</Etiqueta>
       ) : null}
     </span>
   );
@@ -415,7 +417,16 @@ export function AbaDre({
           icone={BarChart3}
           destaque="text-violet-300"
           className="bg-admin-raised"
-          detalhe={`Margem líquida ${formatarPercentual(margemLiquida)}`}
+          detalhe={
+            <>
+              <span className="block">
+                Margem líquida {formatarPercentual(margemLiquida)}
+              </span>
+              {dados.cmvEstimado ? (
+                <Etiqueta tom="aviso">{AVISO_CUSTO_ESTIMADO}</Etiqueta>
+              ) : null}
+            </>
+          }
         >
           <Dinheiro
             valor={dados.lucroLiquido}
@@ -433,7 +444,16 @@ export function AbaDre({
           rotulo="Lucro bruto"
           icone={TrendingUp}
           destaque="text-teal-300"
-          detalhe={`Margem bruta ${formatarPercentual(margemBruta)}`}
+          detalhe={
+            <>
+              <span className="block">
+                Margem bruta {formatarPercentual(margemBruta)}
+              </span>
+              {dados.cmvEstimado ? (
+                <Etiqueta tom="aviso">{AVISO_CUSTO_ESTIMADO}</Etiqueta>
+              ) : null}
+            </>
+          }
         >
           <Dinheiro
             valor={dados.lucroBruto}

@@ -232,7 +232,9 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
   const metrica = (rotulo: string) =>
     caixa.querySelector(`[aria-label="${rotulo}"]`)?.textContent ?? "";
 
-  async function mostrarInventario(inventory: Record<string, number>) {
+  async function mostrarInventario(
+    inventory: Record<string, number | undefined>,
+  ) {
     h.rpc.mockResolvedValue({ data: { inventory }, error: null });
     await act(async () => raiz.render(tela()));
     const expandir = [...caixa.querySelectorAll("button")].find((botao) =>
@@ -294,6 +296,198 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(caixa.textContent).not.toContain("460,00");
     expect(h.rpc).toHaveBeenCalledTimes(1);
   });
+
+  async function informarDespesas(valor: string) {
+    await abrirValores();
+    const campo = document.querySelector<HTMLInputElement>(
+      'input[name="despesas-previstas-estoque"]',
+    );
+    expect(campo).not.toBeNull();
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(campo, valor);
+      campo!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const aplicar = [
+      ...document.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => b.textContent?.trim() === "Aplicar estimativa");
+    expect(aplicar).toBeDefined();
+    return aplicar!;
+  }
+
+  it.each([
+    ["10,25", "49,75"],
+    ["0", "60,00"],
+    ["70", "-10,00"],
+  ])(
+    "líquido estimado desconta despesas explícitas %s, sem usar receita sem custo",
+    async (despesas, esperado) => {
+      await mostrarInventario({
+        totalCost: 100,
+        totalValue: 160,
+        totalRevenue: 460,
+        revenueWithoutCost: 300,
+        productsWithoutCost: 1,
+        productsWithCost: 1,
+      });
+      const aplicar = await informarDespesas(despesas);
+      expect(aplicar.disabled).toBe(false);
+      await act(async () => aplicar.click());
+      expect(metrica("Lucro líquido estimado")).toContain(esperado);
+      expect(metrica("Lucro líquido estimado")).toContain("Estimado");
+      expect(metrica("Lucro líquido estimado")).toContain("Parcial");
+      expect(metrica("Lucro bruto potencial")).toContain("60,00");
+      expect(h.rpc).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // O jsdom lê o texto sr-only como se estivesse na tela; o lojista só vê o
+  // resto. Aqui se descarta tudo o que é só de leitor de tela.
+  const textoVisivel = (seletor: string) => {
+    const copia = caixa.querySelector(seletor)?.cloneNode(true) as
+      | HTMLElement
+      | undefined;
+    for (const oculto of copia?.querySelectorAll(".sr-only") ?? []) {
+      oculto.remove();
+    }
+    return copia?.textContent ?? "";
+  };
+
+  it("líquido aplicado mostra 'estimado' e '(parcial)' na tela, não só para leitor de tela", async () => {
+    await mostrarInventario({
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 460,
+      revenueWithoutCost: 300,
+      productsWithoutCost: 1,
+      productsWithCost: 1,
+    });
+    const aplicar = await informarDespesas("10,25");
+    await act(async () => aplicar.click());
+    const cartao = 'article[aria-label^="Lucro líquido"]';
+    const visivel = textoVisivel(cartao);
+    expect(visivel).toContain("49,75");
+    expect(visivel).toMatch(/estimado/i);
+    expect(visivel).toContain("(parcial)");
+    // o bruto parcial ao lado continua dizendo o mesmo
+    expect(
+      textoVisivel('article[aria-label="Lucro bruto potencial"]'),
+    ).toContain("(parcial)");
+  });
+
+  it("líquido aplicado com todos os custos conhecidos diz 'estimado' e não diz 'parcial'", async () => {
+    await mostrarInventario({
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 160,
+      revenueWithoutCost: 0,
+      productsWithoutCost: 0,
+      productsWithCost: 1,
+    });
+    const aplicar = await informarDespesas("10");
+    await act(async () => aplicar.click());
+    const visivel = textoVisivel('article[aria-label^="Lucro líquido"]');
+    expect(visivel).toContain("50,00");
+    expect(visivel).toMatch(/estimado/i);
+    expect(visivel).not.toContain("parcial");
+  });
+
+  it("antes de aplicar despesas o cartão não afirma líquido estimado", async () => {
+    await mostrarInventario({
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 160,
+      revenueWithoutCost: 0,
+      productsWithoutCost: 0,
+      productsWithCost: 1,
+    });
+    const visivel = textoVisivel('article[aria-label^="Lucro líquido"]');
+    expect(visivel).toContain("Não calculado");
+    expect(visivel).not.toMatch(/estimado/i);
+  });
+
+  it.each(["", "-1", "abc", "1,234"])(
+    "despesa inválida %s não vira zero nem líquido calculado",
+    async (despesas) => {
+      await mostrarInventario({
+        totalCost: 100,
+        totalValue: 160,
+        totalRevenue: 160,
+        revenueWithoutCost: 0,
+        productsWithoutCost: 0,
+        productsWithCost: 1,
+      });
+      const aplicar = await informarDespesas(despesas);
+      expect(aplicar.disabled).toBe(true);
+      expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
+    },
+  );
+
+  it("nova resposta de estoque invalida líquido antigo e permite limpar a simulação", async () => {
+    const inventory = {
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 160,
+      revenueWithoutCost: 0,
+      productsWithoutCost: 0,
+      productsWithCost: 1,
+    };
+    await mostrarInventario(inventory);
+    const aplicar = await informarDespesas("10");
+    await act(async () => aplicar.click());
+    expect(metrica("Lucro líquido estimado")).toContain("50,00");
+    const limpar = [
+      ...document.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => b.textContent?.trim() === "Limpar estimativa");
+    expect(limpar).toBeDefined();
+    await act(async () => limpar!.click());
+    expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
+    const novamente = await informarDespesas("0");
+    await act(async () => novamente.click());
+    expect(metrica("Lucro líquido estimado")).toContain("60,00");
+    const fechar = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Fechar"]',
+    );
+    await act(async () => fechar!.click());
+    h.rpc.mockResolvedValue({
+      data: { inventory: { ...inventory, totalCost: 120 } },
+      error: null,
+    });
+    clearAnalyticsCache();
+    await act(async () => raiz.render(tela(false)));
+    await act(async () => raiz.render(tela()));
+    expect(metrica("Lucro bruto potencial")).toContain("40,00");
+    expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
+  });
+
+  it.each([
+    {
+      totalCost: 0,
+      totalValue: 0,
+      totalRevenue: 300,
+      revenueWithoutCost: 300,
+      productsWithoutCost: 1,
+      productsWithCost: 0,
+    },
+    { totalCost: 100, totalValue: 160, totalRevenue: 460 },
+  ])(
+    "sem custo apurável, nem despesas zero autorizam líquido",
+    async (inventory) => {
+      await mostrarInventario(inventory);
+      const aplicar = await informarDespesas("0");
+      expect(aplicar.disabled).toBe(true);
+      await act(async () =>
+        document
+          .querySelector("form")!
+          .dispatchEvent(
+            new Event("submit", { bubbles: true, cancelable: true }),
+          ),
+      );
+      expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
+    },
+  );
 
   it("separa receita total, custo e lucro bruto parcial sem inventar lucro líquido", async () => {
     await mostrarInventario({

@@ -528,7 +528,9 @@ async function main() {
   );
   await sabotagem(
     "product_variants.codigo_barras com TIPO diferente",
-    "DROP INDEX public.product_variants_codigo_barras_unico; ALTER TABLE public.product_variants ALTER COLUMN codigo_barras TYPE varchar(20); CREATE UNIQUE INDEX product_variants_codigo_barras_unico ON public.product_variants (codigo_barras) WHERE codigo_barras IS NOT NULL",
+    // 20261347000000: o gatilho BEFORE UPDATE OF codigo_barras prende a coluna (0A000 "cannot alter type of a column
+    // used in a trigger definition"); sai antes do ALTER. A 9a nao olha esse gatilho, a lista que reprova nao muda.
+    "DROP TRIGGER tr_variacao_codigo_barras_livre_de_produto ON public.product_variants; DROP INDEX public.product_variants_codigo_barras_unico; ALTER TABLE public.product_variants ALTER COLUMN codigo_barras TYPE varchar(20); CREATE UNIQUE INDEX product_variants_codigo_barras_unico ON public.product_variants (codigo_barras) WHERE codigo_barras IS NOT NULL",
     ["coluna product_variants.codigo_barras"],
   );
   for (const padrao of ["0.00", "0::numeric", "(0)::numeric(10,2)"]) {

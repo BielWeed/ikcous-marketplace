@@ -76,6 +76,83 @@ describe("TopProductsList — o enfeite decorativo não vaza para fora do cartã
     vi.unstubAllGlobals();
   });
 
+  it("quatro produtos oferece ver quatro, não cinco", async () => {
+    const { TopProductsList } = await import(
+      "@/components/admin/dashboard/TopProductsList"
+    );
+    const stats = statsComUmProduto();
+    stats.topProducts = Array.from({ length: 4 }, (_, i) => ({
+      id: `p${i}`,
+      name: `Produto ${i}`,
+      quantity: 1,
+      total: 10,
+      image: "",
+    }));
+    await act(async () =>
+      raiz.render(
+        <TopProductsList stats={stats} loading={false} onNavigate={() => {}} />,
+      ),
+    );
+    const botao = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Ver os 4 produtos",
+    );
+    expect(botao).toBeDefined();
+    expect(hospedeiro.querySelectorAll("ol li")).toHaveLength(3);
+    await act(async () => botao!.click());
+    expect(hospedeiro.querySelectorAll("ol li")).toHaveLength(4);
+  });
+
+  it.each([1, 2, 3])(
+    "não oferece expandir %i categorias já visíveis",
+    async (n) => {
+      const { StrategicIntelligenceBlocks } = await import(
+        "@/components/admin/dashboard/StrategicIntelligenceBlocks"
+      );
+      await act(async () =>
+        raiz.render(
+          <StrategicIntelligenceBlocks
+            categoryData={Array.from({ length: n }, (_, i) => ({
+              name: `Categoria ${i}`,
+              value: 10,
+            }))}
+            loading={false}
+          />,
+        ),
+      );
+      expect(hospedeiro.querySelectorAll("li")).toHaveLength(n);
+      expect(
+        [...hospedeiro.querySelectorAll("button")].some((b) =>
+          b.textContent?.includes("Ver todas"),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it("quatro categorias permite abrir e recolher a quarta", async () => {
+    const { StrategicIntelligenceBlocks } = await import(
+      "@/components/admin/dashboard/StrategicIntelligenceBlocks"
+    );
+    await act(async () =>
+      raiz.render(
+        <StrategicIntelligenceBlocks
+          categoryData={Array.from({ length: 4 }, (_, i) => ({
+            name: `Categoria ${i}`,
+            value: 10,
+          }))}
+          loading={false}
+        />,
+      ),
+    );
+    const botao = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Ver todas as 4 categorias",
+    )!;
+    expect(hospedeiro.querySelectorAll("li")).toHaveLength(3);
+    await act(async () => botao.click());
+    expect(hospedeiro.querySelectorAll("li")).toHaveLength(4);
+    await act(async () => botao.click());
+    expect(hospedeiro.querySelectorAll("li")).toHaveLength(3);
+  });
+
   it("o div com deslocamento negativo (-right-20 -top-20) mora dentro de um ancestral com overflow-hidden", async () => {
     const { TopProductsList } = await import(
       "@/components/admin/dashboard/TopProductsList"

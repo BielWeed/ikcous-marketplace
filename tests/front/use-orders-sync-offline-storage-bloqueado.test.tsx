@@ -133,12 +133,12 @@ function instalarRpc(
       };
     }
     if (
-      nome === "update_order_status_atomic" &&
+      nome === "avancar_status_do_pedido" &&
       args.p_order_id === opcoes.falhaTransitoriaDe
     ) {
       return Promise.reject(new TypeError("Failed to fetch"));
     }
-    if (nome === "update_order_status_atomic")
+    if (nome === "avancar_status_do_pedido")
       opcoes.aoAplicar?.(args.p_order_id);
     return Promise.resolve({ data: null, error: null });
   });
@@ -146,7 +146,7 @@ function instalarRpc(
 
 function chamadasDaRpcDeStatus(): string[] {
   return rpc.mock.calls
-    .filter(([nome]) => nome === "update_order_status_atomic")
+    .filter(([nome]) => nome === "avancar_status_do_pedido")
     .map(([, args]) => args.p_order_id as string);
 }
 

@@ -754,7 +754,15 @@ PROVAS.push({
             ]),
           ],
         ),
-      /passa do valor pago/,
+      // 1343: o balcão (pago por fora) também respeita o saldo ainda devolvível; mesma classe de erro (22023).
+      (e) => {
+        assert.equal(e.code, "22023");
+        assert.match(
+          e.message,
+          /O reembolso \(R\$ 61\.00\) passa do que ainda pode ser devolvido deste pedido \(R\$ 60\.00\)\./,
+        );
+        return true;
+      },
     );
     const manual = await rpc(
       cliente,

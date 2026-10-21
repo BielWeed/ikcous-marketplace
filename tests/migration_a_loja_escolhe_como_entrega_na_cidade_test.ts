@@ -581,18 +581,19 @@ Deno.test("as consultas antecessoras (8e, 9a, 31a, 37a, 40a) e as provas que fix
   const c31a = lerArquivo(
     "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql",
   );
+  // (a 20261350000000, a sucessora desta, entra como o ULTIMO hash aceito de cada lista)
   assert.ok(
     c31a.includes(
-      `f.m IN ('${VIGENTE.create_marketplace_order_v23}', '${NOVO.create_marketplace_order_v23}')`,
+      `f.m IN ('${VIGENTE.create_marketplace_order_v23}', '${NOVO.create_marketplace_order_v23}', '`,
     ),
   );
-  assert.ok(c31a.includes(`'${NOVO.create_marketplace_order_v24}')`));
+  assert.ok(c31a.includes(`'${NOVO.create_marketplace_order_v24}', '`));
   const c37a = lerArquivo(
     "scripts/publicacao/consultas/37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado.sql",
   );
   assert.ok(
     c37a.includes(
-      `f.m IN ('${VIGENTE.create_marketplace_order_v24}', '${NOVO.create_marketplace_order_v24}')`,
+      `f.m IN ('${VIGENTE.create_marketplace_order_v24}', '${NOVO.create_marketplace_order_v24}', '`,
     ),
   );
   const c40a = lerArquivo(

@@ -1,6 +1,6 @@
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Label } from "@/components/ui/label";
-import { MessageCircle, Phone } from "lucide-react";
 
 // Bloco "WhatsApp da loja" de Minha loja › Contato (painel simples, D9):
 // extraído do bloco 1 da antiga tela "Atendimento", com o mesmo
@@ -57,8 +57,7 @@ export function WhatsAppDaLoja({
             para fora da linha do campo. */}
         <div className="pointer-events-none absolute left-3.5 top-[22px] flex h-5 -translate-y-1/2 items-center gap-1.5 border-r border-admin-border pr-2.5">
           <span aria-hidden="true" className="relative size-4 text-[#25d366]">
-            <MessageCircle className="size-4" />
-            <Phone className="absolute left-1 top-1 size-2" />
+            <IconeWhatsapp className="size-4" />
           </span>
           <span className="text-xs font-black leading-none text-zinc-500">
             +55

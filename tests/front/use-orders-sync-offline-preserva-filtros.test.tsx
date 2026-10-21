@@ -98,7 +98,7 @@ function instalarRpc() {
           }),
       };
     }
-    if (nome === "update_order_status_atomic") {
+    if (nome === "avancar_status_do_pedido") {
       return Promise.resolve({ data: null, error: null });
     }
     return Promise.resolve({ data: null, error: null });
@@ -189,7 +189,7 @@ describe("useOrders-2867 — sincronizar a fila offline preserva filtros e pági
     });
 
     expect(rpc).toHaveBeenCalledWith(
-      "update_order_status_atomic",
+      "avancar_status_do_pedido",
       expect.objectContaining({ p_order_id: "pedido-A" }),
     );
 

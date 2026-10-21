@@ -290,7 +290,7 @@ it("o resumo aparece uma só vez no fechamento e Cancelar fica fora da rolagem",
   expect(host.querySelector(".pdv-cancel")).not.toBeNull();
 });
 
-it.each([1, 4])(
+it.each([1, 2, 3, 4, 5])(
   "o resumo condensa %i nomes em uma linha sem duplicar a leitura",
   async (quantidade) => {
     const itens = Array.from({ length: quantidade }, (_, indice) => ({
@@ -316,8 +316,15 @@ it.each([1, 4])(
       quantidade === 1 ? "Produto 1" : "Produto 1, Produto 2",
     );
     if (quantidade > 2) {
-      expect(nomes?.lastElementChild?.textContent).toBe("+2");
+      const indicador = nomes?.lastElementChild;
+      expect(indicador?.textContent).toBe(`+${quantidade - 2}`);
+      expect(indicador?.getAttribute("role")).toBe("img");
+      expect(indicador?.getAttribute("aria-label")).toBe(
+        `Mais ${quantidade - 2} ${quantidade === 3 ? "produto" : "produtos"} na venda`,
+      );
       expect(nomes?.textContent).not.toContain("Produto 3");
+    } else {
+      expect(nomes?.children).toHaveLength(1);
     }
     const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8");
     expect(css).toMatch(/\.pdv-summary-names\s*\{[^}]*white-space:\s*nowrap/);
@@ -337,6 +344,33 @@ it("a escolha de variação mantém o título principal acessível", () => {
   expect(css).not.toMatch(
     /\.pdv\[data-etapa="escolha_de_variacao"\] \.pdv-page-heading[^}]*display:\s*none/,
   );
+});
+
+// Só trava as dimensões declaradas, inclusive em @media; o toque e o encaixe
+// na tela precisam da medição em navegador real na integração.
+it("bipar, digitar, buscar, cancelar e ajustar itens mantêm alvos de pelo menos 44px", () => {
+  const { corposDa } = regrasDoCss();
+  for (const seletor of [
+    ".pdv-touch",
+    ".pdv-modes button",
+    ".pdv .pdv-cancel[data-slot]",
+  ]) {
+    const corpos = corposDa(seletor);
+    for (const propriedade of [
+      "min-height",
+      seletor === ".pdv-touch" ? "width" : "min-width",
+    ]) {
+      const valores = corpos.flatMap((corpo) =>
+        [...corpo.matchAll(/(?:^|\s)(min-height|min-width|width):\s*(\d+)px/g)]
+          .filter((m) => m[1] === propriedade)
+          .map((m) => Number(m[2])),
+      );
+      expect(valores.length, `${seletor} ${propriedade}`).toBeGreaterThan(0);
+      for (const valor of valores) {
+        expect(valor, `${seletor} ${propriedade}`).toBeGreaterThanOrEqual(44);
+      }
+    }
+  }
 });
 
 it("controles compactos mantêm alvos de toque de pelo menos 40px", () => {
@@ -361,7 +395,7 @@ it("controles compactos mantêm alvos de toque de pelo menos 40px", () => {
       if (altura) expect(Number(altura), seletor).toBeGreaterThanOrEqual(40);
     }
   }
-  expect(css).toMatch(/\.pdv-touch\s*\{[^}]*width:\s*40px/);
+  expect(css).toMatch(/\.pdv-touch\s*\{[^}]*width:\s*44px/);
 });
 
 it("fechar e registrar usam o botão verde, nunca o principal dourado da barra", async () => {

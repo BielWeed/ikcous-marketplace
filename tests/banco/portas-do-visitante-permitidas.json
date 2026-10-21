@@ -11,6 +11,14 @@
   ],
   "funcoes": [
     {
+      "funcao": "public.avancar_status_do_pedido(p_order_id uuid, p_status_esperado text, p_new_status text, p_notes text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Avanco do painel: so admin ATUAL autenticado; compara status sob trava antes de gravar. O teste L8 inclui authenticated, nao apenas anon."
+    },
+    {
       "funcao": "public.admin_cupom_clientes(p_coupon_id uuid)",
       "executa": ["authenticated"],
       "tipo": "leitura",

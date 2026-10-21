@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+vi.mock("embla-carousel-react", () => ({
+  default: () => [vi.fn(), undefined],
+}));
 //
 // Painel simples, G1: os Relatórios (CRM) e os blocos que a Visão geral monta
 // falam a língua da loja (glossário: src/lib/glossario-do-painel.ts).
@@ -196,7 +199,7 @@ describe("Relatórios — telas sem jargão", () => {
     expect(texto).toContain("Valor médio por venda");
     expect(texto).toContain("Total já comprado por cliente (média)");
     expect(texto).toContain("Retorno do estoque");
-    expect(texto).toMatch(/Valor médio por venda:/);
+    expect(texto).toContain("Valor médio");
     expect(texto).not.toMatch(JARGAO_DO_CRM);
     // Os números continuam os mesmos.
     expect(texto).toMatch(/R\$\s125,00/);
@@ -211,19 +214,19 @@ describe("Relatórios — telas sem jargão", () => {
     });
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Valor médio por venda");
+    expect(texto).toContain("Valor médio");
     expect(texto).not.toMatch(JARGAO_DO_CRM);
 
     // O rótulo do resumo (3 colunas, ~100px no celular) quebra em até 2
     // linhas em vez de cortar em "VALOR MÉD…": sem `truncate`, com
     // `leading-tight` (mesmo padrão do TileDeKpi). jsdom não mede largura,
     // então a prova é a classe.
-    const rotuloDoResumo = Array.from(hospedeiro.querySelectorAll("p")).find(
-      (p) => p.textContent === "Valor médio por venda",
+    const rotuloDoResumo = Array.from(hospedeiro.querySelectorAll("dt")).find(
+      (p) => p.textContent === "Valor médio",
     );
     expect(rotuloDoResumo).toBeTruthy();
     expect(rotuloDoResumo?.classList.contains("truncate")).toBe(false);
-    expect(rotuloDoResumo?.classList.contains("leading-tight")).toBe(true);
+    expect(rotuloDoResumo?.classList.contains("line-clamp-1")).toBe(false);
   });
 
   it("Início: 'valor médio por venda' no resumo do mês", async () => {

@@ -6,7 +6,10 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const estado = vi.hoisted(() => ({ numero: "5511987654321" as string | null }));
+const estado = vi.hoisted(() => ({
+  numero: "5511987654321" as string | null,
+  erroLeitura: false,
+}));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: vi.fn(),
@@ -18,7 +21,10 @@ vi.mock("@/lib/supabase", () => ({
               tabela === "config_mototaxi"
                 ? { whatsapp: estado.numero, nome: "Zé" }
                 : null,
-            error: null,
+            error:
+              tabela === "config_mototaxi" && estado.erroLeitura
+                ? { message: "falha de leitura" }
+                : null,
           }),
         }),
       }),
@@ -174,6 +180,7 @@ let root: Root;
 let host: HTMLDivElement;
 beforeEach(() => {
   estado.numero = "5511987654321";
+  estado.erroLeitura = false;
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -289,13 +296,79 @@ it.each(["store-pickup", "sedex", undefined, "LOCAL-DELIVERY"])(
   async (id) => {
     await abrir({ ...pedido, shippingOptionId: id });
     expect(host.textContent).not.toContain("Enviar ao mototáxi");
+    expect(host.textContent).not.toContain(
+      "Não consegui ler o número do mototáxi agora.",
+    );
+    expect(host.textContent).not.toContain("Tentar de novo");
   },
 );
+async function abrirMototaxi(order = pedido) {
+  const { EnviarAoMototaxi } = await import(
+    "@/components/admin/orders/EnviarAoMototaxi"
+  );
+  await act(async () => {
+    root.render(<EnviarAoMototaxi order={order} loja="Loja fictícia" />);
+  });
+}
+it("avisa quando a leitura falha e relê o contato ao tentar de novo", async () => {
+  estado.erroLeitura = true;
+  await abrirMototaxi();
+  expect(host.textContent).toContain(
+    "Não consegui ler o número do mototáxi agora.",
+  );
+  expect(host.querySelector('a[aria-label="Enviar ao mototáxi"]')).toBeNull();
+  const tentar = [...host.querySelectorAll("button")].find(
+    (b) => b.textContent?.trim() === "Tentar de novo",
+  );
+  expect(tentar).toBeDefined();
+  expect(tentar!.classList.contains("min-h-11")).toBe(true);
+  estado.erroLeitura = false;
+  await act(async () => tentar!.click());
+  expect(host.textContent).not.toContain(
+    "Não consegui ler o número do mototáxi agora.",
+  );
+  expect(host.textContent).not.toContain("Tentar de novo");
+  expect(
+    host.querySelector('a[aria-label="Enviar ao mototáxi"]'),
+  ).not.toBeNull();
+});
+it.each(["store-pickup", "sedex", undefined])(
+  "não oferece nova tentativa fora de entrega local: %s",
+  async (shippingOptionId) => {
+    estado.erroLeitura = true;
+    await abrirMototaxi({ ...pedido, shippingOptionId });
+    expect(host.textContent).not.toContain(
+      "Não consegui ler o número do mototáxi agora.",
+    );
+    expect(host.textContent).not.toContain("Tentar de novo");
+    expect(host.querySelector('a[aria-label="Enviar ao mototáxi"]')).toBeNull();
+  },
+);
+it("nova leitura sem número cadastrado esconde o aviso e o despacho", async () => {
+  estado.erroLeitura = true;
+  await abrirMototaxi();
+  const tentar = [...host.querySelectorAll("button")].find(
+    (b) => b.textContent?.trim() === "Tentar de novo",
+  );
+  expect(tentar).toBeDefined();
+  estado.erroLeitura = false;
+  estado.numero = null;
+  await act(async () => tentar!.click());
+  expect(host.textContent).not.toContain(
+    "Não consegui ler o número do mototáxi agora.",
+  );
+  expect(host.textContent).not.toContain("Tentar de novo");
+  expect(host.querySelector('a[aria-label="Enviar ao mototáxi"]')).toBeNull();
+});
 it.each([null, "", "12345", "351912345678"])(
   "não mostra sem número BR válido: %s",
   async (numero) => {
     estado.numero = numero;
     await abrir();
     expect(host.textContent).not.toContain("Enviar ao mototáxi");
+    expect(host.textContent).not.toContain(
+      "Não consegui ler o número do mototáxi agora.",
+    );
+    expect(host.textContent).not.toContain("Tentar de novo");
   },
 );

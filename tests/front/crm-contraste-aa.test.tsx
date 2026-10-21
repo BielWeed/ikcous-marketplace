@@ -220,8 +220,15 @@ describe("ClientesDoCrm — receita do segmento zerado e títulos de faixa usam 
       );
     });
 
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>('button[aria-label="Grupos"]')!
+        .click(),
+    );
     const blocoCampeoes = Array.from(
-      hospedeiro.querySelectorAll("button"),
+      hospedeiro.querySelectorAll(
+        'section[aria-labelledby="crm-segmentos-titulo"] button',
+      ),
     ).find((b) => texto(b).includes("Melhores clientes"));
     expect(blocoCampeoes).not.toBeUndefined();
     const receita = Array.from(blocoCampeoes!.querySelectorAll("span")).find(

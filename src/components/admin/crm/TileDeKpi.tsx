@@ -49,6 +49,9 @@ export function TileDeKpi({
   carregando = false,
   superficie = SUPERFICIE_DO_TILE,
   className,
+  relatorio = false,
+  atencao = false,
+  ajuda,
 }: Readonly<{
   rotulo: string;
   valor: string;
@@ -59,7 +62,65 @@ export function TileDeKpi({
   carregando?: boolean;
   superficie?: string;
   className?: string;
+  relatorio?: boolean;
+  atencao?: boolean;
+  ajuda?: ReactNode;
 }>) {
+  if (relatorio) {
+    return (
+      <article
+        role="group"
+        aria-label={rotulo}
+        className={cn(
+          "relative grid h-full min-h-[112px] min-w-0 grid-rows-[42px_24px_28px] rounded-2xl border border-admin-border bg-admin-surface p-2 text-admin-text",
+          atencao && "border-amber-400 bg-amber-500/[0.08]",
+        )}
+      >
+        <div className="flex items-start justify-between gap-1">
+          <p
+            className={cn(
+              "min-w-0 font-semibold leading-[14px] text-admin-text-2",
+              rotulo.length > 30 ? "text-[11px]" : "text-xs",
+            )}
+          >
+            {rotulo}
+          </p>
+          {ajuda ?? (
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-admin-raised">
+              <Icone className={cn("size-4", corDoIcone)} aria-hidden="true" />
+            </span>
+          )}
+        </div>
+        {carregando ? (
+          <span
+            aria-hidden="true"
+            className="premium-shimmer my-1 h-5 w-20 rounded"
+          />
+        ) : (
+          <p className="text-xl font-extrabold tabular-nums leading-6">
+            {valorCompacto && valorCompacto !== valor ? (
+              <>
+                <span className="sm:hidden">{valorCompacto}</span>
+                <span className="hidden sm:inline">{valor}</span>
+              </>
+            ) : (
+              valor
+            )}
+          </p>
+        )}
+        <div className="text-admin-text-soft flex min-w-0 items-start text-[11px] leading-[14px]">
+          {carregando ? (
+            <span
+              aria-hidden="true"
+              className="premium-shimmer mt-1 h-3 w-16 rounded"
+            />
+          ) : (
+            rodape
+          )}
+        </div>
+      </article>
+    );
+  }
   return (
     <div
       // `clsx`, não `cn`: o tailwind-merge 3 lê `bg-gradient-to-b` (Tailwind 3)

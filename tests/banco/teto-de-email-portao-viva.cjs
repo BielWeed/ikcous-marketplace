@@ -47,6 +47,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+// A 20261341 e a 20261342 redefinem a v2 depois da 20261217: o pre-voo da 1217 so aceita o corpo DELA na v2, entao quem
+// reaplica a 1217 dentro da transacao desfaz antes as duas (rollbacks-manuais, byte a byte).
+const {
+  desfazerRastreioDoConvidadoNaTransacao,
+} = require("./rastreio-do-convidado-posterior.cjs");
 
 const REPO = path.resolve(__dirname, "..", "..");
 const CONSULTAS = path.join(REPO, "scripts", "publicacao", "consultas");
@@ -198,6 +203,7 @@ prova(
 prova("IDEMPOTENCIA, IDA E VOLTA e CRLF: o mesmo veredito", async () => {
   const dobro = await noEstado(
     async (c) => {
+      await desfazerRastreioDoConvidadoNaTransacao(c);
       await c.query(MIGRATION);
       await c.query(MIGRATION);
     },
@@ -208,6 +214,7 @@ prova("IDEMPOTENCIA, IDA E VOLTA e CRLF: o mesmo veredito", async () => {
   const idaEVolta = await noEstado(
     async (c) => {
       await c.query(ROLLBACK);
+      await desfazerRastreioDoConvidadoNaTransacao(c);
       await c.query(MIGRATION);
     },
     [A],
@@ -227,6 +234,7 @@ prova("IDEMPOTENCIA, IDA E VOLTA e CRLF: o mesmo veredito", async () => {
   const crlfDepois = await noEstado(
     async (c) => {
       await c.query(ROLLBACK);
+      await desfazerRastreioDoConvidadoNaTransacao(c);
       await c.query(emCRLF(MIGRATION));
       await guarda(
         "SELECT position(chr(13) in prosrc) > 0 AS aplicou FROM pg_proc WHERE oid = 'public.get_orders_by_otp_v2(text,text,text,text)'::regprocedure",
@@ -282,6 +290,7 @@ prova(
     await C.query("BEGIN");
     try {
       await C.query(MIGRATION_220);
+      await desfazerRastreioDoConvidadoNaTransacao(C);
       await C.query("SAVEPOINT reaplicar");
       await assert.rejects(C.query(MIGRATION), /conferencia 20261217/);
       await C.query("ROLLBACK TO SAVEPOINT reaplicar");

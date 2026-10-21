@@ -141,7 +141,7 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
     const botao = hospedeiro
-      .querySelector("button svg.lucide-message-circle")
+      .querySelector("button[title=WhatsApp] svg")
       ?.closest("button");
     if (!botao) throw new Error("Botão de WhatsApp não está no card.");
     await act(async () => {
@@ -151,6 +151,31 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     const url = abrirWhatsapp.mock.calls[0][0] as string;
     return decodeURIComponent(url.split("?text=")[1]);
   }
+
+  it("o card mostra o glifo oficial e mantém o destinatário e a mensagem", async () => {
+    nomeConfigurado = "Loja Teste";
+    mockOrders = [pedidoFake()];
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+    const botao = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-label="Chamar o cliente no WhatsApp"]',
+    );
+    expect(botao).not.toBeNull();
+    const svg = botao?.querySelector("svg");
+    expect(svg?.getAttribute("fill")).toBe("currentColor");
+    expect(svg?.getAttribute("aria-hidden")).toBe("true");
+    expect(svg?.querySelector("path")?.getAttribute("d")).toMatch(
+      /^M17\.472 14\.382/,
+    );
+    await act(async () => botao?.click());
+    expect(abrirWhatsapp).toHaveBeenCalledExactlyOnceWith(
+      `https://wa.me/5534999999999?text=${encodeURIComponent(
+        "Olá Cliente Teste!\n\nSeu pedido #-WHATS foi atualizado.\nStatus: Novo Pedido\n\nObrigado por comprar na Loja Teste!",
+      )}`,
+    );
+  });
 
   it("loja renomeada: a mensagem usa o nome novo, nunca o do app", async () => {
     nomeConfigurado = "  Doces da Ana  ";

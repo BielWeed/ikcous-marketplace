@@ -135,7 +135,7 @@ describe("quem compra SEM CONTA — o conferir_antes vira reenvio da mesma compr
     expect(r.acao).toBe("conferir_antes");
   });
 
-  it("recusa conhecida e falha de rede continuam com a ação que já tinham", () => {
+  it("recusa conhecida mantém sua ação; falha de rede reenvia a compra congelada", () => {
     expect(
       decidirSaidaDoCheckout(
         { code: "P0001", message: "Cupom X inválido ou expirado." },
@@ -147,6 +147,6 @@ describe("quem compra SEM CONTA — o conferir_antes vira reenvio da mesma compr
         { code: "", message: "TypeError: Failed to fetch" },
         SEM_CONTA,
       ).acao,
-    ).toBe("tentar_de_novo");
+    ).toBe("reenviar_mesma_compra");
   });
 });

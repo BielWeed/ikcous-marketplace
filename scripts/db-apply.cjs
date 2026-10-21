@@ -72,6 +72,88 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261341: a linha do codigo e travada na leitura (FOR UPDATE OF v). A 20261340 so troca expressoes de
+  // politica (ALTER POLICY), sem funcao: fica de fora do mapa, como a 20261197 e a 20261202.
+  "20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql": {
+    funcao: "get_orders_by_otp_v2",
+    esperado: [
+      "FOR UPDATE OF v",
+      "-- 20261341: a linha do codigo fica TRAVADA",
+    ],
+  },
+  "20261342000000_o_rastreio_do_convidado_nao_devolve_a_nota_do_pedido.sql": {
+    funcao: "get_orders_by_otp_v2",
+    esperado: [
+      "FOR UPDATE OF v",
+      "-- 20261342: a coluna notes NAO sai mais daqui",
+    ],
+  },
+  "20261347000000_o_codigo_de_barras_nao_repete_entre_produto_e_variacao.sql": [
+    {
+      // Gatilho de produtos: trava por codigo (a mesma chave da variacao), olha a variacao (qualquer uma, ativa
+      // ou desligada) e recusa com 23505; produto apagado nao e checado. Cada marcador conta UMA vez no corpo vivo.
+      funcao: "produto_codigo_barras_livre_de_variacao",
+      esperado: [
+        "PERFORM pg_advisory_xact_lock(hashtextextended('codigo_de_barras:' || v_codigo, 0));",
+        "FROM public.product_variants v WHERE v.codigo_barras = v_codigo",
+        "ERRCODE = '23505'",
+        "IF NEW.deleted_at IS NOT NULL THEN",
+        // UPSERT identico (ON CONFLICT (id) DO UPDATE): a mesma linha com o mesmo codigo nao e' gravacao nova.
+        "FROM public.produtos x WHERE x.id = NEW.id AND x.codigo_barras = v_codigo",
+      ],
+    },
+    {
+      // Gatilho de product_variants: mesma trava, olha so produto NAO apagado e recusa com 23505.
+      funcao: "variacao_codigo_barras_livre_de_produto",
+      esperado: [
+        "PERFORM pg_advisory_xact_lock(hashtextextended('codigo_de_barras:' || v_codigo, 0));",
+        "FROM public.produtos p WHERE p.codigo_barras = v_codigo AND p.deleted_at IS NULL",
+        "FROM public.product_variants x WHERE x.id = NEW.id AND x.codigo_barras = v_codigo",
+        "ERRCODE = '23505'",
+      ],
+    },
+  ],
+  "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        // D2: a leitura do passo 3 tranca a variacao E o produto. Uma vez, e CODIGO (o comentario da edicao nao repete
+        // a frase inteira com o ponto e virgula).
+        { texto: "FOR NO KEY UPDATE OF v, p;", vezes: 1 },
+        // D4: as travas do carrinho saem em ordem global, antes do laco do passo 3: as variacoes por id e depois os
+        // produtos por id (uma vez cada, e CODIGO: os comentarios do bloco nao repetem a frase).
+        { texto: "WHERE v.id = ANY(v_trava_variantes)", vezes: 1 },
+        { texto: "WHERE p.id = ANY(v_trava_produtos)", vezes: 1 },
+        // D3: a mesma chave de idempotencia espera a primeira terminar. Uma vez, no passo 0.
+        {
+          texto:
+            "pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('pedido_online:' || p_idempotency_key::text, 0));",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        { texto: "FOR NO KEY UPDATE OF v, p;", vezes: 1 },
+        { texto: "WHERE v.id = ANY(v_trava_variantes)", vezes: 1 },
+        { texto: "WHERE p.id = ANY(v_trava_produtos)", vezes: 1 },
+        {
+          texto:
+            "pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('pedido_online:' || p_idempotency_key::text, 0));",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  "20261349000000_o_pedido_entregue_antes_da_confirmacao_entra_na_reconciliacao.sql":
+    {
+      funcao: "pagamentos_a_reconciliar",
+      esperado: [
+        "OR (o.payment_status = 'aguardando' AND o.status IN ('pending', 'processing', 'shipping', 'delivered'))",
+        "ORDER BY (o.status IN ('pending', 'processing', 'shipping', 'delivered')) DESC",
+      ],
+    },
   "20261330000000_mototaxi_privado.sql": {
     funcao: "salvar_config_mototaxi",
     esperado: [
@@ -2044,6 +2126,34 @@ const VERIFICACOES = {
   // respeitando a substituída, cada chamador trocado para a função de saldo ou para a regra, a recusa do POST da linha
   // liberada por fora, o texto novo do aviso ao cliente e, nas duas saídas de 7 dias, a frase de confirmação, a espera
   // e o risco_de_dobro. O resto (tabela, EXECUTE, atributos) o DO de conferência da migration aborta o apply se divergir.
+  "20261345000000_o_avanco_confere_o_status_esperado.sql": [
+    {
+      funcao: "avancar_status_do_pedido",
+      esperado: [
+        "IF auth.uid() IS NULL OR NOT public.is_admin_atual() THEN",
+        "WHERE id = p_order_id FOR UPDATE;",
+        "IF v_status IS DISTINCT FROM p_status_esperado THEN",
+        "RETURN public.pedido__mudar_status(",
+      ],
+    },
+  ],
+  // A 343 e a 241 contam UMA chamada ao saldo. A entrada da 175 abaixo
+  // continua medindo o corpo historico da propria migration, nao o topo vivo.
+  "20261343000000_o_reembolso_manual_respeita_a_reserva.sql": [
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        {
+          texto: "v_disponivel := public.pedido__saldo_a_estornar(v_o.id);",
+          vezes: 1,
+        },
+        {
+          texto: "passa do que ainda pode ser devolvido deste pedido (R$ %).",
+          vezes: 2,
+        },
+      ],
+    },
+  ],
   "20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql": [
     {
       funcao: "order_refund__pode_ter_saido",

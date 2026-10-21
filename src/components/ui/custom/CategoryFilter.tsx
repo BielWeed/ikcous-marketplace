@@ -42,7 +42,7 @@ export const CategoryFilter = memo(function CategoryFilter({
   }
 
   const allCategories = [
-    { id: "all", name: "Todas", icone: "todas" },
+    { id: "all", name: "Todas", icone: "todas", iconeForma: null },
     ...categories.filter((c) => c.isActive),
   ];
   return (
@@ -71,6 +71,7 @@ export const CategoryFilter = memo(function CategoryFilter({
               >
                 <IconeDaCategoria
                   icone={iconeDaCategoria(category)}
+                  forma={category.iconeForma}
                   className="size-9"
                 />
               </span>
