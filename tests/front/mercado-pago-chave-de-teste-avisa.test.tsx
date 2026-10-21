@@ -68,7 +68,7 @@ import {
 const FRASE_DO_AVISO = "Essas chaves são de TESTE";
 const PIX_FICA_DESLIGADO = "O PIX fica desligado até lá";
 const AVISO_MODO_DE_TESTE_EM_PRODUCAO =
-  "Seu app está em modo de teste: as compras reais estão indo ao Mercado Pago com um e-mail de teste no lugar do e-mail do cliente, o que pode fazer o cartão ser recusado. Peça para desligar o modo de teste (segredo MP_SANDBOX_PAYER_EMAIL) no servidor.";
+  "Seu app está em modo de teste: os pagamentos com cartão vão ao Mercado Pago com um e-mail de teste no lugar do e-mail do cliente, o que pode fazer o cartão ser recusado. Peça para desligar o modo de teste (segredo MP_SANDBOX_PAYER_EMAIL) no servidor.";
 /** O que a edge devolve hoje com chave de teste e sem modo declarado: PIX desligado + a falta. */
 const BLOQUEADA_POR_CHAVE_DE_TESTE = {
   pix_ligado: false,

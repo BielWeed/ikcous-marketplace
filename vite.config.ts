@@ -250,10 +250,12 @@ export default defineConfig(async (context): Promise<UserConfig> => {
               /\/src\/components\/ui\/(select|tabs|badge|card|dropdown-menu)\.tsx$/.test(
                 normalizedId,
               ) ||
-              // Só estes dois módulos foram medidos como exclusivos do painel.
-              // Não ampliar para hooks/componentes vizinhos: uma dependência da
-              // vitrine arrastaria TODO o painel-ui para o orçamento da loja.
-              /\/src\/lib\/(financeiro|crm)\.ts$/.test(normalizedId) ||
+              // Módulos exclusivos do painel; WhatsApp já é arrastado pelo CRM.
+              // Fixá-lo explicita a fronteira: importá-lo na vitrine levaria
+              // TODO o painel-ui para o orçamento da loja.
+              /\/src\/lib\/(financeiro|crm|whatsapp-do-cliente)\.ts$/.test(
+                normalizedId,
+              ) ||
               normalizedId.endsWith("/src/hooks/useScrollRestoration.ts") ||
               /\/src\/(components\/layouts\/AcaoDaBarra\.tsx|lib\/erro-do-painel\.ts|utils\/variante-composta\.ts)$/.test(
                 normalizedId,
