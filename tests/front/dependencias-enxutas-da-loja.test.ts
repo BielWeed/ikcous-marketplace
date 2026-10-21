@@ -45,6 +45,47 @@ const alvos = [
   [authSemWebAuthn, "@supabase/auth-js/dist/module/lib/webauthn.js"],
 ] as const;
 
+function pluginsLigados(codigo: string): string[] {
+  const fonte = ts.createSourceFile(
+    "vite.config.ts",
+    codigo,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const exportacao = fonte.statements.find(ts.isExportAssignment);
+  if (!exportacao || !ts.isCallExpression(exportacao.expression)) return [];
+  const configurar = exportacao.expression.arguments[0];
+  if (
+    !configurar ||
+    !ts.isArrowFunction(configurar) ||
+    !ts.isBlock(configurar.body)
+  )
+    return [];
+  // Só o return direto da configuração principal. Não conta preview, comentário,
+  // string ou uma chamada que não participe do array plugins retornado.
+  const retorno = configurar.body.statements.find(ts.isReturnStatement);
+  if (!retorno?.expression || !ts.isObjectLiteralExpression(retorno.expression))
+    return [];
+  const plugins = retorno.expression.properties.find(
+    (prop) =>
+      ts.isPropertyAssignment(prop) && prop.name.getText(fonte) === "plugins",
+  );
+  if (
+    !plugins ||
+    !ts.isPropertyAssignment(plugins) ||
+    !ts.isArrayLiteralExpression(plugins.initializer)
+  )
+    return [];
+  return plugins.initializer.elements.flatMap((item) =>
+    ts.isCallExpression(item) &&
+    ts.isIdentifier(item.expression) &&
+    ["zodSemJsonSchema", "authSemWebAuthn"].includes(item.expression.text)
+      ? [item.expression.text]
+      : [],
+  );
+}
+
 describe("dependências enxutas da loja — substituição fechada", () => {
   it.each([
     ["zod", zodSemJsonSchema],
@@ -113,8 +154,35 @@ describe("dependências enxutas da loja — substituição fechada", () => {
 
   it("está ligado no build real", () => {
     const config = readFileSync("vite.config.ts", "utf8");
-    expect(config).toContain("zodSemJsonSchema()");
-    expect(config).toContain("authSemWebAuthn()");
+    expect(pluginsLigados(config)).toEqual([
+      "zodSemJsonSchema",
+      "authSemWebAuthn",
+    ]);
+  });
+
+  it.each(["zodSemJsonSchema", "authSemWebAuthn"])(
+    "comentar %s na lista real faz a guarda reprovar",
+    (nome) => {
+      const config = readFileSync("vite.config.ts", "utf8");
+      const chamada = `${nome}(),`;
+      expect(config.split(chamada)).toHaveLength(2);
+      const desligado = config.replace(chamada, `// ${chamada}`);
+      expect(pluginsLigados(desligado)).not.toContain(nome);
+    },
+  );
+
+  it("ignora chamadas fora de plugins e a lista de preview", () => {
+    expect(
+      pluginsLigados(`
+export default defineConfig(async () => {
+  // zodSemJsonSchema()
+  const texto = "authSemWebAuthn()";
+  zodSemJsonSchema();
+  if (isPreview) return { plugins: [zodSemJsonSchema(), authSemWebAuthn()] };
+  return { plugins: [] };
+});
+`),
+    ).toEqual([]);
   });
 });
 
@@ -266,6 +334,71 @@ function inicializador(arquivo: string, nome: string): string {
   expect(encontrados).toHaveLength(1);
   return encontrados[0];
 }
+
+describe("zod enxuto — propriedades públicas dos schemas", () => {
+  it("preserva limites e formatos de string, number, bigint e date, inclusive em shape", async () => {
+    const entrada = `
+import { z } from "zod";
+export function propriedades() {
+ const strings = [z.string(),z.string().min(8).max(9),z.string().min(1).min(8).max(20).max(9),z.string().length(4),z.email(),z.string().regex(/teste/),z.base64()];
+ const numeros = [z.number(),z.number().min(-2).max(9),z.number().gt(0).lt(100),z.int(),z.int32(),z.float32(),z.number().multipleOf(2),z.number().multipleOf(0.5)];
+ const inteiros = [z.bigint(),z.bigint().min(-4n).max(15n),z.int64(),z.uint64()];
+ const datas = [z.date(),z.date().min(new Date("2026-01-01")).max(new Date("2026-12-31"))];
+ const cep = z.object({cep:z.string().min(8).max(9)}).shape.cep;
+ return {
+  strings:strings.map(s=>({min:s.minLength,max:s.maxLength,format:s.format})),
+  numeros:numeros.map(s=>({min:s.minValue,max:s.maxValue,isInt:s.isInt,format:s.format})),
+  inteiros:inteiros.map(s=>({min:s.minValue,max:s.maxValue,format:s.format})),
+  datas:datas.map(s=>({min:s.minDate,max:s.maxDate})),
+  cep:{min:cep.minLength,max:cep.maxLength}
+ };
+}
+`;
+    const original = await compilar(entrada);
+    const enxuto = await compilar(entrada, [zodSemJsonSchema()]);
+    const esperado = original.api.propriedades();
+    expect(esperado).toMatchObject({ cep: { min: 8, max: 9 } });
+    expect(enxuto.api.propriedades()).toEqual(esperado);
+  }, 30_000);
+
+  it("mantém aggregateChecks e auxiliares fiéis ao módulo original travado", () => {
+    const id = resolver("zod/v4/core/json-schema-processors.js");
+    const original = readFileSync(id, "utf8");
+    const inicio = "const narrowMin =";
+    const fim = "const formatMap =";
+    expect(original.split(inicio)).toHaveLength(2);
+    expect(original.split(fim)).toHaveLength(2);
+    const agregado = original.slice(
+      original.indexOf(inicio),
+      original.indexOf(fim),
+    );
+    const enxuto = (zodSemJsonSchema() as unknown as Ganchos).transform(
+      original,
+      id,
+    );
+    expect(enxuto).toContain(agregado);
+  });
+});
+
+describe("passkey retirada — sem cerimônia nem rede", () => {
+  it("recusa a chamada sem chamar a rede, conservando o diagnóstico de suporte da biblioteca", async () => {
+    const entrada = `
+import { GoTrueClient } from "@supabase/auth-js";
+export async function entrar() {
+ let chamadas = 0;
+ const auth = new GoTrueClient({url:"https://auth.example.test",persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,fetch:async()=>{chamadas++;throw new Error("Rede não deveria ser chamada");}});
+ await auth.initialize();
+ const {error} = await auth.signInWithPasskey({});
+ return {mensagem:error?.message,chamadas};
+}
+`;
+    const enxuto = await compilar(entrada, [authSemWebAuthn()]);
+    expect(await enxuto.api.entrar()).toEqual({
+      mensagem: "Browser does not support WebAuthn",
+      chamadas: 0,
+    });
+  }, 30_000);
+});
 
 describe("zod enxuto — regras reais de formulários", () => {
   it("endereço, avaliação e checkout mantêm dados, mensagens, caminhos e resolver em todos os modos", async () => {
