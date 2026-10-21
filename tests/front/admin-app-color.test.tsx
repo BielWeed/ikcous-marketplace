@@ -136,6 +136,18 @@ afterEach(() => {
 });
 
 describe("Cor do app — tela com editor real e fotografia completa", () => {
+  it("reserva no fim da tela o espaço da navegação inferior do painel", async () => {
+    await render();
+    const tela = host.firstElementChild!;
+    // jsdom não mede a rolagem: verifica o uso da reserva compartilhada,
+    // que inclui a barra, a área segura e a folga acima da navegação.
+    expect(tela.classList.contains("pb-admin")).toBe(true);
+    expect(tela.classList.contains("pb-8")).toBe(false);
+    expect(tela.contains(host.querySelector("#app-color-preview-title"))).toBe(
+      true,
+    );
+  });
+
   it("lê a cor salva; explica os usos e não muda a cor global na prévia", async () => {
     document.documentElement.style.setProperty("--primary", "valor-anterior");
     await render();
