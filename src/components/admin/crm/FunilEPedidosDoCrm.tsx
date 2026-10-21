@@ -1,3 +1,5 @@
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
+import { ExplicacaoDoRelatorio } from "@/components/admin/crm/ExplicacaoDoRelatorio";
 import {
   CLICAVEL_DO_CRM,
   CartaoDoCrm,
@@ -7,9 +9,7 @@ import {
   conversaoEmVenda,
   formatarInteiro,
   formatarPercentual,
-  funilEhMonotonico,
   idadePorExtenso,
-  notaDeEtapasNaoMedidas,
   pedidosSemVendaPaga,
   pipelineEmAberto,
   rotuloDoStatusDoPedido,
@@ -19,8 +19,6 @@ import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { EtapaDoPipeline, FunilDoCrm, VisaoDoCrm } from "@/types/crm";
 import {
-  ArrowRight,
-  ChevronDown,
   ChevronRight,
   Clock,
   type LucideIcon,
@@ -150,15 +148,15 @@ const CLASSES_DO_DESTAQUE_DE_PAGAMENTO: Record<
 > = {
   boa: {
     caixa: "border-emerald-500/20 bg-emerald-500/[0.06]",
-    rotulo: "text-emerald-300/80",
+    rotulo: "text-emerald-300",
   },
   mediana: {
     caixa: "border-amber-500/20 bg-amber-500/[0.06]",
-    rotulo: "text-amber-300/80",
+    rotulo: "text-amber-300",
   },
   baixa: {
     caixa: "border-rose-500/20 bg-rose-500/[0.06]",
-    rotulo: "text-rose-300/80",
+    rotulo: "text-rose-300",
   },
   neutra: {
     caixa: "border-admin-border bg-admin-raised",
@@ -166,199 +164,33 @@ const CLASSES_DO_DESTAQUE_DE_PAGAMENTO: Record<
   },
 };
 
-/**
- * Destaque principal do funil: vendas pagas ÷ pedidos criados — "conversão
- * em venda", não mais "taxa de pagamento". O nome antigo dava a entender
- * que um pedido pago fica pago para sempre; um estorno/cancelamento tira o
- * pedido de `vendasPagas` (`crm__vendas`), mas ele continua contado em
- * `pedidosCriados` — o texto agora vale para as duas coortes.
- */
-function DestaqueDeConversaoEmVenda({
-  criados,
-  pagos,
-  onNavigate,
-}: Readonly<{
-  criados: number | null;
-  pagos: number | null;
-  onNavigate: (view: View) => void;
-}>) {
-  if (criados == null || pagos == null) return null;
-  const conversao = conversaoEmVenda(criados, pagos);
-  const semVendaPaga = pedidosSemVendaPaga(criados, pagos);
-  const classes =
-    CLASSES_DO_DESTAQUE_DE_PAGAMENTO[tomDaTaxaDePagamento(conversao)];
-
-  return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 sm:p-4",
-        classes.caixa,
-      )}
-    >
-      <div>
-        <p
-          className={cn(
-            "text-[11px] font-black uppercase tracking-widest",
-            classes.rotulo,
-          )}
-        >
-          Conversão em venda
-        </p>
-        <p className="text-2xl font-black tabular-nums text-white">
-          {formatarPercentual(conversao)}
-        </p>
-        <p className="text-[11px] text-zinc-400">
-          vendas pagas ÷ pedidos criados
-        </p>
-      </div>
-      {semVendaPaga != null && semVendaPaga > 0 ? (
-        <button
-          type="button"
-          onClick={() => onNavigate("admin-orders")}
-          className={cn(
-            CLICAVEL_DO_CRM,
-            "flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-amber-200",
-          )}
-        >
-          {formatarInteiro(semVendaPaga)}{" "}
-          {semVendaPaga === 1
-            ? "pedido criado não virou venda paga"
-            : "pedidos criados não viraram venda paga"}
-          <ArrowRight className="size-3.5 shrink-0" aria-hidden="true" />
-          Ver pedidos
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Barras proporcionais centradas, afunilando — só faz sentido quando a
- * sequência é não-crescente (`funilEhMonotonico`). Valor 0 nunca é barra
- * preenchida: vira um trilho vazio (tracejado) com o "0" escrito, para não
- * parecer uma etapa com volume.
- */
-function FunilProporcional({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
-  const topo = medidas.reduce(
-    (maior, etapa) => Math.max(maior, etapa.valor),
-    0,
-  );
-  return (
-    <ol className="space-y-1">
-      {medidas.map((etapa, indice) => {
-        const vazio = etapa.valor === 0;
-        const largura =
-          topo > 0 ? Math.max((etapa.valor / topo) * 100, 14) : 14;
-        return (
-          <li key={etapa.chave}>
-            {indice > 0 ? (
-              <div className="flex justify-center py-1" aria-hidden="true">
-                <ChevronDown className="size-3.5 text-zinc-600" />
-              </div>
-            ) : null}
-            <div className="space-y-1.5">
-              <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="font-bold text-zinc-200">{etapa.rotulo}</span>
-                <span className="tabular-nums text-zinc-400">
-                  <strong className="font-bold text-white">
-                    {formatarInteiro(etapa.valor)}
-                  </strong>{" "}
-                  {etapa.unidade}
-                </span>
-              </div>
-              <div
-                className={cn(
-                  "mx-auto flex h-8 items-center justify-center rounded-lg text-[11px] font-black tabular-nums",
-                  vazio
-                    ? "border border-dashed border-admin-border-strong bg-transparent text-zinc-500"
-                    : "bg-gradient-to-b from-emerald-400/80 to-emerald-500/60 text-emerald-950",
-                )}
-                style={{ width: `${largura}%` }}
-              >
-                {formatarInteiro(etapa.valor)}
-              </div>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-/**
- * Fileira de cartões ligados por chevron, SEM largura proporcional —
- * usada quando `funilEhMonotonico` é falso (etapas de unidades diferentes,
- * ex.: pessoas com carrinho → pedidos criados, que pode crescer). Barra
- * proporcional aqui alargaria em vez de afunilar e pareceria quebrada.
- * SEMPRE lado a lado (3 colunas compactas), no celular e no desktop — nome
- * da etapa uma vez só, dentro do número ("13 pedidos", não "PEDIDOS
- * CRIADOS" em cima de "13" em cima de "pedidos criados" de novo embaixo).
- */
 function FunilEmEtapas({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
   return (
     <div className="flex items-stretch gap-1">
-      {medidas.map((etapa, indice) => (
-        <div key={etapa.chave} className="flex flex-1 items-stretch gap-1">
-          {indice > 0 ? (
+      {medidas.map((etapa, i) => (
+        <div
+          key={etapa.chave}
+          role="group"
+          aria-label={etapa.rotulo}
+          className="flex min-w-0 flex-1 items-center gap-1"
+        >
+          {i > 0 && (
             <ChevronRight
-              className="my-auto size-3.5 shrink-0 text-zinc-600"
               aria-hidden="true"
+              className="text-admin-text-soft size-3 shrink-0"
             />
-          ) : null}
-          <div className="min-w-0 flex-1 rounded-xl border border-admin-border bg-zinc-950/60 px-1.5 py-2 text-center">
-            <p className="truncate text-2xl font-black tabular-nums text-white">
+          )}
+          <div className="min-h-14 min-w-0 flex-1 rounded-xl border border-admin-border bg-admin-raised py-1 text-center">
+            <p className="text-admin-text text-2xl font-extrabold tabular-nums">
               {formatarInteiro(etapa.valor)}
             </p>
-            <p className="truncate text-[11px] text-zinc-400">
+            <p className="text-admin-text-soft text-[11px]">
               {etapa.unidadeCurta}
             </p>
           </div>
         </div>
       ))}
     </div>
-  );
-}
-
-function Funil({
-  funil,
-  onNavigate,
-}: Readonly<{
-  funil: FunilDoCrm;
-  onNavigate: (view: View) => void;
-}>) {
-  const medidas: EtapaMedida[] = ETAPAS_MEDIDAS.flatMap((etapa) => {
-    const valor = funil[etapa.chave];
-    return valor == null ? [] : [{ ...etapa, valor }];
-  });
-  const nota = notaDeEtapasNaoMedidas(funil);
-  const monotonico = funilEhMonotonico(medidas.map((etapa) => etapa.valor));
-
-  return (
-    <CartaoDoCrm
-      id="crm-funil"
-      titulo="Funil do app"
-      descricao="Do carrinho ao pagamento — só o que já é medido hoje."
-    >
-      <div className="space-y-4">
-        <DestaqueDeConversaoEmVenda
-          criados={funil.pedidosCriados}
-          pagos={funil.pedidosPagos}
-          onNavigate={onNavigate}
-        />
-
-        {medidas.length === 0 ? (
-          <EstadoVazioDoCrm titulo="Ainda não há dados do funil do app" />
-        ) : monotonico ? (
-          <FunilProporcional medidas={medidas} />
-        ) : (
-          <FunilEmEtapas medidas={medidas} />
-        )}
-
-        {nota ? (
-          <p className="text-[11px] leading-relaxed text-zinc-400">{nota}</p>
-        ) : null}
-      </div>
-    </CartaoDoCrm>
   );
 }
 
@@ -374,6 +206,7 @@ function Pipeline({
   // "Agora" é fotografado junto com os dados: cada leitura nova do pipeline
   // recalcula as idades (render continua puro).
   const [agora, setAgora] = useState(() => Date.now());
+  const [expandido, setExpandido] = useState(false);
   useEffect(() => {
     setAgora(Date.now());
   }, [etapas]);
@@ -382,7 +215,7 @@ function Pipeline({
     <CartaoDoCrm
       id="crm-pipeline"
       titulo="Pedidos em aberto agora"
-      descricao="Não depende do período escolhido no topo — é a fila neste instante."
+      descricao="A fila neste instante · não segue o período"
     >
       <div className="space-y-3">
         {ordenadas.length === 0 ? (
@@ -392,7 +225,7 @@ function Pipeline({
           />
         ) : (
           <ul className="space-y-1.5">
-            {ordenadas.map((etapa) => {
+            {(expandido ? ordenadas : ordenadas.slice(0, 3)).map((etapa) => {
               const estilo = estiloDoStatus(etapa.status);
               // Por extenso nos dois casos ("mais antigo há 1 dia", "parado
               // há 81 dias") — nunca a abreviação "1 d" ao lado do selo por
@@ -414,7 +247,7 @@ function Pipeline({
                     onClick={() => onNavigate("admin-orders")}
                     className={cn(
                       CLICAVEL_DO_CRM,
-                      "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
+                      "flex min-h-[52px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
                     )}
                   >
                     <span
@@ -427,7 +260,7 @@ function Pipeline({
                       <estilo.icone className={cn("size-4", estilo.cor)} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-bold text-white">
+                      <span className="text-admin-text block text-xs font-bold">
                         {rotuloDoStatusDoPedido(etapa.status)}
                       </span>
                       {parado ? (
@@ -455,10 +288,19 @@ function Pipeline({
             })}
           </ul>
         )}
+        {ordenadas.length > 3 && (
+          <button
+            type="button"
+            aria-expanded={expandido}
+            onClick={() => setExpandido(!expandido)}
+            className="text-admin-text min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold"
+          >
+            {expandido ? "Recolher" : "Ver tudo"}
+          </button>
+        )}
         {ordenadas.length > 0 ? (
           <p className="text-[11px] leading-relaxed text-zinc-400">
-            Pedidos entregues ou cancelados não aparecem aqui — já saíram da
-            fila.
+            Entregues e cancelados não aparecem aqui.
           </p>
         ) : null}
       </div>
@@ -466,29 +308,156 @@ function Pipeline({
   );
 }
 
-/** Aba "Funil e pedidos": do olhar à compra paga, e onde os pedidos param. */
+/** Mesmas etapas e mesma fila de antes, com o destaque no resumo fixo. */
 export function FunilEPedidosDoCrm({
   visao,
   carregando,
   onNavigate,
+  erro,
+  offline = false,
+  aoTentar,
 }: Readonly<{
   visao: VisaoDoCrm | null;
   carregando: boolean;
   onNavigate: (view: View) => void;
+  erro?: string | null;
+  offline?: boolean;
+  aoTentar?: () => void;
 }>) {
-  if (carregando && !visao) {
-    return (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-busy="true">
-        <div className="premium-shimmer h-72 rounded-2xl" />
-        <div className="premium-shimmer h-72 rounded-2xl" />
-      </div>
-    );
-  }
-  if (!visao) return null;
+  const funil = visao?.funil;
+  const criados = funil?.pedidosCriados ?? null;
+  const pagos = funil?.pedidosPagos ?? null;
+  const conversao =
+    criados == null || pagos == null ? null : conversaoEmVenda(criados, pagos);
+  const semVenda =
+    criados == null || pagos == null
+      ? null
+      : pedidosSemVendaPaga(criados, pagos);
+  const estilo =
+    CLASSES_DO_DESTAQUE_DE_PAGAMENTO[tomDaTaxaDePagamento(conversao)];
+  const esqueleto = carregando && !visao;
+  const falha = !esqueleto && !visao && (!!erro || offline);
+  const medidas = ETAPAS_MEDIDAS.flatMap((etapa) => {
+    const valor = funil?.[etapa.chave];
+    return valor == null ? [] : [{ ...etapa, valor }];
+  });
   return (
-    <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
-      <Funil funil={visao.funil} onNavigate={onNavigate} />
-      <Pipeline etapas={visao.pipeline} onNavigate={onNavigate} />
+    <div className="space-y-4">
+      {!carregando && erro && visao && !offline && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 text-xs text-amber-300"
+        >
+          <p>Não deu para atualizar · mostrando a última busca</p>
+          <button
+            type="button"
+            onClick={aoTentar}
+            className="min-h-11 shrink-0 px-2 font-bold"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      )}
+      <MetricasDoPainel
+        titulo="Funil do app"
+        legendasDoResumo={["Conversão em venda", "Pedidos pagos"]}
+        loading={esqueleto}
+        cards={[
+          {
+            label: "Conversão em venda",
+            value: formatarPercentual(conversao),
+            icon: ShoppingBag,
+            accent: estilo.rotulo,
+          },
+          {
+            label: "Pedidos pagos",
+            value:
+              pagos == null || criados == null
+                ? "—"
+                : `${formatarInteiro(pagos)} de ${formatarInteiro(criados)}`,
+            icon: ShoppingBag,
+          },
+        ]}
+        nota={
+          falha ? (
+            "Os números não carregaram"
+          ) : offline ? (
+            "Sem internet · números da última busca"
+          ) : semVenda != null && semVenda > 0 ? (
+            <>
+              <span>
+                {formatarInteiro(semVenda)}{" "}
+                {semVenda === 1
+                  ? "pedido não virou venda paga"
+                  : "pedidos não viraram venda paga"}
+              </span>
+              <button
+                type="button"
+                onClick={() => onNavigate("admin-orders")}
+                className="min-h-11 shrink-0 font-bold"
+              >
+                Ver pedidos ›
+              </button>
+            </>
+          ) : semVenda === 0 ? (
+            "Todo pedido criado virou venda paga"
+          ) : (
+            "Só o app · neste período"
+          )
+        }
+        relatorio={{
+          erro: falha,
+          aoTentar,
+          tom: falha
+            ? "erro"
+            : offline || (semVenda != null && semVenda > 0)
+              ? "atencao"
+              : undefined,
+          rodape: (
+            <>
+              Pessoas com carrinho{" "}
+              <strong className="text-admin-text">
+                {formatarInteiro(funil?.carrinhos)}
+              </strong>
+            </>
+          ),
+          ajuda: (
+            <ExplicacaoDoRelatorio titulo="Funil do app">
+              Visitas e produtos vistos ainda não são medidos. Só conta quem
+              entrou com conta. A conversão é vendas pagas ÷ pedidos criados.
+            </ExplicacaoDoRelatorio>
+          ),
+        }}
+      />
+      {!falha && (
+        <>
+          <CartaoDoCrm
+            id="crm-funil"
+            titulo="Do carrinho ao pagamento"
+            descricao="Só o app · neste período"
+            className="min-h-[132px]"
+          >
+            {esqueleto ? (
+              <div
+                className="premium-shimmer h-14 rounded-xl"
+                aria-hidden="true"
+              />
+            ) : medidas.length === 0 ? (
+              <EstadoVazioDoCrm titulo="Ainda não há dados do funil do app" />
+            ) : (
+              <FunilEmEtapas medidas={medidas} />
+            )}
+          </CartaoDoCrm>
+          {esqueleto ? (
+            <div
+              className="premium-shimmer min-h-[282px] rounded-2xl"
+              aria-hidden="true"
+            />
+          ) : (
+            <Pipeline etapas={visao?.pipeline ?? []} onNavigate={onNavigate} />
+          )}
+        </>
+      )}
     </div>
   );
 }

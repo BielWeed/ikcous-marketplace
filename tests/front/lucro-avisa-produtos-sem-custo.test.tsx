@@ -5,7 +5,7 @@
 // cadastrado, e devolve `productsWithoutCost` (quantos produtos vendidos
 // ficaram de fora). Sem tela nova, uma loja onde nenhum produto vendido tem
 // custo via "Nenhum dado de vendas disponível" (falso: a loja vendeu) e o
-// "Lucro Acumulado" não dizia que deixou produtos de fora.
+// "Lucro acumulado" não dizia que deixou produtos de fora.
 //
 // A tela é publicada ANTES da migration: com o campo ausente (função
 // antiga) tudo fica IGUAL a hoje — os controles abaixo provam isso.
@@ -109,13 +109,14 @@ describe("tela do lucro avisa produtos sem custo", () => {
         />,
       );
     });
-    // o "Lucro Acumulado" mora no modo "Retorno do estoque"
+    // o "Lucro acumulado" mora no modo "Retorno do estoque"
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
       b.textContent?.includes("Retorno do estoque"),
     );
     await act(async () => {
       botao?.click();
     });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
     return hospedeiro.textContent ?? "";
   }
 
@@ -131,7 +132,7 @@ describe("tela do lucro avisa produtos sem custo", () => {
   describe("OperationalPerformanceChart", () => {
     it("controle: campo ausente (função antiga) = nenhum aviso", async () => {
       const texto = await montaGrafico(stats({}));
-      expect(texto).toContain("Lucro Acumulado");
+      expect(texto).toContain("Lucro acumulado");
       expect(texto).not.toContain("sem custo");
     });
 
@@ -157,9 +158,9 @@ describe("tela do lucro avisa produtos sem custo", () => {
     it("o atalho leva à lista de produtos", async () => {
       const ir = vi.fn();
       await montaGrafico(stats({ productsWithoutCost: 2 }), ir);
-      const link = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-        b.textContent?.includes("Cadastrar custo"),
-      );
+      const link = Array.from(
+        hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
+      ).find((b) => b.textContent?.includes("Cadastrar custo"));
       expect(link).toBeTruthy();
       await act(async () => {
         link?.click();
@@ -171,7 +172,7 @@ describe("tela do lucro avisa produtos sem custo", () => {
       "tipo inesperado (%j) não quebra nem avisa",
       async (valor) => {
         const texto = await montaGrafico(stats({ productsWithoutCost: valor }));
-        expect(texto).toContain("Lucro Acumulado");
+        expect(texto).toContain("Lucro acumulado");
         expect(texto).not.toContain("sem custo");
         expect(texto).not.toContain("NaN");
       },

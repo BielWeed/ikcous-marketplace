@@ -61,8 +61,9 @@ export function AjudaDoCrm({
             </li>
             <li>
               <strong className="text-white">Funil e pedidos:</strong> de
-              visitas a pedidos pagos, com a conversão de cada passo, e os
-              pedidos por status com a idade do mais antigo parado.
+              carrinhos a pedidos pagos (visitas e produtos vistos ainda não são
+              medidos), e os pedidos por status com a idade do mais antigo
+              parado.
             </li>
           </ul>
         </div>
@@ -73,19 +74,19 @@ export function AjudaDoCrm({
           </h4>
           <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">
             <li>
-              <strong className="text-white">Performance Operacional:</strong>{" "}
+              <strong className="text-white">Histórico da loja:</strong>{" "}
               Histórico de pedidos e faturamento ao longo do tempo em gráficos
               interativos.
             </li>
             <li>
-              <strong className="text-white">
-                Inteligência Estratégica por Categoria:
-              </strong>{" "}
+              <strong className="text-white">Vendas por categoria:</strong>{" "}
               Divisão proporcional de faturamento, volume de vendas e valor
               médio por venda por categoria de produto.
             </li>
             <li>
-              <strong className="text-white">Produtos Mais Lucrativos:</strong>{" "}
+              <strong className="text-white">
+                Produtos que mais dão lucro:
+              </strong>{" "}
               Os cinco produtos com maior lucro (preço de venda menos o custo
               cadastrado) em pedidos válidos de todo o período. Venda sem custo
               (nem guardado no dia, nem cadastrado hoje) fica fora da conta do
