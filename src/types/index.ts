@@ -216,6 +216,8 @@ export interface Order {
    * `canal` (cache antigo hidratado sem o mapper): ausente = entrega.
    */
   retiradaNaLoja?: boolean;
+  /** Id canônico do snapshot customer_data.shipping_option_id; ausente em cache antigo. */
+  shippingOptionId?: string | null;
   /** O endereço da loja no momento da compra (retrato, aparado). */
   enderecoDeRetirada?: string | null;
   /**

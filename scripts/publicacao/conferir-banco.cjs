@@ -2401,6 +2401,19 @@ const ROL_DA_60 = [
   "v_store_config: colunas na ordem e leitura publica preservada",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
+  "62a-conferir-mototaxi-aplicado": [
+    "controle: catalogo publico visivel",
+    "config_mototaxi: colunas e restricoes",
+    "config_mototaxi: RLS admin atual e ACL",
+    "salvar_config_mototaxi: corpo exato e atributos",
+    "salvar_config_mototaxi: ACL restrita",
+    "contato privado: fora da configuracao publica",
+  ],
+  "62b-antes-mototaxi-ausente": [
+    "controle: catalogo publico visivel",
+    "mototaxi: tabela e RPC ausentes",
+    "contato privado: fora da configuracao publica",
+  ],
   "60a-conferir-estilo-card-frete-aplicado": ROL_DA_60,
   "60b-antes-estilo-card-frete-base-vigente": ROL_DA_60,
   "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,

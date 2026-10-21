@@ -72,6 +72,14 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  "20261330000000_mototaxi_privado.sql": {
+    funcao: "salvar_config_mototaxi",
+    esperado: [
+      "IF NOT public.is_admin() OR NOT public.is_admin_atual()",
+      "INSERT INTO public.config_mototaxi (id, whatsapp, nome)",
+      "ON CONFLICT (id) DO UPDATE SET whatsapp = EXCLUDED.whatsapp, nome = EXCLUDED.nome",
+    ],
+  },
   "20261310000000_estilo_do_card_de_frete.sql": [
     {
       funcao: "upsert_store_config",

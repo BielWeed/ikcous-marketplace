@@ -319,6 +319,12 @@
       "_comentario": "Migration ADITIVA 20261290: CREATE OR REPLACE de fin__forma_do_pedido (online sem metodo passa a online_desconhecido em vez de pix); mesma assinatura, IMMUTABLE, search_path e REVOKE; nenhuma linha de pedido e reescrita, so o rotulo derivado no Financeiro/CRM muda. Sem backfill e sem aplicacao automatica. ORDEM: depois da 20261177; o front desta release ja conhece o rotulo online_desconhecido, entao o banco vai junto da publicacao do front em CADA loja (IKCOUS e Savy). Provar 59a; se negativa, exigir 59b positiva e mais nova antes de aplicar, depois repetir 59a. 59a/59b: somente catalogo, rol fechado de 4 linhas cada; exigem respectivamente o corpo exato da 290 e o da 177 (md5 sem CR), mais assinatura/atributos e EXECUTE negado a PUBLIC, anon e authenticated. ROLLBACK: rollback-manual-20261290000000_online_sem_forma_nao_e_pix.sql restaura o corpo da 177 byte a byte e o mesmo REVOKE; pre-voo por hash recusa corpo desconhecido; nenhum dado e apagado. Provas de comportamento e do rollback em tests/banco/financeiro-viva.cjs, no Postgres efemero do CI, nao em lojas reais."
     },
     {
+      "consulta": "62a-conferir-mototaxi-aplicado",
+      "versoes": ["20261330000000"],
+      "ausenciaConfirmadaPor": "62b-antes-mototaxi-ausente",
+      "_comentario": "Contato privado do mototaxi em tabela propria com RLS admin ATUAL; nenhuma alteracao a store_config/view/upsert. Banco antes do front em cada loja; nao aplicar nesta frente. 62b exige objetos ausentes, 62a confere corpo/ACL/RLS/estrutura sem ler contato. Rollback revoga acesso sem apagar contato; nao e ausencia e nao autoriza reaplicacao automatica."
+    },
+    {
       "consulta": "60a-conferir-estilo-card-frete-aplicado",
       "versoes": ["20261310000000"],
       "ausenciaConfirmadaPor": "60b-antes-estilo-card-frete-base-vigente",

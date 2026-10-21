@@ -1,5 +1,6 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { normalizarNumeroMototaxi } from "@/components/admin/minha-loja/contato";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import {
   type ConfigDoProvedor,
@@ -16,8 +17,10 @@ import { FreteLocalBloco } from "@/components/admin/shipping/FreteLocalBloco";
 import { FreteNacionalBloco } from "@/components/admin/shipping/FreteNacionalBloco";
 import { FreteResumoFaixa } from "@/components/admin/shipping/FreteResumoFaixa";
 import { PainelRecolhivel } from "@/components/admin/shipping/PainelRecolhivel";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useMototaxi } from "@/hooks/useMototaxi";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   AVISO_DO_FRETE,
@@ -172,6 +175,31 @@ export const AdminShippingView = memo(function AdminShippingView({
 }: Readonly<AdminShippingViewProps>) {
   const { config, isLoaded, updateConfig } = useStore();
   const isOffline = useOnlineStatus();
+  const mototaxi = useMototaxi(active);
+  const [contatoMototaxi, setContatoMototaxi] = useState({
+    whatsapp: "",
+    nome: "",
+  });
+  const mototaxiPendenteRef = useRef(false);
+  useEffect(() => {
+    if (mototaxi.config && !mototaxiPendenteRef.current) {
+      setContatoMototaxi({
+        whatsapp: mototaxi.config.whatsapp ?? "",
+        nome: mototaxi.config.nome ?? "",
+      });
+    }
+  }, [mototaxi.config]);
+  const mototaxiPendente =
+    !!mototaxi.config &&
+    (contatoMototaxi.whatsapp !== (mototaxi.config.whatsapp ?? "") ||
+      contatoMototaxi.nome !== (mototaxi.config.nome ?? ""));
+  const erroMototaxi =
+    !!contatoMototaxi.whatsapp.trim() &&
+    !normalizarNumeroMototaxi(contatoMototaxi.whatsapp);
+  useEffect(() => {
+    mototaxiPendenteRef.current = mototaxiPendente;
+  }, [mototaxiPendente]);
+
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const sincronizacaoSuspensaRef = useRef(false);
@@ -499,7 +527,8 @@ export const AdminShippingView = memo(function AdminShippingView({
     );
   }, [formDataNacional, config]);
 
-  const isFormDirty = isFormDirtyLocal || isFormDirtyNacional;
+  const isFormDirty =
+    isFormDirtyLocal || isFormDirtyNacional || mototaxiPendente;
 
   // Cada metade atualiza SÓ o próprio ref — é o que a guarda de
   // sincronização de cada metade lê.
@@ -592,7 +621,8 @@ export const AdminShippingView = memo(function AdminShippingView({
       });
       return;
     }
-    if (isSaving) return;
+    if (isSaving || erroMototaxi || (mototaxiPendente && !mototaxi.config))
+      return;
     if (erroNacional) {
       // Segunda trava (a primeira é o botão desabilitado): se algo chamar
       // handleSave mesmo assim, o painel com o erro abre e ganha foco em
@@ -655,27 +685,43 @@ export const AdminShippingView = memo(function AdminShippingView({
     try {
       // Se esta gravação falhar, PARA AQUI (ADMIN-010, #94). O toast de
       // erro sai de dentro do `updateConfig`.
-      const salvou = await updateConfig({
-        freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
-        shippingCoverage: formData.shippingCoverage,
-        localDeliveryFee: Math.max(0, formData.localDeliveryFee),
-        localCepRange: alcance,
-        localDeliveryEnabled: formData.modo !== "so_retiro",
-        localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
-        ...(retiradaMudou
-          ? {
-              enabledShippingMethods: listaComRetirada(
-                config?.enabledShippingMethods,
-                formData.modo !== "entrego",
-              ),
-            }
-          : {}),
-        nationalShippingStrategy: nacionalAjustado.estrategia,
-        nationalShippingMin: nacionalAjustado.minimo,
-        nationalDiscountType: nacionalAjustado.tipoDesconto,
-        nationalDiscountValue: nacionalAjustado.valorDesconto,
-        nationalBenefitScope: nacionalAjustado.alcance,
-      });
+      if (mototaxiPendente) {
+        const salvouMototaxi = await mototaxi.salvar(contatoMototaxi);
+        if (!salvouMototaxi) {
+          setFalhaAoSalvar(true);
+          toast.error("Não foi possível salvar o mototáxi. Tente de novo.");
+          return;
+        }
+        // Os campos ficam desabilitados durante a gravação.
+        mototaxiPendenteRef.current = false;
+        setContatoMototaxi({
+          whatsapp: normalizarNumeroMototaxi(contatoMototaxi.whatsapp) ?? "",
+          nome: contatoMototaxi.nome.trim(),
+        });
+      }
+      const salvou =
+        !(isFormDirtyLocal || isFormDirtyNacional) ||
+        (await updateConfig({
+          freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
+          shippingCoverage: formData.shippingCoverage,
+          localDeliveryFee: Math.max(0, formData.localDeliveryFee),
+          localCepRange: alcance,
+          localDeliveryEnabled: formData.modo !== "so_retiro",
+          localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
+          ...(retiradaMudou
+            ? {
+                enabledShippingMethods: listaComRetirada(
+                  config?.enabledShippingMethods,
+                  formData.modo !== "entrego",
+                ),
+              }
+            : {}),
+          nationalShippingStrategy: nacionalAjustado.estrategia,
+          nationalShippingMin: nacionalAjustado.minimo,
+          nationalDiscountType: nacionalAjustado.tipoDesconto,
+          nationalDiscountValue: nacionalAjustado.valorDesconto,
+          nationalBenefitScope: nacionalAjustado.alcance,
+        }));
       if (!salvou) {
         haptic.error();
         setFalhaAoSalvar(true);
@@ -730,6 +776,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     !isOffline &&
     isFormDirty &&
     !erroNacional &&
+    !erroMototaxi &&
     !retiradaSemEndereco &&
     !soRetiroSemCep;
 
@@ -915,6 +962,97 @@ export const AdminShippingView = memo(function AdminShippingView({
                   nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
                   pagamentoPeloAppLigado={pagamentoPeloAppLigado}
                 />
+                <fieldset
+                  disabled={isOffline || isSaving || !mototaxi.config}
+                  className="mt-6 space-y-4 border-t border-admin-border pt-5"
+                >
+                  <legend className="text-sm font-bold text-zinc-200">
+                    Mototáxi{" "}
+                    <span className="ml-2 text-xs font-normal text-zinc-500">
+                      opcional
+                    </span>
+                  </legend>
+                  <p className="text-xs text-zinc-500">
+                    Quem faz as entregas para você. O número fica só no painel.
+                  </p>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="mototaxi-whatsapp"
+                      className="flex items-center gap-2 text-xs text-zinc-400"
+                    >
+                      <IconeWhatsapp className="size-4 text-emerald-400" />{" "}
+                      WhatsApp do mototáxi
+                    </label>
+                    <input
+                      id="mototaxi-whatsapp"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="off"
+                      value={contatoMototaxi.whatsapp}
+                      aria-invalid={erroMototaxi}
+                      aria-describedby={
+                        erroMototaxi ? "mototaxi-erro" : undefined
+                      }
+                      onChange={(e) => {
+                        setFalhaAoSalvar(false);
+                        setContatoMototaxi((c) => ({
+                          ...c,
+                          whatsapp: e.target.value,
+                        }));
+                      }}
+                      className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3 text-sm text-zinc-100 disabled:opacity-50"
+                      placeholder="(11) 98765-4321"
+                    />
+                    {erroMototaxi && (
+                      <p
+                        id="mototaxi-erro"
+                        role="alert"
+                        className="text-xs text-amber-300"
+                      >
+                        Informe DDD e número brasileiros válidos.
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="mototaxi-nome"
+                      className="text-xs text-zinc-400"
+                    >
+                      Nome dele (opcional)
+                    </label>
+                    <input
+                      id="mototaxi-nome"
+                      type="text"
+                      autoComplete="off"
+                      maxLength={80}
+                      value={contatoMototaxi.nome}
+                      onChange={(e) => {
+                        setFalhaAoSalvar(false);
+                        setContatoMototaxi((c) => ({
+                          ...c,
+                          nome: e.target.value,
+                        }));
+                      }}
+                      className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3 text-sm text-zinc-100 disabled:opacity-50"
+                    />
+                  </div>
+                  <p className="text-xs text-zinc-500">
+                    No pedido de entrega local aparece “Enviar ao mototáxi”, com
+                    a mensagem pronta.
+                  </p>
+                </fieldset>
+                {mototaxi.erro && (
+                  <div role="alert" className="mt-3 text-xs text-amber-300">
+                    Não foi possível carregar o mototáxi.{" "}
+                    <button
+                      type="button"
+                      onClick={mototaxi.recarregar}
+                      className="min-h-11 underline"
+                    >
+                      Tentar carregar de novo
+                    </button>
+                  </div>
+                )}
               </PainelRecolhivel>
 
               <PainelRecolhivel

@@ -14,6 +14,13 @@ export type Database = {
   };
   public: {
     Tables: {
+      // Contrato aditivo da 20261330; não consultar store_config para este dado privado.
+      config_mototaxi: {
+        Row: { id: number; whatsapp: string | null; nome: string | null };
+        Insert: { id?: number; whatsapp?: string | null; nome?: string | null };
+        Update: { id?: number; whatsapp?: string | null; nome?: string | null };
+        Relationships: [];
+      };
       _ninja_migrations: {
         Row: {
           applied_at: string | null;
@@ -3097,6 +3104,10 @@ export type Database = {
       };
     };
     Functions: {
+      salvar_config_mototaxi: {
+        Args: { p_whatsapp: string | null; p_nome: string | null };
+        Returns: Json;
+      };
       answer_question_atomic:
         | {
             Args: { p_answer: string; p_question_id: string };

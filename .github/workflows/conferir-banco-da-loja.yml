@@ -215,6 +215,8 @@ on:
           - 59b-antes-online-sem-forma-base-vigente
           - 60a-conferir-estilo-card-frete-aplicado
           - 60b-antes-estilo-card-frete-base-vigente
+          - 62a-conferir-mototaxi-aplicado
+          - 62b-antes-mototaxi-ausente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:
