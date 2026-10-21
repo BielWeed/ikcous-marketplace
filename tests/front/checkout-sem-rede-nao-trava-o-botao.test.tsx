@@ -299,6 +299,7 @@ describe("CheckoutView — sem rede não trava o botão nem manda conferir pedid
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    sessionStorage.clear();
     estadoDeRede.offline = false;
     createOrder.mockReset();
     clearCart.mockClear();
@@ -359,7 +360,7 @@ describe("CheckoutView — sem rede não trava o botão nem manda conferir pedid
     expect(createOrder).not.toHaveBeenCalled();
   });
 
-  it("falha de rede DURANTE o clique (ainda reportado como online): o painel oferece tentar_de_novo, com mensagem honesta, e o Finalizar continua HABILITADO", async () => {
+  it("falha de rede DURANTE o clique: só o reenvio congelado fica disponível", async () => {
     createOrder.mockRejectedValueOnce({
       code: "",
       message: "TypeError: Failed to fetch",
@@ -381,13 +382,13 @@ describe("CheckoutView — sem rede não trava o botão nem manda conferir pedid
     // teste que sempre passa (porque o painel nem apareceu) passaria oco.
     expect(document.querySelector('[role="alert"]')).not.toBeNull();
     expect(
-      document.querySelector('button[data-acao="tentar_de_novo"]'),
+      document.querySelector('button[data-acao="reenviar_mesma_compra"]'),
     ).not.toBeNull();
     expect(
       document.querySelector('[data-testid="aviso-como-destravar-finalizar"]'),
-    ).toBeNull();
+    ).not.toBeNull();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
-    expect(botaoFinalizar.disabled).toBe(false);
+    expect(botaoFinalizar.disabled).toBe(true);
   });
 });

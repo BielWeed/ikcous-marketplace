@@ -361,6 +361,81 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
     expect(reenviado).toEqual(primeiro);
   });
 
+  it.each([
+    { code: "PEDIDO_SEM_RESPOSTA", message: "Sem resposta" },
+    { code: "", message: "TypeError: Failed to fetch" },
+  ])(
+    "recarga após $message mantém a compra de 2 mesmo com estoque reduzido a 1",
+    async (erro) => {
+      estado.cart = [{ product: { ...produto, stock: 3 }, quantity: 2 }];
+      estado.cartTotal = 200;
+      createOrder.mockRejectedValueOnce(erro);
+      await montar();
+      await preencherEClicarFinalizar();
+      const primeiro = JSON.parse(JSON.stringify(createOrder.mock.calls[0][0]));
+      const registro = "ikcous-pedido-sem-resposta-v1";
+      expect(sessionStorage.getItem(registro)).not.toBeNull();
+
+      await act(async () => raiz.unmount());
+      estado.cart = [{ product: { ...produto, stock: 1 }, quantity: 1 }];
+      estado.cartTotal = 100;
+      raiz = createRoot(hospedeiro);
+      await montar();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(botaoTentarDeNovo()).not.toBeNull();
+      expect(botaoFinalizar()!.disabled).toBe(true);
+      expect(createOrder).toHaveBeenCalledTimes(1);
+
+      createOrder.mockResolvedValueOnce({
+        id: "pedido-1234abcd",
+        totalAmount: 200,
+      });
+      await clicarTentarDeNovo();
+      expect(createOrder.mock.calls[1][0]).toEqual(primeiro);
+      expect(createOrder.mock.calls[1][0].items[0].quantity).toBe(2);
+      expect(createOrder.mock.calls[1][0].idempotencyKey).toBe(
+        primeiro.idempotencyKey,
+      );
+      expect(sessionStorage.getItem(registro)).toBeNull();
+      expect(sessionStorage.getItem("ikcous-chave-do-pedido")).toBeNull();
+      expect(document.body.textContent).toContain("Pedido Celebrado");
+    },
+  );
+
+  it("recusa definitiva no reenvio apaga a compra guardada", async () => {
+    createOrder.mockRejectedValueOnce({ code: "PEDIDO_SEM_RESPOSTA" });
+    await montar();
+    await preencherEClicarFinalizar();
+    expect(
+      sessionStorage.getItem("ikcous-pedido-sem-resposta-v1"),
+    ).not.toBeNull();
+    createOrder.mockRejectedValueOnce({
+      code: "P0001",
+      message: "Estoque insuficiente para o produto Caneca",
+    });
+    await clicarTentarDeNovo();
+    expect(sessionStorage.getItem("ikcous-pedido-sem-resposta-v1")).toBeNull();
+    expect(botaoTentarDeNovo()).toBeNull();
+  });
+
+  it("a compra guardada expira em 30 minutos e não reaparece na recarga", async () => {
+    createOrder.mockRejectedValueOnce({ code: "PEDIDO_SEM_RESPOSTA" });
+    await montar();
+    await preencherEClicarFinalizar();
+    expect(
+      sessionStorage.getItem("ikcous-pedido-sem-resposta-v1"),
+    ).not.toBeNull();
+    await act(async () => raiz.unmount());
+    const agora = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(agora + 30 * 60_000 + 1);
+    raiz = createRoot(hospedeiro);
+    await montar();
+    expect(botaoTentarDeNovo()).toBeNull();
+    expect(sessionStorage.getItem("ikcous-pedido-sem-resposta-v1")).toBeNull();
+  });
+
   it("reenvio que falha de novo mantém o painel e a mesma chave para a terceira tentativa", async () => {
     createOrder.mockRejectedValueOnce({});
     createOrder.mockRejectedValueOnce({});
