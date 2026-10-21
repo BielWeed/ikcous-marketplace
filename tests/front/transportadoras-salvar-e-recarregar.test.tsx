@@ -50,11 +50,14 @@ type Linha = {
 };
 
 /** Edge falsa com ESTADO — o mínimo do contrato de `acoes.ts`. */
-function criarServidor(inicial: {
-  modo: "legado" | "multi";
-  ligados: string[];
-  provedores: Record<string, Linha>;
-}) {
+function criarServidor(
+  inicial: {
+    modo: "legado" | "multi";
+    ligados: string[];
+    provedores: Record<string, Linha>;
+  },
+  leituraAntigaComEmail = false,
+) {
   const estado = structuredClone(inicial);
   const servicosDaFrenet = [
     { codigo: "JADLOG_PACKAGE", transportadora: "Jadlog", servico: "Package" },
@@ -63,8 +66,12 @@ function criarServidor(inicial: {
     const corpo = opcoes?.body ?? {};
     const responder = (data: unknown) => Promise.resolve({ data, error: null });
     switch (corpo.action) {
-      case "ler_configuracao_frete":
-        return responder({ success: true, ...structuredClone(estado) });
+      case "ler_configuracao_frete": {
+        const lido = structuredClone(estado);
+        if (leituraAntigaComEmail)
+          lido.provedores.melhor_envio.contato_email = "contato@exemplo.com";
+        return responder({ success: true, ...lido });
+      }
       case "list_services":
         return responder({ success: true, servicos: servicosDaFrenet });
       case "test_credentials":
@@ -126,7 +133,7 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
 
   async function montar() {
     const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
+      "./apoio/transportadoras-isoladas"
     );
     await act(async () => {
       raiz.render(<TransportadorasSection />);
@@ -158,10 +165,10 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
   }
 
   function cartaoDe(nome: string): HTMLElement {
-    const titulo = Array.from(hospedeiro.querySelectorAll("span")).find(
-      (s) => s.textContent === `Chave de acesso — ${nome}`,
+    const titulo = hospedeiro.querySelector<HTMLButtonElement>(
+      `[aria-label="${nome}"]`,
     );
-    const cartao = titulo?.closest("div.rounded-2xl") as HTMLElement | null;
+    const cartao = titulo?.parentElement?.parentElement;
     if (!cartao) throw new Error(`cartão ${nome} não encontrado`);
     return cartao;
   }
@@ -172,17 +179,12 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
     );
   }
 
-  function caixaDoLigado(nome: string): HTMLInputElement {
-    const rotulo = Array.from(hospedeiro.querySelectorAll("label")).find(
-      (l) =>
-        l.querySelector("span.font-bold")?.textContent === nome &&
-        l.querySelector('input[type="checkbox"]'),
+  function caixaDoLigado(nome: string): HTMLButtonElement {
+    const chave = hospedeiro.querySelector<HTMLButtonElement>(
+      `[aria-label="Ligar ${nome}"]`,
     );
-    const caixa = rotulo?.querySelector(
-      'input[type="checkbox"]',
-    ) as HTMLInputElement | null;
-    if (!caixa) throw new Error(`caixa de ${nome} não encontrada`);
-    return caixa;
+    if (!chave) throw new Error(`chave de ${nome} não encontrada`);
+    return chave;
   }
 
   const LEGADO_SF = {
@@ -237,7 +239,7 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
     await clicar(botaoCom(cartaoDe("Frenet"), "Testar"));
     await clicar(
       Array.from(cartaoDe("Frenet").querySelectorAll("button")).find(
-        (b) => b.textContent?.trim() === "Salvar",
+        (b) => b.textContent?.trim() === "Salvar transportadora",
       ),
     );
 
@@ -259,8 +261,8 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
     expect(jtRecarregado?.checked).toBe(true);
   });
 
-  it("cenário do print: ME + Frenet marcados, ME sem e-mail — a recusa fica escrita e nada grava", async () => {
-    const estado = criarServidor(LEGADO_SF);
+  it("ME perde o e-mail no servidor depois da leitura: a recusa fica escrita e nada grava", async () => {
+    const estado = criarServidor(LEGADO_SF, true);
     await montar();
 
     await clicar(caixaDoLigado("Melhor Envio"));
@@ -275,8 +277,10 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
     expect(estado.modo).toBe("legado");
 
     await recarregar();
-    expect(caixaDoLigado("Frenet").checked).toBe(false);
-    expect(caixaDoLigado("SuperFrete").checked).toBe(true);
+    expect(caixaDoLigado("Frenet").getAttribute("aria-checked")).toBe("false");
+    expect(caixaDoLigado("SuperFrete").getAttribute("aria-checked")).toBe(
+      "true",
+    );
   });
 
   it("a recusa do 'Salvar provedores' fica escrita no bloco até a escolha mudar", async () => {
@@ -311,7 +315,7 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
   });
 
   it("depois da recusa, salvar o e-mail no cartão do ME tira o alerta velho", async () => {
-    const estado = criarServidor(LEGADO_SF);
+    const estado = criarServidor(LEGADO_SF, true);
     await montar();
     await clicar(caixaDoLigado("Melhor Envio"));
     await clicar(botaoCom(hospedeiro, "Salvar provedores"));
@@ -332,7 +336,7 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
     estado.provedores.melhor_envio.contato_email = "loja@exemplo.com";
     await clicar(
       Array.from(cartaoDe("Melhor Envio").querySelectorAll("button")).find(
-        (b) => b.textContent?.trim() === "Salvar",
+        (b) => b.textContent?.trim() === "Salvar transportadora",
       ),
     );
 
@@ -348,9 +352,9 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
     expect(estado.ligados).toEqual(["superfrete", "frenet"]);
 
     await recarregar();
-    expect(caixaDoLigado("Frenet").checked).toBe(true);
-    expect(caixaDoLigado("Frenet").closest("label")?.textContent).toContain(
-      "ligado",
+    expect(caixaDoLigado("Frenet").getAttribute("aria-checked")).toBe("true");
+    expect(caixaDoLigado("Frenet").parentElement?.textContent).toContain(
+      "Ligada",
     );
     expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   });

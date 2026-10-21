@@ -93,7 +93,7 @@ describe("TransportadorasSection — serviço pelo nome, modo de teste sem jarg�
       return Promise.resolve({ data: { success: true }, error: null });
     });
     const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
+      "./apoio/transportadoras-isoladas"
     );
     await act(async () => {
       raiz.render(<TransportadorasSection />);

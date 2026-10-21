@@ -5,10 +5,10 @@
 // o que a lojista escolheu de propósito (atender só o próprio bairro), e a
 // única saída era redigitar os 5 primeiros números do CEP num campo de texto.
 //
-// Aqui se prova o COMPORTAMENTO: "Só perto da loja" grava exatamente os 5
+// Aqui se prova o COMPORTAMENTO: "Perto da loja" grava exatamente os 5
 // números certos pelo MESMO campo do formulário (o Salvar do topo grava);
-// "Em mais lugares" responde na hora se um CEP entra ou fica de fora, e
-// "Incluir a região deste CEP" acrescenta sem duplicar e sem estragar o que já
+// "Escolher CEPs" responde na hora se um CEP entra ou fica de fora, e
+// "Incluir a região" acrescenta sem duplicar e sem estragar o que já
 // estava escrito. A prova de que gravar o prefixo = alcance vazio nas três
 // cópias da regra mora em `alcance-da-entrega-so-perto-da-loja.test.ts`.
 import { act, useState } from "react";
@@ -110,7 +110,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     hospedeiro.querySelector<HTMLInputElement>("#cep-de-teste");
 
   function abrirMaisLugaresEDigitar(cep: string) {
-    clicar(opcao("Em mais lugares"));
+    clicar(opcao("Escolher CEPs"));
     digitar(campoDeTeste(), cep);
   }
 
@@ -119,35 +119,29 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     expect(texto()).toContain("Até onde você entrega?");
     expect(texto()).toContain("Hoje: CEPs que começam com 38400.");
     expect(hospedeiro.querySelector('[role="radiogroup"]')).not.toBeNull();
-    expect(opcao("Só perto da loja")?.textContent).toContain(
+    expect(opcao("Perto da loja")?.textContent).toContain(
       "CEPs que começam com 38400, normalmente um pedaço do seu bairro.",
     );
-    expect(opcao("Em mais lugares")).toBeDefined();
+    expect(opcao("Escolher CEPs")).toBeDefined();
     // Não existe mais a linha de texto solta "Alcance por CEP".
     expect(texto()).not.toContain("Alcance por CEP");
     // Vazio = a lojista ainda não confirmou: nenhuma das duas está marcada.
-    expect(opcao("Só perto da loja")?.getAttribute("aria-checked")).toBe(
-      "false",
-    );
-    expect(opcao("Em mais lugares")?.getAttribute("aria-checked")).toBe(
-      "false",
-    );
+    expect(opcao("Perto da loja")?.getAttribute("aria-checked")).toBe("false");
+    expect(opcao("Escolher CEPs")?.getAttribute("aria-checked")).toBe("false");
   });
 
-  describe("'Só perto da loja'", () => {
+  describe("'Perto da loja'", () => {
     it("grava os 5 primeiros números do CEP da loja, pelo campo do formulário, uma vez só", () => {
       montar("");
-      clicar(opcao("Só perto da loja"));
+      clicar(opcao("Perto da loja"));
       expect(gravados).toEqual(["38400"]);
-      expect(opcao("Só perto da loja")?.getAttribute("aria-checked")).toBe(
-        "true",
-      );
+      expect(opcao("Perto da loja")?.getAttribute("aria-checked")).toBe("true");
       expect(texto()).toContain("Hoje: CEPs que começam com 38400.");
     });
 
     it("com o CEP da loja sem hífen também grava só os 5 primeiros", () => {
       montar("", { cepDaLoja: "38400100" });
-      clicar(opcao("Só perto da loja"));
+      clicar(opcao("Perto da loja"));
       expect(gravados).toEqual(["38400"]);
     });
 
@@ -157,7 +151,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
         estadoDaEntrega({ originCep: CEP_DA_LOJA, localCepRange: "" }, false),
       ).toBe("pendente");
       montar("");
-      clicar(opcao("Só perto da loja"));
+      clicar(opcao("Perto da loja"));
       const gravado = gravados.at(-1) as string;
       expect(
         estadoDaEntrega(
@@ -186,23 +180,23 @@ describe("FreteLocalBloco: até onde você entrega", () => {
 
     it("quem já tinha outro alcance escrito: a opção avisa que TROCA o que estava escrito, e troca", () => {
       montar("38500-000, 38509-999");
-      expect(opcao("Só perto da loja")?.textContent).toContain(
+      expect(opcao("Perto da loja")?.textContent).toContain(
         "Troca o que está escrito",
       );
-      clicar(opcao("Só perto da loja"));
+      clicar(opcao("Perto da loja"));
       expect(gravados).toEqual(["38400"]);
     });
 
     it("sem 'Troca o que está escrito' quando não havia nada escrito", () => {
       montar("");
-      expect(opcao("Só perto da loja")?.textContent).not.toContain(
+      expect(opcao("Perto da loja")?.textContent).not.toContain(
         "Troca o que está escrito",
       );
     });
   });
 
   describe("o efeito para o cliente de outro bairro", () => {
-    const efeito = () => opcao("Só perto da loja")?.textContent ?? "";
+    const efeito = () => opcao("Perto da loja")?.textContent ?? "";
 
     it("transportadora vende fora e o pagamento pelo app está ligado: compra com transportadora, se tiver conta", () => {
       montar("", {
@@ -267,14 +261,14 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     });
   });
 
-  describe("'Em mais lugares': teste o CEP de um cliente", () => {
-    it("só aparece depois de escolher 'Em mais lugares'", () => {
+  describe("'Escolher CEPs': teste o CEP de um cliente", () => {
+    it("só aparece depois de escolher 'Escolher CEPs'", () => {
       montar("");
       expect(campoDeTeste()).toBeNull();
-      clicar(opcao("Em mais lugares"));
+      clicar(opcao("Escolher CEPs"));
       expect(campoDeTeste()).not.toBeNull();
       expect(texto()).toContain("Teste o CEP de um cliente");
-      // Escolher "Em mais lugares" não grava nada sozinho.
+      // Escolher "Escolher CEPs" não grava nada sozinho.
       expect(gravados).toEqual([]);
     });
 
@@ -304,7 +298,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
       abrirMaisLugaresEDigitar("38500-123");
       expect(texto()).toContain("Fica de fora da sua entrega");
       expect(texto()).not.toContain("Entra na sua entrega");
-      expect(botao("Incluir a região deste CEP")).toBeDefined();
+      expect(botao("Incluir a região")).toBeDefined();
     });
 
     it("CEP incompleto: não responde nada (nem entra, nem fica de fora, nem botão)", () => {
@@ -312,12 +306,12 @@ describe("FreteLocalBloco: até onde você entrega", () => {
       abrirMaisLugaresEDigitar("3850012");
       expect(texto()).not.toContain("Entra na sua entrega");
       expect(texto()).not.toContain("Fica de fora");
-      expect(botao("Incluir a região deste CEP")).toBeUndefined();
+      expect(botao("Incluir a região")).toBeUndefined();
     });
 
     it("lixo digitado vira só números, no máximo 8", () => {
       montar("");
-      clicar(opcao("Em mais lugares"));
+      clicar(opcao("Escolher CEPs"));
       digitar(campoDeTeste(), "38a50b0-1239999");
       expect(campoDeTeste()?.value).toBe("38500-123");
     });
@@ -325,11 +319,11 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     it("'Incluir a região' com alcance vazio: a região da loja CONTINUA dentro, e a nova entra", () => {
       montar("");
       abrirMaisLugaresEDigitar("38500-123");
-      clicar(botao("Incluir a região deste CEP"));
+      clicar(botao("Incluir a região"));
       expect(gravados).toEqual(["38400, 38500"]);
       // Agora o mesmo CEP entra, e o botão some (nada para incluir de novo).
       expect(texto()).toContain("Entra na sua entrega — paga R$ 10");
-      expect(botao("Incluir a região deste CEP")).toBeUndefined();
+      expect(botao("Incluir a região")).toBeUndefined();
       // E a região da loja não foi trocada: CEP dela segue entrando.
       digitar(campoDeTeste(), "38400-100");
       expect(texto()).toContain("Entra na sua entrega");
@@ -337,7 +331,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
 
     it("o campo do teste aceita CEP colado com máscara (sem maxLength cortando)", () => {
       montar("");
-      clicar(opcao("Em mais lugares"));
+      clicar(opcao("Escolher CEPs"));
       expect(campoDeTeste()?.hasAttribute("maxlength")).toBe(false);
       digitar(campoDeTeste(), "38.500-123");
       expect(campoDeTeste()?.value).toBe("38500-123");
@@ -348,7 +342,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
       montar("");
       expect(texto()).toContain("Hoje: CEPs que começam com 38400.");
       abrirMaisLugaresEDigitar("38500-123");
-      clicar(botao("Incluir a região deste CEP"));
+      clicar(botao("Incluir a região"));
       expect(document.activeElement).toBe(campoDeTeste());
       expect(texto()).toContain("Hoje: CEPs que você escolheu.");
       expect(texto()).not.toContain("Hoje: CEPs que começam com 38400.");
@@ -362,7 +356,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
       digitar(campoDeTeste(), "38400-100");
       expect(texto()).toContain("Fica de fora da sua entrega");
       digitar(campoDeTeste(), "38500-123");
-      clicar(botao("Incluir a região deste CEP"));
+      clicar(botao("Incluir a região"));
       expect(gravados).toEqual(["38500"]);
       digitar(campoDeTeste(), "38400-100");
       expect(texto()).toContain("Fica de fora da sua entrega");
@@ -371,21 +365,19 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     it("incluir não duplica: duas regiões, cada uma uma vez", () => {
       montar("38400");
       abrirMaisLugaresEDigitar("38500-123");
-      clicar(botao("Incluir a região deste CEP"));
+      clicar(botao("Incluir a região"));
       digitar(campoDeTeste(), "38500-999");
       // A mesma região já entrou: não há o que incluir.
-      expect(botao("Incluir a região deste CEP")).toBeUndefined();
+      expect(botao("Incluir a região")).toBeUndefined();
       digitar(campoDeTeste(), "38600-001");
-      clicar(botao("Incluir a região deste CEP"));
+      clicar(botao("Incluir a região"));
       expect(gravados).toEqual(["38400, 38500", "38400, 38500, 38600"]);
     });
 
     it("a faixa que a lojista já tinha (dois CEPs completos) continua sendo a MESMA faixa depois de incluir", () => {
       montar("38500-000, 38509-999");
-      // Quem já usa abre em "Em mais lugares" (a opção marcada) e o texto livre aberto.
-      expect(opcao("Em mais lugares")?.getAttribute("aria-checked")).toBe(
-        "true",
-      );
+      // Quem já usa abre em "Escolher CEPs" (a opção marcada) e o texto livre aberto.
+      expect(opcao("Escolher CEPs")?.getAttribute("aria-checked")).toBe("true");
       expect(hospedeiro.querySelector("details")?.hasAttribute("open")).toBe(
         true,
       );
@@ -393,7 +385,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
       expect(texto()).toContain("Entra na sua entrega");
       digitar(campoDeTeste(), "38600-001");
       expect(texto()).toContain("Fica de fora da sua entrega");
-      clicar(botao("Incluir a região deste CEP"));
+      clicar(botao("Incluir a região"));
       const nova = gravados.at(-1) as string;
       // O meio da faixa continua entrando (a regra do servidor não foi quebrada).
       for (const destino of [
@@ -409,13 +401,13 @@ describe("FreteLocalBloco: até onde você entrega", () => {
   });
 
   describe("o texto livre continua para quem já o usa", () => {
-    it("fica recolhido em 'Escrever faixa de CEP' quando não há nada escrito", () => {
+    it("fica recolhido em 'Escrever a faixa de CEP à mão' quando não há nada escrito", () => {
       montar("");
       const detalhes = hospedeiro.querySelector("details");
       expect(detalhes).not.toBeNull();
       expect(detalhes?.hasAttribute("open")).toBe(false);
       expect(detalhes?.querySelector("summary")?.textContent).toContain(
-        "Escrever faixa de CEP",
+        "Escrever a faixa de CEP à mão",
       );
       expect(detalhes?.querySelector("#local-cep-range")).not.toBeNull();
     });
@@ -466,11 +458,11 @@ describe("FreteLocalBloco: até onde você entrega", () => {
       act(() => {
         detalhes.open = false;
       });
-      clicar(opcao("Só perto da loja"));
+      clicar(opcao("Perto da loja"));
       expect(detalhes.open).toBe(false);
       // O texto volta a ser "próprio" (inclui uma região): segue fechado.
       abrirMaisLugaresEDigitar("38500-123");
-      clicar(botao("Incluir a região deste CEP"));
+      clicar(botao("Incluir a região"));
       expect(gravados.at(-1)).toBe("38400, 38500");
       expect(detalhes.open).toBe(false);
     });
@@ -491,12 +483,12 @@ describe("FreteLocalBloco: até onde você entrega", () => {
         montar("", { cepDaLoja });
         expect(hospedeiro.querySelector('[role="radiogroup"]')).toBeNull();
         expect(hospedeiro.querySelector("#local-cep-range")).not.toBeNull();
-        expect(texto()).toContain("Escrever faixa de CEP");
+        expect(texto()).toContain("Escrever a faixa de CEP à mão");
       }
     });
   });
 
-  it("a config chega DEPOIS do primeiro desenho: quem já tinha alcance escrito cai em 'Em mais lugares', não em limbo", () => {
+  it("a config chega DEPOIS do primeiro desenho: quem já tinha alcance escrito cai em 'Escolher CEPs', não em limbo", () => {
     const desenhar = (faixa: string) =>
       act(() => {
         raiz.render(
@@ -512,20 +504,16 @@ describe("FreteLocalBloco: até onde você entrega", () => {
         );
       });
     desenhar("");
-    expect(opcao("Em mais lugares")?.getAttribute("aria-checked")).toBe(
-      "false",
-    );
+    expect(opcao("Escolher CEPs")?.getAttribute("aria-checked")).toBe("false");
     desenhar("38500-000, 38509-999");
-    expect(opcao("Em mais lugares")?.getAttribute("aria-checked")).toBe("true");
-    expect(opcao("Só perto da loja")?.getAttribute("aria-checked")).toBe(
-      "false",
-    );
+    expect(opcao("Escolher CEPs")?.getAttribute("aria-checked")).toBe("true");
+    expect(opcao("Perto da loja")?.getAttribute("aria-checked")).toBe("false");
     expect(campoDeTeste()).not.toBeNull();
   });
 
   it("offline (desabilitado): as duas respostas e o campo de teste não respondem", () => {
     montar("", { desabilitado: true });
-    expect(opcao("Só perto da loja")?.disabled).toBe(true);
-    expect(opcao("Em mais lugares")?.disabled).toBe(true);
+    expect(opcao("Perto da loja")?.disabled).toBe(true);
+    expect(opcao("Escolher CEPs")?.disabled).toBe(true);
   });
 });

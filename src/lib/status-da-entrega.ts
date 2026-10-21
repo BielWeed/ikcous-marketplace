@@ -5,7 +5,11 @@ import {
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
 import { modoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
-import { alcanceSemNumeros, resumoDoAlcance } from "@/lib/loja-pronta";
+import {
+  alcanceSemNumeros,
+  cepCompleto,
+  resumoDoAlcance,
+} from "@/lib/loja-pronta";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import type { StoreConfig } from "@/types";
 
@@ -188,4 +192,37 @@ export function statusDaEntrega({
             };
 
   return [local, nacional, gratis] as const;
+}
+
+/** Estado da tela de perguntas. Recebe o rascunho, sem gravar nem cotar. */
+export function situacaoDaEntrega(
+  config: ConfigDaEntrega | null,
+  nomesLigados: readonly string[] | null,
+  semPagamento: boolean,
+) {
+  const faltaCep = !cepCompleto(config?.originCep);
+  const fora = config?.shippingCoverage !== "local";
+  const confirmarTransportadoras = fora && nomesLigados === null;
+  const faltaTransportadora =
+    fora && nomesLigados !== null && nomesLigados.length === 0;
+  const faltaEndereco =
+    modoDaEntregaNaCidade(config) !== "entrego" &&
+    !(config?.storeAddress ?? "").trim();
+  const faltaAlcance =
+    config?.localDeliveryEnabled !== false &&
+    alcanceSemNumeros(config?.localCepRange);
+  const pendencias =
+    Number(faltaCep) +
+    Number(faltaTransportadora) +
+    Number(semPagamento) +
+    Number(faltaEndereco) +
+    Number(faltaAlcance);
+  return {
+    faltaCep,
+    faltaTransportadora,
+    faltaEndereco,
+    faltaAlcance,
+    confirmarTransportadoras,
+    pendencias,
+  };
 }

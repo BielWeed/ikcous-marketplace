@@ -112,7 +112,7 @@ function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe("AdminShippingView: a frase do 'Só perto da loja' liga nas transportadoras e no pagamento", () => {
+describe("AdminShippingView: a frase do 'Perto da loja' liga nas transportadoras e no pagamento", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -166,7 +166,7 @@ describe("AdminShippingView: a frase do 'Só perto da loja' liga nas transportad
   const efeito = () =>
     [
       ...hospedeiro.querySelectorAll<HTMLButtonElement>('button[role="radio"]'),
-    ].find((b) => (b.textContent ?? "").includes("Só perto da loja"))
+    ].find((b) => (b.textContent ?? "").includes("Perto da loja"))
       ?.textContent ?? "";
 
   it("transportadora ligada + pagamento pelo app ligado: compra com transportadora, se tiver conta", async () => {

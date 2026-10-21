@@ -225,7 +225,7 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     const botaoTransportadoras = [
       ...hospedeiro.querySelectorAll("button"),
     ].find((b) =>
-      /abrir transportadoras/i.test(b.textContent || ""),
+      /^Fora da sua região/i.test(b.textContent || ""),
     ) as HTMLButtonElement;
     expect(botaoTransportadoras).toBeDefined();
 
@@ -237,12 +237,15 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     });
     expect(
       hospedeiro
-        .querySelector("#painel-frete-transportadoras > button[aria-expanded]")
+        .querySelector("#painel-frete-nacional > button[aria-expanded]")
         ?.getAttribute("aria-expanded"),
     ).toBe("true");
-    expect(hospedeiro.querySelectorAll('input[type="password"]')).toHaveLength(
-      3,
-    );
+    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
+    const abrirChave = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Frenet"]',
+    )!;
+    await act(async () => abrirChave.click());
+    expect(document.querySelectorAll('input[type="password"]')).toHaveLength(1);
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -284,43 +287,17 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
 
     // Vocabulário de gente no rótulo interno — o título da seção é do hub;
     // dentro, a pergunta que o lojista responde é esta.
-    expect(hospedeiro.textContent).toMatch(/como sua loja envia/i);
+    expect(hospedeiro.textContent).toMatch(/Transportadoras/i);
 
-    // Rótulos internos no padrão do salão: text-[10px] font-black
-    // uppercase tracking-[0.2em] (o mesmo idioma dos grupos do hub).
-    const rotuloServicos = [
-      ...hospedeiro.querySelectorAll<HTMLElement>("span, p"),
-    ].find(
-      (el) =>
-        el.children.length === 0 &&
-        el.textContent?.trim() === "Serviços da conta",
-    );
-    expect(rotuloServicos).toBeDefined();
-    for (const classe of [
-      "text-[11px]",
-      "font-black",
-      "uppercase",
-      "tracking-[0.2em]",
-    ]) {
-      expect(rotuloServicos?.classList.contains(classe)).toBe(true);
-    }
-
-    // O cabeçalho "Chave de acesso" carrega o padrão no bloco que empurra o
-    // ícone junto (o span interno é só o texto) — o que se prende é o
-    // elemento que veste as classes.
-    const classesDeRotulo = [
-      "text-[11px]",
-      "font-black",
-      "uppercase",
-      "tracking-[0.2em]",
+    const linhas = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>(
+        "button[aria-expanded]",
+      ),
     ];
-    const temRotuloChave = [
-      ...hospedeiro.querySelectorAll<HTMLElement>("*"),
-    ].some(
-      (el) =>
-        el.textContent?.trim().startsWith("Chave de acesso") &&
-        classesDeRotulo.every((c) => el.classList.contains(c)),
-    );
-    expect(temRotuloChave).toBe(true);
+    expect(linhas).toHaveLength(3);
+    for (const linha of linhas) {
+      expect(linha.className).toContain("min-h-11");
+      expect(linha.getAttribute("aria-label")).toBeTruthy();
+    }
   });
 });
