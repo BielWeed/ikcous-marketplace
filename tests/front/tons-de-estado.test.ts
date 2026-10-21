@@ -104,10 +104,7 @@ describe("contraste WCAG AA (>= 4.5:1)", () => {
   };
   it("vermelho do Confortável tem contraste nas superfícies reais sem mudar os outros temas", () => {
     const css = readFileSync(
-      new URL(
-        "../../src/components/layouts/temas-do-painel.css",
-        import.meta.url,
-      ),
+      "src/components/layouts/temas-do-painel.css",
       "utf8",
     );
     const regra = css.match(
