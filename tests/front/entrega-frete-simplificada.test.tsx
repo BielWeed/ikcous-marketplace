@@ -6,12 +6,15 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { loja, updateConfig, invoke, erroToast } = vi.hoisted(() => ({
-  loja: { atual: {} as StoreConfig },
-  updateConfig: vi.fn(),
-  invoke: vi.fn(),
-  erroToast: vi.fn(),
-}));
+const { loja, updateConfig, invoke, erroToast, sucessoToast } = vi.hoisted(
+  () => ({
+    loja: { atual: {} as StoreConfig },
+    updateConfig: vi.fn(),
+    invoke: vi.fn(),
+    erroToast: vi.fn(),
+    sucessoToast: vi.fn(),
+  }),
+);
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: loja.atual, isLoaded: true, updateConfig }),
 }));
@@ -27,7 +30,9 @@ vi.mock("@/lib/supabase", () => ({
     }),
   },
 }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: erroToast } }));
+vi.mock("sonner", () => ({
+  toast: { success: sucessoToast, error: erroToast },
+}));
 // @ts-expect-error flag interna do React
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -280,6 +285,57 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
     expect(salvar().disabled).toBe(true);
     expect(updateConfig).not.toHaveBeenCalled();
   });
+  it("salva só transportadoras sem regravar nem anunciar regras salvas", async () => {
+    await montar();
+    const chave = host.querySelector<HTMLButtonElement>(
+      '[role="switch"][aria-label="Ligar Frenet"]',
+    )!;
+    await act(async () => chave.click());
+    await act(async () => salvar().click());
+    expect(updateConfig).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(sucessoToast).toHaveBeenCalledWith("Provedores atualizados!", {
+          description: undefined,
+        }),
+      );
+    });
+    expect(sucessoToast).not.toHaveBeenCalledWith("Regras de frete salvas!");
+  });
+
+  it("salva regras e transportadoras juntas mantendo o objeto antigo na falha parcial", async () => {
+    await montar();
+    await digitar("local-delivery-fee", "12.5");
+    const chave = host.querySelector<HTMLButtonElement>(
+      '[role="switch"][aria-label="Ligar Frenet"]',
+    )!;
+    await act(async () => chave.click());
+    invoke.mockResolvedValue({
+      data: { success: false, error: "Falha simulada" },
+    });
+    await act(async () => salvar().click());
+    expect(updateConfig).toHaveBeenCalledExactlyOnceWith({
+      freeShippingMin: 0,
+      shippingCoverage: "local",
+      localDeliveryFee: 12.5,
+      localCepRange: "38400",
+      localDeliveryEnabled: true,
+      localDeliveryDays: 1,
+      nationalShippingStrategy: "desligado",
+      nationalShippingMin: 0,
+      nationalDiscountType: null,
+      nationalDiscountValue: 0,
+      nationalBenefitScope: "mais_barata",
+    });
+    expect(erroToast).toHaveBeenCalledWith(
+      "As regras foram salvas, mas as transportadoras não. Toque em Tentar de novo.",
+    );
+    invoke.mockResolvedValue({ data: { success: true, ligados: [] } });
+    await act(async () => salvar().click());
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(sucessoToast).not.toHaveBeenCalledWith("Regras de frete salvas!");
+  });
+
   it("salva transportadoras pelo topo; na falha parcial repete só a lista", async () => {
     await montar();
     const chave = host.querySelector<HTMLButtonElement>(
@@ -294,14 +350,14 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
         : { data: { success: true } },
     );
     await act(async () => salvar().click());
-    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updateConfig).not.toHaveBeenCalled();
     expect(erroToast).toHaveBeenCalledWith(
-      "As regras foram salvas, mas as transportadoras não. Toque em Tentar de novo.",
+      "As transportadoras não foram salvas. Toque em Tentar de novo.",
     );
     expect(salvar().textContent).toContain("Tentar de novo");
     invoke.mockResolvedValue({ data: { success: true, ligados: [] } });
     await act(async () => salvar().click());
-    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updateConfig).not.toHaveBeenCalled();
     expect(invoke).toHaveBeenLastCalledWith("calculate-shipping", {
       body: { action: "save_active_providers", ligados: [] },
     });

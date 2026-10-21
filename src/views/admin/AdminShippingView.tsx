@@ -594,30 +594,29 @@ export const AdminShippingView = memo(function AdminShippingView({
     try {
       // Se esta gravação falhar, PARA AQUI (ADMIN-010, #94). O toast de
       // erro sai de dentro do `updateConfig`.
-      const salvou =
-        somenteTransportadorasRef.current && !regrasMudaram
-          ? true
-          : await updateConfig({
-              freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
-              shippingCoverage: formData.shippingCoverage,
-              localDeliveryFee: Math.max(0, formData.localDeliveryFee),
-              localCepRange: alcance,
-              localDeliveryEnabled: formData.modo !== "so_retiro",
-              localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
-              ...(retiradaMudou
-                ? {
-                    enabledShippingMethods: listaComRetirada(
-                      config?.enabledShippingMethods,
-                      formData.modo !== "entrego",
-                    ),
-                  }
-                : {}),
-              nationalShippingStrategy: nacionalAjustado.estrategia,
-              nationalShippingMin: nacionalAjustado.minimo,
-              nationalDiscountType: nacionalAjustado.tipoDesconto,
-              nationalDiscountValue: nacionalAjustado.valorDesconto,
-              nationalBenefitScope: nacionalAjustado.alcance,
-            });
+      const salvou = !regrasMudaram
+        ? true
+        : await updateConfig({
+            freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
+            shippingCoverage: formData.shippingCoverage,
+            localDeliveryFee: Math.max(0, formData.localDeliveryFee),
+            localCepRange: alcance,
+            localDeliveryEnabled: formData.modo !== "so_retiro",
+            localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
+            ...(retiradaMudou
+              ? {
+                  enabledShippingMethods: listaComRetirada(
+                    config?.enabledShippingMethods,
+                    formData.modo !== "entrego",
+                  ),
+                }
+              : {}),
+            nationalShippingStrategy: nacionalAjustado.estrategia,
+            nationalShippingMin: nacionalAjustado.minimo,
+            nationalDiscountType: nacionalAjustado.tipoDesconto,
+            nationalDiscountValue: nacionalAjustado.valorDesconto,
+            nationalBenefitScope: nacionalAjustado.alcance,
+          });
       if (!salvou) {
         haptic.error();
         setFalhaAoSalvar(true);
@@ -649,7 +648,9 @@ export const AdminShippingView = memo(function AdminShippingView({
         somenteTransportadorasRef.current = true;
         setFalhaAoSalvar(true);
         toast.error(
-          "As regras foram salvas, mas as transportadoras não. Toque em Tentar de novo.",
+          regrasMudaram
+            ? "As regras foram salvas, mas as transportadoras não. Toque em Tentar de novo."
+            : "As transportadoras não foram salvas. Toque em Tentar de novo.",
         );
         return;
       }
@@ -657,7 +658,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       setFalhaAoSalvar(false);
       // A guarda acompanha o dirty check e os tokens pendentes pelo efeito.
       haptic.success();
-      toast.success("Regras de frete salvas!");
+      if (regrasMudaram) toast.success("Regras de frete salvas!");
     } catch (err) {
       console.error("[AdminShippingView] Error saving configs:", err);
       haptic.error();
@@ -796,7 +797,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       <div className="sticky top-0 z-30 bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <header className="mx-auto max-w-4xl rounded-[20px] border border-admin-border bg-admin-surface p-4">
           <div className="flex items-center gap-1">
-            <h1 className="min-w-0 break-words text-2xl font-black italic uppercase tracking-tight">
+            <h1 className="min-w-0 break-words text-2xl font-black uppercase italic tracking-tight">
               {NOMES_DO_PAINEL["admin-shipping"]}
             </h1>
             <button
@@ -824,7 +825,7 @@ export const AdminShippingView = memo(function AdminShippingView({
           )}
         </header>
       </div>
-      <main className="mx-auto max-w-4xl space-y-4 px-4 py-4 sm:px-6">
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:px-6">
         {!isLoaded ? (
           <div aria-busy="true" className="animate-pulse space-y-4">
             <div className="h-72 rounded-[20px] bg-admin-raised" />
