@@ -151,13 +151,14 @@ export const StrategicIntelligenceBlocks = memo(
                     <p className="text-admin-text-soft text-[11px]">
                       {entry.orders != null && <>{entry.orders} pedidos · </>}
                       {percentage}%
-                      {expandido && !!entry.avg_ticket && (
-                        <>
-                          {" "}
-                          · Valor médio por venda:{" "}
-                          {formatCurrency(entry.avg_ticket)}
-                        </>
-                      )}
+                      {(expandido || safeCategoryData.length <= 3) &&
+                        !!entry.avg_ticket && (
+                          <>
+                            {" "}
+                            · Valor médio por venda:{" "}
+                            {formatCurrency(entry.avg_ticket)}
+                          </>
+                        )}
                     </p>
                     <div
                       className="mt-1 h-[5px] overflow-hidden rounded-full bg-admin-raised"
@@ -184,7 +185,7 @@ export const StrategicIntelligenceBlocks = memo(
                   : `Ver todas as ${safeCategoryData.length} categorias`}
               </button>
             )}
-            {expandido && (
+            {(expandido || safeCategoryData.length <= 3) && (
               <p className="text-admin-text-soft mt-2 text-[11px]">
                 Faturamento Total: {formatCurrency(totalRevenue)}
               </p>

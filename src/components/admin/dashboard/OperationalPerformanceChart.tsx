@@ -143,7 +143,7 @@ export const OperationalPerformanceChart = memo(
         aria-label="Histórico da loja"
         className={cn(
           SUPERFICIE_DO_CRM,
-          "relative flex h-[404px] min-w-0 flex-col gap-2 overflow-hidden p-4",
+          "relative flex min-h-[404px] min-w-0 flex-col gap-2 overflow-hidden p-4",
           className,
         )}
       >
