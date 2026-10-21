@@ -5,14 +5,11 @@ import { type TipoDePolitica, nomeDaPolitica } from "@/lib/nomes-das-politicas";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
 
-// Link no meio de uma frase: o texto fica pequeno, mas a CAIXA do botão tem
-// 44px de altura de verdade (`min-h-11`), sem margem negativa e sem padding que
-// vaze para fora dela. Foi assim de propósito: a versão anterior esticava a
-// área de toque ~14px para cima e para baixo (`-my-3.5` + `py-3.5`), e a barra
-// do checkout tem o botão Finalizar a 6px de distância — um toque na beirada de
-// baixo do Finalizar podia abrir os Termos. Os links ficam sozinhos numa
-// segunda linha da frase (`<br />`), então a altura extra é da frase, não
-// invade o vizinho.
+// Por padrão, os links ficam na segunda linha e têm caixa de 44px
+// (`inline-flex min-h-11`), sem invadir o botão Finalizar com margem negativa.
+// Em `emLinha` (checkout), `inline p-0` mantém os links dentro da frase:
+// `min-h-11` não dá altura ao elemento inline. A área de toque acompanha
+// o texto — exceção para links em frases da WCAG 2.5.8 —, não tem 44px.
 //
 // CORES: estes dois componentes moram sobre superfícies BRANCAS fixas (a barra
 // do Finalizar, o cartão do cadastro, a página do produto — todas `bg-white`
