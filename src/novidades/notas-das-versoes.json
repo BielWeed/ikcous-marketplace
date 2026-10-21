@@ -14,7 +14,7 @@
       "No Balcão, a venda só é registrada se o total conferido na tela for o mesmo que a loja calcula. Se um preço mudou no meio, nada é gravado e a tela avisa que o valor mudou para você conferir.",
       "Se o Mercado Pago devolver o valor inteiro de um pedido ainda à espera do pagamento, antes de a confirmação chegar ao app, o pedido é cancelado e os produtos voltam ao estoque. Pedido já confirmado, já adiantado ou com devolução parcial não volta ao estoque por isso.",
       "Pedido que você adiantou (preparando ou a caminho) enquanto o pagamento online ainda não estava confirmado continua sendo conferido com o Mercado Pago até a confirmação chegar.",
-      "No Financeiro e na ficha do cliente, um pagamento online sem forma identificada não é mais somado como Pix: aparece como \"Pagamento online (forma não identificada)\".",
+      "No Financeiro e no CRM (aba Canais), um pagamento online sem forma identificada não é mais somado como Pix: aparece como \"Pagamento online (forma não identificada)\".",
       "O comprovante por e-mail de pedido online só é enviado depois que o pagamento é confirmado, e só o próprio cliente ou o administrador da loja consegue pedir o envio.",
       "Na ficha do pedido, marcar que recebeu o dinheiro agora pede confirmação antes, como já acontecia na lista de pedidos."
     ],
