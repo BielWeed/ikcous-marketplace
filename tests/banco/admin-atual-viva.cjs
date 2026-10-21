@@ -60,6 +60,7 @@ const {
   DESFAZER_RECEBIMENTO,
   desfazerDesfazerRecebimentoNaTransacao,
 } = require("./desfazer-recebimento-posterior.cjs");
+const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(
@@ -358,6 +359,12 @@ const POSTERIORES_A_97 = [
   // nao depende de nenhuma outra da lista; tem de sair ANTES da 97. No FIM da lista de proposito.
   // Definicao unica em tests/banco/desfazer-recebimento-posterior.cjs.
   DESFAZER_RECEBIMENTO,
+  // 20261330000000: o contato do mototaxi (exclusivo do painel). A RPC salvar_config_mototaxi usa
+  // is_admin()/is_admin_atual() e a politica config_mototaxi_admin_select usa rls_admin_atual(): sem esta
+  // entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "funcoes fora da 20261197000000 ainda usam ...").
+  // O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em tests/banco/mototaxi-posterior.cjs.
+  // No FIM da lista de proposito (as provas enderecam 202/200/99/98 por indice).
+  MOTOTAXI,
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar

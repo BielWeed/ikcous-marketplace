@@ -165,8 +165,49 @@ async function main() {
       "SELECT pg_get_viewdef('public.v_store_config'::regclass) AS v, pg_get_functiondef('public.upsert_store_config(jsonb)'::regprocedure) AS f",
     );
     assert.deepEqual(depois.rows, anterior.rows);
+    // O rollback apaga a funcao e a politica (que usam as portas da 97) e PRESERVA a tabela e o contato.
+    const objetos = await c.query(`SELECT
+      to_regprocedure('public.salvar_config_mototaxi(text,text)') IS NULL AS sem_funcao,
+      (SELECT count(*)::int FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'salvar_config_mototaxi') AS funcoes,
+      (SELECT count(*)::int FROM pg_policy WHERE polrelid = to_regclass('public.config_mototaxi')) AS politicas,
+      (SELECT relrowsecurity FROM pg_class WHERE oid = to_regclass('public.config_mototaxi')) AS rls_ligada,
+      has_table_privilege('service_role', 'public.config_mototaxi', 'SELECT') AS service_le,
+      has_table_privilege('authenticated', 'public.config_mototaxi', 'SELECT') AS auth_le,
+      has_table_privilege('anon', 'public.config_mototaxi', 'SELECT') AS anon_le`);
+    assert.deepEqual(objetos.rows[0], {
+      sem_funcao: true,
+      funcoes: 0,
+      politicas: 0,
+      rls_ligada: true,
+      service_le: true,
+      auth_le: false,
+      anon_le: false,
+    });
+    await entrar(comum, "customer");
+    await recusado(
+      "SELECT * FROM public.config_mototaxi",
+      [],
+      /permission denied/i,
+    );
+    await recusado(
+      "SELECT public.salvar_config_mototaxi('5511987654321','X')",
+      [],
+      /does not exist/i,
+    );
+    await c.query("RESET ROLE");
+    await c.query("SET LOCAL ROLE anon");
+    await recusado(
+      "SELECT * FROM public.config_mototaxi",
+      [],
+      /permission denied/i,
+    );
+    await c.query("RESET ROLE");
+    // Segundo rollback recusa sem escrever (a funcao ja nao existe).
+    await c.query("SAVEPOINT rollback_repetido");
+    await assert.rejects(c.query(ler(rollback)), /B1_BASELINE_DIVERGENT/);
+    await c.query("ROLLBACK TO SAVEPOINT rollback_repetido");
     console.log(
-      "rollback: acesso revogado, contato preservado, view/upsert intactos",
+      "rollback: funcao e politica apagadas, contato e tabela preservados, acesso negado, view/upsert intactos",
     );
     await c.query("SAVEPOINT reaplicar");
     await assert.rejects(c.query(ler(migracao)), /B1_BASELINE_DIVERGENT/);

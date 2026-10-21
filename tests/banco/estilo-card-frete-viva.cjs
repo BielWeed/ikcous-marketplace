@@ -52,6 +52,11 @@ async function main() {
       "SELECT free_shipping_card_style FROM public.v_store_config",
     );
     assert.equal(r.rows[0].free_shipping_card_style, "compacto");
+    // O RESET ROLE acima devolve o GUC `role` a 'none', e a RPC so autoriza
+    // service_role/postgres ou um admin atual: sem voltar a service_role, a
+    // chamada morreria no gate de admin ("Nao autorizado") antes de a CHECK da
+    // coluna ser exercitada, e o negativo nao provaria a CHECK.
+    await c.query("SET LOCAL ROLE service_role");
     await c.query("SAVEPOINT negativo");
     await assert.rejects(
       c.query(
@@ -60,6 +65,7 @@ async function main() {
       /check constraint/i,
     );
     await c.query("ROLLBACK TO SAVEPOINT negativo");
+    await c.query("RESET ROLE");
     await c.query("SET LOCAL ROLE anon");
     await c.query("SAVEPOINT anonimo");
     await assert.rejects(

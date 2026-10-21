@@ -1,6 +1,10 @@
 -- Reverter o front primeiro. Nenhuma view ou funcao anterior foi alterada:
--- nao existe corpo vivo anterior a restaurar. A funcao nova permanece inerte.
--- Preserva integralmente o contato; nao apaga tabela, coluna nem dado.
+-- nao existe corpo vivo anterior a restaurar.
+-- Preserva integralmente o contato; nao apaga tabela, coluna nem dado. Apaga SO os dois objetos que
+-- usam as portas da 20261197000000 (a funcao salvar_config_mototaxi e a politica config_mototaxi_admin_select):
+-- deixa-los inertes bloquearia o rollback da 97 (B1_BASELINE_DIVERGENT). A tabela segue com RLS ligada e
+-- sem politica (so service_role le) e sem grant para PUBLIC, anon e authenticated.
+-- Rodar de novo recusa (B1_BASELINE_DIVERGENT: a funcao ja nao existe) sem escrever nada.
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 DO $preflight_rollback_20261330$
@@ -21,9 +25,11 @@ BEGIN
   RETURN resultado;
 END;
 $corpo$) THEN
-    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo do mototaxi desconhecido; rollback recusado.';
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo do mototaxi desconhecido ou funcao ausente (rollback ja feito?); rollback recusado.';
   END IF;
 END $preflight_rollback_20261330$;
 REVOKE ALL ON public.config_mototaxi FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.salvar_config_mototaxi(text, text) FROM PUBLIC, anon, authenticated, service_role;
+DROP POLICY IF EXISTS config_mototaxi_admin_select ON public.config_mototaxi;
+DROP FUNCTION IF EXISTS public.salvar_config_mototaxi(text, text);
 NOTIFY pgrst, 'reload schema';
