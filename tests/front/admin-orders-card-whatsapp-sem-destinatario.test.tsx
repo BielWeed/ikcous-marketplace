@@ -88,9 +88,8 @@ function pedidoFake(whatsapp: string | null): Order {
 }
 
 function botoesWhatsapp(hospedeiro: HTMLElement) {
-  // O botão do card é o único `button` com o svg do MessageCircle (lucide) —
-  // o chevron ao lado é `div`/`svg` solto, não botão.
-  return hospedeiro.querySelectorAll("button svg.lucide-message-circle");
+  // O título identifica o contato do card sem depender do desenho do ícone.
+  return hospedeiro.querySelectorAll("button[title=WhatsApp] svg");
 }
 
 describe("AdminOrdersView — card sem destinatário não permite abrir WhatsApp (laudo 0109, A-7)", () => {

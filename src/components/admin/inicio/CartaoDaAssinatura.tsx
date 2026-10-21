@@ -1,4 +1,5 @@
 import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
   formatarData,
   formatarMoeda,
@@ -10,7 +11,7 @@ import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { AssinaturaDaLoja, StatusDaAssinatura } from "@/types/painel";
-import { Check, Crown, ExternalLink, MessageCircle } from "lucide-react";
+import { Check, Crown, ExternalLink } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   BOTAO_INICIO,
@@ -216,7 +217,7 @@ export function CartaoDaAssinatura({
           rel="noopener noreferrer"
           className={BOTAO_INICIO}
         >
-          <MessageCircle className="size-5 shrink-0" aria-hidden="true" />
+          <IconeWhatsapp className="size-5 shrink-0" aria-hidden="true" />
           Suporte pelo WhatsApp
           <span className="sr-only"> (abre em nova aba)</span>
         </a>
