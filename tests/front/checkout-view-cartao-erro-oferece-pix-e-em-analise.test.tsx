@@ -55,7 +55,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ConfigDoCartao } from "@/lib/config-do-cartao";
 
-const createOrder = vi.fn().mockResolvedValue({ id: "ped-999" });
+const createOrder = vi
+  .fn()
+  .mockResolvedValue({ id: "ped-999", totalAmount: 120 });
 // C5 (front B2): a dúvida do cartão abre a verificação de VERDADE, que
 // consulta por `criarPagamento({ orderId, metodo: "verificar" })`.
 const criarPagamento = vi.fn();
@@ -276,7 +278,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
 
   beforeEach(() => {
     createOrder.mockClear();
-    createOrder.mockResolvedValue({ id: "ped-999" });
+    createOrder.mockResolvedValue({ id: "ped-999", totalAmount: 120 });
     // Padrão: a consulta da verificação fica no ar (a tela mostra
     // "consultando"); quem precisa de um desfecho sobrescreve.
     criarPagamento.mockReset();
@@ -463,6 +465,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
       pix!.click();
     });
 
+    // Só a troca explícita para PIX apaga a explicação da falha.
     // O erro sumiu (a caixa vermelha dá lugar ao <PagamentoOnline> de novo)
     // e a próxima montagem já é em PIX.
     expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
@@ -471,6 +474,54 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     ).toBeUndefined();
     expect(pagamentoOnlineProps.at(-1)!.metodo).toBe("pix");
   });
+
+  it.each([
+    [429, "Muitas tentativas. Tente de novo em alguns instantes."],
+    [422, "Não foi possível gerar a cobrança."],
+  ])(
+    "erro %s mantém explicação depois da consulta provar que não há cobrança",
+    async (_status, mensagem) => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await chegarNoPagamentoComCartao(CheckoutView);
+      criarPagamento.mockResolvedValueOnce(VAGA_LIVRE);
+      await act(async () => {
+        (
+          pagamentoOnlineProps.at(-1)!.onErro as (
+            msg: string,
+            categoria: string,
+          ) => void
+        )(mensagem, "recuperavel");
+      });
+      await esvaziar();
+      expect(hospedeiro.textContent).toContain(
+        "Como você quer pagar este pedido?",
+      );
+      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+        "O pagamento com cartão não passou desta vez. Nenhum valor foi cobrado. Tente de novo em alguns instantes ou pague com PIX.",
+      );
+      expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeDefined();
+    },
+  );
+
+  it.each([401, 403])(
+    "credencial inválida (%s) continua terminal, sem sugerir PIX",
+    async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await chegarNoPagamentoComCartao(CheckoutView);
+      await act(async () => {
+        (
+          pagamentoOnlineProps.at(-1)!.onErro as (
+            msg: string,
+            categoria: string,
+          ) => void
+        )("Pagamento indisponível.", "terminal");
+      });
+      await esvaziar();
+      expect(hospedeiro.textContent).toContain("Pagamento indisponível.");
+      expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
+      expect(criarPagamento).not.toHaveBeenCalled();
+    },
+  );
 
   // Teste (a) da rodada 3 — achado 1 (BLOQUEANTE): a sequência exata do
   // relato. Um 502 ambíguo marca o pedido como incerto; "Tentar de novo"

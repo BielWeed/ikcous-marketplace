@@ -17,7 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ConfigDoCartao } from "@/lib/config-do-cartao";
 
-const createOrder = vi.fn().mockResolvedValue({ id: "ped-777" });
+const createOrder = vi
+  .fn()
+  .mockResolvedValue({ id: "ped-777", totalAmount: 120 });
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const propsDoPagamento: Array<Record<string, unknown>> = [];
@@ -232,7 +234,7 @@ async function finalizar() {
 describe("CheckoutView — cartão pelo app", () => {
   beforeEach(() => {
     createOrder.mockReset();
-    createOrder.mockResolvedValue({ id: "ped-777" });
+    createOrder.mockResolvedValue({ id: "ped-777", totalAmount: 120 });
     onNavigate.mockClear();
     propsDoPagamento.length = 0;
     mockUser = { id: "user-1", email: "cliente@exemplo.com" };
@@ -331,6 +333,68 @@ describe("CheckoutView — cartão pelo app", () => {
     });
     expect(ultimas.emailDoPagador).toBe("cliente@exemplo.com");
     expect(ultimas.orderId).toBe("ped-777");
+  });
+
+  it.each([120.03, 119.97, 1234.56])(
+    "o pagamento usa o total gravado (%s), avisa a diferença e não o troca pelo carrinho limpo",
+    async (totalAmount) => {
+      createOrder.mockResolvedValueOnce({ id: "ped-777", totalAmount });
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await montar(CheckoutView);
+      await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+      await finalizar();
+      expect(propsDoPagamento.at(-1)!.valor).toBe(totalAmount);
+      const texto = hospedeiro.textContent?.replace(/\s/g, " ");
+      // Mesmo formato do valor mostrado no cartão (formatCurrency): com
+      // separador de milhar a partir de R$ 1.000.
+      const esperado = new Map([
+        [120.03, "R$ 120,03"],
+        [119.97, "R$ 119,97"],
+        [1234.56, "R$ 1.234,56"],
+      ]).get(totalAmount);
+      expect(texto).toContain(`Valor final do pedido: ${esperado}`);
+      await act(async () => {
+        (propsDoPagamento.at(-1)!.onTrocarParaPix as (vivo: boolean) => void)(
+          false,
+        );
+      });
+      expect(propsDoPagamento.at(-1)!.valor).toBe(totalAmount);
+    },
+  );
+
+  it("falha ao ler o total de um pedido já criado não abre pagamento nem permite finalizar de novo", async () => {
+    createOrder.mockRejectedValueOnce(
+      Object.assign(
+        new Error("Não foi possível conferir o valor final do pedido."),
+        {
+          code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+        },
+      ),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+    await finalizar();
+    expect(propsDoPagamento).toHaveLength(0);
+    expect(document.body.textContent).toContain(
+      "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.",
+    );
+    expect(botaoPorTexto(document.body, "Finalizar Pedido")!.disabled).toBe(
+      true,
+    );
+    await clicar(botaoPorTexto(document.body, "Ver meus pedidos")!);
+    expect(onNavigate).toHaveBeenCalledWith("orders");
+  });
+
+  it("total gravado igual ao carrinho não mostra aviso de diferença", async () => {
+    createOrder.mockResolvedValueOnce({ id: "ped-777", totalAmount: 120 });
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+    await finalizar();
+    expect(propsDoPagamento.at(-1)!.valor).toBe(120);
+    expect(hospedeiro.textContent).not.toContain("Valor final do pedido:");
   });
 
   it("a chave de idempotência não distingue PIX de cartão (mesmo eixo 'online', mesma RPC): retentativa pelo PIX repete a chave", async () => {
