@@ -18,7 +18,9 @@
       "O app abre normalmente em celulares antigos e guarda a configuração completa da loja para uso sem internet.",
       "O código do convidado para acompanhar o pedido não pode mais ser testado em paralelo, e o rastreio sem login não mostra mais a nota interna do pedido.",
       "O painel deixa de reconhecer como administrador quem foi rebaixado, mesmo que ainda tenha um login antigo ativo.",
-      "O mesmo código de barras não pode mais ser usado em um produto e em uma variação ao mesmo tempo."
+      "O mesmo código de barras não pode mais ser usado em um produto e em uma variação ao mesmo tempo.",
+      "O pedido marcado como entregue antes de o PIX confirmar passa a entrar na conferência de pagamentos.",
+      "Se o preço for alterado no painel durante uma compra, o pedido não mistura mais valores, e tocar duas vezes em finalizar devolve o mesmo pedido."
     ],
     "melhorias": [
       "O aviso de lucro explica que o custo usado é o atual, e o custo da mercadoria negativo aparece como crédito.",
