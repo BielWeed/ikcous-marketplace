@@ -561,7 +561,14 @@ export const AdminProductsView = memo(function AdminProductsView({
       },
       {
         id: "lucro-liquido-potencial",
-        label: "Lucro líquido potencial",
+        // O rótulo é o que o lojista vê na tela (o subtítulo é só de leitor de
+        // tela): com despesas aplicadas ele diz "estimado", e "(parcial)" vem
+        // do mesmo caminho do lucro bruto.
+        label:
+          liquidoEstimado !== null
+            ? "Lucro líquido estimado"
+            : "Lucro líquido potencial",
+        parcial: liquidoEstimado !== null && financialStats.parcial,
         value:
           liquidoEstimado !== null
             ? `R$ ${liquidoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -945,11 +952,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   ? "Lucro bruto (parcial)"
                   : "Lucro bruto",
                 "Venda (com custo)",
-                liquidoEstimado !== null
-                  ? financialStats.parcial
-                    ? "Líquido estimado (parcial)"
-                    : "Líquido estimado"
-                  : "Lucro líquido",
+                "Lucro líquido",
                 "Lucro sobre o custo",
                 "Catálogo",
               ]}

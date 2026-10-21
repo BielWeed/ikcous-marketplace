@@ -335,13 +335,78 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       const aplicar = await informarDespesas(despesas);
       expect(aplicar.disabled).toBe(false);
       await act(async () => aplicar.click());
-      expect(metrica("Lucro líquido potencial")).toContain(esperado);
-      expect(metrica("Lucro líquido potencial")).toContain("Estimado");
-      expect(metrica("Lucro líquido potencial")).toContain("Parcial");
+      expect(metrica("Lucro líquido estimado")).toContain(esperado);
+      expect(metrica("Lucro líquido estimado")).toContain("Estimado");
+      expect(metrica("Lucro líquido estimado")).toContain("Parcial");
       expect(metrica("Lucro bruto potencial")).toContain("60,00");
       expect(h.rpc).toHaveBeenCalledTimes(1);
     },
   );
+
+  // O jsdom lê o texto sr-only como se estivesse na tela; o lojista só vê o
+  // resto. Aqui se descarta tudo o que é só de leitor de tela.
+  const textoVisivel = (seletor: string) => {
+    const copia = caixa.querySelector(seletor)?.cloneNode(true) as
+      | HTMLElement
+      | undefined;
+    for (const oculto of copia?.querySelectorAll(".sr-only") ?? []) {
+      oculto.remove();
+    }
+    return copia?.textContent ?? "";
+  };
+
+  it("líquido aplicado mostra 'estimado' e '(parcial)' na tela, não só para leitor de tela", async () => {
+    await mostrarInventario({
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 460,
+      revenueWithoutCost: 300,
+      productsWithoutCost: 1,
+      productsWithCost: 1,
+    });
+    const aplicar = await informarDespesas("10,25");
+    await act(async () => aplicar.click());
+    const cartao = 'article[aria-label^="Lucro líquido"]';
+    const visivel = textoVisivel(cartao);
+    expect(visivel).toContain("49,75");
+    expect(visivel).toMatch(/estimado/i);
+    expect(visivel).toContain("(parcial)");
+    // o bruto parcial ao lado continua dizendo o mesmo
+    expect(
+      textoVisivel('article[aria-label="Lucro bruto potencial"]'),
+    ).toContain("(parcial)");
+  });
+
+  it("líquido aplicado com todos os custos conhecidos diz 'estimado' e não diz 'parcial'", async () => {
+    await mostrarInventario({
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 160,
+      revenueWithoutCost: 0,
+      productsWithoutCost: 0,
+      productsWithCost: 1,
+    });
+    const aplicar = await informarDespesas("10");
+    await act(async () => aplicar.click());
+    const visivel = textoVisivel('article[aria-label^="Lucro líquido"]');
+    expect(visivel).toContain("50,00");
+    expect(visivel).toMatch(/estimado/i);
+    expect(visivel).not.toContain("parcial");
+  });
+
+  it("antes de aplicar despesas o cartão não afirma líquido estimado", async () => {
+    await mostrarInventario({
+      totalCost: 100,
+      totalValue: 160,
+      totalRevenue: 160,
+      revenueWithoutCost: 0,
+      productsWithoutCost: 0,
+      productsWithCost: 1,
+    });
+    const visivel = textoVisivel('article[aria-label^="Lucro líquido"]');
+    expect(visivel).toContain("Não calculado");
+    expect(visivel).not.toMatch(/estimado/i);
+  });
 
   it.each(["", "-1", "abc", "1,234"])(
     "despesa inválida %s não vira zero nem líquido calculado",
@@ -372,7 +437,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     await mostrarInventario(inventory);
     const aplicar = await informarDespesas("10");
     await act(async () => aplicar.click());
-    expect(metrica("Lucro líquido potencial")).toContain("50,00");
+    expect(metrica("Lucro líquido estimado")).toContain("50,00");
     const limpar = [
       ...document.querySelectorAll<HTMLButtonElement>("button"),
     ].find((b) => b.textContent?.trim() === "Limpar estimativa");
@@ -381,7 +446,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
     const novamente = await informarDespesas("0");
     await act(async () => novamente.click());
-    expect(metrica("Lucro líquido potencial")).toContain("60,00");
+    expect(metrica("Lucro líquido estimado")).toContain("60,00");
     const fechar = document.querySelector<HTMLButtonElement>(
       'button[aria-label="Fechar"]',
     );
