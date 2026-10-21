@@ -401,6 +401,7 @@ export interface StoreConfig {
     active: boolean;
     type?: "new_arrivals" | "offers" | "bestsellers" | "custom";
     maxItems?: number;
+    layout?: "padrao" | "compacto";
     productIds?: string[];
     isCustom?: boolean;
   }[];
