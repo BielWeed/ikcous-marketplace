@@ -8068,6 +8068,47 @@ Deno.test("REV1 webhook: refund financiado processing nunca alcança confirmar_p
   assertEquals(pedido.payment_status, "pago");
 });
 
+for (const parcela of [undefined, "18.64"]) {
+  for (const caso of [
+    { nome: "integral concluído", status: "processed", valores: ["40.86"], confirma: true },
+    { nome: "integral em processamento", status: "processing", valores: ["40.86"], confirma: false },
+    { nome: "parciais abaixo da captura", status: "processed", valores: ["20.00", "20.00"], confirma: false },
+  ]) {
+    Deno.test(`L3a-G: principal 37,27, parcela ${parcela ?? "ausente"}, refund ${caso.nome}`, async () => {
+      ambienteDoWebhook();
+      const pedido = {
+        id: UUID_PEDIDO, total: 37.27, valor_estornado: 0, gateway_payment_id: ID_ORDER_CARTAO_MP,
+        payment_status: "pago", paid_at: "2026-10-21T00:00:00Z", status: "delivered",
+      };
+      const registro = { chamadasRpc: [], chamadasAviso: [] };
+      const supabase = clienteFalso({ rpcResultado: "estornado", registro, pedido });
+      const rpc = supabase.rpc.bind(supabase);
+      supabase.rpc = async (nome, args) => {
+        const retorno = await rpc(nome, args);
+        if (nome === "confirmar_pagamento" && !retorno.error) pedido.payment_status = "estornado";
+        return retorno;
+      };
+      const o = orderFinanciadaDevolvida(caso.status);
+      o.total_amount = "37.27";
+      o.transactions.payments[0].amount = "37.27";
+      delete o.transactions.payments[0].payment_method.installment_amount;
+      if (parcela !== undefined) o.transactions.payments[0].payment_method.installment_amount = parcela;
+      o.transactions.refunds = caso.valores.map((amount, i) => ({ id: `REF-G-${i}`, status: caso.status, amount }));
+      const entregar = async () => handler(
+        await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }),
+        { supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1 },
+      );
+      assertEquals((await entregar()).status, 200);
+      assertEquals(registro.chamadasRpc, caso.confirma ? [{
+        args: { p_order_id: UUID_PEDIDO, p_payment_id: ID_ORDER_CARTAO_MP, p_status: "estornado" },
+      }] : []);
+      assertEquals(pedido.payment_status, caso.confirma ? "estornado" : "pago");
+      assertEquals((await entregar()).status, 200);
+      assertEquals(registro.chamadasRpc.length, caso.confirma ? 1 : 0, "reentrega não confirma de novo");
+    });
+  }
+}
+
 for (const estado of ["pago", "pago_apos_expirar", "estornado"]) {
   Deno.test(`L3a-R2-W1: payment_status ${estado} protege refund sem paid_at`, async () => {
     ambienteDoWebhook();

@@ -179,8 +179,8 @@ export function conferirValorDoPagamento(
 
 /**
  * Exceção estreita do estorno integral financiado: o ledger só comporta o
- * principal do pedido. Exige a mesma prova de juros e a captura inteira já
- * devolvida, nunca o status agregado da order. Um refund repetido não soma.
+ * principal do pedido. Exige a mesma régua da aprovação e a captura inteira
+ * já devolvida, nunca o status agregado da order. Um refund repetido não soma.
  */
 export function estornoIntegralComJurosComprovado(
   order: Record<string, unknown>,
@@ -189,7 +189,8 @@ export function estornoIntegralComJurosComprovado(
   statusConcluido: "processed" | "approved",
 ): boolean {
   const conferencia = conferirValorDoPagamento(extrairValorDaOrder(order), totalRelido, order);
-  if (!conferencia.provado || !jurosCompativeis(conferencia.valor, conferencia.total, order)) return false;
+  if (!conferencia.provado || tipoDoPagamentoDaOrder(order) !== "credit_card" ||
+    (parcelasDaOrder(order) ?? 0) <= 1) return false;
   const pago = comoNumero(valorCapturado(order));
   if (pago === null || Math.round(pago * 100) <= Math.round(conferencia.total * 100)) return false;
   const porId = new Map<string, number>();

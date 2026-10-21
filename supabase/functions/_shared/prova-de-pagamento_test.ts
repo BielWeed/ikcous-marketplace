@@ -164,12 +164,22 @@ Deno.test("L3a-R2-W1: prova integral financiada soma centavos, não duplica IDs 
     { type: "credit_card", installments: 1, installment_amount: "40.86" },
     { type: "debit_card", installments: 2, installment_amount: "20.43" },
     { type: "bank_transfer", installments: 2, installment_amount: "20.43" },
-    { type: "credit_card", installments: 2, installment_amount: "18.64" },
-    { type: "credit_card", installments: 2 },
   ]) {
     const alterada = structuredClone(o);
     pagamento(alterada).payment_method = metodo;
     assertEquals(provar([refund], alterada), false, JSON.stringify(metodo));
+  }
+  for (const principal of ["37.27", "40.86"]) {
+    for (const parcela of [undefined, "18.64"]) {
+      const alterada = structuredClone(o);
+      alterada.total_amount = principal;
+      pagamento(alterada).amount = principal;
+      pagamento(alterada).payment_method = { type: "credit_card", installments: 2 };
+      if (parcela !== undefined) pagamento(alterada).payment_method.installment_amount = parcela;
+      const aprovado = conferirValorDoPagamento(Number(principal), 37.27, alterada).provado;
+      assertEquals(aprovado, principal === "37.27");
+      assertEquals(provar([refund], alterada), aprovado, "estorno usa a mesma régua da aprovação");
+    }
   }
   const semJuros = structuredClone(o);
   semJuros.total_amount = "37.27";
