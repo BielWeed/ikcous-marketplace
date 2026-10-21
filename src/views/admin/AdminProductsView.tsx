@@ -1960,7 +1960,7 @@ const AdminProductCard = memo(function AdminProductCard({
   const estado = statusDoProdutoNoPainel(product);
   const classeDoEstado =
     estado === "Offline"
-      ? "text-violet-300"
+      ? classeDoTexto("neutro")
       : estado === "Esgotado"
         ? classeDoTexto("negativo")
         : classeDoTexto("neutro");
@@ -2016,6 +2016,12 @@ const AdminProductCard = memo(function AdminProductCard({
     product.stock,
     product.estoqueMinimo ?? null,
   );
+  const classeDoEstoque =
+    product.stock <= 0
+      ? classeDoTexto("negativo")
+      : estoqueBaixo
+        ? classeDoTexto("atencao")
+        : undefined;
   if (viewMode === "detailed") {
     // Achado 8 da auditoria de 20/08/2026
     // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): `costPrice || 0`
@@ -2157,14 +2163,10 @@ const AdminProductCard = memo(function AdminProductCard({
               <p
                 className={cn(
                   "mt-1 text-lg font-bold tabular-nums",
-                  estoqueBaixo && classeDoTexto("atencao"),
-                  estado === "Esgotado" && classeDoTexto("negativo"),
+                  classeDoEstoque,
                 )}
               >
-                <span className={cn(estoqueBaixo && classeDoTexto("atencao"))}>
-                  {product.stock}
-                </span>{" "}
-                un.
+                <span className={classeDoEstoque}>{product.stock}</span> un.
               </p>
             </div>
             {!custoSuspeito && (
@@ -2231,7 +2233,9 @@ const AdminProductCard = memo(function AdminProductCard({
                 />
                 Unidades em Estoque
               </p>
-              <span className="font-bold">{product.stock} un.</span>
+              <span className={cn("font-bold", classeDoEstoque)}>
+                {product.stock} un.
+              </span>
             </div>
             <div className="my-2 h-1 overflow-hidden rounded-full bg-white/10">
               <div
@@ -2404,9 +2408,7 @@ const AdminProductCard = memo(function AdminProductCard({
                   Crítico
                 </Badge>
               )}
-              <span className={cn(estoqueBaixo && classeDoTexto("atencao"))}>
-                {product.stock}
-              </span>
+              <span className={classeDoEstoque}>{product.stock}</span>
               <span>
                 {estado === "Em Operação" && !estoqueBaixo
                   ? "em estoque"

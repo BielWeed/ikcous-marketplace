@@ -140,7 +140,16 @@
 .produto-detalhes {
   color: var(--lit-t-a1a1ad, #a1a1ad);
 }
-.produto-detalhes :is(span, .font-semibold) {
+.produto-detalhes
+  :is(span, .font-semibold):not(
+    :where(
+        .text-emerald-400,
+        .text-red-400,
+        .text-amber-400,
+        .text-sky-400,
+        .text-zinc-400
+      )
+  ) {
   color: var(--lit-t-f4f4f5, #f4f4f5);
 }
 .produto-detalhes .text-orange-300 {

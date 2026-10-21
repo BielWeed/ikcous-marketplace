@@ -374,6 +374,48 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
       .toBeNull();
   });
 
+  it.each([
+    { stock: 0, cor: "text-red-400" },
+    { stock: 2, cor: "text-amber-400" },
+  ])(
+    "quantidade $stock tem o tom $cor em ambos os modos",
+    async ({ stock, cor }) => {
+      montarProduto({ price: 100, costPrice: 20, stock, estoqueMinimo: 3 });
+      await montar();
+      const card = cartaoDoProduto();
+      const quantidade = card.querySelector(
+        ".produto-resumo > div:nth-child(2) > p:last-child",
+      )!;
+      const numero = quantidade.querySelector("span") ?? quantidade;
+      expect(
+        numero.classList.contains(cor) || quantidade.classList.contains(cor),
+      ).toBe(true);
+      expect(
+        numero.classList.contains(
+          stock === 0 ? "text-amber-400" : "text-red-400",
+        ),
+      ).toBe(false);
+      expect(
+        card
+          .querySelector(".produto-detalhes > div > span")
+          ?.classList.contains(cor),
+      ).toBe(true);
+      const compacto = hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-label="Mostrar em grade"]',
+      )!;
+      expect(compacto).toBeDefined();
+      await act(async () => compacto.click());
+      const quantidades = [...hospedeiro.querySelectorAll("span")].filter(
+        (el) =>
+          el.textContent === String(stock) &&
+          el.nextElementSibling?.textContent?.trim() === "un.",
+      );
+      expect(quantidades.length).toBeGreaterThan(0);
+      for (const el of quantidades)
+        expect(el.classList.contains(cor)).toBe(true);
+    },
+  );
+
   it("estoque crítico é âmbar sem pintar um bloco", async () => {
     montarProduto({ price: 100, costPrice: 20, stock: 2, estoqueMinimo: 3 });
     await montar();
