@@ -516,8 +516,8 @@ export function useStoreIdentityEditor(active = true) {
       message: "Envio cancelado. A imagem anterior permanece no rascunho.",
     });
   }
-  async function save(onlyPrimaryColor = false) {
-    if (!editable()) return;
+  async function save(onlyPrimaryColor = false): Promise<boolean> {
+    if (!editable()) return false;
     const before = model.current;
     const color = validaCorDaLoja(before.draft!.fields.primaryColor);
     if (!color.ok) {
@@ -528,7 +528,7 @@ export function useStoreIdentityEditor(active = true) {
             ? "Preto puro não funciona bem como cor do app. Escolha outro tom em Ajustes → Aparência do app → Cor do app."
             : "Confira a cor em Ajustes → Aparência do app → Cor do app. Use o formato #RRGGBB.",
       });
-      return;
+      return false;
     }
     let intent: StoreIdentityIntent;
     try {
@@ -547,18 +547,18 @@ export function useStoreIdentityEditor(active = true) {
         message:
           "Confira nome, cidade, estado e cores no formato #RRGGBB antes de salvar.",
       });
-      return;
+      return false;
     }
     const op = start("saving");
-    if (!op) return;
+    if (!op) return false;
     publish({ ...model.current, intent });
     try {
       const result = await saveAdminStoreIdentity(intent, op.options);
-      if (!op.isCurrent()) return;
+      if (!op.isCurrent()) return false;
       switch (result.status) {
         case "confirmed":
           confirmed(result.snapshot, result.source === "readback", op.origin);
-          break;
+          return true;
         case "pending":
           finish({
             ...before,
@@ -587,10 +587,11 @@ export function useStoreIdentityEditor(active = true) {
           break;
       }
     } catch {
-      if (!op.isCurrent()) return;
+      if (!op.isCurrent()) return false;
       // Unexpected failures are conservative: only a fresh read can disambiguate.
       finish({ ...before, intent, phase: "pending", message: pendingMessage });
     }
+    return false;
   }
   function resolveConflict(keepDraft: boolean) {
     const before = model.current;

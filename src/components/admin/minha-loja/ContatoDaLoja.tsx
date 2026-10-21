@@ -2,8 +2,9 @@ import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
+import type { EditorDeMinhaLoja } from "@/views/admin/AdminAboutStoreView";
 import { RefreshCw, Save } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { MensagemDeCompartilhar } from "./MensagemDeCompartilhar";
 import { WhatsAppDaLoja } from "./WhatsAppDaLoja";
@@ -11,13 +12,14 @@ import { numeroComPais, numeroParaOCampo, whatsappParaGravar } from "./contato";
 
 // Bloco "Contato" de Minha loja (painel simples, D9): o WhatsApp da loja e a
 // mensagem de compartilhar, que antes moravam na tela "Atendimento". Tem
-// Salvar PRÓPRIO (como a marca e o horário): grava SÓ `whatsappNumber` e
+// Coordenado por Minha loja: grava SÓ `whatsappNumber` e
 // `shareText`. O horário NUNCA entra neste pacote — regravar o que a tela
 // carregou na abertura apagava o que a lojista salvou depois (A1, 09/10/2026);
 // o editor único do horário é o BusinessHoursSection. O endereço e a
-// descrição têm o Salvar do cabeçalho de Minha loja.
+// descrição continuam em uma gravação separada do contato.
 
 interface ContatoDaLojaProps {
+  readonly onRegistrarSalvamento?: (editor: EditorDeMinhaLoja) => void;
   /** Só a tela ativa ocupa a prateleira da navegação. */
   readonly ativa?: boolean;
   /** Avisa a tela quando há alteração não salva (guarda de navegação). */
@@ -28,6 +30,7 @@ interface ContatoDaLojaProps {
 
 export const ContatoDaLoja = memo(function ContatoDaLoja({
   ativa = true,
+  onRegistrarSalvamento,
   onDirtyChange,
   onSetBackOverride,
 }: ContatoDaLojaProps) {
@@ -76,21 +79,25 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
     return () => onDirtyChange?.(false);
   }, [onDirtyChange]);
 
-  async function salvar() {
+  useLayoutEffect(() => {
+    onRegistrarSalvamento?.({ alterado, salvar });
+  });
+
+  async function salvar(): Promise<boolean> {
     if (offline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para salvar o contato.",
       });
-      return;
+      return false;
     }
-    if (salvando) return;
+    if (salvando) return false;
 
     // Vazio grava NULL (decisão do Gabriel, 30/08: WhatsApp é configuração DA
     // lojista); preenchido, 10-11 dígitos (DDD + número) ganham o 55.
     const paraGravar = whatsappParaGravar(whatsapp);
     if (!paraGravar.valido) {
       toast.error("WhatsApp inválido");
-      return;
+      return false;
     }
 
     setSalvando(true);
@@ -108,10 +115,12 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
         },
         { silentSuccess: true },
       );
-      if (!salvou) return;
+      if (!salvou) return false;
       toast.success("Contato salvo");
+      return true;
     } catch (erro) {
       toast.error(mensagemDeErroDoPainel(erro, "salvar"));
+      return false;
     } finally {
       setSalvando(false);
     }
@@ -135,27 +144,29 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
         />
       </div>
 
-      <AcaoDaBarra ativa={ativa} aria-label="Ações do contato da loja">
-        <button
-          type="button"
-          onClick={() => void salvar()}
-          disabled={!isLoaded || offline || salvando || !alterado}
-          title="Salva o WhatsApp e a mensagem de compartilhamento"
-          className="admin-barra-principal flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-admin-gold px-5 text-xs font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale"
-        >
-          {salvando ? (
-            <>
-              <RefreshCw aria-hidden="true" className="size-4 animate-spin" />
-              <span>Salvando...</span>
-            </>
-          ) : (
-            <>
-              <Save aria-hidden="true" className="size-4" />
-              <span>Salvar contato</span>
-            </>
-          )}
-        </button>
-      </AcaoDaBarra>
+      {!onRegistrarSalvamento && (
+        <AcaoDaBarra ativa={ativa} aria-label="Ações do contato da loja">
+          <button
+            type="button"
+            onClick={() => void salvar()}
+            disabled={!isLoaded || offline || salvando || !alterado}
+            title="Salva o WhatsApp e a mensagem de compartilhamento"
+            className="admin-barra-principal flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-admin-gold px-5 text-xs font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale"
+          >
+            {salvando ? (
+              <>
+                <RefreshCw aria-hidden="true" className="size-4 animate-spin" />
+                <span>Salvando...</span>
+              </>
+            ) : (
+              <>
+                <Save aria-hidden="true" className="size-4" />
+                <span>Salvar contato</span>
+              </>
+            )}
+          </button>
+        </AcaoDaBarra>
+      )}
     </div>
   );
 });
