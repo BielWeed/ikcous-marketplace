@@ -150,8 +150,8 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     blocoContato()?.querySelector("h2") as HTMLElement;
 
   const botaoSalvarContato = () =>
-    [...(blocoContato()?.querySelectorAll("button") ?? [])].find((b) =>
-      (b.textContent ?? "").includes("Salvar"),
+    hospedeiro.querySelector(
+      '[aria-label="Ações de Minha loja"] button',
     ) as HTMLButtonElement;
 
   async function digitarWhatsApp(valor: string) {
@@ -269,7 +269,7 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  describe("os dois Salvar não se confundem", () => {
+  describe("o Salvar único mantém os pacotes separados", () => {
     async function digitarDescricao(texto: string) {
       const campo = hospedeiro.querySelector(
         "#store-description",
@@ -284,46 +284,38 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
       });
     }
 
-    const botaoDoCabecalho = () =>
-      hospedeiro.querySelector("button.bg-admin-gold") as HTMLButtonElement;
-    const aviso = () =>
-      hospedeiro.querySelector<HTMLElement>("[data-contato-pendente]");
+    const botaoUnico = botaoSalvarContato;
+    const marcador = () => blocoContato()?.textContent?.includes("Alterado");
 
-    it("com WhatsApp e descrição alterados, o Salvar do cabeçalho NÃO grava o contato, avisa e mantém o dirty", async () => {
+    it("com WhatsApp e descrição alterados, um clique salva ambos sem misturar seus campos", async () => {
       await abrirTela();
-      expect(aviso()).toBeNull();
+      expect(marcador()).toBe(false);
       await digitarWhatsApp("11987654321");
       await digitarDescricao("Importados escolhidos a dedo.");
-
-      // O aviso fica à vista junto ao cabeçalho enquanto o contato está pendente.
-      expect(aviso()?.textContent).toContain("O contato ainda não foi salvo");
-      expect(aviso()?.textContent).toContain("Salvar contato");
+      expect(marcador()).toBe(true);
+      expect(hospedeiro.textContent).toContain("2 alterações para salvar");
 
       await act(async () => {
-        botaoDoCabecalho().click();
+        botaoUnico().click();
         await esperar(50);
       });
 
-      expect(updateConfigMock).toHaveBeenCalledTimes(1);
-      const enviado = updateConfigMock.mock.calls[0][0] as Record<
-        string,
-        unknown
-      >;
-      expect(enviado).toHaveProperty("storeDescription");
-      expect(enviado).not.toHaveProperty("whatsappNumber");
-      expect(enviado).not.toHaveProperty("shareText");
-      // O toast diz só o que foi salvo; o contato segue pendente e avisado.
+      expect(updateConfigMock).toHaveBeenCalledTimes(2);
+      expect(updateConfigMock.mock.calls[0][0]).toEqual({
+        storeDescription: "<p>Importados escolhidos a dedo.</p>",
+      });
+      expect(updateConfigMock.mock.calls[1][0]).toEqual({
+        whatsappNumber: "5511987654321",
+        shareText: "Confira [nome] por [preco]: [link]",
+      });
       expect(toast.success).toHaveBeenCalledWith("Endereço e descrição salvos");
-      expect(toast.success).not.toHaveBeenCalledWith("Minha loja salva");
-      expect(aviso()).not.toBeNull();
-      expect(aoSujar).toHaveBeenLastCalledWith(true);
-      expect(botaoSalvarContato().disabled).toBe(false);
+      expect(toast.success).toHaveBeenCalledWith("Contato salvo");
     });
 
-    it("sem contato pendente o aviso não aparece", async () => {
+    it("sem contato pendente o marcador não aparece", async () => {
       await abrirTela();
       await digitarDescricao("Só a descrição mudou.");
-      expect(aviso()).toBeNull();
+      expect(marcador()).toBe(false);
     });
   });
 

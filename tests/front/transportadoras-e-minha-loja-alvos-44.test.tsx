@@ -185,16 +185,16 @@ describe("K-D · Minha loja e painel recolhível: letra >= 11px e tokens (estát
   it("(g) Salvar de Minha loja: min-h-11, 11px e tokens no lugar de hex", () => {
     const { tag } = aberturaQueEnvolve(
       lerFonte(SOBRE),
-      "onClick={() => void handleSubmit()}",
+      "onClick={() => void salvarTudo()}",
       "button",
     );
     expect(tag).toMatch(/\bmin-h-11\b/);
-    expect(tag).toContain("text-[11px]");
+    expect(tag).toContain("text-sm");
     expect(tag).not.toMatch(/\bh-10\b/);
     expect(tag).not.toMatch(TEXTO_MIUDO);
     expect(tag).not.toMatch(/#e3c25e|#09090b/i);
-    expect(tag).toContain("hover:bg-admin-gold/90");
-    expect(tag).toContain("focus-visible:ring-offset-admin-bg");
+    expect(tag).toContain("hover:bg-zinc-800");
+    expect(tag).toContain("focus-visible:ring-2");
   });
 
   it("(g) 'Prévia do que o cliente vê' está em 11px", () => {

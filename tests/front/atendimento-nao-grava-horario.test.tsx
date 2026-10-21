@@ -166,7 +166,7 @@ describe("Minha loja › Contato — não grava nem edita o horário (A1)", () =
     await digitarWhatsApp("1198765432");
 
     await act(async () => {
-      botao("Salvar contato")!.dispatchEvent(
+      botao("Salvar alterações")!.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
       );
       await esperar(50);

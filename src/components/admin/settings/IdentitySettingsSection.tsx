@@ -9,10 +9,12 @@ import {
 import type { IdentityAsset, IdentityAssetRole } from "@/lib/storeIdentity";
 import type { IdentityDraftFields } from "@/lib/storeIdentityDraft";
 import type { View } from "@/types";
+import type { EditorDeMinhaLoja } from "@/views/admin/AdminAboutStoreView";
 import { ChevronRight, Droplet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 export interface IdentitySettingsSectionProps {
+  readonly onRegistrarSalvamento?: (editor: EditorDeMinhaLoja) => void;
   readonly active?: boolean;
   readonly onNavigate?: (view: View) => void;
   readonly onDirtyChange?: (dirty: boolean) => void;
@@ -61,6 +63,7 @@ export function IdentitySettingsSection({
   active = true,
   onDirtyChange,
   onNavigate,
+  onRegistrarSalvamento,
 }: IdentitySettingsSectionProps): React.JSX.Element {
   const editor = useStoreIdentityEditor(active);
   const [alsoOpening, setAlsoOpening] = useState(false);
@@ -68,6 +71,12 @@ export function IdentitySettingsSection({
   useEffect(() => {
     onDirtyChange?.(editor.dirty);
   }, [editor.dirty, onDirtyChange]);
+  useLayoutEffect(() => {
+    onRegistrarSalvamento?.({
+      alterado: editor.dirty,
+      salvar: () => editor.save(),
+    });
+  });
   const { draft } = editor;
   if (!editor.allowed)
     return (
@@ -466,16 +475,18 @@ export function IdentitySettingsSection({
         </div>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          className="min-h-11"
-          disabled={editor.locked || !editor.dirty}
-          onClick={() => void editor.save()}
-        >
-          {editor.phase === "saving"
-            ? "Salvando identidade…"
-            : "Salvar identidade"}
-        </Button>
+        {!onRegistrarSalvamento && (
+          <Button
+            type="button"
+            className="min-h-11"
+            disabled={editor.locked || !editor.dirty}
+            onClick={() => void editor.save()}
+          >
+            {editor.phase === "saving"
+              ? "Salvando identidade…"
+              : "Salvar identidade"}
+          </Button>
+        )}
         {editor.phase === "editing" && (
           <Button
             type="button"
