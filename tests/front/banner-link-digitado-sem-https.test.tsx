@@ -17,7 +17,7 @@
 import {
   AVISO_DE_LINK_RECUSADO,
   linkDoBannerParaSalvar,
-} from "@/lib/destino-do-banner";
+} from "@/lib/link-do-banner-no-painel";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

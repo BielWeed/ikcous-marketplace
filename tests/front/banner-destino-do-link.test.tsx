@@ -24,8 +24,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LINK_DA_PAGINA_DA_LOJA,
   destinoDoBanner,
-  linkDaCategoria,
 } from "@/lib/destino-do-banner";
+import { linkDaCategoria } from "@/lib/link-do-banner-no-painel";
 import type { Banner } from "@/types";
 
 // @ts-expect-error flag interna do React, sem tipo público.

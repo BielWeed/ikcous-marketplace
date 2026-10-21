@@ -22,12 +22,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { abrirMaisOpcoes } from "./helpers/editor-de-banner";
 
 import {
-  AVISO_DE_LINK_RECUSADO,
-  avisoDoLinkDigitado,
   destinoDoBanner,
   destinoSeguroDoBanner,
-  linkDoBannerParaSalvar,
 } from "@/lib/destino-do-banner";
+import {
+  AVISO_DE_LINK_RECUSADO,
+  avisoDoLinkDigitado,
+  linkDoBannerParaSalvar,
+} from "@/lib/link-do-banner-no-painel";
 import type { Banner } from "@/types";
 
 // @ts-expect-error flag interna do React, sem tipo público.

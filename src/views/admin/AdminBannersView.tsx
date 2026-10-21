@@ -49,14 +49,14 @@ import {
   fimDoBannerEmTexto,
   problemaDasDatas,
 } from "@/lib/datas-do-banner";
+import { LINK_DA_PAGINA_DA_LOJA } from "@/lib/destino-do-banner";
+import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import {
   AVISO_DE_LINK_RECUSADO,
-  LINK_DA_PAGINA_DA_LOJA,
   avisoDoLinkDigitado,
   linkDaCategoria,
   linkDoBannerParaSalvar,
-} from "@/lib/destino-do-banner";
-import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
+} from "@/lib/link-do-banner-no-painel";
 import {
   gravarModoDoEditor,
   lerModoDoEditor,
