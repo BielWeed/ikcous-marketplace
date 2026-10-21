@@ -368,15 +368,15 @@ const POSTERIORES_A_97 = [
   // O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em tests/banco/mototaxi-posterior.cjs.
   // No FIM da lista de proposito (as provas enderecam 202/200/99/98 por indice).
   MOTOTAXI,
+  {
+    nome: "20261345000000_o_avanco_confere_o_status_esperado.sql",
+    noAr: "SELECT to_regprocedure('public.avancar_status_do_pedido(uuid,text,text,text)') IS NOT NULL AS sim",
+  },
   // 20261340000000: 13 politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete passam
   // a citar rls_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "politicas fora da
   // 20261197000000 ainda usam ..."). O rollback-manual dela so devolve as 13 expressoes a is_admin(). Definicao unica em
   // tests/banco/admin-atual-perfis-posterior.cjs. No FIM da lista de proposito.
   PERFIS_ADMIN_ATUAL,
-  {
-    nome: "20261345000000_o_avanco_confere_o_status_esperado.sql",
-    noAr: "SELECT to_regprocedure('public.avancar_status_do_pedido(uuid,text,text,text)') IS NOT NULL AS sim",
-  },
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar
