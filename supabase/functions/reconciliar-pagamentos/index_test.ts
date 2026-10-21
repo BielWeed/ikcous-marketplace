@@ -4722,3 +4722,158 @@ Deno.test("P1 cron - devolução que não cabe no saldo do ledger NÃO impede co
   assertEquals(r.efeitos.alertas.length, 1);
   assertEquals((r.efeitos.alertas[0] as any).title, "Devolução do Mercado Pago para conferir");
 });
+
+// =============================================================================
+// P2 (21/10/2026, revisão adversarial do lote 1.5.47) — DEVOLUÇÃO INTEGRAL
+// PELA RECONCILIAÇÃO. O mapa traduz `refunded:refunded` para 'estornado' e o
+// cron mandava isso direto a `confirmar_pagamento`: no pedido aguardando+
+// pending esse ramo devolve o estoque e cancela, mas NÃO grava `paid_at`, NÃO
+// soma o valor devolvido e NÃO cria a linha de devolução — o dinheiro entrou
+// e saiu sem rastro (totais brutos e histórico errados; regra A1 do
+// pagamentos-rpc-viva). Pedido nunca pago não tem linha de devolução do app
+// (solicitar_estorno exige pagamento): quem registra é a RPC do ledger, que
+// trava o pedido e conclui o estorno (`concluir_estorno`: integral grava
+// paid_at, soma o valor, devolve o estoque e cancela, numa transação).
+// =============================================================================
+function orderTotalmenteDevolvida(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  const order = orderParcialDoPainel({ status: "refunded", status_detail: "refunded", ...extra });
+  (order.transactions as any).payments[0].refunded_amount = "100.00";
+  (order.transactions as any).refunds = [{ id: "REF-PAINEL-100", amount: "100.00", status: "processed" }];
+  return order;
+}
+
+Deno.test("P2 cron - devolução INTEGRAL de pedido nunca pago -> registra a devolução no ledger e NÃO chama confirmar_pagamento", async () => {
+  const r = await reconciliarParcial({
+    order: orderTotalmenteDevolvida(),
+    pedido: pedidoDaParcial(),
+    rpcConfirmarResultado: "estornado",
+  });
+
+  assertEquals(r.resposta.status, 200);
+  assertEquals(r.registro.chamadasConfirmar.length, 0, "confirmar_pagamento('estornado') cancelaria sem registrar o dinheiro");
+  assertEquals(r.registro.chamadasExternoDoMp.length, 1);
+  assertEquals(r.registro.chamadasExternoDoMp[0].args, {
+    p_order_id: UUID_PEDIDO_1,
+    p_mp_refund_id: "REF-PAINEL-100",
+    p_valor: 100,
+    p_mp_status: "refunded",
+    p_mp_status_detail: "refunded",
+  });
+  assertEquals(r.corpo.confirmados, 0);
+  assertEquals(r.corpo.ignorados, 1);
+  assertEquals(r.corpo.falhas, 0);
+});
+
+Deno.test("P2 cron - pedido já EXPIRADO (sem paid_at) e devolvido por inteiro: também vai ao ledger, não à RPC de pagamento", async () => {
+  const r = await reconciliarParcial({
+    order: orderTotalmenteDevolvida(),
+    pedido: pedidoDaParcial({ payment_status: "expirado", status: "cancelled" }),
+    rpcConfirmarResultado: "estornado",
+  });
+
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+  assertEquals(r.registro.chamadasExternoDoMp.length, 1);
+});
+
+Deno.test("P2 cron - devolvido em duas vezes (60 + 40): cada devolução concluída é registrada, nenhuma confirmação de pagamento", async () => {
+  const order = orderTotalmenteDevolvida();
+  (order.transactions as any).refunds = [
+    { id: "REF-60", amount: "60.00", status: "processed" },
+    { id: "REF-40", amount: "40.00", status: "processed" },
+  ];
+  const r = await reconciliarParcial({ order, pedido: pedidoDaParcial(), rpcConfirmarResultado: "estornado" });
+
+  assertEquals(r.registro.chamadasExternoDoMp.map((c: any) => [c.args.p_mp_refund_id, c.args.p_valor]), [
+    ["REF-60", 60],
+    ["REF-40", 40],
+  ]);
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("P2 cron - 'refunded' mas NENHUMA devolução concluída ainda (lista vazia ou 'processing') -> espera: não registra nem cancela (regra A1 do webhook)", async () => {
+  const vazia = orderTotalmenteDevolvida();
+  (vazia.transactions as any).refunds = [];
+  const emAndamento = orderTotalmenteDevolvida();
+  (emAndamento.transactions as any).refunds = [{ id: "REF-100", amount: "100.00", status: "processing" }];
+  for (const order of [vazia, emAndamento]) {
+    const r = await reconciliarParcial({ order, pedido: pedidoDaParcial(), rpcConfirmarResultado: "estornado" });
+    assertEquals(r.corpo.ignorados, 1);
+    assertEquals(r.corpo.falhas, 0);
+    assertEquals(r.registro.chamadasConfirmar.length, 0, "reserva nunca confirmada não cai no confirmar_pagamento legado");
+    assertEquals(r.registro.chamadasExternoDoMp.length, 0);
+  }
+});
+
+Deno.test("P2 cron - o ledger FALHA -> falhas:1 e nada é cancelado (o candidato volta no próximo ciclo)", async () => {
+  const r = await reconciliarParcial({
+    order: orderTotalmenteDevolvida(),
+    pedido: pedidoDaParcial(),
+    rpcConfirmarResultado: "estornado",
+    estornoExternoDoMp: () => ({ data: null, error: { message: "statement timeout" } }),
+  });
+
+  assertEquals(r.corpo.falhas, 1);
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("P2 cron - rodar o MESMO ciclo duas vezes é seguro: a 2ª devolve ja_registrado e nada vai à RPC de pagamento", async () => {
+  const registro = { chamadasConfirmar: [] as any[], chamouCandidatos: false, chamadasExternoDoMp: [] as any[], chamadasAviso: [] as any[] };
+  for (const vez of [1, 2]) {
+    const r = await reconciliarParcial({
+      order: orderTotalmenteDevolvida(),
+      pedido: pedidoDaParcial(),
+      rpcConfirmarResultado: "estornado",
+      registro,
+    });
+    assertEquals(r.corpo.falhas, 0, `vez ${vez}`);
+  }
+  assertEquals(registro.chamadasExternoDoMp.length, 2);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("P2 cron - devolução que não cabe no saldo: não é gravada, o lojista é avisado e confirmar_pagamento continua de fora", async () => {
+  const r = await reconciliarParcial({
+    order: orderTotalmenteDevolvida(),
+    pedido: pedidoDaParcial(),
+    rpcConfirmarResultado: "estornado",
+    estornoExternoDoMp: () => ({ data: { resultado: "nao_cabe", aviso: "saldo" }, error: null }),
+  });
+
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+  assertEquals(r.efeitos.alertas.length, 1);
+  assertEquals(r.corpo.ignorados, 1);
+});
+
+Deno.test("P2 cron - pedido que JÁ tem paid_at (pago no meio do caminho) mantém o caminho de antes: confirmar_pagamento('estornado')", async () => {
+  const r = await reconciliarParcial({
+    order: orderTotalmenteDevolvida(),
+    pedido: pedidoDaParcial({ payment_status: "pago", paid_at: "2026-10-21T10:00:00Z", status: "processing" }),
+    rpcConfirmarResultado: "estornado",
+  });
+
+  assertEquals(r.registro.chamadasConfirmar.length, 1);
+  assertEquals(r.registro.chamadasConfirmar[0].args.p_status, "estornado");
+  assertEquals(r.registro.chamadasExternoDoMp.length, 0);
+});
+
+Deno.test("P2 cron - candidato LEGADO (id clássico) devolvido: comportamento de antes, confirmar_pagamento('estornado')", async () => {
+  const registro = { chamadasConfirmar: [] as any[], chamouCandidatos: false, chamadasExternoDoMp: [] as any[] };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: "123456789" }],
+    registro,
+    rpcConfirmarResultado: "estornado",
+    resolverPedidoFresco: () => pedidoDaParcial({ gateway_payment_id: "123456789" }),
+  });
+  const fetchImpl = async (url: string) => {
+    if (url.includes("/v1/payments/123456789")) {
+      return new Response(JSON.stringify({ id: 123456789, status: "refunded", transaction_amount: 100 }), { status: 200 });
+    }
+    throw new Error(`fetch inesperado nos testes: ${url}`);
+  };
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  await resposta.json();
+
+  assertEquals(registro.chamadasConfirmar.length, 1);
+  assertEquals(registro.chamadasConfirmar[0].args.p_status, "estornado");
+  assertEquals(registro.chamadasExternoDoMp.length, 0);
+});

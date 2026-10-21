@@ -84,6 +84,7 @@ import {
 import { avisarJurosSemParcelaConferida, conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
 import {
   devolucaoParcialProvaPagamento,
+  devolucoesConcluidasDaOrder,
   registrarDevolucoesConcluidasDaOrder,
 } from "../_shared/devolucao-parcial.ts";
 import { registrarDiagnosticoDoCartao } from "../_shared/diagnostico-do-cartao.ts";
@@ -890,6 +891,65 @@ async function handler(
         );
         ignorados++;
         continue;
+      }
+
+      // P2 (21/10/2026): DEVOLUÇÃO INTEGRAL de um pedido NUNCA PAGO. O mapa dá
+      // 'estornado' a `refunded:refunded` e este laço mandava isso direto a
+      // `confirmar_pagamento`: no pedido aguardando+pending a RPC devolve o
+      // estoque e cancela, mas não grava `paid_at`, não soma o valor devolvido
+      // e não cria a linha de devolução — o dinheiro entrou e saiu sem rastro
+      // (totais brutos e histórico errados; regra A1 de pagamentos-rpc-viva).
+      // Pedido nunca pago não tem linha de devolução do app (solicitar_estorno
+      // exige pagamento), então quem registra é a RPC do ledger: ela trava o
+      // pedido, é idempotente pelo id da devolução e, quando o acumulado cobre
+      // o total, conclui como `concluir_estorno` (grava `paid_at`, soma o
+      // valor, devolve o estoque e cancela, numa transação). MESMA regra A1 do
+      // webhook: sem NENHUMA devolução concluída no GET (a order ainda
+      // 'processing', por exemplo) não cai no `confirmar_pagamento` legado —
+      // ele encerraria a reserva sem a entrada financeira; espera o próximo
+      // ciclo. Só order da Orders API (o candidato clássico legado fica como
+      // antes) e só com `paid_at` nulo na releitura fresca: pedido que já foi
+      // pago segue o caminho de antes. Falha de banco lança e o candidato
+      // volta no próximo ciclo (repetir é seguro). Chargeback já saiu acima.
+      if (statusMapeado === "estornado" && orderParaConferir) {
+        const { data: linhaDoEstorno, error: erroLeituraDoEstorno } = await supabase
+          .from("marketplace_orders")
+          .select("id, payment_status, paid_at, status")
+          .eq("id", candidato.order_id)
+          .maybeSingle();
+        if (erroLeituraDoEstorno) throw erroLeituraDoEstorno;
+        if ((linhaDoEstorno as Record<string, unknown> | null)?.paid_at === null) {
+          const devolucoes = devolucoesConcluidasDaOrder(orderParaConferir);
+          if (devolucoes.length === 0) {
+            console.warn(
+              "reconciliar-pagamentos: order devolvida no MP, mas sem devolução concluída ainda — não cancela nem registra; aguardando o próximo ciclo",
+              candidato.order_id,
+              statusBrutoParaLog,
+            );
+            ignorados++;
+            continue;
+          }
+          const resumoDoEstorno = await registrarDevolucoesConcluidasDaOrder({
+            supabase,
+            orderId: candidato.order_id,
+            order: orderParaConferir,
+            devolucoes,
+          });
+          await avisarDevolucoesQueNaoCabem({
+            deps,
+            supabase,
+            orderId: candidato.order_id,
+            naoCabem: resumoDoEstorno.naoCabem,
+          });
+          console.log(
+            "reconciliar-pagamentos: devolução integral de pedido nunca pago registrada no ledger — confirmar_pagamento('estornado') NÃO é chamada",
+            candidato.order_id,
+            statusBrutoParaLog,
+            resumoDoEstorno,
+          );
+          ignorados++;
+          continue;
+        }
       }
 
       // CARTÃO RECUSADO NÃO MATA O PEDIDO (Fase 3.5) — o webhook que perdeu
