@@ -32,7 +32,9 @@ const LINK_NA_FRASE =
 export function FraseDeAceite({
   acao,
   className,
+  emLinha = false,
 }: {
+  readonly emLinha?: boolean;
   /** O que a cliente está prestes a fazer: "finalizar", "entrar", "criar sua conta". */
   readonly acao: string;
   readonly className?: string;
@@ -50,11 +52,11 @@ export function FraseDeAceite({
         data-testid="frase-de-aceite"
         className={cn("text-[11px] leading-snug text-zinc-500", className)}
       >
-        Ao {acao} você concorda com os <br />
+        Ao {acao} você concorda com os {!emLinha && <br />}
         <button
           type="button"
           onClick={() => abrir("termos")}
-          className={LINK_NA_FRASE}
+          className={cn(LINK_NA_FRASE, emLinha && "inline p-0")}
         >
           {nomeDaPolitica("termos")}
         </button>{" "}
@@ -62,7 +64,7 @@ export function FraseDeAceite({
         <button
           type="button"
           onClick={() => abrir("privacidade")}
-          className={LINK_NA_FRASE}
+          className={cn(LINK_NA_FRASE, emLinha && "inline p-0")}
         >
           {nomeDaPolitica("privacidade")}
         </button>

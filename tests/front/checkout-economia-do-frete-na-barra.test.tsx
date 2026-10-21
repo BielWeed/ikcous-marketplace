@@ -291,9 +291,7 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     await esperarCotacao();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
-    const linhaTotal = botaoFinalizar.closest(
-      "div.flex.items-center.justify-between",
-    )!;
+    const linhaTotal = botaoFinalizar.closest(".bottom-docked-navigation")!;
     const pilula = linhaTotal.querySelector(
       '[aria-label^="Desconto de R$"]',
     ) as HTMLElement | null;
@@ -337,9 +335,7 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     await esperarCotacao();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
-    const linhaTotal = botaoFinalizar.closest(
-      "div.flex.items-center.justify-between",
-    )!;
+    const linhaTotal = botaoFinalizar.closest(".bottom-docked-navigation")!;
     const pilula = () =>
       linhaTotal.querySelector(
         '[aria-label^="Desconto de R$"]',
@@ -392,9 +388,7 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     await esperarCotacao();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
-    const linhaTotal = botaoFinalizar.closest(
-      "div.flex.items-center.justify-between",
-    )!;
+    const linhaTotal = botaoFinalizar.closest(".bottom-docked-navigation")!;
     expect(
       linhaTotal.querySelector('[aria-label^="Desconto de R$"]'),
     ).toBeNull();
@@ -441,9 +435,7 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     expect(mockInvoke).not.toHaveBeenCalled();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
-    const linhaTotal = botaoFinalizar.closest(
-      "div.flex.items-center.justify-between",
-    )!;
+    const linhaTotal = botaoFinalizar.closest(".bottom-docked-navigation")!;
     const pilula = linhaTotal.querySelector(
       '[aria-label^="Desconto de R$"]',
     ) as HTMLElement | null;

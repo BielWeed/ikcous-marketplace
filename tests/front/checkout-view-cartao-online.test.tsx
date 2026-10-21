@@ -348,6 +348,7 @@ describe("CheckoutView — cartão pelo app", () => {
     });
     expect(ultimas.emailDoPagador).toBe("cliente@exemplo.com");
     expect(ultimas.orderId).toBe("ped-777");
+    expect(hospedeiro.querySelector(".pb-customer")).not.toBeNull();
   });
 
   it.each([120.03, 119.97, 1234.56])(
