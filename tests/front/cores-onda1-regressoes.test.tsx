@@ -12,6 +12,10 @@ import { AdminCouponsView } from "@/views/admin/AdminCouponsView";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+const { estadoCupons } = vi.hoisted(() => ({
+  estadoCupons: { erroDaListagem: null as string | null },
+}));
+
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({
     coupons: [
@@ -51,6 +55,7 @@ vi.mock("@/hooks/useCoupons", () => ({
       },
     ] satisfies Coupon[],
     loading: false,
+    erroDaListagem: estadoCupons.erroDaListagem,
     updateCoupon: vi.fn(),
     deleteCoupon: vi.fn(),
     refreshCoupons: vi.fn(),
@@ -182,6 +187,25 @@ describe("cores mínimas após integrar as duas frentes", () => {
       }
     },
   );
+
+  it("erro da listagem usa recipiente neutro e glifo/texto de erro na cor vermelha", () => {
+    estadoCupons.erroDaListagem = "Não foi possível listar cupons.";
+    try {
+      const host = document.createElement("div");
+      host.innerHTML = renderToStaticMarkup(
+        <AdminCouponsView onNavigate={() => {}} />,
+      );
+      const aviso = host.querySelector('[role="alert"]')!;
+      expect(aviso.textContent).toContain("Não foi possível listar cupons.");
+      expect(aviso.className).not.toMatch(/(?:bg|border)-red-/);
+      expect(aviso.classList.contains("border-admin-border")).toBe(true);
+      expect(aviso.classList.contains("bg-admin-surface")).toBe(true);
+      expect(aviso.classList.contains("text-red-400")).toBe(true);
+      expect(aviso.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    } finally {
+      estadoCupons.erroDaListagem = null;
+    }
+  });
 
   it("aviso do PDV usa âmbar adaptável ao Claro, não hex fixo", () => {
     const css = fonte("components/admin/pdv/pdv.css");

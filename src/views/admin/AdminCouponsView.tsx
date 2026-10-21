@@ -513,7 +513,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         {erroDaListagem ? (
           <div
             role="alert"
-            className="flex flex-wrap items-center gap-3 rounded-[20px] border border-red-300/20 bg-red-300/5 p-4 text-red-300"
+            className={`flex flex-wrap items-center gap-3 rounded-[20px] border border-admin-border bg-admin-surface p-4 ${classeDoTexto("negativo")}`}
           >
             <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
             <p className="min-w-0 flex-1 text-sm leading-relaxed">

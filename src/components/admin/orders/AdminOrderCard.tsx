@@ -260,9 +260,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             {order.canal === "presencial" && (
               <span
                 data-testid="selo-canal"
-                className="flex items-center gap-1 rounded-full bg-pink-400/10 px-2 py-1 text-[11px] font-bold text-pink-300"
+                className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold ${classeDoTexto("info")}`}
               >
-                <Store aria-hidden="true" className="size-3" />
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 shrink-0 rounded-full bg-current"
+                />
                 Balcão
               </span>
             )}
