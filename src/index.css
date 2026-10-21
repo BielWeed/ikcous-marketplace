@@ -202,7 +202,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
-    overscroll-behavior-y: none;
+    overscroll-behavior: none;
   }
 
   html,
@@ -1140,6 +1140,13 @@ body.admin-modal-open .active-scroll-container {
      .gpu-accelerated) o will-change segue vivo e vem de lá; o fade de
      entrada continua pelo transition acima. */
   backface-visibility: hidden;
+
+  /* O painel de cada aba do cliente e `overflow-y-auto` (App.tsx) e, pela
+     regra do CSS, `overflow-x: visible` vira `auto` quando o outro eixo nao e
+     `visible`: qualquer sobra de 1 px virava rolagem lateral pelo toque (a
+     aba inteira deslizava e aparecia uma faixa branca, 21/10/2026). Fechar o
+     eixo X aqui cobre toda aba, sem custo de bytes no JS. */
+  overflow-x: hidden;
 }
 
 .admin-tab-left {
