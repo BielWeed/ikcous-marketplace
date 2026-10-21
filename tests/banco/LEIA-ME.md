@@ -986,3 +986,8 @@ aplicação.
   (5 linhas) e `74b-antes-codigo-de-barras-entre-tabelas-ausente` (3 linhas), só catálogo, sem ler código algum.
   Ordem: banco antes ou depois do front dá no mesmo; sem backfill. Rodar antes, em cada loja, a contagem de códigos
   nas duas tabelas do cabeçalho da migration (informativa).
+  Limite conhecido: o upsert IDÊNTICO (a mesma linha regravada com o mesmo código) a guarda deixa passar de propósito,
+  porque não é gravação nova; só código que passa a coincidir com o da outra tabela é barrado.
+  Regra para o futuro: migration que mude o TIPO de `codigo_barras` (em `produtos` ou `product_variants`) tem de tirar
+  e recriar os DOIS gatilhos (`tr_produto_codigo_barras_livre_de_variacao` e `tr_variacao_codigo_barras_livre_de_produto`),
+  senão o Postgres recusa o ALTER (0A000); a sabotagem de TIPO do `lote-60-66-viva.cjs` já tira o gatilho de variações.
