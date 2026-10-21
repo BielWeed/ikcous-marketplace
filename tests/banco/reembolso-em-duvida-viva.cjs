@@ -410,7 +410,13 @@ async function semDuvidaSaldoIgual() {
     assert.equal(Number(p.em_duvida), 0, "nada em dúvida");
     assert.equal(Number(p.disponivel), await saldo(o), "o painel é o saldo");
   }
-  // ANTES: o rollback na MESMA transação (nenhuma marca: ele pode desfazer)
+  // ANTES: o rollback na MESMA transação (nenhuma marca: ele pode desfazer). A 20261343000000 redefine
+  // admin_devolucao_concluir depois da 241 e o pré-voo do rollback recusa com o corpo dela no ar: desfaz-se
+  // a 343 (a mais nova) primeiro, como nas demais provas que desfazem uma ancestral (o saldo medido acima
+  // já foi com a 343 no ar; as funções de saldo não são as dela).
+  await require("./reembolso-manual-reserva-posterior.cjs").desfazerReembolsoManualReservaNaTransacao(
+    C,
+  );
   assert.equal(await aplicar(ROLLBACK), null, "o rollback não aplicou");
   const antes = [];
   for (const o of pedidos) antes.push(await saldo(o));
