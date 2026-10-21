@@ -818,6 +818,7 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
   it.each(["recusado", "estornado"])(
     "payment_status '%s' para a verificação periódica — não fica consultando para sempre",
     async (status) => {
+      const itensOriginais = structuredClone(mockCart);
       const { CheckoutView } = await import("@/views/customer/CheckoutView");
       await chegarNaTelaDeAguardarPagamento(CheckoutView);
 
@@ -837,6 +838,21 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
       });
 
       expect(fromSpy).not.toHaveBeenCalled();
+      const voltar = localizarBotaoPorTexto(hospedeiro, "Voltar ao carrinho");
+      expect(voltar).toBeDefined();
+      act(() => {
+        voltar!.click();
+        voltar!.click();
+      });
+      expect(addToCart).toHaveBeenCalledTimes(1);
+      expect(addToCart).toHaveBeenCalledWith(
+        itensOriginais[0].product,
+        1,
+        undefined,
+        undefined,
+      );
+      expect(onNavigate).toHaveBeenCalledWith("cart");
+      expect(updateOrderStatus).not.toHaveBeenCalled();
     },
   );
 

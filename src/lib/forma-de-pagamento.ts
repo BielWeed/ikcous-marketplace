@@ -13,6 +13,9 @@
 // concordam no que importa — cartão no balcão é "na maquininha", cartão do
 // site é "na entrega".
 
+/** Por onde o cliente paga pelo app: PIX ou cartão. */
+export type MetodoOnline = "pix" | "cartao";
+
 export interface FormaDoPedido {
   readonly paymentMethod: string | null | undefined;
   /** `marketplace_orders.metodo_online` (pix | credito | debito). A tela de

@@ -3,7 +3,6 @@ import type { CartaoEmCurso } from "@/components/checkout/PagamentoComCartao";
 import {
   AvisoDePixEncerrado,
   type CategoriaErroPagamento,
-  type MetodoOnline,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
 import {
@@ -67,6 +66,7 @@ import {
   resumoDoEndereco,
 } from "@/lib/endereco-de-entrega";
 import { pagamentoOnlineLigado } from "@/lib/flags";
+import type { MetodoOnline } from "@/lib/forma-de-pagamento";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
   conferirFreteEscolhidoComACotacao,
@@ -4058,18 +4058,21 @@ export function CheckoutViewDaConta({
         onClearCart();
         itensDoPedidoParaRestaurarRef.current = itensEnviados;
       } else if (removeFromCart) {
-        // Mudanças feitas durante o envio ficam; só sai a linha intacta.
+        // Na recarga, o catálogo pode ter reduzido uma linha já comprada.
+        // Fora dela, alterações de quantidade durante o envio ficam.
         for (const item of itensEnviados) {
+          const atual = carrinhoAtual.find(
+            (linha) =>
+              linha.product.id === item.product.id &&
+              (linha.variantId || "") === (item.variantId || ""),
+          );
           if (
-            carrinhoAtual.some(
-              (atual) =>
-                atual.product.id === item.product.id &&
-                (atual.variantId || "") === (item.variantId || "") &&
-                atual.quantity === item.quantity,
-            )
+            atual &&
+            (atual.quantity === item.quantity ||
+              (pedido === pedidoRestaurado && atual.quantity <= item.quantity))
           ) {
             removeFromCart(item.product.id, item.variantId);
-            itensDoPedidoParaRestaurarRef.current.push(item);
+            itensDoPedidoParaRestaurarRef.current.push(atual);
           }
         }
       }
@@ -4275,6 +4278,15 @@ export function CheckoutViewDaConta({
     await enviarPedido(pedido);
   };
 
+  const voltarAoCarrinhoComItensDoPedido = () => {
+    const itens = itensDoPedidoParaRestaurarRef.current;
+    itensDoPedidoParaRestaurarRef.current = [];
+    for (const item of itens) {
+      addToCart(item.product, item.quantity, item.variantId, item.variantNames);
+    }
+    onNavigate("cart");
+  };
+
   // CHECKOUT-070 (#197): saída para quem teve o pagamento online recusado —
   // cancela o pedido (devolve estoque) e devolve o cliente ao carrinho para
   // ele concluir escolhendo "pagar na entrega". Só existe para sessão
@@ -4397,15 +4409,7 @@ export function CheckoutViewDaConta({
         return;
       }
 
-      for (const item of itensDoPedidoParaRestaurarRef.current) {
-        addToCart(
-          item.product,
-          item.quantity,
-          item.variantId,
-          item.variantNames,
-        );
-      }
-      onNavigate("cart");
+      voltarAoCarrinhoComItensDoPedido();
     } finally {
       isCancelandoPedidoRef.current = false;
       setIsCancelandoPedido(false);
@@ -4651,6 +4655,11 @@ export function CheckoutViewDaConta({
           orderId={orderId}
           pagamentoNaoConcluido
           onVerMeusPedidos={() => onNavigate("orders")}
+          onVoltarAoCarrinho={
+            itensDoPedidoParaRestaurarRef.current.length > 0
+              ? voltarAoCarrinhoComItensDoPedido
+              : undefined
+          }
         />
       );
     }
@@ -6985,7 +6994,11 @@ export function CheckoutViewDaConta({
                         <SaidaDaRecusa
                           recusa={recusaDoUltimoClique}
                           onAgir={agirNaRecusa}
-                          onFechar={() => setRecusaDoUltimoClique(null)}
+                          onFechar={() => {
+                            pedidoCongeladoRef.current = null;
+                            limparPedidoSemResposta();
+                            setRecusaDoUltimoClique(null);
+                          }}
                           onFalarComALoja={
                             recusaDoUltimoClique.acao ===
                               "reenviar_mesma_compra" &&

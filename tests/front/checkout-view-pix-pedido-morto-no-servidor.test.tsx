@@ -202,6 +202,8 @@ describe("CheckoutView — pedido morto no servidor chega ao PagamentoOnline", (
       expect(hospedeiro.querySelector("img, textarea, a")).toBeNull();
       expect(hospedeiro.textContent).not.toContain("Copiar código PIX");
       expect(hospedeiro.textContent).not.toContain("Seu pedido está reservado");
+      // Na retomada não há itens locais para devolver: não promete carrinho vazio.
+      expect(hospedeiro.textContent).not.toContain("Voltar ao carrinho");
       const chamadas = lerPoll.mock.calls.length;
       await act(async () => {
         await vi.advanceTimersByTimeAsync(20_000);

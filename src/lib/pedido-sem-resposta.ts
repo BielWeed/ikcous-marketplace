@@ -1,4 +1,4 @@
-import type { MetodoOnline } from "@/components/checkout/PagamentoOnline";
+import type { MetodoOnline } from "@/lib/forma-de-pagamento";
 import type { CartItem } from "@/types";
 
 /** A mesma compra do envio original, nunca remontada do carrinho reconciliado. */

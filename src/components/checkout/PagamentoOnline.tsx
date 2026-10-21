@@ -10,6 +10,7 @@ import {
   esquecerConfigDoCartao,
 } from "@/lib/config-do-cartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import type { MetodoOnline } from "@/lib/forma-de-pagamento";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
@@ -383,8 +384,7 @@ function formatarHora(ms: number): string {
   });
 }
 
-/** Por onde o cliente paga pelo app: PIX (padrão) ou cartão (Fase 3.5). */
-export type MetodoOnline = "pix" | "cartao";
+export type { MetodoOnline } from "@/lib/forma-de-pagamento";
 
 /**
  * A tela de pagamento pelo app, depois de o pedido nascer.
@@ -582,10 +582,12 @@ export function PagamentoOnline({
 export function AvisoDePixEncerrado({
   orderId,
   onVerMeusPedidos,
+  onVoltarAoCarrinho,
   pagamentoNaoConcluido = false,
 }: {
   orderId: string;
   onVerMeusPedidos?: () => void;
+  onVoltarAoCarrinho?: () => void;
   pagamentoNaoConcluido?: boolean;
 }) {
   const idTitulo = useId();
@@ -621,6 +623,15 @@ export function AvisoDePixEncerrado({
             : "Este código não vale mais. Se você já pagou, fique nesta tela: a confirmação aparece aqui. Se ainda não pagou, faça um pedido novo."}
         </p>
       </div>
+      {onVoltarAoCarrinho && (
+        <button
+          type="button"
+          onClick={onVoltarAoCarrinho}
+          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+        >
+          Voltar ao carrinho
+        </button>
+      )}
       {onVerMeusPedidos && (
         <button
           type="button"

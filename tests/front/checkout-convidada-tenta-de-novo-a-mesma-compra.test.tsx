@@ -57,6 +57,7 @@ const { estado, produto } = vi.hoisted(() => {
 
 const createOrder = vi.fn();
 const clearCart = vi.fn();
+const removeFromCart = vi.fn();
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const toastError = vi.fn();
@@ -91,6 +92,7 @@ vi.mock("@/hooks/useCart", async () => {
       cartTotal: estado.cartTotal,
       shippingFee: 0,
       clearCart,
+      removeFromCart,
       addToCart: vi.fn(),
       selectedShippingOption: {
         id: "local-delivery",
@@ -226,7 +228,21 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
 
   beforeEach(() => {
     createOrder.mockReset();
-    clearCart.mockClear();
+    clearCart.mockReset().mockImplementation(() => {
+      estado.cart = [];
+      estado.cartTotal = 0;
+    });
+    removeFromCart
+      .mockReset()
+      .mockImplementation((id: string, variante?: string) => {
+        estado.cart = estado.cart.filter((item) => {
+          const atual = item as { product: { id: string }; variantId?: string };
+          return (
+            atual.product.id !== id ||
+            (atual.variantId || "") !== (variante || "")
+          );
+        });
+      });
     toastError.mockReset();
     onNavigate.mockReset();
     estado.user = null;
@@ -400,9 +416,39 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
       );
       expect(sessionStorage.getItem(registro)).toBeNull();
       expect(sessionStorage.getItem("ikcous-chave-do-pedido")).toBeNull();
+      expect(estado.cart).toEqual([]);
       expect(document.body.textContent).toContain("Pedido Celebrado");
     },
   );
+
+  it("a recarga preserva quantidade acrescentada e outras variações do carrinho", async () => {
+    estado.cart = [{ product: produto, quantity: 2 }];
+    estado.cartTotal = 200;
+    createOrder.mockRejectedValueOnce({ code: "PEDIDO_SEM_RESPOSTA" });
+    await montar();
+    await preencherEClicarFinalizar();
+    await act(async () => raiz.unmount());
+    const carrinhoNovo = [
+      { product: produto, quantity: 3 },
+      { product: produto, quantity: 1, variantId: "outra-variacao" },
+      { product: { ...produto, id: "outro-produto" }, quantity: 1 },
+    ];
+    estado.cart = carrinhoNovo;
+    estado.cartTotal = 500;
+    raiz = createRoot(hospedeiro);
+    await montar();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 420));
+    });
+    createOrder.mockResolvedValueOnce({
+      id: "pedido-1234abcd",
+      totalAmount: 200,
+    });
+    await clicarTentarDeNovo();
+    expect(estado.cart).toEqual(carrinhoNovo);
+    expect(clearCart).not.toHaveBeenCalled();
+    expect(removeFromCart).not.toHaveBeenCalled();
+  });
 
   it("recusa definitiva no reenvio apaga a compra guardada", async () => {
     createOrder.mockRejectedValueOnce({ code: "PEDIDO_SEM_RESPOSTA" });
@@ -561,6 +607,12 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
     expect(document.querySelector('[role="alert"]')).toBeNull();
     expect(botaoFinalizar()!.disabled).toBe(false);
     expect(botaoTentarDeNovo()).toBeNull();
+    expect(sessionStorage.getItem("ikcous-pedido-sem-resposta-v1")).toBeNull();
+
+    await act(async () => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    await montar();
+    expect(botaoTentarDeNovo()).toBeNull();
   });
 });
 
@@ -570,7 +622,21 @@ describe("CheckoutView — com conta o painel de 'conferir antes' continua exata
 
   beforeEach(() => {
     createOrder.mockReset();
-    clearCart.mockClear();
+    clearCart.mockReset().mockImplementation(() => {
+      estado.cart = [];
+      estado.cartTotal = 0;
+    });
+    removeFromCart
+      .mockReset()
+      .mockImplementation((id: string, variante?: string) => {
+        estado.cart = estado.cart.filter((item) => {
+          const atual = item as { product: { id: string }; variantId?: string };
+          return (
+            atual.product.id !== id ||
+            (atual.variantId || "") !== (variante || "")
+          );
+        });
+      });
     toastError.mockReset();
     onNavigate.mockReset();
     estado.user = { id: "user-1" };
