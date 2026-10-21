@@ -2368,6 +2368,18 @@ const ROL_DA_57 = [
   "as duas funcoes: assinaturas, atributos e EXECUTE so do servidor",
   "dependencia 20261241: marcas e corpos do saldo em duvida presentes",
 ];
+// Lote 58: a 280 troca a assinatura, sem sobrecarga. ANTES exige só a 249;
+// DEPOIS exige só a 280. A nota privada continua operacional nos dois lados.
+const ROL_DA_58A = [
+  ...ROL_DA_52A.slice(0, 2),
+  "registrar_venda_presencial: corpo da 20261280000000 (total conferido, md5)",
+  ...ROL_DA_52A.slice(3),
+];
+const ROL_DA_58B = [
+  ...ROL_DA_52A.slice(0, 2),
+  "registrar_venda_presencial: corpo da 20261249000000 (base anterior, md5)",
+  ...ROL_DA_52A.slice(3),
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,
   "57b-antes-pagamento-adiantado-e-estorno-base-vigente": ROL_DA_57,
@@ -2461,6 +2473,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "55b-antes-intencao-do-caixa-base-vigente": ROL_DA_55B,
   "56a-conferir-motivo-da-recusa-do-cartao-aplicado": ROL_DA_56A,
   "56b-antes-motivo-da-recusa-do-cartao-base-vigente": ROL_DA_56B,
+  "58a-conferir-total-do-balcao-aplicado": ROL_DA_58A,
+  "58b-antes-total-do-balcao-base-vigente": ROL_DA_58B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
