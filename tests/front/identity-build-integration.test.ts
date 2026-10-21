@@ -7,6 +7,8 @@ import path from "node:path";
 // @ts-expect-error The installed jsdom has no type package; no dependency is added for this test.
 import { JSDOM } from "jsdom";
 import { createServer } from "vite";
+import sharp from "sharp";
+import { identityRevision } from "../../src/lib/storeIdentity";
 import type { ResolvedConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
@@ -46,6 +48,11 @@ async function setup(command: "build" | "serve" = "build") {
   await fs.copyFile(
     path.join(project, "public/silent-guardian.js"),
     path.join(root, "public/silent-guardian.js"),
+  );
+  await fs.mkdir(path.join(root, "public/icons"));
+  await fs.copyFile(
+    path.join(project, "public/icons/badge-96x96.png"),
+    path.join(root, "public/icons/badge-96x96.png"),
   );
   await fs.writeFile(
     path.join(root, "public/loading.css"),
@@ -132,7 +139,41 @@ async function setup(command: "build" | "serve" = "build") {
 describe("artefato real de Vite/PWA", () => {
   it("entrega dois pacotes independentes, preserva bytes e precache por papel", async () => {
     const originalFixture = createIdentityBuildFixture;
-    const one = await originalFixture("aurora");
+    const original = await originalFixture("aurora");
+    const marca = await sharp({
+      create: { width: 64, height: 128, channels: 4, background: "#863B50" },
+    }).png().toBuffer();
+    const bytes = await sharp({
+      create: {
+        width: 192, height: 192, channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    }).composite([{ input: marca, left: 64, top: 32 }]).png().toBuffer();
+    const sha256 = hash(bytes);
+    const assetPath = `v1/${sha256}/192.png`;
+    const identity = {
+      ...original.identity,
+      assets: {
+        ...original.identity.assets,
+        icon_192: {
+          ...original.identity.assets.icon_192,
+          path: assetPath, sha256, bytes: bytes.length,
+        },
+      },
+      urls: {
+        ...original.identity.urls,
+        icon_192: `https://abcdefghijklmnopqrst.supabase.co/storage/v1/object/public/branding/${assetPath}`,
+      },
+    };
+    const one = {
+      identity,
+      revision: await identityRevision(identity),
+      files: original.files.map((file) =>
+        file.path === original.identity.assets.icon_192.path
+          ? { ...file, path: assetPath, bytes, sha256 }
+          : file,
+      ),
+    };
     const two = await originalFixture("oceano");
     vi.mocked(createIdentityBuildFixture)
       .mockResolvedValueOnce(one)
@@ -174,7 +215,18 @@ describe("artefato real de Vite/PWA", () => {
         snapshot.localUrls.icon_192,
         snapshot.localUrls.icon_512,
         snapshot.localUrls.maskable_512,
+        snapshot.localUrls.badge_96,
       ]);
+      expect(manifest.icons[3]).toEqual({
+        src: snapshot.localUrls.badge_96,
+        sizes: "96x96",
+        type: "image/png",
+        purpose: "monochrome",
+      });
+      const badgeUrl = snapshot.localUrls.badge_96!;
+      expect(badgeUrl === "/icons/badge-96x96.png").toBe(downloaded === two);
+      expect(await fs.stat(path.join(output, badgeUrl))).toBeTruthy();
+      expect(sw).toContain(badgeUrl.slice(1));
       expect(
         hash(await fs.readFile(path.join(output, snapshot.localUrls.header))),
       ).toBe(downloaded.identity.assets.header.sha256);

@@ -73,7 +73,7 @@ describe("sw.ts — o ícone de último recurso nunca é o assado de UMA loja", 
       data: { json: () => ({ title: "Aviso", body: "Mensagem" }) },
       waitUntil,
     });
-    // Leitura assíncrona da ficha (`resolverIconeDaLoja().then(notificar)`)
+    // Leitura assíncrona da ficha (`resolverIconesDaLoja().then(notificar)`)
     // — `showNotification` só é chamada depois que a promessa passada a
     // `waitUntil` resolve.
     await waitUntil.mock.calls[0][0];
@@ -82,7 +82,7 @@ describe("sw.ts — o ícone de último recurso nunca é o assado de UMA loja", 
       "Aviso",
       expect.objectContaining({
         icon: "/icons/heart-96x96.png",
-        badge: "/icons/heart-96x96.png",
+        badge: "/icons/badge-96x96.png",
       }),
     );
     const [, options] = showNotification.mock.calls[0] as [

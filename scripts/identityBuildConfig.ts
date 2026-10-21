@@ -14,6 +14,7 @@ import type { BuildIdentitySnapshot } from "../src/config/buildIdentityContract"
 // endereço da definição.
 import { escapeHtml, identityHtml } from "../src/config/identidadeNoHtml";
 import { nomeCurtoDaLoja } from "../src/config/nomeCurtoDaLoja";
+import { BADGE_NEUTRO } from "../src/config/fichaDaLojaContract";
 import {
   PUBLIC_DEFINE_KEYS,
   STORE_DELIVERY_API,
@@ -435,11 +436,21 @@ export function createIdentityBuildConfig(options: {
               type: "image/png",
               purpose: "maskable",
             },
+            {
+              src: localUrls.badge_96 ?? BADGE_NEUTRO,
+              sizes: "96x96",
+              type: "image/png",
+              purpose: "monochrome",
+            },
           ],
         });
         pwaOptions.includeAssets = [
-          // eslint-disable-next-line security/detect-object-injection -- Closed tuple of validated identity roles, not caller input.
-          ...new Set(essentialRoles.map((role) => localUrls[role].slice(1))),
+          ...new Set([
+            // eslint-disable-next-line security/detect-object-injection -- Closed tuple of validated identity roles, not caller input.
+            ...essentialRoles.map((role) => localUrls[role].slice(1)),
+            (localUrls.badge_96 ?? BADGE_NEUTRO).slice(1),
+            BADGE_NEUTRO.slice(1),
+          ]),
         ];
         return {
           publicDir: prepared.publicDir,
