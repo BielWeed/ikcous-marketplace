@@ -1,5 +1,5 @@
 -- ANTES da 20261347000000; SO LEITURA, somente catalogo, rol fechado de 3 linhas. Exige a base pronta e os objetos novos AUSENTES.
--- Rollback remove os 4 objetos, entao a ausencia depois dele e legitima (a 81b volta a ser positiva; nenhum dado e tocado).
+-- Rollback remove os 4 objetos, entao a ausencia depois dele e legitima (a 74b volta a ser positiva; nenhum dado e tocado).
 WITH itens(item, esperado, vivo) AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'codigo_barras: colunas e indices unicos por tabela', 'sim', CASE WHEN COALESCE(

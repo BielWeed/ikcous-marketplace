@@ -64,6 +64,14 @@
 --   * UPDATE que lista a coluna mas com o MESMO valor (o painel regrava a linha
 --     inteira, inclusive codigo_barras, a cada edicao de preco): NAO checa. Sem
 --     isso, uma duplicata antiga travaria toda edicao daquele produto.
+--   * UPSERT (INSERT ... ON CONFLICT (id) DO UPDATE): e' como o painel grava as
+--     variacoes (e produtos) que ja existem, e o Postgres dispara primeiro o
+--     gatilho de INSERT, SEM OLD. Se a MESMA linha (mesmo id) ja guarda o MESMO
+--     codigo, NAO checa (sem isso, abrir um produto com duplicata antiga e
+--     mudar so' o preco de uma variacao recusaria o upsert de TODAS as variacoes
+--     e o salvar ficaria pela metade). Linha NOVA (id novo) com codigo que a
+--     outra tabela tem continua recusada, e upsert que MUDA o codigo cai no
+--     caminho do UPDATE e e' checado.
 --   * UPDATE que nao lista codigo_barras: o gatilho nem dispara (UPDATE OF).
 --   * Restaurar produto apagado (deleted_at volta a NULL) tambem nao dispara:
 --     hoje o app nao tem essa acao; se um dia tiver, ela precisa checar antes.
@@ -106,6 +114,11 @@
 --   * Cadastro em lote com varios codigos numa transacao, em ordem trocada em
 --     relacao a outra transacao, pode dar deadlock; o Postgres aborta uma das
 --     duas (nunca grava duplicata).
+--   * Limite das travas: cada codigo gravado segura UMA trava consultiva ate o
+--     fim da transacao, e o Postgres guarda as travas numa tabela de tamanho
+--     fixo (max_locks_per_transaction x conexoes). Importacao em massa futura
+--     (milhares de codigos numa transacao so') deve gravar em pedacos (um
+--     COMMIT por lote de algumas centenas), sem mudar nada aqui.
 --   * Quem desliga o gatilho (ALTER TABLE ... DISABLE TRIGGER) ou grava como
 --     superusuario com session_replication_role = replica passa por cima dele.
 --
@@ -166,13 +179,13 @@ BEGIN
   END IF;
   IF v_fn_produto IS NOT NULL THEN
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc WHERE oid = v_fn_produto;
-    IF v_hash IS DISTINCT FROM '8aa103a09d8dbd0a9d034fbe25892687' THEN
+    IF v_hash IS DISTINCT FROM '9283210663c925108532b043c3e03107' THEN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: produto_codigo_barras_livre_de_variacao ja existe com corpo desconhecido (hash %); capture o corpo vivo e revise antes de aplicar.', COALESCE(v_hash, 'ausente');
     END IF;
   END IF;
   IF v_fn_variacao IS NOT NULL THEN
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc WHERE oid = v_fn_variacao;
-    IF v_hash IS DISTINCT FROM '8b2b01facae896b432629e275e4df664' THEN
+    IF v_hash IS DISTINCT FROM 'af09872b76b0726f34359d06f1ab34b8' THEN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: variacao_codigo_barras_livre_de_produto ja existe com corpo desconhecido (hash %); capture o corpo vivo e revise antes de aplicar.', COALESCE(v_hash, 'ausente');
     END IF;
   END IF;
@@ -234,6 +247,14 @@ BEGIN
       RETURN NEW;
     END IF;
   END IF;
+  -- UPSERT (INSERT ... ON CONFLICT (id) DO UPDATE): o Postgres dispara este gatilho de INSERT antes do UPDATE,
+  -- sem OLD. Se a MESMA linha (mesmo id) ja guarda este MESMO codigo, nao e' gravacao nova do campo: sai cedo
+  -- (nao pega trava: nada novo e' reivindicado). Linha nova (id novo) segue para a checagem.
+  IF TG_OP = 'INSERT' THEN
+    IF EXISTS (SELECT 1 FROM public.produtos x WHERE x.id = NEW.id AND x.codigo_barras = v_codigo) THEN
+      RETURN NEW;
+    END IF;
+  END IF;
   -- Produto apagado (soft delete) nao segura codigo: igual ao indice parcial e a busca do balcao.
   IF NEW.deleted_at IS NOT NULL THEN
     RETURN NEW;
@@ -271,6 +292,14 @@ BEGIN
   -- Valor que nao mudou nao e' gravacao nova (ver o gatilho irmao, em produtos).
   IF TG_OP = 'UPDATE' THEN
     IF NEW.codigo_barras IS NOT DISTINCT FROM OLD.codigo_barras THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+  -- UPSERT (INSERT ... ON CONFLICT (id) DO UPDATE): o Postgres dispara este gatilho de INSERT antes do UPDATE,
+  -- sem OLD. Se a MESMA linha (mesmo id) ja guarda este MESMO codigo, nao e' gravacao nova do campo: sai cedo
+  -- (nao pega trava: nada novo e' reivindicado). Linha nova (id novo) segue para a checagem.
+  IF TG_OP = 'INSERT' THEN
+    IF EXISTS (SELECT 1 FROM public.product_variants x WHERE x.id = NEW.id AND x.codigo_barras = v_codigo) THEN
       RETURN NEW;
     END IF;
   END IF;
@@ -322,8 +351,8 @@ BEGIN
          AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]) <> 2 THEN
     RAISE EXCEPTION 'conferencia 20261347: as funcoes nao sao SECURITY DEFINER com search_path fixo';
   END IF;
-  IF (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = v_fn_produto) IS DISTINCT FROM '8aa103a09d8dbd0a9d034fbe25892687'
-     OR (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = v_fn_variacao) IS DISTINCT FROM '8b2b01facae896b432629e275e4df664' THEN
+  IF (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = v_fn_produto) IS DISTINCT FROM '9283210663c925108532b043c3e03107'
+     OR (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = v_fn_variacao) IS DISTINCT FROM 'af09872b76b0726f34359d06f1ab34b8' THEN
     RAISE EXCEPTION 'conferencia 20261347: o corpo vivo de uma das funcoes nao e o desta migration';
   END IF;
   FOREACH v_papel IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP

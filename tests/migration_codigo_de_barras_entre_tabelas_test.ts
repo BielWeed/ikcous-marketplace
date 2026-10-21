@@ -96,10 +96,25 @@ Deno.test("347: os corpos travam por codigo, comparam a OUTRA tabela, ignoram va
       c,
       "NULLIF(btrim(v_codigo, E' \\t\\r\\n'), '') IS NULL",
     );
-    // A trava vem ANTES da leitura da outra tabela (senao a corrida volta).
+    // A trava vem ANTES da leitura da OUTRA tabela (senao a corrida volta).
     assert(
       c.indexOf("pg_advisory_xact_lock") <
-        c.indexOf("EXISTS (SELECT 1 FROM public."),
+        c.indexOf(
+          fn === FN_PRODUTO
+            ? "FROM public.product_variants v WHERE"
+            : "FROM public.produtos p WHERE",
+        ),
+    );
+    // UPSERT identico: a MESMA linha com o MESMO codigo sai cedo (antes da trava), so' no INSERT.
+    const tabela = fn === FN_PRODUTO ? "produtos" : "product_variants";
+    assertStringIncludes(c, "IF TG_OP = 'INSERT' THEN");
+    assertStringIncludes(
+      c,
+      `IF EXISTS (SELECT 1 FROM public.${tabela} x WHERE x.id = NEW.id AND x.codigo_barras = v_codigo) THEN`,
+    );
+    assert(
+      c.indexOf("IF TG_OP = 'INSERT' THEN") <
+        c.indexOf("pg_advisory_xact_lock"),
     );
     // O OLD so e lido dentro de TG_OP = 'UPDATE' (no INSERT o OLD nao existe).
     assert(c.indexOf("TG_OP = 'UPDATE'") < c.indexOf("OLD.codigo_barras"));

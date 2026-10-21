@@ -12,8 +12,8 @@ WITH itens(item, esperado, vivo) AS (
        AND i.indisunique AND i.indisvalid AND i.indisready) = 2, false) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'gatilhos: funcoes com corpo exato e atributos', 'sim', CASE WHEN COALESCE(
     (SELECT count(*) FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
-      WHERE ((p.oid = to_regprocedure('public.produto_codigo_barras_livre_de_variacao()') AND md5(replace(p.prosrc, chr(13), '')) = '8aa103a09d8dbd0a9d034fbe25892687')
-          OR (p.oid = to_regprocedure('public.variacao_codigo_barras_livre_de_produto()') AND md5(replace(p.prosrc, chr(13), '')) = '8b2b01facae896b432629e275e4df664'))
+      WHERE ((p.oid = to_regprocedure('public.produto_codigo_barras_livre_de_variacao()') AND md5(replace(p.prosrc, chr(13), '')) = '9283210663c925108532b043c3e03107')
+          OR (p.oid = to_regprocedure('public.variacao_codigo_barras_livre_de_produto()') AND md5(replace(p.prosrc, chr(13), '')) = 'af09872b76b0726f34359d06f1ab34b8'))
         AND p.prosecdef AND l.lanname = 'plpgsql' AND p.prorettype = 'trigger'::regtype AND p.pronargs = 0
         AND p.provolatile = 'v' AND NOT p.proretset AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]) = 2
     AND (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace

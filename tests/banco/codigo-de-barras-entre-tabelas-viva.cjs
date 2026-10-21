@@ -426,6 +426,80 @@ async function parte1() {
         "id::text LIKE",
       ),
     );
+    // UPSERT (INSERT ... ON CONFLICT (id) DO UPDATE), como o painel grava o que ja existe: o gatilho de INSERT
+    // dispara sem OLD, entao o upsert IDENTICO tambem nao pode ser recusado pela duplicata antiga.
+    const SQL_UPSERT_VARIACAO = `INSERT INTO public.product_variants (id, product_id, name, value, codigo_barras, active)
+      VALUES ($1, $2, 'Cor', $3, $4, true)
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, value = EXCLUDED.value,
+        codigo_barras = EXCLUDED.codigo_barras, active = EXCLUDED.active`;
+    const SQL_UPSERT_PRODUTO = `INSERT INTO public.produtos (id, nome, preco_venda, custo, codigo_barras)
+      VALUES ($1, $2, 55, 5, $3)
+      ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, preco_venda = EXCLUDED.preco_venda,
+        codigo_barras = EXCLUDED.codigo_barras`;
+    await C.query(SQL_UPSERT_VARIACAO, [
+      id(130),
+      id(2),
+      "Rosa 2",
+      "7891000000080",
+    ]);
+    assert.equal(
+      (
+        await C.query("SELECT value FROM public.product_variants WHERE id=$1", [
+          id(130),
+        ])
+      ).rows[0].value,
+      "Rosa 2",
+      "o upsert identico regravou a variacao",
+    );
+    await C.query(SQL_UPSERT_PRODUTO, [id(30), "P30 upsert", "7891000000080"]);
+    assert.equal(
+      Number(
+        (
+          await C.query("SELECT preco_venda FROM public.produtos WHERE id=$1", [
+            id(30),
+          ])
+        ).rows[0].preco_venda,
+      ),
+      55,
+      "o upsert identico regravou o produto",
+    );
+    await papel("authenticated", true);
+    await C.query(SQL_UPSERT_VARIACAO, [
+      id(130),
+      id(2),
+      "Rosa 3",
+      "7891000000080",
+    ]);
+    await C.query("RESET ROLE");
+    // Linha NOVA (id novo) com codigo da outra tabela segue recusada; upsert que MUDA o codigo tambem.
+    recusada(
+      await tentar(SQL_UPSERT_VARIACAO, [
+        id(131),
+        id(2),
+        "Nova",
+        "7891000000035",
+      ]),
+      "upsert de variacao nova com o codigo de um produto",
+    );
+    assert.equal(await existe("v", 131), false);
+    recusada(
+      await tentar(SQL_UPSERT_VARIACAO, [
+        id(130),
+        id(2),
+        "Rosa 2",
+        "7891000000035",
+      ]),
+      "upsert que muda o codigo da variacao para o de um produto",
+    );
+    recusada(
+      await tentar(SQL_UPSERT_PRODUTO, [id(31), "Novo", "7891000000028"]),
+      "upsert de produto novo com o codigo de uma variacao",
+    );
+    assert.equal(await existe("p", 31), false);
+    recusada(
+      await tentar(SQL_UPSERT_PRODUTO, [id(30), "P30 upsert", "7891000000028"]),
+      "upsert que muda o codigo do produto para o de uma variacao",
+    );
     // Mas MUDAR o codigo para o que a outra tabela segura continua barrado, e sair da duplicata e' livre.
     await C.query(
       "UPDATE public.produtos SET codigo_barras='7891000000097' WHERE id=$1",

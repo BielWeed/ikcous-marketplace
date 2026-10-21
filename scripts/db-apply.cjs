@@ -82,6 +82,8 @@ const VERIFICACOES = {
         "FROM public.product_variants v WHERE v.codigo_barras = v_codigo",
         "ERRCODE = '23505'",
         "IF NEW.deleted_at IS NOT NULL THEN",
+        // UPSERT identico (ON CONFLICT (id) DO UPDATE): a mesma linha com o mesmo codigo nao e' gravacao nova.
+        "FROM public.produtos x WHERE x.id = NEW.id AND x.codigo_barras = v_codigo",
       ],
     },
     {
@@ -90,6 +92,7 @@ const VERIFICACOES = {
       esperado: [
         "PERFORM pg_advisory_xact_lock(hashtextextended('codigo_de_barras:' || v_codigo, 0));",
         "FROM public.produtos p WHERE p.codigo_barras = v_codigo AND p.deleted_at IS NULL",
+        "FROM public.product_variants x WHERE x.id = NEW.id AND x.codigo_barras = v_codigo",
         "ERRCODE = '23505'",
       ],
     },

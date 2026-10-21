@@ -35,13 +35,13 @@ BEGIN
   END IF;
   IF v_fn_produto IS NOT NULL THEN
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc WHERE oid = v_fn_produto;
-    IF v_hash IS DISTINCT FROM '8aa103a09d8dbd0a9d034fbe25892687' THEN
+    IF v_hash IS DISTINCT FROM '9283210663c925108532b043c3e03107' THEN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo de public.produto_codigo_barras_livre_de_variacao() (hash %) nao e o da 20261347000000; uma redefinicao posterior esta no ar, revise antes de apagar.', COALESCE(v_hash, 'ausente');
     END IF;
   END IF;
   IF v_fn_variacao IS NOT NULL THEN
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc WHERE oid = v_fn_variacao;
-    IF v_hash IS DISTINCT FROM '8b2b01facae896b432629e275e4df664' THEN
+    IF v_hash IS DISTINCT FROM 'af09872b76b0726f34359d06f1ab34b8' THEN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo de public.variacao_codigo_barras_livre_de_produto() (hash %) nao e o da 20261347000000; uma redefinicao posterior esta no ar, revise antes de apagar.', COALESCE(v_hash, 'ausente');
     END IF;
   END IF;
