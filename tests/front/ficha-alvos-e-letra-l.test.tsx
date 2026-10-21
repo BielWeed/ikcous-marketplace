@@ -156,16 +156,26 @@ describe("ficha do cliente — alvos de 44px (onda L)", () => {
     });
   }
 
-  it("as 4 abas da ficha têm min-h-11 e mantêm os rótulos curtos", async () => {
+  it("as 4 abas da ficha têm min-h-11 e mostram os rótulos do desenho v2", async () => {
     await abrirFicha();
 
     const abas = [...hospedeiro.querySelectorAll('[role="tab"]')];
     expect(abas).toHaveLength(4);
-    for (const rotulo of ["Ped.", "Carr.", "End.", "Voz"]) {
+    for (const rotulo of ["Pedidos", "Carrinho", "Endereços", "Voz"]) {
       const aba = abas.find((a) => a.textContent?.includes(rotulo));
       expect(aba, `aba ${rotulo}`).toBeDefined();
       expect(classesDe(aba), `aba ${rotulo}`).toContain("min-h-11");
     }
+  });
+
+  it("a aba Voz mantém o nome acessível completo no celular", async () => {
+    await abrirFicha();
+
+    const voz = [...hospedeiro.querySelectorAll('[role="tab"]')].find((aba) =>
+      aba.textContent?.includes("Voz"),
+    );
+    expect(voz).toBeDefined();
+    expect(voz?.getAttribute("aria-label")).toBe("Voz do Cliente");
   });
 
   it("copiar e-mail e copiar telefone têm min-h-11 min-w-11, type=button e nome", async () => {

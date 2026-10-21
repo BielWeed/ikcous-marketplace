@@ -11,7 +11,7 @@ import type { AdminUserDetailView as TipoFicha } from "@/views/admin/AdminUserDe
 // ordenação, os números e o payload continuam os de antes.
 //
 // Duas coisas deixam de ser só texto e por isso têm prova própria:
-//   - o botão "Contato Direto" da Ficha passa a usar `linkWhatsappDoCliente`
+//   - o botão "Conversar no WhatsApp" da Ficha passa a usar `linkWhatsappDoCliente`
 //     (antes: com menos de 10 dígitos abria um link quebrado);
 //   - o cartão "Conversão Comercial" de Perguntas sai (nasceu vazio, sem
 //     métrica real), e a fileira fica com os três cartões medidos.
@@ -272,9 +272,9 @@ describe("telas de lista na língua da loja", () => {
 
   const botaoContatoDireto = (): HTMLButtonElement => {
     const achado = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").includes("Contato Direto"),
+      (b.textContent ?? "").includes("Conversar no WhatsApp"),
     );
-    if (!achado) throw new Error('"Contato Direto" não está na tela');
+    if (!achado) throw new Error('"Conversar no WhatsApp" não está na tela');
     return achado;
   };
 
