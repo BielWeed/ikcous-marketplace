@@ -2393,7 +2393,20 @@ const ROL_DA_59B = [
   "fin__forma_do_pedido: corpo da 20261177000000 (base anterior, md5)",
   ...ROL_DA_59A.slice(2),
 ];
+const ROL_DA_60A = [
+  "categorias: RLS ativa e quatro policies originais",
+  "categorias: leitura publica e UPDATE authenticated por grant de tabela",
+  "categorias.icone: text nulavel sem default",
+  "categorias_icone_check: 14 chaves exatas e validada",
+];
+const ROL_DA_60B = [
+  ...ROL_DA_60A.slice(0, 2),
+  "categorias.icone: ausente ou text nulavel preservada",
+  "categorias_icone_check: ausente",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "60a-conferir-icones-das-categorias-aplicado": ROL_DA_60A,
+  "60b-antes-icones-das-categorias": ROL_DA_60B,
   "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,
   "57b-antes-pagamento-adiantado-e-estorno-base-vigente": ROL_DA_57,
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,

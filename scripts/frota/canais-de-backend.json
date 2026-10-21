@@ -313,6 +313,12 @@
       "_comentario": "Migration 20261280: troca a assinatura de 8 pela de 9 argumentos (p_total_esperado), sem apagar dados; DROP e recriacao na mesma transacao, sem sobrecarga. Sem backfill e sem aplicacao automatica. ORDEM OBRIGATORIA: banco ANTES do front em CADA loja; o front novo envia p_total_esperado e contra a 249 falha PGRST202, parando o balcao. Provar 58a; se negativa, exigir 58b positiva e mais nova antes de aplicar, depois repetir 58a. 58a/58b (nasceram 57a/57b na frente do balcao; renumeradas na integracao porque o lote 57 ficou com o pagamento adiantado da 20261270): somente catalogo, rol fechado de 11 linhas; exigem respectivamente a assinatura de 9 argumentos/corpo exato da 280 e a assinatura de 8/corpo exato da 249, sem sobrecargas, atributos e ACL fechada. ROLLBACK: publicar de volta o FRONT anterior (sem p_total_esperado) ANTES de desfazer o banco; nenhum pedido e apagado."
     },
     {
+      "consulta": "60a-conferir-icones-das-categorias-aplicado",
+      "versoes": ["20261300000000"],
+      "ausenciaConfirmadaPor": "60b-antes-icones-das-categorias",
+      "_comentario": "ADITIVA: categorias.icone text nulavel com CHECK de 14 chaves; sem backfill, GRANT ou policy nova. Antes do front em cada loja, para permitir salvar a escolha; Home tolera coluna ausente. Exigir 60b positiva antes de aplicar e 60a positiva depois. Rollback: voltar o front e executar rollback-manual-20261300000000_as_categorias_ganham_icone.sql, que so remove a CHECK e preserva coluna/dados; reaplicar revalida as escolhas. Nenhum banco foi aplicado por esta frente."
+    },
+    {
       "consulta": "59a-conferir-online-sem-forma-aplicado",
       "versoes": ["20261290000000"],
       "ausenciaConfirmadaPor": "59b-antes-online-sem-forma-base-vigente",

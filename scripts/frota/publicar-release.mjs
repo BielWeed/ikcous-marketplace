@@ -560,6 +560,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "58b-antes-total-do-balcao-base-vigente",
   "59a-conferir-online-sem-forma-aplicado",
   "59b-antes-online-sem-forma-base-vigente",
+  "60a-conferir-icones-das-categorias-aplicado",
+  "60b-antes-icones-das-categorias",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
