@@ -3488,6 +3488,7 @@ export function CheckoutViewDaConta({
   // exatamente isso que acabou de acontecer aqui. Com um nome só, a próxima
   // exigência entra num lugar, não em dois.
   const botaoFinalizarDesabilitado =
+    cart.length === 0 ||
     leituraDaRetomadaPendente ||
     !isValid ||
     isSubmitting ||
@@ -3651,6 +3652,8 @@ export function CheckoutViewDaConta({
   };
 
   const handleSubmitEvent = async () => {
+    // Este handler cria uma compra nova; retomada paga o pedido já existente.
+    if (cart.length === 0) return;
     const contaEsperada = user?.id ?? null;
     // Pedido retomado com a primeira leitura em voo: o pedido JÁ existe, e
     // este envio criaria um segundo. Antes da trava de envio de propósito —
@@ -4071,6 +4074,12 @@ export function CheckoutViewDaConta({
           }
         }
       }
+      // Achado 4 da revisão (17/08/2026): sem isto `isSummaryPanelOpen`
+      // continuava `true` na tela seguinte (sucesso ou aguardando
+      // pagamento) — o painel deixa de fazer sentido aqui, junto com o
+      // carrinho que acabou de ser limpo, e o primeiro "voltar" naquela
+      // tela fechava um painel invisível em vez de agir pelo ramo de
+      // `showSuccess || aguardandoPagamento`.
       setIsSummaryPanelOpen(false);
     };
     try {

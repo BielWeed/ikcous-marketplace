@@ -180,6 +180,20 @@ function botaoPorTexto(
   ) as HTMLButtonElement | undefined;
 }
 
+// Mesmo padrão de checkout-compra-zerada-fecha-na-retirada.test.tsx:
+// chama o handler real sem depender da proteção do disabled no DOM.
+function capturarOnClickFinalizar(botao: HTMLButtonElement): () => void {
+  const chaveProps = Object.keys(botao).find((k) =>
+    k.startsWith("__reactProps$"),
+  );
+  expect(chaveProps, "botão sem props do React").toBeDefined();
+  const props = (botao as unknown as Record<string, unknown>)[chaveProps!] as
+    | { onClick?: () => void }
+    | undefined;
+  expect(typeof props?.onClick).toBe("function");
+  return props!.onClick!;
+}
+
 function digitar(id: string, valor: string) {
   const el = document.getElementById(id) as HTMLInputElement;
   const setter = Object.getOwnPropertyDescriptor(
@@ -391,6 +405,48 @@ describe("CheckoutView — cartão pelo app", () => {
     await clicar(botaoPorTexto(document.body, "Ver meus pedidos")!);
     expect(onNavigate).toHaveBeenCalledWith("orders");
   });
+
+  it.each(["botao", "handler"])(
+    "depois de fechar o aviso do total, carrinho vazio não cria outro pedido pelo %s",
+    async (via) => {
+      createOrder.mockRejectedValueOnce({
+        code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+        pedidoId: "ped-777",
+        message: "Não foi possível conferir o valor final do pedido.",
+      });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await montar(CheckoutView);
+      await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+      await finalizar();
+      expect(mockCart).toEqual([]);
+      expect(createOrder).toHaveBeenCalledTimes(1);
+
+      const fechar = document.body.querySelector<HTMLButtonElement>(
+        '[aria-label="Fechar o aviso"]',
+      );
+      expect(fechar).not.toBeNull();
+      await clicar(fechar!);
+      expect(
+        document.body.querySelector('[aria-label="Fechar o aviso"]'),
+      ).toBeNull();
+
+      const botao = botaoPorTexto(document.body, "Finalizar Pedido")!;
+      if (via === "botao") {
+        expect(botao.disabled).toBe(true);
+        await clicar(botao);
+      } else {
+        const onClick = capturarOnClickFinalizar(botao);
+        await act(async () => {
+          onClick();
+          await esperarMicrotarefas();
+          await esperarMicrotarefas();
+        });
+      }
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(propsDoPagamento).toHaveLength(0);
+    },
+  );
 
   it.each([
     { code: "TOTAL_DO_PEDIDO_INDISPONIVEL" },

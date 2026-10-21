@@ -3951,8 +3951,9 @@ export function useOrders(
             // O pedido JÁ nasceu: não voltar ao total do cliente nem permitir
             // outra finalização. A tela encaminha à retomada em Meus pedidos.
             // A causa original (RLS, rede) vai em `cause`, para o
-            // console.error do catch externo mostrá-la: só o erro do banco ou
-            // da rede, nunca o pedido nem os dados do cliente.
+            // console.error do catch externo mostrá-la junto do pedidoId:
+            // só o ID da própria cliente, no navegador dela, sem os demais
+            // dados do pedido nem os dados pessoais do cliente.
             throw Object.assign(
               new Error("Não foi possível conferir o valor final do pedido."),
               {
