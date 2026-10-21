@@ -57,19 +57,34 @@ function base(order: Record<string, unknown>, extra: Record<string, unknown> = {
   };
 }
 
-const cartao = () => orderCartaoAprovadaDaDoc({ id: VAGA, externalReference: PEDIDO, valor: "100.00" });
+// Base derivada coerente: a doc publica 200 pagos em cartão 1x de 50.
+// O exemplo literal continua testado abaixo, mas não serve de prova de juros.
+const cartao = () => ({
+  ...orderCartaoAprovadaDaDoc({ id: VAGA, externalReference: PEDIDO, valor: "100.00" }),
+  total_paid_amount: "100.00",
+});
 const pix = () => orderPixPagaDaDoc({ id: VAGA, externalReference: PEDIDO, valor: "100.00" });
 
 function pagamento(o: Record<string, unknown>): Record<string, unknown> {
   return ((o.transactions as Record<string, unknown>).payments as Array<Record<string, unknown>>)[0];
 }
 
-Deno.test("prova: o cartão aprovado do EXEMPLO OFICIAL da doc passa — total_paid_amount 200,00 (juros) aceito; paid_amount 47,28 do pagamento não manda quando a raiz existe", () => {
-  assertEquals(provarPagamentoPelaConsulta(base(cartao())), { provado: true, valor: 100, valorPago: 200 });
+Deno.test("prova: exemplo contraditório da doc não prova juros — 200 pagos num cartão 1x de 100 recusa", () => {
+  const literal = orderCartaoAprovadaDaDoc({ id: VAGA, externalReference: PEDIDO, valor: "100.00" });
+  assertEquals(provarPagamentoPelaConsulta(base(literal)), { provado: false, motivo: "valor_divergente" });
 });
 
 Deno.test("prova: o PIX pago (exemplo da doc com o par processed:accredited) passa", () => {
   assertEquals(provarPagamentoPelaConsulta(base(pix())), { provado: true, valor: 100, valorPago: 100 });
+});
+
+Deno.test("D7: Pix preserva captura >= pedido, mas não recebe exceção no total da order", () => {
+  const o = pix();
+  o.total_paid_amount = "112.40";
+  assertEquals(provarPagamentoPelaConsulta(base(o)).provado, true);
+  o.total_amount = "112.40";
+  pagamento(o).amount = "112.40";
+  assertEquals(provarPagamentoPelaConsulta(base(o)), { provado: false, motivo: "valor_divergente" });
 });
 
 Deno.test("prova: o GET da REFERÊNCIA, como publicado, é RECUSADO — traz um chargeback in_process ao lado da raiz processed:accredited", () => {
@@ -92,16 +107,18 @@ Deno.test("prova: ausência NÃO recusa — sem currency, sem country_code, sem 
   delete p.status_detail;
   delete p.amount;
   delete p.paid_amount;
-  assertEquals(provarPagamentoPelaConsulta(base(o)), { provado: true, valor: 100, valorPago: 200 });
+  assertEquals(provarPagamentoPelaConsulta(base(o)), { provado: true, valor: 100, valorPago: 100 });
 });
 
 Deno.test("prova: juros — pago MAIOR que o pedido confirma (pela raiz e, sem a raiz, pelo paid_amount do pagamento)", () => {
   const pelaRaiz = cartao();
   pelaRaiz.total_paid_amount = "112.40";
+  pagamento(pelaRaiz).payment_method = { type: "credit_card", installments: 2, installment_amount: "56.20" };
   assertEquals(provarPagamentoPelaConsulta(base(pelaRaiz)), { provado: true, valor: 100, valorPago: 112.4 });
   const peloPagamento = cartao();
   delete peloPagamento.total_paid_amount;
   pagamento(peloPagamento).paid_amount = "105.00";
+  pagamento(peloPagamento).payment_method = { type: "credit_card", installments: 2, installment_amount: "52.50" };
   assertEquals(provarPagamentoPelaConsulta(base(peloPagamento)), { provado: true, valor: 100, valorPago: 105 });
 });
 

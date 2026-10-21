@@ -28,18 +28,16 @@
  *       mapeia para 'pago' (`mapearStatusOrder`) — "approved" é vocabulário
  *       da Payments API (autorizado ≠ capturado), NÃO da Orders, e não passa;
  *   (e) `total_amount` presente, finito, > 0 (`extrairValorDaOrder`, a mesma
- *       leitura do webhook) e `!(Math.abs(valor - total) > TOLERANCIA_DE_VALOR)`
- *       contra o total RELIDO do banco — a MESMA expressão do webhook;
+ *       leitura do webhook), contra o total RELIDO do banco. Excedente só
+ *       para crédito parcelado com captura, soma das parcelas e teto de juros
+ *       conferidos por `conferirValorDoPagamento` — a MESMA regra do cron;
  *   (f) VALOR PAGO capturado: `total_paid_amount` da raiz — ou, só quando ele
  *       não vem, `paid_amount` do pagamento — presente, finito, > 0 e
- *       `>= total - TOLERANCIA_DE_VALOR` (juros de parcelamento podem fazer o
- *       pago passar do pedido; pago MENOR é parcial e recusa). Os DOIS
- *       ausentes: não se afirma captura — recusa `valor_pago_ausente`, e a
- *       confirmação fica para webhook/reconciliação (contrato de antes). A
- *       raiz manda quando existe porque a doc publica `paid_amount` 47,28
- *       contra `total_amount` 50,00 nos dois exemplos oficiais de cartão
- *       aprovado — o `paid_amount` do pagamento não é "quanto entrou do
- *       pedido", e exigi-lo >= total recusaria o próprio exemplo da doc;
+ *       conferido pela mesma régua de valor: parcelado nunca aceita menos
+ *       que o pedido; excedente exige as provas de juros descritas acima.
+ *       Os DOIS ausentes: recusa `valor_pago_ausente`. A raiz manda quando
+ *       existe. Os números contraditórios dos exemplos da doc não autorizam
+ *       afirmar juros sem parcelas e valor por parcela coerentes;
  *   (g) CONTRADIÇÃO recusa, AUSÊNCIA não: `currency`/`currency_id` presente
  *       ≠ "BRL"; `country_code` presente fora de {"BR", "BRA"} (a referência
  *       do GET publica "BR"; as páginas de integração de cartão e de PIX
@@ -50,9 +48,9 @@
  *       estorno ou contestação crua (`refunds`/`chargebacks` não vazios, na
  *       raiz ou em `transactions`) — a referência do GET mostra um
  *       chargeback `in_process` ao lado de uma raiz `processed:accredited`;
- *   (h) `paid_amount`/`total_paid_amount` NUNCA são comparados por
- *       IGUALDADE com o total (o exemplo de cartão da doc traz
- *       `total_paid_amount "200.00"` para `total_amount "50.00"`).
+ *   (h) à vista e PIX preservam a tolerância de centavos; excedente não é
+ *       automaticamente juros. O exemplo 1x de 50 com 200 pagos da doc é
+ *       ambíguo e permanece recusado, não vira autorização de sobrepreço.
  *
  * O QUE ESTA FUNÇÃO NÃO DECIDE: se o pedido ainda está 'aguardando' (quem
  * chama relê o banco antes) e o desfecho no banco — quem decide 'pago',
@@ -66,6 +64,9 @@ import {
   extrairValorDaOrder,
   idEhClassico,
   mapearStatusOrder,
+  orderEhDeCartao,
+  parcelasDaOrder,
+  tipoDoPagamentoDaOrder,
   TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "./mercadopago.ts";
@@ -107,10 +108,41 @@ function comoNumero(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Regra base das três portas: valor normalizado do MP e total relido válidos.
- * A captura (`total_paid_amount`) continua sendo exigência adicional da prova
- * imediata; webhook e cron nunca a exigiram. Não comparar juros por igualdade. */
-export function conferirValorDoPagamento(valor: unknown, totalRelido: unknown):
+/**
+ * Teto de segurança, NÃO uma taxa do MP: até 50% do principal no total do
+ * financiamento. Cobre o caso medido (37,27 -> 40,86, +9,63%) sem aceitar
+ * sobrepreço ilimitado. Acima disso mantém a revisão de valor divergente.
+ * A doc GET /v1/orders/{id} não garante quais totais incluem juros e publica
+ * exemplos contraditórios: só aceitamos excedente com crédito 2..12x,
+ * captura suficiente e soma das parcelas coerente. Sem esses campos, recusa.
+ */
+const TETO_DE_JUROS = 1.5;
+function pagamentoUnico(order: Record<string, unknown> | undefined) {
+  const pagamentos = order?.transactions?.payments;
+  return Array.isArray(pagamentos) && pagamentos.length === 1 ? pagamentos[0] : undefined;
+}
+function valorCapturado(order: Record<string, unknown>) {
+  return presente(order.total_paid_amount) ? order.total_paid_amount : pagamentoUnico(order)?.paid_amount;
+}
+function jurosCompativeis(valor: number, total: number, order: Record<string, unknown>): boolean {
+  const parcelas = parcelasDaOrder(order);
+  if (tipoDoPagamentoDaOrder(order) !== "credit_card" || parcelas === null || parcelas <= 1) return false;
+  const porParcela = comoNumero(pagamentoUnico(order)?.payment_method?.installment_amount);
+  const pago = comoNumero(valorCapturado(order));
+  if (porParcela === null || porParcela <= 0 || pago === null || pago < valor || pago < total) return false;
+  const centavos = Math.round(pago * 100);
+  // No máximo um centavo de distribuição por parcela, nunca folga no teto.
+  return centavos <= Math.floor(Math.round(total * 100) * TETO_DE_JUROS) &&
+    Math.abs(centavos - Math.round(porParcela * 100) * parcelas) <= parcelas - 1;
+}
+
+/** Regra compartilhada pelas três portas. Só uma order autenticada pode
+ * justificar juros; não usar parcelas enviadas pelo navegador ou do banco. */
+export function conferirValorDoPagamento(
+  valor: unknown,
+  totalRelido: unknown,
+  order?: Record<string, unknown>,
+):
   | { provado: true; valor: number; total: number }
   | { provado: false; motivo: "valor_ausente" | "total_do_pedido" | "valor_divergente" } {
   if (typeof valor !== "number" || !Number.isFinite(valor) || !(valor > 0)) {
@@ -118,7 +150,21 @@ export function conferirValorDoPagamento(valor: unknown, totalRelido: unknown):
   }
   const total = comoNumero(totalRelido);
   if (total === null || !(total > 0)) return { provado: false, motivo: "total_do_pedido" };
-  if (Math.abs(valor - total) > TOLERANCIA_DE_VALOR) return { provado: false, motivo: "valor_divergente" };
+  const parcelado = order && tipoDoPagamentoDaOrder(order) === "credit_card" && (parcelasDaOrder(order) ?? 0) > 1;
+  if (parcelado && Math.round(valor * 100) < Math.round(total * 100)) {
+    return { provado: false, motivo: "valor_divergente" };
+  }
+  if (Math.abs(valor - total) > TOLERANCIA_DE_VALOR && (!order || !jurosCompativeis(valor, total, order))) {
+    return { provado: false, motivo: "valor_divergente" };
+  }
+  // Mesmo com principal exato, captura parcial/excessiva não é prova de juros.
+  if (order && orderEhDeCartao(order) && presente(valorCapturado(order))) {
+    const pago = comoNumero(valorCapturado(order));
+    if ((parcelado && (pago === null || Math.round(pago * 100) < Math.round(total * 100))) ||
+      (pago !== null && pago > total + TOLERANCIA_DE_VALOR && !jurosCompativeis(valor, total, order))) {
+      return { provado: false, motivo: "valor_divergente" };
+    }
+  }
   return { provado: true, valor, total };
 }
 
@@ -191,7 +237,7 @@ export function provarPagamentoPelaConsulta(args: {
   }
 
   // (e) mesma regra base do webhook e da reconciliação.
-  const conferencia = conferirValorDoPagamento(extrairValorDaOrder(o), args.totalRelido);
+  const conferencia = conferirValorDoPagamento(extrairValorDaOrder(o), args.totalRelido, o);
   if (!conferencia.provado) return recusa(conferencia.motivo);
   const { valor, total } = conferencia;
 
@@ -200,7 +246,13 @@ export function provarPagamentoPelaConsulta(args: {
   if (!presente(brutoPago)) return recusa("valor_pago_ausente");
   const valorPago = comoNumero(brutoPago);
   if (valorPago === null || !(valorPago > 0)) return recusa("valor_pago");
-  if (valorPago < total - TOLERANCIA_DE_VALOR) return recusa("valor_pago");
+  // PIX mantém o contrato anterior de captura >= total - tolerância.
+  // Só o cartão recebe a nova conferência de juros, nunca o PIX.
+  if (tipoDoPagamentoDaOrder(o) === "bank_transfer") {
+    if (valorPago < total - TOLERANCIA_DE_VALOR) return recusa("valor_pago");
+  } else if (!conferirValorDoPagamento(valorPago, total, o).provado) {
+    return recusa("valor_pago");
+  }
 
   return { provado: true, valor, valorPago };
 }

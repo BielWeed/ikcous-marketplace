@@ -617,6 +617,7 @@ async function handler(
       // undefined quando o corpo não trouxe número. A conferência contra o
       // total do pedido fica logo abaixo do filtro de 'expirado'.
       let valorAprovado: number | undefined;
+      let orderParaConferir: Record<string, unknown> | undefined;
       // Fase 3.5: recusa/expiração de order de CARTÃO (ou order cancelada —
       // a troca PIX -> cartão da criar-pagamento) só LIBERA a vaga, nunca
       // chega a `confirmar_pagamento('recusado')`, que cancelaria o pedido.
@@ -738,6 +739,7 @@ async function handler(
         statusBrutoParaLog = `${statusRaiz}:${statusDetailRaiz}`;
         statusBrutoConfiavel = statusRaiz;
         valorAprovado = extrairValorDaOrder(order);
+        orderParaConferir = order;
         liberarAVaga = recusaLiberaAVaga(order, statusMapeado);
       }
 
@@ -843,7 +845,7 @@ async function handler(
 
         const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
           (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
-        const conferencia = conferirValorDoPagamento(valorAprovado, brutoTotal);
+        const conferencia = conferirValorDoPagamento(valorAprovado, brutoTotal, orderParaConferir);
         if (!conferencia.provado) {
           if (conferencia.motivo === "valor_divergente") {
             console.error(

@@ -4973,6 +4973,50 @@ Deno.test("handler cartão: order APROVADA (processed) gravada num pedido que j�
 
 // --- criação: recusas ----------------------------------------------------------
 
+for (const caso of [
+  { http: 201, status: "failed", detalhe: "cc_rejected_high_risk" },
+  { http: 402, status: "failed", detalhe: "cc_rejected_high_risk" },
+  { http: 201, status: "processing", detalhe: "pending_review_manual" },
+]) {
+  Deno.test(`D4 criação: HTTP ${caso.http} ${caso.status} guarda somente o diagnóstico do pagamento`, async () => {
+    const { supabase } = cenarioCartao();
+    const gravacoes = [];
+    const original = supabase.from.bind(supabase);
+    supabase.from = (tabela) => tabela === "tentativas_cartao_diagnostico" ? {
+      upsert: async (linha, opcoes) => { gravacoes.push({ linha, opcoes }); return { error: null }; },
+    } : original(tabela);
+    const o = orderDeCartao(caso.status, caso.status, { detalhePagamento: caso.detalhe });
+    o.payer = { email: "nao-gravar@example.invalid", identification: { number: "00000000000" } };
+    const mp = fetchMP({ criar: { status: caso.http, corpo: caso.http === 402 ? { data: o } : o } });
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn });
+    assertEquals(r.status, 200);
+    assertEquals(gravacoes.length, 1);
+    assertEquals(gravacoes[0].linha.pedido_id, UUID);
+    assertEquals(gravacoes[0].linha.mp_order_id, ORDER_CARTAO);
+    assertEquals(gravacoes[0].linha.mp_payment_id, "PAY01CARTAO");
+    assertEquals(gravacoes[0].linha.status, caso.status);
+    assertEquals(gravacoes[0].linha.status_detail, caso.detalhe);
+    assertEquals(gravacoes[0].linha.parcelas, 3);
+    assertEquals(gravacoes[0].linha.valor, 100);
+    assertEquals(Object.keys(gravacoes[0].linha).sort(),
+      ["pedido_id", "mp_order_id", "mp_payment_id", "status", "status_detail", "parcelas", "valor", "registrado_em"].sort());
+    assertEquals(gravacoes[0].opcoes.onConflict, "mp_order_id,mp_payment_id");
+  });
+}
+
+Deno.test("D4 criação: diagnóstico indisponível não muda a recusa nem vaza o erro", async () => {
+  const { supabase } = cenarioCartao();
+  const original = supabase.from.bind(supabase);
+  supabase.from = (tabela) => tabela === "tentativas_cartao_diagnostico" ? {
+    upsert: async () => { throw new Error("nao-gravar@example.invalid"); },
+  } : original(tabela);
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("failed", "failed") } });
+  const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn });
+  assertEquals(r.status, 200);
+  assertEquals((await r.json()).statusPagamento, "recusado");
+});
+
+
 Deno.test("handler cartão: HTTP 402 (recusado pelo banco) -> 200 'recusado' com o motivo, CONTA a tentativa (liberar sem id) e NÃO ocupa a vaga", async () => {
   const { supabase, registro, chamadasRpc } = cenarioCartao();
   const mp = fetchMP({
@@ -12183,6 +12227,7 @@ const PUSH_FORA_DO_FLUXO_CI = {
 
 const cartaoPagoCI = (extra: Record<string, unknown> = {}) => ({
   ...orderCartaoAprovadaDaDoc({ id: VAGA_CI, externalReference: UUID, valor: "100.00" }),
+  total_paid_amount: "100.00", // Base coerente derivada; o exemplo literal da doc é contraditório.
   ...extra,
 });
 const pixPagoCI = (extra: Record<string, unknown> = {}) => ({
@@ -12478,7 +12523,7 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (5b): valor pago AUSENTE -> sem prova e banco 
 Deno.test("CONFIRMAÇÃO IMEDIATA (5c): juros — valor pago MAIOR que o pedido (112,40 de 100) confirma", async () => {
   const { db, contado } = bancoContandoEscritas(pedidoCI());
   const ef = efeitosCI();
-  const r = await verificarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI({ total_paid_amount: "112.40" })] }), ef.deps);
+  const r = await verificarCI(contado, mpDaConsulta({ orders: [cartaoParceladoComJuros(cartaoPagoCI(), 2, "112.40")] }), ef.deps);
   assertEquals(r.corpo.verificacao, "pago");
   assertEquals(confirmacoesCI(db).length, 1);
   assertEquals(ef.pushes, [PUSH_PAGO_CI]);
@@ -12806,6 +12851,7 @@ const CORPO_DA_CRIACAO_APROVADA =
 
 const aprovadaDaCriacao = (extra: Record<string, unknown> = {}) => ({
   ...orderCartaoAprovadaDaDoc({ id: ORDER_CARTAO, externalReference: UUID, valor: "100.00" }),
+  total_paid_amount: "100.00", // Cartão 1x, sem excedente não explicado.
   ...extra,
 });
 
@@ -13684,12 +13730,27 @@ Deno.test("CORRIDA T3 (e) — FUMAÇA de concorrência no caminho observado (a c
 // mandou (`total_amount` e `amount` do pagamento) = o pedido; o valor PAGO
 // (`total_paid_amount` e `paid_amount`) = o pedido + juros do comprador.
 // Os valores pagos (109,64 / 112,40) são FIXTURES SINTÉTICAS, não taxas
-// medidas no MP. Premissa declarada, NÃO provada por esta suíte: o MP mantém
-// o `total_amount` sem juros. Aprovação de um 2x/3x em sandbox é compatível
-// com ela, mas não a prova sozinha (nem prova que houve juros): só a leitura
-// dos campos da order (`total_amount`/`amount` contra
-// `total_paid_amount`/`paid_amount`) e dos valores por parcela do gateway
-// comprova.
+// medidas no MP. O contrato não garante se total_amount inclui juros;
+// D7 testa também total_amount/amount já financiados. A aceitação de
+// excedente exige installments > 1, installment_amount coerente com a
+// captura e teto de 50%; sem esses sinais, fica para revisão.
+Deno.test("D7 verificar: raiz e pagamento financiados confirmam; acima do teto ou captura menor não confirmam", async () => {
+  for (const [total, pago, parcela, esperado] of [
+    ["109.64", "109.64", "54.82", true],
+    ["160.00", "160.00", "80.00", false],
+    ["100.00", "99.99", "50.00", false],
+  ]) {
+    const { db, contado } = bancoContandoEscritas(pedidoCI({ parcelas: 2 }));
+    const o = cartaoParceladoComJuros(cartaoPagoCI(), 2, pago);
+    o.total_amount = total;
+    pagamentoDaOrderCI(o).amount = total;
+    pagamentoDaOrderCI(o).payment_method.installment_amount = parcela;
+    const r = await verificarCI(contado, mpDaConsulta({ orders: [o] }), efeitosCI().deps);
+    assertEquals(r.status, 200);
+    assertEquals(confirmacoesCI(db).length, esperado ? 1 : 0);
+  }
+});
+
 const PARCELADOS_COM_JUROS_CI = [
   { parcelas: 1, pago: "100.00" },
   { parcelas: 2, pago: "109.64" },
@@ -13707,7 +13768,7 @@ function cartaoParceladoComJuros(base: Record<string, unknown>, parcelas: number
       payments: [{
         ...pagamento,
         paid_amount: pago,
-        payment_method: { ...(pagamento.payment_method as Record<string, unknown>), installments: parcelas },
+        payment_method: { ...(pagamento.payment_method as Record<string, unknown>), installments: parcelas, installment_amount: (Number(pago) / parcelas).toFixed(2) },
       }],
     },
   };

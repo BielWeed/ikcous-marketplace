@@ -97,6 +97,7 @@ import {
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import { registrarDiagnosticoDoCartao } from "../_shared/diagnostico-do-cartao.ts";
 import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
 import {
   consultarContestacao,
@@ -1434,6 +1435,10 @@ async function handler(
     return json({ ok: true, ignorado: "external_reference inválido" }, 200);
   }
   const orderId = externalReference as string;
+  if (rota === "order") {
+    await registrarDiagnosticoDoCartao({ supabase, pedidoId: orderId, order: corpoConsultado,
+      cartaoConhecido: liberarAVaga && corpoConsultado?.status === "failed" });
+  }
 
   // CARTÃO RECUSADO NÃO MATA O PEDIDO (Fase 3.5, spec decisão 3). O ramo
   // 'recusado' de `confirmar_pagamento` CANCELA o pedido e devolve o estoque
@@ -1939,8 +1944,10 @@ async function handler(
   // só uma divergência numérica que já era barrada aqui os interrompe.
   const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
     (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
-  const conferencia = conferirValorDoPagamento(valorPagoMp, brutoTotal);
   const aprovado = statusMapeado === "pago" || statusMapeado === "pago_apos_expirar";
+  const conferencia = conferirValorDoPagamento(
+    valorPagoMp, brutoTotal, aprovado && rota === "order" ? corpoConsultado ?? undefined : undefined,
+  );
   if (!conferencia.provado && (aprovado || (linhaDoPedido && conferencia.motivo === "valor_divergente"))) {
     if (conferencia.motivo === "valor_divergente") {
       console.error(

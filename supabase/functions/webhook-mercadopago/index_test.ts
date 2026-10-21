@@ -6354,6 +6354,32 @@ function orderDoMp(status: string, statusDetail: string, tipo: string): Record<s
   };
 }
 
+for (const status of ["failed", "processing"]) {
+  Deno.test(`D4 webhook: ${status} guarda detalhe do pagamento reconsultado, não o corpo forjável`, async () => {
+    ambienteDoWebhook();
+    const supabase = clienteFalso({ rpcResultado: "recusado", pedido: { id: UUID_PEDIDO, total: 149.9 },
+      registro: { chamadasRpc: [], chamadasLiberar: [], chamadasFrom: [] } });
+    const original = supabase.from.bind(supabase);
+    const linhas = [];
+    supabase.from = (tabela) => tabela === "tentativas_cartao_diagnostico" ? {
+      upsert: async (linha) => { linhas.push(linha); return { error: null }; },
+    } : original(tabela);
+    const o = orderDoMp(status, status, "credit_card");
+    o.transactions.payments[0].amount = "149.90";
+    o.transactions.payments[0].payment_method.installments = 2;
+    o.transactions.payments[0].status_detail = status === "failed" ? "cc_rejected_high_risk" : "pending_review_manual";
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, {
+      corpoExtra: { type: "order", status_detail: "texto_forjado" },
+    });
+    const r = await handler(req, { supabase, fetchImpl: fetchConsulta(200, o), enviarPush: async () => {} });
+    assertEquals(r.status, 200);
+    assertEquals(linhas.length, 1);
+    assertEquals(linhas[0].pedido_id, UUID_PEDIDO);
+    assertEquals(linhas[0].mp_order_id, ID_ORDER_CARTAO_MP);
+    assertEquals(linhas[0].status_detail, o.transactions.payments[0].status_detail);
+  });
+}
+
 function ambienteDoWebhook() {
   Deno.env.set("MP_WEBHOOK_SECRET", SEGREDO);
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
@@ -7794,12 +7820,32 @@ Deno.test("rota payment — pagamento RECUSADO com id CLÁSSICO gravado (PIX leg
 // `total_amount`); se alguém trocar a leitura pelo valor PAGO, o 2x e o 3x
 // deixam de confirmar e o dinheiro do cliente fica parado sem pedido pago.
 // Os valores pagos (164,35 / 168,49) são FIXTURES SINTÉTICAS, não taxas
-// medidas no MP. Premissa declarada, NÃO provada por esta suíte: o MP mantém
-// o `total_amount` sem juros. Aprovação de um 2x/3x em sandbox é compatível
-// com ela, mas não a prova sozinha (nem prova que houve juros): só a leitura
-// dos campos da order (`total_amount`/`amount` contra
-// `total_paid_amount`/`paid_amount`) e dos valores por parcela do gateway
-// comprova.
+// medidas no MP. D7 aceita também raiz financiada, mas só com crédito
+// parcelado, valor por parcela coerente com a captura e teto de 50%.
+// Não dependemos de a raiz continuar sem juros; campos ausentes não
+// autorizam aceitar excedente.
+Deno.test("D7 webhook: raiz financiada confirma; acima do teto ou captura menor segue em revisão", async () => {
+  for (const [total, pago, parcela, esperado] of [
+    ["164.35", "164.35", "82.18", true],
+    ["240.00", "240.00", "120.00", false],
+    ["149.90", "149.89", "74.95", false],
+  ]) {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+    const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: ID_ORDER_CARTAO_MP };
+    const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+    const o = orderParceladaComJuros(2, pago);
+    o.total_amount = total;
+    o.transactions.payments[0].amount = total;
+    o.transactions.payments[0].payment_method.installment_amount = parcela;
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const r = await handler(req, { supabase, fetchImpl: fetchConsulta(200, o), enviarPush: async () => {}, enviarComprovante: async () => {} });
+    assertEquals(r.status, 200);
+    assertEquals(registro.chamadasRpc.length, esperado ? 1 : 0);
+    if (!esperado) assertEquals((await r.json()).ignorado, "valor divergente");
+  }
+});
+
 const PARCELADOS_COM_JUROS = [
   { parcelas: 1, pago: "149.90" },
   { parcelas: 2, pago: "164.35" },
@@ -7821,7 +7867,7 @@ function orderParceladaComJuros(parcelas: number, pago: string): Record<string, 
         paid_amount: pago,
         status: "processed",
         status_detail: "accredited",
-        payment_method: { id: "master", type: "credit_card", installments: parcelas },
+        payment_method: { id: "master", type: "credit_card", installments: parcelas, installment_amount: (Number(pago) / parcelas).toFixed(2) },
       }],
     },
   };

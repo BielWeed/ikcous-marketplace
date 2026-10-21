@@ -3851,12 +3851,30 @@ Deno.test("R1-C4 - só com a 96 (criada_sob_autorizacao NULL vindo do banco), PO
 });
 
 // ── Cartão PARCELADO com juros do comprador (07/10/2026) ───────────────────
-// Premissa (não medida), a mesma do webhook (ver
-// webhook-mercadopago/index_test.ts, bloco "Cartão PARCELADO"): o MP cobra os juros por cima do pedido, só o valor
-// PAGO sobe, e a conferência daqui lê o `total_amount`. Se a leitura virar o
-// valor pago, o cron passa a deixar o 2x/3x pago parado para sempre. Os
-// valores pagos (164,35 / 168,49) são FIXTURES SINTÉTICAS, não taxas medidas
-// no MP; a premissa continua declarada, não provada por esta suíte.
+// Fixtures SINTÉTICAS (164,35 / 168,49), não taxas medidas no MP.
+// A conferência lê total_amount e a evidência de juros do pagamento:
+// installments, installment_amount e captura. D7 também cobre o total
+// financiado na raiz; não depende da premissa "só total_paid_amount sobe".
+Deno.test("D7 cron: raiz financiada confirma; acima do teto ou captura menor não confirmam", async () => {
+  for (const [total, pago, parcela, esperado] of [
+    ["164.35", "164.35", "82.18", true],
+    ["240.00", "240.00", "120.00", false],
+    ["149.90", "149.89", "74.95", false],
+  ]) {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const id = "ORDTST01PARCELADOCOMJUROS";
+    const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], registro });
+    const o = orderParceladaComJuros(id, 2, pago);
+    o.total_amount = total;
+    o.transactions.payments[0].amount = total;
+    o.transactions.payments[0].payment_method.installment_amount = parcela;
+    const r = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, o) });
+    assertEquals(r.status, 200);
+    assertEquals(registro.chamadasConfirmar.length, esperado ? 1 : 0);
+    assertEquals((await r.json()).confirmados, esperado ? 1 : 0);
+  }
+});
+
 const PARCELADOS_COM_JUROS = [
   { parcelas: 1, pago: "149.90" },
   { parcelas: 2, pago: "164.35" },
@@ -3878,7 +3896,7 @@ function orderParceladaComJuros(id: string, parcelas: number, pago: string): Rec
         paid_amount: pago,
         status: "processed",
         status_detail: "accredited",
-        payment_method: { id: "visa", type: "credit_card", installments: parcelas },
+        payment_method: { id: "visa", type: "credit_card", installments: parcelas, installment_amount: (Number(pago) / parcelas).toFixed(2) },
       }],
     },
   };
