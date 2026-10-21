@@ -28,6 +28,7 @@ import type { StoreConfig } from "@/types";
 // preto escolhido, porque alguém poderá tê-lo escolhido.
 export const defaultStoreConfig: StoreConfig = {
   freeShippingMin: 350,
+  freeShippingCardStyle: "completo",
   shippingFee: 15,
   // whatsappNumber NÃO tem reserva de propósito (mesmo molde do businessHours
   // abaixo). Valia "34999999999" — nove noves — e esse literal viajou do

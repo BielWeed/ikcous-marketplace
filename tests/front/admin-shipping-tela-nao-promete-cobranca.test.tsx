@@ -183,7 +183,7 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
     expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
   });
 
-  it("o hero descreve o config SALVO, não a escolha pendente — e o botão Salvar marca a diferença", async () => {
+  it("a prévia descreve a escolha pendente e exige salvar antes de valer — e o botão Salvar marca a diferença", async () => {
     // Se o hero lesse o formulário, a tela contaria uma realidade que ainda
     // não existe (o lojista pode desistir de salvar). O pendente acende o
     // botão do cabeçalho.
@@ -191,9 +191,9 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
     await abrirTela();
 
     const hero = () =>
-      hospedeiro.querySelector('[aria-label="Como a entrega funciona hoje"]')
+      hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')
         ?.textContent ?? "";
-    expect(hero()).toContain("Acima de R$ 100");
+    expect(hero()).toContain("Grátis");
 
     const sempre = pillPresetLocal(/Sempre grátis/) as HTMLElement;
     await act(async () => {
@@ -204,8 +204,10 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
     });
 
     // Realidade salva, não a pendente:
-    expect(hero()).toContain("Acima de R$ 100");
-    expect(hero()).not.toContain("Em toda a loja");
+    expect(hero()).toContain("Grátis");
+    expect(hero()).toContain(
+      "Prévia do que está na tela. Toque em Salvar para valer na loja.",
+    );
     // …com o botão marcando que há diferença.
     expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
   });

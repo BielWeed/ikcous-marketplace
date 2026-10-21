@@ -19,18 +19,26 @@ const {
   renameCategory,
   deleteCategory,
   setCategoryActive,
+  updateCategory,
   toastSuccess,
 } = vi.hoisted(() => ({
   rpcMock: vi.fn(),
   renameCategory: vi.fn(),
   deleteCategory: vi.fn(),
   setCategoryActive: vi.fn(),
+  updateCategory: vi.fn(),
   toastSuccess: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase", () => ({ supabase: { rpc: rpcMock } }));
 vi.mock("@/hooks/useCategories", () => ({
-  useCategories: () => ({ renameCategory, deleteCategory, setCategoryActive }),
+  useCategories: () => ({
+    renameCategory,
+    deleteCategory,
+    setCategoryActive,
+    updateCategory,
+    categories: [{ id: "c-brinq", name: "Brinquedos", icone: "casa" }],
+  }),
 }));
 vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
 
@@ -135,6 +143,44 @@ describe("Gerenciar categorias", () => {
       await espera();
     });
   }
+
+  it("oferece ícones e Automático, mostra a prévia e salva a escolha", async () => {
+    await abrir();
+    const linha = [...document.querySelectorAll("li")].find((li) =>
+      li.textContent?.includes("Brinquedos"),
+    );
+    expect(
+      linha?.querySelector("svg[data-icone]")?.getAttribute("data-icone"),
+    ).toBe("casa");
+    const campo = linha?.querySelector("fieldset");
+    expect(campo?.querySelectorAll("button")).toHaveLength(15);
+    await act(async () => {
+      botao("Ícone Moda para Brinquedos").click();
+    });
+    expect(updateCategory).toHaveBeenCalledWith(
+      "c-brinq",
+      { icone: "moda" },
+      true,
+    );
+    await act(async () => {
+      botao("Ícone Automático para Brinquedos").click();
+    });
+    expect(updateCategory).toHaveBeenCalledWith(
+      "c-brinq",
+      { icone: null },
+      true,
+    );
+  });
+
+  it("falha ao salvar o ícone fica na linha e não anuncia sucesso", async () => {
+    updateCategory.mockRejectedValueOnce(new Error("Sem conexão"));
+    await abrir();
+    await act(async () => {
+      botao("Ícone Moda para Brinquedos").click();
+    });
+    expect(document.querySelector('[role="alert"]')).not.toBeNull();
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
 
   it("fechada, não pede nada ao servidor", async () => {
     await act(async () => {

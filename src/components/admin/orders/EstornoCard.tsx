@@ -212,7 +212,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
 
   if (erro) {
     return (
-      <div className="space-y-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-5 text-white">
+      <div className="space-y-3 rounded-2xl border border-admin-border bg-admin-surface p-5 text-white">
         <p className="text-xs font-bold text-red-400">
           Não consegui carregar as devoluções deste pedido.
         </p>

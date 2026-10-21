@@ -274,6 +274,7 @@ describe("CheckoutView — termos e privacidade ao lado do Finalizar", () => {
     expect(barra).not.toBeNull();
     expect(barra?.contains(frase())).toBe(true);
     expect(frase().querySelectorAll("button")).toHaveLength(2);
+    expect(frase().querySelector("br")).toBeNull();
     expect(barra?.querySelector('input[type="checkbox"]')).toBeNull();
   });
 

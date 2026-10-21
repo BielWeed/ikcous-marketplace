@@ -25,6 +25,10 @@ export interface PropsDoLeitorDeCodigo {
   readonly aoFechar?: () => void;
   readonly titulo?: string;
   readonly dica?: string;
+  /** Apresentação segmentada do PDV; a digitação usa o mesmo handler do leitor. */
+  readonly entradaManual?: boolean;
+  readonly segmentado?: boolean;
+  readonly compacto?: boolean;
 }
 
 export function LeitorDeCodigo({
@@ -35,6 +39,9 @@ export function LeitorDeCodigo({
   aoFechar,
   titulo = "Ler código de barras",
   dica = "Aponte a câmera para o código de barras do produto",
+  entradaManual = false,
+  segmentado = false,
+  compacto = false,
 }: PropsDoLeitorDeCodigo): ReactElement | null {
   const [mostrarCampoManual, setMostrarCampoManual] = useState(false);
   const [valorManual, setValorManual] = useState("");
@@ -52,7 +59,7 @@ export function LeitorDeCodigo({
     lerCodigoDigitado,
   } = useLeitorDeCodigo({ ativo: aberto, modo, aoLer, lerTeclado });
 
-  if (!aberto) {
+  if (!aberto && !entradaManual) {
     return null;
   }
 
@@ -63,8 +70,12 @@ export function LeitorDeCodigo({
   }
 
   return (
-    <div className="pdv-stack">
-      <div className="flex items-center justify-between gap-2">
+    <div className="pdv-stack pdv-reader" data-compacto={compacto}>
+      <div
+        className={
+          segmentado ? "sr-only" : "flex items-center justify-between gap-2"
+        }
+      >
         <div>
           <h2 className="pdv-heading">
             <ScanBarcode aria-hidden="true" className="pdv-icon pdv-cyan" />
@@ -84,34 +95,35 @@ export function LeitorDeCodigo({
         )}
       </div>
 
-      <div className="pdv-reader-preview">
-        <video
-          ref={refDoVideo}
-          muted
-          playsInline
-          autoPlay
-          className="size-full object-cover"
-        />
+      {aberto && (
+        <div className="pdv-reader-preview">
+          <video
+            ref={refDoVideo}
+            muted
+            playsInline
+            autoPlay
+            className="size-full object-cover"
+          />
 
-        {/* Moldura decorativa — não é informação, só ajuda a mirar o código. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-8 inset-y-4 rounded-xl border border-sky-300/60"
-        />
+          {/* Moldura decorativa — não é informação, só ajuda a mirar o código. */}
+          <div aria-hidden="true" className="pdv-reader-frame" />
 
-        {estado === "preparando" && (
-          <div role="status" className="pdv-reader-overlay">
-            Abrindo a câmera…
-          </div>
-        )}
+          {estado === "preparando" && (
+            <div role="status" className="pdv-reader-overlay">
+              Abrindo a câmera…
+            </div>
+          )}
 
-        {estado === "pausado" && (
-          <div role="status" className="pdv-reader-overlay">
-            Leitura pausada
-          </div>
-        )}
-      </div>
-      <p className="pdv-muted">{dica}</p>
+          {estado === "pausado" && (
+            <div role="status" className="pdv-reader-overlay">
+              Leitura pausada
+            </div>
+          )}
+          <p className="pdv-reader-hint">
+            {compacto ? "Câmera ativa · Bipe o próximo" : dica}
+          </p>
+        </div>
+      )}
       {estado === "erro" && erro && (
         <div role="alert" className="pdv-notice">
           <p className="pdv-heading">Não foi possível abrir a câmera</p>
@@ -132,11 +144,11 @@ export function LeitorDeCodigo({
           junto com o texto que ela vai anunciar não é anunciada (padrão da
           casa: src/components/ui/custom/QuantitySelector.tsx:51,
           src/components/admin/orders/EstornoCard.tsx:334). */}
-      <div aria-live="polite" className="pdv-muted">
+      <div aria-live="polite" className={segmentado ? "sr-only" : "pdv-muted"}>
         {ultimaLeitura ? `Código lido: ${ultimaLeitura.codigo}` : ""}
       </div>
 
-      {mostrarCampoManual ? (
+      {entradaManual || (!segmentado && mostrarCampoManual) ? (
         <form onSubmit={aoSubmeterCodigoManual} className="pdv-stack">
           <div className="flex flex-1 flex-col gap-1">
             <label htmlFor="codigo-de-barras-manual" className="pdv-muted">
@@ -160,7 +172,7 @@ export function LeitorDeCodigo({
             Usar este código
           </Button>
         </form>
-      ) : (
+      ) : !segmentado ? (
         <Button
           type="button"
           variant="outline"
@@ -170,7 +182,7 @@ export function LeitorDeCodigo({
           <Keyboard aria-hidden="true" className="pdv-purple size-5" />
           Digitar o código
         </Button>
-      )}
+      ) : null}
     </div>
   );
 }

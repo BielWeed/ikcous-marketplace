@@ -3,6 +3,7 @@ import type { Banner } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { abrirMaisOpcoes, configurarTextos } from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn<(file: File) => Promise<string>>();
 const deleteStorageFile = vi.fn<(url: string) => Promise<void>>();
@@ -126,15 +127,6 @@ describe("upload normal e salvar banner não disputam a imagem", () => {
     return encontrado;
   }
 
-  async function clicar(texto: string) {
-    await act(async () => botao(texto).click());
-    await act(async () => {
-      if (["Completo", "3Destino", "✓Conteúdo"].includes(texto)) {
-        await new Promise((resolve) => setTimeout(resolve, 600));
-      } else await esperar();
-    });
-  }
-
   function input() {
     const encontrado =
       hospedeiro.querySelector<HTMLInputElement>('input[type="file"]');
@@ -168,7 +160,7 @@ describe("upload normal e salvar banner não disputam a imagem", () => {
     if (!editar) throw new Error("Botão Editar ausente");
     await act(async () => editar.click());
     await act(async () => esperar());
-    if (modo === "Completo") await clicar("Completo");
+    if (modo === "Completo") await configurarTextos(true);
     await act(async () => {
       selecionar();
       await esperar();
@@ -177,7 +169,7 @@ describe("upload normal e salvar banner não disputam a imagem", () => {
   }
 
   async function destino(modo: "Simples" | "Completo") {
-    if (modo === "Completo") await clicar("3Destino");
+    if (modo === "Completo") await abrirMaisOpcoes();
     return botao(modo === "Completo" ? "Salvar Alterações" : "Salvar Banner");
   }
 
@@ -190,7 +182,7 @@ describe("upload normal e salvar banner não disputam a imagem", () => {
       updateBanner.mockReturnValueOnce(envio.promessa);
       uploadBannerImage.mockResolvedValueOnce(imagemY);
       await act(async () => salvar.click());
-      if (modo === "Completo") await clicar("✓Conteúdo");
+      if (modo === "Completo") await abrirMaisOpcoes();
       const campo = input();
       await act(async () => {
         selecionar(campo);
@@ -224,12 +216,12 @@ describe("upload normal e salvar banner não disputam a imagem", () => {
       } else {
         // No Completo as etapas desmontam o input: navegar é a trajetória real.
         await act(async () => selecionar());
-        await clicar("3Destino");
+        await abrirMaisOpcoes();
       }
       expect(updateBanner).not.toHaveBeenCalled();
       expect(botao("Enviando Imagem...").disabled).toBe(true);
       await act(async () => upload.resolver(imagemY));
-      if (modo === "Completo") await clicar("✓Conteúdo");
+      if (modo === "Completo") await abrirMaisOpcoes();
       expect(imagem()).toBe(imagemY);
       const liberado = await destino(modo);
       await act(async () => liberado.click());
@@ -278,7 +270,7 @@ describe("upload normal e salvar banner não disputam a imagem", () => {
       expect(localStorage.getItem("admin_banner_form_draft:lojista-1")).toBe(
         rascunho,
       );
-      if (modo === "Completo") await clicar("✓Conteúdo");
+      if (modo === "Completo") await abrirMaisOpcoes();
       expect(input().disabled).toBe(false);
       uploadBannerImage.mockResolvedValueOnce(imagemY);
       await act(async () => {
@@ -301,7 +293,7 @@ describe("upload normal e salvar banner não disputam a imagem", () => {
     const envio = pendente<void>();
     updateBanner.mockReturnValueOnce(envio.promessa);
     await act(async () => salvar.click());
-    await clicar("✓Conteúdo");
+    await abrirMaisOpcoes();
     const titulo = hospedeiro.querySelector<HTMLInputElement>("#banner-title");
     if (!titulo) throw new Error("Título ausente");
     expect(titulo.disabled).toBe(false);

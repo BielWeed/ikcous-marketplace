@@ -977,9 +977,10 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         const numero = valorDaCaixa.querySelector("span") ?? valorDaCaixa;
         expect(numero.className).toContain("whitespace-nowrap");
       }
-      // a borda de "Margem de Lucro" segue colorida pela saúde da margem
-      expect(grade.children[0].className).toMatch(
-        /border-(emerald|teal|amber|rose)-500\/20/,
+      // A moldura é neutra; quem indica a saúde da margem é o valor.
+      expect(grade.children[0].className).toContain("border-admin-border");
+      expect(grade.children[0].children[1].className).toMatch(
+        /text-(emerald|teal|amber|rose)-\d+/,
       );
     });
   });

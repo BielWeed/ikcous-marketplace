@@ -276,7 +276,7 @@ describe.each(["compact", "detailed"] as const)(
     }
 
     /** Desde a onda J (P-J2) o selo "Crítico" aparece nos DOIS modos, além
-     * da cor do número do estoque (`text-orange-300`, a cor de alerta do redesenho). O número sai sem zero à
+     * da cor do número do estoque (`text-amber-400`, a cor de atenção do painel). O número sai sem zero à
      * esquerda ("5", não "05"). */
     function numeroDoEstoque(): HTMLElement {
       const alvo = [...cartao().querySelectorAll("span")].find((el) =>
@@ -293,7 +293,7 @@ describe.each(["compact", "detailed"] as const)(
     }
 
     function esperado(baixo: boolean) {
-      expect(numeroDoEstoque().className.includes("text-orange-300")).toBe(
+      expect(numeroDoEstoque().className.includes("text-amber-400")).toBe(
         baixo,
       );
       expect(temSeloCritico()).toBe(baixo);

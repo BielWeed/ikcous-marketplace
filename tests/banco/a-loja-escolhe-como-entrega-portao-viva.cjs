@@ -774,6 +774,11 @@ async function main() {
   );
   C = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await C.connect();
+  await C.query("BEGIN");
+  await require("./estilo-card-frete-posterior.cjs").desfazerEstiloCardFreteNaTransacao(
+    C,
+  );
+  await C.query("COMMIT");
   await C.query(`CREATE ROLE ${RO} NOLOGIN BYPASSRLS`);
   try {
     await C.query(`GRANT pg_read_all_data TO ${RO}`);

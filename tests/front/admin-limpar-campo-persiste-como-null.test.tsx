@@ -172,10 +172,10 @@ describe("AdminProductFormView — limpar campo persiste como null (#96)", () =>
   }
 
   async function salvar() {
-    // O redesenho levou a ação principal para uma barra fixa em portal.
-    // Ela pertence ao formulário, mas fica fora do hospedeiro no DOM.
+    // A ação usa a prateleira compartilhada, que pode ser um portal no celular.
+    // A consulta no documento cobre tanto a prateleira quanto a ação inline.
     const barra = document.querySelector(
-      '[role="region"][aria-label="Ações do produto"]',
+      '[role="group"][aria-label="Ações do produto"]',
     );
     expect(barra).not.toBeNull();
     const botao = [...barra!.querySelectorAll("button")].find(

@@ -19,6 +19,7 @@ import {
   percentualDaReceita,
   sublinhasDaDre,
 } from "@/lib/financeiro";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { DreFinanceira, IntervaloDeDatas } from "@/types/financeiro";
 import {
@@ -76,6 +77,16 @@ function RotuloDaLinha({
       {texto}
     </button>
   );
+}
+
+function corDaLinha(chave: ChaveDaDre, valor: number): string {
+  return chave === "lucro_bruto" ||
+    chave === "margem_contribuicao" ||
+    chave === "resultado_operacional" ||
+    chave === "resultado_financeiro" ||
+    chave === "lucro_liquido"
+    ? classeDoTexto(tomDoValor(valor))
+    : "text-white";
 }
 
 function classeDaLinha(linha: LinhaDaCascata): string {
@@ -143,7 +154,7 @@ function TabelaDoPeriodo({
                     valor={linha.valor}
                     className={cn(
                       linha.final && "text-2xl sm:text-base",
-                      linha.valor < 0 ? "text-red-400" : "text-white",
+                      corDaLinha(linha.chave, linha.valor),
                     )}
                   />
                 </td>
@@ -269,15 +280,19 @@ function TabelaMensal({
                       key={rotulo}
                       className="whitespace-nowrap px-3 py-2 text-right"
                     >
-                      <Dinheiro valor={valorNoMes(indice, linha.chave)} />
+                      <Dinheiro
+                        valor={valorNoMes(indice, linha.chave)}
+                        className={corDaLinha(
+                          linha.chave,
+                          valorNoMes(indice, linha.chave),
+                        )}
+                      />
                     </td>
                   ))}
                   <td className="whitespace-nowrap px-3 py-2 text-right">
                     <Dinheiro
                       valor={linha.valor}
-                      className={
-                        linha.valor < 0 ? "text-red-400" : "text-white"
-                      }
+                      className={corDaLinha(linha.chave, linha.valor)}
                     />
                   </td>
                 </tr>
@@ -404,7 +419,7 @@ export function AbaDre({
         >
           <Dinheiro
             valor={dados.lucroLiquido}
-            className={dados.lucroLiquido < 0 ? "text-red-400" : "text-white"}
+            className={classeDoTexto(tomDoValor(dados.lucroLiquido))}
           />
         </BlocoKpi>
         <BlocoKpi
@@ -422,7 +437,7 @@ export function AbaDre({
         >
           <Dinheiro
             valor={dados.lucroBruto}
-            className={dados.lucroBruto < 0 ? "text-red-400" : "text-white"}
+            className={classeDoTexto(tomDoValor(dados.lucroBruto))}
           />
         </BlocoKpi>
         <BlocoKpi
@@ -435,9 +450,7 @@ export function AbaDre({
         >
           <Dinheiro
             valor={dados.margemContribuicao}
-            className={
-              dados.margemContribuicao < 0 ? "text-red-400" : "text-white"
-            }
+            className={classeDoTexto(tomDoValor(dados.margemContribuicao))}
           />
         </BlocoKpi>
       </div>

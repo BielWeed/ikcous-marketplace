@@ -105,7 +105,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
 
   async function abrir() {
     const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
+      "./apoio/transportadoras-isoladas"
     );
     await act(async () => {
       raiz.render(<TransportadorasSection />);
@@ -162,9 +162,9 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
 
   it("mostra os três cartões sempre, mesmo em modo legado com só o Melhor Envio ligado", async () => {
     await abrir();
-    expect(hospedeiro.textContent).toContain("Chave de acesso — Melhor Envio");
-    expect(hospedeiro.textContent).toContain("Chave de acesso — SuperFrete");
-    expect(hospedeiro.textContent).toContain("Chave de acesso — Frenet");
+    expect(hospedeiro.textContent).toContain("Melhor Envio");
+    expect(hospedeiro.textContent).toContain("SuperFrete");
+    expect(hospedeiro.textContent).toContain("Frenet");
   });
 
   it("mostra J&T Standard quando a lista da conta Frenet o omite, sem afirmar que já cota", async () => {
@@ -249,7 +249,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     await clicar(linhaPAC?.querySelector("input") ?? undefined);
     await clicar(linhaJT?.querySelector("input") ?? undefined);
     invoke.mockClear();
-    await clicar(botoes(/^Salvar$/)[2]);
+    await clicar(botoes(/^Salvar transportadora$/)[2]);
     await clicar(botoes(/^Testar$/)[2]);
     expect(invoke).toHaveBeenCalledWith(
       "calculate-shipping",
@@ -260,7 +260,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
         }),
       }),
     );
-    await clicar(botoes(/^Salvar$/)[2]);
+    await clicar(botoes(/^Salvar transportadora$/)[2]);
     expect(
       invoke.mock.calls.some(
         (c: any[]) => c[1]?.body?.action === "save_credentials",
@@ -269,7 +269,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     jtCotou = true;
     await clicar(botoes(/^Testar$/)[2]);
     await digitar(camposToken()[2], "chave-trocada-ficticia");
-    await clicar(botoes(/^Salvar$/)[2]);
+    await clicar(botoes(/^Salvar transportadora$/)[2]);
     expect(
       invoke.mock.calls.some(
         (c: any[]) => c[1]?.body?.action === "save_credentials",
@@ -277,7 +277,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     ).toBe(false);
     await digitar(camposToken()[2], "");
     await clicar(botoes(/^Testar$/)[2]);
-    await clicar(botoes(/^Salvar$/)[2]);
+    await clicar(botoes(/^Salvar transportadora$/)[2]);
     expect(invoke).toHaveBeenCalledWith(
       "calculate-shipping",
       expect.objectContaining({
@@ -325,7 +325,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     await clicar(botoes(/Ver serviços da conta/)[2]);
     await clicar(botoes(/^Testar$/)[2]);
     expect(camposToken()[2].disabled).toBe(true);
-    expect(botoes(/^Salvar$/)[2].disabled).toBe(true);
+    expect(botoes(/^Salvar transportadora$/)[2].disabled).toBe(true);
     const jt = [...hospedeiro.querySelectorAll("label")].find((l) =>
       l.textContent?.includes("J&T Express — Standard"),
     );
@@ -363,17 +363,14 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     ).toBe(false);
   });
 
-  it("permite salvar a seleção atual para migrar do modo legado ao multiprovedor", async () => {
+  it("a seleção legada sem mudança não converte os dados por abrir ou salvar", async () => {
     await abrir();
-    const botao = botoes(/Salvar provedores/)[0];
-    expect(botao.disabled).toBe(false);
-    await clicar(botao);
-    expect(invoke).toHaveBeenCalledWith(
-      "calculate-shipping",
-      expect.objectContaining({
-        body: { action: "save_active_providers", ligados: ["melhor_envio"] },
-      }),
-    );
+    expect(botoes(/Salvar provedores/)[0].disabled).toBe(true);
+    expect(
+      invoke.mock.calls.some(
+        (c: any[]) => c[1]?.body?.action === "save_active_providers",
+      ),
+    ).toBe(false);
   });
 
   it("chave salva não some do DOM: o campo nasce vazio e mostra o selo 'chave salva' só para quem tem token", async () => {
@@ -392,7 +389,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     const { toast } = await import("sonner");
     invoke.mockClear();
     // SuperFrete não tem chave salva na fixture.
-    const botaoSalvarSF = botoes(/^Salvar$/)[1];
+    const botaoSalvarSF = botoes(/^Salvar transportadora$/)[1];
     await clicar(botaoSalvarSF);
     expect(invoke).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(
@@ -404,7 +401,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     await abrir();
     const [tokenME] = camposToken();
     await digitar(tokenME, "tok-me-novo-ficticio");
-    await clicar(botoes(/^Salvar$/)[0]);
+    await clicar(botoes(/^Salvar transportadora$/)[0]);
     expect(invoke).toHaveBeenCalledWith(
       "calculate-shipping",
       expect.objectContaining({
@@ -430,7 +427,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     await abrir();
     const [tokenME] = camposToken();
     await digitar(tokenME, "tok-me-novo-ficticio");
-    await clicar(botoes(/^Salvar$/)[0]);
+    await clicar(botoes(/^Salvar transportadora$/)[0]);
     expect(descartarCache).toHaveBeenCalledTimes(1);
   });
 
@@ -443,7 +440,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     const tokenSF = camposToken()[1];
     await digitar(tokenSF, "tok-sf-novo-ficticio");
     invoke.mockClear();
-    await clicar(botoes(/^Salvar$/)[1]);
+    await clicar(botoes(/^Salvar transportadora$/)[1]);
     expect(invoke).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalled();
     void camposEmail;
@@ -459,7 +456,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     ][1] as HTMLInputElement;
     await digitar(tokenSF, "tok-sf-novo-ficticio");
     await digitar(emailSF, "tecnico@loja.com");
-    await clicar(botoes(/^Salvar$/)[1]);
+    await clicar(botoes(/^Salvar transportadora$/)[1]);
     expect(invoke).toHaveBeenCalledWith(
       "calculate-shipping",
       expect.objectContaining({
@@ -488,7 +485,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     });
     const [tokenME] = camposToken();
     await digitar(tokenME, "tok-ruim");
-    await clicar(botoes(/^Salvar$/)[0]);
+    await clicar(botoes(/^Salvar transportadora$/)[0]);
     expect(toast.error).toHaveBeenCalledWith(
       "Token inválido para este provedor.",
     );
@@ -498,22 +495,20 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
   describe("bloco 'Provedores ligados na loja'", () => {
     it("só permite marcar provedor com chave salva e fora do sandbox", async () => {
       await abrir();
-      const linhaME = [...hospedeiro.querySelectorAll("label")].find((l) =>
-        /Melhor Envio/.test(l.textContent ?? ""),
-      ) as HTMLLabelElement;
-      const linhaSF = [...hospedeiro.querySelectorAll("label")].find(
-        (l) =>
-          /SuperFrete/.test(l.textContent ?? "") &&
-          l.querySelector('input[type="checkbox"]'),
-      ) as HTMLLabelElement;
+      const linhaME = hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Ligar Melhor Envio"]',
+      )!.parentElement!;
+      const linhaSF = hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Ligar SuperFrete"]',
+      )!.parentElement!;
       const caixaME = linhaME.querySelector(
-        'input[type="checkbox"]',
-      ) as HTMLInputElement;
+        '[aria-label="Ligar Melhor Envio"]',
+      ) as HTMLButtonElement;
       const caixaSF = linhaSF.querySelector(
-        'input[type="checkbox"]',
-      ) as HTMLInputElement;
+        '[aria-label="Ligar SuperFrete"]',
+      ) as HTMLButtonElement;
       expect(caixaME.disabled).toBe(false);
-      expect(caixaME.checked).toBe(true);
+      expect(caixaME.getAttribute("aria-checked")).toBe("true");
       expect(caixaSF.disabled).toBe(true);
     });
 
@@ -550,8 +545,9 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       await abrir();
       const interruptorME = [
         ...hospedeiro.querySelectorAll('[role="switch"]'),
-      ].find((el) =>
-        (el.getAttribute("aria-label") ?? "").includes("Melhor Envio"),
+      ].find(
+        (el) =>
+          el.getAttribute("aria-label") === "Modo de teste — Melhor Envio",
       ) as HTMLElement;
       // A trava é só para LIGAR sandbox num provedor já ligado — a loja
       // presa (ligada + sandbox) precisa continuar destravável, senão não
@@ -569,7 +565,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       const [tokenME] = camposToken();
       await digitar(tokenME, "tok-me-producao-ficticio");
 
-      await clicar(botoes(/^Salvar$/)[0]);
+      await clicar(botoes(/^Salvar transportadora$/)[0]);
       const corpo = invoke.mock.calls.find(
         (c: any[]) => c[1]?.body?.action === "save_credentials",
       )?.[1]?.body;
@@ -616,16 +612,16 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
         });
       });
       await abrir();
-      const linhaME = [...hospedeiro.querySelectorAll("label")].find((l) =>
-        /Melhor Envio/.test(l.textContent ?? ""),
-      ) as HTMLLabelElement;
+      const linhaME = hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Ligar Melhor Envio"]',
+      )!.parentElement!;
       const caixaME = linhaME.querySelector(
-        'input[type="checkbox"]',
-      ) as HTMLInputElement;
-      expect(caixaME.checked).toBe(true);
+        '[aria-label="Ligar Melhor Envio"]',
+      ) as HTMLButtonElement;
+      expect(caixaME.getAttribute("aria-checked")).toBe("true");
       expect(caixaME.disabled).toBe(false);
       await clicar(caixaME);
-      expect(caixaME.checked).toBe(false);
+      expect(caixaME.getAttribute("aria-checked")).toBe("false");
 
       await clicar(botoes(/Salvar provedores/)[0]);
       expect(invoke).toHaveBeenCalledWith(
@@ -638,10 +634,12 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
 
     it("salvar os ligados chama save_active_providers com a lista escolhida", async () => {
       await abrir();
-      const linhaME = [...hospedeiro.querySelectorAll("label")].find((l) =>
-        /Melhor Envio/.test(l.textContent ?? ""),
-      ) as HTMLLabelElement;
-      const caixaME = linhaME.querySelector("input") as HTMLInputElement;
+      const linhaME = hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Ligar Melhor Envio"]',
+      )!.parentElement!;
+      const caixaME = linhaME.querySelector(
+        '[aria-label="Ligar Melhor Envio"]',
+      ) as HTMLButtonElement;
       await clicar(caixaME);
       invoke.mockImplementation((_n: string, opcoes: any) => {
         if (opcoes?.body?.action === "ler_configuracao_frete") {
@@ -668,10 +666,14 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     it("espelho:'pendente' é aviso honesto de SUCESSO, nunca erro", async () => {
       await abrir();
       const { toast } = await import("sonner");
-      const linhaME = [...hospedeiro.querySelectorAll("label")].find((l) =>
-        /Melhor Envio/.test(l.textContent ?? ""),
-      ) as HTMLLabelElement;
-      await clicar(linhaME.querySelector("input") as HTMLInputElement);
+      const linhaME = hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Ligar Melhor Envio"]',
+      )!.parentElement!;
+      await clicar(
+        linhaME.querySelector(
+          '[aria-label="Ligar Melhor Envio"]',
+        ) as HTMLButtonElement,
+      );
       invoke.mockImplementation((_n: string, opcoes: any) => {
         if (opcoes?.body?.action === "ler_configuracao_frete") {
           return Promise.resolve({
@@ -700,12 +702,14 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       // SuperFrete não tem chave na fixture legada — não dá para marcá-la;
       // desmarca o Melhor Envio (o único ligado) para simular a tentativa
       // de mudança que vai falhar.
-      const linhaME = [...hospedeiro.querySelectorAll("label")].find((l) =>
-        /Melhor Envio/.test(l.textContent ?? ""),
-      ) as HTMLLabelElement;
-      const caixaME = linhaME.querySelector("input") as HTMLInputElement;
+      const linhaME = hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Ligar Melhor Envio"]',
+      )!.parentElement!;
+      const caixaME = linhaME.querySelector(
+        '[aria-label="Ligar Melhor Envio"]',
+      ) as HTMLButtonElement;
       await clicar(caixaME);
-      expect(caixaME.checked).toBe(false);
+      expect(caixaME.getAttribute("aria-checked")).toBe("false");
 
       invoke.mockImplementation((_n: string, opcoes: any) => {
         if (opcoes?.body?.action === "ler_configuracao_frete") {
@@ -733,8 +737,9 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       // contrário.
       const interruptorME = [
         ...hospedeiro.querySelectorAll('[role="switch"]'),
-      ].find((el) =>
-        (el.getAttribute("aria-label") ?? "").includes("Melhor Envio"),
+      ].find(
+        (el) =>
+          el.getAttribute("aria-label") === "Modo de teste — Melhor Envio",
       ) as HTMLElement;
       expect(interruptorME.hasAttribute("disabled")).toBe(true);
 
@@ -742,11 +747,11 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       // (marcado=false agora): "será desligado (falta salvar)" — nunca
       // "ligado" (mentira: o servidor não confirmou) nem "chave salva"
       // (também mentira: ele CONTINUA ligado de verdade).
-      const linhaMEDepois = [...hospedeiro.querySelectorAll("label")].find(
-        (l) => /Melhor Envio/.test(l.textContent ?? ""),
-      ) as HTMLLabelElement;
+      const linhaMEDepois = hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Ligar Melhor Envio"]',
+      )!.parentElement!;
       expect(linhaMEDepois.textContent).toMatch(
-        /será desligado \(falta salvar\)/,
+        /Será desligada — falta salvar/,
       );
       expect(linhaMEDepois.textContent).not.toMatch(/\bligado\b/);
 
@@ -796,7 +801,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     const [tokenME] = camposToken();
     await digitar(tokenME, "tok-me-novo-ficticio");
     expect(camposToken()[0].value).toBe("tok-me-novo-ficticio");
-    await clicar(botoes(/^Salvar$/)[0]);
+    await clicar(botoes(/^Salvar transportadora$/)[0]);
     // A seção recarrega (`carregar()`) depois do save — o rascunho volta
     // vazio, e a chave nova não fica visível na tela depois de salva.
     expect(camposToken()[0].value).toBe("");
@@ -812,7 +817,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     await digitar(tokenSF, "tok-sf-novo-ficticio");
     await digitar(emailSF, "nao-e-um-email-valido");
     invoke.mockClear();
-    await clicar(botoes(/^Salvar$/)[1]);
+    await clicar(botoes(/^Salvar transportadora$/)[1]);
 
     expect(invoke).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(
@@ -831,14 +836,14 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     const { toast } = await import("sonner");
     const interruptorSandboxSF = [
       ...hospedeiro.querySelectorAll('[role="switch"]'),
-    ].find((el) =>
-      (el.getAttribute("aria-label") ?? "").includes("SuperFrete"),
+    ].find(
+      (el) => el.getAttribute("aria-label") === "Modo de teste — SuperFrete",
     ) as HTMLElement;
     expect(interruptorSandboxSF).toBeDefined();
     await clicar(interruptorSandboxSF);
 
     invoke.mockClear();
-    await clicar(botoes(/^Salvar$/)[1]);
+    await clicar(botoes(/^Salvar transportadora$/)[1]);
     expect(invoke).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(
       "Cole a chave de acesso desta transportadora antes de salvar.",
@@ -876,8 +881,8 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     const { toast } = await import("sonner");
     const interruptorME = [
       ...hospedeiro.querySelectorAll('[role="switch"]'),
-    ].find((el) =>
-      (el.getAttribute("aria-label") ?? "").includes("Melhor Envio"),
+    ].find(
+      (el) => el.getAttribute("aria-label") === "Modo de teste — Melhor Envio",
     ) as HTMLElement;
     // Não está ligado nesta fixture: a chave de sandbox está LIVRE
     // (R3-8 não entra aqui — o achado 1 é outra trava).
@@ -904,7 +909,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       return Promise.resolve({ data: { success: true }, error: null });
     });
 
-    await clicar(botoes(/^Salvar$/)[0]);
+    await clicar(botoes(/^Salvar transportadora$/)[0]);
 
     const corpo = invoke.mock.calls.find(
       (c: any[]) => c[1]?.body?.action === "save_credentials",
@@ -926,13 +931,13 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     await abrir();
     const interruptorME = [
       ...hospedeiro.querySelectorAll('[role="switch"]'),
-    ].find((el) =>
-      (el.getAttribute("aria-label") ?? "").includes("Melhor Envio"),
+    ].find(
+      (el) => el.getAttribute("aria-label") === "Modo de teste — Melhor Envio",
     ) as HTMLElement;
     const interruptorSF = [
       ...hospedeiro.querySelectorAll('[role="switch"]'),
-    ].find((el) =>
-      (el.getAttribute("aria-label") ?? "").includes("SuperFrete"),
+    ].find(
+      (el) => el.getAttribute("aria-label") === "Modo de teste — SuperFrete",
     ) as HTMLElement;
     expect(interruptorME).toBeDefined();
     expect(interruptorSF).toBeDefined();
@@ -943,7 +948,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
 
     // O aviso aparece só no cartão do provedor ligado.
     const cartaoME = interruptorME.closest(
-      "div.space-y-3",
+      "fieldset.space-y-3",
     ) as HTMLElement | null;
     expect(cartaoME?.textContent).toContain(
       "Desligue esta transportadora antes de usar o modo de teste.",
@@ -959,8 +964,8 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     await abrir();
     const interruptorSF = [
       ...hospedeiro.querySelectorAll('[role="switch"]'),
-    ].find((el) =>
-      (el.getAttribute("aria-label") ?? "").includes("SuperFrete"),
+    ].find(
+      (el) => el.getAttribute("aria-label") === "Modo de teste — SuperFrete",
     ) as HTMLElement;
     await clicar(interruptorSF);
     const tokenSF = camposToken()[1];
@@ -989,7 +994,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     });
 
     const { toast } = await import("sonner");
-    await clicar(botoes(/^Salvar$/)[1]);
+    await clicar(botoes(/^Salvar transportadora$/)[1]);
     expect(toast.error).toHaveBeenCalledWith(
       "Desligue esta transportadora antes de usar o modo de teste.",
     );

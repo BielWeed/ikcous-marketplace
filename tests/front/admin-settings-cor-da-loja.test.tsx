@@ -225,7 +225,7 @@ describe("Minha loja — a cor agora mora em Aparência do app", () => {
     const before = snapshot();
     await render();
     await type("store-name", "Nova loja");
-    await click("Salvar identidade");
+    await click("Salvar alterações");
     expect(h.save.mock.calls[0][0].desired).toEqual({
       ...before.identity,
       store_name: "Nova loja",

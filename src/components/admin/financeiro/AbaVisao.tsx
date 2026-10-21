@@ -23,6 +23,7 @@ import {
   serieDoFluxoDeCaixa,
   ultimos30Dias,
 } from "@/lib/financeiro";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type {
   ContaFinanceira,
@@ -86,7 +87,12 @@ function CartaoDePrevistos({
           <Dinheiro
             valor={totais.total}
             sentido={lado === "entrada" ? 1 : -1}
-            className={cn("text-sm font-bold", "text-white")}
+            className={cn(
+              "text-sm font-bold",
+              classeDoTexto(
+                tomDoValor(totais.total, { invertido: lado === "saida" }),
+              ),
+            )}
           />
           <ChevronRight aria-hidden="true" className="size-4 text-zinc-400" />
         </span>
@@ -343,7 +349,7 @@ export function AbaVisao({
             valor={dados.saldoTotal}
             className={cn(
               "text-[clamp(1.5rem,8vw,2.25rem)] font-bold leading-tight tracking-tight",
-              dados.saldoTotal < 0 ? "text-red-300" : "text-white",
+              corDoValor(dados.saldoTotal),
             )}
           />
         </div>
@@ -474,7 +480,7 @@ export function AbaVisao({
               </span>
               <Dinheiro
                 valor={conta.saldo}
-                className={`text-base font-bold ${conta.saldo < 0 ? "text-red-300" : "text-white"}`}
+                className={`text-base font-bold ${corDoValor(conta.saldo)}`}
               />
               <span className="sr-only">{rotuloDoTipoDeConta(conta.tipo)}</span>
             </li>

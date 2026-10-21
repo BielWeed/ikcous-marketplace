@@ -214,7 +214,7 @@ describe("src/sw/sw.ts — a ficha da loja sem document", () => {
       json: vi.fn().mockResolvedValue({
         schemaVersion: 1,
         // Mesmo host do `self.location.hostname` do fixture (`loja.exemplo.com`)
-        // — resolverIconeDaLoja (T2b) só aceita a ficha em cache quando o host
+        // — resolverIconesDaLoja (T2b) só aceita a ficha em cache quando o host
         // bate; ficha de OUTRA loja no mesmo cache compartilhado não pode vazar
         // ícone (teste de host diferente, mais abaixo).
         host: "loja.exemplo.com",
@@ -249,7 +249,7 @@ describe("src/sw/sw.ts — a ficha da loja sem document", () => {
       "Aviso",
       expect.objectContaining({
         icon: "/identity/da-ficha/icon-192.png",
-        badge: "/identity/da-ficha/icon-192.png",
+        badge: "/icons/badge-96x96.png",
       }),
     );
   });
@@ -264,7 +264,10 @@ describe("src/sw/sw.ts — a ficha da loja sem document", () => {
         host: "outra-loja.exemplo",
         identidade: {
           identity: criarBuildIdentity("DaFicha", "da-ficha").identity,
-          localUrls: criarBuildIdentity("DaFicha", "da-ficha").localUrls,
+          localUrls: {
+            ...criarBuildIdentity("DaFicha", "da-ficha").localUrls,
+            badge_96: "/identity/outra-loja/badge-96.png",
+          },
           publicUrl: "https://outra-loja.exemplo",
           identityRevision: "b".repeat(64),
         },
@@ -295,7 +298,7 @@ describe("src/sw/sw.ts — a ficha da loja sem document", () => {
       "Aviso",
       expect.objectContaining({
         icon: "/icons/heart-96x96.png",
-        badge: "/icons/heart-96x96.png",
+        badge: "/icons/badge-96x96.png",
       }),
     );
   });
@@ -317,7 +320,7 @@ describe("src/sw/sw.ts — a ficha da loja sem document", () => {
       "Aviso",
       expect.objectContaining({
         icon: "/icons/heart-96x96.png",
-        badge: "/icons/heart-96x96.png",
+        badge: "/icons/badge-96x96.png",
       }),
     );
   });

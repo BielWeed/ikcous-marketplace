@@ -318,6 +318,10 @@ export function mapOrderFromDB(
     // Qualquer valor fora de "presencial" (inclusive ausência) vira "online".
     canal: row.canal === "presencial" ? "presencial" : "online",
     vendedorId: row.vendedor_id ?? null,
+    shippingOptionId:
+      typeof customerData.shipping_option_id === "string"
+        ? customerData.shipping_option_id
+        : null,
     retiradaNaLoja: enderecoDeRetirada !== "",
     enderecoDeRetirada: enderecoDeRetirada || null,
     // Achado 1 da revisão de 26/09/2026 (rodada 2): coluna de

@@ -167,6 +167,32 @@ describe("identidade transportada pelo StoreProvider real", () => {
         });
     });
   }
+  it("o estilo ausente da coluna conserva o card completo", async () => {
+    externo.linha = { id: 1 };
+    await montar();
+    expect(store.config.freeShippingCardStyle).toBe("completo");
+  });
+  it("lê o estilo compacto da view pública e do cache antigo", async () => {
+    externo.admin = false;
+    externo.linha = { id: 1, free_shipping_card_style: "compacto" };
+    await montar();
+    expect(store.config.freeShippingCardStyle).toBe("compacto");
+  });
+  it("mapeia a escolha para a RPC e só confirma a coluna devolvida", async () => {
+    await montar();
+    externo.rpc.mockResolvedValueOnce({
+      data: { free_shipping_card_style: "compacto" },
+      error: null,
+    });
+    expect(await salvar({ freeShippingCardStyle: "compacto" })).toBe(true);
+    expect(externo.rpc).toHaveBeenCalledWith("upsert_store_config", {
+      config_json: { free_shipping_card_style: "compacto" },
+    });
+    expect(store.config.freeShippingCardStyle).toBe("compacto");
+    externo.rpc.mockResolvedValueOnce({ data: { id: 1 }, error: null });
+    expect(await salvar({ freeShippingCardStyle: "completo" })).toBe(false);
+    expect(store.config.freeShippingCardStyle).toBe("compacto");
+  });
   it("lê o trio snake_case e preserva a referência em refresh e eco JSON equivalente", async () => {
     await montar();
     expect(store.config).toMatchObject(patchIdentidade());

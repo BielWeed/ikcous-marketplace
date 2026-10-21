@@ -35,6 +35,7 @@ const ICONES_DAS_PORTAS: Partial<Record<TelaDoPainel, LucideIcon>> = {
   "admin-banners": ImageIcon,
   "admin-carousels": GalleryHorizontal,
   "admin-app-color": Droplet,
+  "admin-free-shipping-card": Truck,
   "admin-shipping": Truck,
 };
 

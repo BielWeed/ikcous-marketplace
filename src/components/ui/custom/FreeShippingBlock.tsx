@@ -42,6 +42,61 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
   // FRETE V2: a sentinela 0,01 = "sempre grátis". Sem este ramo, a Home
   // mostrava a meta real de R$ 0,01: "Ganhe frete grátis em compras acima de
   // R$ 0,01" e "faltam R$ 0,01" — a loja que dá grátis SEMPRE não tem meta.
+  const minShipping = config.freeShippingMin;
+  const totalCartValue = cartTotal || 0;
+  const remaining = Math.max(0, minShipping - totalCartValue);
+  const isGoalReached = atingiuOMinimo(totalCartValue, minShipping);
+  const progressPercent = Math.min((totalCartValue / minShipping) * 100, 100);
+
+  if (config.freeShippingCardStyle === "compacto") {
+    return (
+      <div className="flex min-h-[76px] items-center gap-3 rounded-[20px] border border-zinc-800 bg-zinc-950 p-3.5 text-white">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-zinc-900">
+          <Truck aria-hidden="true" className="size-5 text-emerald-400" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[13px] font-bold leading-[18px]">
+            {isGoalReached || preset === "sempre" ? (
+              <span className="text-emerald-400">
+                Frete grátis{soLocal ? " na cidade" : ""} liberado
+              </span>
+            ) : (
+              <>
+                Faltam{" "}
+                <span className="text-emerald-400">
+                  {formatCurrency(remaining)}
+                </span>{" "}
+                p/ frete grátis{soLocal ? " na cidade" : ""}
+              </>
+            )}
+          </h3>
+          {preset !== "sempre" && (
+            <div className="mt-1.5 flex items-center gap-3">
+              <div
+                role="progressbar"
+                aria-label="Progresso para o frete grátis"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.floor(progressPercent)}
+                aria-valuetext={`${formatCurrency(totalCartValue)} de ${formatCurrency(minShipping)} para o frete grátis`}
+                className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-800"
+              >
+                <div
+                  className="h-full rounded-full bg-emerald-500"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="shrink-0 text-[11px] tabular-nums text-zinc-300">
+                {formatCurrency(totalCartValue).replace(/^R\$\s*/, "")} /{" "}
+                {formatCurrency(minShipping).replace(/^R\$\s*/, "")}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (preset === "sempre") {
     return (
       <div className="group relative flex min-h-[172px] flex-col overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950 p-3.5 shadow-md transition-all duration-300 hover:border-zinc-700">
@@ -100,13 +155,6 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
   // de login que existia aqui morreu com o modelo de presets (frente B,
   // CartContext.tsx): convidado tem o mesmo direito ao grátis da loja, e
   // pedir login como condição era promessa falsa.
-  const minShipping = config.freeShippingMin;
-  const totalCartValue = cartTotal || 0;
-  const remaining = Math.max(0, minShipping - totalCartValue);
-  const isGoalReached = atingiuOMinimo(totalCartValue, minShipping);
-
-  const progressPercent = Math.min((totalCartValue / minShipping) * 100, 100);
-
   // T3 (23/09): quando local e nacional divergem (`soLocal`), o headline
   // ganha o qualificador "na cidade" -- essa meta só vale para entrega
   // local, e sem ele a visitante lia "Frete Grátis" pensando em qualquer

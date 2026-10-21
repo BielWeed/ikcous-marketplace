@@ -24,6 +24,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherImagemPropria } from "./helpers/editor-de-banner";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -201,6 +202,7 @@ describe("AdminBannersView — salvar que falha não deixa upload órfão no buc
     await act(async () => {
       botaoNovoBanner.click();
     });
+    await escolherImagemPropria();
 
     // Diálogo aberto (botão "Salvar Banner" só existe dentro dele) e em
     // modo de criação.

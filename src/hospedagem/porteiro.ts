@@ -1,8 +1,10 @@
+import type { LocalIdentityUrls } from "../config/buildIdentityContract";
 import type {
   ConfiguracaoDaLoja,
   FichaDaLoja,
 } from "../config/fichaDaLojaContract";
 import { CAMINHO_IDENTIDADE_JSON } from "../config/fichaDaLojaContract";
+import { BADGE_NEUTRO } from "../config/fichaDaLojaContract";
 // O PORTEIRO — o `middleware.ts` estendido que monta o HTML de cada loja na
 // borda, por HOST, a partir de um único build compartilhado (etapa 2 da
 // escala, 11/09/2026). Desenho aprovado em
@@ -939,7 +941,7 @@ function passthroughPorteiro(): Response {
 }
 
 function iconesManifestParaUrls(
-  localUrls: PublicStoreIdentity["urls"],
+  localUrls: LocalIdentityUrls,
 ): Array<{ src: string; sizes: string; type: string; purpose?: string }> {
   return [
     { src: localUrls.icon_192, sizes: "192x192", type: "image/png" },
@@ -949,6 +951,13 @@ function iconesManifestParaUrls(
       sizes: "512x512",
       type: "image/png",
       purpose: "maskable",
+    },
+    {
+      // Ficha antiga/remota sem derivado: só marca neutra, nunca a do build.
+      src: localUrls.badge_96 ?? BADGE_NEUTRO,
+      sizes: "96x96",
+      type: "image/png",
+      purpose: "monochrome",
     },
   ];
 }

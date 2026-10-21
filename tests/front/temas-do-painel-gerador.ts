@@ -139,6 +139,8 @@ const FUNDO_NEUTRO: Record<string, string> = {
 };
 
 const BORDA_NEUTRA: Record<string, string> = {
+  "zinc-50": "text",
+  "zinc-400": "text-soft",
   "zinc-800": "border",
   "zinc-850": "border",
   "zinc-750": "border-strong",
@@ -210,6 +212,7 @@ export function hexDaPaleta(chave: string): string | undefined {
  *   - fundos escuros de alerta/cartão (rosé, violeta) viram o tom 50 da família.
  */
 const HEX_CLARO: Record<string, readonly [Escopo, string, string?]> = {
+  "text|#25d366": ["claro", "#166534"],
   "text|#ffa1b0": ["claro", "#be123c"],
   "text|#f5c1cc": ["claro", "#9f1239"],
   "text|#75dbff": ["claro", "#075985"],
@@ -531,6 +534,9 @@ export function montarSeletor(
       ordem = Math.max(ordem, ORDEM_DA_VARIANTE[v]);
     } else if (v === "disabled" || v === "enabled") {
       pseudo += `:${v}`;
+    } else if (v === "aria-pressed") {
+      pseudo += '[aria-pressed="true"]';
+      ordem = Math.max(ordem, 1);
     } else if (v === "placeholder") {
       elemento = "::placeholder";
       ordem = Math.max(ordem, 1);
