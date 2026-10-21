@@ -90,8 +90,8 @@ Deno.test("300: registros de publicação completos e róis recusam linhas falta
     "../scripts/frota/publicar-release.mjs"
   );
   const canais = JSON.parse(ler("scripts/frota/canais-de-backend.json"));
-  const a = "60a-conferir-icones-das-categorias-aplicado";
-  const b = "60b-antes-icones-das-categorias";
+  const a = "61a-conferir-icones-das-categorias-aplicado";
+  const b = "61b-antes-icones-das-categorias";
   const lote = canais.provasDeObjetos.filter((p: { versoes?: string[] }) =>
     p.versoes?.includes("20261300000000"),
   );

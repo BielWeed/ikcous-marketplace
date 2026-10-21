@@ -12,10 +12,10 @@ const ler = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 const migration = ler(`supabase/migrations/${ARQ}`);
 const rollback = ler(`supabase/migrations/rollback-manual-${ARQ}`);
 const A = ler(
-  "scripts/publicacao/consultas/60a-conferir-icones-das-categorias-aplicado.sql",
+  "scripts/publicacao/consultas/61a-conferir-icones-das-categorias-aplicado.sql",
 );
 const B = ler(
-  "scripts/publicacao/consultas/60b-antes-icones-das-categorias.sql",
+  "scripts/publicacao/consultas/61b-antes-icones-das-categorias.sql",
 );
 const CHAVES = [
   "todas",
