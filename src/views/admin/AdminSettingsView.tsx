@@ -501,6 +501,15 @@ const ICONE_DA_PORTA = new Map<TelaDoPainel, React.ReactNode>([
     />,
   ],
   [
+    "admin-free-shipping-card",
+    <Truck
+      key="frete-card"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
+  ],
+  [
     "admin-app-color",
     <Droplet
       key="c"

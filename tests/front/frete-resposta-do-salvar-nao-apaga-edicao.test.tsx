@@ -44,6 +44,7 @@ describe("Frete — resposta do salvar preserva a edição posterior", () => {
     vi.clearAllMocks();
     loja.atual = {
       freeShippingMin: 0,
+      freeShippingCardStyle: "completo",
       shippingFee: 15,
       whatsappNumber: "",
       shareText: "",

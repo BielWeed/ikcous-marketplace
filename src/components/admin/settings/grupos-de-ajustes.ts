@@ -64,11 +64,15 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "aparencia",
     titulo: "Aparência do app",
     ajuda:
-      "Os Banners (artes, links e agendamentos), as Vitrines (títulos, ordem e ativação) e a Cor do app (a cor da sua marca nos botões, na barra do celular e na tela de abertura) que a cliente vê no app.",
+      "Os Banners (artes, links e agendamentos), as Vitrines (títulos, ordem e ativação) a Cor do app (a cor da sua marca nos botões, na barra do celular e na tela de abertura) e o Card de frete grátis (completo ou compacto na página inicial) que a cliente vê no app.",
     portas: [
       { tela: "admin-banners", descricao: "Artes, links e agendamentos" },
       { tela: "admin-carousels", descricao: "Títulos, ordem e ativação" },
       { tela: "admin-app-color", descricao: "A cor da sua marca no app" },
+      {
+        tela: "admin-free-shipping-card",
+        descricao: "Aviso completo ou compacto na Home",
+      },
     ],
   },
   {

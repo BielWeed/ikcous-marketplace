@@ -308,6 +308,7 @@ export interface Banner {
 
 export interface StoreConfig {
   freeShippingMin: number;
+  freeShippingCardStyle: "completo" | "compacto";
   shippingFee: number;
   /** WhatsApp da loja. Vazio/`null` = a loja não configurou — o botão de contato some, nunca aponta para número inventado (20261033000000). */
   whatsappNumber: string | null;
@@ -524,6 +525,7 @@ export type View =
   | "admin-banners"
   | "admin-carousels"
   | "admin-app-color"
+  | "admin-free-shipping-card"
   | "admin-shipping"
   | "admin-shipping-national"
   | "admin-settings"

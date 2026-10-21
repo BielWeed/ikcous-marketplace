@@ -95,6 +95,7 @@ describe("a constante dos grupos de Ajustes", () => {
       "admin-banners",
       "admin-carousels",
       "admin-app-color",
+      "admin-free-shipping-card",
     ]);
     expect(porGrupo["Entrega e frete"]).toEqual(["admin-shipping"]);
     expect(porGrupo.Pagamentos).toEqual([]);

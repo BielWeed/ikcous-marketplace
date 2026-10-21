@@ -2372,6 +2372,7 @@ export type Database = {
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
+          free_shipping_card_style: string;
           free_shipping_min: number | null;
           home_sections: Json | null;
           id: number;
@@ -2420,6 +2421,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          free_shipping_card_style?: string;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
           id: number;
@@ -2468,6 +2470,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          free_shipping_card_style?: string;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
           id?: number;
@@ -2636,6 +2639,7 @@ export type Database = {
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
+          free_shipping_card_style: string | null;
           free_shipping_min: number | null;
           home_sections: Json | null;
           id: number | null;
@@ -2684,6 +2688,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          free_shipping_card_style?: string | null;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
           id?: number | null;
@@ -2727,6 +2732,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          free_shipping_card_style?: string | null;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
           id?: number | null;

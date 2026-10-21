@@ -209,7 +209,10 @@ describe("bloco de frete: altura estável da primeira pintura ao config", () => 
     const home = fonte(HOME);
     const frete = fonte(FREE_SHIPPING_BLOCK);
     expect(home).toMatch(/const blocoFrete = configLoaded \?/);
-    expect(home).toContain("h-[172px] w-full animate-pulse rounded-[24px]");
+    expect(home).toContain('config.freeShippingCardStyle === "compacto"');
+    expect(home).toContain('"h-[76px]" : "h-[172px]"');
+    expect(frete).toContain("min-h-[76px]");
+    expect(home).toContain("w-full animate-pulse rounded-[24px]");
     expect(frete.match(/min-h-\[172px\]/g)).toHaveLength(2);
     expect(frete).toContain("size-10");
     expect(frete).not.toMatch(/truncate|line-clamp|text-overflow/);
