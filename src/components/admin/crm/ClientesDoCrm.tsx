@@ -103,12 +103,14 @@ function BlocoDeSegmento({
   segmento,
   resumo,
   carregando,
+  segmentosDisponiveis,
   selecionado,
   aoSelecionar,
 }: Readonly<{
   segmento: SegmentoCrm;
   resumo: ResumoDoSegmento | undefined;
   carregando: boolean;
+  segmentosDisponiveis: boolean;
   selecionado: boolean;
   aoSelecionar: () => void;
 }>) {
@@ -175,14 +177,16 @@ function BlocoDeSegmento({
               zerado ? "text-zinc-400" : "text-white",
             )}
           >
-            {formatarInteiro(resumo?.clientes ?? 0)}
+            {formatarInteiro(
+              segmentosDisponiveis ? (resumo?.clientes ?? 0) : null,
+            )}
           </span>
           {/* `nunca_comprou` não tem valor possível — `null` não desenha
               linha nenhuma (achado 6, revisão de risco: "R$ 0,00" sugeriria
               um valor medido que não existe). */}
           {valorDoBloco != null ? (
             <span className="min-w-0 break-words text-[11px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
-              {valorDoBloco}
+              {segmentosDisponiveis ? valorDoBloco : "—"}
             </span>
           ) : null}
         </span>
@@ -202,6 +206,7 @@ function BlocoDeSegmento({
 function GradeDeSegmentos({
   segmentos,
   carregando,
+  segmentosDisponiveis,
   selecionado,
   aoSelecionar,
   contagemFiltrada,
@@ -209,6 +214,7 @@ function GradeDeSegmentos({
 }: Readonly<{
   segmentos: readonly ResumoDoSegmento[];
   carregando: boolean;
+  segmentosDisponiveis: boolean;
   selecionado: SegmentoCrm | null;
   aoSelecionar: (segmento: SegmentoCrm | null) => void;
   /**
@@ -216,16 +222,20 @@ function GradeDeSegmentos({
    * segmento quando há um termo digitado, senão "Mostrando: Podem não voltar · 14"
    * continuava mostrando o total do segmento inteiro mesmo com a lista
    * abaixo filtrada para 1 ou 2 nomes. `undefined` quando não há busca
-   * ativa (usa o bruto do segmento, comportamento de sempre).
+   * ativa (usa o bruto do segmento, comportamento de sempre). `null` quando
+   * a contagem da busca ainda não é conhecida.
    */
-  contagemFiltrada?: number;
+  contagemFiltrada?: number | null;
   aoRecolher: () => void;
 }>) {
   const porSegmento = new Map(segmentos.map((s) => [s.segmento, s]));
   const segmentosPresentes = new Set(porSegmento.keys());
-  const resumoSelecionado = selecionado
-    ? (contagemFiltrada ?? porSegmento.get(selecionado)?.clientes ?? 0)
-    : 0;
+  const resumoSelecionado =
+    contagemFiltrada !== undefined
+      ? contagemFiltrada
+      : segmentosDisponiveis && selecionado
+        ? (porSegmento.get(selecionado)?.clientes ?? 0)
+        : null;
   const textoDoFiltro = selecionado
     ? textoDoFiltroDeSegmento(selecionado, resumoSelecionado)
     : null;
@@ -265,6 +275,7 @@ function GradeDeSegmentos({
                     segmento={segmento}
                     resumo={porSegmento.get(segmento)}
                     carregando={carregando}
+                    segmentosDisponiveis={segmentosDisponiveis}
                     selecionado={ativo}
                     aoSelecionar={() => aoSelecionar(ativo ? null : segmento)}
                   />
@@ -605,6 +616,24 @@ export function ClientesDoCrm({
     active,
   });
 
+  // Trocar filtro invalida a lista anterior no mesmo render, antes de o
+  // hook iniciar a busca. Só uma nova lista pode fornecer o total do filtro.
+  const [filtroDaLista, setFiltroDaLista] = useState<{
+    chave: string;
+    listaAnterior: typeof lista;
+  }>({ chave: chaveDoFiltro, listaAnterior: null });
+  if (filtroDaLista.chave !== chaveDoFiltro) {
+    setFiltroDaLista({ chave: chaveDoFiltro, listaAnterior: lista });
+  }
+  const totalDaListaAtual =
+    lista &&
+    !carregando &&
+    !erro &&
+    filtroDaLista.chave === chaveDoFiltro &&
+    lista !== filtroDaLista.listaAnterior
+      ? lista.total
+      : null;
+
   // "Sincronizar" do topo: só recarrega quando o sinal MUDA depois de a
   // aba montar (montar já busca).
   const sinalAtendidoRef = useRef(sinalDeAtualizacao);
@@ -635,7 +664,7 @@ export function ClientesDoCrm({
   // busca e mentia ("Mostrando: Podem não voltar · 14" com a lista abaixo mostrando
   // só 1 nome).
   const contagemFiltradaPelaBusca =
-    busca.trim() !== "" && lista ? total : undefined;
+    busca.trim() !== "" ? totalDaListaAtual : undefined;
 
   return (
     <div className="min-w-0 space-y-2">
@@ -664,7 +693,7 @@ export function ClientesDoCrm({
         cards={[
           {
             label: rotuloDaLista,
-            value: lista ? formatarInteiro(total) : "—",
+            value: formatarInteiro(totalDaListaAtual),
             icon: Users,
           },
           {
@@ -809,7 +838,7 @@ export function ClientesDoCrm({
                 ? formatarInteiro(quantidadeDoGrupo(s))
                 : listaFiltrada
                   ? null
-                  : formatarInteiro(lista?.total)}
+                  : formatarInteiro(totalDaListaAtual)}
             </button>
           ))}
       </div>
@@ -818,9 +847,9 @@ export function ClientesDoCrm({
           <p>
             {textoDoFiltroDeSegmento(
               segmento,
-              contagemFiltradaPelaBusca ??
-                segmentos.find((s) => s.segmento === segmento)?.clientes ??
-                0,
+              contagemFiltradaPelaBusca !== undefined
+                ? contagemFiltradaPelaBusca
+                : quantidadeDoGrupo(segmento),
             )}
           </p>
           <button
@@ -836,6 +865,7 @@ export function ClientesDoCrm({
         <GradeDeSegmentos
           segmentos={segmentos}
           carregando={carregandoSegmentos}
+          segmentosDisponiveis={segmentosDisponiveis}
           selecionado={segmento}
           aoSelecionar={aoMudarSegmento}
           contagemFiltrada={contagemFiltradaPelaBusca}

@@ -203,6 +203,60 @@ it("Clientes: sem resumo dos grupos, pílulas mostram desconhecido, não zero", 
   );
 });
 
+it("Clientes: filtro sem dados dos grupos não afirma Novos zero", async () => {
+  await montar(
+    <ClientesDoCrm
+      segmentos={[]}
+      segmentosDisponiveis={false}
+      carregandoSegmentos={false}
+      erro="Falha de rede"
+      segmento="novos"
+      aoMudarSegmento={vi.fn()}
+      active
+      onNavigate={vi.fn()}
+      sinalDeAtualizacao={0}
+    />,
+    async (host) => {
+      expect(host.textContent).toContain("Mostrando: Novos · —");
+      const abrir = host.querySelector(
+        'button[aria-label="Grupos"]',
+      ) as HTMLButtonElement;
+      await act(async () => abrir.click());
+      const filtros = [...host.querySelectorAll("p")].filter((p) =>
+        p.textContent?.startsWith("Mostrando:"),
+      );
+      expect(filtros.map((p) => p.textContent)).toEqual([
+        "Mostrando: Novos · —",
+        "Mostrando: Novos · —",
+      ]);
+      expect(host.textContent).not.toContain("Mostrando: Novos · 0");
+    },
+  );
+});
+
+it("Clientes: grade sem dados dos grupos não inventa clientes nem receita zero", async () => {
+  await montar(
+    abas[3][1]({ visao: null, erro: "Falha de rede", aoTentar: vi.fn() }),
+    async (host) => {
+      const abrir = host.querySelector(
+        'button[aria-label="Grupos"]',
+      ) as HTMLButtonElement;
+      await act(async () => abrir.click());
+      const blocos = host.querySelectorAll(
+        '[aria-labelledby="crm-segmentos-titulo"] button[aria-pressed]',
+      );
+      expect(blocos.length).toBeGreaterThan(5);
+      for (const bloco of blocos) {
+        expect(
+          [...bloco.querySelectorAll(".tabular-nums")].map(
+            (n) => n.textContent,
+          ),
+        ).toEqual(["—", "—"]);
+      }
+    },
+  );
+});
+
 it.each(abas)(
   "%s: offline com cache continua com o aviso de internet",
   async (_nome, render, numero) => {
