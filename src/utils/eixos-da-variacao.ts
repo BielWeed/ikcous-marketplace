@@ -110,8 +110,9 @@ export function preselecionarCor(
   return depois;
 }
 
-// Mantém a ordem de inserção dos grupos já escolhidos (caso legado): o primeiro
-// continua decidindo o variantId, como no card anterior. Nunca fabrica strings.
+// Na primeira seleção completa, grupos legados seguem a ordem do cadastro,
+// não a ordem dos toques do card antigo. Se há mapa anterior, reaproveita sua
+// ordem. O primeiro grupo fornece o variantId; nomes e valores saem originais.
 export function resolverSelecaoDosEixos(
   modelo: ModeloDeEixos,
   escolhas: Map<string, string>,

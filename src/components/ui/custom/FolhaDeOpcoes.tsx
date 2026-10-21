@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -144,7 +145,7 @@ export function FolhaDeOpcoes({
             <span
               className={cn(
                 "text-lg font-bold leading-6",
-                oferta && "text-emerald-700",
+                oferta && CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
               )}
             >
               {formatCurrency(preco)}
@@ -201,27 +202,29 @@ export function FolhaDeOpcoes({
             const aberto = eixoAberto === eixo.chave;
             const escolhido = escolhas.get(eixo.chave);
             const painelId = `${id}-${eixo.chave}`;
-            // Cor pode ser trocada mesmo invalidando tamanho. Nos demais
-            // eixos, cada opção respeita TODAS as outras escolhas, não a
-            // posição do eixo na string cadastrada.
-            const contextoDeEscolha = eixoEhCor(eixo)
-              ? new Map<string, string>()
-              : escolhas;
-            const valores = eixo.valores.map((valor) => ({
-              valor,
-              ...disponibilidadeDoValor(
-                modelo,
-                contextoDeEscolha,
-                eixo.chave,
-                valor,
-              ),
-              ultima: disponibilidadeDoValor(
+            // Só estoque global zero bloqueia o toque. Incompatibilidade com
+            // a escolha atual é visual: trocar por esse valor limpa os outros
+            // eixos incompatíveis, em vez de aprisionar numa combinação.
+            const semEscolhas = new Map<string, string>();
+            const valores = eixo.valores.map((valor) => {
+              const atual = disponibilidadeDoValor(
                 modelo,
                 escolhas,
                 eixo.chave,
                 valor,
-              ).ultima,
-            }));
+              );
+              return {
+                valor,
+                disponivel: disponibilidadeDoValor(
+                  modelo,
+                  semEscolhas,
+                  eixo.chave,
+                  valor,
+                ).disponivel,
+                compativel: atual.disponivel,
+                ultima: atual.ultima,
+              };
+            });
             const contexto = modelo.eixos
               .filter((e) => e.grupo === eixo.grupo && e.chave !== eixo.chave)
               .flatMap((e) => escolhas.get(e.chave) ?? [])
@@ -229,8 +232,8 @@ export function FolhaDeOpcoes({
             const avisoDoEixo =
               aviso?.chave === eixo.chave
                 ? aviso.texto
-                : valores.some((v) => !v.disponivel) && contexto
-                  ? `Riscado = esgotado em ${contexto}.`
+                : valores.some((v) => !v.compativel) && contexto
+                  ? `Riscado = indisponível em ${contexto}. Toque para trocar a combinação.`
                   : "";
             return (
               <div
@@ -284,43 +287,50 @@ export function FolhaDeOpcoes({
                 >
                   <div className="min-h-0 overflow-hidden">
                     <div className="flex flex-wrap gap-2 px-3 pb-3">
-                      {valores.map(({ valor, disponivel, ultima }) => (
-                        <button
-                          key={valor}
-                          type="button"
-                          aria-label={valor}
-                          disabled={!disponivel}
-                          aria-pressed={escolhido === valor}
-                          title={
-                            !disponivel ? `${valor} — sem estoque` : undefined
-                          }
-                          onClick={() => onEscolher(eixo.chave, valor)}
-                          className={cn(
-                            "flex min-h-11 min-w-11 items-center justify-center gap-2 border px-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-zinc-900 min-[360px]:min-w-[52px]",
-                            eixoEhCor(eixo) ? "rounded-full" : "rounded-xl",
-                            escolhido === valor
-                              ? "border-zinc-900 bg-zinc-900 text-white"
-                              : "border-zinc-200 bg-white text-zinc-900",
-                            !disponivel &&
-                              "cursor-not-allowed border-dashed text-zinc-500 line-through",
-                          )}
-                        >
-                          <BolinhaDaCor eixo={eixo} valor={valor} />
-                          {valor}
-                          {ultima && (
-                            <span
-                              aria-hidden="true"
-                              className={
-                                escolhido === valor
-                                  ? "text-white"
-                                  : "text-rose-700"
-                              }
-                            >
-                              · última
-                            </span>
-                          )}
-                        </button>
-                      ))}
+                      {valores.map(
+                        ({ valor, disponivel, compativel, ultima }) => (
+                          <button
+                            key={valor}
+                            type="button"
+                            aria-label={valor}
+                            disabled={!disponivel}
+                            aria-pressed={escolhido === valor}
+                            title={
+                              !disponivel
+                                ? `${valor} — sem estoque`
+                                : !compativel
+                                  ? `${valor} — indisponível nesta combinação. Toque para trocar.`
+                                  : undefined
+                            }
+                            onClick={() => onEscolher(eixo.chave, valor)}
+                            className={cn(
+                              "flex min-h-11 min-w-11 items-center justify-center gap-2 border px-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-zinc-900 min-[360px]:min-w-[52px]",
+                              eixoEhCor(eixo) ? "rounded-full" : "rounded-xl",
+                              escolhido === valor
+                                ? "border-zinc-900 bg-zinc-900 text-white"
+                                : "border-zinc-200 bg-white text-zinc-900",
+                              !compativel &&
+                                "border-dashed text-zinc-500 line-through",
+                              !disponivel && "cursor-not-allowed",
+                            )}
+                          >
+                            <BolinhaDaCor eixo={eixo} valor={valor} />
+                            {valor}
+                            {ultima && (
+                              <span
+                                aria-hidden="true"
+                                className={
+                                  escolhido === valor
+                                    ? "text-white"
+                                    : "text-rose-700"
+                                }
+                              >
+                                · última
+                              </span>
+                            )}
+                          </button>
+                        ),
+                      )}
                     </div>
                     {avisoDoEixo && (
                       <p

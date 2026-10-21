@@ -964,7 +964,8 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(chip("Preto").disabled).toBe(false);
     await act(async () => chip("Preto").click());
     expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("true");
-    expect(chip("M").disabled).toBe(true);
+    expect(chip("M").disabled).toBe(false);
+    expect(chip("M").className).toContain("line-through");
     expect(folha()!.textContent).toContain("M não tem em Preto.");
     expect(ctaDaFolha().textContent).toContain("Escolha: Tamanho");
   });
@@ -1078,7 +1079,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  it("compacta: mesmo com Cor em segundo lugar, tamanho respeita a cor escolhida", async () => {
+  it("compacta: com Cor em segundo lugar, tamanho incompatível fica riscado mas permite trocar", async () => {
     await renderizarCard(
       criarProduto({
         variants: [
@@ -1097,7 +1098,8 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       { onAddToCartWithVariants: vi.fn() },
     );
     await abrirFolha();
-    expect(chip("M").disabled).toBe(true);
+    expect(chip("M").disabled).toBe(false);
+    expect(chip("M").className).toContain("line-through");
     expect(chip("PP").disabled).toBe(false);
   });
 
@@ -1112,6 +1114,114 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     )!;
     expect(miniatura.querySelector("img")).toBeNull();
     expect(miniatura.querySelector("svg")).not.toBeNull();
+  });
+
+  it.each(
+    [
+      {
+        nome: "Tamanho / Material",
+        primeira: ["M", "Algodão"],
+        segunda: ["G", "Poliéster"],
+      },
+      {
+        nome: "Tonalidade / Tamanho",
+        primeira: ["Clara", "M"],
+        segunda: ["Escura", "G"],
+      },
+      {
+        nome: "Cor / Tamanho / Material",
+        primeira: ["Azul", "M", "Algodão"],
+        segunda: ["Azul", "G", "Poliéster"],
+      },
+    ].flatMap((caso) =>
+      caso.segunda.flatMap((valor, pivo) =>
+        valor === caso.primeira.at(pivo) ? [] : [{ ...caso, pivo }],
+      ),
+    ),
+  )(
+    "troca sem saída: $nome permite chegar à outra combinação pelo eixo $pivo",
+    async ({ nome, primeira, segunda, pivo }) => {
+      const entregar = vi.fn();
+      const produto = criarProduto({
+        variants: [
+          {
+            ...criarVariantes()[0]!,
+            id: "combinacao-a",
+            name: nome,
+            value: primeira.join(" / "),
+            priceOverride: 60,
+          },
+          {
+            ...criarVariantes()[1]!,
+            id: "combinacao-b",
+            name: nome,
+            value: segunda.join(" / "),
+            priceOverride: 80,
+          },
+        ],
+      });
+      const eixos = nome.split(" / ");
+      await renderizarCard(produto, { onAddToCartWithVariants: entregar });
+      await abrirFolha();
+      for (const valor of primeira) {
+        if (chip(valor).getAttribute("aria-pressed") !== "true")
+          await act(async () => chip(valor).click());
+      }
+      expect(ctaDaFolha().textContent).toContain("60,00");
+      // Não basta liberar só o primeiro eixo: a cliente pode trocar pelo último.
+      for (const [indice, valor] of segunda.entries()) {
+        if (valor === primeira.at(indice)) continue;
+        await act(async () => linha(eixos.at(indice)!).click());
+        expect(chip(valor).disabled).toBe(false);
+        expect(chip(valor).className).toContain("line-through");
+      }
+      const linhaDaTroca = linha(eixos.at(pivo)!);
+      if (linhaDaTroca.getAttribute("aria-expanded") !== "true") {
+        await act(async () => linhaDaTroca.click());
+      }
+      await act(async () => chip(segunda.at(pivo)!).click());
+      expect(entregar).not.toHaveBeenCalled();
+      expect(ctaDaFolha().textContent).toContain("Escolha:");
+      expect(folha()!.textContent).toContain("não tem em");
+      for (const valor of segunda) {
+        if (chip(valor).getAttribute("aria-pressed") !== "true")
+          await act(async () => chip(valor).click());
+      }
+      await act(async () => ctaDaFolha().click());
+      expect(entregar.mock.calls).toEqual([
+        [produto, "combinacao-b", `${nome}: ${segunda.join(" / ")}`, 1],
+      ]);
+    },
+  );
+
+  it("troca sem saída: eixo único continua alternando e só estoque global zero desabilita", async () => {
+    const entregar = vi.fn();
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: entregar,
+    });
+    await abrirFolha();
+    await act(async () => chip("M").click());
+    await act(async () => linha("Tamanho").click());
+    await act(async () => chip("M").click()); // Marcado recolhe, mas não aprisiona.
+    await act(async () => linha("Tamanho").click());
+    expect(chip("P").disabled).toBe(false);
+    expect(chip("G").disabled).toBe(true);
+    await act(async () => chip("P").click());
+    await act(async () => ctaDaFolha().click());
+    expect(entregar.mock.calls[0].slice(1)).toEqual(["var-p", "Tamanho: P", 1]);
+  });
+
+  it("troca sem saída: aviso não chama combinação inexistente de esgotada", async () => {
+    await renderizarCard(produtoComposto(), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+    await act(async () => linha("Cor").click());
+    await act(async () => chip("Preto").click());
+    expect(folha()!.textContent).toContain("Riscado = indisponível em Preto.");
+    expect(folha()!.textContent).not.toContain("Riscado = esgotado");
+    expect(chip("M").disabled).toBe(false);
+    expect(chip("Verde").disabled).toBe(true); // Nenhuma combinação Verde tem estoque.
   });
 
   // Mesmos resultados literais conferidos no fluxo antigo de chips compostos.

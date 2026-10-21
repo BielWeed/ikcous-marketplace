@@ -576,6 +576,8 @@ export const ProductCard = memo(function ProductCard({
   const escolherOpcaoDoEixo = (chave: string, valor: string) => {
     if (cartStatus !== "idle") return;
     if (escolhasDosEixos.get(chave) === valor) {
+      // O marcado só recolhe; todos os demais valores com estoque global
+      // continuam tocáveis, mesmo incompatíveis com a combinação atual.
       setEixoAberto(null);
       focarEscolhaDaFolha(idDaFolha, null);
       return;
@@ -605,7 +607,7 @@ export const ProductCard = memo(function ProductCard({
         ? {
             chave: removido.chave,
             texto: disponibilidade?.existe
-              ? `Riscado = esgotado em ${valor}.`
+              ? `${escolhasDosEixos.get(removido.chave)} em ${valor} está esgotado.`
               : `${escolhasDosEixos.get(removido.chave)} não tem em ${valor}.`,
           }
         : null,
