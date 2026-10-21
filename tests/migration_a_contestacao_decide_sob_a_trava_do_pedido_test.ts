@@ -360,6 +360,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/provisionar.cjs",
     "tests/banco/rodar-isolado.cjs",
     "tests/banco/efemero.cjs",
+    // Gera artefato derivado; suas guardas são cobradas por ci_tipos_efemeros_test.ts.
+    "tests/banco/gerar-tipos-efemeros.cjs",
   ];
   const scriptsDeProva = (p) =>
     [
@@ -377,6 +379,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    // 20261252: sessao explicita, chave idempotente, corridas e mutantes do caixa.
+    "tests/banco/caixa-intencao-viva.cjs",
     // 20261251: lucro por variante e cobertura do custo do estoque.
     "tests/banco/lucro-do-estoque-viva.cjs",
     // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.
@@ -568,8 +572,32 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
       `sem o if: ${passo.split("\n")[0]}`,
     );
   }
+  // Artefatos derivados têm condições próprias, sem mexer nas provas nem no preparo.
+  const geracao = passos.find((p) =>
+    p.startsWith("name: Gera tipos do schema public efêmero\n"),
+  );
+  const upload = passos.find((p) =>
+    p.startsWith("name: Guarda tipos do schema public efêmero\n"),
+  );
+  assert(geracao && upload, "os dois passos do artefato devem existir");
+  assertStringIncludes(geracao, "\n        id: tipos\n");
+  assertStringIncludes(
+    geracao,
+    "\n        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}\n",
+  );
+  assertStringIncludes(
+    geracao,
+    "run: node tests/banco/gerar-tipos-efemeros.cjs",
+  );
+  assertStringIncludes(upload, "uses: actions/upload-artifact@v7");
+  assertStringIncludes(
+    upload,
+    "\n        if: ${{ !cancelled() && steps.tipos.outcome == 'success' }}\n",
+  );
   // Os passos de preparo NÃO levam o if (o padrão: parar no 1o erro).
-  for (const passo of passos.filter((p) => !provas.includes(p))) {
+  for (const passo of passos.filter(
+    (p) => !provas.includes(p) && p !== geracao && p !== upload,
+  )) {
     assert(
       !/^\s+if:/m.test(passo),
       `passo de preparo com if: ${passo.split("\n")[0]}`,

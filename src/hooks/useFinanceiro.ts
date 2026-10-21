@@ -34,6 +34,7 @@ import {
   parseExtrato,
   parseFechamento,
   parseIdsSalvos,
+  parseMovimentoDeCaixa,
   parsePrevistos,
   parseResumo,
 } from "@/lib/financeiro";
@@ -52,6 +53,7 @@ import type {
   PayloadDaCategoria,
   PayloadDaConta,
   PayloadDoLancamento,
+  ResultadoDoMovimentoDeCaixa,
   ResumoFinanceiro,
   SessaoDeCaixa,
 } from "@/types/financeiro";
@@ -337,6 +339,18 @@ export function useHistoricoDoCaixa(
   );
 }
 
+/** Não encerrar uma divergência sem conseguir reler os registros do caixa. */
+export async function conferirCaixaParaReconciliar(): Promise<void> {
+  const [atual, historico] = await Promise.all([
+    supabase.rpc("fin_caixa_atual"),
+    supabase.rpc("fin_caixa_historico", { p_limite: 30 }),
+  ]);
+  if (atual.error) throw atual.error;
+  if (historico.error) throw historico.error;
+  parseCaixaAtual(atual.data);
+  parseCaixaHistorico(historico.data);
+}
+
 // ---------------------------------------------------------------------------
 // Escritas (a view sobe a `versao` depois de cada uma)
 // ---------------------------------------------------------------------------
@@ -390,27 +404,34 @@ export async function abrirCaixa(args: {
 }
 
 export async function movimentarCaixa(args: {
+  sessaoId: string;
+  chave: string;
   tipo: "sangria" | "suprimento";
   valor: number;
   descricao: string;
   contaContrapartida: string | null;
-}): Promise<void> {
-  const { error } = await supabase.rpc("fin_caixa_movimentar", {
+}): Promise<ResultadoDoMovimentoDeCaixa> {
+  const { data, error } = await supabase.rpc("fin_caixa_movimentar_com_chave", {
+    p_sessao_id: args.sessaoId,
+    p_chave: args.chave,
     p_tipo: args.tipo,
     p_valor: args.valor,
     p_descricao: args.descricao,
-    p_conta_contrapartida: args.contaContrapartida,
+    p_conta_contrapartida: args.contaContrapartida ?? undefined,
   });
   if (error) throw error;
+  return parseMovimentoDeCaixa(data);
 }
 
 export async function fecharCaixa(args: {
+  sessaoId: string;
   valorContado: number;
   observacao: string | null;
 }): Promise<FechamentoDeCaixa> {
-  const { data, error } = await supabase.rpc("fin_caixa_fechar", {
+  const { data, error } = await supabase.rpc("fin_caixa_fechar_sessao", {
+    p_sessao_id: args.sessaoId,
     p_valor_contado: args.valorContado,
-    p_observacao: args.observacao,
+    p_observacao: args.observacao ?? undefined,
   });
   if (error) throw error;
   return parseFechamento(data);
