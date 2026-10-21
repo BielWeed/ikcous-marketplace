@@ -4,6 +4,7 @@
 // WhatsApp some da loja); preenchido, vale DDD + número (10 ou 11 dígitos) e o
 // +55 do Brasil entra sozinho na hora de gravar.
 
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import type { Order } from "@/types";
 
@@ -80,7 +81,7 @@ export function mensagemMototaxi(order: Order, loja: string): string {
             ? `Cobrar na entrega: R$ ${valor} (${forma})`
             : "Pagamento pelo app pendente — não cobrar na entrega";
   return [
-    `Entrega — Pedido #${order.id.slice(0, 6).toUpperCase()}`,
+    `Entrega — Pedido #${numeroDoPedido(order.id)}`,
     `Cliente: ${c.name}`,
     `Telefone: ${c.whatsapp}`,
     `Endereço: ${[c.address, c.number, c.complement].filter(Boolean).join(", ")}`,

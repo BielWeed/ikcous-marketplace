@@ -36,7 +36,17 @@ async function main() {
         JSON.stringify(r.rows),
       );
     };
+    // Remocao somente no banco descartavel, antes de semear qualquer contato.
+    // Reproduz a ausencia, o apply e a presenca em vez de presumir o apply do CI.
+    await c.query(
+      "DROP FUNCTION public.salvar_config_mototaxi(text,text); DROP TABLE public.config_mototaxi;",
+    );
+    await prova(b, 3, true);
+    console.log("62b antes: 3/3 t");
+    await c.query(ler(migracao));
+    console.log("migration: aplicada no Postgres descartavel");
     await prova(a, 6, true);
+    console.log("62a depois: 6/6 t");
     await prova(b, 3, false);
     const anterior = await c.query(
       "SELECT pg_get_viewdef('public.v_store_config'::regclass) AS v, pg_get_functiondef('public.upsert_store_config(jsonb)'::regprocedure) AS f",
@@ -63,6 +73,7 @@ async function main() {
       await c.query("SELECT set_config('request.jwt.claims',$1,true)", [
         claims(id, role),
       ]);
+      await c.query("SELECT set_config('app.rpc.user_id',$1,true)", [id]);
       await c.query("SET LOCAL ROLE authenticated");
     };
     const recusado = async (
@@ -87,6 +98,7 @@ async function main() {
       (await c.query("SELECT * FROM public.config_mototaxi")).rows.length,
       1,
     );
+    console.log("admin: leitura 1 linha; cadastro confirmado pela RPC");
     await recusado("UPDATE public.config_mototaxi SET nome = 'fora da RPC'");
     await recusado(
       "SELECT public.salvar_config_mototaxi('351912345678','X')",
@@ -109,6 +121,7 @@ async function main() {
       (await c.query("SELECT * FROM public.config_mototaxi")).rows.length,
       0,
     );
+    console.log("cliente: leitura 0 linhas");
     await recusado("SELECT public.salvar_config_mototaxi('5511987654321','X')");
     await c.query("RESET ROLE");
     await c.query("SET LOCAL ROLE anon");
@@ -127,6 +140,9 @@ async function main() {
       0,
     );
     await recusado("SELECT public.salvar_config_mototaxi(NULL,NULL)");
+    console.log(
+      "admin rebaixado com JWT antigo: leitura 0 linhas; RPC Nao autorizado",
+    );
     await c.query("RESET ROLE");
 
     // Controle negativo da prova: uma policy publica a mais invalida 62a.
@@ -149,6 +165,9 @@ async function main() {
       "SELECT pg_get_viewdef('public.v_store_config'::regclass) AS v, pg_get_functiondef('public.upsert_store_config(jsonb)'::regprocedure) AS f",
     );
     assert.deepEqual(depois.rows, anterior.rows);
+    console.log(
+      "rollback: acesso revogado, contato preservado, view/upsert intactos",
+    );
     await c.query("SAVEPOINT reaplicar");
     await assert.rejects(c.query(ler(migracao)), /B1_BASELINE_DIVERGENT/);
     await c.query("ROLLBACK TO SAVEPOINT reaplicar");

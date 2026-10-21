@@ -13,7 +13,15 @@ export function EnviarAoMototaxi({
 }: { order: Order; loja: string }) {
   const { config } = useMototaxi();
   const numero = normalizarNumeroMototaxi(config?.whatsapp);
-  if (order.shippingOptionId !== ID_ENTREGA_LOCAL || !numero) return null;
+  // Entregue também encerra o despacho: devoluções só existem depois da entrega.
+  // A lista positiva recusa inclusive status desconhecido vindo de cache antigo.
+  if (
+    order.shippingOptionId !== ID_ENTREGA_LOCAL ||
+    !numero ||
+    !["pending", "processing", "shipping"].includes(order.status) ||
+    order.paymentStatus === "estornado"
+  )
+    return null;
   return (
     <div className="space-y-2 border-t border-admin-border pt-4">
       <a

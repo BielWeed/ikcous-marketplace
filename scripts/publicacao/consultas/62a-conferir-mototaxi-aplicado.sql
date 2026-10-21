@@ -14,14 +14,14 @@ WITH tabela AS (
     AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass('public.config_mototaxi') AND contype = 'p' AND conkey = ARRAY[1]::smallint[])
     AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass('public.config_mototaxi') AND conname = 'config_mototaxi_id_check' AND pg_get_constraintdef(oid) = 'CHECK ((id = 1))')
     AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass('public.config_mototaxi') AND conname = 'config_mototaxi_whatsapp_check' AND pg_get_constraintdef(oid) = 'CHECK (((whatsapp IS NULL) OR (whatsapp ~ ''^55(1[1-9]|2[12478]|3[1-578]|4[1-9]|5[13-5]|6[1-9]|7[134579]|8[1-9]|9[1-9])([2-5][0-9]{7}|9[0-9]{8})$''::text)))')
-    AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass('public.config_mototaxi') AND conname = 'config_mototaxi_nome_check' AND pg_get_constraintdef(oid) = 'CHECK (((nome IS NULL) OR ((length(nome) >= 1) AND (length(nome) <= 80) AND (nome = btrim(nome)))))')
+    AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass('public.config_mototaxi') AND conname = 'config_mototaxi_nome_check' AND pg_get_constraintdef(oid) = 'CHECK (((nome IS NULL) OR (((length(nome) >= 1) AND (length(nome) <= 80)) AND (nome = btrim(nome)))))')
     THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'config_mototaxi: RLS admin atual e ACL', 'sim', CASE WHEN
     COALESCE((SELECT relrowsecurity AND relkind = 'r' FROM tabela), false)
     AND (SELECT count(*) FROM pg_policy WHERE polrelid = to_regclass('public.config_mototaxi')) = 1
     AND EXISTS (SELECT 1 FROM pg_policy WHERE polrelid = to_regclass('public.config_mototaxi') AND polname = 'config_mototaxi_admin_select'
       AND polcmd = 'r' AND polpermissive AND polroles = ARRAY[(SELECT oid FROM pg_roles WHERE rolname = 'authenticated')]
-      AND polwithcheck IS NULL AND pg_get_expr(polqual,polrelid) = '(is_admin() AND is_admin_atual())')
+      AND polwithcheck IS NULL AND pg_get_expr(polqual,polrelid) = '( SELECT rls_admin_atual() AS rls_admin_atual)')
     AND NOT has_table_privilege('anon', (SELECT oid FROM tabela), 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
     AND NOT has_any_column_privilege('anon', (SELECT oid FROM tabela), 'SELECT,INSERT,UPDATE,REFERENCES')
     AND has_table_privilege('authenticated', (SELECT oid FROM tabela), 'SELECT')

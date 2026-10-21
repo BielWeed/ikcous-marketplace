@@ -7,8 +7,9 @@ export interface ConfigMototaxi {
   nome: string | null;
 }
 
-/** Só componentes do painel. Nunca passa pelo StoreContext, vault ou storage público. */
-export function useMototaxi(active?: boolean) {
+/** Só componentes do painel. Nunca passa pelo StoreContext, vault ou storage público.
+ * O sinal só dispara leitura nova quando muda (ex.: voltar à aba), não é uma trava. */
+export function useMototaxi(sinalDeReleitura?: boolean) {
   const [config, setConfig] = useState<ConfigMototaxi | null>(null);
   const [erro, setErro] = useState(false);
   const [tentativa, setTentativa] = useState(0);
@@ -37,7 +38,7 @@ export function useMototaxi(active?: boolean) {
     return () => {
       atual = false;
     };
-  }, [active, tentativa]);
+  }, [sinalDeReleitura, tentativa]);
 
   const salvar = async (valor: ConfigMototaxi): Promise<boolean> => {
     const whatsapp = normalizarNumeroMototaxi(valor.whatsapp);

@@ -527,8 +527,8 @@ export const AdminShippingView = memo(function AdminShippingView({
     );
   }, [formDataNacional, config]);
 
-  const isFormDirty =
-    isFormDirtyLocal || isFormDirtyNacional || mototaxiPendente;
+  const fretePendente = isFormDirtyLocal || isFormDirtyNacional;
+  const isFormDirty = fretePendente || mototaxiPendente;
 
   // Cada metade atualiza SÓ o próprio ref — é o que a guarda de
   // sincronização de cada metade lê.
@@ -621,9 +621,8 @@ export const AdminShippingView = memo(function AdminShippingView({
       });
       return;
     }
-    if (isSaving || erroMototaxi || (mototaxiPendente && !mototaxi.config))
-      return;
-    if (erroNacional) {
+    if (isSaving || erroMototaxi) return;
+    if (fretePendente && erroNacional) {
       // Segunda trava (a primeira é o botão desabilitado): se algo chamar
       // handleSave mesmo assim, o painel com o erro abre e ganha foco em
       // vez de a tela fingir que salvou.
@@ -631,7 +630,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
-    if (retiradaSemEndereco) {
+    if (fretePendente && retiradaSemEndereco) {
       // Antes do `setIsSaving`: recusar não pode deixar a tela em "Salvando…".
       toast.error("Cadastre o endereço da loja em Minha loja", {
         description: "Sem endereço, o cliente não sabe onde retirar.",
@@ -639,7 +638,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
-    if (soRetiroSemCep) {
+    if (fretePendente && soRetiroSemCep) {
       toast.error("Cadastre o CEP da loja em Minha loja", {
         description:
           "Para vender só com retirada, a loja precisa do CEP. Ou escolha outra forma de entrega.",
@@ -700,7 +699,7 @@ export const AdminShippingView = memo(function AdminShippingView({
         });
       }
       const salvou =
-        !(isFormDirtyLocal || isFormDirtyNacional) ||
+        !fretePendente ||
         (await updateConfig({
           freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
           shippingCoverage: formData.shippingCoverage,
@@ -752,7 +751,9 @@ export const AdminShippingView = memo(function AdminShippingView({
       setFalhaAoSalvar(false);
       // A guarda acompanha o dirty check e os tokens pendentes pelo efeito.
       haptic.success();
-      toast.success("Regras de frete salvas!");
+      toast.success(
+        fretePendente ? "Regras de frete salvas!" : "Contato do mototáxi salvo",
+      );
     } catch (err) {
       console.error("[AdminShippingView] Error saving configs:", err);
       haptic.error();
@@ -775,10 +776,9 @@ export const AdminShippingView = memo(function AdminShippingView({
     !isSaving &&
     !isOffline &&
     isFormDirty &&
-    !erroNacional &&
     !erroMototaxi &&
-    !retiradaSemEndereco &&
-    !soRetiroSemCep;
+    (!fretePendente ||
+      (!erroNacional && !retiradaSemEndereco && !soRetiroSemCep));
 
   // Map (não Record indexado por variável): indexação dinâmica dispara
   // `security/detect-object-injection` do eslint e o teto do lint reprova

@@ -17,7 +17,10 @@ it("aditiva: tabela privada, sem alterar store_config ou view pública", () => {
     "REVOKE ALL ON public.config_mototaxi FROM PUBLIC, anon, authenticated",
   );
   expect(sql).toContain("FOR SELECT TO authenticated");
-  expect(sql).toContain("public.is_admin_atual()");
+  expect(sql).toContain("USING ((SELECT public.rls_admin_atual()))");
+  expect(sql).not.toContain(
+    "USING (public.is_admin() AND public.is_admin_atual())",
+  );
   expect(sql).toContain(
     "GRANT SELECT ON public.config_mototaxi TO authenticated",
   );
@@ -27,6 +30,13 @@ it("aditiva: tabela privada, sem alterar store_config ou view pública", () => {
   expect(sql.replace(/--[^\n]*/g, "")).not.toMatch(
     /\bDROP\s+(TABLE|COLUMN|VIEW)|^\s*(BEGIN|COMMIT)\s*;/m,
   );
+});
+it("a conferência espera o CHECK deparseado pelo Postgres 17", () => {
+  const sql = ler(`scripts/publicacao/consultas/${A}.sql`);
+  expect(sql).toContain(
+    "CHECK (((nome IS NULL) OR (((length(nome) >= 1) AND (length(nome) <= 80)) AND (nome = btrim(nome)))))",
+  );
+  expect(sql).toContain("SELECT rls_admin_atual() AS rls_admin_atual");
 });
 it("salva pela RPC autenticada com papel atual, payload restrito e CHECK BR", () => {
   const sql = migration();

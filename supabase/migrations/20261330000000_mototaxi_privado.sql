@@ -31,7 +31,7 @@ GRANT ALL ON public.config_mototaxi TO service_role;
 
 CREATE POLICY config_mototaxi_admin_select ON public.config_mototaxi
   FOR SELECT TO authenticated
-  USING (public.is_admin() AND public.is_admin_atual());
+  USING ((SELECT public.rls_admin_atual()));
 
 CREATE OR REPLACE FUNCTION public.salvar_config_mototaxi(p_whatsapp text, p_nome text)
  RETURNS jsonb

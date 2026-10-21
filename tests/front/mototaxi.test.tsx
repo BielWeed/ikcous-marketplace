@@ -31,7 +31,7 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const pedido: Order = {
-  id: "a1b2c3-0000",
+  id: "c35ce4dd-9876-4321-8123-abcdef3884be",
   shippingOptionId: "local-delivery",
   customer: {
     name: "Cliente fictícia",
@@ -92,7 +92,7 @@ it("leva apenas o necessário, com cobrança na entrega e texto pronto", () => {
   const msg = contato.mensagemMototaxi(pedido, "Loja fictícia");
   expect(msg).toBe(
     [
-      "Entrega — Pedido #A1B2C3",
+      "Entrega — Pedido #3884BE",
       "Cliente: Cliente fictícia",
       "Telefone: 11912345678",
       "Endereço: Rua Inventada, 12, apto 4",
@@ -103,6 +103,11 @@ it("leva apenas o necessário, com cobrança na entrega e texto pronto", () => {
       "Loja: Loja fictícia",
     ].join("\n"),
   );
+});
+it("usa os seis últimos caracteres reconhecidos na ficha, nunca os primeiros", () => {
+  const msg = contato.mensagemMototaxi(pedido, "Loja");
+  expect(msg.split("\n")[0]).toBe("Entrega — Pedido #3884BE");
+  expect(msg).not.toContain("#C35CE4");
 });
 it.each(["pago", "pago_apos_expirar", "recebido_na_entrega"] as const)(
   "não cobra de novo em %s",
@@ -204,6 +209,38 @@ it("mostra o botão na ficha local com link exclusivamente wa.me e mensagem codi
     "Abre o WhatsApp do Zé com a mensagem pronta",
   );
 });
+it.each([
+  {
+    caso: "cancelado em dinheiro",
+    status: "cancelled",
+    paymentMethod: "cash",
+    paymentStatus: null,
+  },
+  {
+    caso: "cancelado pago após expirar",
+    status: "cancelled",
+    paymentMethod: "online",
+    paymentStatus: "pago_apos_expirar",
+  },
+  {
+    caso: "estornado",
+    status: "processing",
+    paymentMethod: "online",
+    paymentStatus: "estornado",
+  },
+  {
+    caso: "entregue (inclusive pedido em devolução)",
+    status: "delivered",
+    paymentMethod: "cash",
+    paymentStatus: null,
+  },
+] as const)(
+  "não despacha pedido $caso",
+  async ({ status, paymentMethod, paymentStatus }) => {
+    await abrir({ ...pedido, status, paymentMethod, paymentStatus });
+    expect(host.querySelector('a[aria-label="Enviar ao mototáxi"]')).toBeNull();
+  },
+);
 it.each(["store-pickup", "sedex", undefined, "LOCAL-DELIVERY"])(
   "não mostra para %s",
   async (id) => {

@@ -1,7 +1,8 @@
-// @vitest-environment jsdom
 import { AdminShippingView } from "@/views/admin/AdminShippingView";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+// @vitest-environment jsdom
+import { toast } from "sonner";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const s = vi.hoisted(() => ({
   update: vi.fn(async (_updates: Record<string, unknown>) => true),
@@ -12,7 +13,7 @@ const s = vi.hoisted(() => ({
     shippingCoverage: "national",
     localDeliveryFee: 10,
     localCepRange: "",
-    localDeliveryEnabled: true,
+    localDeliveryEnabled: true as boolean,
     localDeliveryDays: 1,
     originCep: "01000-000",
     storeAddress: "Rua Fictícia, 1",
@@ -68,6 +69,10 @@ let host: HTMLDivElement;
 beforeEach(() => {
   vi.clearAllMocks();
   s.erroLeitura = false;
+  s.config.localDeliveryEnabled = true;
+  s.config.originCep = "01000-000";
+  s.config.storeAddress = "Rua Fictícia, 1";
+  s.config.enabledShippingMethods = ["sedex", "pac"];
   s.rpc.mockImplementation(async (_nome, args) => ({
     data: { whatsapp: args.p_whatsapp, nome: args.p_nome },
     error: null,
@@ -120,6 +125,23 @@ it("grava só o contato privado e mantém os outros blocos fora do payload de fr
   expect(
     host.querySelector<HTMLInputElement>("#mototaxi-whatsapp")!.value,
   ).toBe("5511987654321");
+});
+it("salva só o mototáxi mesmo com retirada antiga sem CEP ou endereço, sem dizer que salvou frete", async () => {
+  s.config.localDeliveryEnabled = false;
+  s.config.enabledShippingMethods = ["store-pickup"];
+  s.config.originCep = "";
+  s.config.storeAddress = "";
+  await abrir();
+  await digitar("#mototaxi-whatsapp", "11987654321");
+  expect(botao()?.disabled).toBe(false);
+  await act(async () => botao()?.click());
+  expect(s.rpc).toHaveBeenCalledWith("salvar_config_mototaxi", {
+    p_whatsapp: "5511987654321",
+    p_nome: null,
+  });
+  expect(s.update).not.toHaveBeenCalled();
+  expect(toast.success).toHaveBeenCalledWith("Contato do mototáxi salvo");
+  expect(toast.success).not.toHaveBeenCalledWith("Regras de frete salvas!");
 });
 it("salvar uma regra manda somente os campos de frete, não contato nem horário", async () => {
   await abrir();
