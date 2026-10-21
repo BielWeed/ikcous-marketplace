@@ -1,4 +1,4 @@
--- 82a-conferir-caixa-so-na-conta-da-loja-aplicado: DEPOIS da 20261370000000.
+-- 83b-antes-caixa-so-na-conta-da-loja-base-vigente: ANTES da 20261370000000.
 -- SO LEITURA, so catalogo; rol fechado de 4 linhas. Nao le nenhuma linha financeira.
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h,
@@ -18,7 +18,7 @@ WITH fn AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'fin_caixa_abrir: corpo exato (md5)', '28ab512e291378a01d110e298af7a402',
+  SELECT 'fin_caixa_abrir: corpo exato (md5)', '46793029f342662859e0bf6205566119',
     COALESCE((SELECT h FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'fin_caixa_abrir: assinatura e atributos conhecidos', 'sim',

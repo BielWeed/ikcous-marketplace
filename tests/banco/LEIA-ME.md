@@ -18,7 +18,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   ACL fechada, chamadas por nome e só com dois obrigatórios, reaplicação, rollback para a 249
   e controle negativo sem a guarda. Só clone efêmero; não prova loja nem PostgREST.
 
-- **Caixa na conta que recebe vendas (`caixa-conta-da-loja-viva.cjs`)**: migration 20261370. Novas aberturas personalizadas recusam 22023 sem gravar; caixa personalizado ja aberto fica intacto; argumento omitido, NULL e UUID de sistema continuam funcionando. Reaplicacao/CRLF, rollback byte a byte, atributos/OID/ACL preservados, preflight divergente, consultas 82a/82b e controle negativo sem a guarda. So Postgres efemero do CI; nao prova lojas reais. As provas A1-09/A1-13 do Financeiro mantem as assercoes do classificador historico usando o corpo da 99 e restaurando o atual ao terminar.
+- **Caixa na conta que recebe vendas (`caixa-conta-da-loja-viva.cjs`)**: migration 20261370. Novas aberturas personalizadas recusam 22023 sem gravar; caixa personalizado ja aberto fica intacto; argumento omitido, NULL e UUID de sistema continuam funcionando. Reaplicacao/CRLF, rollback byte a byte, atributos/OID/ACL preservados, preflight divergente, consultas 83a/83b e controle negativo sem a guarda. So Postgres efemero do CI; nao prova lojas reais. As provas A1-09/A1-13 do Financeiro mantem as assercoes do classificador historico usando o corpo da 99 e restaurando o atual ao terminar.
 
 ## As provas (`invariantes-dinheiro.cjs`)
 

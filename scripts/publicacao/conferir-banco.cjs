@@ -2501,13 +2501,13 @@ const ROL_DA_81B = [
   "as duas compras: EXECUTE como sempre (PUBLIC nao; anon, authenticated e service_role sim)",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
-  "82a-conferir-caixa-so-na-conta-da-loja-aplicado": [
+  "83a-conferir-caixa-so-na-conta-da-loja-aplicado": [
     "controle: funcoes de public visiveis a este papel",
     "fin_caixa_abrir: corpo exato (md5)",
     "fin_caixa_abrir: assinatura e atributos conhecidos",
     "fin_caixa_abrir: EXECUTE authenticated, sem PUBLIC ou anon",
   ],
-  "82b-antes-caixa-so-na-conta-da-loja-base-vigente": [
+  "83b-antes-caixa-so-na-conta-da-loja-base-vigente": [
     "controle: funcoes de public visiveis a este papel",
     "fin_caixa_abrir: corpo exato (md5)",
     "fin_caixa_abrir: assinatura e atributos conhecidos",

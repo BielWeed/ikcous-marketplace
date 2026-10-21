@@ -13,8 +13,8 @@ const RAIZ = path.join(__dirname, "../..");
 const ler = (rel) => fs.readFileSync(path.join(RAIZ, rel), "utf8").replace(/\r/g, "");
 const migration = ler(`supabase/migrations/${NOME}`);
 const rollback = ler(`supabase/migrations/rollback-manual-${NOME}`);
-const antes = ler("scripts/publicacao/consultas/82b-antes-caixa-so-na-conta-da-loja-base-vigente.sql");
-const depois = ler("scripts/publicacao/consultas/82a-conferir-caixa-so-na-conta-da-loja-aplicado.sql");
+const antes = ler("scripts/publicacao/consultas/83b-antes-caixa-so-na-conta-da-loja-base-vigente.sql");
+const depois = ler("scripts/publicacao/consultas/83a-conferir-caixa-so-na-conta-da-loja-aplicado.sql");
 const ADMIN = "5e370000-0000-4000-8000-000000000001";
 const CAIXA = "f1000000-0000-4000-8000-000000000001";
 const PERSONALIZADA = "5e370000-0000-4000-8000-000000000002";
@@ -127,7 +127,7 @@ async function main() {
       const id = (await c.query("SELECT public.fin_caixa_abrir(30, $1) AS r", [PERSONALIZADA])).rows[0].r.id;
       assert.ok(id, "controle sem guarda nao abriu a conta personalizada");
     });
-    console.log("PASSOU 370: personalizada recusa sem escrita; legado aberto preservado; padrao/NULL/UUID; reaplicacao/CRLF; rollback exato; preflight; consultas 82a/82b; controle sem guarda.");
+    console.log("PASSOU 370: personalizada recusa sem escrita; legado aberto preservado; padrao/NULL/UUID; reaplicacao/CRLF; rollback exato; preflight; consultas 83a/83b; controle sem guarda.");
   } finally {
     await c.query("ROLLBACK").catch(() => {});
     await c.end();

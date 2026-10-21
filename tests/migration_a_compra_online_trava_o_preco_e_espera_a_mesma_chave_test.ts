@@ -295,8 +295,8 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
   assert(versoes.indexOf("20261244000000") < versoes.indexOf("20261350000000"));
   assertEquals(
     canais.provasDeObjetos.slice(-2).map((p) => p.consulta),
-    [A81, "82a-conferir-caixa-so-na-conta-da-loja-aplicado"],
-    "a 82a sucede a 81a no fim, sem reordenar lotes anteriores",
+    [A81, "83a-conferir-caixa-so-na-conta-da-loja-aplicado"],
+    "a 83a sucede a 81a no fim, sem reordenar lotes anteriores",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(

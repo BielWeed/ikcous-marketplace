@@ -77,8 +77,8 @@ Deno.test("370: consultas so de catalogo, quatro linhas fechadas e registros de 
     require("../scripts/publicacao/conferir-banco.cjs");
   const { CONSULTAS_DE_ROL_FECHADO } = await import("../scripts/frota/publicar-release.mjs");
   const consultas = [
-    ["82a-conferir-caixa-so-na-conta-da-loja-aplicado", md5(corpo(sql))],
-    ["82b-antes-caixa-so-na-conta-da-loja-base-vigente", md5(corpo(anterior))],
+    ["83a-conferir-caixa-so-na-conta-da-loja-aplicado", md5(corpo(sql))],
+    ["83b-antes-caixa-so-na-conta-da-loja-base-vigente", md5(corpo(anterior))],
   ];
   for (const [nomeConsulta, hash] of consultas) {
     const consulta = ler(`scripts/publicacao/consultas/${nomeConsulta}.sql`);

@@ -3085,7 +3085,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "63a-conferir-forma-do-icone-aplicado",
     "80a-conferir-pedido-entregue-na-reconciliacao-aplicado",
     "81a-conferir-compra-online-trava-preco-e-chave-aplicado",
-    "82a-conferir-caixa-so-na-conta-da-loja-aplicado",
+    "83a-conferir-caixa-so-na-conta-da-loja-aplicado",
   ]);
 });
 

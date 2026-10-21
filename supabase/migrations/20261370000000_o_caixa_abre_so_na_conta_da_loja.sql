@@ -14,7 +14,7 @@
 -- desta migration para reaplicar. POS-VOO confere o hash e todos os atributos.
 -- Sem BEGIN/COMMIT de nivel superior: o aplicador fornece a transacao inteira.
 -- ORDEM: depois da 20261199000000 e do fechamento das portas anon/PUBLIC.
--- PROVAS de catalogo: consultas 82b (antes), 82a (depois); so leitura.
+-- PROVAS de catalogo: consultas 83b (antes), 83a (depois); so leitura.
 -- COMPORTAMENTO: tests/banco/caixa-conta-da-loja-viva.cjs, somente CI efemero.
 -- ROLLBACK MANUAL: rollback-manual-20261370000000_o_caixa_abre_so_na_conta_da_loja.sql
 -- devolve o corpo anterior byte a byte (LF, sem CR); recusa corpo desconhecido
