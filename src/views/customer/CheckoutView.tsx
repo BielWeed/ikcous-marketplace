@@ -5572,7 +5572,7 @@ export function CheckoutViewDaConta({
               <div>
                 <label
                   htmlFor="checkout-name"
-                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+                  className="mb-1.5 ml-1 block text-[11px] font-bold uppercase tracking-wider text-zinc-500"
                 >
                   Nome Completo
                 </label>
@@ -5607,7 +5607,7 @@ export function CheckoutViewDaConta({
               <div>
                 <label
                   htmlFor="checkout-tel"
-                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+                  className="mb-1.5 ml-1 block text-[11px] font-bold uppercase tracking-wider text-zinc-500"
                 >
                   WhatsApp para Contato
                 </label>
@@ -6619,7 +6619,7 @@ export function CheckoutViewDaConta({
                               R$ {subtotal.toFixed(2).replace(".", ",")}
                             </span>
                           </div>
-                          <div>
+                          <div className="checkout-delivery">
                             <span>Entrega</span>
                             <span>
                               {semFreteSelecionado ? (
@@ -7069,7 +7069,7 @@ function SuccessView({
           </p>
         </div>
         {appliedCoupon && (
-          <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-100/50 bg-emerald-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700">
+          <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-100/50 bg-emerald-50 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-emerald-700">
             Vantagem Ativa: R$ {discount.toFixed(2).replace(".", ",")} OFF
           </div>
         )}
