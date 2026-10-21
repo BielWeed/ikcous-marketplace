@@ -819,6 +819,14 @@
       "porque": "Configuracao da loja (painel do lojista): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
     },
     {
+      "funcao": "public.salvar_produto_com_grade(p_produto_id uuid, p_base_atualizado_em timestamp with time zone, p_produto jsonb, p_variantes jsonb, p_apagar uuid[])",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Salvar produto com variacoes no painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL e grava o produto, apaga e grava as variacoes numa transacao so, com a versao do produto conferida (migration 20261352000000); o visitante nao a executa."
+    },
+    {
       "funcao": "public.save_store_identity(expected_revision text, expected_identity jsonb, desired_identity jsonb)",
       "executa": ["authenticated"],
       "tipo": "volatil",

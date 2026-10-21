@@ -2500,6 +2500,20 @@ const ROL_DA_81B = [
   "as duas compras: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
   "as duas compras: EXECUTE como sempre (PUBLIC nao; anon, authenticated e service_role sim)",
 ];
+// Lote 82 (20261352000000, o produto e a grade salvam numa transacao so: funcao NOVA salvar_produto_com_grade).
+const ROL_DA_82A = [
+  "controle: catalogo publico visivel",
+  "salvar_produto_com_grade: uma so, com o corpo da 20261352000000 (md5)",
+  "salvar_produto_com_grade: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path=public, jsonb)",
+  "salvar_produto_com_grade: EXECUTE so para authenticated e service_role (PUBLIC e anon nao)",
+  "gatilhos de versao: set_ultima_atualizacao em produtos e sync_produto_ultima_atualizacao em variacoes ligados",
+];
+const ROL_DA_82B = [
+  "controle: catalogo publico visivel",
+  "salvar_produto_com_grade: ainda NAO existe",
+  "is_admin() e is_admin_atual() existem (a funcao nova as chama)",
+  "gatilhos de versao: set_ultima_atualizacao em produtos e sync_produto_ultima_atualizacao em variacoes ligados",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "68a-conferir-avanco-status-esperado-aplicado": [
     "avancar_status_do_pedido: unica assinatura conhecida",
@@ -2517,6 +2531,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "67b-antes-reembolso-manual-reserva": ROL_DA_67,
   "63a-conferir-forma-do-icone-aplicado": ROL_DA_63A,
   "63b-antes-forma-do-icone-ausente": ROL_DA_63B,
+  "82a-conferir-produto-com-grade-aplicado": ROL_DA_82A,
+  "82b-antes-produto-com-grade-ausente": ROL_DA_82B,
   "81a-conferir-compra-online-trava-preco-e-chave-aplicado": ROL_DA_81,
   "81b-antes-compra-online-trava-preco-e-chave-base-vigente": ROL_DA_81B,
   "80a-conferir-pedido-entregue-na-reconciliacao-aplicado": ROL_DA_80,

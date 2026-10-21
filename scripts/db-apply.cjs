@@ -146,6 +146,26 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261352000000_o_produto_e_a_grade_salvam_numa_transacao_so.sql": [
+    {
+      // Sem esta entrada a migration saia PULADA (saida 2: "ninguem verificou"). Os marcadores contam no corpo VIVO: as duas
+      // guardas de admin, a ordem global de travas (variacoes por id e depois o produto), a conferencia da versao que
+      // recusa com PRD01 e a recusa de exclusao por FK sem derrubar a transacao. Tirar um deles reabre a venda desfeita.
+      funcao: "salvar_produto_com_grade",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "ORDER BY id FOR NO KEY UPDATE;", vezes: 1 },
+        { texto: "deleted_at IS NULL FOR NO KEY UPDATE;", vezes: 1 },
+        {
+          texto: "v_atualizado_em IS DISTINCT FROM p_base_atualizado_em",
+          vezes: 1,
+        },
+        { texto: "USING ERRCODE = 'PRD01'", vezes: 1 },
+        { texto: "WHEN foreign_key_violation THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261349000000_o_pedido_entregue_antes_da_confirmacao_entra_na_reconciliacao.sql":
     {
       funcao: "pagamentos_a_reconciliar",

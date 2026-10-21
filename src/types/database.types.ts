@@ -3988,6 +3988,16 @@ export type Database = {
         Args: { p: Json };
         Returns: Json;
       };
+      salvar_produto_com_grade: {
+        Args: {
+          p_produto_id: string;
+          p_base_atualizado_em: string | null;
+          p_produto: Json;
+          p_variantes: Json;
+          p_apagar: string[];
+        };
+        Returns: Json;
+      };
       save_store_identity: {
         Args: {
           expected_revision: string;

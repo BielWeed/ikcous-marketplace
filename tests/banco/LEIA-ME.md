@@ -71,6 +71,20 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   que desfaz tudo; trocar o corpo com uma compra aberta não trava; consultas `81a`/`81b` (rol de 7 linhas) e a `31a`, `37a`
   e `47a` aceitando o corpo novo como sucessor. Com `PROVA_ARQUIVO_MUTADO=1` o arquivo da migration pode ser sabotado (sem
   uma das edições, hashes regenerados): a prova de comportamento reprova no defeito certo. **Não prova** a IKCOUS nem a Savy.
+- **produto e grade numa transação só (`salvar-produto-com-grade-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261352000000` (função NOVA `salvar_produto_com_grade`, só ela; estoque = dinheiro). O painel gravava o produto (com a
+  versão conferida) e, em OUTRA requisição, as variações com o estoque do formulário: uma compra que terminava entre as duas
+  era desfeita pelo upsert (P1 dos PRs 1043/1044). A função tranca as variações do produto por id e depois o produto (a ordem
+  global da `20261350000000`), confere `ultima_atualizacao` (recusa com `PRD01` = "o produto mudou, recarregue", sem escrever
+  nada), grava o patch do produto, apaga as variações pedidas UMA por vez (a que está num pedido, 23503, vai para `recusadas`
+  sem derrubar a transação) e grava as variações (`stock_increment` só se a chave vier). Usa **conexões reais em paralelo** e
+  mede a espera em `pg_stat_activity`. **Prova**: o caminho antigo restaura o estoque vendido (defeito reproduzido); a função,
+  com a compra aberta no meio, espera, recusa e a venda fica; **controles** (mutantes) sem a conferência da versão, sem as
+  travas ou com a ordem invertida (deadlock com a compra) reprovam o que a guarda previne; sem estoque mexido o estoque do banco
+  sobrevive; SKU de variação apagada reaproveitado na mesma chamada; variação de outro produto não é reparentada; anon sem
+  EXECUTE, cliente e admin rebaixado recusados (42501), chave fora da lista branca (22023); 20 rodadas contra compras de
+  carrinho misto sem 40P01; reaplicar 2x e CRLF, sobrecarga recusa, rollback só apaga a função e repetido é no-op; consultas
+  `82a`/`82b` (rol exato, cada desvio no item certo). **Não prova** a IKCOUS nem a Savy.
 - **admin atual (`admin-atual-viva.cjs`, via `rodar-isolado.cjs`)**: a
   migration 20261197000000 — admin rebaixado com JWT de admin ainda válido
   (só no `profiles`, só no `auth.users`, nos dois) é recusado nas seis RPCs
