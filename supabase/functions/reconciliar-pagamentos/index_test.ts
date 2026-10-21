@@ -3851,12 +3851,177 @@ Deno.test("R1-C4 - só com a 96 (criada_sob_autorizacao NULL vindo do banco), PO
 });
 
 // ── Cartão PARCELADO com juros do comprador (07/10/2026) ───────────────────
-// Premissa (não medida), a mesma do webhook (ver
-// webhook-mercadopago/index_test.ts, bloco "Cartão PARCELADO"): o MP cobra os juros por cima do pedido, só o valor
-// PAGO sobe, e a conferência daqui lê o `total_amount`. Se a leitura virar o
-// valor pago, o cron passa a deixar o 2x/3x pago parado para sempre. Os
-// valores pagos (164,35 / 168,49) são FIXTURES SINTÉTICAS, não taxas medidas
-// no MP; a premissa continua declarada, não provada por esta suíte.
+// Fixtures SINTÉTICAS (164,35 / 168,49), não taxas medidas no MP.
+// A conferência lê total_amount e a evidência de juros do pagamento:
+// installments, installment_amount e captura. D7 também cobre o total
+// financiado na raiz; não depende da premissa "só total_paid_amount sobe".
+for (const principal of ["37.27", "40.86"]) {
+  for (const parcela of [null, "18.64", "20.43"]) {
+    Deno.test(`R1 cron: principal ${principal}, captura 40,86, parcela ${parcela ?? "ausente"}`, async () => {
+      const id = "ORDTST01PARCELADOCOMJUROS";
+      const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+      const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }],
+        pedidoTotal: 37.27, registro });
+      const o = orderParceladaComJuros(id, 2, "40.86");
+      o.total_amount = principal;
+      o.transactions.payments[0].amount = principal;
+      if (parcela === null) delete o.transactions.payments[0].payment_method.installment_amount;
+      else o.transactions.payments[0].payment_method.installment_amount = parcela;
+      const logs = [];
+      const warn = console.warn;
+      console.warn = (...args) => logs.push(args);
+      let r;
+      try {
+        r = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1 });
+      } finally { console.warn = warn; }
+      const esperado = principal === "37.27" || parcela === "20.43";
+      assertEquals(r.status, 200);
+      assertEquals(registro.chamadasConfirmar.length, esperado ? 1 : 0);
+      const avisos = logs.filter((l) => l[0] === "pagamento: juros_sem_parcela_conferida");
+      assertEquals(avisos.length, principal === "37.27" && parcela !== "20.43" ? 1 : 0);
+      if (avisos.length) assertEquals(avisos[0][1], { pedido: UUID_PEDIDO_1, total: 37.27, capturado: 40.86, parcelas: 2 });
+    });
+  }
+}
+
+Deno.test("REV3 cron: recusa final recuperada guarda só diagnóstico sanitizado; falha de gravação não muda a liberação", async () => {
+  for (const falha of [null, "retorno", "excecao"]) {
+    const id = "ORDTST01CARTAORECUSADO";
+    const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+    const base = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], registro });
+    const linhas = [];
+    const supabase = { ...base, from: (tabela) => tabela === "tentativas_cartao_diagnostico" ? {
+      upsert: async (linha, opcoes) => {
+        linhas.push({ linha, opcoes });
+        if (falha === "excecao") throw new Error("dado-privado-nao-logar");
+        return { error: falha === "retorno" ? { message: "dado-privado-nao-logar" } : null };
+      },
+    } : base.from(tabela) };
+    const o = orderDoCandidato(id, "failed", "high_risk", "credit_card");
+    o.transactions.payments[0].amount = "37.27";
+    o.transactions.payments[0].payment_method.installments = 2;
+    o.payer = { email: "nao-logar@example.invalid", identification: { number: "00000000000" } };
+    o.transactions.payments[0].payment_method.token = "dado-privado-nao-logar";
+    const logs = [];
+    const warn = console.warn;
+    console.warn = (...args) => logs.push(args);
+    let r;
+    try {
+      r = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, o) });
+    } finally { console.warn = warn; }
+    assertEquals(r.status, 200);
+    const corpo = await r.json();
+    assertEquals(corpo.falhas, 0);
+    assertEquals(corpo.cobrancasLiberadas, 1);
+    assertEquals(registro.chamadasLiberar, [{ args: { p_order_id: UUID_PEDIDO_1, p_gateway_payment_id: id } }]);
+    assertEquals(registro.chamadasConfirmar, []);
+    assertEquals(linhas.length, 1);
+    const { registrado_em, ...linha } = linhas[0].linha;
+    assertEquals(Number.isFinite(Date.parse(registrado_em)), true);
+    assertEquals(linha, {
+      pedido_id: UUID_PEDIDO_1, mp_order_id: id, mp_payment_id: "PAY1",
+      status: "failed", status_detail: "high_risk", parcelas: 2, valor: 37.27,
+    });
+    assertEquals(linhas[0].opcoes, { onConflict: "mp_order_id,mp_payment_id", ignoreDuplicates: false });
+    assertEquals(logs.some((l) => String(l[0]).startsWith("diagnostico-do-cartao:")), falha !== null);
+    assertEquals(JSON.stringify(logs).includes("dado-privado-nao-logar"), false);
+    assertEquals(JSON.stringify(logs).includes("nao-logar@example.invalid"), false);
+    assertEquals(JSON.stringify(logs).includes("00000000000"), false);
+  }
+});
+
+Deno.test("REV5 sentinela: total do pedido inválido não é rotulado como valor pago divergente", async () => {
+  const id = "ORDTST01CARTAOCAPTURADO";
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [], chamadasAviso: [] };
+  const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }],
+    pedidoTotal: "ilegivel", registro });
+  const o = orderParceladaComJuros(id, 2, "40.86");
+  const alertas = [];
+  const logs = [];
+  const error = console.error;
+  console.error = (...args) => logs.push(args);
+  let r;
+  try {
+    r = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase, fetchImpl: fetchSentinela({ status: 200, corpo: { results: [o] } }, o, []),
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+    });
+  } finally { console.error = error; }
+  assertEquals(r.status, 200);
+  assertEquals(registro.adocoesPedido, []);
+  assertEquals(registro.chamadasConfirmar, []);
+  assertEquals(alertas.length, 1);
+  assertStringIncludes(alertas[0].body, "total do pedido inválido");
+  assertEquals(alertas[0].body.includes("valor divergente"), false);
+  assertStringIncludes(String(logs[0][0]), "total do pedido inválido");
+  assertEquals(logs[0][1].motivo, "total_do_pedido");
+  assertEquals(registro.chamadasAviso[0].args.p_chave, `total_do_pedido_invalido:${UUID_PEDIDO_1}:${id}`);
+});
+
+Deno.test("R1 cron: divergência avisa o admin uma vez, sem confirmar", async () => {
+  const id = "ORDTST01PARCELADOCOMJUROS";
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+  const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], pedidoTotal: 37.27, registro });
+  const o = orderParceladaComJuros(id, 2, "55.91");
+  o.total_amount = "37.27";
+  o.transactions.payments[0].amount = "37.27";
+  delete o.transactions.payments[0].payment_method.installment_amount;
+  const alertas = [];
+  for (let vez = 0; vez < 2; vez++) {
+    const r = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase, fetchImpl: fetchConsulta(200, o),
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+    });
+    assertEquals((await r.json()).confirmados, 0);
+  }
+  assertEquals(registro.chamadasConfirmar.length, 0);
+  assertEquals(alertas.length, 1);
+  assertEquals(alertas[0].body.includes("valor divergente"), true);
+});
+
+Deno.test("R2 sentinela: raiz financiada é adotada; menor não é; valor ausente preserva adoção anterior", async () => {
+  for (const [principal, esperadoAdotar, esperadoConfirmar] of [["40.86", true, true], ["37.26", false, false], [null, true, false]]) {
+    const id = "ORDTST01CARTAOCAPTURADO";
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] };
+    const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }], pedidoTotal: 37.27, registro });
+    const o = orderParceladaComJuros(id, 2, "40.86");
+    o.total_amount = principal;
+    o.transactions.payments[0].amount = principal;
+    const avisos = [];
+    const r = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase, fetchImpl: fetchSentinela({ status: 200, corpo: { results: [o] } }, o, []),
+      enviarPushContado: async ({ aviso }) => { avisos.push(aviso); return 1; },
+    });
+    assertEquals(r.status, 200);
+    if (principal === "37.26") {
+      assertEquals(avisos.length, 1, "divergência antes da adoção também precisa chegar ao admin");
+      assertEquals(avisos[0].body.includes("valor divergente"), true);
+    }
+    assertEquals(registro.adocoesPedido.length, esperadoAdotar ? 1 : 0, String(principal));
+    assertEquals(registro.chamadasConfirmar.length, esperadoConfirmar ? 1 : 0, String(principal));
+  }
+});
+
+Deno.test("D7 cron: raiz financiada confirma; acima do teto ou captura menor não confirmam", async () => {
+  for (const [total, pago, parcela, esperado] of [
+    ["164.35", "164.35", "82.18", true],
+    ["240.00", "240.00", "120.00", false],
+    ["149.90", "149.89", "74.95", false],
+  ]) {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const id = "ORDTST01PARCELADOCOMJUROS";
+    const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], registro });
+    const o = orderParceladaComJuros(id, 2, pago);
+    o.total_amount = total;
+    o.transactions.payments[0].amount = total;
+    o.transactions.payments[0].payment_method.installment_amount = parcela;
+    const r = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, o) });
+    assertEquals(r.status, 200);
+    assertEquals(registro.chamadasConfirmar.length, esperado ? 1 : 0);
+    assertEquals((await r.json()).confirmados, esperado ? 1 : 0);
+  }
+});
+
 const PARCELADOS_COM_JUROS = [
   { parcelas: 1, pago: "149.90" },
   { parcelas: 2, pago: "164.35" },
@@ -3878,7 +4043,7 @@ function orderParceladaComJuros(id: string, parcelas: number, pago: string): Rec
         paid_amount: pago,
         status: "processed",
         status_detail: "accredited",
-        payment_method: { id: "visa", type: "credit_card", installments: parcelas },
+        payment_method: { id: "visa", type: "credit_card", installments: parcelas, installment_amount: (Number(pago) / parcelas).toFixed(2) },
       }],
     },
   };

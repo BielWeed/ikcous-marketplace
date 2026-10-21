@@ -96,7 +96,8 @@ import {
   tipoDoPagamentoDaOrder,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
-import { conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import { avisarJurosSemParcelaConferida, conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import { registrarDiagnosticoDoCartao } from "../_shared/diagnostico-do-cartao.ts";
 import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
 import {
   consultarContestacao,
@@ -1434,6 +1435,10 @@ async function handler(
     return json({ ok: true, ignorado: "external_reference inválido" }, 200);
   }
   const orderId = externalReference as string;
+  if (rota === "order") {
+    await registrarDiagnosticoDoCartao({ supabase, pedidoId: orderId, order: corpoConsultado,
+      cartaoConhecido: liberarAVaga && corpoConsultado?.status === "failed" });
+  }
 
   // CARTÃO RECUSADO NÃO MATA O PEDIDO (Fase 3.5, spec decisão 3). O ramo
   // 'recusado' de `confirmar_pagamento` CANCELA o pedido e devolve o estoque
@@ -1896,7 +1901,7 @@ async function handler(
   // conferências verem linhas DIFERENTES num intervalo de reescrita.
   const { data: linhaDoPedido, error: erroLeituraPedido } = await supabase
     .from("marketplace_orders")
-    .select("total, total_amount, gateway_payment_id")
+    .select("total, total_amount, gateway_payment_id, payment_status")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -1935,24 +1940,32 @@ async function handler(
 
   // A mesma regra base da prova imediata e do cron. Aprovação sem valor ou
   // total válido nunca alcança adoção/RPC; o pedido segue elegível no cron.
-  // Divergência mantém o 200 de antes. Recusas/estornos mantêm seu fluxo:
-  // só uma divergência numérica que já era barrada aqui os interrompe.
+  // Estorno de order já confirmada usa a mesma prova dos juros da aprovação.
+  // Contestação já foi tratada pelo ledger acima, nunca por confirmar_pagamento.
+  // Fora de aprovação, divergência mantém o 200 silencioso de antes.
   const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
     (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
-  const conferencia = conferirValorDoPagamento(valorPagoMp, brutoTotal);
   const aprovado = statusMapeado === "pago" || statusMapeado === "pago_apos_expirar";
+  const estadoDoPedido = (linhaDoPedido as Record<string, unknown> | null)?.payment_status;
+  const estornoDePedidoConfirmado = statusMapeado === "estornado" &&
+    (estadoDoPedido === "pago" || estadoDoPedido === "pago_apos_expirar" || estadoDoPedido === "estornado");
+  const conferencia = conferirValorDoPagamento(
+    valorPagoMp, brutoTotal, (aprovado || estornoDePedidoConfirmado) && rota === "order" ? corpoConsultado ?? undefined : undefined,
+  );
   if (!conferencia.provado && (aprovado || (linhaDoPedido && conferencia.motivo === "valor_divergente"))) {
+    if (!aprovado) return json({ ok: true, ignorado: "valor divergente" }, 200);
     if (conferencia.motivo === "valor_divergente") {
       console.error(
         "webhook-mercadopago: VALOR pago diverge do total do pedido — pedido NÃO confirmado; conferir no painel do MP",
         { orderId, rota, valorPago: valorPagoMp, totalDoPedido: Number(brutoTotal), paymentId: idParaRpc },
       );
-      return json({ ok: true, ignorado: "valor divergente" }, 200);
+    } else {
+      console.error(
+        "webhook-mercadopago: valor ausente/ilegível ou total do pedido inválido — pedido NÃO confirmado; aguardando reconsulta",
+        { orderId, rota, paymentId: idParaRpc, motivo: conferencia.motivo },
+      );
     }
-    console.error(
-      "webhook-mercadopago: valor ausente/ilegível ou total do pedido inválido — pedido NÃO confirmado; aguardando reconsulta",
-      { orderId, rota, paymentId: idParaRpc, motivo: conferencia.motivo },
-    );
+    const divergente = conferencia.motivo === "valor_divergente";
     // A rota clássica pode notificar um pagamento de dentro da order gravada.
     // Nesse caso usa a vaga real, como o cron, para deduplicar entre as portas.
     const idGravado = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
@@ -1963,17 +1976,21 @@ async function handler(
     await comTempoLimite(avisarAdminUmaVez({
       supabase,
       enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
-      chave: `valor_nao_conferido:${orderId}:${idDoAviso}`,
+      chave: `${divergente ? "valor_divergente" : "valor_nao_conferido"}:${orderId}:${idDoAviso}`,
       aviso: {
         title: "Pagamento precisa de conferência",
-        body: `${numeroDoPedido(orderId)} · valor não conferido; tentando novamente`,
+        body: `${numeroDoPedido(orderId)} · ${divergente ? "valor divergente; confira no painel do Mercado Pago" : "valor não conferido; tentando novamente"}`,
         url: "/admin-orders",
       },
     }), 5000);
     return json({
       ok: true,
-      ignorado: conferencia.motivo === "valor_ausente" ? "valor ausente ou ilegível" : "total do pedido inválido",
+      ignorado: divergente ? "valor divergente" : conferencia.motivo === "valor_ausente" ? "valor ausente ou ilegível" : "total do pedido inválido",
     }, 200);
+  }
+
+  if (aprovado && rota === "order" && conferencia.provado && corpoConsultado) {
+    avisarJurosSemParcelaConferida(orderId, brutoTotal, corpoConsultado);
   }
 
   // Achado B2 (2ª revisão de risco, 26/09/2026) — ADOÇÃO: uma cobrança de
