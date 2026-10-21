@@ -451,11 +451,26 @@ Deno.test("o contrato do painel (pedido_reembolsos_e_saldo): os NOMES que o fron
 
 Deno.test("a sucessora 343 restaura a 241 antes de desfazer a cadeia e preserva a chamada unica", () => {
   const m = ler("20261343000000_o_reembolso_manual_respeita_a_reserva.sql");
-  const rb = ler("rollback-manual-20261343000000_o_reembolso_manual_respeita_a_reserva.sql");
-  assert.equal(corpoDe(rb, "admin_devolucao_concluir"), corpoDe(migration, "admin_devolucao_concluir"));
-  assert.equal(corpoDe(m, "admin_devolucao_concluir").split("public.pedido__saldo_a_estornar(v_o.id)").length - 1, 1);
-  const helper = Deno.readTextFileSync(new URL("tests/banco/reembolso-em-duvida-posterior.cjs", DIR));
-  assert.ok(helper.indexOf("desfazerReembolsoManualReservaNaTransacao") < helper.indexOf("cliente.query(REEMBOLSO_EM_DUVIDA.noAr)"));
+  const rb = ler(
+    "rollback-manual-20261343000000_o_reembolso_manual_respeita_a_reserva.sql",
+  );
+  assert.equal(
+    corpoDe(rb, "admin_devolucao_concluir"),
+    corpoDe(migration, "admin_devolucao_concluir"),
+  );
+  assert.equal(
+    corpoDe(m, "admin_devolucao_concluir").split(
+      "public.pedido__saldo_a_estornar(v_o.id)",
+    ).length - 1,
+    1,
+  );
+  const helper = Deno.readTextFileSync(
+    new URL("tests/banco/reembolso-em-duvida-posterior.cjs", DIR),
+  );
+  assert.ok(
+    helper.indexOf("desfazerReembolsoManualReservaNaTransacao") <
+      helper.indexOf("cliente.query(REEMBOLSO_EM_DUVIDA.noAr)"),
+  );
 });
 
 Deno.test("os tipos do front (database.types.ts) declaram a tabela e as funcoes novas", () => {
