@@ -85,6 +85,7 @@ const {
   DESFAZER_RECEBIMENTO,
 } = require("./desfazer-recebimento-posterior.cjs");
 const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
+const { PERFIS_ADMIN_ATUAL } = require("./admin-atual-perfis-posterior.cjs");
 
 const U_CLIENTE = "71111111-1111-1111-1111-111111111111";
 const U_OUTRO = "71111111-1111-1111-1111-111111111112";
@@ -1791,6 +1792,11 @@ const POSTERIORES_A_97 = [
   // (B1_BASELINE_DIVERGENT). O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em
   // tests/banco/mototaxi-posterior.cjs. No FIM da lista de proposito.
   MOTOTAXI,
+  // 20261340000000: 13 politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete passam
+  // a citar rls_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "politicas fora da
+  // 20261197000000 ainda usam ..."). O rollback-manual dela so devolve as 13 expressoes a is_admin(). Definicao unica em
+  // tests/banco/admin-atual-perfis-posterior.cjs. No FIM da lista de proposito.
+  PERFIS_ADMIN_ATUAL,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

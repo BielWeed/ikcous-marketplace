@@ -723,6 +723,14 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   de comportamento da 241 continuam medindo o corpo de produção.
 - **as provas que DESFAZEM corpos redefinidos pela `20261244000000`** (`endereco-no-pedido`, `a-compra-que-da-zero-reais...`, `loja-declara-quem-e` e
   `portao-8e-aceita-sucessoras`, mais a cadeia das sucessoras da 99) a desfazem ANTES por `a-loja-escolhe-como-entrega-posterior.cjs`.
+- **as politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete exigem o admin de agora
+  (`admin-atual-perfis-viva.cjs`, via `rodar-isolado.cjs`)**: a migration `20261340000000` (13 `ALTER POLICY` trocando `is_admin()` por
+  `rls_admin_atual()`; o ramo da dona e o recado para todas ficam). Para cada politica: o ex-admin (rebaixado so no `profiles`, so no
+  `auth.users`, com JWT velho) le 0 linhas e nao escreve; CONTROLE na politica antiga le e escreve; admin atual como antes; a cliente
+  o proprio e uma terceira nada. Leitura de perfil e login SEM recursao, e o MUTANTE (dono das funcoes sujeito a RLS = nenhum admin
+  reconhecido, por isso o pre-voo recusa FORCE e dono diferente). Rollback byte a byte, 2o rollback recusa, pre-voo recusa sem escrever,
+  e as consultas `64a`/`64b` (rol de 4 linhas, 8 negativos). As provas que desfazem a 97 (`admin-atual` e `pagamentos-rpc`) desfazem
+  esta ANTES por `admin-atual-perfis-posterior.cjs`. **Nao prova** a IKCOUS nem a Savy.
 - **as provas que DESFAZEM corpos redefinidos pela `20261243000000`** (`pagamentos-rpc` e `admin-atual`: o rollback da 95 e da
   97 e a reaplicação da 97 partem do corpo de `registrar_pagamento_recebido` que a 97 deixa) a desfazem ANTES, na transação,
   por `desfazer-recebimento-posterior.cjs` (só se no ar): o pré-voo de cada rollback mais velho a recusa.

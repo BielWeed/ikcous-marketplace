@@ -2411,6 +2411,19 @@ const ROL_DA_61B = [
   "categorias.icone: ausente ou text nulavel preservada",
   "categorias_icone_check: ausente",
 ];
+// 64a/64b (20261340000000): o mesmo rol nos dois sentidos; so o rotulo da linha das politicas muda.
+const ROL_DA_64A = [
+  "controle: catalogo publico visivel",
+  "perfil, endereco e notificacoes: 13 politicas com a porta do admin atual",
+  "portas do admin atual: corpos, dono e EXECUTE",
+  "tabelas das 13 politicas: RLS ligada e sem FORCE",
+];
+const ROL_DA_64B = [
+  "controle: catalogo publico visivel",
+  "perfil, endereco e notificacoes: 13 politicas com a porta is_admin de antes",
+  "portas do admin atual: corpos, dono e EXECUTE",
+  "tabelas das 13 politicas: RLS ligada e sem FORCE",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
   "61b-antes-icones-das-categorias": ROL_DA_61B,
@@ -2427,6 +2440,8 @@ const ROL_FECHADO_POR_CONSULTA = {
     "mototaxi: tabela e RPC ausentes",
     "contato privado: fora da configuracao publica",
   ],
+  "64a-conferir-politicas-de-perfil-e-endereco-aplicado": ROL_DA_64A,
+  "64b-antes-politicas-de-perfil-e-endereco-is-admin": ROL_DA_64B,
   "60a-conferir-estilo-card-frete-aplicado": ROL_DA_60,
   "60b-antes-estilo-card-frete-base-vigente": ROL_DA_60,
   "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,

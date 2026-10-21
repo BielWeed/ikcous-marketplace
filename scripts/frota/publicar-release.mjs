@@ -566,6 +566,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "61b-antes-icones-das-categorias",
   "62a-conferir-mototaxi-aplicado",
   "62b-antes-mototaxi-ausente",
+  "64a-conferir-politicas-de-perfil-e-endereco-aplicado",
+  "64b-antes-politicas-de-perfil-e-endereco-is-admin",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
