@@ -1,5 +1,7 @@
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
+import { ExplicacaoDoRelatorio } from "@/components/admin/crm/ExplicacaoDoRelatorio";
 import {
   CLICAVEL_DO_CRM,
   CartaoDoCrm,
@@ -14,6 +16,7 @@ import {
   faixaApareceNaGrade,
   formatarData,
   formatarInteiro,
+  formatarMoeda,
   infoDoSegmento,
   linkWhatsappDoCrm,
   mensagemDoSegmento,
@@ -35,6 +38,7 @@ import {
   Check,
   ChevronRight,
   Filter,
+  LayoutGrid,
   MessageCircle,
   RefreshCw,
   Search,
@@ -45,6 +49,12 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 const POR_PAGINA = 20;
+const GRUPOS_PRIORITARIOS: readonly SegmentoCrm[] = [
+  "pediu_nao_pagou",
+  "em_risco",
+  "campeoes",
+  "novos",
+];
 
 /** Colunas da lista, compartilhadas entre o cabeçalho e cada linha no desktop. */
 const COLUNAS_DA_LISTA =
@@ -65,7 +75,7 @@ function CrachaDoSegmento({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold",
+        "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold",
         classes.cracha,
       )}
     >
@@ -77,7 +87,7 @@ function CrachaDoSegmento({
           comprou" espremia o nome no celular e truncava até no desktop — a
           faixa "Ainda não compraram" já dá o contexto. O bloco da grade
           continua com o rótulo longo. */}
-      <span className="min-w-0 truncate">
+      <span className="min-w-0 whitespace-normal">
         {rotuloCurtoDoSegmento(segmento)}
       </span>
     </span>
@@ -119,13 +129,13 @@ function BlocoDeSegmento({
         // Compacto no celular (alvo ~64–72 px: rótulo numa linha, número +
         // receita na outra) — no desktop (`sm:`) volta ao cartão maior de
         // antes, com o número em destaque na própria linha.
-        "relative flex min-h-[64px] flex-col justify-center gap-1 rounded-2xl p-2.5 text-left sm:min-h-[92px] sm:justify-between sm:gap-2 sm:p-3",
+        "relative flex min-h-[68px] flex-col justify-between gap-1 rounded-xl p-2 text-left",
         CLICAVEL_DO_CRM,
         selecionado &&
           "border-admin-gold/60 bg-admin-gold/[0.08] ring-1 ring-admin-gold/40 hover:border-admin-gold/60",
       )}
     >
-      <span className="flex items-center gap-1.5">
+      <span className="flex items-start gap-1.5">
         {/* Contraste AA (N3 da re-revisão): a opacidade de "segmento sem
             cliente" ficava no BOTÃO inteiro, dimmerizando também a receita
             em texto (~3,2:1, abaixo do mínimo AA). Ela fica só no ponto de
@@ -139,8 +149,10 @@ function BlocoDeSegmento({
           )}
           aria-hidden="true"
         />
-        <span className="truncate text-[11px] font-bold text-zinc-200">
-          {info.rotulo}
+        <span className="min-w-0 text-[11px] font-bold leading-[14px] text-zinc-200">
+          {segmento === "nunca_comprou"
+            ? rotuloCurtoDoSegmento(segmento)
+            : info.rotulo}
         </span>
         <Filter
           className="ml-auto size-3 shrink-0 text-zinc-500 sm:size-3.5"
@@ -169,7 +181,7 @@ function BlocoDeSegmento({
               linha nenhuma (achado 6, revisão de risco: "R$ 0,00" sugeriria
               um valor medido que não existe). */}
           {valorDoBloco != null ? (
-            <span className="shrink-0 truncate text-[11px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
+            <span className="min-w-0 break-words text-[11px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
               {valorDoBloco}
             </span>
           ) : null}
@@ -193,6 +205,7 @@ function GradeDeSegmentos({
   selecionado,
   aoSelecionar,
   contagemFiltrada,
+  aoRecolher,
 }: Readonly<{
   segmentos: readonly ResumoDoSegmento[];
   carregando: boolean;
@@ -206,6 +219,7 @@ function GradeDeSegmentos({
    * ativa (usa o bruto do segmento, comportamento de sempre).
    */
   contagemFiltrada?: number;
+  aoRecolher: () => void;
 }>) {
   const porSegmento = new Map(segmentos.map((s) => [s.segmento, s]));
   const segmentosPresentes = new Set(porSegmento.keys());
@@ -225,8 +239,16 @@ function GradeDeSegmentos({
   return (
     <CartaoDoCrm
       id="crm-segmentos"
-      titulo="Segmentos de clientes"
-      descricao="De quem compra bem a quem ainda não comprou nada — toque num grupo para filtrar a lista."
+      titulo="Grupos de clientes"
+      acao={
+        <button
+          type="button"
+          onClick={aoRecolher}
+          className="min-h-11 rounded-xl bg-admin-raised px-3 text-xs font-bold text-admin-text"
+        >
+          Recolher
+        </button>
+      }
     >
       <div className="space-y-4">
         {faixasParaMostrar.map((faixa) => (
@@ -255,7 +277,7 @@ function GradeDeSegmentos({
 
       {textoDoFiltro ? (
         <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-admin-gold/20 bg-admin-gold/[0.06] px-3 py-2">
-          <p className="truncate text-xs font-semibold text-admin-gold">
+          <p className="min-w-0 text-xs font-semibold text-admin-gold">
             {textoDoFiltro}
           </p>
           <button
@@ -302,7 +324,7 @@ function CamposDoPedidoEDaAtividade({
 
   return (
     <>
-      <div className="min-w-0">
+      <div className="hidden min-w-0 lg:block">
         <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
           Pedidos
         </p>
@@ -352,16 +374,16 @@ function CamposDoPedidoEDaAtividade({
         <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
           {rotuloDeUltimaAtividade(cliente.segmento)}
         </p>
-        <p className="truncate tabular-nums text-zinc-300">
+        <p className="tabular-nums text-zinc-300">
           {textoDeUltimaAtividade(cliente)}
         </p>
       </div>
 
-      <div className="min-w-0">
+      <div className="hidden min-w-0 lg:block">
         <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
           Canal
         </p>
-        <p className="truncate text-zinc-300">
+        <p className="text-zinc-300">
           {cliente.canalPreferido ? rotuloDoCanal(cliente.canalPreferido) : "—"}
         </p>
       </div>
@@ -394,25 +416,38 @@ function LinhaDoCliente({
   return (
     <li
       className={cn(
-        "grid grid-cols-2 gap-x-3 gap-y-2 rounded-2xl border border-admin-border bg-zinc-950/60 p-3 sm:p-4 lg:items-center lg:gap-5",
+        "grid min-h-[166px] grid-cols-2 gap-x-3 gap-y-2 rounded-2xl border border-admin-border bg-admin-surface p-3 lg:items-center lg:gap-5",
         COLUNAS_DA_LISTA,
       )}
     >
       <div className="col-span-2 flex min-w-0 items-center gap-2 lg:col-span-1">
         <span
           aria-hidden="true"
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-zinc-900 text-sm font-black text-admin-gold"
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-raised text-sm font-bold text-admin-gold"
         >
           {nome.charAt(0).toUpperCase()}
         </span>
-        <p className="min-w-0 flex-1 truncate text-sm font-bold text-white">
-          {nome}
-        </p>
-        {/* No celular o segmento já aparece aqui, junto do nome — a coluna
-            "Segmento" abaixo só existe (e só conta) a partir do desktop. */}
-        <span className="shrink-0 lg:hidden">
-          <CrachaDoSegmento segmento={cliente.segmento} />
-        </span>
+        <div className="min-w-0 flex-1">
+          <p className="break-words text-sm font-bold text-admin-text">
+            {nome}
+          </p>
+          <div className="lg:hidden">
+            <CrachaDoSegmento segmento={cliente.segmento} />
+          </div>
+        </div>
+        {!semDadoDeCompra && (
+          <div className="shrink-0 text-right text-[11px] text-admin-text-soft lg:hidden">
+            <p>
+              {formatarInteiro(cliente.pedidos)}{" "}
+              {cliente.pedidos === 1 ? "pedido" : "pedidos"}
+            </p>
+            <p>
+              {cliente.canalPreferido
+                ? rotuloDoCanal(cliente.canalPreferido)
+                : "—"}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="hidden min-w-0 lg:block">
@@ -531,6 +566,8 @@ export function ClientesDoCrm({
   active,
   onNavigate,
   sinalDeAtualizacao,
+  offline = false,
+  segmentosDisponiveis = true,
 }: Readonly<{
   segmentos: readonly ResumoDoSegmento[];
   carregandoSegmentos: boolean;
@@ -540,10 +577,13 @@ export function ClientesDoCrm({
   onNavigate: (view: View, id?: string) => void;
   /** Muda quando o lojista toca em "Sincronizar" no topo do CRM. */
   sinalDeAtualizacao: number;
+  offline?: boolean;
+  segmentosDisponiveis?: boolean;
 }>) {
   const { config } = useStore();
   const loja = nomeDaLoja(config);
   const [busca, setBusca] = useState("");
+  const [gruposAbertos, setGruposAbertos] = useState(false);
   // Página amarrada ao filtro: trocar segmento ou busca volta à página 1
   // no MESMO render (sem uma consulta extra na página antiga).
   const chaveDoFiltro = `${segmento ?? "todos"}|${busca}`;
@@ -571,8 +611,13 @@ export function ClientesDoCrm({
   }, [sinalDeAtualizacao, atualizar]);
 
   const total = lista?.total ?? 0;
+  const quantidadeDoGrupo = (grupo: SegmentoCrm) =>
+    segmentosDisponiveis
+      ? (segmentos.find((s) => s.segmento === grupo)?.clientes ?? 0)
+      : null;
   const totalPaginas = Math.max(1, Math.ceil(total / POR_PAGINA));
   const esqueleto = carregando && !lista;
+  const falhaDoResumo = !esqueleto && !lista && (!!erro || offline);
   const nomeDoSegmento = segmento ? infoDoSegmento(segmento).rotulo : null;
   // Com busca ativa e a lista já carregada, "Mostrando" usa o total JÁ
   // filtrado (busca + segmento) — o bruto do segmento (crm_visao) ignora a
@@ -582,58 +627,197 @@ export function ClientesDoCrm({
     busca.trim() !== "" && lista ? total : undefined;
 
   return (
-    <div className="space-y-6">
-      <GradeDeSegmentos
-        segmentos={segmentos}
-        carregando={carregandoSegmentos}
-        selecionado={segmento}
-        aoSelecionar={aoMudarSegmento}
-        contagemFiltrada={contagemFiltradaPelaBusca}
-      />
-
-      <CartaoDoCrm
-        id="crm-lista"
-        titulo={
-          <span className="flex items-center gap-2">
-            <Users className="size-3.5 shrink-0" aria-hidden="true" />
-            {nomeDoSegmento
-              ? `Clientes · ${nomeDoSegmento}`
-              : "Todos os clientes"}
-            {lista ? (
-              <span className="font-normal text-zinc-500">
-                ({formatarInteiro(total)})
+    <div className="min-w-0 space-y-2">
+      <MetricasDoPainel
+        titulo="Clientes da loja"
+        legendasDoResumo={["Na sua lista", "Podem não voltar"]}
+        loading={esqueleto}
+        cards={[
+          {
+            label: "Na sua lista",
+            value: lista ? formatarInteiro(total) : "—",
+            icon: Users,
+          },
+          {
+            label: "Podem não voltar",
+            value: formatarInteiro(quantidadeDoGrupo("em_risco")),
+            icon: Users,
+          },
+        ]}
+        nota={
+          falhaDoResumo ? (
+            "Os números não carregaram"
+          ) : offline ? (
+            "Sem internet · números da última busca"
+          ) : (segmentos.find((s) => s.segmento === "pediu_nao_pagou")
+              ?.clientes ?? 0) > 0 ? (
+            <>
+              <span>
+                {formatarInteiro(
+                  segmentos.find((s) => s.segmento === "pediu_nao_pagou")
+                    ?.clientes,
+                )}{" "}
+                pediu e não pagou ·{" "}
+                {formatarMoeda(
+                  segmentos.find((s) => s.segmento === "pediu_nao_pagou")
+                    ?.receita,
+                )}{" "}
+                em aberto
               </span>
-            ) : null}
-          </span>
+              <button
+                type="button"
+                onClick={() => aoMudarSegmento("pediu_nao_pagou")}
+                className="min-h-11 min-w-11 shrink-0 font-bold"
+              >
+                Ver ›
+              </button>
+            </>
+          ) : (
+            "Toque num grupo para filtrar a lista"
+          )
         }
-        descricao="Quem já comprou (app e balcão), quem pediu e não pagou e quem criou conta sem comprar — com WhatsApp e ficha a um toque."
+        relatorio={{
+          erro: falhaDoResumo,
+          aoTentar: atualizar,
+          tom: falhaDoResumo
+            ? "erro"
+            : offline
+              ? "atencao"
+              : (segmentos.find((s) => s.segmento === "pediu_nao_pagou")
+                    ?.clientes ?? 0) > 0
+                ? "atencao"
+                : undefined,
+          rodape: (
+            <span className="flex flex-wrap gap-x-3">
+              <span>
+                Melhores clientes{" "}
+                <strong className="text-admin-text">
+                  {formatarInteiro(quantidadeDoGrupo("campeoes"))}
+                </strong>
+              </span>
+              <span>
+                Novos{" "}
+                <strong className="text-admin-text">
+                  {formatarInteiro(quantidadeDoGrupo("novos"))}
+                </strong>
+              </span>
+            </span>
+          ),
+          ajuda: (
+            <ExplicacaoDoRelatorio titulo="Clientes da loja">
+              A lista e os grupos olham a história da loja. A busca e o grupo
+              filtram a lista; o período das outras abas não muda estes números.
+            </ExplicacaoDoRelatorio>
+          ),
+        }}
+      />
+      <div className="flex min-w-0 gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-admin-text-soft"
+            aria-hidden="true"
+          />
+          <label htmlFor="crm-busca-cliente" className="sr-only">
+            Buscar cliente por nome, e-mail ou WhatsApp
+          </label>
+          <DebouncedSearchInput
+            id="crm-busca-cliente"
+            value={busca}
+            onChange={setBusca}
+            placeholder="Nome, e-mail ou WhatsApp"
+            className="h-12 rounded-2xl border-admin-border bg-admin-surface pl-9 text-xs"
+          />
+        </div>
+        <button
+          type="button"
+          aria-expanded={gruposAbertos}
+          aria-label="Grupos"
+          onClick={() => setGruposAbertos(!gruposAbertos)}
+          className={cn(
+            "flex size-12 shrink-0 items-center justify-center rounded-2xl border border-solid border-admin-border bg-admin-surface text-admin-text-2",
+            gruposAbertos && "bg-admin-gold/15 text-admin-gold",
+            FOCO_DO_CRM,
+          )}
+        >
+          <LayoutGrid className="size-4" aria-hidden="true" />
+          <span className="sr-only">Grupos</span>
+        </button>
+      </div>
+      <div
+        role="group"
+        aria-label="Filtrar por grupo"
+        className="flex min-w-0 max-w-full gap-2 overflow-x-auto pb-1"
+      >
+        {[
+          null,
+          ...GRUPOS_PRIORITARIOS,
+          ...FAIXAS_DE_SEGMENTOS_DO_CRM.flatMap((f) => f.segmentos).filter(
+            (s) => !GRUPOS_PRIORITARIOS.includes(s),
+          ),
+        ]
+          .filter(
+            (s) =>
+              (s !== "pediu_nao_pagou" && s !== "nunca_comprou") ||
+              segmentos.some((r) => r.segmento === s),
+          )
+          .map((s) => (
+            <button
+              key={s ?? "todos"}
+              type="button"
+              aria-pressed={segmento === s}
+              onClick={() => aoMudarSegmento(segmento === s ? null : s)}
+              className={cn(
+                "min-h-11 shrink-0 whitespace-nowrap rounded-full border border-solid border-admin-border bg-admin-surface px-3 text-[11px] font-bold text-admin-text-2",
+                segmento === s &&
+                  "border-admin-gold bg-admin-gold/15 text-admin-gold",
+                FOCO_DO_CRM,
+              )}
+            >
+              {s ? rotuloCurtoDoSegmento(s) : "Todos"}{" "}
+              {s
+                ? formatarInteiro(
+                    segmentos.find((r) => r.segmento === s)?.clientes ?? 0,
+                  )
+                : formatarInteiro(total)}
+            </button>
+          ))}
+      </div>
+      {segmento && (
+        <div className="flex items-center justify-between gap-2 text-xs text-admin-gold">
+          <p>
+            {textoDoFiltroDeSegmento(
+              segmento,
+              contagemFiltradaPelaBusca ??
+                segmentos.find((s) => s.segmento === segmento)?.clientes ??
+                0,
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => aoMudarSegmento(null)}
+            className="min-h-11 px-2 font-bold"
+          >
+            Limpar
+          </button>
+        </div>
+      )}
+      {gruposAbertos && (
+        <GradeDeSegmentos
+          segmentos={segmentos}
+          carregando={carregandoSegmentos}
+          selecionado={segmento}
+          aoSelecionar={aoMudarSegmento}
+          contagemFiltrada={contagemFiltradaPelaBusca}
+          aoRecolher={() => setGruposAbertos(false)}
+        />
+      )}
+      <section
+        aria-label={
+          nomeDoSegmento ? `Clientes · ${nomeDoSegmento}` : "Todos os clientes"
+        }
+        className="pt-1"
       >
         <div className="space-y-3">
-          {/* Linha própria (não vai no `acao` do cabeçalho): o cabeçalho do
-              `CartaoDoCrm` é uma linha `flex-wrap` com o título em
-              `flex-1 min-w-0` — qualquer irmão com largura própria (fixa OU
-              em %) o espreme, porque a decisão de quebrar linha usa a base
-              flex do título (0%), não o conteúdo dele. Numa linha SÓ dela,
-              a largura da busca não compete com nada. */}
-          <div className="flex justify-end">
-            <div className="relative w-full sm:w-72">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500"
-                aria-hidden="true"
-              />
-              <label htmlFor="crm-busca-cliente" className="sr-only">
-                Buscar cliente por nome, e-mail ou WhatsApp
-              </label>
-              <DebouncedSearchInput
-                id="crm-busca-cliente"
-                value={busca}
-                onChange={setBusca}
-                placeholder="Nome, e-mail ou WhatsApp"
-                className="h-11 rounded-xl border-admin-border bg-zinc-950/60 pl-9 text-sm"
-              />
-            </div>
-          </div>
-
           {erro && !carregando ? (
             <div role="alert">
               <EstadoVazioDoCrm
@@ -670,7 +854,7 @@ export function ClientesDoCrm({
               {Array.from({ length: 4 }, (_, i) => (
                 <li
                   key={i}
-                  className="premium-shimmer h-[132px] rounded-2xl lg:h-[76px]"
+                  className="premium-shimmer h-[166px] rounded-2xl lg:h-[76px]"
                 />
               ))}
             </ul>
@@ -768,7 +952,7 @@ export function ClientesDoCrm({
             }
           />
         </div>
-      </CartaoDoCrm>
+      </section>
     </div>
   );
 }

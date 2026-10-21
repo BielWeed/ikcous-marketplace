@@ -1,9 +1,18 @@
+import {
+  AdminKpiCarousel,
+  type KpiCardConfig,
+} from "@/components/admin/AdminKpiCarousel";
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { ChipDeVariacao } from "@/components/admin/crm/ChipDeVariacao";
+import {
+  EXPLICACAO_HISTORICA,
+  ExplicacaoDoRelatorio,
+} from "@/components/admin/crm/ExplicacaoDoRelatorio";
+import { EstadoVazioDoCrm } from "@/components/admin/crm/PecasDoCrm";
 import { TileDeKpi } from "@/components/admin/crm/TileDeKpi";
 import { OperationalPerformanceChart } from "@/components/admin/dashboard/OperationalPerformanceChart";
 import { StrategicIntelligenceBlocks } from "@/components/admin/dashboard/StrategicIntelligenceBlocks";
 import { TopProductsList } from "@/components/admin/dashboard/TopProductsList";
-import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import type { useDashboardClassico } from "@/hooks/useCrm";
 import {
@@ -30,249 +39,263 @@ import {
 
 type EstadoClassico = ReturnType<typeof useDashboardClassico>;
 
-/**
- * Aba "Visão geral" do CRM: os 8 números do período escolhido (com
- * variação contra o período anterior onde a RPC traz a base) e, logo
- * abaixo, o histórico completo da loja — inteligência por categoria,
- * desempenho operacional e produtos mais lucrativos.
- *
- * Até 28/09/2026 havia um 5º bloco aqui (KpiSummaryCards — o carrossel
- * "Métricas principais": Volume total, Total de pedidos, Ticket médio,
- * Clientes únicos, todo o histórico da loja). O dono pediu para tirar:
- * duplicava os 8 números do período de cima. Quem cobre Volume
- * total/Total de pedidos/Ticket médio hoje é o "Tudo" do bloco
- * Performance logo abaixo (Faturamento Total, Pedidos, Ticket Médio —
- * OperationalPerformanceChart, seletor 30D/90D/Tudo). "Clientes únicos de
- * toda a vida da loja" ficou SEM equivalente na tela: o "Clientes
- * compradores" dos 8 KPIs de cima é só do período escolhido.
- */
 export function VisaoGeralDoCrm({
   visao,
   carregando,
   comparacao,
+  intervalo = "",
   classico,
   active,
   onNavigate,
   aoVerSegmento,
+  erro: erroDaVisao,
+  offline = false,
+  aoTentar,
 }: Readonly<{
   visao: VisaoDoCrm | null;
   carregando: boolean;
-  /** "vs. mês anterior" etc. — o nome do período anterior. */
   comparacao: string;
+  intervalo?: string;
   classico: EstadoClassico;
   active: boolean;
   onNavigate: (view: View, id?: string) => void;
   aoVerSegmento: (segmento: SegmentoCrm) => void;
+  erro?: string | null;
+  offline?: boolean;
+  aoTentar?: () => void;
 }>) {
   const k = visao?.kpis;
   const esqueleto = carregando && !visao;
   const { stats, categorias, erro, erroDeCategoria, carregar } = classico;
   const carregandoClassico = classico.carregando && !stats;
-
-  // Sem período anterior para comparar (ex.: loja nova), o chip virava
-  // "sem base de comparação" repetido em 3 dos 8 tiles — ruído sem
-  // informação nova (rodada 3 da conferência visual, 27/09). Sem chip
-  // nenhum é melhor que o mesmo aviso 3 vezes.
+  const falha = !esqueleto && !visao && (!!erroDaVisao || offline);
   const variacaoDaReceita = variacaoPercentual(k?.receita, k?.receitaAnterior);
   const variacaoDosPedidos = variacaoPercentual(k?.pedidos, k?.pedidosAnterior);
   const variacaoDoTicketMedio = variacaoPercentual(
     k?.ticketMedio,
     k?.ticketMedioAnterior,
   );
-
+  const chip = (pct: number | null) =>
+    pct == null ? null : (
+      <ChipDeVariacao curto pct={pct} comparacao={comparacao} />
+    );
+  const emRisco = (k?.receitaEmRisco ?? 0) > 0;
+  // Só os dados do histórico podem distinguir loja nova de um período sem venda.
+  const lojaSemVenda =
+    !!visao &&
+    k?.pedidos === 0 &&
+    !!stats &&
+    stats.revenueHistory?.every((d) => !d.orders && !d.revenue);
+  const cards: KpiCardConfig[] = [
+    {
+      label: "Valor médio por venda",
+      value: formatarMoeda(k?.ticketMedio),
+      compactValue: formatarMoedaCompacta(k?.ticketMedio),
+      icon: Receipt,
+      accent: "text-sky-400",
+      footer: falha
+        ? "Sem dado agora"
+        : k?.pedidos === 0
+          ? "Sem venda neste período"
+          : chip(variacaoDoTicketMedio),
+    },
+    {
+      label: "Receita em risco",
+      value: formatarMoeda(k?.receitaEmRisco),
+      compactValue: formatarMoedaCompacta(k?.receitaEmRisco),
+      icon: AlertTriangle,
+      accent: "text-amber-400",
+      footer: falha ? (
+        "Sem dado agora"
+      ) : emRisco ? (
+        <button
+          type="button"
+          onClick={() => aoVerSegmento("em_risco")}
+          className="-my-2 inline-flex min-h-11 items-center gap-1 text-left font-bold text-amber-300"
+        >
+          Ver quem pode não voltar{" "}
+          <ArrowRight aria-hidden="true" className="size-3 shrink-0" />
+        </button>
+      ) : k?.receitaEmRisco === 0 ? (
+        "Nenhum cliente nesse grupo agora"
+      ) : (
+        "Sem dado agora"
+      ),
+    },
+    {
+      label: "Clientes compradores",
+      value: formatarInteiro(k?.clientesCompradores),
+      icon: Users,
+      accent: "text-violet-400",
+      footer:
+        k?.clientesNovos == null
+          ? "Sem dado agora"
+          : `${formatarInteiro(k.clientesNovos)} ${k.clientesNovos === 1 ? "cliente novo" : "clientes novos"}`,
+    },
+    {
+      label: "Taxa de recompra",
+      value: formatarPercentual(k?.taxaRecompra),
+      icon: Repeat,
+      accent: "text-emerald-400",
+      footer:
+        k?.receitaRecorrentePct == null
+          ? "Sem dado agora"
+          : `${formatarPercentual(k.receitaRecorrentePct)} da receita vem de quem volta`,
+    },
+    {
+      label: "Total já comprado por cliente (média)",
+      value: formatarMoeda(k?.ltvMedio),
+      compactValue: formatarMoedaCompacta(k?.ltvMedio),
+      icon: Crown,
+      footer: falha
+        ? "Sem dado agora"
+        : "Quanto um cliente já gastou, em média",
+    },
+    {
+      label: "Taxa de devolução",
+      value: formatarPercentual(k?.taxaDevolucao),
+      icon: RotateCcw,
+      accent: "text-rose-400",
+      footer: falha ? "Sem dado agora" : "Do valor vendido no período",
+    },
+  ];
   return (
-    <div className="space-y-6 sm:space-y-10">
-      <section aria-labelledby="crm-kpis-titulo" aria-busy={esqueleto}>
-        <h2 id="crm-kpis-titulo" className="sr-only">
-          Números do período
-        </h2>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-          <TileDeKpi
-            rotulo="Receita"
-            icone={TrendingUp}
-            corDoIcone="text-emerald-400"
-            carregando={esqueleto}
-            valor={formatarMoeda(k?.receita)}
-            valorCompacto={formatarMoedaCompacta(k?.receita)}
-            rodape={
-              variacaoDaReceita == null ? null : (
-                <ChipDeVariacao
-                  pct={variacaoDaReceita}
-                  comparacao={comparacao}
-                />
-              )
-            }
-          />
-          <TileDeKpi
-            rotulo="Pedidos"
-            icone={ShoppingBag}
-            carregando={esqueleto}
-            valor={formatarInteiro(k?.pedidos)}
-            rodape={
-              variacaoDosPedidos == null ? null : (
-                <ChipDeVariacao
-                  pct={variacaoDosPedidos}
-                  comparacao={comparacao}
-                />
-              )
-            }
-          />
-          <TileDeKpi
-            rotulo="Valor médio por venda"
-            icone={Receipt}
-            corDoIcone="text-sky-400"
-            carregando={esqueleto}
-            valor={formatarMoeda(k?.ticketMedio)}
-            valorCompacto={formatarMoedaCompacta(k?.ticketMedio)}
-            rodape={
-              variacaoDoTicketMedio == null ? null : (
-                <ChipDeVariacao
-                  pct={variacaoDoTicketMedio}
-                  comparacao={comparacao}
-                />
-              )
-            }
-          />
-          <TileDeKpi
-            rotulo="Clientes compradores"
-            icone={Users}
-            corDoIcone="text-violet-400"
-            carregando={esqueleto}
-            valor={formatarInteiro(k?.clientesCompradores)}
-            rodape={
-              k?.clientesNovos == null ? null : (
-                <span>
-                  <strong className="font-bold tabular-nums text-sky-300">
-                    {formatarInteiro(k.clientesNovos)}
-                  </strong>{" "}
-                  {k.clientesNovos === 1 ? "cliente novo" : "clientes novos"}
-                </span>
-              )
-            }
-          />
-          <TileDeKpi
-            rotulo="Taxa de recompra"
-            icone={Repeat}
-            corDoIcone="text-emerald-400"
-            carregando={esqueleto}
-            valor={formatarPercentual(k?.taxaRecompra)}
-            rodape={
-              k?.receitaRecorrentePct == null ? null : (
-                <span>
-                  <strong className="font-bold tabular-nums text-zinc-200">
-                    {formatarPercentual(k.receitaRecorrentePct)}
-                  </strong>{" "}
-                  da receita vem de quem volta
-                </span>
-              )
-            }
-          />
-          <TileDeKpi
-            rotulo="Total já comprado por cliente (média)"
-            icone={Crown}
-            carregando={esqueleto}
-            valor={formatarMoeda(k?.ltvMedio)}
-            valorCompacto={formatarMoedaCompacta(k?.ltvMedio)}
-            rodape="Quanto um cliente já gastou, em média"
-          />
-          <TileDeKpi
-            rotulo="Receita em risco"
-            icone={AlertTriangle}
-            corDoIcone="text-amber-400"
-            carregando={esqueleto}
-            valor={formatarMoeda(k?.receitaEmRisco)}
-            valorCompacto={formatarMoedaCompacta(k?.receitaEmRisco)}
-            rodape={
-              <button
-                type="button"
-                onClick={() => aoVerSegmento("em_risco")}
-                className="-my-2 inline-flex min-h-8 items-center gap-1 font-bold text-amber-300 underline-offset-2 hover:underline"
-              >
-                Ver quem pode não voltar
-                <ArrowRight className="size-3" aria-hidden="true" />
-              </button>
-            }
-          />
-          <TileDeKpi
-            rotulo="Taxa de devolução"
-            icone={RotateCcw}
-            corDoIcone="text-rose-400"
-            carregando={esqueleto}
-            valor={formatarPercentual(k?.taxaDevolucao)}
-            rodape="Do valor vendido no período"
-          />
-        </div>
-      </section>
-
+    <div className="space-y-4">
+      <MetricasDoPainel
+        titulo="Números do período"
+        legendasDoResumo={["Receita", "Pedidos"]}
+        cards={[
+          {
+            label: "Receita",
+            value: formatarMoeda(k?.receita),
+            compactValue: formatarMoedaCompacta(k?.receita),
+            icon: TrendingUp,
+            content: chip(variacaoDaReceita),
+          },
+          {
+            label: "Pedidos",
+            value: formatarInteiro(k?.pedidos),
+            icon: ShoppingBag,
+            content: chip(variacaoDosPedidos),
+          },
+        ]}
+        loading={esqueleto}
+        nota={
+          falha
+            ? "Os números não carregaram"
+            : offline
+              ? "Sem internet · números da última busca"
+              : lojaSemVenda
+                ? "Sua loja ainda não tem venda paga"
+                : k?.pedidos === 0
+                  ? "Nenhuma venda paga neste período"
+                  : "Só entra venda paga · app e balcão juntos"
+        }
+        relatorio={{
+          rodape: `${intervalo}${intervalo ? " · " : ""}${comparacao}`,
+          erro: falha,
+          aoTentar,
+          tom: falha ? "erro" : offline ? "atencao" : undefined,
+          ajuda: (
+            <ExplicacaoDoRelatorio titulo="Números do período">
+              Conta só venda que já foi paga, do app e do balcão. A seta compara
+              com os mesmos dias logo antes.
+            </ExplicacaoDoRelatorio>
+          ),
+        }}
+      />
+      {lojaSemVenda ? (
+        <EstadoVazioDoCrm
+          className="h-[188px] justify-center"
+          titulo="Os relatórios começam na primeira venda"
+          texto="Venda pelo app ou registre uma venda do balcão. Os números aparecem aqui sozinhos."
+          acao={
+            <button
+              type="button"
+              onClick={() => onNavigate("admin-pdv")}
+              className="min-h-11 rounded-xl bg-admin-gold-fill px-4 text-xs font-bold text-admin-gold-ink"
+            >
+              Vender no balcão
+            </button>
+          }
+        />
+      ) : (
+        <AdminKpiCarousel
+          title="MAIS NÚMEROS"
+          cards={cards}
+          active={active}
+          relatorio
+          loading={esqueleto}
+          renderCard={(card) => (
+            <TileDeKpi
+              relatorio
+              rotulo={card.label}
+              valor={String(card.value)}
+              valorCompacto={card.compactValue}
+              icone={card.icon}
+              corDoIcone={card.accent}
+              rodape={card.footer}
+              carregando={esqueleto}
+              atencao={card.label === "Receita em risco" && emRisco}
+              ajuda={
+                [
+                  "Receita em risco",
+                  "Taxa de recompra",
+                  "Total já comprado por cliente (média)",
+                ].includes(card.label) ? (
+                  <ExplicacaoDoRelatorio titulo={card.label}>
+                    {EXPLICACAO_HISTORICA}
+                  </ExplicacaoDoRelatorio>
+                ) : undefined
+              }
+            />
+          )}
+        />
+      )}
       <section
-        aria-labelledby="crm-historico-titulo"
-        className="space-y-6 sm:space-y-10"
+        aria-label="Histórico completo da loja"
+        className="space-y-4 pt-2"
       >
-        <div className="space-y-0.5 border-t border-admin-border pt-6">
-          <h2
-            id="crm-historico-titulo"
-            className="text-sm font-semibold leading-snug text-white"
-          >
-            Histórico completo da loja
-          </h2>
-          <p className="text-xs leading-relaxed text-zinc-400">
-            Desempenho diário, categorias e os produtos mais lucrativos.
-          </p>
-        </div>
-
         {erro && !classico.carregando ? (
-          <div className="flex items-center gap-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-400">
+          <div
+            role="alert"
+            className="flex items-center gap-3 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-rose-300"
+          >
             <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
             <p className="text-xs">Falha ao carregar dados: {erro}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              // `border-solid` (achado da conferência final): o `<Button>`
-              // compartilhado usa `border` puro na variante "outline" — sem
-              // o reset global de `<button>` (`border: none`) zerar
-              // `border-style`, essa borda também some. Fix local (só aqui,
-              // sem tocar em `ui/button.tsx`, que é usado fora do CRM).
-              className="ml-auto h-8 border-solid border-red-500/20 text-[11px] text-red-400 hover:bg-red-500/10"
+            <button
+              type="button"
               onClick={() => carregar(true)}
+              className="ml-auto min-h-11 px-3 text-xs font-bold"
             >
               Tentar
-            </Button>
+            </button>
           </div>
         ) : null}
-
-        <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-          <LocalErrorBoundary>
-            <StrategicIntelligenceBlocks
-              categoryData={categorias}
-              loading={carregandoClassico}
-              active={active}
-              error={erroDeCategoria}
-              onRetry={() => carregar(true)}
-            />
-          </LocalErrorBoundary>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 delay-100 duration-300 animate-in fade-in slide-in-from-bottom-2 sm:gap-10 lg:grid-cols-3">
-          <LocalErrorBoundary>
-            <OperationalPerformanceChart
-              stats={stats}
-              loading={carregandoClassico}
-              active={active}
-              onNavigate={onNavigate}
-              className="lg:col-span-3"
-            />
-          </LocalErrorBoundary>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 delay-150 duration-300 animate-in fade-in slide-in-from-bottom-2 sm:gap-10">
-          <LocalErrorBoundary>
-            <TopProductsList
-              stats={stats}
-              loading={carregandoClassico}
-              onNavigate={onNavigate}
-            />
-          </LocalErrorBoundary>
-        </div>
+        <LocalErrorBoundary>
+          <OperationalPerformanceChart
+            stats={stats}
+            loading={carregandoClassico}
+            active={active}
+            onNavigate={onNavigate}
+          />
+        </LocalErrorBoundary>
+        <LocalErrorBoundary>
+          <StrategicIntelligenceBlocks
+            categoryData={categorias}
+            loading={carregandoClassico}
+            active={active}
+            error={erroDeCategoria}
+            onRetry={() => carregar(true)}
+          />
+        </LocalErrorBoundary>
+        <LocalErrorBoundary>
+          <TopProductsList
+            stats={stats}
+            loading={carregandoClassico}
+            onNavigate={onNavigate}
+          />
+        </LocalErrorBoundary>
       </section>
     </div>
   );

@@ -35,7 +35,7 @@ describe("AjudaDoCrm — ranking de lucro e produto sem custo", () => {
     act(() => raiz.render(<AjudaDoCrm isOpen onClose={() => {}} />));
     const texto = (document.body.textContent ?? "").replace(/\s+/g, " ");
 
-    expect(texto).toContain("Produtos Mais Lucrativos");
+    expect(texto).toContain("Produtos que mais dão lucro");
     expect(texto).toContain(
       "Venda sem custo (nem guardado no dia, nem cadastrado hoje) fica fora da conta do lucro",
     );

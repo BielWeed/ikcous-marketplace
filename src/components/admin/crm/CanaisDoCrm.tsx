@@ -1,4 +1,5 @@
-import { ChipDeVariacao } from "@/components/admin/crm/ChipDeVariacao";
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
+import { ExplicacaoDoRelatorio } from "@/components/admin/crm/ExplicacaoDoRelatorio";
 import {
   CartaoDoCrm,
   EstadoVazioDoCrm,
@@ -15,7 +16,6 @@ import {
   rotuloDaFormaDePagamento,
   rotuloDoCanal,
   ticketPorForma,
-  variacaoPercentual,
 } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -34,6 +34,7 @@ import {
   Store,
   Wallet,
 } from "lucide-react";
+import { useState } from "react";
 
 /** Identidade fixa dos canais — a MESMA do "Hoje" do Início. */
 function estiloDoCanal(canal: "online" | "presencial"): {
@@ -88,272 +89,143 @@ function estiloDaForma(forma: string): { cor: string; icone: LucideIcon } {
   }
 }
 
-/**
- * Casca dos cartões de métrica desta aba (redesenho de 10/10/2026): a mesma
- * do `KpiCard` de `AdminKpiCarousel`. Local — `SUPERFICIE_DO_CRM` é
- * compartilhada com o Dashboard e não muda. Aplicada por template, nunca por
- * `cn`: o tailwind-merge 3 lê `bg-gradient-to-b` como cor de fundo e
- * descartaria o `bg-admin-surface`.
- */
-const CASCA_DE_METRICA =
-  "rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent";
-
-/**
- * Um número do resumo do período: rótulo pequeno, valor grande e — só
- * quando há base — a variação. Compacto de propósito: no celular, o antigo
- * `TileDeKpi` empilhado 3× virava três cartões altos e vazios só para 3
- * números; aqui os 3 dividem uma única superfície, lado a lado, também no
- * desktop (não usa `TileDeKpi`, que é peça de outro agente).
- */
-function ItemDoResumo({
-  rotulo,
-  valor,
-  valorCompacto,
-  variacao,
-}: Readonly<{
-  rotulo: string;
-  valor: string;
-  valorCompacto?: string;
-  variacao: number | null;
-}>) {
-  return (
-    <div className="min-w-0 px-2 first:pl-0 last:pr-0 sm:px-4">
-      <p className="break-words text-xs font-semibold leading-tight text-zinc-300">
-        {rotulo}
-      </p>
-      <p className="mt-1.5 truncate text-lg font-black tabular-nums leading-tight text-white sm:text-xl sm:leading-tight">
-        {valorCompacto && valorCompacto !== valor ? (
-          <>
-            <span className="sm:hidden">{valorCompacto}</span>
-            <span className="hidden sm:inline">{valor}</span>
-          </>
-        ) : (
-          valor
-        )}
-      </p>
-      {variacao != null ? (
-        <div className="mt-1">
-          <ChipDeVariacao pct={variacao} comparacao="vs. anterior" />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Um dos dois canais dentro do cartão "App × loja física": receita, fatia
- * da receita, pedidos, fatia dos pedidos e como o ticket dele se compara ao
- * ticket geral do período. Canal sem venda fica em tom secundário.
- */
 function BlocoDeCanal({
   canal,
-  totalReceita,
   totalPedidos,
   ticketGeral,
 }: Readonly<{
   canal: CanalDoCrm;
-  totalReceita: number;
   totalPedidos: number;
   ticketGeral: number | null;
 }>) {
   const estilo = estiloDoCanal(canal.canal as "online" | "presencial");
   const zerado = canal.receita <= 0;
-  const fatiaReceita = percentualDoTotal(canal.receita, totalReceita);
   const fatiaPedidos = percentualDoTotal(canal.pedidos, totalPedidos, 0);
   const diffTicket =
     !zerado && ticketGeral != null && ticketGeral > 0
       ? Math.round(((canal.ticketMedio - ticketGeral) / ticketGeral) * 100)
       : null;
-
   return (
-    <div className={`${CASCA_DE_METRICA} space-y-3 p-4`}>
-      <div className="flex items-center justify-between gap-2">
-        <span
-          className={cn(
-            "flex items-center gap-2 text-xs font-bold",
-            zerado ? "text-zinc-400" : "text-zinc-200",
-          )}
-        >
-          <estilo.icone
-            className={cn("size-4", estilo.cor, zerado && "opacity-60")}
-            aria-hidden="true"
-          />
-          {rotuloDoCanal(canal.canal)}
-        </span>
-        {!zerado && fatiaReceita != null ? (
-          <span className="text-xs font-semibold tabular-nums text-zinc-400">
-            {formatarPercentual(fatiaReceita, 0)} da receita
-          </span>
-        ) : null}
-      </div>
-
+    <li
+      aria-label={`Detalhes ${rotuloDoCanal(canal.canal)}`}
+      className="min-h-[132px] min-w-0 space-y-2 rounded-2xl border border-admin-border bg-admin-surface p-3"
+    >
+      <h3 className="flex items-center gap-1 text-xs font-bold text-admin-text-2">
+        <estilo.icone
+          className={cn("size-4 shrink-0", estilo.cor)}
+          aria-hidden="true"
+        />
+        {rotuloDoCanal(canal.canal)}
+      </h3>
       {zerado ? (
-        // Contraste AA: a opacidade de "canal secundário" fica só no ícone
-        // (gráfico) acima — texto informativo nunca perde opacidade, e usa
-        // text-zinc-400 (não mais text-zinc-500, que dentro do opacity-60
-        // do cartão inteiro media ~2,2:1, abaixo do mínimo AA).
-        <p className="text-xs leading-relaxed text-zinc-400">
+        <p className="text-xs text-zinc-400">
           Nenhuma venda{" "}
           {canal.canal === "online" ? "pelo app" : "pela loja física"} neste
           período.
         </p>
       ) : (
         <>
-          <p className="truncate text-lg font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
-            {formatarMoeda(canal.receita)}
-          </p>
-          <dl className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <dt className="text-xs font-semibold leading-tight text-zinc-300">
-                Pedidos
-              </dt>
-              <dd className="font-bold tabular-nums text-white">
-                {formatarInteiro(canal.pedidos)}
-                {fatiaPedidos != null ? (
-                  <span className="ml-1 font-semibold text-zinc-400">
+          <dl className="space-y-1 text-[11px]">
+            <div className="flex flex-wrap justify-between gap-x-1">
+              <dt className="text-admin-text-soft">Pedidos</dt>
+              <dd className="font-bold tabular-nums text-admin-text">
+                {formatarInteiro(canal.pedidos)}{" "}
+                {fatiaPedidos != null && (
+                  <span className="text-zinc-400">
                     ({formatarPercentual(fatiaPedidos, 0)})
                   </span>
-                ) : null}
+                )}
               </dd>
             </div>
-            <div>
-              <dt className="text-xs font-semibold leading-tight text-zinc-300">
-                Valor médio por venda
-              </dt>
-              <dd className="font-bold tabular-nums text-white">
+            <div className="flex flex-wrap justify-between gap-x-1">
+              <dt className="text-admin-text-soft">Valor médio</dt>
+              <dd className="font-bold tabular-nums text-admin-text">
                 {formatarMoeda(canal.ticketMedio)}
               </dd>
             </div>
           </dl>
-          {diffTicket != null && diffTicket !== 0 ? (
-            <p className="text-xs font-medium text-zinc-400">
-              Valor médio por venda{" "}
+          {diffTicket != null && diffTicket !== 0 && (
+            <p className="border-t border-admin-border pt-2 text-[11px] text-admin-text-soft">
               <strong
-                className={cn(
-                  "font-bold",
-                  diffTicket > 0 ? "text-emerald-300" : "text-amber-300",
-                )}
+                className={
+                  diffTicket > 0 ? "text-emerald-300" : "text-amber-300"
+                }
               >
                 {diffTicket > 0
                   ? `${diffTicket}% acima`
                   : `${Math.abs(diffTicket)}% abaixo`}
-              </strong>{" "}
-              do valor médio geral do período.
+              </strong>
+              <br />
+              do valor médio geral
             </p>
-          ) : null}
+          )}
         </>
       )}
-    </div>
+    </li>
   );
 }
 
-/** Cartão "App × loja física": barra empilhada + os dois canais lado a lado. */
-function CartaoDeCanais({
-  canais,
-}: Readonly<{ canais: readonly CanalDoCrm[] }>) {
-  const { online, presencial } = garantirAppELoja(canais);
-  const totalReceita = online.receita + presencial.receita;
-  const totalPedidos = online.pedidos + presencial.pedidos;
-  const ticketGeral = totalPedidos > 0 ? totalReceita / totalPedidos : null;
-
-  return (
-    <CartaoDoCrm
-      id="crm-canais"
-      titulo="App × loja física"
-      descricao={fraseLeituraDosCanais(online, presencial)}
-    >
-      <div className="space-y-4">
-        <div
-          className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-zinc-800/80"
-          aria-hidden="true"
-        >
-          {[online, presencial]
-            .filter((c) => c.receita > 0)
-            .map((c) => (
-              <div
-                key={c.canal}
-                className={cn(
-                  "h-full",
-                  estiloDoCanal(c.canal as "online" | "presencial").barra,
-                )}
-                style={{
-                  width: `${percentualDoTotal(c.receita, totalReceita) ?? 0}%`,
-                }}
-              />
-            ))}
-        </div>
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <li>
-            <BlocoDeCanal
-              canal={online}
-              totalReceita={totalReceita}
-              totalPedidos={totalPedidos}
-              ticketGeral={ticketGeral}
-            />
-          </li>
-          <li>
-            <BlocoDeCanal
-              canal={presencial}
-              totalReceita={totalReceita}
-              totalPedidos={totalPedidos}
-              ticketGeral={ticketGeral}
-            />
-          </li>
-        </ul>
-      </div>
-    </CartaoDoCrm>
-  );
-}
-
-/** Cartão "Formas de pagamento": ícone, receita, fatia, pedidos e ticket. */
 function CartaoDeFormas({
   formas,
-}: Readonly<{ formas: readonly FormaDePagamentoDoCrm[] }>) {
+  carregando,
+}: Readonly<{
+  formas: readonly FormaDePagamentoDoCrm[];
+  carregando: boolean;
+}>) {
+  const [expandido, setExpandido] = useState(false);
   const total = formas.reduce((soma, f) => soma + f.receita, 0);
-
   return (
     <CartaoDoCrm
       id="crm-formas"
       titulo="Formas de pagamento"
       descricao={fraseLeituraDasFormas(formas)}
+      className="min-h-[282px]"
     >
-      {formas.length === 0 ? (
+      {carregando ? (
+        <div
+          aria-hidden="true"
+          className="premium-shimmer h-[156px] rounded-xl"
+        />
+      ) : formas.length === 0 ? (
         <EstadoVazioDoCrm
+          className="min-h-[156px]"
           titulo="Sem pagamentos registrados"
           texto="Nenhuma venda paga neste período usou uma forma de pagamento."
         />
       ) : (
-        <ul className="space-y-3">
-          {formas.map((f) => {
+        <ul className="space-y-2">
+          {(expandido ? formas : formas.slice(0, 3)).map((f) => {
             const estilo = estiloDaForma(f.forma);
             const fatia = percentualDoTotal(f.receita, total);
             const ticket = ticketPorForma(f.receita, f.pedidos);
             return (
-              <li key={f.forma} className="space-y-1.5">
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
-                  <span className="flex items-center gap-2 text-xs font-bold text-zinc-200">
+              <li key={f.forma} className="min-h-[52px] space-y-1">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1 text-[13px] font-bold text-admin-text-2">
                     <estilo.icone
                       className="size-4 shrink-0 text-zinc-400"
                       aria-hidden="true"
                     />
                     {rotuloDaFormaDePagamento(f.forma)}
                   </span>
-                  <span className="text-right text-[11px] tabular-nums text-zinc-400">
-                    <strong className="font-bold text-white">
-                      {formatarPercentual(fatia, 0)}
-                    </strong>{" "}
-                    · {formatarMoeda(f.receita)} · {formatarInteiro(f.pedidos)}{" "}
-                    {f.pedidos === 1 ? "pedido" : "pedidos"}
-                    {ticket != null ? (
-                      <span className="text-zinc-400">
-                        {" "}
-                        · {formatarMoeda(ticket)} por venda
-                      </span>
-                    ) : null}
+                  <span className="text-right text-[13px] font-extrabold tabular-nums text-admin-text">
+                    {formatarMoeda(f.receita)}
                   </span>
                 </div>
+                <p className="text-[11px] text-admin-text-soft">
+                  <span className="sr-only">
+                    {formatarPercentual(fatia, 0)} ·{" "}
+                  </span>
+                  {formatarInteiro(f.pedidos)}{" "}
+                  {f.pedidos === 1 ? "pedido" : "pedidos"}{" "}
+                  {ticket != null && (
+                    <span className="text-zinc-400">
+                      · {formatarMoeda(ticket)} por venda
+                    </span>
+                  )}
+                </p>
                 <div
-                  className="h-2 w-full overflow-hidden rounded-full bg-zinc-800/80"
+                  className="h-[5px] overflow-hidden rounded-full bg-admin-raised"
                   aria-hidden="true"
                 >
                   <div
@@ -368,101 +240,161 @@ function CartaoDeFormas({
           })}
         </ul>
       )}
+      {formas.length > 3 && (
+        <button
+          type="button"
+          aria-expanded={expandido}
+          onClick={() => setExpandido(!expandido)}
+          className="mt-2 min-h-11 w-full rounded-xl bg-admin-raised text-xs font-bold text-admin-text"
+        >
+          {expandido ? "Recolher" : "Ver todas as formas"}
+        </button>
+      )}
     </CartaoDoCrm>
   );
 }
 
-/**
- * Aba "Canais": um resumo do período, o corte app × loja física (os dois
- * canais sempre presentes, com fatia de receita/pedidos e ticket comparado
- * ao geral) e o mix de formas de pagamento.
- */
 export function CanaisDoCrm({
   visao,
   carregando,
   onNavigate,
+  erro,
+  offline = false,
+  aoTentar,
 }: Readonly<{
   visao: VisaoDoCrm | null;
   carregando: boolean;
   onNavigate: (view: View) => void;
+  erro?: string | null;
+  offline?: boolean;
+  aoTentar?: () => void;
 }>) {
-  if (carregando && !visao) {
-    return (
-      <div className="space-y-4 sm:space-y-6" aria-busy="true">
-        <div className="premium-shimmer h-20 rounded-2xl" />
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="premium-shimmer h-72 rounded-2xl" />
-          <div className="premium-shimmer h-72 rounded-2xl" />
-        </div>
-      </div>
-    );
-  }
-  if (!visao) return null;
-
-  const k = visao.kpis;
-  const totalCanais = visao.canais.reduce((soma, c) => soma + c.receita, 0);
-  const totalFormas = visao.formas.reduce((soma, f) => soma + f.receita, 0);
-  // Sem base de comparação (loja nova, período anterior sem dado), o chip
-  // "sem base de comparação" repetido nos 3 cards virava ruído — some
-  // quando não há variação, em vez de repetir a mesma frase três vezes.
-  const variacaoReceita = variacaoPercentual(k.receita, k.receitaAnterior);
-  const variacaoPedidos = variacaoPercentual(k.pedidos, k.pedidosAnterior);
-  const variacaoTicket = variacaoPercentual(
-    k.ticketMedio,
-    k.ticketMedioAnterior,
-  );
-
-  if (totalCanais <= 0 && totalFormas <= 0) {
-    return (
-      <EstadoVazioDoCrm
-        titulo="Nenhuma venda paga neste período"
-        texto="Troque o período no topo ou registre uma venda do balcão."
-        acao={
-          <button
-            type="button"
-            onClick={() => onNavigate("admin-pdv")}
-            className="min-h-11 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-widest text-black transition-colors hover:bg-admin-gold/90"
-          >
-            Vender no balcão
-          </button>
-        }
-      />
-    );
-  }
-
+  const { online, presencial } = garantirAppELoja(visao?.canais ?? []);
+  const totalReceita = online.receita + presencial.receita;
+  const totalPedidos = online.pedidos + presencial.pedidos;
+  const ticketGeral = totalPedidos > 0 ? totalReceita / totalPedidos : null;
+  const esqueleto = carregando && !visao;
+  const falha = !esqueleto && !visao && (!!erro || offline);
+  const totalFormas =
+    visao?.formas.reduce((soma, f) => soma + f.receita, 0) ?? 0;
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <section aria-labelledby="crm-canais-resumo-titulo">
-        <h2 id="crm-canais-resumo-titulo" className="sr-only">
-          Resumo do período
+    <div className="space-y-4">
+      <MetricasDoPainel
+        titulo="App × loja física"
+        legendasDoResumo={["App (online)", "Loja física"]}
+        loading={esqueleto}
+        cards={[online, presencial].map((c) => ({
+          label: rotuloDoCanal(c.canal),
+          value: visao ? formatarMoeda(c.receita) : "—",
+          compactValue: visao ? formatarMoedaCompacta(c.receita) : "—",
+          icon: estiloDoCanal(c.canal as "online" | "presencial").icone,
+          content:
+            visao && totalReceita > 0 ? (
+              <span className="text-xs font-bold text-admin-text-soft">
+                {formatarPercentual(
+                  percentualDoTotal(c.receita, totalReceita),
+                  0,
+                )}
+              </span>
+            ) : null,
+        }))}
+        nota={
+          falha
+            ? "Os números não carregaram"
+            : offline
+              ? "Sem internet · números da última busca"
+              : fraseLeituraDosCanais(online, presencial)
+        }
+        relatorio={{
+          rodape: (
+            <span className="flex flex-wrap gap-x-3">
+              <span>
+                Total{" "}
+                <strong className="text-admin-text">
+                  {formatarMoeda(visao?.kpis.receita)}
+                </strong>
+              </span>
+              <span>
+                Pedidos{" "}
+                <strong className="text-admin-text">
+                  {formatarInteiro(visao?.kpis.pedidos)}
+                </strong>
+              </span>
+            </span>
+          ),
+          erro: falha,
+          aoTentar,
+          tom: falha ? "erro" : offline ? "atencao" : undefined,
+          ajuda: (
+            <ExplicacaoDoRelatorio titulo="App × loja física">
+              De onde veio o dinheiro das vendas pagas neste período. Total e
+              pedidos são os mesmos da Visão.
+            </ExplicacaoDoRelatorio>
+          ),
+          barra: (
+            <div
+              className="absolute bottom-1 left-3 right-3 flex h-[5px] gap-px overflow-hidden rounded-full bg-admin-raised"
+              aria-hidden="true"
+            >
+              {[online, presencial]
+                .filter((c) => c.receita > 0)
+                .map((c) => (
+                  <div
+                    key={c.canal}
+                    className={
+                      estiloDoCanal(c.canal as "online" | "presencial").barra
+                    }
+                    style={{
+                      width: `${percentualDoTotal(c.receita, totalReceita) ?? 0}%`,
+                    }}
+                  />
+                ))}
+            </div>
+          ),
+        }}
+      />
+      <section aria-label="Cada canal">
+        <h2 className="mb-2 flex h-7 items-center gap-2 text-[11px] font-extrabold tracking-[0.12em] text-admin-text-soft">
+          <span
+            aria-hidden="true"
+            className="size-1.5 rounded-full bg-admin-gold"
+          />
+          CADA CANAL
         </h2>
-        <div
-          className={`${CASCA_DE_METRICA} grid grid-cols-3 divide-x divide-white/[0.06] p-3 sm:p-4`}
-        >
-          <ItemDoResumo
-            rotulo="Total vendido"
-            valor={formatarMoeda(k.receita)}
-            valorCompacto={formatarMoedaCompacta(k.receita)}
-            variacao={variacaoReceita}
+        {esqueleto ? (
+          <div
+            aria-hidden="true"
+            className="premium-shimmer h-[132px] rounded-2xl"
           />
-          <ItemDoResumo
-            rotulo="Pedidos"
-            valor={formatarInteiro(k.pedidos)}
-            variacao={variacaoPedidos}
-          />
-          <ItemDoResumo
-            rotulo="Valor médio por venda"
-            valor={formatarMoeda(k.ticketMedio)}
-            valorCompacto={formatarMoedaCompacta(k.ticketMedio)}
-            variacao={variacaoTicket}
-          />
-        </div>
+        ) : (
+          <ul className="grid grid-cols-2 gap-2">
+            {[online, presencial].map((c) => (
+              <BlocoDeCanal
+                key={c.canal}
+                canal={c}
+                totalPedidos={totalPedidos}
+                ticketGeral={ticketGeral}
+              />
+            ))}
+          </ul>
+        )}
       </section>
-
-      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
-        <CartaoDeCanais canais={visao.canais} />
-        <CartaoDeFormas formas={visao.formas} />
-      </div>
+      {visao && totalReceita <= 0 && totalFormas <= 0 && (
+        <EstadoVazioDoCrm
+          titulo="Nenhuma venda paga neste período"
+          texto="Troque o período no topo ou registre uma venda do balcão."
+          acao={
+            <button
+              type="button"
+              onClick={() => onNavigate("admin-pdv")}
+              className="min-h-11 rounded-xl bg-admin-gold-fill px-4 text-xs font-bold text-admin-gold-ink"
+            >
+              Vender no balcão
+            </button>
+          }
+        />
+      )}
+      <CartaoDeFormas formas={visao?.formas ?? []} carregando={esqueleto} />
     </div>
   );
 }

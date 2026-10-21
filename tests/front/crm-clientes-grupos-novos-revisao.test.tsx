@@ -134,6 +134,11 @@ describe("RPC antiga (banco na 78): a faixa 'Ainda não compraram' não inventa 
     });
     await renderComSegmentos(visao?.segmentos ?? []);
 
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>('button[aria-label="Grupos"]')!
+        .click(),
+    );
     const corpo = texto(hospedeiro);
     expect(corpo).not.toContain("Ainda não compraram");
     expect(corpo).not.toContain("Pediu e não pagou");
@@ -158,10 +163,15 @@ describe("RPC antiga (banco na 78): a faixa 'Ainda não compraram' não inventa 
     });
     await renderComSegmentos(visao?.segmentos ?? []);
 
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>('button[aria-label="Grupos"]')!
+        .click(),
+    );
     const corpo = texto(hospedeiro);
     expect(corpo).toContain("Ainda não compraram");
     expect(corpo).toContain("Pediu e não pagou");
-    expect(corpo).toContain("Cadastrado, nunca comprou");
+    expect(corpo).toContain("Nunca comprou");
   });
 
   it("carregando (esqueleto): a faixa nova aparece mesmo sem dado nenhum ainda", async () => {
@@ -181,6 +191,11 @@ describe("RPC antiga (banco na 78): a faixa 'Ainda não compraram' não inventa 
         />,
       );
     });
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>('button[aria-label="Grupos"]')!
+        .click(),
+    );
     expect(texto(hospedeiro)).toContain("Ainda não compraram");
   });
 });
