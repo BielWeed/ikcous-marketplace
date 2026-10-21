@@ -6,6 +6,7 @@ import {
   EstadoVazioDoCrm,
   FOCO_DO_CRM,
 } from "@/components/admin/crm/PecasDoCrm";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { useStore } from "@/contexts/StoreContext";
 import { useCrmClientes } from "@/hooks/useCrm";
 import {
@@ -35,7 +36,6 @@ import {
   Check,
   ChevronRight,
   Filter,
-  MessageCircle,
   RefreshCw,
   Search,
   UserRound,
@@ -475,7 +475,7 @@ function LinhaDoCliente({
               FOCO_DO_CRM,
             )}
           >
-            <MessageCircle className="size-4" aria-hidden="true" />
+            <IconeWhatsapp className="size-4" aria-hidden="true" />
             <span className="lg:sr-only xl:not-sr-only">WhatsApp</span>
             <span className="sr-only"> — chamar {nome} (abre em nova aba)</span>
           </a>

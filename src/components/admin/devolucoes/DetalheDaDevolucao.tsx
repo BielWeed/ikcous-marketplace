@@ -1,9 +1,9 @@
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
   ChevronLeft,
   Copy,
   ExternalLink,
   Loader2,
-  MessageCircle,
   RefreshCw,
   X,
 } from "lucide-react";
@@ -219,7 +219,7 @@ export function DetalheDaDevolucao({
                     rel="noopener noreferrer"
                     className={cn(BOTAO_SECUNDARIO, "text-emerald-300")}
                   >
-                    <MessageCircle className="size-4" />
+                    <IconeWhatsapp className="size-4" />
                     WhatsApp
                   </a>
                 )}

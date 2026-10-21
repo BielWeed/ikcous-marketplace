@@ -5,8 +5,8 @@ import {
   classeDoTexto,
 } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, type LucideIcon, RefreshCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import type { ComponentType, ReactNode } from "react";
 
 // Regra das cores do Início (decisão do dono, 21/10/2026): cor só quando
 // significa algo (verde positivo, vermelho negativo, âmbar atenção, azul
@@ -48,7 +48,10 @@ export type TomDoInicio = keyof typeof TONS;
 export function SeloDoInicio({
   icone: Icone,
   tom,
-}: Readonly<{ icone: LucideIcon; tom: TomDoInicio }>) {
+}: Readonly<{
+  icone: ComponentType<{ className?: string }>;
+  tom: TomDoInicio;
+}>) {
   return (
     <span
       aria-hidden="true"
@@ -63,7 +66,10 @@ export function SeloDoInicio({
 export function TileDoInicio({
   icone: Icone,
   tom = "neutro",
-}: Readonly<{ icone: LucideIcon; tom?: TomDeEstado }>) {
+}: Readonly<{
+  icone: ComponentType<{ className?: string }>;
+  tom?: TomDeEstado;
+}>) {
   return (
     <span
       aria-hidden="true"
