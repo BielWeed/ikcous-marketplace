@@ -8005,39 +8005,7 @@ for (const principal of ["37.27", "40.86"]) {
   }
 }
 
-Deno.test("REV1 webhook: refund financiado sem desfecho não chama confirmar_pagamento, nem para pedido já pago", async () => {
-  for (const [tipo, parcelas, estado] of [
-    ["credit_card", 2, "pago"],
-    ["credit_card", 2, "pago_apos_expirar"],
-    ["credit_card", 2, "aguardando"],
-    ["credit_card", 1, "pago"],
-    ["bank_transfer", 2, "pago"],
-  ]) {
-    ambienteDoWebhook();
-    const registro = { chamadasRpc: [], chamadasAviso: [] };
-    const supabase = clienteFalso({ rpcResultado: "estornado", registro,
-      pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP, payment_status: estado } });
-    const o = orderParceladaComJuros(parcelas, "40.86");
-    o.total_amount = "40.86";
-    o.status = "refunded";
-    o.status_detail = "refunded";
-    o.transactions.payments[0].amount = "40.86";
-    o.transactions.payments[0].status = "refunded";
-    o.transactions.payments[0].status_detail = "refunded";
-    o.transactions.payments[0].payment_method.type = tipo;
-    const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
-      supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
-    });
-    assertEquals(r.status, 200);
-    assertEquals(registro.chamadasRpc, [], `${tipo}/${parcelas}/${estado}`);
-  }
-});
-
-Deno.test("REV1 webhook: pedido já estornado não repete refund financiado pelo confirmar_pagamento", async () => {
-  ambienteDoWebhook();
-  const registro = { chamadasRpc: [], chamadasAviso: [] };
-  const supabase = clienteFalso({ rpcResultado: "estornado", registro,
-    pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP, payment_status: "estornado" } });
+function orderFinanciadaDevolvida(statusRefund: string) {
   const o = orderParceladaComJuros(2, "40.86");
   o.total_amount = "40.86";
   o.status = "refunded";
@@ -8045,12 +8013,81 @@ Deno.test("REV1 webhook: pedido já estornado não repete refund financiado pelo
   o.transactions.payments[0].amount = "40.86";
   o.transactions.payments[0].status = "refunded";
   o.transactions.payments[0].status_detail = "refunded";
+  o.transactions.refunds = [{ id: "REF-FINANCIADO", status: statusRefund, amount: "40.86" }];
+  return o;
+}
+
+Deno.test("REV1 webhook: estorno integral financiado concluído confirma uma vez e a reentrega não repete", async () => {
+  ambienteDoWebhook();
+  const pedido = {
+    id: UUID_PEDIDO, total: 37.27, valor_estornado: 0, gateway_payment_id: ID_ORDER_CARTAO_MP,
+    payment_status: "pago", paid_at: "2026-10-21T00:00:00Z", status: "delivered",
+  };
+  const registro = { chamadasRpc: [], chamadasAviso: [], chamadasExternoDoMp: [] };
+  const supabase = clienteFalso({ rpcResultado: "estornado", registro, pedido });
+  // Costura da RPC: o banco decide a transição. Não simula saldo nem estoque.
+  const rpc = supabase.rpc.bind(supabase);
+  supabase.rpc = async (nome, args) => {
+    const retorno = await rpc(nome, args);
+    if (nome === "confirmar_pagamento" && !retorno.error) pedido.payment_status = "estornado";
+    return retorno;
+  };
+  const o = orderFinanciadaDevolvida("processed");
+  const entregar = async () => handler(
+    await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }),
+    { supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1 },
+  );
+  assertEquals((await entregar()).status, 200);
+  assertEquals(registro.chamadasExternoDoMp.length, 1);
+  assertEquals(registro.chamadasExternoDoMp[0].args.p_valor, 40.86);
+  assertEquals(registro.filaOrderRefunds, [], "40,86 não cabe no principal de 37,27 do ledger");
+  assertEquals(pedido.valor_estornado, 0);
+  assertEquals(registro.chamadasRpc, [{
+    args: { p_order_id: UUID_PEDIDO, p_payment_id: ID_ORDER_CARTAO_MP, p_status: "estornado" },
+  }]);
+  assertEquals(pedido.payment_status, "estornado");
+  assertEquals((await entregar()).status, 200);
+  assertEquals(registro.chamadasRpc.length, 1, "a guarda precisa barrar a reentrega já estornada");
+});
+
+Deno.test("REV1 webhook: refund financiado processing nunca alcança confirmar_pagamento", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasAviso: [], chamadasExternoDoMp: [] };
+  const pedido = {
+    id: UUID_PEDIDO, total: 37.27, valor_estornado: 0, gateway_payment_id: ID_ORDER_CARTAO_MP,
+    payment_status: "pago", paid_at: "2026-10-21T00:00:00Z", status: "delivered",
+  };
+  const supabase = clienteFalso({ rpcResultado: "estornado", registro, pedido });
+  const o = orderFinanciadaDevolvida("processing");
   const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
     supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
   });
   assertEquals(r.status, 200);
   assertEquals(registro.chamadasRpc, []);
+  assertEquals(registro.chamadasExternoDoMp, []);
+  assertEquals(pedido.payment_status, "pago");
 });
+
+for (const estado of ["pago", "pago_apos_expirar", "estornado"]) {
+  Deno.test(`L3a-R2-W1: payment_status ${estado} protege refund sem paid_at`, async () => {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasAviso: [] };
+    const pedido = {
+      id: UUID_PEDIDO, total: 100, gateway_payment_id: ID_ORDER_CARTAO_MP,
+      payment_status: estado, paid_at: null, status: "delivered",
+    };
+    const supabase = clienteFalso({ rpcResultado: "estornado", registro, pedido });
+    const o = orderFinanciadaDevolvida("processing");
+    o.total_amount = "100.00";
+    o.total_paid_amount = "100.00";
+    o.transactions.payments[0].amount = "100.00";
+    const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
+    });
+    assertEquals(r.status, 200);
+    assertEquals(registro.chamadasRpc, [], "não pode depender só de paid_at");
+  });
+}
 
 for (const [rotulo, campo] of [
   ["nulo", { payment_status: null }],

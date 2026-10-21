@@ -178,6 +178,35 @@ export function conferirValorDoPagamento(
 }
 
 /**
+ * Exceção estreita do estorno integral financiado: o ledger só comporta o
+ * principal do pedido. Exige a mesma prova de juros e a captura inteira já
+ * devolvida, nunca o status agregado da order. Um refund repetido não soma.
+ */
+export function estornoIntegralComJurosComprovado(
+  order: Record<string, unknown>,
+  totalRelido: unknown,
+  refunds: Array<Record<string, unknown>>,
+  statusConcluido: "processed" | "approved",
+): boolean {
+  const conferencia = conferirValorDoPagamento(extrairValorDaOrder(order), totalRelido, order);
+  if (!conferencia.provado || !jurosCompativeis(conferencia.valor, conferencia.total, order)) return false;
+  const pago = comoNumero(valorCapturado(order));
+  if (pago === null || Math.round(pago * 100) <= Math.round(conferencia.total * 100)) return false;
+  const porId = new Map<string, number>();
+  for (const refund of refunds) {
+    if (refund.status !== statusConcluido) continue;
+    const valor = comoNumero(refund.amount);
+    const id = typeof refund.id === "string" || typeof refund.id === "number" ? String(refund.id) : "";
+    if (!id || valor === null || Math.round(valor * 100) <= 0) return false;
+    const centavos = Math.round(valor * 100);
+    if (!Number.isSafeInteger(centavos) || (porId.has(id) && porId.get(id) !== centavos)) return false;
+    porId.set(id, centavos);
+  }
+  const devolvido = Array.from(porId.values()).reduce((soma, valor) => soma + valor, 0);
+  return Number.isSafeInteger(devolvido) && devolvido >= Math.round(pago * 100);
+}
+
+/**
  * Aviso operacional da exceção: principal correto, captura dentro do teto,
  * mas a parcela não permite conferir os juros. Só projeta os quatro campos
  * abaixo, nunca o objeto do MP. As portas chamam depois de conferir a prova.
@@ -189,8 +218,11 @@ export function avisarJurosSemParcelaConferida(pedido: string, totalRelido: unkn
     (parcelasDaOrder(order) ?? 0) <= 1) return;
   const { valor, total } = conferencia;
   const capturado = comoNumero(valorCapturado(order));
-  if (capturado === null || capturado <= total + TOLERANCIA_DE_VALOR ||
-    Math.abs(valor - total) > TOLERANCIA_DE_VALOR || jurosCompativeis(valor, total, order)) return;
+  const totalEmCentavos = Math.round(total * 100);
+  const toleranciaEmCentavos = Math.round(TOLERANCIA_DE_VALOR * 100);
+  if (capturado === null || Math.round(capturado * 100) - totalEmCentavos <= toleranciaEmCentavos ||
+    Math.abs(Math.round(valor * 100) - totalEmCentavos) > toleranciaEmCentavos ||
+    jurosCompativeis(valor, total, order)) return;
   console.warn("pagamento: juros_sem_parcela_conferida", { pedido, total, capturado, parcelas: parcelasDaOrder(order) });
 }
 
@@ -274,12 +306,14 @@ export function provarPagamentoPelaConsulta(args: {
   if (valorPago === null || !(valorPago > 0)) return recusa("valor_pago");
   // PIX mantém o contrato anterior de captura >= total - tolerância.
   // Só o cartão recebe a nova conferência de juros, nunca o PIX.
+  const abaixoDoLimiteDeCaptura = Math.round(valorPago * 100) <
+    Math.round(total * 100) - Math.round(TOLERANCIA_DE_VALOR * 100);
   if (tipoDoPagamentoDaOrder(o) === "bank_transfer") {
-    if (valorPago < total - TOLERANCIA_DE_VALOR) return recusa("valor_pago");
+    if (abaixoDoLimiteDeCaptura) return recusa("valor_pago");
   } else if (orderEhDeCartao(o)) {
     // A captura do cartão já passou pela conferência acima. Repassá-la como
     // se fosse PRINCIPAL exigiria parcela coerente até com principal correto.
-    if (valorPago < total - TOLERANCIA_DE_VALOR) return recusa("valor_pago");
+    if (abaixoDoLimiteDeCaptura) return recusa("valor_pago");
   } else if (!conferirValorDoPagamento(valorPago, total, o).provado) {
     return recusa("valor_pago");
   }

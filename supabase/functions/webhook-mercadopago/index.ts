@@ -96,7 +96,11 @@ import {
   tipoDoPagamentoDaOrder,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
-import { avisarJurosSemParcelaConferida, conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import {
+  avisarJurosSemParcelaConferida,
+  conferirValorDoPagamento,
+  estornoIntegralComJurosComprovado,
+} from "../_shared/prova-de-pagamento.ts";
 import { devolucaoParcialProvaPagamento } from "../_shared/devolucao-parcial.ts";
 import { registrarDiagnosticoDoCartao } from "../_shared/diagnostico-do-cartao.ts";
 import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
@@ -1952,13 +1956,20 @@ async function handler(
     return json({ error: "Estorno ainda não confirmado no ledger." }, 500);
   }
 
-  // L3a-W1: refund de pedido já recebido é decidido SOMENTE pelo ledger
-  // acima. O status agregado pode ser 'refunded' com refund ainda processing
-  // ou recusado; confirmar_pagamento o tornaria estornado sem dinheiro devolvido.
-  // Mesmo quando concluído, não há segunda escrita pelo caminho legado.
-  if (statusMapeado === "estornado" && linhaDoPedido &&
-    (linhaDoPedido.paid_at != null ||
-      ["pago", "pago_apos_expirar", "estornado"].includes(linhaDoPedido.payment_status))) {
+  const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
+    (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
+  const estadoDoPedido = (linhaDoPedido as Record<string, unknown> | null)?.payment_status;
+  const estornoDePedidoConfirmado = statusMapeado === "estornado" && linhaDoPedido &&
+    (linhaDoPedido.paid_at != null || ["pago", "pago_apos_expirar", "estornado"].includes(estadoDoPedido));
+  // L3a-W1: o status agregado não prova refund concluído. Só o ledger altera
+  // o pedido, EXCETO a devolução integral COM JUROS: ela excede o principal
+  // que cabe no ledger. A prova exige juros conferidos e refunds terminais
+  // cobrindo a captura toda na cobrança GRAVADA; reentrega já estornada para.
+  const estornoIntegralFinanciado = estornoDePedidoConfirmado && estadoDoPedido !== "estornado" &&
+    corpoConfiavelParaEstorno !== null && estornoIntegralComJurosComprovado(
+      corpoConfiavelParaEstorno, brutoTotal, refundsDaOrder(corpoConfiavelParaEstorno), STATUS_REFUND_CONCLUIDO_ORDERS,
+    );
+  if (estornoDePedidoConfirmado && !estornoIntegralFinanciado) {
     return json({ ok: true, resultado: "estorno_tratado_pelo_ledger" }, 200);
   }
 
@@ -1990,11 +2001,12 @@ async function handler(
   // total válido nunca alcança adoção/RPC; o pedido segue elegível no cron.
   // Contestação já foi tratada pelo ledger acima, nunca por confirmar_pagamento.
   // Fora de aprovação, divergência mantém o 200 silencioso de antes.
-  const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
-    (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
   const aprovado = statusMapeado === "pago" || statusMapeado === "pago_apos_expirar";
+  const orderDaConferencia = estornoDePedidoConfirmado ? corpoConfiavelParaEstorno
+    : aprovado && rota === "order" ? corpoConsultado : null;
   const conferencia = conferirValorDoPagamento(
-    valorPagoMp, brutoTotal, aprovado && rota === "order" ? corpoConsultado ?? undefined : undefined,
+    estornoDePedidoConfirmado && corpoConfiavelParaEstorno ? extrairValorDaOrder(corpoConfiavelParaEstorno) : valorPagoMp,
+    brutoTotal, orderDaConferencia ?? undefined,
   );
   if (!conferencia.provado && (aprovado || (linhaDoPedido && conferencia.motivo === "valor_divergente"))) {
     if (!aprovado) return json({ ok: true, ignorado: "valor divergente" }, 200);

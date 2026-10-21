@@ -16,7 +16,12 @@
  * https://www.mercadopago.com.br/developers/en/reference/online-payments/checkout-api/get-order/get
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { conferirValorDoPagamento, provarPagamentoPelaConsulta } from "./prova-de-pagamento.ts";
+import {
+  avisarJurosSemParcelaConferida,
+  conferirValorDoPagamento,
+  estornoIntegralComJurosComprovado,
+  provarPagamentoPelaConsulta,
+} from "./prova-de-pagamento.ts";
 import {
   orderCartaoAprovadaDaDoc,
   orderDoGetDaReferenciaDaDoc,
@@ -91,6 +96,88 @@ const pix = () => orderPixPagaDaDoc({ id: VAGA, externalReference: PEDIDO, valor
 function pagamento(o: Record<string, unknown>): Record<string, unknown> {
   return ((o.transactions as Record<string, unknown>).payments as Array<Record<string, unknown>>)[0];
 }
+
+for (const tipo of ["bank_transfer", "credit_card", "debit_card"]) {
+  for (const [capturado, esperado] of [["49.97", true], ["49.96", false], ["50.07", true]]) {
+    Deno.test(`L3a-R2-W5: captura ${capturado} contra 50,02 em ${tipo} usa centavos`, () => {
+      const o = tipo === "bank_transfer" ? pix() : cartao();
+      o.total_amount = "50.02";
+      o.total_paid_amount = capturado;
+      pagamento(o).amount = "50.02";
+      pagamento(o).payment_method = { type: tipo, installments: 1 };
+      const prova = provarPagamentoPelaConsulta(base(o, { totalRelido: 50.02 }));
+      assertEquals(prova.provado, esperado);
+      if (!esperado) assertEquals(prova.motivo, "valor_pago");
+    });
+  }
+}
+
+Deno.test("L3a-R2-W5: aviso de juros respeita limite de cinco centavos em inteiro", () => {
+  const o = cartao();
+  o.total_amount = "59.65";
+  o.total_paid_amount = "59.70";
+  pagamento(o).amount = o.total_amount;
+  pagamento(o).payment_method = { type: "credit_card", installments: 2 };
+  const logs = [];
+  const original = console.warn;
+  console.warn = (...args) => logs.push(args);
+  try {
+    avisarJurosSemParcelaConferida(PEDIDO, 59.65, o);
+    assertEquals(logs, [], "cinco centavos não são juros");
+    o.total_paid_amount = "59.71";
+    avisarJurosSemParcelaConferida(PEDIDO, 59.65, o);
+    assertEquals(logs.length, 1);
+  } finally {
+    console.warn = original;
+  }
+});
+
+Deno.test("L3a-R2-W1: prova integral financiada soma centavos, não duplica IDs e recusa qualquer dúvida", () => {
+  const o = cartao();
+  o.total_amount = "40.86";
+  o.total_paid_amount = "40.86";
+  pagamento(o).amount = "40.86";
+  pagamento(o).payment_method = { type: "credit_card", installments: 2, installment_amount: "20.43" };
+  const refund = { id: "REF1", amount: "40.86", status: "processed" };
+  const provar = (refunds, order = o, status = "processed") =>
+    estornoIntegralComJurosComprovado(order, 37.27, refunds, status);
+  assertEquals(provar([refund]), true);
+  assertEquals(provar([{ ...refund, status: "approved" }], o, "approved"), true);
+  assertEquals(provar([
+    { ...refund, amount: "20.43" }, { ...refund, id: "REF2", amount: 20.429999999999996 },
+  ]), true);
+  assertEquals(provar([
+    { ...refund, amount: "20.43" }, { ...refund, amount: "20.43" },
+  ]), false, "o mesmo refund não pode provar duas devoluções");
+  assertEquals(provar([
+    { ...refund, amount: "20.43" }, { ...refund, amount: "40.86" },
+  ]), false, "um ID com valores contraditórios não prova");
+  for (const status of ["processing", "rejected", "cancelled", "in_process", "approved"]) {
+    assertEquals(provar([{ ...refund, status }]), false, status);
+  }
+  for (const amount of [undefined, null, "", "ilegível", NaN, Infinity, true, 0, -1, "40.85"]) {
+    assertEquals(provar([{ ...refund, amount }]), false, String(amount));
+  }
+  assertEquals(provar([{ amount: "40.86", status: "processed" }]), false, "sem identidade não prova a soma");
+  assertEquals(provar([{ ...refund, amount: "10.00" }, { ...refund, id: "REF2", status: "processing" }]), false);
+  for (const metodo of [
+    { type: "credit_card", installments: 1, installment_amount: "40.86" },
+    { type: "debit_card", installments: 2, installment_amount: "20.43" },
+    { type: "bank_transfer", installments: 2, installment_amount: "20.43" },
+    { type: "credit_card", installments: 2, installment_amount: "18.64" },
+    { type: "credit_card", installments: 2 },
+  ]) {
+    const alterada = structuredClone(o);
+    pagamento(alterada).payment_method = metodo;
+    assertEquals(provar([refund], alterada), false, JSON.stringify(metodo));
+  }
+  const semJuros = structuredClone(o);
+  semJuros.total_amount = "37.27";
+  semJuros.total_paid_amount = "37.27";
+  pagamento(semJuros).amount = "37.27";
+  pagamento(semJuros).payment_method.installment_amount = "18.64";
+  assertEquals(provar([refund], semJuros), false, "o ledger continua dono do refund sem juros");
+});
 
 Deno.test("prova: exemplo contraditório da doc não prova juros — 200 pagos num cartão 1x de 100 recusa", () => {
   const literal = orderCartaoAprovadaDaDoc({ id: VAGA, externalReference: PEDIDO, valor: "100.00" });
