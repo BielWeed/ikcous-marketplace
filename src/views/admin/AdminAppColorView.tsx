@@ -201,66 +201,60 @@ function EscolhaDaCor({
             ? "É assim que a cor aparece no app. Nada muda para os clientes antes de você salvar."
             : "Mostrando a última cor válida. Corrija o campo para ver a nova."}
         </p>
-        {/* A prévia é a tela da cliente: não herda os tons nem altera os tokens do painel. */}
-        <div
-          className="mt-3 overflow-hidden rounded-xl border"
-          style={{
-            backgroundColor: "#FFFFFF",
-            color: "#27272A",
-            borderColor: "#D4D4D8",
-            colorScheme: "light",
-          }}
-        >
-          <div
-            data-previa-cor
-            className="flex h-[30px] items-center justify-between px-3 text-[11px] font-semibold"
-            style={{ backgroundColor: cor, color: texto }}
-          >
-            <span>9:41</span>
-            <span>Barra do celular</span>
-            <span aria-hidden="true">▰</span>
-          </div>
-          <div className="flex min-h-[214px] gap-3 p-3">
-            <div className="min-w-0 flex-1 space-y-2">
-              <p className="text-[11px]" style={{ color: "#52525B" }}>
-                Botão principal
-              </p>
-              <div
-                className="flex h-11 max-w-[172px] items-center justify-center rounded-xl px-2 text-xs font-semibold"
-                style={{ backgroundColor: cor, color: texto }}
-              >
-                Finalizar compra
-              </div>
-              <div className="flex items-center gap-2 pt-3">
-                <span
-                  className="flex size-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold"
-                  style={{ backgroundColor: cor, color: texto }}
-                >
-                  Aa
-                </span>
-                <div className="text-[11px]" style={{ color: "#3F3F46" }}>
-                  <p>{branco ? "Texto branco" : "Texto escuro"}</p>
-                  <p>{fraco ? "Difícil de ler" : "Fácil de ler"}</p>
-                </div>
-              </div>
+        <div className="mt-3 divide-y divide-admin-border border-y border-admin-border">
+          <div data-previa-uso className="flex items-center gap-4 py-4">
+            <div
+              data-previa-cor
+              className="flex min-h-12 w-[52%] max-w-[170px] shrink-0 items-center justify-center rounded-full px-2 text-xs font-semibold"
+              style={{ backgroundColor: cor, color: texto }}
+            >
+              Finalizar compra
             </div>
-            <div className="w-24 shrink-0 text-center">
-              <div
-                className="flex h-[168px] flex-col items-center justify-center gap-2 rounded-[14px]"
-                style={{ backgroundColor: cor, color: texto }}
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold">Botões</p>
+              <p
+                className={`mt-1 flex items-start gap-1.5 text-xs leading-4 ${fraco ? "text-amber-300" : "text-emerald-300"}`}
               >
                 <span
-                  className="flex size-10 items-center justify-center rounded-xl font-bold"
-                  style={{ backgroundColor: "#FAFAFA", color: "#18181B" }}
-                >
-                  L
+                  aria-hidden="true"
+                  className="mt-1.5 size-1 shrink-0 rounded-full bg-current"
+                />
+                <span>
+                  {branco ? "Texto branco" : "Texto escuro"} ·{" "}
+                  {fraco ? "difícil de ler" : "fácil de ler"}
                 </span>
-                <span className="max-w-full break-words px-1 text-[11px]">
-                  {draft!.fields.storeName}
-                </span>
-              </div>
-              <p className="mt-1 text-[11px]" style={{ color: "#3F3F46" }}>
-                Tela de abertura
+              </p>
+            </div>
+          </div>
+          <div data-previa-uso className="flex items-center gap-4 py-4">
+            <div
+              className="flex size-16 shrink-0 items-center justify-center rounded-2xl"
+              style={{ backgroundColor: cor, color: texto }}
+            >
+              <span
+                className="flex size-10 items-center justify-center rounded-full text-xl font-bold"
+                style={{ backgroundColor: "#FAFAFA", color: "#18181B" }}
+              >
+                L
+              </span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold">Ícone e tela de abertura</p>
+              <p className="mt-1 break-words text-xs leading-4 text-zinc-400">
+                {draft!.fields.storeName}
+              </p>
+            </div>
+          </div>
+          <div data-previa-uso className="flex items-center gap-4 py-4">
+            <span
+              aria-hidden="true"
+              className="h-3.5 w-16 shrink-0 rounded"
+              style={{ backgroundColor: cor }}
+            />
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold">Barra de cima do celular</p>
+              <p className="mt-1 text-xs leading-4 text-zinc-400">
+                Só muda quando o app atualizar.
               </p>
             </div>
           </div>

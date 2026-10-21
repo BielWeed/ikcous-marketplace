@@ -155,6 +155,30 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
     expect(h.dirty).toHaveBeenLastCalledWith(true);
   });
 
+  it("mostra três usos em linhas sem simular a barra do celular", async () => {
+    await render();
+    const preview = host.querySelector(
+      '[aria-labelledby="app-color-preview-title"]',
+    )!;
+    expect(preview.textContent).not.toContain("9:41");
+    expect(preview.textContent).not.toContain("Barra do celular");
+    expect(preview.textContent).not.toContain("▰");
+    const rows = preview.querySelectorAll("[data-previa-uso]");
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain("Finalizar compra");
+    expect(rows[0].textContent).toContain("Botões");
+    expect(rows[0].textContent).toContain("Texto branco · fácil de ler");
+    expect(rows[1].textContent).toContain("Ícone e tela de abertura");
+    expect(rows[1].textContent).toContain("Loja Teste");
+    expect(rows[2].textContent).toContain("Barra de cima do celular");
+    expect(rows[2].textContent).toContain("Só muda quando o app atualizar.");
+    await type("#FACC15");
+    expect(rows[0].textContent).toContain("Texto escuro · fácil de ler");
+    await type("#8B5CF6");
+    expect(rows[0].textContent).toContain("Texto escuro · difícil de ler");
+    expect(h.save).not.toHaveBeenCalled();
+  });
+
   it("salvar muda SOMENTE primary_color: compara as oito chaves e os assets completos", async () => {
     const before = snapshot();
     await render();
@@ -219,7 +243,7 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
     await render();
     await type("#FACC15");
     expect(host.textContent).toContain("Texto escuro");
-    expect(host.textContent).toContain("Fácil de ler");
+    expect(host.textContent).toContain("fácil de ler");
     await type("#8B5CF6");
     expect(host.textContent).toContain("O texto pode ficar difícil de ler");
     expect(host.textContent).toContain("4,2 para 1");
