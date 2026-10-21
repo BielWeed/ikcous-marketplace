@@ -32,6 +32,7 @@ type Secao = {
   maxItems?: number;
   productIds?: string[];
   isCustom?: boolean;
+  layout?: "padrao" | "compacto";
 };
 
 const secaoLancamentos: Secao = {
@@ -227,6 +228,88 @@ afterEach(() => {
   act(() => raiz.unmount());
   hospedeiro.remove();
   vi.unstubAllGlobals();
+});
+
+describe("layout da vitrine de Ofertas", () => {
+  const ofertas: Secao = {
+    id: "offers",
+    title: "Ofertas Imperdíveis",
+    active: true,
+    maxItems: 6,
+  };
+  const opcao = (nome: string) =>
+    porRotulo(`Layout ${nome}`) as HTMLButtonElement;
+
+  it("só Ofertas mostra as duas opções e grava a lista inteira pelo caminho confirmado", async () => {
+    configDaLoja.homeSections = [secaoLancamentos, ofertas, secaoKits];
+    await montar();
+    expect(document.querySelectorAll("[aria-pressed]")).toHaveLength(2);
+    expect(opcao("Padrão").getAttribute("aria-pressed")).toBe("true");
+    expect(opcao("Compacto").getAttribute("aria-pressed")).toBe("false");
+    expect(opcao("Compacto").className).toContain("h-11");
+    await clicar(opcao("Compacto"));
+    expect(ultimaGravacao().homeSections).toEqual([
+      secaoLancamentos,
+      { ...ofertas, layout: "compacto" },
+      secaoKits,
+    ]);
+    expect(painel()).toBeNull();
+    configDaLoja.homeSections = ultimaGravacao().homeSections;
+    await montar();
+    expect(opcao("Compacto").getAttribute("aria-pressed")).toBe("true");
+    await clicar(opcao("Padrão"));
+    expect(ultimaGravacao().homeSections[1].layout).toBe("padrao");
+  });
+
+  it("não grava nem abre edição offline; mostra o aviso de conexão", async () => {
+    configDaLoja.homeSections = [ofertas];
+    offline = true;
+    await montar();
+    await clicar(opcao("Compacto"));
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith("Sem conexão", {
+      description: "Você precisa estar online.",
+    });
+    expect(painel()).toBeNull();
+  });
+
+  it("bloqueia ambas as opções e reduz a opacidade até confirmar a gravação", async () => {
+    configDaLoja.homeSections = [ofertas];
+    let confirmar: (resultado: boolean) => void = () => {};
+    updateConfig.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          confirmar = resolve;
+        }),
+    );
+    await montar();
+    await clicar(opcao("Compacto"));
+    expect(opcao("Compacto").disabled).toBe(true);
+    expect(opcao("Padrão").disabled).toBe(true);
+    expect(opcao("Compacto").className).toContain("disabled:opacity-50");
+    await clicar(opcao("Padrão"));
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    await act(async () => confirmar(true));
+    expect(opcao("Padrão").disabled).toBe(false);
+  });
+
+  it("restaurar avisa que volta ao Padrão e remove o layout compacto", async () => {
+    configDaLoja.homeSections = [{ ...ofertas, layout: "compacto" }];
+    await montar();
+    await abrirMenuMaisAcoes();
+    await clicar(
+      Array.from(
+        document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+      ).find((el) => el.textContent?.includes("Restaurar padrão"))!,
+    );
+    expect(confirmacao()?.textContent).toContain(
+      "layout de Ofertas volta a Padrão",
+    );
+    await clicar(botaoComTexto("Restaurar", confirmacao()!));
+    expect(
+      ultimaGravacao().homeSections.find((s) => s.id === "offers")?.layout,
+    ).toBeUndefined();
+  });
 });
 
 describe("cartão único", () => {

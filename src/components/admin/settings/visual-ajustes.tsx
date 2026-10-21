@@ -2,9 +2,9 @@ import type { LucideProps } from "lucide-react";
 import type { ComponentType } from "react";
 
 export const CARTAO_AJUSTES =
-  "rounded-3xl border border-white/10 bg-[#101013] p-4";
+  "rounded-3xl border border-admin-border bg-admin-surface p-4";
 export const CARTAO_DESTAQUE_AJUSTES =
-  "rounded-3xl border border-white/15 bg-gradient-to-br from-[#24242e] to-[#101013] p-4 shadow-xl";
+  "rounded-3xl border border-admin-border-strong bg-gradient-to-br from-admin-raised to-admin-surface p-4 shadow-xl";
 
 export type MatizDeAjustes =
   | "azul"

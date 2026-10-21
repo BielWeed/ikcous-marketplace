@@ -11,7 +11,9 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const createOrder = vi.fn().mockResolvedValue({ id: "ped-999" });
+const createOrder = vi
+  .fn()
+  .mockResolvedValue({ id: "ped-999", totalAmount: 100 });
 const updateOrderStatus = vi.fn().mockResolvedValue(undefined);
 const clearCart = vi.fn();
 const addToCart = vi.fn();

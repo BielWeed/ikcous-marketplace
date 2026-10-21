@@ -2523,7 +2523,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // formulario vazio editavel e armadilha (save destrutivo). Erro na tela.
   if (productId && !isLoading && !currentProduct) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#08080a] px-5 text-center text-white">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-admin-bg px-5 text-center text-white">
         <div className="flex size-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
           <AlertTriangle className="size-8 text-rose-300" />
         </div>
@@ -2536,7 +2536,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         </p>
         <button
           onClick={() => window.location.reload()}
-          className="mt-4 min-h-11 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+          className="mt-4 min-h-11 rounded-lg border border-admin-border bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
         >
           Recarregar
         </button>
@@ -2553,16 +2553,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           <div className="absolute bottom-0 left-0 h-[500px] w-[500px] rounded-full bg-blue-500/5 blur-[120px]" />
         </div>
 
-        <header className="sticky top-0 z-30 border-b border-white/5 bg-zinc-950/80 px-4 py-3 backdrop-blur-md md:px-6 md:py-4">
+        <header className="sticky top-0 z-30 border-b border-admin-border bg-zinc-950/80 px-4 py-3 backdrop-blur-md md:px-6 md:py-4">
           <div className="mx-auto flex max-w-5xl items-center justify-between">
             <div className="flex items-center gap-3 md:gap-4">
-              <div className="size-9 rounded-xl border border-white/10 bg-white/5 md:size-10" />
+              <div className="size-9 rounded-xl border border-admin-border bg-white/5 md:size-10" />
               <div className="space-y-1.5">
                 <Skeleton className="h-4 w-32 rounded bg-white/5" />
                 <Skeleton className="hidden h-3 w-48 rounded bg-white/5 sm:block" />
               </div>
             </div>
-            <Skeleton className="h-10 w-24 rounded-xl border border-white/10 bg-white/5" />
+            <Skeleton className="h-10 w-24 rounded-xl border border-admin-border bg-white/5" />
           </div>
         </header>
 
@@ -2571,7 +2571,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             {/* Left Column */}
             <div className="space-y-8 lg:col-span-8">
               {/* Photos section */}
-              <div className="space-y-6 rounded-[2.5rem] border border-white/5 bg-zinc-900/20 p-6">
+              <div className="space-y-6 rounded-[2.5rem] border border-admin-border bg-zinc-900/20 p-6">
                 <div className="flex items-center justify-between">
                   <Skeleton className="h-4.5 w-24 rounded bg-white/5" />
                 </div>
@@ -2582,7 +2582,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               </div>
 
               {/* General Data section */}
-              <div className="space-y-6 rounded-[2.5rem] border border-white/5 bg-zinc-900/20 p-6">
+              <div className="space-y-6 rounded-[2.5rem] border border-admin-border bg-zinc-900/20 p-6">
                 <Skeleton className="h-4.5 w-32 rounded bg-white/5" />
                 <div className="space-y-3">
                   <Skeleton className="h-3 w-20 rounded bg-white/5" />
@@ -2597,7 +2597,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
             {/* Right Column */}
             <div className="space-y-8 lg:col-span-4">
-              <div className="space-y-6 rounded-[2.5rem] border border-white/5 bg-zinc-900/20 p-6">
+              <div className="space-y-6 rounded-[2.5rem] border border-admin-border bg-zinc-900/20 p-6">
                 <Skeleton className="h-4.5 w-24 rounded bg-white/5" />
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="flex items-center justify-between">
@@ -2662,7 +2662,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="titulo-da-categoria"
-                  className="produto-modal gpu-accelerated relative max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/10 p-5 shadow-2xl"
+                  className="produto-modal gpu-accelerated relative max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-3xl border border-admin-border p-5 shadow-2xl"
                 >
                   <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-5">
                     <Layers className="size-24 text-white" />
@@ -2700,7 +2700,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         delay={150}
                         value={newCategoryName}
                         onFlush={setNewCategoryName}
-                        className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                         placeholder="Ex: Vestuário"
                       />
                     </div>
@@ -2717,7 +2717,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           category: formData.category || "",
                         }));
                       }}
-                      className="min-h-14 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] px-3 text-sm font-bold text-white"
+                      className="min-h-14 flex-1 rounded-2xl border border-admin-border bg-admin-raised px-3 text-sm font-bold text-white"
                     >
                       Cancelar
                     </button>
@@ -2784,9 +2784,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="titulo-da-variacao"
-                  className="produto-modal gpu-accelerated flex h-dvh max-h-dvh w-full max-w-lg flex-col overflow-hidden rounded-none border border-white/10 shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-3xl"
+                  className="produto-modal gpu-accelerated flex h-dvh max-h-dvh w-full max-w-lg flex-col overflow-hidden rounded-none border border-admin-border shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-3xl"
                 >
-                  <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-white/5 bg-[#08080a] p-5">
+                  <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-admin-border bg-admin-bg p-5">
                     <div className="flex size-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-400/10">
                       <Layers className="size-6 text-violet-300" />
                     </div>
@@ -2824,7 +2824,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 onFlush={(val) =>
                                   atualizarParDeAtributo(indice, "name", val)
                                 }
-                                className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                 placeholder="Ex: Cor"
                               />
                             </div>
@@ -2843,7 +2843,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 onFlush={(val) =>
                                   atualizarParDeAtributo(indice, "value", val)
                                 }
-                                className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                 placeholder="Ex: Espacial Grey"
                               />
                             </div>
@@ -2865,7 +2865,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                         "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
                                         par.name === attr
                                           ? "bg-admin-gold/10 border-admin-gold text-admin-gold"
-                                          : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
+                                          : "bg-zinc-950 border-admin-border text-zinc-500 hover:text-zinc-300 hover:border-admin-border-strong",
                                       )}
                                     >
                                       {attr}
@@ -2887,7 +2887,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 onFlush={(val) =>
                                   atualizarParDeAtributo(indice, "name", val)
                                 }
-                                className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                 placeholder="Ex: Tamanho"
                               />
                               <LocalBufferedInput
@@ -2899,7 +2899,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 onFlush={(val) =>
                                   atualizarParDeAtributo(indice, "value", val)
                                 }
-                                className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                 placeholder="Ex: PP"
                               />
                             </div>
@@ -2912,7 +2912,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   pares: p.pares.filter((_, j) => j !== indice),
                                 }))
                               }
-                              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
+                              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
                             >
                               <X className="size-4" />
                             </button>
@@ -2932,7 +2932,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           pares: [...p.pares, parNovo()],
                         }))
                       }
-                      className="min-h-11 w-full rounded-2xl border border-dashed border-white/10 bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
+                      className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
                     >
                       + Atributo
                     </button>
@@ -2957,7 +2957,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               stockIncrement: val,
                             }))
                           }
-                          className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                         />
                         <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                           Estoque físico real para esta variação específica.
@@ -2986,7 +2986,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 priceOverride: val,
                               }))
                             }
-                            className="w-full rounded-2xl border border-white/5 bg-zinc-950 py-4 pl-11 pr-5 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            className="w-full rounded-2xl border border-admin-border bg-zinc-950 py-4 pl-11 pr-5 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                             placeholder="Auto"
                           />
                         </div>
@@ -3034,7 +3034,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           "w-full px-5 py-4 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between active:scale-95 select-none",
                           variantFormData.active
                             ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
-                            : "bg-zinc-950 border-white/5 text-zinc-500 hover:bg-white/5",
+                            : "bg-zinc-950 border-admin-border text-zinc-500 hover:bg-white/5",
                         )}
                       >
                         <span>
@@ -3060,7 +3060,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       </span>
                       {formData.images.length === 0 &&
                       !variantFormData.imageUrl ? (
-                        <p className="rounded-2xl border border-white/5 bg-zinc-950/60 px-4 py-3 text-[11px] font-bold leading-relaxed text-zinc-500">
+                        <p className="rounded-2xl border border-admin-border bg-zinc-950/60 px-4 py-3 text-[11px] font-bold leading-relaxed text-zinc-500">
                           Adicione imagens ao produto primeiro — a variante
                           aponta para uma delas em vez de enviar arquivo novo.
                         </p>
@@ -3118,7 +3118,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   "relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
                                   selecionada
                                     ? "border-2 border-admin-gold ring-2 ring-admin-gold/30"
-                                    : "border-white/10 hover:border-emerald-500/50",
+                                    : "border-admin-border hover:border-emerald-500/50",
                                 )}
                               >
                                 <img
@@ -3142,7 +3142,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         checkout e na seleção de atributos.
                       </span>
                     </div>
-                    <details className="rounded-2xl border border-white/10 bg-[#101013]">
+                    <details className="rounded-2xl border border-admin-border bg-admin-surface">
                       <summary className="flex min-h-11 cursor-pointer items-center gap-3 p-3 text-sm font-bold">
                         <Barcode className="size-5 text-pink-300" />
                         Códigos e câmera
@@ -3169,7 +3169,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   .replace(/\s+/g, "-"),
                               }))
                             }
-                            className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                             placeholder="Ex: COR-TAM"
                           />
                         </div>
@@ -3207,7 +3207,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   editingVariant?.id,
                                 )
                               }
-                              className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                               placeholder="Ex: 7891234567890"
                             />
                             {/* C5.3 — some sem câmera: o leitor físico USB digita
@@ -3244,7 +3244,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </details>
                   </div>
 
-                  <div className="relative z-10 flex shrink-0 gap-4 border-t border-white/5 bg-[#101013] p-5">
+                  <div className="relative z-10 flex shrink-0 gap-4 border-t border-admin-border bg-admin-surface p-5">
                     <button
                       type="button"
                       onClick={() => {
@@ -3261,7 +3261,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         setShowVariantForm(false);
                         setEditingVariant(null);
                       }}
-                      className="min-h-14 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
+                      className="min-h-14 flex-1 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"
                     >
                       Cancelar
                     </button>
@@ -3299,7 +3299,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onEfetivar={handleEfetivarGrade}
       />
 
-      <header className="sticky top-0 z-30 bg-[#08080a]/95 px-5 py-4 backdrop-blur-md">
+      <header className="sticky top-0 z-30 bg-admin-bg/95 px-5 py-4 backdrop-blur-md">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <div className="min-w-0 [&_h1>span>span]:not-italic [&_h1>span]:whitespace-normal [&_h1]:text-[22px] [&_h1]:normal-case [&_h1]:leading-tight">
             <AdminPageHeader
@@ -3320,7 +3320,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             onClick={() => setShowHelpModal(true)}
             aria-label="Como cadastrar um produto"
             title="Guia de Cadastro e Ajuda"
-            className="flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-zinc-900 text-zinc-300"
+            className="flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 text-zinc-300"
           >
             <HelpCircle className="size-5" />
           </button>
@@ -3353,7 +3353,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             }
             className="group/fotos"
           >
-            <summary className="flex min-h-[64px] cursor-pointer list-none items-center gap-3 rounded-2xl bg-[#101013] py-2 pl-2 pr-[64px] [&::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-[64px] cursor-pointer list-none items-center gap-3 rounded-2xl bg-admin-surface py-2 pl-2 pr-[64px] [&::-webkit-details-marker]:hidden">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-teal-400/20 bg-teal-400/10 text-teal-300">
                 <Camera className="size-5" />
               </span>
@@ -3402,14 +3402,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
                       isDragging
                         ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
-                        : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
+                        : "border-admin-border bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
                       (isSubmitting || isImageUploading) &&
                         "opacity-40 pointer-events-none",
                     )}
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
                     <div className="relative z-10 flex flex-col items-center space-y-3 p-6 text-center">
-                      <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 shadow-xl transition-all duration-300 group-hover/upload:scale-110 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500">
+                      <div className="flex size-14 items-center justify-center rounded-2xl border border-admin-border bg-zinc-950/80 text-zinc-400 shadow-xl transition-all duration-300 group-hover/upload:scale-110 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500">
                         <Camera className="size-6" />
                       </div>
                       <div className="space-y-1">
@@ -3450,7 +3450,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   <label
                     htmlFor="product-image-capture"
                     className={cn(
-                      "mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/30 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
+                      "mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-admin-border bg-zinc-900/30 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
                       (isSubmitting || isImageUploading) &&
                         "opacity-40 pointer-events-none",
                     )}
@@ -3493,7 +3493,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               "group/img relative w-[calc(50%-8px)] sm:w-48 shrink-0 snap-start rounded-2xl",
                             )}
                           >
-                            <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-white/5 bg-zinc-900">
+                            <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-admin-border bg-zinc-900">
                               <img
                                 src={image}
                                 alt=""
@@ -3520,10 +3520,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               </p>
                             )}
                             <details className="mt-3">
-                              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-center rounded-2xl border border-white/10 bg-[#1e1e24] px-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
+                              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-center rounded-2xl border border-admin-border bg-admin-raised px-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
                                 Opções da foto {index + 1}
                               </summary>
-                              <div className="mt-2 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-[#17171c] p-2">
+                              <div className="mt-2 flex flex-wrap gap-2 rounded-2xl border border-admin-border bg-admin-raised p-2">
                                 <button
                                   type="button"
                                   onClick={() => openAdjuster(image, index)}
@@ -3548,7 +3548,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                     onClick={() => tornarPrincipal(index)}
                                     disabled={isImageUploading || isSubmitting}
                                     aria-label={`Tornar principal: foto ${index + 1} de ${formData.images.length}`}
-                                    className="min-h-11 w-full rounded-xl border border-white/10 px-2.5 text-[11px] font-bold text-violet-300 disabled:opacity-40"
+                                    className="min-h-11 w-full rounded-xl border border-admin-border px-2.5 text-[11px] font-bold text-violet-300 disabled:opacity-40"
                                   >
                                     Tornar principal
                                   </button>
@@ -3565,7 +3565,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           initial={{ scale: 0.8, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
                           exit={{ scale: 0.8, opacity: 0 }}
-                          className="relative flex aspect-[4/5] w-40 shrink-0 animate-pulse snap-start flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-white/10 bg-white/5 sm:w-48"
+                          className="relative flex aspect-[4/5] w-40 shrink-0 animate-pulse snap-start flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-admin-border bg-white/5 sm:w-48"
                         >
                           <Loader2 className="size-5 animate-spin text-emerald-400" />
                           <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
@@ -3601,14 +3601,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           type="button"
                           onClick={() => void tentarFotoDeNovo(falha.id)}
                           disabled={isImageUploading || isOffline}
-                          className="min-h-11 rounded-xl border border-white/10 bg-[#1e1e24] px-3 py-2 text-[11px] font-bold text-white disabled:opacity-40"
+                          className="min-h-11 rounded-xl border border-admin-border bg-admin-raised px-3 py-2 text-[11px] font-bold text-white disabled:opacity-40"
                         >
                           Tentar de novo
                         </button>
                         <button
                           type="button"
                           onClick={() => descartarFotoComFalha(falha.id)}
-                          className="min-h-11 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-300"
+                          className="min-h-11 rounded-lg border border-admin-border px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-300"
                         >
                           Remover
                         </button>
@@ -3626,7 +3626,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <label
                   htmlFor="product-image-capture"
                   className={cn(
-                    "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] px-3 py-3 text-sm font-bold text-white cursor-pointer",
+                    "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-3 py-3 text-sm font-bold text-white cursor-pointer",
                     (isSubmitting || isImageUploading) &&
                       "opacity-40 pointer-events-none",
                   )}
@@ -3647,7 +3647,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <label
                   htmlFor="product-image-upload"
                   className={cn(
-                    "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] px-3 py-3 text-sm font-bold text-white cursor-pointer",
+                    "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-3 py-3 text-sm font-bold text-white cursor-pointer",
                     (isSubmitting || isImageUploading) &&
                       "opacity-40 pointer-events-none",
                   )}
@@ -3692,7 +3692,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               title="Guia de Fotos do Produto"
               icon={Camera}
             >
-              <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
+              <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
                 <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                   Imagens de alta qualidade aumentam a conversão de vendas. Siga
                   as orientações recomendadas:
@@ -3719,7 +3719,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     detalhes e transmitem profissionalismo.
                   </li>
                 </ul>
-                <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-3 text-[11px] font-black uppercase tracking-wider text-emerald-400">
+                <div className="flex items-center justify-between gap-3 border-t border-admin-border pt-3 text-[11px] font-black uppercase tracking-wider text-emerald-400">
                   <span>Proporção ideal: 4:5 ou 1:1</span>
                   <span>Res: &gt; 800px</span>
                 </div>
@@ -3754,7 +3754,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
                   expandedHelp.productData
                     ? "bg-blue-500 border-blue-400 text-blue-950 shadow-md shadow-blue-500/10 scale-110"
-                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                    : "bg-zinc-950/50 border-admin-border text-zinc-400",
                 )}
               >
                 ?
@@ -3771,7 +3771,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 title="Guia de Cadastro e Informações"
                 icon={Info}
               >
-                <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
+                <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
                   <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                     O preenchimento correto dos dados melhora a indexação do
                     produto e facilita a decisão do cliente.
@@ -3861,7 +3861,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   setFormData((prev) => ({ ...prev, name: val }))
                 }
                 placeholder="Ex: Camiseta Básica Preta - Tamanho M"
-                className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 sm:text-base"
+                className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 sm:text-base"
               />
             </div>
 
@@ -3881,7 +3881,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 }
                 placeholder="Conte como é o produto..."
                 rows={6}
-                className="w-full resize-none rounded-2xl border border-white/5 bg-zinc-950/50 px-4 py-3.5 text-sm font-medium leading-relaxed text-zinc-300 transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-3xl sm:px-6 sm:py-5"
+                className="w-full resize-none rounded-2xl border border-admin-border bg-zinc-950/50 px-4 py-3.5 text-sm font-medium leading-relaxed text-zinc-300 transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-3xl sm:px-6 sm:py-5"
               />
             </div>
 
@@ -3908,11 +3908,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 >
                   <SelectTrigger
                     id="product-category"
-                    className="h-auto min-h-11 w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all hover:border-white/10 hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 [&>svg]:opacity-50"
+                    className="h-auto min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all hover:border-admin-border-strong hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 [&>svg]:opacity-50"
                   >
                     <SelectValue placeholder="Selecionar Setor" />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl border-white/10 bg-zinc-900/95 p-2 shadow-[0_10px_40px_rgba(0,0,0,0.8)] backdrop-blur-xl">
+                  <SelectContent className="rounded-xl border-admin-border bg-zinc-900/95 p-2 shadow-[0_10px_40px_rgba(0,0,0,0.8)] backdrop-blur-xl">
                     {dbCategories.map((category) => (
                       <SelectItem
                         key={category.id}
@@ -4049,7 +4049,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     setFormData((prev) => ({ ...prev, stock: val }))
                   }
                   disabled={hasActiveVariants}
-                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black tabular-nums text-white transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:opacity-50 sm:rounded-2xl sm:px-6 sm:py-5"
+                  className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black tabular-nums text-white transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:opacity-50 sm:rounded-2xl sm:px-6 sm:py-5"
                 />
                 <div className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-zinc-400">
                   <Package className="size-5" />
@@ -4079,7 +4079,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             {formData.name && (
               <div
                 data-testid="resumo-do-produto"
-                className="col-span-2 mt-4 flex items-center gap-4 rounded-[20px] border border-white/10 bg-[#17171c] p-3"
+                className="col-span-2 mt-4 flex items-center gap-4 rounded-[20px] border border-admin-border bg-admin-raised p-3"
               >
                 {formData.images[0] ? (
                   <img
@@ -4145,7 +4145,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
                           expandedHelp.productVariants
                             ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                            : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                            : "bg-zinc-950/50 border-admin-border text-zinc-400",
                         )}
                       >
                         ?
@@ -4183,7 +4183,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         });
                         setShowVariantForm(true);
                       }}
-                      className="ml-auto mr-2 min-h-11 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
+                      className="ml-auto mr-2 min-h-11 flex-1 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"
                     >
                       + Novo
                     </button>
@@ -4194,7 +4194,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       type="button"
                       data-testid="abrir-grade"
                       onClick={() => setShowGradeForm(true)}
-                      className="min-h-11 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
+                      className="min-h-11 flex-1 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"
                     >
                       + Grade
                     </button>
@@ -4232,7 +4232,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         title="Como usar as Variações"
                         icon={Layers}
                       >
-                        <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
+                        <div className="space-y-3 rounded-2xl border border-admin-border bg-zinc-950/40 p-4">
                           <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                             Variações permitem vender o mesmo produto com
                             diferentes opções — cor, tamanho, voltagem. Cada
@@ -4300,7 +4300,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
                   <div className="space-y-3">
                     {formData.variants.length === 0 ? (
-                      <div className="rounded-[20px] border border-white/10 bg-[#101013] p-5 text-center">
+                      <div className="rounded-[20px] border border-admin-border bg-admin-surface p-5 text-center">
                         <p className="text-sm font-bold text-zinc-300">
                           Nenhuma Variação Adicionada
                         </p>
@@ -4358,7 +4358,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, weightKg: val }))
                           }
-                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                          className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
                         />
                       </div>
                       <div className="space-y-1">
@@ -4378,7 +4378,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, widthCm: val }))
                           }
-                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                          className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
                         />
                       </div>
                       <div className="space-y-1">
@@ -4398,7 +4398,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, heightCm: val }))
                           }
-                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                          className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
                         />
                       </div>
                       <div className="space-y-1">
@@ -4418,7 +4418,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, lengthCm: val }))
                           }
-                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                          className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
                         />
                       </div>
                     </div>
@@ -4471,7 +4471,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
                       expandedHelp.productPricing
                         ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                        : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                        : "bg-zinc-950/50 border-admin-border text-zinc-400",
                     )}
                   >
                     ?
@@ -4489,7 +4489,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   title="Guia de Custos e Margens"
                   icon={DollarSign}
                 >
-                  <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
+                  <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
                     <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                       Configure os preços de forma estratégica. O sistema
                       calcula a lucratividade automaticamente em tempo real.
@@ -4568,7 +4568,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     onFlush={(val) =>
                       setFormData((prev) => ({ ...prev, costPrice: val }))
                     }
-                    className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                    className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
                   />
                 </div>
                 {costError && (
@@ -4589,7 +4589,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="space-y-3.5">
                 <label
                   htmlFor="product-promo-active"
-                  className="flex cursor-pointer select-none items-center justify-between rounded-xl border border-white/5 bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
+                  className="flex cursor-pointer select-none items-center justify-between rounded-xl border border-admin-border bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
                 >
                   <div className="space-y-0.5">
                     <span className="text-[11px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
@@ -4614,7 +4614,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         }));
                       }
                     }}
-                    className="size-5 cursor-pointer rounded border-white/10 bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
+                    className="size-5 cursor-pointer rounded border-admin-border bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
                   />
                 </label>
 
@@ -4648,7 +4648,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           }))
                         }
                         placeholder="Ex: 99.90"
-                        className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-zinc-600 transition-all focus:outline-none sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                        className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-zinc-600 transition-all focus:outline-none sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
                       />
                     </div>
                     {originalPriceError && (
@@ -4665,7 +4665,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             </div>
 
             {priceVal > 0 && costPriceVal > 0 && (
-              <div className="space-y-4 rounded-[20px] border border-white/10 bg-[#17171c] p-4">
+              <div className="space-y-4 rounded-[20px] border border-admin-border bg-admin-raised p-4">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <p className="text-xs text-zinc-400">Margem Líquida</p>
@@ -4743,7 +4743,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     }))
                   }
                   placeholder="Ex: CAMISETA-BASE"
-                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                  className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
                 />
                 <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
                   <Layers className="size-5" />
@@ -4790,7 +4790,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     aoSairDoCampoDeCodigoDeBarras(e.target.value, "produto")
                   }
                   placeholder="Ex: 7891234567890"
-                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                  className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
                 />
                 {/* C5.3 — some sem câmera: o leitor físico USB digita direto
                     no campo acima, sem precisar deste botão. */}
@@ -4850,7 +4850,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     ? "product-estoque-minimo-dica product-estoque-minimo-erro"
                     : "product-estoque-minimo-dica"
                 }
-                className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
               />
               <span
                 id="product-estoque-minimo-dica"
@@ -4911,7 +4911,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 "--desloc-barra": `${deslocamentoDaBarra}px`,
               } as React.CSSProperties
             }
-            className="produto-formulario fixed inset-x-0 bottom-[calc(6.5rem+var(--desloc-barra,0px)+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-50 border-t border-white/5 bg-[#101013]/95 px-5 py-3 shadow-[0_-12px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl lg:bottom-0 lg:left-64"
+            className="produto-formulario fixed inset-x-0 bottom-[calc(6.5rem+var(--desloc-barra,0px)+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-50 border-t border-admin-border bg-admin-surface/95 px-5 py-3 shadow-[0_-12px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl lg:bottom-0 lg:left-64"
           >
             <div className="mx-auto max-w-3xl space-y-2">
               {motivoDoBloqueio && (
@@ -4955,7 +4955,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   type="button"
                   onClick={() => handleSubmit()}
                   disabled={botaoDeSalvarDesligado}
-                  className="flex min-h-14 min-w-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-base font-bold text-[#211a07] shadow-lg disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-300 disabled:shadow-none"
+                  className="flex min-h-14 min-w-11 items-center justify-center gap-2 rounded-2xl border border-admin-border bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-base font-bold text-[#211a07] shadow-lg disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-300 disabled:shadow-none"
                 >
                   {isSubmitting ? (
                     <>
@@ -4986,7 +4986,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <button
                   type="button"
                   onClick={() => setIsPreviewOpen(true)}
-                  className="flex min-h-14 min-w-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
+                  className="flex min-h-14 min-w-11 items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"
                 >
                   <Smartphone className="size-5 shrink-0 text-blue-300" />
                   Visualizar App
@@ -5032,7 +5032,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               Estrutura do Formulário
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Package className="size-4 text-emerald-500" />
                   Informações Básicas & Código interno
@@ -5048,7 +5048,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <DollarSign className="size-4 text-emerald-300" />
                   Precificação & Custos
@@ -5060,7 +5060,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Layers className="size-4 text-sky-500" />
                   Grade de Variações
@@ -5072,7 +5072,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <ShieldCheck className="size-4 text-purple-500" />
                   Galeria de Mídia
@@ -5124,7 +5124,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         open={variantToDelete !== null}
         onOpenChange={(open) => !open && setVariantToDelete(null)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Excluir Variante?
@@ -5136,7 +5136,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
@@ -5206,10 +5206,10 @@ const VariantItem = React.memo(function VariantItem({
   onToggleActive,
 }: VariantItemProps) {
   return (
-    <div className="group relative flex flex-wrap items-center gap-3 rounded-[20px] border border-white/10 bg-[#101013] p-3">
+    <div className="group relative flex flex-wrap items-center gap-3 rounded-[20px] border border-admin-border bg-admin-surface p-3">
       <div className="flex w-full min-w-0 items-center gap-3 pr-12">
         {variant.imageUrl && (
-          <div className="h-16 w-12 shrink-0 overflow-hidden rounded-xl border border-white/5">
+          <div className="h-16 w-12 shrink-0 overflow-hidden rounded-xl border border-admin-border">
             <LazyImage
               src={variant.imageUrl}
               alt={`${variant.name}: ${variant.value}`}
@@ -5226,7 +5226,7 @@ const VariantItem = React.memo(function VariantItem({
               {variant.name}: {variant.value}
             </span>
             {!variant.active && (
-              <span className="rounded border border-white/5 bg-zinc-800 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-500">
+              <span className="rounded border border-admin-border bg-zinc-800 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-500">
                 Offline
               </span>
             )}
@@ -5235,7 +5235,7 @@ const VariantItem = React.memo(function VariantItem({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-black uppercase tracking-tighter text-zinc-500">
-            <span className="flex items-center gap-1.5 rounded-md border border-white/5 bg-white/5 px-2 py-1">
+            <span className="flex items-center gap-1.5 rounded-md border border-admin-border bg-white/5 px-2 py-1">
               <Package className="size-3 text-zinc-400" />
               <span className="text-zinc-300">
                 {variant.stockIncrement} UND
@@ -5267,7 +5267,7 @@ const VariantItem = React.memo(function VariantItem({
           type="button"
           onClick={() => onEdit(variant)}
           aria-label={`Editar variação ${variant.value}`}
-          className="absolute right-3 top-3 flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-blue-400/10 text-blue-300"
+          className="absolute right-3 top-3 flex size-11 items-center justify-center rounded-2xl border border-admin-border bg-blue-400/10 text-blue-300"
         >
           <Edit2 className="size-3.5" />
         </button>
@@ -5281,7 +5281,7 @@ const VariantItem = React.memo(function VariantItem({
               : "Religar: volta a aparecer na loja"
           }
           className={cn(
-            "flex size-11 min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] px-2 text-xs font-bold",
+            "flex size-11 min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-2 text-xs font-bold",
             variant.active
               ? "text-zinc-300 hover:text-white"
               : "text-zinc-600 hover:text-white",
@@ -5294,7 +5294,7 @@ const VariantItem = React.memo(function VariantItem({
           type="button"
           onClick={() => onDelete(variant.id)}
           aria-label={`Excluir variação ${variant.value}`}
-          className="flex size-11 min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] px-2 text-xs font-bold text-rose-300"
+          className="flex size-11 min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-2 text-xs font-bold text-rose-300"
         >
           <Trash2 className="size-4 shrink-0" />
           Excluir variação

@@ -45,6 +45,7 @@ const VIEW_PREFETCH_MAP: Record<string, () => Promise<unknown>> = {
   "admin-coupon-form": () => import("@/views/admin/AdminCouponFormView"),
   "admin-banners": () => import("@/views/admin/AdminBannersView"),
   "admin-carousels": () => import("@/views/admin/AdminCarouselsView"),
+  "admin-app-color": () => import("@/views/admin/AdminAppColorView"),
   "admin-shipping": () => import("@/views/admin/AdminShippingView"),
   "admin-shipping-national": () =>
     import("@/views/admin/AdminShippingNationalView"),

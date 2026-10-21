@@ -93,10 +93,10 @@ function estiloDaForma(forma: string): { cor: string; icone: LucideIcon } {
  * do `KpiCard` de `AdminKpiCarousel`. Local — `SUPERFICIE_DO_CRM` é
  * compartilhada com o Dashboard e não muda. Aplicada por template, nunca por
  * `cn`: o tailwind-merge 3 lê `bg-gradient-to-b` como cor de fundo e
- * descartaria o `bg-zinc-900/70`.
+ * descartaria o `bg-admin-surface`.
  */
 const CASCA_DE_METRICA =
-  "rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent";
+  "rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent";
 
 /**
  * Um número do resumo do período: rótulo pequeno, valor grande e — só

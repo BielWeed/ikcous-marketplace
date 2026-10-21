@@ -415,7 +415,7 @@ export function AdminFinanceiroView({
     <ContextoDoCacheFinanceiro.Provider value={cache}>
       <ContextoValoresOcultos.Provider value={ocultos}>
         <ContextoConfirmacaoFinanceira.Provider value={setConfirmacao}>
-          <div className="pb-admin h-auto bg-[#08080A] text-white lg:pb-12">
+          <div className="pb-admin h-auto bg-admin-bg text-white lg:pb-12">
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 pb-7 pt-6 [&_h1]:text-[32px] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
               <AdminPageHeader
                 titulo={NOMES_DO_PAINEL["admin-financeiro"]}
@@ -425,7 +425,7 @@ export function AdminFinanceiroView({
                   aria-pressed={ocultos}
                   aria-label={ocultos ? "Mostrar valores" : "Ocultar valores"}
                   title={ocultos ? "Mostrar valores" : "Ocultar valores"}
-                  className="flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#17171C] px-4 text-xs text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-full bg-admin-raised px-4 text-xs text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
                 >
                   {ocultos ? (
                     <EyeOff aria-hidden="true" className="size-4" />
@@ -454,7 +454,7 @@ export function AdminFinanceiroView({
                     aoPedirOpcoes={() => abrirFolha({ tipo: "periodos" })}
                   />
                 ) : (
-                  <p className="flex min-h-12 items-center gap-2 rounded-2xl bg-[#17171C] px-3 text-xs text-zinc-300">
+                  <p className="flex min-h-12 items-center gap-2 rounded-2xl bg-admin-raised px-3 text-xs text-zinc-300">
                     <Clock
                       aria-hidden="true"
                       className="size-5 shrink-0 text-teal-300"
@@ -475,7 +475,7 @@ export function AdminFinanceiroView({
                 }
                 className="min-w-0 gap-7"
               >
-                <div className="sticky top-0 z-20 -mx-5 border-b border-white/10 bg-[#08080A]/95 px-5 py-2 backdrop-blur-sm before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-5 before:bg-gradient-to-r before:from-[#08080A] before:to-transparent after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-5 after:bg-gradient-to-l after:from-[#08080A] after:to-transparent">
+                <div className="sticky top-0 z-20 -mx-5 border-b border-admin-border bg-admin-bg/95 px-5 py-2 backdrop-blur-sm before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-5 before:bg-gradient-to-r before:from-admin-bg before:to-transparent after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-5 after:bg-gradient-to-l after:from-admin-bg after:to-transparent">
                   <TabsList
                     ref={listaDeAbas}
                     aria-label="Abas do Financeiro"

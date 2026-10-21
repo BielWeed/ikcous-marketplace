@@ -21,6 +21,7 @@
 // defeito que `src/lib/preco-vendido.ts` existe para fechar (override zero
 // tratado como ausência de preço).
 
+import type { PrecoAtualDaVenda } from "@/lib/erro-da-venda-presencial";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { JANELA_DE_REPETICAO_MS } from "@/lib/leitor/debounce-de-leitura";
 import {
@@ -290,6 +291,11 @@ export type AcaoDaVenda =
   | { readonly tipo: "aviso_limpo" }
   | { readonly tipo: "envio_iniciado" }
   | { readonly tipo: "envio_falhou"; readonly mensagem: string }
+  | {
+      readonly tipo: "precos_atualizados";
+      readonly chaveDeIdempotencia: string;
+      readonly itens: readonly PrecoAtualDaVenda[];
+    }
   | {
       readonly tipo: "venda_registrada";
       readonly recibo: ReciboDaVendaRegistrada;
@@ -830,6 +836,27 @@ export function reducerDaVenda(
 
     case "aviso_limpo":
       return { ...estado, aviso: null };
+
+    case "precos_atualizados": {
+      // Só a resposta da venda em andamento pode rever seus preços. Não limpa
+      // o cupom nem gira a chave: esta recusa não gravou venda nenhuma.
+      if (
+        acao.chaveDeIdempotencia !== estado.chaveDeIdempotencia ||
+        estado.recibo
+      )
+        return estado;
+      const precos = new Map(
+        acao.itens.map((i) => [
+          chaveDoItemDoCupom(i.product_id, i.variant_id),
+          i.price,
+        ]),
+      );
+      if (!estado.itens.every((i) => precos.has(i.chave))) return estado;
+      return {
+        ...estado,
+        itens: estado.itens.map((i) => ({ ...i, preco: precos.get(i.chave)! })),
+      };
+    }
 
     case "envio_iniciado":
       return { ...estado, enviando: true, erro: null };

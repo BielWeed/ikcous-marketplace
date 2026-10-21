@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   refresh: vi.fn(),
   update: vi.fn(),
   dirty: vi.fn(),
+  navigate: vi.fn(),
   validaCor: vi.fn(),
   origin: "https://abcdefghijklmnopqrst.supabase.co",
   auth: {
@@ -144,7 +145,11 @@ async function flush() {
 async function render(active = true) {
   await act(async () => {
     root.render(
-      <IdentitySettingsSection active={active} onDirtyChange={h.dirty} />,
+      <IdentitySettingsSection
+        active={active}
+        onDirtyChange={h.dirty}
+        onNavigate={h.navigate}
+      />,
     );
   });
   await flush();
@@ -246,6 +251,27 @@ afterEach(() => {
 });
 
 describe("editor de identidade sobre fotografia RPC", () => {
+  it("a Marca não edita cores, oferece atalho e salva as três cores intactas", async () => {
+    const before = snapshot();
+    before.identity.primary_color = "#abCDef";
+    before.identity.secondary_color = "#05a669";
+    before.identity.accent_color = "#f4F4f5";
+    h.read.mockResolvedValue(before);
+    await render();
+    expect(host.querySelector("#store-color-hex")).toBeNull();
+    expect(host.querySelector("#store-secondary-color")).toBeNull();
+    expect(host.querySelector("#store-accent-color")).toBeNull();
+    expect(host.textContent).toContain("A cor do app fica em Aparência do app");
+    await click("A cor do app fica em Aparência do app");
+    expect(h.navigate).toHaveBeenCalledExactlyOnceWith("admin-app-color");
+    await type("store-name", "Nova loja");
+    await click("Salvar identidade");
+    expect(h.save.mock.calls[0][0].desired).toEqual({
+      ...before.identity,
+      store_name: "Nova loja",
+    });
+  });
+
   function preparedIcons() {
     const large = {
       blob: new Blob(["large"]),
@@ -286,7 +312,7 @@ describe("editor de identidade sobre fotografia RPC", () => {
       }),
     );
     expect(host.textContent).toContain(
-      "No Android, o ícone mostra a logo da loja sobre a cor principal.",
+      "No Android, o ícone mostra a logo da loja sobre a cor do app.",
     );
     // O envio avulso do "Ícone pequeno (192 × 192)" já passa onProgress: a asserção olha só as
     // 4 chamadas do envio principal (as últimas), uma por papel, na ordem.
@@ -337,11 +363,14 @@ describe("editor de identidade sobre fotografia RPC", () => {
     ["preto", "#000000"],
   ])(
     "cor principal do rascunho com %s: o maskable usa a cor salva",
-    async (_motivo, digitada) => {
+    async (_motivo) => {
       h.prepareIcons.mockResolvedValue(preparedIcons());
       await render();
-      await type("store-color-hex", digitada);
-      expect(input("store-color-hex").value).toBe(digitada);
+      // A cor não é mais editável aqui; a proteção do preparador continua.
+      h.validaCor.mockReturnValueOnce({
+        ok: false,
+        motivo: _motivo === "preto" ? "preto" : "formato",
+      });
       await select("Trocar ícone do aplicativo");
       expect(h.prepareIcons).toHaveBeenCalledExactlyOnceWith(
         expect.any(File),
@@ -353,8 +382,10 @@ describe("editor de identidade sobre fotografia RPC", () => {
 
   it("cor principal válida do rascunho, normalizada, é a do maskable", async () => {
     h.prepareIcons.mockResolvedValue(preparedIcons());
+    const current = snapshot();
+    current.identity.primary_color = "#12ab34";
+    h.read.mockResolvedValue(current);
     await render();
-    await type("store-color-hex", "#12AB34");
     await select("Trocar ícone do aplicativo");
     expect(h.prepareIcons).toHaveBeenCalledExactlyOnceWith(
       expect.any(File),
@@ -369,7 +400,7 @@ describe("editor de identidade sobre fotografia RPC", () => {
     expect(h.prepareIcons).not.toHaveBeenCalled();
     expect(h.upload).not.toHaveBeenCalled();
     expect(host.textContent).toContain(
-      "Defina a cor principal antes de enviar o ícone",
+      "Escolha a cor do app (Ajustes → Aparência do app → Cor do app) antes de enviar o ícone",
     );
     expect(input("store-name").closest("fieldset")?.disabled).toBe(false);
   });
@@ -377,14 +408,13 @@ describe("editor de identidade sobre fotografia RPC", () => {
   it("carrega somente RPC e preserva nome/cor digitados ao publicar config externa", async () => {
     await render();
     await type("store-name", "Meu rascunho");
-    await type("store-color-hex", "#0");
     await act(async () => {
       h.config = { businessHours: "Outro", shippingFee: 99 };
       h.version++;
       for (const listener of h.listeners) listener();
     });
     expect(input("store-name").value).toBe("Meu rascunho");
-    expect(input("store-color-hex").value).toBe("#0");
+    expect(host.querySelector("#store-color-hex")).toBeNull();
     expect(h.read).toHaveBeenCalledTimes(1);
     expect(h.update).not.toHaveBeenCalled();
     expect(h.save).not.toHaveBeenCalled();
@@ -465,22 +495,22 @@ describe("editor de identidade sobre fotografia RPC", () => {
     expect(host.textContent).toContain("Identidade salva no cadastro");
     expect(h.dirty).toHaveBeenLastCalledWith(false);
   });
-  it.each(["#000000", "verde", "#0"])(
-    "recusa primária %s antes da RPC",
-    async (value) => {
-      await render();
-      await type("store-color-hex", value);
-      await click("Salvar identidade");
-      expect(h.save).not.toHaveBeenCalled();
-      expect(input("store-color-hex").value).toBe(value);
-    },
-  );
-  it("aceita preto secundário/destaque e normaliza cores pelo codec", async () => {
+  it("mantém a rede de segurança da primária antes da RPC sem reabrir o campo", async () => {
     await render();
-    await type("store-color-hex", "#ff5733");
+    await type("store-name", "Outra loja");
+    h.validaCor.mockReturnValue({ ok: false, motivo: "preto" });
+    await click("Salvar identidade");
+    expect(h.save).not.toHaveBeenCalled();
+    expect(host.textContent).toContain(
+      "Ajustes → Aparência do app → Cor do app",
+    );
+  });
+  it("aceita preto secundário/destaque e preserva a primária salva", async () => {
+    await render();
+    await type("store-name", "Outra loja");
     await click("Salvar identidade");
     expect(h.save.mock.calls[0][0].desired).toMatchObject({
-      primary_color: "#FF5733",
+      primary_color: "#ABCDEF",
       secondary_color: "#000000",
       accent_color: "#000000",
     });
@@ -601,6 +631,55 @@ describe("cancelamento, concorrência e resposta incerta", () => {
     expect(h.save.mock.calls[1][0].expected.revision).toBe("4");
     // a cidade externa não tocada entra no pacote da nova tentativa
     expect(h.save.mock.calls[1][0].desired.store_city).toBe("Cidade externa");
+  });
+  it("conflito da Marca não inventa diferença pela semente da primária nula nem pela caixa das cores", async () => {
+    const before = {
+      ...snapshot(),
+      identity: {
+        ...snapshot().identity,
+        primary_color: null,
+        secondary_color: "#AABBCC",
+        accent_color: "#DDEEFF",
+      },
+    };
+    h.read.mockResolvedValue(before);
+    h.save.mockResolvedValue({
+      status: "conflict",
+      source: "readback",
+      current: {
+        ...before,
+        revision: "4",
+        identity: {
+          ...before.identity,
+          store_name: "Nome externo",
+          secondary_color: "#aabbcc",
+          accent_color: "#dDeEfF",
+        },
+      },
+    });
+    await render();
+    await type("store-name", "Meu nome");
+    await click("Salvar identidade");
+    const diferencas = host.querySelector("ul")!.textContent;
+    expect(diferencas).toContain("Nome da loja: Meu nome / Nome externo");
+    expect(diferencas).not.toContain("Cor do app:");
+    expect(diferencas).not.toContain("Cor secundária:");
+    expect(diferencas).not.toContain("Cor de destaque:");
+  });
+  it("o conflito continua mostrando uma diferença real nas cores de apoio", async () => {
+    const current = snapshot();
+    current.identity.secondary_color = "#AABBCC";
+    h.save.mockResolvedValue({
+      status: "conflict",
+      source: "readback",
+      current,
+    });
+    await render();
+    await type("store-name", "Meu nome");
+    await click("Salvar identidade");
+    expect(host.querySelector("ul")!.textContent).toContain(
+      "Cor secundária: #000000 / #AABBCC",
+    );
   });
   it("conflito do servidor exige leitura antes de conciliar", async () => {
     h.save.mockResolvedValue({ status: "conflict", source: "server" });

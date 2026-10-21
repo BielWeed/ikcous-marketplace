@@ -1,0 +1,78 @@
+/*
+ * Seletor "Aparência do painel" (AparenciaDoPainel.tsx). O desenho mora aqui, e não
+ * em classes Tailwind no JSX, porque o pacote de JS do painel está no teto de
+ * tamanho: CSS não conta nele. As cores vêm dos tokens do tema ativo (com o valor
+ * do Escuro como reserva, já que o Escuro não define --admin-text) e a AMOSTRA de
+ * cada tema é fixa: mostra como o tema fica, qualquer que seja o ativo agora.
+ * Ordem das camadas da amostra: barra de texto, barra de destaque, cartão, fundo.
+ */
+.tema-opcao {
+  display: flex;
+  width: 100%;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid hsl(var(--admin-border));
+  border-radius: 1rem;
+  background: hsl(var(--admin-raised));
+  text-align: left;
+}
+
+.tema-opcao[aria-checked="true"] {
+  border-color: hsl(var(--admin-gold));
+  background: hsl(var(--admin-gold) / 10%);
+}
+
+.tema-opcao[aria-checked="true"]::after {
+  content: "Em uso";
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: hsl(var(--admin-gold));
+}
+
+.tema-nome {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: hsl(var(--admin-text, 240 10% 96.1%));
+}
+
+.tema-dica {
+  display: block;
+  font-size: 0.75rem;
+  color: hsl(var(--admin-text-soft, 240 6.8% 65.5%));
+}
+
+.tema-amostra {
+  flex: none;
+  width: 3.5rem;
+  height: 2.75rem;
+  border: 1px solid hsl(var(--admin-border-strong));
+  border-radius: 0.75rem;
+}
+
+.tema-opcao[data-tema-opcao="escuro"] .tema-amostra {
+  background:
+    linear-gradient(#f4f4f6, #f4f4f6) 1.1rem 1rem / 1.25rem 0.25rem no-repeat,
+    linear-gradient(#ffbf00, #ffbf00) 1.1rem 1.5rem / 0.75rem 0.25rem no-repeat,
+    linear-gradient(#1e1e23, #1e1e23) center / 2.5rem 1.75rem no-repeat,
+    #09090b;
+}
+
+.tema-opcao[data-tema-opcao="claro"] .tema-amostra {
+  background:
+    linear-gradient(#121217, #121217) 1.1rem 1rem / 1.25rem 0.25rem no-repeat,
+    linear-gradient(#8a5a00, #8a5a00) 1.1rem 1.5rem / 0.75rem 0.25rem no-repeat,
+    linear-gradient(#ffffff, #ffffff) center / 2.5rem 1.75rem no-repeat,
+    #f2f2f5;
+}
+
+.tema-opcao[data-tema-opcao="confortavel"] .tema-amostra {
+  background:
+    linear-gradient(#eadfc8, #eadfc8) 1.1rem 1rem / 1.25rem 0.25rem no-repeat,
+    linear-gradient(#d9a441, #d9a441) 1.1rem 1.5rem / 0.75rem 0.25rem no-repeat,
+    linear-gradient(#2f2b25, #2f2b25) center / 2.5rem 1.75rem no-repeat,
+    #24211c;
+}

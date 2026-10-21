@@ -69,9 +69,9 @@ const PADRAO_ESCRITA =
 //     INVERTE o teste (e) de cor-da-loja-vem-do-banco.
 const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
   "src/lib/storeIdentityDraft.ts": {
-    n: 5,
+    n: 8,
     porque:
-      "tipo, captura bruta, apresentacao e montagem da intencao em memoria; parseStoreIdentity recusa preto primario antes de produzir desired, sem persistencia (A5d3a)",
+      "captura, semente só na apresentação e preservação das cores não editadas no pacote de oito chaves; o caminho Cor do app continua recusando #000000 por validaCorDaLoja no aparelho e save_store_identity no servidor (migration 20261199000000), sem retirar corPrimariaEfetiva",
   },
   "src/lib/storeIdentitySnapshot.ts": {
     n: 2,
@@ -122,9 +122,14 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
       "A5d3b: nome de campo bruto no resumo de conflito, somente leitura; escrita passa por validaCorDaLoja e buildIdentityEditorIntent, sem permitir preto primário",
   },
   "src/hooks/useStoreIdentityEditor.ts": {
+    n: 3,
+    porque:
+      "lê a cor para o maskable e monta a intenção exclusiva de Cor do app, preservando as outras sete chaves; #000000 continua recusado por validaCorDaLoja no aparelho e save_store_identity no servidor (migration 20261199000000), mantendo a guarda corPrimariaEfetiva",
+  },
+  "src/views/admin/AdminAppColorView.tsx": {
     n: 2,
     porque:
-      "X3 (ícone do app em todos os papéis): lê a cor do rascunho e a salva (primary_color da fotografia, já validada) só para pintar o fundo do maskable em memória; passa por validaCorDaLoja antes e não persiste nada — a escrita continua sendo o save() pela RPC, que recusa preto",
+      "leitura da principal salva e edição local pela tela Cor do app; savePrimaryColor continua recusando #000000 por validaCorDaLoja no aparelho e save_store_identity no servidor (migration 20261199000000), portanto corPrimariaEfetiva permanece",
   },
   "src/lib/prepareIdentityImage.ts": {
     n: 1,

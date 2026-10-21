@@ -68,7 +68,7 @@ function CartaoDePrevistos({
       <button
         type="button"
         onClick={() => aoVer(lado)}
-        className="flex min-h-20 w-full flex-col gap-2 rounded-2xl bg-[#101013] p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+        className="flex min-h-20 w-full flex-col gap-2 rounded-2xl bg-admin-surface p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
       >
         <span className="flex w-full flex-wrap items-center gap-2 text-sm font-bold text-white">
           {lado === "entrada" ? (
@@ -332,7 +332,7 @@ export function AbaVisao({
 
       <section
         aria-label="Saldo total"
-        className="rounded-3xl bg-[#17171C] p-4"
+        className="rounded-3xl bg-admin-raised p-4"
       >
         <h2 className="mb-2 text-xs font-bold uppercase text-zinc-400">
           Saldo total · hoje
@@ -349,7 +349,7 @@ export function AbaVisao({
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-1 rounded-3xl bg-[#101013] p-1 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-1 rounded-3xl bg-admin-surface p-1 lg:grid-cols-2">
         <CartaoDePrevistos
           titulo="A pagar"
           totais={dados.aPagar}
@@ -366,7 +366,7 @@ export function AbaVisao({
 
       <section
         aria-label="Movimentos do período"
-        className="rounded-3xl bg-[#101013] p-4"
+        className="rounded-3xl bg-admin-surface p-4"
       >
         <dl className="grid grid-cols-2 gap-4">
           <div>
@@ -403,7 +403,7 @@ export function AbaVisao({
         </dl>
       </section>
 
-      <div className="flex flex-col rounded-3xl bg-[#101013] p-2">
+      <div className="flex flex-col rounded-3xl bg-admin-surface p-2">
         <button
           type="button"
           onClick={() => irParaAba("caixa")}

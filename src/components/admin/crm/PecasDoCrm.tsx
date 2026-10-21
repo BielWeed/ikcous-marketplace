@@ -17,7 +17,7 @@ export const FOCO_DO_CRM =
 
 /** Superfície de cartão que se destaca do fundo do painel. */
 export const SUPERFICIE_DO_CRM =
-  "rounded-2xl border border-white/[0.08] bg-zinc-900/60 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]";
+  "rounded-2xl border border-admin-border bg-admin-surface shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]";
 
 /**
  * Superfície de linha, bloco ou chip clicável DENTRO de um cartão.
@@ -34,7 +34,7 @@ export const SUPERFICIE_DO_CRM =
  * clicável.
  */
 export const CLICAVEL_DO_CRM = cn(
-  "cursor-pointer border border-solid border-white/10 bg-zinc-800/40 transition-[background-color,border-color,transform] hover:border-white/20 hover:bg-zinc-800/80 active:scale-[0.99]",
+  "cursor-pointer border border-solid border-admin-border bg-zinc-800/40 transition-[background-color,border-color,transform] hover:border-admin-border-strong hover:bg-zinc-800/80 active:scale-[0.99]",
   FOCO_DO_CRM,
 );
 
@@ -97,7 +97,7 @@ export function EstadoVazioDoCrm({
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-2 rounded-xl border border-dashed border-white/10 px-4 py-6 text-center",
+        "flex flex-col items-center gap-2 rounded-xl border border-dashed border-admin-border px-4 py-6 text-center",
         className,
       )}
     >

@@ -21,6 +21,7 @@ import {
 
 assert.equal(process.argv.length, 2, "NO_ARGUMENTS");
 const root = fileURLToPath(new URL("../../", import.meta.url));
+const require = createRequire(import.meta.url);
 const runId = `${Date.now()}_${randomBytes(2).toString("hex")}`;
 const output = `C:/Users/Gabriel/recuperacao-ikcous/20260909-ecossistema/controle/tarefa-A5e2-${runId}`;
 await mkdir(output);
@@ -28,6 +29,7 @@ const expectedCases = [
   "initial-desktop-mobile-accessibility",
   "draft-survives-context-config",
   "common-upload-save-original-bytes",
+  "app-color-save-preserves-identity",
   "explicit-opening-association",
   "invalid-role-zero-upload",
   "explicit-source-without-reupload",
@@ -383,18 +385,28 @@ try {
     "tus-js-client",
     "@supabase/supabase-js",
   ]) {
-    const manifest = JSON.parse(
-      await readFile(
-        path.join(root, "node_modules", dependency, "package.json"),
-        "utf8",
-      ),
-    );
+    // Worktrees podem usar node_modules do ancestral; alguns pacotes (sharp)
+    // não exportam package.json. Leia só o manifesto nos caminhos do Node.
+    let manifest;
+    for (const directory of require.resolve.paths(dependency) ?? []) {
+      try {
+        manifest = JSON.parse(
+          await readFile(
+            path.join(directory, dependency, "package.json"),
+            "utf8",
+          ),
+        );
+        break;
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+    assert.equal(manifest?.name, dependency, "DEPENDENCY_MANIFEST_MISSING");
     evidence.versions = {
       ...evidence.versions,
       [dependency]: manifest.version,
     };
   }
-  const require = createRequire(import.meta.url);
   const fixtureBundle = await build({
     absWorkingDir: root,
     stdin: {
@@ -527,6 +539,7 @@ try {
   const bundled = await build({
     absWorkingDir: root,
     entryPoints: ["tests/browser-identity-editor/entry.tsx"],
+    outdir: path.join(output, "bundled"),
     bundle: true,
     platform: "browser",
     mainFields: ["browser", "module", "main"],
@@ -541,13 +554,21 @@ try {
         VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_synthetic",
       }),
       "process.env.NODE_ENV": '"production"',
+      __STORE_IDENTITY__: JSON.stringify({
+        schemaVersion: 1,
+        source: "fixture",
+        identity: first,
+        localUrls: first.urls,
+        publicUrl: virtualOrigin,
+        codeVersion: "0.0.0",
+        codeSha: "a".repeat(40),
+        identityRevision: fixtures[0].revision,
+        deliveryVersion: "fixture-browser",
+      }),
     },
     alias: {
       "@": path.join(root, "src"),
-      "tus-js-client": path.join(
-        root,
-        "node_modules/tus-js-client/lib/browser/index.js",
-      ),
+      "tus-js-client": require.resolve("tus-js-client/lib/browser/index.js"),
     },
     plugins: [
       {
@@ -583,20 +604,36 @@ try {
     );
   for (const required of [
     "src/components/admin/settings/IdentitySettingsSection.tsx",
+    "src/views/admin/AdminAppColorView.tsx",
     "src/hooks/useStoreIdentityEditor.ts",
     "src/lib/adminStoreIdentity.ts",
     "src/lib/prepareIdentityImage.ts",
     "src/lib/uploadIdentityImage.ts",
-    "node_modules/tus-js-client/lib/browser/index.js",
+    path
+      .relative(root, require.resolve("tus-js-client/lib/browser/index.js"))
+      .split(path.sep)
+      .join("/"),
   ])
     assert(inputs.includes(required), `BUNDLE_REQUIRED_${required}`);
   assert.deepEqual([...new Set(replacements)].sort(), [
     "@/contexts/StoreContext",
     "@/hooks/useAuth",
   ]);
-  const script = bundled.outputFiles[0].contents;
+  const script = bundled.outputFiles.find((file) =>
+    file.path.endsWith(".js"),
+  )?.contents;
+  assert(script, "BUNDLE_JS_MISSING");
+  const extraCss = bundled.outputFiles.find((file) =>
+    file.path.endsWith(".css"),
+  )?.contents;
+  const servedCss = Buffer.concat([
+    css,
+    Buffer.from("\n"),
+    Buffer.from(extraCss ?? []),
+  ]);
   await writeFile(path.join(output, "bundle.js"), script);
   await writeFile(path.join(output, "frozen.css"), css);
+  await writeFile(path.join(output, "app-color.css"), extraCss ?? "");
   await writeJSON("metafile.json", {
     ...bundled.metafile,
     fixtureReplacements: replacements,
@@ -610,7 +647,8 @@ try {
   sourceBefore = await Promise.all(
     [
       ...inputs.filter(
-        (p) => !p.startsWith("node_modules/") && !p.startsWith("<define:"),
+        (p) =>
+          !p.split("/").includes("node_modules") && !p.startsWith("<define:"),
       ),
       "scripts/identityBuildFixture.ts",
       "tests/identity-admin-http/environment.mjs",
@@ -683,7 +721,7 @@ try {
             : "application/javascript",
           "Cache-Control": "no-store",
         });
-        res.end(route.endsWith("css") ? css : script);
+        res.end(route.endsWith("css") ? servedCss : script);
         return;
       }
       assert(route.startsWith("/wire/"), "LOCAL_ROUTE_FORBIDDEN");
@@ -933,13 +971,12 @@ try {
     await page.focus("#store-name");
     await page.keyboard.press("Tab");
     const focus = await page.evaluate(() => ({
-      id: document.activeElement.id,
+      text: document.activeElement.textContent.trim(),
       ring: getComputedStyle(document.activeElement).boxShadow,
       outline: getComputedStyle(document.activeElement).outlineStyle,
     }));
-    // Cidade e UF saíram da marca (moram no Endereço da loja, em Minha loja):
-    // depois do nome vem a cor principal.
-    assert.equal(focus.id, "store-color-hex");
+    // Depois do nome vem o atalho; os três campos de cor saíram da Marca.
+    assert.equal(focus.text, "A cor do app fica em Aparência do app");
     assert(
       focus.ring !== "none" || focus.outline !== "none",
       "NO_KEYBOARD_FOCUS_INDICATOR",
@@ -948,12 +985,11 @@ try {
   });
   await test("draft-survives-context-config", async () => {
     await field("store-name", "Loja Horizonte — Ensaio");
-    await field("store-color-hex", "#34678A");
     await context({
       config: { businessHours: "Fixture 10h–20h", shippingFee: 99 },
     });
     assert.equal(await value("store-name"), "Loja Horizonte — Ensaio");
-    assert.equal(await value("store-color-hex"), "#34678A");
+    assert.equal(await page.$("#store-color-hex"), null);
     assert.equal(counts().formSave, 0);
   });
   await test("common-upload-save-original-bytes", async () => {
@@ -972,7 +1008,7 @@ try {
     assert.equal((await fixtureState()).refreshes, refreshes + 1);
     const actual = await snapshot("common-save");
     assert.equal(actual.identity.store_name, "Loja Horizonte — Ensaio");
-    assert.equal(actual.identity.primary_color, "#34678A");
+    assert.equal(actual.identity.primary_color, raw.primary_color);
     assert.equal(actual.identity.branding_assets.header.sha256, common.sha256);
     assert.equal(
       actual.identity.branding_assets.header.bytes,
@@ -982,7 +1018,6 @@ try {
     assert.deepEqual(actual.identity, {
       ...raw,
       store_name: "Loja Horizonte — Ensaio",
-      primary_color: "#34678A",
       logo_url: `${virtualOrigin}/storage/v1/object/public/branding/${common.objectPath}`,
       branding_assets: {
         ...raw.branding_assets,
@@ -1006,6 +1041,34 @@ try {
         Object.entries(raw.branding_assets).filter(([key]) => key !== "header"),
       ),
     );
+  });
+  await test("app-color-save-preserves-identity", async () => {
+    const before = await snapshot("before-app-color");
+    const previous = counts();
+    await clickButton("A cor do app fica em Aparência do app");
+    await page.waitForSelector("#app-color-hex");
+    await field("app-color-hex", "#34678A");
+    await context({
+      config: { businessHours: "Fixture 10h–20h", shippingFee: 99 },
+    });
+    assert.equal(await value("app-color-hex"), "#34678A");
+    assert.equal(counts().formSave, previous.formSave);
+    await clickButton("Salvar cor");
+    await textPresent("Cor salva");
+    await page.waitForFunction(
+      () =>
+        document.querySelector("[data-fixture-state]")?.dataset.dirty ===
+        "false",
+    );
+    const actual = await snapshot("app-color-saved");
+    assert.deepEqual(actual.identity, {
+      ...before.identity,
+      primary_color: "#34678a",
+    });
+    assert.equal(counts().formSave, previous.formSave + 1);
+    await clickButton("Voltar à marca");
+    await page.waitForSelector("#store-name");
+    assert.equal(await value("store-name"), before.identity.store_name);
   });
   await test("explicit-opening-association", async () => {
     await page.click(

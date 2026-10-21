@@ -26,6 +26,7 @@ import {
   AVISO_BASE_CHAVES_DE_TESTE,
   AVISO_CHAVES_DE_TESTE,
   AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE,
+  AVISO_MODO_DE_TESTE_EM_PRODUCAO,
   PASSOS_DO_GUIA,
   RECADO_DE_SEGURANCA,
   montarPromptParaAgenteMp,
@@ -249,7 +250,7 @@ function Expansor({
   readonly children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/5 bg-zinc-950/60">
+    <div className="overflow-hidden rounded-2xl border border-admin-border bg-zinc-950/60">
       <button
         type="button"
         onClick={onAlternar}
@@ -277,7 +278,7 @@ function Expansor({
         />
       </button>
       {aberto && (
-        <div className="space-y-3 border-t border-white/5 p-3.5 duration-200 animate-in fade-in">
+        <div className="space-y-3 border-t border-admin-border p-3.5 duration-200 animate-in fade-in">
           {children}
         </div>
       )}
@@ -699,6 +700,12 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   // Conta de TESTE (chave que não recebe dinheiro de verdade): vem do `ambiente`
   // que o servidor apurou. Resposta antiga, sem o campo, não conta como teste.
   const chaveDeTeste = teste?.conectado === true && teste.ambiente === "teste";
+  const modoDeTesteEmProducao =
+    config.modo_de_teste === true && teste?.ambiente === "producao";
+  // O aviso fica no topo; embaixo só resta algum recado adicional da edge.
+  const avisoComplementar = modoDeTesteEmProducao
+    ? avisoPix?.replace(AVISO_MODO_DE_TESTE_EM_PRODUCAO, "").trim()
+    : avisoPix;
 
   // O ESTADO do recebimento pelo app, lido do que o SERVIDOR devolveu:
   // ligado na ficha manda (é o que o cliente vê); depois a pausa; depois o que
@@ -836,12 +843,12 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           className={`flex gap-2 rounded-lg border p-2.5 text-xs ${
             !teste.conectado
               ? "items-center border-red-500/30 bg-red-500/10 text-red-300"
-              : chaveDeTeste
+              : chaveDeTeste || modoDeTesteEmProducao
                 ? "items-start border-orange-500/30 bg-orange-500/10 text-orange-300"
                 : "items-center border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
           }`}
         >
-          {teste.conectado && !chaveDeTeste ? (
+          {teste.conectado && !chaveDeTeste && !modoDeTesteEmProducao ? (
             <CheckCircle2 className="size-4 shrink-0" />
           ) : (
             <AlertCircle className="size-4 shrink-0" />
@@ -855,6 +862,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               >
                 Último teste: {new Date(teste.quando).toLocaleString("pt-BR")}
               </time>
+            )}
+            {modoDeTesteEmProducao && (
+              <span role="status" className="block">
+                {AVISO_MODO_DE_TESTE_EM_PRODUCAO}
+              </span>
             )}
             {/* Conta de TESTE: o resumo não pinta verde nem fica calado. O
                 aviso do servidor (`avisoPix`, logo abaixo) já diz isto
@@ -949,7 +961,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Pedido pronto para colar no agente
             </span>
-            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/5 bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
+            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-admin-border bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
               {promptDoAgente}
             </pre>
             <button
@@ -958,7 +970,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               className={`flex min-h-11 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${
                 copiado
                   ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                  : "border-white/15 bg-[#202026] text-zinc-100 hover:bg-white/10"
+                  : "border-admin-border-strong bg-admin-raised text-zinc-100 hover:bg-admin-hover"
               }`}
             >
               {copiado ? (
@@ -996,7 +1008,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 placeholder="APP_USR-…"
                 autoComplete="off"
                 spellCheck={false}
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-admin-border bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -1024,7 +1036,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a chave secreta de produção…"
                 }
                 autoComplete="new-password"
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-admin-border bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -1055,7 +1067,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a senha dos avisos da sua loja"
                 }
                 autoComplete="new-password"
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-admin-border bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
               {!config.mascara_webhook && (
                 <p className="text-[11px] leading-relaxed text-orange-300">
@@ -1305,13 +1317,13 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           {/* O que o servidor fez e quer contar (chave de sandbox,
                   "desliguei porque o teste não passou"...) vem PRONTO da edge
                   e aparece como veio. */}
-          {avisoPix && (
+          {avisoComplementar && (
             <p
               role="status"
               className="flex items-start gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 p-2 text-[11px] leading-relaxed text-orange-300"
             >
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-              <span>{avisoPix}</span>
+              <span>{avisoComplementar}</span>
             </p>
           )}
 

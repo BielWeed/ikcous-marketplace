@@ -1229,6 +1229,10 @@ async function main() {
         "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
+      [
+        "20261280000000_o_balcao_registra_so_o_total_conferido.sql",
+        "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
@@ -1254,7 +1258,8 @@ async function main() {
         .rows[0].h;
       if (vivo === s.hashDesta) await c.query(lerLF(s.rollback));
       assert.equal(
-        (await c.query(`SELECT ${MD5_VIVO(s.assinatura)} AS h`)).rows[0].h,
+        (await c.query(`SELECT ${MD5_VIVO(s.assinaturaAnterior)} AS h`)).rows[0]
+          .h,
         s.hashVigente,
         `${s.rollback}: o molde nao voltou ao corpo anterior`,
       );

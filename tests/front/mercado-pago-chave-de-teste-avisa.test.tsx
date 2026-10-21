@@ -62,10 +62,13 @@ import {
   AVISO_BASE_CHAVES_DE_TESTE,
   AVISO_CHAVES_DE_TESTE,
   AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE,
+  AVISO_MODO_DE_TESTE_EM_PRODUCAO as AVISO_MODO_DE_TESTE_DO_FRONT,
 } from "@/components/admin/settings/mercado-pago-conteudo";
 
 const FRASE_DO_AVISO = "Essas chaves são de TESTE";
 const PIX_FICA_DESLIGADO = "O PIX fica desligado até lá";
+const AVISO_MODO_DE_TESTE_EM_PRODUCAO =
+  "Seu app está em modo de teste: os pagamentos com cartão vão ao Mercado Pago com um e-mail de teste no lugar do e-mail do cliente, o que pode fazer o cartão ser recusado. Peça para desligar o modo de teste (segredo MP_SANDBOX_PAYER_EMAIL) no servidor.";
 /** O que a edge devolve hoje com chave de teste e sem modo declarado: PIX desligado + a falta. */
 const BLOQUEADA_POR_CHAVE_DE_TESTE = {
   pix_ligado: false,
@@ -258,6 +261,8 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
     );
     expect(edge).toContain(AVISO_CHAVES_DE_TESTE);
     expect(edge).toContain(AVISO_BASE_CHAVES_DE_TESTE);
+    expect(AVISO_MODO_DE_TESTE_DO_FRONT).toBe(AVISO_MODO_DE_TESTE_EM_PRODUCAO);
+    expect(edge).toContain(AVISO_MODO_DE_TESTE_DO_FRONT);
     // O aviso curto na edge termina sem ponto (o ponto entra ao juntar avisos).
     expect(edge).toContain(AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE.slice(0, -1));
   });
@@ -279,6 +284,7 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
 
       const texto = resumoDoTeste().textContent ?? "";
       expect(texto, rotulo).toContain(CONTA_DE_TESTE.mensagem);
+      expect(texto, rotulo).not.toContain(AVISO_MODO_DE_TESTE_EM_PRODUCAO);
       if (curto) {
         expect(texto, rotulo).toContain(AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE);
         expect(texto, rotulo).not.toContain(FRASE_DO_AVISO);
@@ -347,6 +353,77 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
     expect(texto).toContain(AVISO_BASE_CHAVES_DE_TESTE);
     expect(texto).not.toContain(PIX_FICA_DESLIGADO);
   });
+
+  it("T10 — produção em modo de teste: aviso no resumo, mesmo sem abrir as chaves", async () => {
+    cenario.salvo = { ...BASE, modo_de_teste: true };
+    raiz = await montarSecao();
+
+    expect(resumoDoTeste().textContent).toContain(
+      AVISO_MODO_DE_TESTE_EM_PRODUCAO,
+    );
+    expect(resumoDoTeste().querySelector('[role="status"]')?.textContent).toBe(
+      AVISO_MODO_DE_TESTE_EM_PRODUCAO,
+    );
+    expect(resumoDoTeste().className).toContain("orange");
+    expect(resumoDoTeste().className).not.toContain("emerald");
+    expect(resumoDoTeste().textContent).not.toContain(FRASE_DO_AVISO);
+  });
+
+  it.each([false, undefined])(
+    "T11 — produção sem modo declarado (%s) não alarma",
+    async (modo_de_teste) => {
+      cenario.salvo = { ...BASE, modo_de_teste };
+      raiz = await montarSecao();
+
+      expect(resumoDoTeste().textContent).not.toContain(
+        AVISO_MODO_DE_TESTE_EM_PRODUCAO,
+      );
+      expect(resumoDoTeste().className).toContain("emerald");
+    },
+  );
+
+  it("T12 — ambiente desconhecido não é tratado como produção, mesmo em modo de teste", async () => {
+    cenario.salvo = {
+      ...BASE,
+      modo_de_teste: true,
+      ultimo_teste: { ...CONTA_DE_PRODUCAO, ambiente: null },
+    };
+    raiz = await montarSecao();
+
+    expect(resumoDoTeste().textContent).not.toContain(
+      AVISO_MODO_DE_TESTE_EM_PRODUCAO,
+    );
+    expect(resumoDoTeste().className).toContain("emerald");
+  });
+
+  it.each(["", "Outro aviso do servidor."])(
+    "T13 — Testar conexão mostra o aviso uma vez no topo e preserva o complemento (%s)",
+    async (complemento) => {
+      raiz = await montarSecao();
+      cenario.respostaTestar = {
+        ...CONTA_DE_PRODUCAO,
+        modo_de_teste: true,
+        pix_ligado: true,
+        public_key_na_loja: true,
+        faltando: [],
+        pausado: false,
+        aviso: `${AVISO_MODO_DE_TESTE_EM_PRODUCAO} ${complemento}`.trim(),
+      };
+      await abrirExpansor("Suas chaves");
+      await clique(botaoPorTexto("Testar conexão"));
+
+      expect(resumoDoTeste().textContent).toContain(
+        AVISO_MODO_DE_TESTE_EM_PRODUCAO,
+      );
+      expect(
+        ocorrencias(
+          document.body.textContent ?? "",
+          AVISO_MODO_DE_TESTE_EM_PRODUCAO,
+        ),
+      ).toBe(1);
+      if (complemento) expect(document.body.textContent).toContain(complemento);
+    },
+  );
 
   it("T9 — a falta nova aparece em linguagem de leigo na lista 'o que falta'; código que a tela não conhece cai em 'completar as chaves' sem quebrar", async () => {
     cenario.salvo = {

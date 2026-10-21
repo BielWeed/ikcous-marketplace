@@ -83,7 +83,7 @@ export const TopProductsList = memo(function TopProductsList({
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="rounded-2xl border border-white/5 bg-white/[0.01] py-10 text-center"
+                className="rounded-2xl border border-admin-border bg-white/[0.01] py-10 text-center"
               >
                 <TrendingUp className="mx-auto mb-2 size-8 text-zinc-500/50" />
                 <p className="text-xs font-semibold text-zinc-400">
@@ -111,7 +111,7 @@ export const TopProductsList = memo(function TopProductsList({
                         "group relative flex items-center justify-between py-2 px-3 rounded-xl transition-all cursor-pointer border border-transparent overflow-hidden",
                         isFirst
                           ? "bg-gradient-to-r from-admin-gold/[0.06] to-transparent border-admin-gold/10 shadow-sm shadow-admin-gold/5"
-                          : "hover:bg-white/[0.02] hover:border-white/5",
+                          : "hover:bg-white/[0.02] hover:border-admin-border",
                       )}
                     >
                       <div className="relative z-10 flex min-w-0 items-center gap-3">
@@ -139,7 +139,9 @@ export const TopProductsList = memo(function TopProductsList({
                         <div
                           className={cn(
                             "w-9 h-9 rounded-lg bg-zinc-950 overflow-hidden border relative group-hover:scale-105 transition-transform duration-500 shadow-md shrink-0",
-                            isFirst ? "border-admin-gold/30" : "border-white/5",
+                            isFirst
+                              ? "border-admin-gold/30"
+                              : "border-admin-border",
                           )}
                         >
                           <LazyImage

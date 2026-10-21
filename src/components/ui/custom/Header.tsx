@@ -430,8 +430,8 @@ export const Header = memo(function Header({
                   >
                     <Bell className="size-4.5 text-zinc-700 xs:size-5" />
                     {unreadCount > 0 && (
-                      <span className="animate-pulse-subtle absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white shadow-sm">
-                        {unreadCount}
+                      <span className="pointer-events-none absolute -right-1.5 -top-1.5 z-10 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-zinc-950 px-1 text-[10px] font-black text-white shadow-xs">
+                        {unreadCount > 99 ? "99+" : unreadCount}
                       </span>
                     )}
                   </button>

@@ -51,7 +51,7 @@ export function FolhaFinanceira({
       <SheetContent
         side={larga ? "right" : "bottom"}
         className={cn(
-          "gap-0 border-white/10 bg-[#08080A] p-0 text-white [&>button]:flex [&>button]:size-11 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full [&>button]:bg-[#17171C] [&>button]:text-zinc-300",
+          "gap-0 border-admin-border bg-admin-bg p-0 text-white [&>button]:flex [&>button]:size-11 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full [&>button]:bg-admin-raised [&>button]:text-zinc-300",
           larga ? "w-full sm:max-w-md" : "max-h-[94dvh] rounded-t-3xl",
         )}
       >
@@ -78,7 +78,7 @@ export function FolhaFinanceira({
           {children}
         </div>
         {rodape ? (
-          <SheetFooter className="mt-0 border-t border-white/5 bg-[#17171C] px-5 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3">
+          <SheetFooter className="mt-0 border-t border-admin-border bg-admin-raised px-5 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3">
             {rodape}
           </SheetFooter>
         ) : null}

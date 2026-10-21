@@ -293,7 +293,7 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
 
   beforeEach(() => {
     vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
-    createOrder.mockReset().mockResolvedValue({ id: PEDIDO });
+    createOrder.mockReset().mockResolvedValue({ id: PEDIDO, totalAmount: 120 });
     criarPagamento.mockReset().mockResolvedValue(PIX_VIVO);
     updateOrderStatus.mockReset().mockResolvedValue(undefined);
     onNavigate.mockClear();

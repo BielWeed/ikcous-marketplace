@@ -61,10 +61,10 @@ export function PerfilDaLoja({
   return (
     <section
       aria-label="Sua loja"
-      className="min-w-0 rounded-[22px] border border-white/10 bg-zinc-900/50 p-3 lg:border-0 lg:bg-transparent lg:p-0"
+      className="min-w-0 rounded-[22px] border border-admin-border bg-admin-surface p-3 lg:border-0 lg:bg-transparent lg:p-0"
     >
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-sky-400/10 text-sky-300">
+        <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-admin-border bg-sky-400/10 text-sky-300">
           {logoUrl && !logoFalhou ? (
             <img
               src={logoUrl}
@@ -119,7 +119,7 @@ export function PerfilDaLoja({
       {linkCopiado ? (
         <div
           role="status"
-          className="mt-3 space-y-2 border-t border-white/10 pt-3"
+          className="mt-3 space-y-2 border-t border-admin-border pt-3"
         >
           <p className="flex items-center gap-2 text-sm font-semibold text-teal-300">
             <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />

@@ -1141,6 +1141,11 @@ async function main() {
   let reporSucessora = false;
   let erroDaReposicao = null;
   try {
+    await c.query("BEGIN");
+    await require("./pdv-total-conferido-posterior.cjs").desfazerTotalConferidoNaTransacao(
+      c,
+    );
+    await c.query("COMMIT");
     const existe = await c.query("SELECT to_regprocedure($1) AS f", [FN]);
     if (!existe.rows[0].f) {
       falhar("FALHOU", `${FN} não existe: o banco não foi migrado.`);

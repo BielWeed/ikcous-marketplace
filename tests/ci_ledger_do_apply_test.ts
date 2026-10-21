@@ -126,7 +126,7 @@ function respostaSaudavel(q: string): Resposta {
   if (q.includes("query_to_xml"))
     return { corpo: '[{"tabela":"marketplace_orders","linhas_agora":3}]' };
   if (q.includes("has_function_privilege"))
-    return { corpo: '[{"paged8":true}]' };
+    return { corpo: '[{"paged8":true,"venda":true}]' };
   throw new Error(`consulta inesperada no stub: ${q.slice(0, 80)}`);
 }
 

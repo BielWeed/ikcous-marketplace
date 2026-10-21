@@ -102,7 +102,7 @@ export function NumerosDoMes({
             </dd>
           </div>
         </dl>
-        <div className="space-y-3 border-t border-white/10 pt-4">
+        <div className="space-y-3 border-t border-admin-border pt-4">
           <p className="flex items-center gap-2.5 text-sm font-semibold text-white">
             <SeloDoInicio icone={BarChart3} tom="verde" />
             Vendas pagas no mês
@@ -115,7 +115,7 @@ export function NumerosDoMes({
             comparacao="vs. os mesmos dias do mês anterior"
           />
         </div>
-        <div className="space-y-3 border-t border-white/10 pt-4">
+        <div className="space-y-3 border-t border-admin-border pt-4">
           <p className="flex items-center gap-2.5 text-sm font-semibold text-white">
             <SeloDoInicio icone={TrendingUp} tom="teal" />
             Lucro estimado
@@ -137,7 +137,9 @@ export function NumerosDoMes({
           <div className="premium-shimmer h-4 rounded-lg" aria-hidden="true" />
         ) : null}
       </div>
-      <div className={`${CARTAO_INICIO} mt-3 divide-y divide-white/10 py-1`}>
+      <div
+        className={`${CARTAO_INICIO} mt-3 divide-y divide-admin-border py-1`}
+      >
         {contas.map((conta) => (
           <button
             key={conta.titulo}

@@ -3,8 +3,8 @@ import { useState } from "react";
 // Memória da última visita da home (frente cls-ressalva1-0409, desenho da
 // memória: laudo 6ab5s4 + posição #476 + contrato do hub).
 //
-// O que é: três booleanos — tinha banner de topo? tinha ofertas? tinha
-// destaques? — gravados quando os dados vivos da última visita chegaram, e
+// O que é: tinha banner de topo? ofertas? destaques? e qual layout de ofertas
+// — gravados quando os dados vivos da última visita chegaram, e
 // lidos NO PRIMEIRO RENDER da visita seguinte para reservar exatamente o
 // espaço que vai ser usado: esqueleto do banner só quando a última visita
 // tinha banner; esqueleto de ofertas/destaques só quando a última visita
@@ -22,6 +22,7 @@ export interface MemoriaDaHome {
   temBanner: boolean;
   temOfertas: boolean;
   temBestsellers: boolean;
+  layoutOfertas?: "padrao" | "compacto";
   gravadoEm: number;
 }
 
@@ -55,6 +56,7 @@ function parseMemoria(bruto: string | null): MemoriaDaHome | null {
       temBanner: memo.temBanner,
       temOfertas: memo.temOfertas,
       temBestsellers: memo.temBestsellers,
+      layoutOfertas: memo.layoutOfertas === "compacto" ? "compacto" : "padrao",
       gravadoEm,
     };
   } catch {

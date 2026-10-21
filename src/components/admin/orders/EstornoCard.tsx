@@ -235,7 +235,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
   // mentir para o lojista sobre dinheiro.
   if (!pedidoCarregado) {
     return (
-      <div className="space-y-4 rounded-2xl border border-white/5 bg-white/[0.03] p-5 text-white">
+      <div className="space-y-4 rounded-2xl border border-admin-border bg-admin-surface p-5 text-white">
         <h3 className="text-sm font-medium text-zinc-200">
           Devolução de dinheiro
         </h3>
@@ -277,7 +277,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
   }
 
   return (
-    <div className="space-y-4 rounded-2xl border border-white/5 bg-white/[0.03] p-5 text-white">
+    <div className="space-y-4 rounded-2xl border border-admin-border bg-admin-surface p-5 text-white">
       <h3 className="text-sm font-medium text-zinc-200">
         Devolução de dinheiro
       </h3>
@@ -355,7 +355,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
                     ? `valor-outro-estorno-aviso-${order.id}`
                     : undefined
                 }
-                className="h-9 w-32 rounded-lg border-white/10 bg-zinc-950 text-xs text-white"
+                className="h-9 w-32 rounded-lg border-admin-border bg-zinc-950 text-xs text-white"
               />
               {!campoValido && (
                 <p

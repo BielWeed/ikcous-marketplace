@@ -1,8 +1,8 @@
 /* Apresentação local do formulário e dos seus modais; sem alterar os primitivos. */
 .produto-formulario,
 .produto-modal {
-  color: #fafafa;
-  background: #08080a;
+  color: var(--lit-t-fafafa, #fafafa);
+  background: hsl(var(--admin-bg));
 }
 
 :is(.produto-formulario, .produto-modal) :is(label, button, p, h3, h4, span) {
@@ -19,11 +19,11 @@
     .text-zinc-650,
     .text-zinc-800
   ) {
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
 }
 
 :is(.produto-formulario, .produto-modal) :is(.text-red-500, .text-rose-500) {
-  color: #fda4af;
+  color: var(--lit-t-fda4af, #fda4af);
 }
 
 :is(.produto-formulario, .produto-modal)
@@ -34,37 +34,37 @@
   ) {
   min-width: 0;
   min-height: 48px;
-  border-color: #38383f;
+  border-color: hsl(var(--admin-border-strong));
   border-radius: 16px;
-  background: #17171c;
-  color: #fafafa;
+  background: hsl(var(--admin-raised));
+  color: var(--lit-t-fafafa, #fafafa);
   font-size: 14px;
   font-weight: 400;
 }
 
 :is(.produto-formulario, .produto-modal) :is(input, textarea)::placeholder {
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
   opacity: 1;
 }
 
 :is(.produto-formulario, .produto-modal)
   :is(input, textarea, button):focus-visible {
-  outline: 2px solid #8bb4ff;
+  outline: 2px solid var(--lit-t-8bb4ff, #8bb4ff);
   outline-offset: 3px;
 }
 
 :is(.produto-formulario, .produto-modal) label:not(:has(input[type="file"])) {
   font-weight: 400;
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
 }
 
 .produto-formulario .produto-campo {
   position: relative;
   min-width: 0;
   padding: 0;
-  border: 1px solid #38383f;
+  border: 1px solid hsl(var(--admin-border-strong));
   border-radius: 16px;
-  background: #17171c;
+  background: hsl(var(--admin-raised));
 }
 
 .produto-formulario .produto-campo > label {
@@ -78,7 +78,7 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
 }
 
 .produto-formulario .produto-campo :is(input, textarea, [role="combobox"]) {
@@ -123,10 +123,10 @@
   width: 52px;
   height: 44px;
   padding: 4px;
-  border: 1px solid #71717a;
+  border: 1px solid var(--lit-b-71717a, #71717a);
   border-radius: 999px;
   appearance: none;
-  background: #3f3f46;
+  background: var(--lit-b-3f3f46, #3f3f46);
   cursor: pointer;
 }
 
@@ -159,22 +159,22 @@
 }
 
 .produto-formulario input:disabled {
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
   opacity: 1;
 }
 
 .produto-secao > section > button {
   min-height: 76px;
   padding: 12px 12px 12px 62px;
-  border: 1px solid #2d2d34;
+  border: 1px solid hsl(var(--admin-border));
   border-radius: 20px;
-  background: #101013;
+  background: hsl(var(--admin-surface));
 }
 
 .produto-secao > section > button > span > span:first-child {
   font-size: 16px;
   font-weight: 700;
-  color: #fafafa;
+  color: var(--lit-t-fafafa, #fafafa);
 }
 
 .produto-secao > section > button > span > span:last-child {
@@ -187,18 +187,18 @@
   width: 44px;
   height: 44px;
   padding: 12px;
-  border: 1px solid #38383f;
+  border: 1px solid hsl(var(--admin-border-strong));
   border-radius: 14px;
-  background: #1e1e24;
+  background: hsl(var(--admin-raised));
 }
 
 .produto-secao-aviso > section > button {
-  border-color: #795055;
-  background: #25171a;
+  border-color: var(--lit-b-795055, #795055);
+  background: var(--lit-b-25171a, #25171a);
 }
 
 .produto-secao-aviso > section > button > span > span:last-child {
-  color: #fda4af;
+  color: var(--lit-t-fda4af, #fda4af);
 }
 
 :where(.produto-modal) button {
@@ -217,7 +217,7 @@
 /* As folhas de ajuda são portais compartilhados. Este escopo só existe
    enquanto o formulário está montado; os componentes comuns ficam intactos. */
 body:has(.produto-formulario) [role="dialog"] h2 {
-  color: #fafafa;
+  color: var(--lit-t-fafafa, #fafafa);
   font-size: 18px;
   letter-spacing: normal;
   text-transform: none;

@@ -74,7 +74,8 @@
 //       teste declarado -> aviso novo ("Essas chaves são de TESTE...") em
 //       salvar (inclusive na 1ª gravação), testar e retomar, sem mudar
 //       `pix_ligado`/`faltando`; com `MP_SANDBOX_PAYER_EMAIL` -> o aviso curto
-//       de sempre; conta REAL ou sem `tags` -> nenhum aviso; o e-mail do
+//       de sempre; conta REAL em modo declarado -> aviso do e-mail de teste;
+//       produção sem modo ou ambiente sem marca -> nenhum aviso; o e-mail do
 //       `/users/me` nunca sai em resposta, registro nem log
 //   C31 formas de pagamento por loja (25/09/2026, B2): desligar_pix numa loja
 //       SEM nenhuma forma "na entrega" -> a trigger do invariante recusa
@@ -2551,11 +2552,16 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("A7 — conta REAL (guarda da loja de verdade): nenhum aviso no salvar nem no testar, com ou sem modo declarado", async () => {
-        for (const extra of [
-            {},
-            { MP_SANDBOX_PAYER_EMAIL: "pagador-de-teste@testuser.com" },
-        ]) {
+    const AVISO_MODO_DE_TESTE_EM_PRODUCAO =
+        "Seu app está em modo de teste: os pagamentos com cartão vão ao Mercado Pago com um e-mail de teste no lugar do e-mail do cliente, o que pode fazer o cartão ser recusado. Peça para desligar o modo de teste (segredo MP_SANDBOX_PAYER_EMAIL) no servidor.";
+
+    await t.step("A7 — produção avisa só com modo de teste declarado, sem alterar o PIX nem expor o segredo", async () => {
+        for (const [extra, avisoEsperado] of [
+            [{}, undefined],
+            [{ MP_SANDBOX_PAYER_EMAIL: "" }, undefined],
+            [{ MP_SANDBOX_PAYER_EMAIL: "   " }, undefined],
+            [{ MP_SANDBOX_PAYER_EMAIL: "pagador-de-teste@testuser.com" }, AVISO_MODO_DE_TESTE_EM_PRODUCAO],
+        ] as const) {
             const desfazerEnv = prepararEnv(extra);
             const { cliente } = supabaseFalso();
             try {
@@ -2565,7 +2571,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                     buscarMpFalso(200, contaReal()).buscar,
                 );
                 const corpoSalvar = await salvar.json();
-                assertEquals(corpoSalvar.aviso, undefined);
+                assertEquals(corpoSalvar.aviso, avisoEsperado);
                 assertEquals(corpoSalvar.pix_ligado, true);
                 assertEquals(corpoSalvar.ultimo_teste.ambiente, "producao");
                 const testar = await chamar(
@@ -2574,11 +2580,43 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                     buscarMpFalso(200, contaReal()).buscar,
                 );
                 const corpoTestar = await testar.json();
-                assertEquals(corpoTestar.aviso, undefined);
+                assertEquals(corpoTestar.aviso, avisoEsperado);
                 assertEquals(corpoTestar.ambiente, "producao");
+                assertEquals(corpoTestar.pix_ligado, true);
+                const corpoLer = await (await chamar(cliente, { acao: "ler" })).json();
+                assertEquals(corpoLer.aviso, avisoEsperado);
+                for (const corpo of [corpoSalvar, corpoTestar, corpoLer]) {
+                    assertEquals(corpo.faltando, []);
+                    assertEquals(JSON.stringify(corpo).includes("pagador-de-teste@testuser.com"), false);
+                }
             } finally {
                 desfazerEnv();
             }
+        }
+    });
+
+    await t.step("A7b — produção em modo de teste avisa também com chaves incompletas, no re-salvar e durante a pausa", async () => {
+        const desfazerEnv = prepararEnv({ MP_SANDBOX_PAYER_EMAIL: "pagador-ficticio@testuser.com" });
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const { resultado: respostas, linhas } = await capturandoConsole(async () => {
+                const parcial = await (await chamar(cliente, { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO }, buscarMpFalso(200, contaReal()).buscar)).json();
+                const completo = await (await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, contaReal()).buscar)).json();
+                const repetido = await (await chamar(cliente, { acao: "salvar", public_key: PUBLIC_KEY_FALSA })).json();
+                await chamar(cliente, { acao: "desligar_pix" });
+                const pausado = await (await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, contaReal()).buscar)).json();
+                const retomado = await (await chamar(cliente, { acao: "ligar_pix" })).json();
+                return [parcial, completo, repetido, pausado, retomado];
+            });
+            for (const corpo of respostas) {
+                assertEquals(corpo.aviso, AVISO_MODO_DE_TESTE_EM_PRODUCAO);
+                assertEquals(JSON.stringify(corpo).includes("pagador-ficticio@testuser.com"), false);
+            }
+            assertEquals(respostas.map((r) => r.pix_ligado), [false, true, true, false, true]);
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(linhas.join("\n").includes("pagador-ficticio@testuser.com"), false);
+        } finally {
+            desfazerEnv();
         }
     });
 
@@ -2597,6 +2635,23 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(corpo.pix_ligado, true);
             assertEquals(corpo.ultimo_teste.ambiente, null);
             assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A8c — ambiente desconhecido em modo declarado segue sem aviso em salvar, testar e ler", async () => {
+        const desfazerEnv = prepararEnv({ MP_SANDBOX_PAYER_EMAIL: "pagador-ficticio@testuser.com" });
+        const { cliente } = supabaseFalso();
+        try {
+            const mp = buscarMpFalso(200, { id: 123456, nickname: "Loja Real", site_id: "MLB" }).buscar;
+            for (const body of [TRES_CHAVES, { acao: "testar" }, { acao: "ler" }]) {
+                const corpo = await (await chamar(cliente, body, mp)).json();
+                assertEquals(corpo.aviso, undefined);
+                assertEquals(corpo.pix_ligado, true);
+                assertEquals(corpo.modo_de_teste, true);
+                assertEquals(JSON.stringify(corpo).includes("pagador-ficticio@testuser.com"), false);
+            }
         } finally {
             desfazerEnv();
         }
@@ -2661,7 +2716,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("N3 — `modo_de_teste` não mexe em NENHUM outro campo: com e sem a variável, o resto da resposta é o mesmo", async () => {
+    await t.step("N3 — fora `modo_de_teste` e `aviso`, a variável não muda a resposta nem o estado do PIX", async () => {
         const rodar = async (extra: Record<string, string>) => {
             const desfazerEnv = prepararEnv(extra);
             const { cliente, estado } = supabaseFalso();
@@ -2674,9 +2729,10 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                 const testar = await (await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, conta).buscar)).json();
                 const lido = await (await chamar(cliente, { acao: "ler" })).json();
                 for (const corpo of [parcial, completo, testar, lido]) {
-                    // Tudo, MENOS o campo novo e o que muda a cada chamada (horas).
+                    // Tudo, MENOS o modo, seu aviso e o que muda a cada chamada (horas).
                     const {
                         modo_de_teste: _modoDeTeste,
+                        aviso: _aviso,
                         atualizado_em: _atualizadoEm,
                         ultimo_teste: _ultimoTeste,
                         quando: _quando,

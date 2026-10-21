@@ -53,8 +53,23 @@ vi.mock("@/hooks/useLeaderElection", () => ({
   useLeaderElection: () => ({ isLeader: false }),
 }));
 
+const { lerPedido, selecionarPedido, filtrarPedido } = vi.hoisted(() => ({
+  lerPedido: vi.fn(),
+  selecionarPedido: vi.fn(),
+  filtrarPedido: vi.fn(),
+}));
+
+beforeEach(() => {
+  lerPedido
+    .mockReset()
+    .mockResolvedValue({ data: { total: 100 }, error: null });
+  selecionarPedido.mockReset().mockReturnValue({ eq: filtrarPedido });
+  filtrarPedido.mockReset().mockReturnValue({ single: lerPedido });
+});
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    from: vi.fn(() => ({ select: selecionarPedido })),
     rpc: vi.fn().mockResolvedValue({ data: "ped-1", error: null }),
     functions: {
       invoke: vi.fn().mockResolvedValue({ data: {}, error: null }),
@@ -110,6 +125,99 @@ describe("createOrder escolhe a RPC — falha fechada para o lado 'na entrega'",
       "create_marketplace_order_v24",
       expect.anything(),
     );
+  });
+});
+
+describe("total do pagamento vem do pedido gravado", () => {
+  it.each([100.03, "99.97"])(
+    "relê o total do ID devolvido pela RPC: %s",
+    async (total) => {
+      lerPedido.mockResolvedValueOnce({ data: { total }, error: null });
+      const { createOrder } = useOrders(false, false);
+      const pedido = await createOrder(DADOS_MINIMOS, {
+        comPagamentoOnline: true,
+      });
+      expect(pedido.totalAmount).toBe(Number(total));
+      expect(supabase.from).toHaveBeenCalledWith("marketplace_orders");
+      expect(selecionarPedido).toHaveBeenCalledWith("total");
+      expect(filtrarPedido).toHaveBeenCalledWith("id", "ped-1");
+    },
+  );
+
+  it.each([
+    null,
+    {},
+    { total: null },
+    { total: "" },
+    { total: "inválido" },
+    { total: -1 },
+    { total: 0 },
+  ])("sem total válido não devolve o valor do cliente: %j", async (data) => {
+    lerPedido.mockResolvedValueOnce({ data, error: null });
+    const { createOrder } = useOrders(false, false);
+    await expect(
+      createOrder(DADOS_MINIMOS, { comPagamentoOnline: true }),
+    ).rejects.toMatchObject({
+      code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+      pedidoId: "ped-1",
+    });
+  });
+
+  it("falha da leitura não desfaz nem recria o pedido, e não autoriza cobrar o valor do cliente", async () => {
+    lerPedido.mockResolvedValueOnce({
+      data: null,
+      error: { message: "sem conexão" },
+    });
+    const { createOrder } = useOrders(false, false);
+    vi.mocked(supabase.rpc).mockClear();
+    await expect(
+      createOrder(DADOS_MINIMOS, { comPagamentoOnline: true }),
+    ).rejects.toMatchObject({
+      code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+      pedidoId: "ped-1",
+    });
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["erro devolvido pelo banco (RLS)", "devolvido"],
+    ["leitura que lança (rede)", "lancado"],
+  ])(
+    "a causa original da leitura falha chega ao console.error: %s",
+    async (_nome, jeito) => {
+      const causa = { message: "new row violates RLS", code: "42501" };
+      if (jeito === "devolvido") {
+        lerPedido.mockResolvedValueOnce({ data: null, error: causa });
+      } else {
+        lerPedido.mockRejectedValueOnce(causa);
+      }
+      const registro = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const { createOrder } = useOrders(false, false);
+        const erro = await createOrder(DADOS_MINIMOS, {
+          comPagamentoOnline: true,
+        }).catch((e: unknown) => e);
+        // O fluxo não muda: continua bloqueando com o mesmo código.
+        expect(erro).toMatchObject({ code: "TOTAL_DO_PEDIDO_INDISPONIVEL" });
+        expect((erro as { cause?: unknown }).cause).toBe(causa);
+        // E a causa original é o que o log recebe.
+        const registrados = registro.mock.calls.flat();
+        expect(
+          registrados.some(
+            (arg) =>
+              arg === causa || (arg as { cause?: unknown })?.cause === causa,
+          ),
+        ).toBe(true);
+      } finally {
+        registro.mockRestore();
+      }
+    },
+  );
+
+  it("pedido na entrega não faz a leitura adicional", async () => {
+    const { createOrder } = useOrders(false, false);
+    await createOrder(DADOS_MINIMOS);
+    expect(lerPedido).not.toHaveBeenCalled();
   });
 });
 

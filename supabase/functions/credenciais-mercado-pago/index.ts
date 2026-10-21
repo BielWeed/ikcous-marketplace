@@ -813,6 +813,9 @@ const AVISO_BASE_CHAVES_DE_TESTE =
 const AVISO_CHAVES_DE_TESTE_SEM_MODO_DE_TESTE =
     'Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago). O PIX fica desligado até lá.';
 
+const AVISO_MODO_DE_TESTE_EM_PRODUCAO =
+    "Seu app está em modo de teste: os pagamentos com cartão vão ao Mercado Pago com um e-mail de teste no lugar do e-mail do cliente, o que pode fazer o cartão ser recusado. Peça para desligar o modo de teste (segredo MP_SANDBOX_PAYER_EMAIL) no servidor.";
+
 /**
  * A loja DECLAROU o modo de teste? Mesma regra do `criar-pagamento`
  * (`MP_SANDBOX_PAYER_EMAIL` com `?.trim() || undefined`): ausente, vazia ou só
@@ -824,8 +827,8 @@ function lojaDeclarouModoDeTeste(): boolean {
 }
 
 /**
- * O aviso do ambiente da conta, ou null (função PURA). Só "teste" avisa:
- * "producao" e null (sem sinal) ficam calados — loja boa nunca é alarmada.
+ * O aviso do ambiente da conta, ou null (função PURA). Produção só avisa
+ * com modo de teste declarado; null (sem sinal) nunca alarma a loja.
  * Conta de teste SEM modo declarado também BLOQUEIA o PIX (falta
  * `chave_de_teste` em `faltasParaReceber`, decisão de 14/10 que mudou a regra
  * "colou, liberou" de 30/09); com modo declarado, só avisa.
@@ -834,6 +837,9 @@ function avisoDoAmbiente(
     ambiente: "producao" | "teste" | null | undefined,
     modoDeTesteDeclarado: boolean,
 ): string | null {
+    if (ambiente === "producao" && modoDeTesteDeclarado) {
+        return AVISO_MODO_DE_TESTE_EM_PRODUCAO;
+    }
     if (ambiente !== "teste") return null;
     return modoDeTesteDeclarado
         ? AVISO_CHAVE_DE_TESTE
@@ -927,6 +933,11 @@ export async function handler(
                 {
                     ...respostaLer(registro, ficha, modoDeTesteDeclarado),
                     modo_de_teste: modoDeTesteDeclarado,
+                    ...juntarAvisos(
+                        registro?.ultimo_teste?.ambiente === "producao" && modoDeTesteDeclarado
+                            ? [AVISO_MODO_DE_TESTE_EM_PRODUCAO]
+                            : [],
+                    ),
                 },
                 200,
             );
@@ -1227,18 +1238,19 @@ export async function handler(
                         `Desliguei o pagamento pelo app: ${motivoDoDesligamento(faltas, false)}.`,
                     );
                 }
-                // Conta de TESTE: sem modo de teste declarado o aviso sai
-                // SEMPRE (inclusive na 1ª gravação, quando nada liga ainda
-                // por falta da chave de notificações) e é o recado de que o
-                // PIX ficou desligado (falta `chave_de_teste`); no modo
-                // declarado (sandbox legítimo) segue como era: só quando liga.
-                const avisoDeAmbiente = avisoDoAmbiente(
-                    ultimoTeste?.ambiente,
-                    modoDeTesteDeclarado,
-                );
-                if (avisoDeAmbiente && (!modoDeTesteDeclarado || alvo)) {
-                    avisos.push(avisoDeAmbiente);
-                }
+            }
+            // Produção com e-mail de teste avisa mesmo no re-salvar ou em
+            // pausa. Para conta de teste, mantém a regra anterior do aviso.
+            const avisoDeAmbiente = avisoDoAmbiente(
+                ultimoTeste?.ambiente,
+                modoDeTesteDeclarado,
+            );
+            if (
+                avisoDeAmbiente &&
+                (ultimoTeste?.ambiente === "producao" ||
+                    (credencialMudou && (!modoDeTesteDeclarado || alvo)))
+            ) {
+                avisos.push(avisoDeAmbiente);
             }
             return json(
                 {
@@ -1328,7 +1340,11 @@ export async function handler(
                 registroAtual,
                 modoDeTesteDeclarado,
             );
-            if (chaveDeTeste && avisoDeAmbiente && !reconciliacao.recusa) {
+            if (
+                avisoDeAmbiente &&
+                (ultimoTeste.ambiente === "producao" ||
+                    (chaveDeTeste && !reconciliacao.recusa))
+            ) {
                 avisos.push(avisoDeAmbiente);
             }
             if (reconciliacao.recusa) {
@@ -1363,7 +1379,7 @@ export async function handler(
                     );
                 }
             } else if (reconciliacao.ligouAgora) {
-                if (avisoDeAmbiente && modoDeTesteDeclarado) {
+                if (avisoDeAmbiente && modoDeTesteDeclarado && ultimoTeste.ambiente === "teste") {
                     avisos.push(avisoDeAmbiente);
                 }
                 registroAtual = await carimbarLigacao(

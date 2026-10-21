@@ -16,7 +16,8 @@
       ".unlighthouse",
       ".playwright-mcp",
       ".loki",
-      "test-results"
+      "test-results",
+      "src/components/layouts/temas-do-painel-cores.css"
     ]
   },
   "formatter": {

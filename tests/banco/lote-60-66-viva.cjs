@@ -560,6 +560,9 @@ async function main() {
     criarDaMigration(
       "20261162",
       "CREATE OR REPLACE FUNCTION public.registrar_venda_presencial",
+    ).replace(
+      "p_idempotency_key uuid DEFAULT NULL)",
+      "p_idempotency_key uuid DEFAULT NULL, p_total_esperado numeric DEFAULT NULL)",
     ),
     ["corpo final registrar_venda_presencial"],
   );
@@ -682,7 +685,7 @@ async function main() {
   const sig = {
     buscar: "buscar_por_codigo_barras(text)",
     venda:
-      "registrar_venda_presencial(jsonb, text, uuid, text, text, numeric, text, uuid)",
+      "registrar_venda_presencial(jsonb, text, uuid, text, text, numeric, text, uuid, numeric)",
     paged:
       "get_admin_orders_paged(text, text, text, text, integer, integer, text, text)",
     cancelados:
@@ -976,7 +979,7 @@ async function main() {
     "buscar_por_codigo_barras(text)",
     "get_admin_orders_cancelados_recentes(integer, integer, integer)",
     "get_admin_orders_paged(text, text, text, text, integer, integer, text, text)",
-    "registrar_venda_presencial(jsonb, text, uuid, text, text, numeric, text, uuid)",
+    "registrar_venda_presencial(jsonb, text, uuid, text, text, numeric, text, uuid, numeric)",
   ];
   for (const assinatura of QUATRO) {
     const fn = assinatura.slice(0, assinatura.indexOf("("));

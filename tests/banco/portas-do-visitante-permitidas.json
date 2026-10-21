@@ -731,7 +731,7 @@
       "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
     },
     {
-      "funcao": "public.registrar_venda_presencial(p_itens jsonb, p_pagamento text, p_cliente_user_id uuid, p_cliente_nome text, p_cliente_whatsapp text, p_desconto numeric, p_observacao text, p_idempotency_key uuid)",
+      "funcao": "public.registrar_venda_presencial(p_itens jsonb, p_pagamento text, p_cliente_user_id uuid, p_cliente_nome text, p_cliente_whatsapp text, p_desconto numeric, p_observacao text, p_idempotency_key uuid, p_total_esperado numeric)",
       "executa": ["authenticated"],
       "tipo": "volatil",
       "secdef": true,

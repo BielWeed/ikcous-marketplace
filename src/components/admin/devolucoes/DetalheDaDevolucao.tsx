@@ -36,7 +36,7 @@ import { ReembolsoDaDevolucao } from "./ReembolsoDaDevolucao";
 import { SeloDoStatus, SeloDoTipo } from "./SelosDaDevolucao";
 
 const SECAO =
-  "admin-glass space-y-3 rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6";
+  "admin-glass space-y-3 rounded-2xl border border-admin-border p-4 shadow-2xl sm:p-6";
 const TITULO_SECAO =
   "text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 
@@ -92,12 +92,12 @@ export function DetalheDaDevolucao({
       className="flex h-full min-h-0 flex-col"
       data-testid="detalhe-devolucao"
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/5 bg-[#09090b]/95 px-3 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] backdrop-blur-md lg:rounded-t-2xl lg:pt-3">
+      <div className="flex shrink-0 items-center gap-2 border-b border-admin-border bg-admin-bg/95 px-3 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] backdrop-blur-md lg:rounded-t-2xl lg:pt-3">
         <button
           type="button"
           onClick={onFechar}
           aria-label="Fechar devolução"
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-900/60 text-zinc-300 hover:text-white active:scale-95"
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-surface text-zinc-300 hover:text-white active:scale-95"
         >
           <ChevronLeft className="size-4 lg:hidden" />
           <X className="hidden size-4 lg:block" />
@@ -117,7 +117,7 @@ export function DetalheDaDevolucao({
           type="button"
           onClick={() => void ficha.recarregar()}
           aria-label="Atualizar devolução"
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-900/60 text-zinc-400 hover:text-white active:scale-95"
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-surface text-zinc-400 hover:text-white active:scale-95"
         >
           <RefreshCw className={cn("size-4", carregando && "animate-spin")} />
         </button>
@@ -231,7 +231,7 @@ export function DetalheDaDevolucao({
               <ul className="space-y-2">
                 {detalhe.itens.map((item) => (
                   <li key={item.id} className="flex items-center gap-3">
-                    <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-white/5 bg-zinc-900">
+                    <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-admin-border bg-zinc-900">
                       {item.image_url && (
                         <img
                           src={item.image_url}
@@ -253,7 +253,7 @@ export function DetalheDaDevolucao({
                   </li>
                 ))}
               </ul>
-              <dl className="space-y-1.5 border-t border-white/5 pt-3">
+              <dl className="space-y-1.5 border-t border-admin-border pt-3">
                 <Linha rotulo="Itens">
                   <span className="tabular-nums">
                     {formatarReais(detalhe.valor_itens)}
@@ -298,7 +298,7 @@ export function DetalheDaDevolucao({
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block aspect-square overflow-hidden rounded-xl border border-white/5 bg-zinc-900"
+                        className="block aspect-square overflow-hidden rounded-xl border border-admin-border bg-zinc-900"
                       >
                         <img
                           src={url}
@@ -309,7 +309,7 @@ export function DetalheDaDevolucao({
                     ) : (
                       <div
                         key={caminho}
-                        className="flex aspect-square items-center justify-center rounded-xl border border-white/5 bg-zinc-900 p-2 text-center text-[11px] text-zinc-500"
+                        className="flex aspect-square items-center justify-center rounded-xl border border-admin-border bg-zinc-900 p-2 text-center text-[11px] text-zinc-500"
                       >
                         {fotos.has(caminho)
                           ? "Foto indisponível"
@@ -394,7 +394,7 @@ export function DetalheDaDevolucao({
 
             <section className={SECAO}>
               <h3 className={TITULO_SECAO}>Histórico</h3>
-              <ol className="space-y-3 border-l border-white/10 pl-4">
+              <ol className="space-y-3 border-l border-admin-border pl-4">
                 {detalhe.eventos.map((evento) => (
                   <li key={evento.id} className="relative">
                     <span className="absolute left-[-21px] top-1 size-2.5 rounded-full border border-admin-gold/60 bg-zinc-950" />

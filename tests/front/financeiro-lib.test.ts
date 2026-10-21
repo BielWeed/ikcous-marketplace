@@ -29,6 +29,7 @@ import {
   parseResumo,
   parseValorBR,
   percentualDaReceita,
+  rotuloDaForma,
   saldoCorrenteRetroativo,
   serieDoFluxoDeCaixa,
   situacaoDoVencimento,
@@ -45,6 +46,15 @@ import type { LinhaDoExtrato } from "@/types/financeiro";
 
 /** O Intl põe espaço inseparável depois de "R$"; o teste compara texto. */
 const semNbsp = (texto: string) => texto.replace(/\s/g, " ");
+
+it("forma online desconhecida não é rotulada como PIX nem modifica as conhecidas", () => {
+  expect(rotuloDaForma("online_desconhecido")).toBe(
+    "Pagamento online (forma não identificada)",
+  );
+  expect(rotuloDaForma("pix")).toBe("PIX");
+  expect(rotuloDaForma("credito")).toBe("Cartão de crédito");
+  expect(rotuloDaForma("debito")).toBe("Cartão de débito");
+});
 
 describe("dinheiro em pt-BR", () => {
   it.each([

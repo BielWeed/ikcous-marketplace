@@ -201,7 +201,7 @@ describe("rascunho de identidade separado da fotografia", () => {
     frozen(result);
   });
 
-  it("conserva null bruto e monta apenas oito campos canonicos", () => {
+  it("conserva null bruto e cores não editadas no pacote de oito campos", () => {
     const input = snapshot();
     const raw = { ...input.identity, store_city: null, store_state: null };
     const result = createIdentityEditorDraft(
@@ -227,7 +227,6 @@ describe("rascunho de identidade separado da fotografia", () => {
     expect(intent.desired).toEqual({
       ...raw,
       store_name: "Novo nome",
-      primary_color: "#AABBCC",
     });
     expect(intent.expected.revision).toBe("9007199254740993");
     expect(edited.fields.storeName).toBe("  Novo nome  ");

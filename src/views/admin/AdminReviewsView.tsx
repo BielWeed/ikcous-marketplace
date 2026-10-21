@@ -556,7 +556,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className="animate-pulse space-y-6 rounded-2xl border border-white/10 bg-zinc-900/70 p-6 lg:p-8"
+          className="animate-pulse space-y-6 rounded-2xl border border-admin-border bg-admin-surface p-6 lg:p-8"
         >
           <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
             <div className="flex items-center gap-5">
@@ -568,7 +568,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             </div>
             <Skeleton className="h-10 w-24 animate-pulse rounded-2xl bg-white/5" />
           </div>
-          <div className="space-y-2 border-l border-white/10 pl-6 lg:pl-10">
+          <div className="space-y-2 border-l border-admin-border pl-6 lg:pl-10">
             <Skeleton className="h-4 w-full animate-pulse bg-white/5" />
             <Skeleton className="h-4 w-5/6 animate-pulse bg-white/5" />
           </div>
@@ -582,7 +582,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
         <div
           key={i}
-          className="flex h-48 animate-pulse flex-col justify-between rounded-2xl border border-white/10 bg-zinc-900/70 p-5"
+          className="flex h-48 animate-pulse flex-col justify-between rounded-2xl border border-admin-border bg-admin-surface p-5"
         >
           <div>
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -609,11 +609,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-[#09090b] pb-admin lg:pb-12 font-sans text-zinc-400 duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-white"
+      className="h-auto bg-admin-bg pb-admin lg:pb-12 font-sans text-zinc-400 duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-white"
     >
       {/* Header / Stats Overlay */}
-      <div className="sticky top-0 z-50 bg-[#09090b]/80 p-2 pb-0 backdrop-blur-md sm:p-4">
-        <div className="admin-glass rounded-2xl border border-white/5 p-3 shadow-2xl sm:rounded-[2rem] sm:p-4">
+      <div className="sticky top-0 z-50 bg-admin-bg/80 p-2 pb-0 backdrop-blur-md sm:p-4">
+        <div className="admin-glass rounded-2xl border border-admin-border p-3 shadow-2xl sm:rounded-[2rem] sm:p-4">
           <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
             {/* Title & Stats */}
             <div className="flex w-full flex-wrap items-center justify-between gap-3 lg:w-auto lg:justify-start">
@@ -631,7 +631,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     >
                       <span
                         aria-hidden="true"
-                        className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                        className="flex size-8 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
                       >
                         <HelpCircle className="size-4.5" />
                       </span>
@@ -651,7 +651,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   </p>
                 </div>
                 <div
-                  className="flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-0.5"
+                  className="flex shrink-0 items-center gap-1 rounded-lg border border-admin-border bg-white/5 px-2 py-0.5"
                   title="Média global de estrelas"
                 >
                   <Star className="size-3 fill-admin-gold text-admin-gold" />
@@ -684,7 +684,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   id="reviews-search"
                   name="search"
                   placeholder="Buscar por cliente ou produto..."
-                  className="w-full rounded-xl border border-zinc-800 bg-black/40 py-2 pl-9 pr-3 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:bg-zinc-950/60 focus:outline-none focus:ring-2 focus:ring-admin-gold/20"
+                  className="w-full rounded-xl border border-admin-border bg-black/40 py-2 pl-9 pr-3 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:bg-zinc-950/60 focus:outline-none focus:ring-2 focus:ring-admin-gold/20"
                   value={searchQuery}
                   onChange={(val) => {
                     setSearchQuery(val);
@@ -696,7 +696,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                <div className="no-scrollbar flex items-center gap-1 overflow-x-auto rounded-xl border border-zinc-800 bg-black/40 p-0.5">
+                <div className="no-scrollbar flex items-center gap-1 overflow-x-auto rounded-xl border border-admin-border bg-black/40 p-0.5">
                   <button
                     onClick={() => {
                       setRatingFilter("all");
@@ -738,7 +738,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       prev === "detailed" ? "compact" : "detailed",
                     )
                   }
-                  className="group flex size-8 shrink-0 items-center justify-center rounded-xl border border-zinc-800 bg-black/40 shadow-lg transition-all hover:border-admin-gold/50 hover:bg-zinc-900 active:scale-95 sm:size-9"
+                  className="group flex size-8 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-black/40 shadow-lg transition-all hover:border-admin-gold/50 hover:bg-zinc-900 active:scale-95 sm:size-9"
                   title={
                     viewMode === "detailed"
                       ? "Visualização Compacta"
@@ -780,7 +780,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               className={`flex flex-col rounded-2xl border p-4 transition-all duration-300 ${
                 config.enableReviews
                   ? "border-blue-500/20 bg-blue-500/5 shadow-[0_0_15px_rgba(59,130,246,0.05)]"
-                  : "border-white/5 bg-zinc-950/40 hover:border-white/10"
+                  : "border-admin-border bg-zinc-950/40 hover:border-admin-border-strong"
               }`}
             >
               {/* Main Compact Row */}
@@ -790,7 +790,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     className={`flex size-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-300 ${
                       config.enableReviews
                         ? "border-blue-500/30 bg-blue-500/10 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.15)]"
-                        : "border-white/5 bg-zinc-900/60 text-zinc-500"
+                        : "border-admin-border bg-admin-surface text-zinc-500"
                     }`}
                   >
                     <MessageSquare className="size-4.5" />
@@ -806,7 +806,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       <span
                         className={`inline-block size-1.5 rounded-full ${config.enableReviews ? "animate-pulse bg-emerald-500" : "bg-zinc-600"}`}
                       />
-                      <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold tracking-wider text-zinc-300 uppercase">
+                      <span className="rounded-full border border-admin-border bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold tracking-wider text-zinc-300 uppercase">
                         {config.enableReviews ? "Ativo" : "Inativo"}
                       </span>
                     </div>
@@ -850,7 +850,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-3 pt-3 border-t border-white/5 text-[11px] leading-relaxed text-zinc-500 text-left space-y-1.5">
+                    <div className="mt-3 pt-3 border-t border-admin-border text-[11px] leading-relaxed text-zinc-500 text-left space-y-1.5">
                       <p>
                         Ativando esta opção, seus clientes poderão dar notas de
                         1 a 5 estrelas e escrever depoimentos sobre os produtos
@@ -911,10 +911,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="relative flex flex-col items-center justify-center overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-950/40 py-24 backdrop-blur-3xl"
+                className="relative flex flex-col items-center justify-center overflow-hidden rounded-[3rem] border border-admin-border bg-zinc-950/40 py-24 backdrop-blur-3xl"
               >
                 <div className="bg-radial-gradient pointer-events-none absolute inset-0 from-admin-gold/5 via-transparent to-transparent" />
-                <div className="group relative mb-8 flex size-24 items-center justify-center rounded-3xl border border-white/5 bg-zinc-900/60">
+                <div className="group relative mb-8 flex size-24 items-center justify-center rounded-3xl border border-admin-border bg-admin-surface">
                   <Star className="size-12 text-zinc-700 transition-all duration-500 group-hover:rotate-12 group-hover:text-admin-gold" />
                   <div className="absolute inset-0 rounded-full bg-admin-gold/20 opacity-50 blur-2xl" />
                   <Sparkles className="absolute -right-2 -top-2 size-5 animate-bounce text-admin-gold" />
@@ -943,13 +943,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   className="group relative"
                 >
                   <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-admin-gold/10 via-transparent to-emerald-500/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-                  <div className="content-visibility-auto relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-6 shadow-2xl transition-all duration-500 hover:border-white/20 lg:p-8">
+                  <div className="content-visibility-auto relative overflow-hidden rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-6 shadow-2xl transition-all duration-500 hover:border-admin-border-strong lg:p-8">
                     {/* Review Header */}
                     <div className="mb-8 flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
                       <div className="flex items-center gap-5">
                         <div className="relative">
                           <div
-                            className={`size-16 rounded-2xl bg-gradient-to-br ${getAvatarGradient(review.customerName)} flex transform items-center justify-center border border-white/10 text-2xl font-black text-white shadow-2xl ring-4 ring-white/5 transition-transform duration-300 group-hover:scale-105`}
+                            className={`size-16 rounded-2xl bg-gradient-to-br ${getAvatarGradient(review.customerName)} flex transform items-center justify-center border border-admin-border text-2xl font-black text-white shadow-2xl ring-4 ring-admin-border transition-transform duration-300 group-hover:scale-105`}
                           >
                             {review.customerName.charAt(0).toUpperCase()}
                           </div>
@@ -973,7 +973,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             <span className="text-xs font-semibold text-zinc-400">
                               Produto:
                             </span>
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-1 text-xs font-black text-admin-gold transition-colors group-hover:border-admin-gold/30">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-admin-border bg-zinc-900 px-3 py-1 text-xs font-black text-admin-gold transition-colors group-hover:border-admin-gold/30">
                               <Package className="size-3.5 text-admin-gold" />
                               {review.productName}
                             </span>
@@ -996,7 +996,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             {formatDate(review.createdAt)}
                           </p>
                         </div>
-                        <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
+                        <div className="flex items-center gap-4 rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-4">
                           {renderStars(review.rating)}
                           {review.helpful > 0 && (
                             <>
@@ -1014,7 +1014,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     </div>
 
                     {/* Content Area */}
-                    <div className="relative mb-8 border-l border-white/10 pl-6 transition-colors group-hover:border-admin-gold/30 lg:pl-10">
+                    <div className="relative mb-8 border-l border-admin-border pl-6 transition-colors group-hover:border-admin-gold/30 lg:pl-10">
                       <div className="pointer-events-none absolute -left-3 -top-2 select-none font-serif text-6xl leading-none text-white/[0.03] transition-colors group-hover:text-admin-gold/10">
                         "
                       </div>
@@ -1048,7 +1048,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     )}
 
                     {/* Action Bar */}
-                    <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-6">
+                    <div className="flex flex-wrap items-center gap-3 border-t border-admin-border pt-6">
                       {/* Item 7 do laudo de 29/08: o botão manual
                           "Verificar Compra/Remover Verificação" SAIU — o selo
                           é derivado da compra com dinheiro reconhecido pelas
@@ -1125,7 +1125,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                           exit={{ opacity: 0, height: 0, marginTop: 0 }}
                           className="overflow-hidden"
                         >
-                          <div className="space-y-6 rounded-2xl border border-white/5 bg-zinc-950/60 p-8 shadow-2xl ring-1 ring-white/5">
+                          <div className="space-y-6 rounded-2xl border border-admin-border bg-zinc-950/60 p-8 shadow-2xl ring-1 ring-admin-border">
                             <div className="flex items-center gap-3">
                               <div className="flex size-8 items-center justify-center rounded-full bg-admin-gold/10">
                                 <MessageSquare className="size-4 text-admin-gold" />
@@ -1166,7 +1166,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                                       setReplyText(suggestion.text)
                                     }
                                     disabled={isOffline || isSubmittingReply}
-                                    className="rounded-xl border border-white/5 bg-white/5 px-3.5 py-2 text-xs font-bold text-zinc-300 transition-all hover:border-admin-gold/30 hover:bg-admin-gold/15 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                                    className="rounded-xl border border-admin-border bg-white/5 px-3.5 py-2 text-xs font-bold text-zinc-300 transition-all hover:border-admin-gold/30 hover:bg-admin-gold/15 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                                   >
                                     {suggestion.label}
                                   </button>
@@ -1182,7 +1182,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                                   ? "Você está offline. Não é possível responder no momento."
                                   : "Escreva uma resposta atenciosa para este cliente..."
                               }
-                              className="min-h-[160px] w-full resize-none rounded-3xl border border-white/10 bg-black/40 p-6 text-base font-medium text-white transition-all placeholder:text-zinc-700 focus:border-admin-gold/30 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 disabled:opacity-40"
+                              className="min-h-[160px] w-full resize-none rounded-3xl border border-admin-border bg-black/40 p-6 text-base font-medium text-white transition-all placeholder:text-zinc-700 focus:border-admin-gold/30 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 disabled:opacity-40"
                               disabled={isSubmittingReply || isOffline}
                             />
                             {isOffline && (
@@ -1238,14 +1238,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   className="group relative"
                 >
                   <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-admin-gold/10 via-transparent to-emerald-500/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-                  <div className="content-visibility-auto relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-5 shadow-2xl transition-all duration-500 hover:border-white/20">
+                  <div className="content-visibility-auto relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-5 shadow-2xl transition-all duration-500 hover:border-admin-border-strong">
                     <div>
                       {/* Header with avatar, name and star rating */}
                       <div className="mb-4 flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="relative shrink-0">
                             <div
-                              className={`size-10 rounded-xl bg-gradient-to-br ${getAvatarGradient(review.customerName)} flex items-center justify-center border border-white/5 text-sm font-black text-white shadow-lg`}
+                              className={`size-10 rounded-xl bg-gradient-to-br ${getAvatarGradient(review.customerName)} flex items-center justify-center border border-admin-border text-sm font-black text-white shadow-lg`}
                             >
                               {review.customerName.charAt(0).toUpperCase()}
                             </div>
@@ -1267,7 +1267,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             </span>
                           </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/5 bg-zinc-900/80 px-2 py-1">
+                        <div className="flex shrink-0 items-center gap-1 rounded-lg border border-admin-border bg-admin-surface px-2 py-1">
                           <Star className="size-3 fill-admin-gold text-admin-gold" />
                           <span className="text-[11px] font-black text-white">
                             {review.rating}
@@ -1277,7 +1277,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                       {/* Product link tag */}
                       <div className="mb-3">
-                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-white/10 bg-zinc-900/70 px-2.5 py-0.5 text-[11px] font-black text-admin-gold">
+                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-admin-border bg-admin-surface px-2.5 py-0.5 text-[11px] font-black text-admin-gold">
                           <Package className="size-3 shrink-0 text-admin-gold" />
                           <span className="truncate">{review.productName}</span>
                         </span>
@@ -1310,7 +1310,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     </div>
 
                     {/* Actions */}
-                    <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/5 pt-4">
+                    <div className="mt-auto flex items-center justify-between gap-2 border-t border-admin-border pt-4">
                       <div className="flex items-center gap-1">
                         {/* Item 7: o botão de verificação manual SAIU (as
                             triggers da 20261030000000 derivam o selo da
@@ -1379,7 +1379,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             marginTop: 12,
                           }}
                           exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                          className="absolute inset-x-0 bottom-0 z-20 overflow-hidden rounded-b-[2rem] border-t border-white/10 bg-zinc-950 p-4"
+                          className="absolute inset-x-0 bottom-0 z-20 overflow-hidden rounded-b-[2rem] border-t border-admin-border bg-zinc-950 p-4"
                         >
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
@@ -1402,7 +1402,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                                   ? "Você está offline. Não é possível responder."
                                   : "Resposta..."
                               }
-                              className="min-h-[80px] w-full resize-none rounded-xl border border-white/10 bg-black/45 p-3 text-xs text-white transition-all placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-admin-gold/30 disabled:opacity-40"
+                              className="min-h-[80px] w-full resize-none rounded-xl border border-admin-border bg-black/45 p-3 text-xs text-white transition-all placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-admin-gold/30 disabled:opacity-40"
                               disabled={isSubmittingReply || isOffline}
                             />
                             <div className="flex justify-end gap-2">
@@ -1448,12 +1448,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
               }}
               disabled={page === 0}
-              className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/50 text-white shadow-2xl transition-all hover:bg-zinc-900 active:scale-90 disabled:opacity-20"
+              className="flex size-14 items-center justify-center rounded-2xl border border-admin-border bg-zinc-950/50 text-white shadow-2xl transition-all hover:bg-zinc-900 active:scale-90 disabled:opacity-20"
             >
               <ArrowLeft className="size-5 text-zinc-400" />
             </button>
 
-            <div className="flex items-center gap-3 rounded-3xl border border-white/5 bg-zinc-950/30 p-1.5">
+            <div className="flex items-center gap-3 rounded-3xl border border-admin-border bg-zinc-950/30 p-1.5">
               {Array.from({ length: totalPages }, (_, i) => (
                 <button
                   key={i}
@@ -1486,7 +1486,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
               }}
               disabled={page === totalPages - 1}
-              className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/50 text-white shadow-2xl transition-all hover:bg-zinc-900 active:scale-90 disabled:opacity-20"
+              className="flex size-14 items-center justify-center rounded-2xl border border-admin-border bg-zinc-950/50 text-white shadow-2xl transition-all hover:bg-zinc-900 active:scale-90 disabled:opacity-20"
             >
               <ArrowLeft className="size-5 rotate-180 text-zinc-400" />
             </button>
@@ -1512,7 +1512,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               Principais Recursos
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Star className="size-4 fill-admin-gold text-admin-gold" />
                   Nota por Estrelas (1-5)
@@ -1523,7 +1523,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <ShieldCheck className="size-4 text-emerald-400" />
                   Compra Verificada
@@ -1535,7 +1535,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <MessageSquare className="size-4 text-sky-400" />
                   Resposta Oficial da Loja
@@ -1546,7 +1546,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Trash2 className="size-4 text-red-400" />
                   Exclusão Preventiva
@@ -1566,7 +1566,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       <div className="pointer-events-none fixed inset-0 z-[-1] overflow-hidden">
         <div className="animate-duration-3000 absolute left-[-10%] top-[-10%] size-2/5 animate-pulse rounded-full bg-admin-gold/5 blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] size-2/5 rounded-full bg-white/5 blur-[120px]" />
-        <div className="absolute left-1/2 top-1/2 z-[-2] size-full -translate-x-1/2 -translate-y-1/2 bg-[#09090b]" />
+        <div className="absolute left-1/2 top-1/2 z-[-2] size-full -translate-x-1/2 -translate-y-1/2 bg-admin-bg" />
       </div>
     </div>
   );

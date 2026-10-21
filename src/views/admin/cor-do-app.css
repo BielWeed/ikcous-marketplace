@@ -1,0 +1,7 @@
+.cor-do-app-campo {
+  border-color: #71717a;
+}
+
+html.admin-mode[data-admin-tema="confortavel"] .cor-do-app-campo {
+  border-color: #7d7464;
+}

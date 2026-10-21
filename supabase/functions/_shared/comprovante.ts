@@ -418,7 +418,8 @@ export type DesfechoComprovante =
         | "envio_falhou"
         | "sem_pedido"
         | "sem_destinatario"
-        | "ja_enviado";
+        | "ja_enviado"
+        | "pagamento_nao_confirmado";
     };
 
 /**
@@ -503,6 +504,12 @@ export async function enviarComprovantePedido(args: {
   // nao um caso que mereca retentativa.
   if (!pedido) return { ok: false, motivo: "sem_pedido" };
 
+  // A reserva é única para sempre. O online só recebe este comprovante em
+  // "pago"; o pago após expirar tem seu próprio aviso nos efeitos do pagamento.
+  if (pedido.payment_method === "online" && pedido.payment_status !== "pago") {
+    return { ok: false, motivo: "pagamento_nao_confirmado" };
+  }
+
   // O e-mail da conta so' e' consultado quando o pedido nao traz um. Uma
   // chamada de admin a menos no caminho do convidado, que e a maioria.
   let emailDaConta: string | null = null;
@@ -586,10 +593,6 @@ export async function enviarComprovantePedido(args: {
     .limit(1)
     .maybeSingle();
 
-  const aguardandoPagamento =
-    String(pedido.payment_method ?? "") === "online" &&
-    String(pedido.payment_status ?? "") !== "pago";
-
   try {
     await enviarEmail({
       para: destinatario,
@@ -599,7 +602,7 @@ export async function enviarComprovantePedido(args: {
         itens: itensComVariacao,
         endereco: montarEndereco(fonteDoEndereco),
         nomeDaLoja: config?.store_name ?? "",
-        aguardandoPagamento,
+        aguardandoPagamento: false,
         canal: String(pedido.canal ?? "online"),
         retirada: retiradaDoPedido(pedido.customer_data),
       }),

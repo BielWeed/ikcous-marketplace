@@ -18,7 +18,9 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pararABuscaDeCep } from "./duble-busca-de-cep";
 
-const createOrder = vi.fn().mockResolvedValue({ id: "ped-999" });
+const createOrder = vi
+  .fn()
+  .mockResolvedValue({ id: "ped-999", totalAmount: 100 });
 const updateOrderStatus = vi.fn();
 const clearCart = vi.fn();
 const addToCart = vi.fn();
@@ -234,6 +236,7 @@ describe("CheckoutView — selos de pagamento usam text-emerald-700 (contraste A
   });
 
   it("cupom aplicado + pedido concluído (pagamento na entrega): o selo 'Vantagem Ativa' troca de tom", async () => {
+    createOrder.mockResolvedValueOnce({ id: "ped-999", totalAmount: 85 });
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
     await act(async () => {

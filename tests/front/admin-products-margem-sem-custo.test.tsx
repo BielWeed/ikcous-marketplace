@@ -442,6 +442,13 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     // frase — então sobe do subtítulo (exclusivo do cartão) até o menor
     // elemento que tem o rótulo, e esse elemento tem que ser o cartão:
     // com o valor (900 − 500) ÷ 500 = "80,0%" e sem rótulo de outro cartão.
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'section[aria-label="Métricas de Produtos"] button[aria-expanded]',
+        )!
+        .click(),
+    );
     const subtitulo = [...hospedeiro.querySelectorAll("*")].find(
       (el) => el.textContent === "Média do estoque com custo",
     );

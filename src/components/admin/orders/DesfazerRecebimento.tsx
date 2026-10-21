@@ -72,7 +72,7 @@ export function DesfazerRecebimento({
         // sem esta trava, tocar em "Voltar" abriria o pedido por baixo.
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
-        className="max-w-md rounded-3xl border border-white/10 bg-zinc-950"
+        className="max-w-md rounded-3xl border border-admin-border bg-zinc-950"
       >
         <AlertDialogHeader>
           <AlertDialogTitle className="text-lg font-black tracking-tight text-white">
@@ -87,7 +87,7 @@ export function DesfazerRecebimento({
         </AlertDialogHeader>
         <AlertDialogFooter className="mt-2 gap-2">
           {/* O Radix põe o foco no "Cancel" ao abrir: a ação padrão é voltar. */}
-          <AlertDialogCancel className="h-11 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white hover:bg-white/10">
+          <AlertDialogCancel className="h-11 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-semibold text-white hover:bg-white/10">
             Voltar
           </AlertDialogCancel>
           <AlertDialogAction

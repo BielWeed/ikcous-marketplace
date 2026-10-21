@@ -20,7 +20,14 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { rotuloDaFormaDePagamento } from "@/lib/crm";
 import type { KpisDoCrm, VisaoDoCrm } from "@/types/crm";
+
+it("forma desconhecida derivada do financeiro tem o mesmo rótulo neutro no CRM", () => {
+  expect(rotuloDaFormaDePagamento("online_desconhecido")).toBe(
+    "Pagamento online (forma não identificada)",
+  );
+});
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -234,8 +241,8 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
 
     const secao = hospedeiro.querySelector("section")!;
     const superficie = secao.querySelector("div") as HTMLElement;
-    expect(superficie.classList.contains("border-white/10")).toBe(true);
-    expect(superficie.classList.contains("bg-zinc-900/70")).toBe(true);
+    expect(superficie.classList.contains("border-admin-border")).toBe(true);
+    expect(superficie.classList.contains("bg-admin-surface")).toBe(true);
     expect(superficie.classList.contains("bg-gradient-to-b")).toBe(true);
     expect(superficie.classList.contains("bg-zinc-900/60")).toBe(false);
 
@@ -261,8 +268,8 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
     const bloco = hospedeiro.querySelector(
       'section[aria-labelledby="crm-canais-titulo"] ul > li > div',
     ) as HTMLElement;
-    expect(bloco.classList.contains("border-white/10")).toBe(true);
-    expect(bloco.classList.contains("bg-zinc-900/70")).toBe(true);
+    expect(bloco.classList.contains("border-admin-border")).toBe(true);
+    expect(bloco.classList.contains("bg-admin-surface")).toBe(true);
     expect(bloco.classList.contains("bg-gradient-to-b")).toBe(true);
     expect(bloco.classList.contains("bg-zinc-950")).toBe(false);
 

@@ -185,7 +185,7 @@ export function FolhaEditarVitrine({
         onFlush={(titulo) => void gravarNome(titulo)}
         placeholder="Título da vitrine"
         useShadcn={true}
-        className="h-12 rounded-[14px] border-white/10 bg-zinc-900 px-3.5 text-[15px] font-semibold text-white placeholder:text-zinc-600 focus-visible:border-admin-gold focus-visible:ring-admin-gold/20"
+        className="h-12 rounded-[14px] border-admin-border bg-zinc-900 px-3.5 text-[15px] font-semibold text-white placeholder:text-zinc-600 focus-visible:border-admin-gold focus-visible:ring-admin-gold/20"
       />
       {falhouNome ? (
         <p role="alert" className="mt-1.5 px-0.5 text-xs text-rose-400">
@@ -199,7 +199,7 @@ export function FolhaEditarVitrine({
       </p>
       <fieldset
         aria-label="Quantos produtos mostrar"
-        className="grid auto-cols-fr grid-flow-col gap-1 rounded-[14px] border border-white/5 bg-zinc-900 p-1"
+        className="grid auto-cols-fr grid-flow-col gap-1 rounded-[14px] border border-admin-border bg-zinc-900 p-1"
       >
         {OPCOES_MAX_ITENS_CARROSSEL.map((quantidade) => (
           <button
@@ -224,7 +224,7 @@ export function FolhaEditarVitrine({
       </p>
       <fieldset
         aria-label="Quais produtos"
-        className="grid auto-cols-fr grid-flow-col gap-1 rounded-[14px] border border-white/5 bg-zinc-900 p-1"
+        className="grid auto-cols-fr grid-flow-col gap-1 rounded-[14px] border border-admin-border bg-zinc-900 p-1"
       >
         <button
           type="button"
@@ -271,7 +271,7 @@ export function FolhaEditarVitrine({
           onChange={(evento) => setBusca(evento.target.value)}
           placeholder="Buscar por nome ou categoria"
           aria-label="Buscar produto"
-          className="h-11 w-full rounded-[14px] border border-white/10 bg-zinc-900 pl-10 pr-9 text-sm font-medium text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none"
+          className="h-11 w-full rounded-[14px] border border-admin-border bg-zinc-900 pl-10 pr-9 text-sm font-medium text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none"
         />
         {busca ? (
           <button
@@ -301,9 +301,9 @@ export function FolhaEditarVitrine({
                 data-produto-id={produto.id}
                 aria-pressed={marcado}
                 onClick={() => aoAlternarProduto(produto.id)}
-                className="flex w-full items-center gap-3 border-b border-white/5 py-2.5 text-left transition-colors hover:bg-white/[0.02]"
+                className="flex w-full items-center gap-3 border-b border-admin-border py-2.5 text-left transition-colors hover:bg-white/[0.02]"
               >
-                <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-white/5 bg-zinc-800">
+                <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-admin-border bg-zinc-800">
                   {produto.images?.[0] ? (
                     <img
                       src={produto.images[0]}

@@ -558,6 +558,26 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     await esperarAte(() => textoDoAviso() !== null);
 
     expect(textoDoAviso()).toBe(AVISO_PLURAL);
+    const aviso = hospedeiro.querySelector(
+      '[data-aviso="pagamento-a-conferir"]',
+    )!;
+    expect(aviso.getAttribute("title")).toBe(AVISO_PLURAL);
+    const selo = aviso.querySelector(".text-amber-400")!;
+    expect(selo).not.toBeNull();
+    expect(selo.className).toContain("leading-5");
+    expect(selo.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    const metricas = hospedeiro.querySelector(
+      '[aria-label="Métricas de Pedidos"]',
+    )!;
+    await act(async () =>
+      metricas
+        .querySelector<HTMLButtonElement>("button[aria-expanded]")!
+        .click(),
+    );
+    expect(textoDoAviso()).toBe(AVISO_PLURAL);
+    expect(
+      metricas.querySelector(".metricas-painel-nota")!.className,
+    ).not.toContain("truncate");
     // A consulta é a das duas listas da lib, só cabeçalho.
     const doAviso = cadeias.filter(ehDoAviso);
     expect(doAviso.length).toBeGreaterThan(0);

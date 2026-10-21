@@ -62,6 +62,53 @@ function mensagemDoErro(erro: unknown): string | null {
     : null;
 }
 
+/** Preços da mesma conferência que recusou o total, não de uma busca posterior. */
+export interface PrecoAtualDaVenda {
+  readonly product_id: string;
+  readonly variant_id: string | null;
+  readonly price: number;
+}
+
+export function precosDaVendaRecusada(erro: unknown): {
+  readonly total: number;
+  readonly itens: readonly PrecoAtualDaVenda[];
+} | null {
+  if (
+    codigoDoErro(erro) !== "PDV01" ||
+    !erro ||
+    typeof erro !== "object" ||
+    !("details" in erro) ||
+    typeof erro.details !== "string"
+  )
+    return null;
+  try {
+    const detalhe = JSON.parse(erro.details);
+    if (
+      !detalhe ||
+      typeof detalhe.total !== "number" ||
+      !Number.isFinite(detalhe.total) ||
+      detalhe.total < 0 ||
+      !Array.isArray(detalhe.itens) ||
+      detalhe.itens.length === 0 ||
+      !detalhe.itens.every((item: unknown) => {
+        if (!item || typeof item !== "object") return false;
+        const i = item as Record<string, unknown>;
+        return (
+          typeof i.product_id === "string" &&
+          (i.variant_id === null || typeof i.variant_id === "string") &&
+          typeof i.price === "number" &&
+          Number.isFinite(i.price) &&
+          i.price >= 0
+        );
+      })
+    )
+      return null;
+    return detalhe;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Traduz a falha de `registrar_venda_presencial` (ou de qualquer coisa que
  * impeça a chamada de chegar lá — rede caindo, `DOMException` de um
@@ -124,6 +171,23 @@ export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
     return {
       mensagem: "Esta chave de venda já foi usada por outro pedido.",
       podeTentarDeNovo: false,
+      precisaEntrarDeNovo: false,
+    };
+  }
+
+  if (codigo === "PDV01") {
+    const atualizacao = precosDaVendaRecusada(erro);
+    return {
+      mensagem: atualizacao
+        ? `O valor mudou: agora é R$ ${atualizacao.total.toLocaleString(
+            "pt-BR",
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          )}. Confira e registre de novo.`
+        : "O valor da venda mudou. Volte à venda e confira os preços.",
+      podeTentarDeNovo: atualizacao !== null,
       precisaEntrarDeNovo: false,
     };
   }

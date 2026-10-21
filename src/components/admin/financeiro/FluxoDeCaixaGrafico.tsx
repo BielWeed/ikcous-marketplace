@@ -67,7 +67,7 @@ function ConteudoDoTooltip({
   return (
     <div
       data-testid="fluxo-tooltip"
-      className="pointer-events-none flex min-w-[168px] flex-col gap-2 rounded-2xl border border-white/10 bg-[#1E1E24] p-3 text-xs shadow-[0_10px_40px_rgba(0,0,0,0.6)]"
+      className="pointer-events-none flex min-w-[168px] flex-col gap-2 rounded-2xl border border-admin-border bg-admin-raised p-3 text-xs shadow-[0_10px_40px_rgba(0,0,0,0.6)]"
     >
       <p className="font-black text-white">
         {formatarDiaPorExtenso(ponto.dia)}
@@ -96,7 +96,7 @@ function ConteudoDoTooltip({
           −{valor(ponto.saidas)}
         </span>
       </p>
-      <p className="flex justify-between gap-4 border-t border-white/10 pt-1.5 text-zinc-400">
+      <p className="flex justify-between gap-4 border-t border-admin-border pt-1.5 text-zinc-400">
         <span className="flex items-center gap-1.5">
           <span
             className="h-0.5 w-3 rounded"
@@ -230,13 +230,13 @@ export function FluxoDeCaixaGrafico({
   if (diasComMovimento.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col items-start gap-3 rounded-2xl border border-white/10 bg-[#17171C] p-4">
+        <div className="flex flex-col items-start gap-3 rounded-2xl border border-admin-border bg-admin-raised p-4">
           <ChartColumn aria-hidden="true" className="size-6 text-blue-300" />
           <p className="text-sm leading-relaxed text-zinc-400">
             Nenhum dinheiro entrou ou saiu nos últimos 30 dias.
           </p>
         </div>
-        <details className="rounded-2xl border border-white/10 bg-[#1E1E24] p-3">
+        <details className="rounded-2xl border border-admin-border bg-admin-raised p-3">
           <summary className="flex min-h-11 cursor-pointer items-center text-sm font-bold text-white">
             Ver os números em tabela
           </summary>
@@ -282,7 +282,7 @@ export function FluxoDeCaixaGrafico({
         >
           <p className="mb-3 text-sm font-bold text-white">Saldo</p>
           {semLinhaDeSaldo ? (
-            <div className="flex min-h-[100px] w-full flex-col items-start justify-center gap-3 rounded-2xl border border-white/10 bg-[#17171C] p-4">
+            <div className="flex min-h-[100px] w-full flex-col items-start justify-center gap-3 rounded-2xl border border-admin-border bg-admin-raised p-4">
               {poucosPontosDeSaldo ? (
                 <>
                   <p className="text-sm leading-relaxed text-zinc-400">
@@ -306,7 +306,7 @@ export function FluxoDeCaixaGrafico({
               )}
             </div>
           ) : (
-            <div className="h-[150px] w-full min-w-0 rounded-2xl bg-[#17171C]">
+            <div className="h-[150px] w-full min-w-0 rounded-2xl bg-admin-raised">
               <ResponsiveContainer
                 width="100%"
                 height="100%"
@@ -382,7 +382,7 @@ export function FluxoDeCaixaGrafico({
               ler como um só. */}
           <div className="my-1.5 h-px w-full bg-white/5" />
           <p className="mb-3 text-sm font-bold text-white">Entradas e saídas</p>
-          <div className="h-[170px] w-full min-w-0 rounded-2xl bg-[#17171C]">
+          <div className="h-[170px] w-full min-w-0 rounded-2xl bg-admin-raised">
             <ResponsiveContainer
               width="100%"
               height="100%"
@@ -458,8 +458,8 @@ export function FluxoDeCaixaGrafico({
         </p>
       ) : null}
 
-      <details className="group rounded-xl border border-white/5 bg-white/[0.02]">
-        <summary className="flex min-h-12 cursor-pointer select-none items-center rounded-2xl bg-[#1E1E24] px-4 text-sm font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300">
+      <details className="group rounded-xl border border-admin-border bg-admin-raised">
+        <summary className="flex min-h-12 cursor-pointer select-none items-center rounded-2xl bg-admin-raised px-4 text-sm font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300">
           Ver os números em tabela
         </summary>
         <div
@@ -470,7 +470,7 @@ export function FluxoDeCaixaGrafico({
           aria-label="Movimentos por dia, cabeçalho fixo"
         >
           <table className="w-full text-left text-xs tabular-nums">
-            <thead className="sticky top-0 bg-[#17171C] text-xs text-zinc-400">
+            <thead className="sticky top-0 bg-admin-raised text-xs text-zinc-400">
               <tr>
                 <th scope="col" className="p-2 font-black">
                   Dia
@@ -486,7 +486,7 @@ export function FluxoDeCaixaGrafico({
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-admin-border">
               {[...diasComMovimento].reverse().map((p) => (
                 <tr key={p.dia}>
                   <td className="p-2 text-zinc-300">

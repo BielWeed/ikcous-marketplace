@@ -220,7 +220,7 @@ export function SerieDe14Dias({
           <p className="text-sm leading-relaxed text-zinc-400">
             Deslize no gráfico ou use as setas para escolher um dia.
           </p>
-          <dl className="grid grid-cols-2 gap-3 border-t border-white/10 pt-3">
+          <dl className="grid grid-cols-2 gap-3 border-t border-admin-border pt-3">
             <div className="min-w-0">
               <dt className="text-xs text-zinc-400">
                 Pico

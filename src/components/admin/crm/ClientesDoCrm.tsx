@@ -55,7 +55,7 @@ function CrachaDoSegmento({
 }: Readonly<{ segmento: SegmentoCrm | null }>) {
   if (!segmento) {
     return (
-      <span className="inline-flex items-center rounded-full border border-white/10 px-2 py-0.5 text-[11px] font-bold text-zinc-400">
+      <span className="inline-flex items-center rounded-full border border-admin-border px-2 py-0.5 text-[11px] font-bold text-zinc-400">
         Sem segmento
       </span>
     );
@@ -394,14 +394,14 @@ function LinhaDoCliente({
   return (
     <li
       className={cn(
-        "grid grid-cols-2 gap-x-3 gap-y-2 rounded-2xl border border-white/5 bg-zinc-950/60 p-3 sm:p-4 lg:items-center lg:gap-5",
+        "grid grid-cols-2 gap-x-3 gap-y-2 rounded-2xl border border-admin-border bg-zinc-950/60 p-3 sm:p-4 lg:items-center lg:gap-5",
         COLUNAS_DA_LISTA,
       )}
     >
       <div className="col-span-2 flex min-w-0 items-center gap-2 lg:col-span-1">
         <span
           aria-hidden="true"
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900 text-sm font-black text-admin-gold"
+          className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-zinc-900 text-sm font-black text-admin-gold"
         >
           {nome.charAt(0).toUpperCase()}
         </span>
@@ -458,7 +458,7 @@ function LinhaDoCliente({
           alvo de toque ficava 36-38×44 (ícone + padding), não os 44×44
           mínimos recomendados. R2: `title` nos dois (o ícone sozinho não
           basta pra quem passa o mouse) e a borda de "Ver cliente" sobe de
-          `border-white/10` (quase invisível) para `border-white/15`.
+          `border-admin-border` (quase invisível) para `border-admin-border-strong`.
           `border-solid` no "Ver cliente" (achado da conferência final):
           sem ele a borda não aparece de jeito nenhum — ver o comentário de
           `CLICAVEL_DO_CRM` em PecasDoCrm.tsx para o porquê (o reset global
@@ -480,7 +480,7 @@ function LinhaDoCliente({
             <span className="sr-only"> — chamar {nome} (abre em nova aba)</span>
           </a>
         ) : (
-          <span className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-dashed border-white/10 px-3 text-[11px] font-bold text-zinc-500 lg:flex-none">
+          <span className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-dashed border-admin-border px-3 text-[11px] font-bold text-zinc-500 lg:flex-none">
             Sem WhatsApp
           </span>
         )}
@@ -492,7 +492,7 @@ function LinhaDoCliente({
             }
             title={`Ver cliente — ${nome}`}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-solid border-white/15 px-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
+              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-solid border-admin-border-strong px-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
               FOCO_DO_CRM,
             )}
           >
@@ -629,7 +629,7 @@ export function ClientesDoCrm({
                 value={busca}
                 onChange={setBusca}
                 placeholder="Nome, e-mail ou WhatsApp"
-                className="h-11 rounded-xl border-white/10 bg-zinc-950/60 pl-9 text-sm"
+                className="h-11 rounded-xl border-admin-border bg-zinc-950/60 pl-9 text-sm"
               />
             </div>
           </div>
@@ -736,7 +736,7 @@ export function ClientesDoCrm({
                       aoMudarSegmento(null);
                     }}
                     className={cn(
-                      "min-h-11 rounded-xl border border-solid border-white/10 px-4 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5",
+                      "min-h-11 rounded-xl border border-solid border-admin-border px-4 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5",
                       FOCO_DO_CRM,
                     )}
                   >
