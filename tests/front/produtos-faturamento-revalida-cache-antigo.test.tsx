@@ -89,7 +89,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
   async function abrirValores() {
     if (document.querySelector('[role="dialog"]')) return;
     const botao = [...caixa.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Entender valores",
+      (b) => b.getAttribute("aria-label") === "Entender valores",
     );
     expect(botao).toBeDefined();
     await act(async () => botao!.click());
@@ -266,7 +266,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(caixa.textContent).not.toContain("Estimativa de venda do estoque");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     const entender = [...caixa.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Entender valores",
+      (b) => b.getAttribute("aria-label") === "Entender valores",
     );
     expect(entender).toBeDefined();
     await act(async () => entender!.click());
@@ -378,7 +378,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       productsWithCost: 1,
     });
     const guia = caixa.querySelector<HTMLButtonElement>(
-      'button[title="Guia Completo de Métricas e Ajuda"]',
+      'button[aria-label="Guia e simulador"]',
     );
     expect(guia).not.toBeNull();
     await act(async () => guia!.click());

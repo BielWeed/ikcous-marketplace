@@ -25,9 +25,11 @@ import {
   Truck,
 } from "lucide-react";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { OfertasCompactasEsqueleto } from "./OfertasCompactasEsqueleto";
 import { StarRating } from "./StarRating";
 
-interface PremiumOffersProps {
+export interface PremiumOffersProps {
+  layout?: "padrao" | "compacto";
   products: Product[];
   favorites: string[];
   onToggleFavorite: (product: Product) => void;
@@ -37,7 +39,21 @@ interface PremiumOffersProps {
   title?: string;
 }
 
-export const PremiumOffers = React.memo(function PremiumOffers({
+const OfertasCompactas = React.lazy(() => import("./OfertasCompactas"));
+
+export const PremiumOffers = React.memo(function PremiumOffers(
+  props: PremiumOffersProps,
+) {
+  return props.layout === "compacto" ? (
+    <React.Suspense fallback={<OfertasCompactasEsqueleto />}>
+      <OfertasCompactas {...props} />
+    </React.Suspense>
+  ) : (
+    <PremiumOffersPadrao {...props} />
+  );
+});
+
+const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
   products,
   favorites,
   onToggleFavorite,
@@ -120,25 +136,7 @@ export const PremiumOffers = React.memo(function PremiumOffers({
 
   if (products.length === 0) return null;
 
-  // Determine the Hero Deal: product with the highest percentage discount
-  const offerItems = products.map((p) => {
-    const discount = p.originalPrice
-      ? Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)
-      : 0;
-    return { product: p, discount };
-  });
-
-  // Disponível ANTES de esgotado (a Home já entrega assim, e a faixa não pode
-  // desfazer: uma oferta esgotada com desconto maior abriria a faixa antes
-  // das que a cliente consegue comprar); dentro de cada grupo, maior desconto
-  // primeiro. `Array.prototype.sort` é estável: empate mantém a ordem recebida
-  // (a que a lojista escolheu à mão no painel).
-  const sortedOffers = [...offerItems].sort((a, b) => {
-    const aDisponivel = a.product.stock > 0 ? 1 : 0;
-    const bDisponivel = b.product.stock > 0 ? 1 : 0;
-    if (aDisponivel !== bDisponivel) return bDisponivel - aDisponivel;
-    return b.discount - a.discount;
-  });
+  const sortedOffers = ordenarOfertas(products);
 
   return (
     <div className="relative overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6">
@@ -228,6 +226,28 @@ export const PremiumOffers = React.memo(function PremiumOffers({
 /* ==========================================================================
    SUB-COMPONENT: HEROOFFERCARD
    ========================================================================== */
+export function ordenarOfertas(products: Product[]) {
+  // Determine the Hero Deal: product with the highest percentage discount
+  const offerItems = products.map((p) => {
+    const discount = p.originalPrice
+      ? Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)
+      : 0;
+    return { product: p, discount };
+  });
+
+  // Disponível ANTES de esgotado (a Home já entrega assim, e a faixa não pode
+  // desfazer: uma oferta esgotada com desconto maior abriria a faixa antes
+  // das que a cliente consegue comprar); dentro de cada grupo, maior desconto
+  // primeiro. `Array.prototype.sort` é estável: empate mantém a ordem recebida
+  // (a que a lojista escolheu à mão no painel).
+  return [...offerItems].sort((a, b) => {
+    const aDisponivel = a.product.stock > 0 ? 1 : 0;
+    const bDisponivel = b.product.stock > 0 ? 1 : 0;
+    if (aDisponivel !== bDisponivel) return bDisponivel - aDisponivel;
+    return b.discount - a.discount;
+  });
+}
+
 interface HeroOfferCardProps {
   product: Product;
   discount: number;
@@ -247,19 +267,21 @@ interface HeroOfferCardProps {
   promessasDeFrete: PromessasDeFrete;
 }
 
-function HeroOfferCard({
+/** Mesmas ações e preços nos dois desenhos; o Compacto não recalcula compra. */
+export function useAcoesDaOferta({
   product,
-  discount,
-  isFavorite,
-  onToggleFavorite,
   onProductClick,
   onAddToCart,
   onQuickBuy,
-  onMouseEnter,
-  onTouchStart,
-  showRating,
-  promessasDeFrete: promessasDaLoja,
-}: HeroOfferCardProps) {
+  onToggleFavorite,
+}: Pick<
+  HeroOfferCardProps,
+  | "product"
+  | "onProductClick"
+  | "onAddToCart"
+  | "onQuickBuy"
+  | "onToggleFavorite"
+>) {
   const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
     "idle",
   );
@@ -324,6 +346,47 @@ function HeroOfferCard({
     product.originalPrice && product.originalPrice > product.price
       ? product.originalPrice
       : null;
+  return {
+    cartStatus,
+    handleCardClick,
+    hasActiveVariant,
+    handleAddToCartClick,
+    handleQuickBuyClick,
+    handleFavoriteClick,
+    savings,
+    precoAntigo,
+  };
+}
+
+function HeroOfferCard({
+  product,
+  discount,
+  isFavorite,
+  onToggleFavorite,
+  onProductClick,
+  onAddToCart,
+  onQuickBuy,
+  onMouseEnter,
+  onTouchStart,
+  showRating,
+  promessasDeFrete: promessasDaLoja,
+}: HeroOfferCardProps) {
+  const {
+    cartStatus,
+    handleCardClick,
+    hasActiveVariant,
+    handleAddToCartClick,
+    handleQuickBuyClick,
+    handleFavoriteClick,
+    savings,
+    precoAntigo,
+  } = useAcoesDaOferta({
+    product,
+    onProductClick,
+    onAddToCart,
+    onQuickBuy,
+    onToggleFavorite,
+  });
 
   return (
     // B3 (laudo de acessibilidade, 08/09): mesmo raciocínio do ProductCard --

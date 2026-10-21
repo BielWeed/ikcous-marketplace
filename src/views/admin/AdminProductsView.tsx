@@ -837,7 +837,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             type="button"
             aria-label="Guia e simulador"
             onClick={() => toggleHelp("global-guide")}
-            className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-admin-border bg-admin-raised text-violet-300"
+            className="flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-2xl border border-admin-border bg-admin-raised text-xs text-violet-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
           >
             <HelpCircle aria-hidden="true" className="size-5" />
           </button>

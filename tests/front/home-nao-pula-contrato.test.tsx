@@ -63,8 +63,9 @@ const matchMediaStub = (consulta: string) => ({
 });
 
 let configDaLoja: Record<string, unknown> = {};
+let configCarregada = true;
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({ config: configDaLoja }),
+  useStore: () => ({ config: configDaLoja, isLoaded: configCarregada }),
 }));
 
 // Banners controláveis por caso: `bannersDaLoja.isLoaded` decide se o
@@ -111,6 +112,10 @@ vi.mock("@/components/ui/custom/CategoryFilter", () => ({
 
 vi.mock("@/components/ui/custom/ProductList", () => ({
   ProductList: () => null,
+}));
+
+vi.mock("@/components/ui/custom/FreeShippingBlock", () => ({
+  FreeShippingBlock: () => null,
 }));
 
 vi.mock("@/components/ui/custom/ProductCarousel", () => ({
@@ -243,7 +248,9 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     expect(home).toMatch(
       /if \(secProducts\.length === 0\) \{\s*\n\s*if \(!isLoading\) return null;/,
     );
-    expect(home).toContain("<SecaoOfertasEsqueleto key={section.id} />");
+    expect(home).toContain(
+      "<SecaoOfertasEsqueleto key={section.id} layout={layoutOfertas} />",
+    );
     expect(home).toContain("<SecaoCarrosselEsqueleto key={section.id} />");
   });
 
@@ -271,7 +278,7 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
       "if (derivadaPorFiltro && ultimaVisitaTinhaConteuto === false)",
     );
     const idxEsqueletoOfertas = home.indexOf(
-      "<SecaoOfertasEsqueleto key={section.id} />",
+      "<SecaoOfertasEsqueleto key={section.id} layout={layoutOfertas} />",
     );
     expect(idxIsLoading).toBeGreaterThan(-1);
     expect(idxGuarda).toBeGreaterThan(idxIsLoading);
@@ -289,7 +296,7 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     );
     // E a memória é gravada quando dados e banners da visita resolveram.
     expect(home).toMatch(
-      /if \(isLoading \|\| !bannersLoaded\) return;\s*\n\s*gravarMemoriaDaHome\(\{/,
+      /if \(isLoading \|\| !bannersLoaded \|\| !configLoaded\) return;\s*\n\s*gravarMemoriaDaHome\(\{/,
     );
     // Parecer b7yj9l: memória tem validade (7 dias) — velha demais é
     // descartada e a home cai na aposta de hoje.
@@ -310,7 +317,7 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     expect(home).toMatch(
       /section\.productIds && section\.productIds\.length > 0/,
     );
-    expect(home).toContain("function SecaoOfertasEsqueleto() {");
+    expect(home).toContain("function SecaoOfertasEsqueleto(");
     expect(home).toContain("function SecaoCarrosselEsqueleto() {");
   });
 
@@ -401,6 +408,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
 
   beforeEach(() => {
     configDaLoja = {};
+    configCarregada = true;
     bannersDaLoja = { isLoaded: true, banners: [] };
     // O jsdom deste runner não entrega localStorage funcional (o hook lê
     // dentro de try/catch e cairia sempre em "1ª visita"): um fake por
@@ -436,6 +444,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     temBanner: boolean;
     temOfertas: boolean;
     temBestsellers: boolean;
+    layoutOfertas?: "padrao" | "compacto";
   }) => {
     window.localStorage.setItem(
       "ikcous_home_memoria",
@@ -497,6 +506,86 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     expect(esqueletoDeOfertas()).not.toBeNull();
     expect(esqueletoDeCarrossel()).not.toBeNull();
     expect(esqueletoDeBanner()).not.toBeNull();
+  });
+
+  it("Compacto reserva 306 px já no primeiro desenho sem config, pela memória síncrona", async () => {
+    configCarregada = false;
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+      layoutOfertas: "compacto",
+    });
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).toContain("h-[306px]");
+    expect(
+      esqueletoDeOfertas()?.querySelectorAll("[data-cartao-esqueleto]"),
+    ).toHaveLength(3);
+    expect(
+      esqueletoDeOfertas()?.querySelector("[data-cartao-esqueleto]")?.className,
+    ).toContain("h-[220px]");
+    expect(
+      JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)
+        .layoutOfertas,
+    ).toBe("compacto");
+    configDaLoja = {
+      homeSections: [
+        { id: "offers", title: "Ofertas", active: true, layout: "compacto" },
+      ],
+    };
+    configCarregada = true;
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).toContain("h-[306px]");
+  });
+
+  it("sem memória nem config mantém o Padrão; config Compacta reserva 306 px", async () => {
+    configCarregada = false;
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).not.toContain("h-[306px]");
+    configDaLoja = {
+      homeSections: [
+        { id: "offers", title: "Ofertas", active: true, layout: "compacto" },
+      ],
+    };
+    configCarregada = true;
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).toContain("h-[306px]");
+  });
+
+  it("a config resolvida vence a memória e grava o novo layout para a próxima visita", async () => {
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+      layoutOfertas: "compacto",
+    });
+    configDaLoja = {
+      homeSections: [
+        { id: "offers", title: "Ofertas", active: true, layout: "padrao" },
+      ],
+    };
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).not.toContain("h-[306px]");
+    await montar([criarProduto({ id: "p", originalPrice: 130 })], false);
+    expect(
+      JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)
+        .layoutOfertas,
+    ).toBe("padrao");
+  });
+
+  it("config não resolvida não apaga a memória Compacta mesmo com produtos e banners prontos", async () => {
+    configCarregada = false;
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+      layoutOfertas: "compacto",
+    });
+    await montar([criarProduto({ id: "p", originalPrice: 130 })], false);
+    expect(
+      JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)
+        .layoutOfertas,
+    ).toBe("compacto");
   });
 
   it("volta a loja SEM ofertas e SEM banner: nenhum esqueleto de ofertas/banner nasce", async () => {

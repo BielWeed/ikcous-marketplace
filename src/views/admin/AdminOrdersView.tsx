@@ -1686,7 +1686,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 titulo="Métricas de Pedidos"
                 nota={
                   avisoPagamentoAConferir ? (
-                    <span role="status" data-aviso="pagamento-a-conferir">
+                    <span
+                      role="status"
+                      data-aviso="pagamento-a-conferir"
+                      className="text-amber-200"
+                      title={avisoPagamentoAConferir}
+                    >
                       {avisoPagamentoAConferir}
                     </span>
                   ) : (

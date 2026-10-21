@@ -96,12 +96,55 @@ it("busca reserva 117 px e chips 44 px mesmo sem categorias", async () => {
   expect(host.querySelector("input")?.className).toContain("h-12");
 });
 
+it.each(["1 produto sem custo · lucro parcial", "Conferindo custos…"])(
+  "expandir mantém a nota visível: %s",
+  async (nota) => {
+    await act(async () =>
+      root.render(
+        <MetricasDoPainel
+          titulo="Produtos"
+          cards={cards}
+          legendasDoResumo={["Custo", "Lucro bruto (parcial)"]}
+          nota={nota}
+        />,
+      ),
+    );
+    await act(async () =>
+      host.querySelector<HTMLButtonElement>("[aria-expanded]")!.click(),
+    );
+    const faixa = host.querySelector(".metricas-painel-nota")!;
+    expect(faixa).not.toBeNull();
+    expect(faixa.textContent).toBe(nota);
+    expect(faixa.className).not.toMatch(/sr-only|truncate/);
+    expect(faixa.className).toContain("h-7");
+    const css = readFileSync(
+      "src/components/admin/metricas-do-painel.css",
+      "utf8",
+    );
+    expect(css).toContain("padding: 11px 12px;");
+    // 28 de nota + 44 de cabeçalho + 3 × 96 + 2 × 10 de vãos + 22 de respiro + 2 de borda.
+    const cabecalho = Number(
+      css.match(/\.metricas-painel-cabecalho\s*\{\s*height: (\d+)px/)?.[1],
+    );
+    const linha = Number(css.match(/grid-auto-rows: (\d+)px/)?.[1]);
+    expect(host.querySelector(".metricas-painel-grade")!.className).toContain(
+      "gap-2.5",
+    );
+    expect(28 + cabecalho + 3 * linha + 2 * 10 + 22 + 2).toBe(404);
+    expect(host.querySelectorAll("article")[1].textContent).toContain(
+      "Métrica 1 (parcial)",
+    );
+    expect(host.querySelector("section")!.className).toContain("h-[404px]");
+  },
+);
+
 it("mantém os tokens dos três temas ao integrar a geometria fixa", () => {
   for (const arquivo of [
     "src/components/admin/BarraDeBusca.tsx",
     "src/components/admin/MetricasDoPainel.tsx",
     "src/views/admin/AdminProductsView.tsx",
   ]) {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Caminho vem da lista fechada acima.
     const fonte = readFileSync(arquivo, "utf8");
     expect(fonte).not.toMatch(/admin-(?:card|accent)\b/);
     expect(fonte).toContain(

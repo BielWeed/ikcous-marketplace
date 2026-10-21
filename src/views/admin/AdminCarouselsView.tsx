@@ -90,7 +90,8 @@ function efeitosDeRestaurar(
   }
   efeitos.push({
     chave: "voltam-ao-original",
-    texto: "Nomes, quantidades, ordem e visibilidade voltam ao original",
+    texto:
+      "Nomes, quantidades, ordem e visibilidade voltam ao original; layout de Ofertas volta a Padrão",
   });
   return efeitos;
 }
@@ -279,6 +280,20 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     }
     const updated = homeSections.map((s) =>
       s.id === sectionId ? { ...s, maxItems } : s,
+    );
+    handleUpdateHomeSections(updated, false);
+  };
+
+  const handleUpdateLayout = (
+    sectionId: string,
+    layout: "padrao" | "compacto",
+  ) => {
+    if (isOffline) {
+      toast.error("Sem conexão", { description: "Você precisa estar online." });
+      return;
+    }
+    const updated = homeSections.map((s) =>
+      s.id === sectionId ? { ...s, layout } : s,
     );
     handleUpdateHomeSections(updated, false);
   };
@@ -673,6 +688,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               aoAlternarAtiva={handleToggleSectionActive}
               aoMover={moveSection}
               aoSoltar={handleSoltou}
+              aoAlterarLayout={handleUpdateLayout}
               travado={salvandoVitrines}
             />
           ))}

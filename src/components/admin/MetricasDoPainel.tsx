@@ -104,11 +104,16 @@ export function MetricasDoPainel({
         </p>
       )}
       <div className="metricas-painel-resumo h-full">
-        {!expandido && (
-          <div className="metricas-painel-nota h-7 truncate border-b border-admin-border px-3 text-[11px] leading-7">
-            {nota}
-          </div>
-        )}
+        <div
+          className={cn(
+            "metricas-painel-nota border-b border-admin-border px-3 text-[11px] text-zinc-400",
+            expandido
+              ? "h-7 overflow-y-auto leading-[14px]"
+              : "h-7 truncate leading-7",
+          )}
+        >
+          {nota}
+        </div>
         <div
           className={
             expandido
@@ -155,6 +160,7 @@ export function MetricasDoPainel({
             <button
               type="button"
               aria-label="Entender valores"
+              aria-haspopup="dialog"
               onClick={onEntender}
               className={cn(BOTAO_METRICAS, "size-11 shrink-0 justify-center")}
             >
@@ -188,7 +194,7 @@ export function MetricasDoPainel({
         </div>
         {expandido ? (
           <div className="metricas-painel-grade grid grid-cols-2 gap-2.5">
-            {cards.map((card) => (
+            {cards.map((card, i) => (
               <article
                 key={card.label}
                 aria-label={card.label}
@@ -207,6 +213,8 @@ export function MetricasDoPainel({
                 </NumeroAdaptavel>
                 <p className="mt-2 break-words text-xs font-semibold text-zinc-100">
                   {card.label}
+                  {legendasDoResumo.at(i)?.includes("(parcial)") &&
+                    " (parcial)"}
                 </p>
                 <p className="sr-only">{card.subValue}</p>
               </article>
@@ -247,6 +255,7 @@ export function MetricasDoPainel({
               <button
                 type="button"
                 aria-label="Entender valores"
+                aria-haspopup="dialog"
                 onClick={onEntender}
                 className={cn(
                   BOTAO_METRICAS,

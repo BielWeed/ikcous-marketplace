@@ -39,6 +39,7 @@ export function CartaoDaVitrine({
   aoAlternarAtiva,
   aoMover,
   aoSoltar,
+  aoAlterarLayout,
   travado,
 }: {
   readonly secao: SecaoDaHome;
@@ -49,6 +50,7 @@ export function CartaoDaVitrine({
   readonly aoAlternarAtiva: (id: string) => void;
   readonly aoMover: (indice: number, direcao: "up" | "down") => void;
   readonly aoSoltar: () => void;
+  readonly aoAlterarLayout: (id: string, layout: "padrao" | "compacto") => void;
   /** Ordem sendo gravada: nada no cartão responde até o banco confirmar. */
   readonly travado: boolean;
 }) {
@@ -232,6 +234,56 @@ export function CartaoDaVitrine({
             </button>
           </div>
         </div>
+        {secao.id === "offers" && (
+          <div className="relative -mb-1.5 ml-7 mt-1.5 flex items-center gap-1 text-xs font-semibold text-zinc-300">
+            Layout
+            {(["padrao", "compacto"] as const).map((layout) => {
+              const marcado =
+                (secao.layout === "compacto" ? "compacto" : "padrao") ===
+                layout;
+              const nome = layout === "padrao" ? "Padrão" : "Compacto";
+              return (
+                <button
+                  type="button"
+                  key={layout}
+                  aria-label={`Layout ${nome}`}
+                  aria-pressed={marcado}
+                  disabled={travado}
+                  onClick={() => aoAlterarLayout(secao.id, layout)}
+                  className="h-11 disabled:opacity-50"
+                >
+                  <span
+                    className={cn(
+                      "flex h-8 items-center gap-1 rounded-[10px] border px-1.5",
+                      marcado
+                        ? "border-admin-gold/25 bg-admin-gold/10 text-admin-gold"
+                        : "border-admin-border bg-white/5",
+                    )}
+                  >
+                    <svg
+                      aria-hidden="true"
+                      width="30"
+                      height="20"
+                      viewBox="0 0 30 20"
+                      fill="none"
+                      stroke="currentColor"
+                    >
+                      <path
+                        d={
+                          layout === "padrao"
+                            ? "M2 1h26v18H2zM5 4h20v9H5zM5 16h12m3 0h5"
+                            : "M1 1h10v18H1zM14 1h10v18H14zM27 1h3M27 1v18h3M3 4h6v8H3zM16 4h6v8h-6zM3 15h6m7 0h6"
+                        }
+                      />
+                    </svg>
+                    {nome}
+                    {marcado && " ✓"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </Reorder.Item>
   );

@@ -15,11 +15,11 @@
   margin-top: 30px;
 }
 .metricas-painel[data-expandido="true"] .metricas-painel-resumo {
-  padding: 12px;
+  padding: 11px 12px;
 }
 .metricas-painel-cabecalho {
-  height: 58px;
-  margin-bottom: 12px;
+  height: 44px;
+  margin-bottom: 0;
 }
 .metricas-painel-grade {
   grid-auto-rows: 96px;
