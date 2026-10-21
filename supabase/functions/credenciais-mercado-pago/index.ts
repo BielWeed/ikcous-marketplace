@@ -814,7 +814,7 @@ const AVISO_CHAVES_DE_TESTE_SEM_MODO_DE_TESTE =
     'Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago). O PIX fica desligado até lá.';
 
 const AVISO_MODO_DE_TESTE_EM_PRODUCAO =
-    "Seu app está em modo de teste: as compras reais estão indo ao Mercado Pago com um e-mail de teste no lugar do e-mail do cliente, o que pode fazer o cartão ser recusado. Peça para desligar o modo de teste (segredo MP_SANDBOX_PAYER_EMAIL) no servidor.";
+    "Seu app está em modo de teste: os pagamentos com cartão vão ao Mercado Pago com um e-mail de teste no lugar do e-mail do cliente, o que pode fazer o cartão ser recusado. Peça para desligar o modo de teste (segredo MP_SANDBOX_PAYER_EMAIL) no servidor.";
 
 /**
  * A loja DECLAROU o modo de teste? Mesma regra do `criar-pagamento`
