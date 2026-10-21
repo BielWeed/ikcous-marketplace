@@ -56,7 +56,9 @@ export function DinheiroNasContas({
       classeDoValor:
         painel?.saldoTotal != null && painel.saldoTotal < 0
           ? valorNaCor("negativo")
-          : VALOR_INICIO,
+          : tomDoValor(painel?.saldoTotal) === "neutro"
+            ? valorNaCor("neutro")
+            : VALOR_INICIO,
     },
     {
       titulo: "A receber",
@@ -99,7 +101,7 @@ export function DinheiroNasContas({
             <button
               type="button"
               onClick={() => onNavigate("admin-financeiro")}
-              className={cn(LINHA_INICIO, "flex-wrap")}
+              className={cn(LINHA_INICIO, "flex-wrap hover:bg-white/[0.02]")}
               aria-label={`${conta.titulo} — ${formatarMoeda(conta.valor)}. ${conta.detalhe}${conta.vencidas ? `, ${conta.vencidas}` : ""}. Abrir Financeiro`}
             >
               <TileDoInicio icone={conta.icone} tom={conta.tomDoIcone} />

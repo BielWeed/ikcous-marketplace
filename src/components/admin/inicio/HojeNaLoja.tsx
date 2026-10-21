@@ -1,5 +1,6 @@
 import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import { formatarInteiro, formatarMoeda, variacaoPercentual } from "@/lib/crm";
+import { tomDoValor } from "@/lib/tons-de-estado";
 import type { PainelInicio } from "@/types/painel";
 import { ChevronRight, Package, Smartphone, Store } from "lucide-react";
 import {
@@ -7,6 +8,7 @@ import {
   ROTULO_INICIO,
   VALOR_INICIO,
   VariacaoDoInicio,
+  valorNaCor,
 } from "./visualDoInicio";
 
 function DivisaoAppBalcao({
@@ -21,7 +23,9 @@ function DivisaoAppBalcao({
           <Smartphone className="size-4" aria-hidden="true" />
           App
         </dt>
-        <dd className={`mt-1 text-base ${VALOR_INICIO}`}>
+        <dd
+          className={`mt-1 text-base ${tomDoValor(online) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
+        >
           {formatarMoeda(online)}
         </dd>
       </div>
@@ -30,7 +34,9 @@ function DivisaoAppBalcao({
           <Store className="size-4" aria-hidden="true" />
           Balcão
         </dt>
-        <dd className={`mt-1 text-base ${VALOR_INICIO}`}>
+        <dd
+          className={`mt-1 text-base ${tomDoValor(presencial) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
+        >
           {formatarMoeda(presencial)}
         </dd>
       </div>
@@ -78,7 +84,7 @@ export function HojeNaLoja({
         <div className="mt-2 space-y-4">
           <div className="space-y-3">
             <p
-              className={`text-[clamp(1.875rem,9.5vw,3rem)] leading-none ${VALOR_INICIO}`}
+              className={`text-[clamp(1.875rem,9.5vw,3rem)] leading-none ${tomDoValor(hoje?.receita) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
             >
               {formatarMoeda(hoje?.receita)}
             </p>

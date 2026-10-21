@@ -27,7 +27,6 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
-  ACAO_PRINCIPAL_INICIO,
   BOTAO_INICIO,
   CARTAO_INICIO,
   FalhaDoInicio,
@@ -158,7 +157,7 @@ export function LojaProntaEEstoqueBaixo({
         <button
           type="button"
           onClick={() => onNavigate(proximo.destino)}
-          className={ACAO_PRINCIPAL_INICIO}
+          className={BOTAO_INICIO}
         >
           <Icone className="size-5 shrink-0" aria-hidden="true" />
           {proximo.rotuloPendente}

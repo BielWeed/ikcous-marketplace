@@ -191,7 +191,7 @@ export function ParaFazer({
                   type="button"
                   onClick={() => onNavigate(item.destino)}
                   aria-label={`${item.rotulo}: ${item.titulo}. ${item.descricao}`}
-                  className={LINHA_INICIO}
+                  className={cn(LINHA_INICIO, "hover:bg-white/[0.02]")}
                 >
                   <TileDoInicio icone={item.icone} tom={item.tomDoIcone} />
                   <span className="min-w-0 flex-1">

@@ -23,9 +23,6 @@ const NOME_DO_MES = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
 });
 
-/** Acima disto, dois números grandes lado a lado não cabem num celular. */
-const LARGURA_MAXIMA_LADO_A_LADO = 10;
-
 /**
  * "Este mês": vendas pagas (com variação) e lucro estimado na cor do sinal,
  * quantidade de vendas e valor médio. O gráfico dos 14 dias entra como
@@ -52,8 +49,9 @@ export function NumerosDoMes({
       : null;
   const receita = formatarMoeda(mes?.receita);
   const lucro = formatarMoeda(mes?.lucroEstimado);
-  const empilhar =
-    Math.max(receita.length, lucro.length) > LARGURA_MAXIMA_LADO_A_LADO;
+  // A largura mínima acompanha a moeda inteira; quem decide empilhar é o
+  // espaço do cartão, não um limite fixo de caracteres ou a largura da tela.
+  const larguraDoValor = Math.max(receita.length, lucro.length) + 2;
 
   return (
     <section
@@ -71,20 +69,21 @@ export function NumerosDoMes({
       >
         Este mês
       </TituloDoInicio>
-      <div className={`${CARTAO_INICIO} space-y-4`}>
+      <div
+        className={`${CARTAO_INICIO} space-y-4 [container-type:inline-size]`}
+      >
         <div
-          className={
-            empilhar
-              ? "grid grid-cols-1 gap-4"
-              : "grid grid-cols-2 gap-4 min-[360px]:gap-5"
-          }
+          className="grid gap-4 text-[clamp(1.125rem,5.6cqi,1.5rem)]"
+          style={{
+            gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${larguraDoValor}ch), 1fr))`,
+          }}
         >
           <div className="min-w-0">
             <p className={ROTULO_INICIO}>
               Vendas pagas<span className="sr-only"> no mês</span>
             </p>
             <p
-              className={`mt-1 text-[clamp(1.125rem,5.6vw,1.5rem)] ${VALOR_INICIO}`}
+              className={`mt-1 whitespace-nowrap ${tomDoValor(mes?.receita) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
             >
               {receita}
             </p>
@@ -93,22 +92,16 @@ export function NumerosDoMes({
               referencia="que nos mesmos dias do mês anterior"
             />
           </div>
-          <div
-            className={
-              empilhar
-                ? "min-w-0 border-t border-admin-border pt-4"
-                : "min-w-0 border-l border-admin-border pl-4 min-[360px]:pl-5"
-            }
-          >
+          <div className="min-w-0 border-l border-admin-border pl-3">
             <p className={ROTULO_INICIO}>Lucro estimado</p>
             <p
-              className={`mt-1 text-[clamp(1.125rem,5.6vw,1.5rem)] ${valorNaCor(tomDoValor(mes?.lucroEstimado))}`}
+              className={`mt-1 whitespace-nowrap ${valorNaCor(tomDoValor(mes?.lucroEstimado))}`}
             >
               {lucro}
             </p>
             {margem != null ? (
               <p className="mt-1 text-sm text-zinc-400">
-                Margem estimada {formatarPercentual(margem, 1)}
+                Margem estimada {formatarPercentual(margem, 0)}
               </p>
             ) : null}
           </div>

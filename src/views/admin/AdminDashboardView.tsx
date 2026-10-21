@@ -177,8 +177,6 @@ export const AdminDashboardView = memo(function AdminDashboardView({
 
   const semNumeros = carregando && !painel;
 
-  const lucro = painel?.mes.lucroEstimado ?? null;
-
   return (
     <div
       ref={viewRef}
@@ -309,9 +307,6 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                     carregando={semNumeros}
                     falhou={painel === null && erro !== null}
                     onTentarDeNovo={() => void atualizar()}
-                    tomDoUltimoDia={
-                      lucro !== null && lucro < 0 ? "negativo" : "positivo"
-                    }
                   />
                 </LocalErrorBoundary>
               </NumerosDoMes>

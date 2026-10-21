@@ -1,6 +1,5 @@
 import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { completarSerieDe14Dias, formatarData, formatarMoeda } from "@/lib/crm";
-import { type TomDeEstado, classeDoPonto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { PontoDaSerieDiaria } from "@/types/painel";
 import { Check, ChevronLeft, ChevronRight, List } from "lucide-react";
@@ -20,20 +19,18 @@ const dataCurta = (dia: string) =>
 /**
  * HTML puro: a série dos 14 dias, escolhida por toque, setas e tabela. Mora
  * dentro do cartão "Este mês": barras neutras e só o último dia na cor do
- * resultado do mês (`tomDoUltimoDia`: verde, ou vermelho se for prejuízo).
+ * valor vendido naquele dia: verde quando há vendas, sem barra quando zero.
  */
 export function SerieDe14Dias({
   serie,
   carregando,
   falhou = false,
   onTentarDeNovo,
-  tomDoUltimoDia = "positivo",
 }: Readonly<{
   serie: readonly PontoDaSerieDiaria[];
   carregando: boolean;
   falhou?: boolean;
   onTentarDeNovo?: () => void;
-  tomDoUltimoDia?: TomDeEstado;
 }>) {
   const [marcado, setMarcado] = useState<number | null>(null);
   const [tabelaAberta, setTabelaAberta] = useState(false);
@@ -166,7 +163,7 @@ export function SerieDe14Dias({
                         className={cn(
                           "w-full rounded-t-[5px]",
                           indice === serieCompleta.length - 1
-                            ? classeDoPonto(tomDoUltimoDia)
+                            ? "bg-emerald-400"
                             : indice === selecionado
                               ? "bg-zinc-300"
                               : "bg-zinc-600",
@@ -255,7 +252,7 @@ export function SerieDe14Dias({
                     key={ponto.dia}
                     className={
                       indice === selecionado
-                        ? "bg-white/[0.12]"
+                        ? "bg-white/[0.06]"
                         : "bg-white/[0.03]"
                     }
                   >
