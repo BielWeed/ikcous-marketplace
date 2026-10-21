@@ -239,7 +239,7 @@ export function ReembolsoDaDevolucao({
 
   return (
     <section
-      className="admin-glass space-y-3 rounded-2xl border border-white/5 p-4"
+      className="admin-glass space-y-3 rounded-2xl border border-admin-border p-4"
       data-testid="reembolso-da-devolucao"
     >
       <p className="text-xs font-bold text-zinc-200">

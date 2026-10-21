@@ -320,7 +320,7 @@ export const StrategicIntelligenceBlocks = React.memo(
       return (
         <div className="space-y-12">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
-            <Skeleton className="relative h-[340px] w-full overflow-hidden rounded-2xl border border-white/5 bg-zinc-800/20 shadow-lg backdrop-blur-xl sm:h-[380px] lg:col-span-5" />
+            <Skeleton className="relative h-[340px] w-full overflow-hidden rounded-2xl border border-admin-border bg-zinc-800/20 shadow-lg backdrop-blur-xl sm:h-[380px] lg:col-span-5" />
           </div>
         </div>
       );
@@ -362,8 +362,8 @@ export const StrategicIntelligenceBlocks = React.memo(
     // falha de RPC.
     if (!loading && (safeCategoryData.length === 0 || totalRevenue === 0)) {
       return (
-        <div className="flex flex-col items-center justify-center space-y-4 rounded-[3rem] border border-white/5 bg-zinc-950/60 p-12 text-center shadow-2xl backdrop-blur-3xl">
-          <div className="flex size-16 items-center justify-center rounded-full border border-white/10 bg-white/5">
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-[3rem] border border-admin-border bg-zinc-950/60 p-12 text-center shadow-2xl backdrop-blur-3xl">
+          <div className="flex size-16 items-center justify-center rounded-full border border-admin-border bg-white/5">
             <PieChartIcon className="text-zinc-500" size={24} />
           </div>
           <div>
@@ -422,7 +422,7 @@ export const StrategicIntelligenceBlocks = React.memo(
                   Desempenho por categoria
                 </p>
               </div>
-              <div className="flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 transition-colors group-hover:border-admin-gold/40">
+              <div className="flex size-8 items-center justify-center rounded-xl border border-admin-border bg-white/5 transition-colors group-hover:border-admin-gold/40">
                 <PieChartIcon size={14} className="text-admin-gold" />
               </div>
             </div>
@@ -514,7 +514,7 @@ export const StrategicIntelligenceBlocks = React.memo(
 
               {/* COLUNA DA TABELA DE LEGENDAS DETALHADAS */}
               <div className="flex w-full flex-col justify-center space-y-3 lg:w-[45%]">
-                <div className="hidden items-center justify-between border-b border-white/5 pb-2 lg:flex">
+                <div className="hidden items-center justify-between border-b border-admin-border pb-2 lg:flex">
                   <span className="text-[11px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
                     Divisão de categorias
                   </span>
@@ -555,8 +555,8 @@ export const StrategicIntelligenceBlocks = React.memo(
                         }}
                         className={`flex flex-col rounded-2xl border p-3 transition-all duration-300 ${
                           isSelected
-                            ? "border-white/10 bg-white/[0.04] shadow-lg"
-                            : "border-white/5 bg-zinc-950/30 hover:border-white/10 hover:bg-white/[0.02]"
+                            ? "border-admin-border bg-admin-raised shadow-lg"
+                            : "border-admin-border bg-zinc-950/30 hover:border-admin-border-strong hover:bg-white/[0.02]"
                         } ${isInactive ? "opacity-40" : "opacity-100"}`}
                         onMouseEnter={() => {
                           if (!isInactive) {

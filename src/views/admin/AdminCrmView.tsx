@@ -178,7 +178,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
               type="button"
               disabled={sincronizando || isOffline}
               onClick={sincronizar}
-              className="group flex min-h-11 items-center gap-3 rounded-2xl border border-solid border-white/10 bg-white/5 px-4 py-2 transition-all hover:bg-white/10 disabled:opacity-50 sm:px-6 sm:py-3"
+              className="group flex min-h-11 items-center gap-3 rounded-2xl border border-solid border-admin-border bg-white/5 px-4 py-2 transition-all hover:bg-white/10 disabled:opacity-50 sm:px-6 sm:py-3"
               aria-label="Sincronizar os números do CRM"
             >
               <RefreshCw
@@ -203,7 +203,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
           >
             <span
               aria-hidden="true"
-              className="flex size-8 items-center justify-center rounded-full border border-solid border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+              className="flex size-8 items-center justify-center rounded-full border border-solid border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
             >
               <HelpCircle className="size-4.5" aria-hidden="true" />
             </span>
@@ -227,7 +227,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
           o trilho de período estourava a tela em 1100px). Com `flex-wrap` o
           período desce para a 2ª linha só nessa faixa estreita; em 1280/1440
           continua tudo numa linha só, idêntico a antes. */}
-      <div className="sticky top-0 z-30 mt-2 border-b border-white/5 bg-admin-bg/95 backdrop-blur-md">
+      <div className="sticky top-0 z-30 mt-2 border-b border-admin-border bg-admin-bg/95 backdrop-blur-md">
         <div className="flex flex-col gap-1.5 py-1.5 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:gap-2 lg:px-6 lg:py-2">
           <div
             role="tablist"
@@ -306,7 +306,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                       FOCO_DO_CRM,
                       escolhido
                         ? "border-admin-gold/40 bg-admin-gold/15 text-admin-gold"
-                        : "border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/5 hover:text-white",
+                        : "border-transparent text-zinc-400 hover:border-admin-border-strong hover:bg-white/5 hover:text-white",
                     )}
                   >
                     {item.rotulo}

@@ -491,7 +491,7 @@ export const AdminQAView = memo(function AdminQAView({
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className="animate-pulse space-y-4 rounded-2xl border border-white/10 bg-zinc-900/70 p-6"
+          className="animate-pulse space-y-4 rounded-2xl border border-admin-border bg-admin-surface p-6"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -511,7 +511,7 @@ export const AdminQAView = memo(function AdminQAView({
   );
 
   const renderCompactSkeleton = () => (
-    <div className="divide-y divide-white/5 overflow-hidden rounded-3xl border border-white/5 bg-white/[0.02]">
+    <div className="divide-y divide-admin-border overflow-hidden rounded-3xl border border-admin-border bg-admin-raised">
       {[1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
@@ -565,7 +565,7 @@ export const AdminQAView = memo(function AdminQAView({
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70"
+        className="divide-y divide-admin-border overflow-hidden rounded-2xl border border-admin-border bg-admin-surface"
       >
         {questions.map((q) => {
           const isAnswered = q.answers.length > 0;
@@ -617,7 +617,7 @@ export const AdminQAView = memo(function AdminQAView({
                       <span className="text-[11px] font-bold text-zinc-400">
                         {new Date(q.createdAt).toLocaleDateString("pt-BR")}
                       </span>
-                      <span className="max-w-[180px] truncate rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold text-zinc-400">
+                      <span className="max-w-[180px] truncate rounded-md border border-admin-border bg-white/5 px-2 py-0.5 text-[11px] font-bold text-zinc-400">
                         {q.productName}
                       </span>
                     </div>
@@ -709,7 +709,7 @@ export const AdminQAView = memo(function AdminQAView({
                               // comentário acima (answers ordenado ascendente)
                               setAnswer(q.answers.at(-1)?.answer ?? "");
                             }}
-                            className="flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+                            className="flex size-8 items-center justify-center rounded-xl border border-admin-border bg-white/5 text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-40"
                             title="Editar Resposta"
                           >
                             <MessageSquare className="size-3.5 text-emerald-400" />
@@ -719,7 +719,7 @@ export const AdminQAView = memo(function AdminQAView({
                           onClick={() =>
                             setExpandedQuestionId(isExpandedRow ? null : q.id)
                           }
-                          className="flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-400 transition-all hover:bg-white/10 hover:text-white sm:flex"
+                          className="flex size-8 items-center justify-center rounded-xl border border-admin-border bg-white/5 text-zinc-400 transition-all hover:bg-white/10 hover:text-white sm:flex"
                         >
                           {isExpandedRow ? (
                             <ChevronUp className="size-4" />
@@ -742,7 +742,7 @@ export const AdminQAView = memo(function AdminQAView({
                     exit={{ height: 0, opacity: 0 }}
                     className="mt-3 space-y-3 overflow-hidden pl-11"
                   >
-                    <div className="rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
+                    <div className="rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-4">
                       <span className="mb-1 block text-xs font-semibold text-zinc-300">
                         Pergunta Completa
                       </span>
@@ -800,7 +800,7 @@ export const AdminQAView = memo(function AdminQAView({
               key={q.id}
               variants={itemVariants}
               layout
-              className="content-visibility-auto group relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent shadow-xl transition-all duration-300 hover:border-white/20 hover:shadow-[0_10px_30px_rgba(0,0,0,0.4)]"
+              className="content-visibility-auto group relative overflow-hidden rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent shadow-xl transition-all duration-300 hover:border-admin-border-strong hover:shadow-[0_10px_30px_rgba(0,0,0,0.4)]"
             >
               <div className="bg-radial-gradient pointer-events-none absolute inset-0 from-emerald-500/[0.01] via-transparent to-transparent" />
 
@@ -809,7 +809,7 @@ export const AdminQAView = memo(function AdminQAView({
                   <div className="flex-1 space-y-5">
                     {/* Meta Info */}
                     <div className="flex flex-wrap items-center gap-2.5">
-                      <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                      <div className="flex items-center gap-2 rounded-full border border-admin-border bg-white/5 px-3 py-1.5">
                         <div
                           className={cn(
                             "w-5 h-5 rounded-full bg-gradient-to-br flex items-center justify-center text-[11px] font-black text-white",
@@ -823,7 +823,7 @@ export const AdminQAView = memo(function AdminQAView({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                      <div className="flex items-center gap-1.5 rounded-full border border-admin-border bg-white/5 px-3 py-1.5">
                         <Calendar className="size-3.5 text-zinc-400" />
                         <span className="mt-0.5 text-xs font-semibold tabular-nums leading-none text-zinc-300">
                           {new Date(q.createdAt).toLocaleDateString("pt-BR")}
@@ -858,7 +858,7 @@ export const AdminQAView = memo(function AdminQAView({
                     </div>
 
                     {/* Product Reference */}
-                    <div className="group/product inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 p-1.5 pr-4 transition-all hover:border-emerald-500/20 hover:bg-white/10">
+                    <div className="group/product inline-flex items-center gap-3 rounded-2xl border border-admin-border bg-admin-surface p-1.5 pr-4 transition-all hover:border-emerald-500/20 hover:bg-white/10">
                       <div className="relative size-9 shrink-0 overflow-hidden rounded-xl bg-zinc-800">
                         <LazyImage
                           src={
@@ -934,12 +934,12 @@ export const AdminQAView = memo(function AdminQAView({
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="mt-6 space-y-4 border-t border-white/5 pt-6"
+                      className="mt-6 space-y-4 border-t border-admin-border pt-6"
                     >
                       {q.answers.map((ans) => (
                         <div
                           key={ans.id}
-                          className="group/ans relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-5"
+                          className="group/ans relative overflow-hidden rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-5"
                         >
                           <div className="absolute left-0 top-0 h-full w-[3px] bg-emerald-500/40" />
                           <div className="mb-2 flex items-center justify-between">
@@ -963,7 +963,7 @@ export const AdminQAView = memo(function AdminQAView({
                                   setSelectedQuestion(q);
                                   setAnswer(ans.answer);
                                 }}
-                                className="rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-black text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+                                className="rounded-lg border border-admin-border bg-white/5 px-2 py-0.5 text-[11px] font-black text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-40"
                               >
                                 Editar
                               </button>
@@ -1024,7 +1024,7 @@ export const AdminQAView = memo(function AdminQAView({
     >
       {/* Header Sticky */}
       <div className="sticky top-0 z-50 bg-admin-bg/80 p-2 pb-0 backdrop-blur-md sm:p-4">
-        <div className="admin-glass rounded-2xl border border-white/5 p-3 shadow-2xl sm:rounded-[2rem] sm:p-4">
+        <div className="admin-glass rounded-2xl border border-admin-border p-3 shadow-2xl sm:rounded-[2rem] sm:p-4">
           <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
             {/* Title & Stats */}
             <div className="flex w-full flex-wrap items-center justify-between gap-3 lg:w-auto lg:justify-start">
@@ -1042,7 +1042,7 @@ export const AdminQAView = memo(function AdminQAView({
                     >
                       <span
                         aria-hidden="true"
-                        className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                        className="flex size-8 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
                       >
                         <HelpCircle className="size-4.5" />
                       </span>
@@ -1092,7 +1092,7 @@ export const AdminQAView = memo(function AdminQAView({
                   id="qa-search"
                   name="search"
                   placeholder="Buscar por cliente ou pergunta..."
-                  className="w-full rounded-xl border border-zinc-800 bg-black/40 py-2 pl-9 pr-3 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:bg-zinc-950/60 focus:outline-none focus:ring-2 focus:ring-admin-gold/20"
+                  className="w-full rounded-xl border border-admin-border bg-black/40 py-2 pl-9 pr-3 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:bg-zinc-950/60 focus:outline-none focus:ring-2 focus:ring-admin-gold/20"
                   value={searchQuery}
                   onChange={(val) => {
                     setSearchQuery(val);
@@ -1104,7 +1104,7 @@ export const AdminQAView = memo(function AdminQAView({
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                <div className="no-scrollbar flex items-center gap-1 overflow-x-auto rounded-xl border border-zinc-800 bg-black/40 p-0.5">
+                <div className="no-scrollbar flex items-center gap-1 overflow-x-auto rounded-xl border border-admin-border bg-black/40 p-0.5">
                   <button
                     onClick={() => {
                       setFilter("pending");
@@ -1140,7 +1140,7 @@ export const AdminQAView = memo(function AdminQAView({
                       prev === "detailed" ? "compact" : "detailed",
                     )
                   }
-                  className="group flex size-8 shrink-0 items-center justify-center rounded-xl border border-zinc-800 bg-black/40 shadow-lg transition-all hover:border-admin-gold/50 hover:bg-zinc-900 active:scale-95 sm:size-9"
+                  className="group flex size-8 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-black/40 shadow-lg transition-all hover:border-admin-gold/50 hover:bg-zinc-900 active:scale-95 sm:size-9"
                   title={
                     viewMode === "detailed"
                       ? "Visualização Compacta"
@@ -1196,7 +1196,7 @@ export const AdminQAView = memo(function AdminQAView({
                 <span className="text-[11px] font-bold uppercase text-zinc-650">
                   de
                 </span>
-                <span className="flex size-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-xs font-black text-zinc-300">
+                <span className="flex size-8 items-center justify-center rounded-lg border border-admin-border bg-white/5 text-xs font-black text-zinc-300">
                   {totalPages}
                 </span>
               </div>
@@ -1213,7 +1213,7 @@ export const AdminQAView = memo(function AdminQAView({
                   if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 disabled={page === 0}
-                className="group flex h-12 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-6 text-zinc-400 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-30"
+                className="group flex h-12 items-center gap-3 rounded-2xl border border-admin-border bg-admin-raised px-6 text-zinc-400 transition-all hover:border-admin-border-strong hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-30"
               >
                 <ChevronLeft className="size-5 transition-transform group-hover:-translate-x-1" />
                 <span className="mt-0.5 text-[11px] font-black uppercase tracking-widest">
@@ -1249,7 +1249,7 @@ export const AdminQAView = memo(function AdminQAView({
           if (!open) handleCloseDialog();
         }}
       >
-        <DialogContent className="overflow-hidden rounded-[2.5rem] border-white/10 bg-admin-bg p-0 shadow-2xl sm:max-w-xl">
+        <DialogContent className="overflow-hidden rounded-[2.5rem] border-admin-border bg-admin-bg p-0 shadow-2xl sm:max-w-xl">
           {activeDialogQuestion && (
             <div className="p-8 md:p-10">
               <DialogHeader className="mb-8">
@@ -1265,7 +1265,7 @@ export const AdminQAView = memo(function AdminQAView({
               </DialogHeader>
 
               <div className="space-y-8">
-                <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-white/[0.02] p-6">
+                <div className="relative overflow-hidden rounded-3xl border border-admin-border bg-admin-surface p-6">
                   <div className="absolute right-0 top-0 p-4 opacity-10">
                     <MessageSquare className="size-12" />
                   </div>
@@ -1302,7 +1302,7 @@ export const AdminQAView = memo(function AdminQAView({
                           ? "Você está offline. Não é possível responder no momento."
                           : "Dê uma resposta completa e persuasiva para encantar o cliente..."
                       }
-                      className="scrollbar-hide h-48 w-full resize-none rounded-[2rem] border border-white/10 bg-white/[0.03] p-6 text-sm text-white shadow-inner transition-all focus:border-emerald-500/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-40"
+                      className="scrollbar-hide h-48 w-full resize-none rounded-[2rem] border border-admin-border bg-admin-surface p-6 text-sm text-white shadow-inner transition-all focus:border-emerald-500/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-40"
                     />
                     <div className="pointer-events-none absolute bottom-4 right-6 flex items-center gap-2 opacity-40">
                       <Send className="size-4 text-emerald-400" />
@@ -1327,7 +1327,7 @@ export const AdminQAView = memo(function AdminQAView({
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={handleCloseDialog}
-                    className="h-14 flex-1 rounded-2xl border border-white/10 bg-white/5 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-colors duration-200 hover:bg-white/10 hover:text-white"
+                    className="h-14 flex-1 rounded-2xl border border-admin-border bg-white/5 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-colors duration-200 hover:bg-white/10 hover:text-white"
                   >
                     Descartar
                   </motion.button>
@@ -1340,7 +1340,7 @@ export const AdminQAView = memo(function AdminQAView({
                   >
                     {isSubmitting ? (
                       <>
-                        <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                        <div className="size-4 animate-spin rounded-full border-2 border-admin-border-strong border-t-white" />
                         <span>Enviando...</span>
                       </>
                     ) : (
@@ -1375,7 +1375,7 @@ export const AdminQAView = memo(function AdminQAView({
               Fluxo Operacional
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <MessageSquare className="size-4 text-emerald-500" />
                   Dúvidas Pendentes
@@ -1386,7 +1386,7 @@ export const AdminQAView = memo(function AdminQAView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Send className="size-4 text-admin-gold" />
                   Resposta Oficial
@@ -1398,7 +1398,7 @@ export const AdminQAView = memo(function AdminQAView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Trash2 className="size-4 text-sky-500" />
                   Exclusão Preventiva
@@ -1410,7 +1410,7 @@ export const AdminQAView = memo(function AdminQAView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <CheckCircle2 className="size-4 text-purple-500" />
                   Filtros Rápidos

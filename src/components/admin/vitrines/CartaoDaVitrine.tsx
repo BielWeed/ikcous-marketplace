@@ -76,8 +76,8 @@ export function CartaoDaVitrine({
         className={cn(
           "relative rounded-2xl border p-3 pl-2 transition-colors",
           secao.active
-            ? "border-white/5 bg-zinc-900/40"
-            : "border-dashed border-white/10 bg-transparent",
+            ? "border-admin-border bg-zinc-900/40"
+            : "border-dashed border-admin-border bg-transparent",
         )}
       >
         <button
@@ -148,14 +148,14 @@ export function CartaoDaVitrine({
           )}
         >
           {visiveis.length === 0 ? (
-            <span className="flex h-[42px] items-center rounded-[12px] border border-dashed border-white/15 px-3 text-xs font-semibold text-zinc-400">
+            <span className="flex h-[42px] items-center rounded-[12px] border border-dashed border-admin-border-strong px-3 text-xs font-semibold text-zinc-400">
               Sem produtos
             </span>
           ) : (
             visiveis.map((produto) => (
               <span
                 key={produto.id}
-                className="relative flex size-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-white/5 bg-zinc-800"
+                className="relative flex size-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-admin-border bg-zinc-800"
                 title={produto.name}
               >
                 {produto.images?.[0] ? (
@@ -182,7 +182,7 @@ export function CartaoDaVitrine({
         <div className="pointer-events-none relative ml-7 mt-3 flex flex-wrap items-center gap-1.5">
           <span
             className={cn(
-              "flex h-[30px] items-center whitespace-nowrap rounded-[10px] border border-white/5 bg-white/5 px-2.5 text-xs font-semibold text-zinc-300",
+              "flex h-[30px] items-center whitespace-nowrap rounded-[10px] border border-admin-border bg-white/5 px-2.5 text-xs font-semibold text-zinc-300",
               !secao.active && "opacity-50",
             )}
           >
@@ -201,7 +201,7 @@ export function CartaoDaVitrine({
           ) : (
             <span
               className={cn(
-                "flex h-[30px] items-center whitespace-nowrap rounded-[10px] border border-white/5 bg-white/5 px-2.5 text-xs font-semibold text-zinc-300",
+                "flex h-[30px] items-center whitespace-nowrap rounded-[10px] border border-admin-border bg-white/5 px-2.5 text-xs font-semibold text-zinc-300",
                 !secao.active && "opacity-50",
               )}
             >
@@ -216,7 +216,7 @@ export function CartaoDaVitrine({
               disabled={travado || indice === 0}
               aria-label={`Subir vitrine ${titulo}`}
               title="Subir"
-              className="flex size-[30px] items-center justify-center rounded-[10px] border border-white/5 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
+              className="flex size-[30px] items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
             >
               <ArrowUp className="size-3.5" />
             </button>
@@ -226,7 +226,7 @@ export function CartaoDaVitrine({
               disabled={travado || indice === total - 1}
               aria-label={`Descer vitrine ${titulo}`}
               title="Descer"
-              className="flex size-[30px] items-center justify-center rounded-[10px] border border-white/5 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
+              className="flex size-[30px] items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
             >
               <ArrowDown className="size-3.5" />
             </button>

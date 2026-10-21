@@ -14,7 +14,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 
 const FOCO =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
-const BOTAO = `flex min-h-11 items-center justify-center gap-2 whitespace-normal break-words rounded-full border border-white/10 bg-[#17171C] px-4 py-2 text-sm font-semibold text-zinc-200 ${FOCO}`;
+const BOTAO = `flex min-h-11 items-center justify-center gap-2 whitespace-normal break-words rounded-full border border-admin-border bg-admin-raised px-4 py-2 text-sm font-semibold text-zinc-200 ${FOCO}`;
 
 interface Opcao {
   readonly valor: string;
@@ -153,7 +153,7 @@ export function BarraDeBusca({
   return (
     <div
       data-barra-de-busca
-      className="sticky top-0 z-30 -mx-5 space-y-2 border-b border-white/5 bg-[#08080A]/95 px-5 py-2 backdrop-blur-md"
+      className="sticky top-0 z-30 -mx-5 space-y-2 border-b border-admin-border bg-admin-bg/95 px-5 py-2 backdrop-blur-md"
     >
       <div className="flex items-center gap-2">
         <div className="group relative min-w-0 flex-1">
@@ -169,7 +169,7 @@ export function BarraDeBusca({
             onChange={onChange}
             onTyping={onTyping}
             delay={300}
-            className="h-12 w-full rounded-2xl border-white/10 bg-[#17171C] pl-10 text-sm text-white placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-[#17171C]"
+            className="h-12 w-full rounded-2xl border-admin-border bg-admin-raised pl-10 text-sm text-white placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-sky-300 dark:bg-admin-raised"
           />
           <span
             className="pointer-events-none absolute inset-y-0 left-3 flex items-center"
@@ -231,7 +231,7 @@ export function BarraDeBusca({
               event.preventDefault();
               if (!abrindoCategorias.current) botaoFiltros.current?.focus();
             }}
-            className="bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-white/15 bg-[#17171C] p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
+            className="bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-admin-border-strong bg-admin-raised p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
           >
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-xl font-bold">Filtros</DialogTitle>

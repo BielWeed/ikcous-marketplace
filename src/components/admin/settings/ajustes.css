@@ -1,6 +1,6 @@
 .ajustes {
   color: #f5f5f7;
-  background: #08080a;
+  background: hsl(var(--admin-bg));
 }
 
 .ajustes h1 {
@@ -69,8 +69,8 @@
 }
 
 .ajustes :is(input, textarea, select) {
-  background: #17171c;
-  border-color: #3c3c46;
+  background: hsl(var(--admin-raised));
+  border-color: hsl(var(--admin-border-strong));
   border-radius: 16px;
   font-size: 14px;
 }
@@ -133,7 +133,7 @@
 
 .ajustes .ajustes-primario:disabled,
 .ajustes-dialog .ajustes-primario:disabled {
-  background: #24242e;
+  background: hsl(var(--admin-raised));
   color: #b6b6c2;
   box-shadow: none;
 }
@@ -146,18 +146,22 @@
   justify-content: center;
   gap: 8px;
   padding: 10px 16px;
-  border: 1px solid #383840;
+  border: 1px solid hsl(var(--admin-border-strong));
   border-radius: 16px;
-  background: #202026;
+  background: hsl(var(--admin-raised));
   color: #f5f5f7;
   font-size: 14px;
   font-weight: 600;
 }
 
 .ajustes-dialog {
-  border: 1px solid #454550;
+  border: 1px solid hsl(var(--admin-border-strong));
   border-radius: 24px;
-  background: linear-gradient(160deg, #24242e, #101013);
+  background: linear-gradient(
+    160deg,
+    hsl(var(--admin-raised)),
+    hsl(var(--admin-surface))
+  );
   color: #f5f5f7;
 }
 

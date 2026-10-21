@@ -114,7 +114,7 @@ export function AtalhosDaAba({
             type="button"
             aria-label={nomeAcessivel}
             onClick={() => onNavigate(tela)}
-            className="group flex min-h-11 w-full items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
+            className="group flex min-h-11 w-full items-center gap-3 rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
           >
             {Icone && (
               <span

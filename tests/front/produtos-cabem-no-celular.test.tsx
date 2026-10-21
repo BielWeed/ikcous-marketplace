@@ -933,7 +933,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       for (const caixa of [...grade.children] as HTMLElement[]) {
         const classes = caixa.className.split(/\s+/);
         expect(classes).toContain("rounded-2xl");
-        expect(classes).toContain("bg-zinc-900/70");
+        expect(classes).toContain("bg-admin-surface");
         expect(classes).toContain("bg-gradient-to-b");
         const [rotuloDaCaixa, valorDaCaixa] = [...caixa.children];
         // rótulo em frase normal, cinza 300; valor grande e tabular

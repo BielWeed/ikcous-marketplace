@@ -430,18 +430,18 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       {Array.from({ length: 10 }).map((_, i) => (
         <div
           key={i}
-          className="animate-pulse rounded-2xl border border-white/10 bg-[#101013] p-3"
+          className="animate-pulse rounded-2xl border border-admin-border bg-admin-surface p-3"
         >
           <div className="flex gap-3">
-            <div className="size-10 shrink-0 rounded-full bg-[#1E1E24]" />
+            <div className="size-10 shrink-0 rounded-full bg-admin-raised" />
             <div className="flex-1 space-y-2 py-1">
-              <div className="h-3 w-2/3 rounded-full bg-[#1E1E24]" />
-              <div className="h-2 w-1/4 rounded-full bg-[#1E1E24]" />
+              <div className="h-3 w-2/3 rounded-full bg-admin-raised" />
+              <div className="h-2 w-1/4 rounded-full bg-admin-raised" />
             </div>
           </div>
           <div className="mt-3 flex gap-4">
-            <div className="h-3 w-1/3 rounded-full bg-[#1E1E24]" />
-            <div className="h-3 w-1/6 rounded-full bg-[#1E1E24]" />
+            <div className="h-3 w-1/3 rounded-full bg-admin-raised" />
+            <div className="h-3 w-1/6 rounded-full bg-admin-raised" />
           </div>
         </div>
       ))}
@@ -463,7 +463,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   return (
     <div
       ref={viewRef}
-      className="pb-admin h-auto bg-[#08080A] text-white lg:pb-12"
+      className="pb-admin h-auto bg-admin-bg text-white lg:pb-12"
     >
       <div className="flex items-start justify-between gap-3 px-5 pb-2 pt-4">
         <div className="min-w-0 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
@@ -614,7 +614,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               {loading && paginatedCustomers.length > 0 && (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden rounded-full bg-[#26262E]"
+                  className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden rounded-full bg-admin-hover"
                 >
                   <span className="block h-full w-2/5 animate-pulse bg-indigo-300" />
                 </div>
@@ -631,7 +631,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                 {loading && paginatedCustomers.length === 0 ? (
                   renderSkeletons()
                 ) : erroDaListagem ? null : paginatedCustomers.length === 0 ? (
-                  <div className="flex flex-col items-center gap-3 rounded-3xl bg-[#101013] px-4 py-6 text-center">
+                  <div className="flex flex-col items-center gap-3 rounded-3xl bg-admin-surface px-4 py-6 text-center">
                     <Search
                       aria-hidden="true"
                       className="size-10 rounded-xl border border-indigo-300/20 bg-indigo-300/10 p-2 text-indigo-300"
@@ -655,7 +655,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                 ) : viewMode === "detailed" ? (
                   <>
                     {/* Cabeçalhos desktop: mesmos campos e handlers de ordenação. */}
-                    <div className="sticky top-[120px] z-20 hidden grid-cols-12 gap-4 border-b border-white/10 bg-[#17171C] p-3 md:grid">
+                    <div className="sticky top-[120px] z-20 hidden grid-cols-12 gap-4 border-b border-admin-border bg-admin-raised p-3 md:grid">
                       <div
                         className="group/th col-span-4 flex min-h-11 cursor-pointer items-center gap-2"
                         onClick={() => handleSort("full_name")}
@@ -777,7 +777,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           <button
             type="button"
             onClick={() => handleLocalNavigate("admin-qa")}
-            className={`flex min-h-14 min-w-0 flex-[0.8] items-center justify-center gap-2 rounded-[1.125rem] border border-white/10 bg-[#17171C] p-2 text-left text-xs font-bold text-white ${FOCO_CLIENTES}`}
+            className={`flex min-h-14 min-w-0 flex-[0.8] items-center justify-center gap-2 rounded-[1.125rem] border border-admin-border bg-admin-raised p-2 text-left text-xs font-bold text-white ${FOCO_CLIENTES}`}
           >
             <MessageSquare
               aria-hidden="true"
@@ -805,7 +805,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
 function AjudaDaBaseClientes() {
   return (
     <div className="space-y-7">
-      <section className="rounded-2xl bg-[#101013] p-4">
+      <section className="rounded-2xl bg-admin-surface p-4">
         <h3 className="mb-2 text-base font-bold text-white">
           Quem aparece aqui?
         </h3>
@@ -862,7 +862,7 @@ function AjudaDaBaseClientes() {
           ))}
         </div>
       </section>
-      <section className="space-y-3 rounded-2xl bg-[#1E1E24] p-4 text-xs text-zinc-300">
+      <section className="space-y-3 rounded-2xl bg-admin-raised p-4 text-xs text-zinc-300">
         <h3 className="text-base font-bold text-white">
           Encontre e abra a ficha
         </h3>

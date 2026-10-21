@@ -58,8 +58,8 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
 
     const cartao = hospedeiro.firstElementChild as HTMLElement;
     // Mesmo desenho do KpiCard de AdminKpiCarousel (redesenho de 10/10/2026).
-    expect(cartao.classList.contains("border-white/10")).toBe(true);
-    expect(cartao.classList.contains("bg-zinc-900/70")).toBe(true);
+    expect(cartao.classList.contains("border-admin-border")).toBe(true);
+    expect(cartao.classList.contains("bg-admin-surface")).toBe(true);
     expect(cartao.classList.contains("bg-gradient-to-b")).toBe(true);
     expect(cartao.classList.contains("from-white/[0.06]")).toBe(true);
     // O desenho antigo (SUPERFICIE_DO_CRM) saiu do tile.
@@ -99,7 +99,7 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
     const selo = cartao.querySelector("svg")!.parentElement as HTMLElement;
     expect(selo.classList.contains("size-8")).toBe(true);
     expect(selo.classList.contains("rounded-xl")).toBe(true);
-    expect(selo.classList.contains("border-white/10")).toBe(true);
+    expect(selo.classList.contains("border-admin-border")).toBe(true);
     expect(selo.classList.contains("bg-white/[0.06]")).toBe(true);
   });
 
@@ -119,7 +119,7 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
 
     const cartao = hospedeiro.firstElementChild as HTMLElement;
     expect(cartao.classList.contains("admin-glass")).toBe(true);
-    expect(cartao.classList.contains("bg-zinc-900/70")).toBe(false);
+    expect(cartao.classList.contains("bg-admin-surface")).toBe(false);
     expect(cartao.classList.contains("bg-zinc-900/60")).toBe(false);
     // N1: admin-glass (src/index.css) não tem rounded-* nenhum — sem o
     // rounded-2xl fixo no corpo do TileDeKpi, este cartão perde o canto.
@@ -160,7 +160,7 @@ describe("NumerosDoMes (Início) — resumo e contas usam a mesma superfície", 
     expect(tiles).toHaveLength(2);
     expect(secao.querySelectorAll("button")).toHaveLength(3);
     for (const tile of tiles) {
-      expect(tile.classList.contains("bg-zinc-900/50")).toBe(true);
+      expect(tile.classList.contains("bg-admin-surface")).toBe(true);
       expect(tile.classList.contains("bg-zinc-900/60")).toBe(false);
       expect(tile.classList.contains("rounded-[22px]")).toBe(true);
     }

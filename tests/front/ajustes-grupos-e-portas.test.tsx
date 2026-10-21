@@ -203,8 +203,10 @@ describe("a tela de Ajustes", () => {
     const cartao = porta("Entrega e frete") as HTMLElement;
     expect(cartao.className).toMatch(/\bmin-h-11\b/);
     expect(cartao.className).toContain("rounded-3xl");
-    expect(cartao.closest("section")?.className).toContain("border-white/10");
-    expect(cartao.closest("section")?.className).toContain("bg-[#101013]");
+    expect(cartao.closest("section")?.className).toContain(
+      "border-admin-border",
+    );
+    expect(cartao.closest("section")?.className).toContain("bg-admin-surface");
     // Nome: 15px bold, frase normal (nada de caixa-alta miúda com tracking largo).
     const nome = cartao.querySelector("[data-grupo-titulo]")!;
     expect(nome.className).toContain("text-[15px]");

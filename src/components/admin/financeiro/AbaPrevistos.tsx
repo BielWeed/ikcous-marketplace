@@ -84,12 +84,12 @@ function CartaoDoPrevisto({
   return (
     <li
       className={cn(
-        "flex min-w-0 flex-col rounded-3xl border bg-[#101013] p-4",
+        "flex min-w-0 flex-col rounded-3xl border bg-admin-surface p-4",
         vencido
           ? "border-red-400/25"
           : situacao === "hoje"
             ? "border-orange-300/25"
-            : "border-white/10",
+            : "border-admin-border",
       )}
     >
       <div className="flex flex-col items-start gap-3">
@@ -266,7 +266,7 @@ export function AbaPrevistos({
         <>
           <section
             aria-label={aReceber ? "Total a receber" : "Total a pagar"}
-            className="rounded-3xl border border-white/10 bg-[#17171C] p-5"
+            className="rounded-3xl border border-admin-border bg-admin-raised p-5"
           >
             <p className="text-xs text-zinc-400">
               {aReceber ? "Total a receber" : "Total a pagar"}

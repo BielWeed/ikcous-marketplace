@@ -118,7 +118,7 @@ export function GuiaDaChaveDoProvedor({
   if (!guia) return null;
 
   return (
-    <div className="rounded-lg border border-white/5 bg-zinc-900/30">
+    <div className="rounded-lg border border-admin-border bg-zinc-900/30">
       <button
         type="button"
         aria-expanded={aberto}

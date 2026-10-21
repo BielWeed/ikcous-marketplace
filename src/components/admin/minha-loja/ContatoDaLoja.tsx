@@ -125,7 +125,7 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
         desabilitado={offline}
       />
 
-      <div className="border-t border-white/5 pt-6">
+      <div className="border-t border-admin-border pt-6">
         <MensagemDeCompartilhar
           texto={texto}
           carga={carga}

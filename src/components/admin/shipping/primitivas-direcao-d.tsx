@@ -56,7 +56,7 @@ export function CabecaDeSecao({
     // Envio ligado", "grátis acima de R$ 199 · todas as opções") empurrava
     // a linha inteira para fora da tela, igual ao achado já corrigido em
     // AdminPushView (admin-push-cabecalho-nao-estoura-no-mobile.test.tsx).
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-white/10 pb-3.5">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-admin-border pb-3.5">
       <h2 className="min-w-0 break-words text-xs font-extrabold uppercase tracking-[0.22em] text-zinc-300">
         {titulo}
       </h2>
@@ -79,7 +79,7 @@ export function Linha({
   readonly children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3 border-b border-white/5 py-5 last:border-b-0 md:py-[22px]">
+    <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3 border-b border-admin-border py-5 last:border-b-0 md:py-[22px]">
       <div className="min-w-0 flex-1 basis-48">
         <p className="text-[15px] font-semibold tracking-[-0.01em] text-zinc-100">
           {nome}

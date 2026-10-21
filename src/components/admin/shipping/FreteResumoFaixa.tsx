@@ -54,7 +54,7 @@ export const FreteResumoFaixa = memo(function FreteResumoFaixa({
   return (
     <section
       aria-label="Como a entrega funciona hoje"
-      className="border-y border-white/10 bg-gradient-to-b from-admin-accent/[0.06] to-transparent"
+      className="border-y border-admin-border bg-gradient-to-b from-admin-accent/[0.06] to-transparent"
     >
       <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1.15fr]">
         {status.map((item, i) => {
@@ -65,7 +65,7 @@ export const FreteResumoFaixa = memo(function FreteResumoFaixa({
               className={`flex items-center justify-between gap-3 px-4 py-3 md:block md:px-7 md:py-6 ${
                 i === 0
                   ? "md:pl-6"
-                  : "border-t border-white/5 md:border-l md:border-t-0"
+                  : "border-t border-admin-border md:border-l md:border-t-0"
               }`}
             >
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">

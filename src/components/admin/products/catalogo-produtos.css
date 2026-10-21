@@ -2,7 +2,7 @@
   --produto-altura-compacto: 380px;
   min-height: 100%;
   padding-bottom: var(--admin-tab-pb, 6.25rem);
-  background: #08080a;
+  background: hsl(var(--admin-bg));
 }
 
 .produtos-tela [hidden] {
@@ -70,9 +70,9 @@
   justify-content: center;
   gap: 6px;
   padding: 10px 12px;
-  border: 1px solid #ffffff1a;
+  border: 1px solid hsl(var(--admin-border));
   border-radius: 14px;
-  background: #1e1e24;
+  background: hsl(var(--admin-raised));
   color: #f4f4f5;
   font-size: 12px;
   font-weight: 600;
@@ -80,7 +80,7 @@
   white-space: normal;
 }
 .produto-secundario:hover {
-  background: #26262e;
+  background: hsl(var(--admin-hover));
 }
 .produto-principal,
 .produto-perigo {
@@ -94,8 +94,8 @@
   font-weight: 700;
 }
 .produto-principal:disabled {
-  border-color: #ffffff1a;
-  background: #1e1e24;
+  border-color: hsl(var(--admin-border));
+  background: hsl(var(--admin-raised));
   color: #f4f4f5;
 }
 .produto-perigo {
@@ -128,7 +128,7 @@
   background: #d4d4dc;
 }
 .produto-interruptor.ligado::after {
-  background: #101013;
+  background: hsl(var(--admin-surface));
 }
 .produto-icone {
   display: inline;
@@ -206,7 +206,7 @@
   gap: 2px;
   padding: 3px;
   border-radius: 14px;
-  background: #17171c;
+  background: hsl(var(--admin-raised));
   background-image: none;
   box-shadow: none;
 }
@@ -256,7 +256,7 @@
   transform: translateX(-50%);
 }
 .produtos-paginacao button {
-  background: #101013;
+  background: hsl(var(--admin-surface));
   color: #d4d4dc;
   padding-inline: 10px;
   font-size: 12px;
@@ -266,12 +266,12 @@
 .produtos-metricas .group.relative {
   min-height: 164px;
   padding: 16px;
-  background: #101013;
+  background: hsl(var(--admin-surface));
   background-image: none;
   box-shadow: none;
 }
 .produtos-metricas .group.relative:hover {
-  border-color: #ffffff33;
+  border-color: hsl(var(--admin-border-strong));
 }
 .produtos-metricas .group.relative > div:first-child {
   position: static;
@@ -320,7 +320,7 @@
 
 /* As folhas são portais. :has restringe estes estilos à tela que as abriu. */
 body:has(.produtos-tela:is([data-guia], [data-categorias])) [role="dialog"] {
-  background: #08080a;
+  background: hsl(var(--admin-bg));
 }
 body:has(.produtos-tela:is([data-guia], [data-categorias])) [role="dialog"] h2 {
   flex-direction: column;
@@ -359,9 +359,9 @@ body:has(.produtos-tela:is([data-guia], [data-categorias]))
 }
 body:has(.produtos-tela[data-categorias]) [role="dialog"] li {
   padding: 16px;
-  border: 1px solid #ffffff1a;
+  border: 1px solid hsl(var(--admin-border));
   border-radius: 24px;
-  background: #101013;
+  background: hsl(var(--admin-surface));
 }
 body:has(.produtos-tela[data-categorias]) [role="dialog"] button {
   letter-spacing: normal;
@@ -376,7 +376,7 @@ body:has(.produtos-tela[data-categorias])
 }
 body:has(.produtos-tela[data-categorias]) [role="dialog"] input {
   min-height: 48px;
-  background: #17171c;
+  background: hsl(var(--admin-raised));
 }
 body:has(.produtos-tela[data-categorias])
   [role="dialog"]

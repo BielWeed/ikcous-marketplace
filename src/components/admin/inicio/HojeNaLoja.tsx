@@ -90,7 +90,7 @@ export function HojeNaLoja({
     <section
       aria-labelledby="inicio-hoje-titulo"
       aria-busy={carregando && !hoje}
-      className="min-w-0 rounded-[22px] border border-white/10 bg-gradient-to-br from-slate-800/90 to-zinc-900/80 p-4"
+      className="min-w-0 rounded-[22px] border border-admin-border bg-gradient-to-br from-slate-800/90 to-zinc-900/80 p-4"
     >
       <div className="relative flex items-baseline justify-between gap-3">
         <h2

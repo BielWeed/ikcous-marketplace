@@ -234,8 +234,8 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
 
     const secao = hospedeiro.querySelector("section")!;
     const superficie = secao.querySelector("div") as HTMLElement;
-    expect(superficie.classList.contains("border-white/10")).toBe(true);
-    expect(superficie.classList.contains("bg-zinc-900/70")).toBe(true);
+    expect(superficie.classList.contains("border-admin-border")).toBe(true);
+    expect(superficie.classList.contains("bg-admin-surface")).toBe(true);
     expect(superficie.classList.contains("bg-gradient-to-b")).toBe(true);
     expect(superficie.classList.contains("bg-zinc-900/60")).toBe(false);
 
@@ -261,8 +261,8 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
     const bloco = hospedeiro.querySelector(
       'section[aria-labelledby="crm-canais-titulo"] ul > li > div',
     ) as HTMLElement;
-    expect(bloco.classList.contains("border-white/10")).toBe(true);
-    expect(bloco.classList.contains("bg-zinc-900/70")).toBe(true);
+    expect(bloco.classList.contains("border-admin-border")).toBe(true);
+    expect(bloco.classList.contains("bg-admin-surface")).toBe(true);
     expect(bloco.classList.contains("bg-gradient-to-b")).toBe(true);
     expect(bloco.classList.contains("bg-zinc-950")).toBe(false);
 

@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
  * com o Dashboard e outros cartões do CRM e não muda com esta onda.
  */
 const SUPERFICIE_DO_TILE =
-  "border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent";
+  "border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent";
 
 /**
  * Um número do painel: rótulo · valor · (variação ou linha de apoio).
@@ -63,7 +63,7 @@ export function TileDeKpi({
   return (
     <div
       // `clsx`, não `cn`: o tailwind-merge 3 lê `bg-gradient-to-b` (Tailwind 3)
-      // como cor de fundo e descartaria o `bg-zinc-900/70` da superfície.
+      // como cor de fundo e descartaria o `bg-admin-surface` da superfície.
       className={clsx(
         superficie,
         "flex min-h-[112px] flex-col justify-between gap-2 rounded-2xl p-3 sm:p-4",
@@ -74,7 +74,7 @@ export function TileDeKpi({
         <p className="min-w-0 break-words pt-0.5 text-xs font-semibold leading-tight text-zinc-300">
           {rotulo}
         </p>
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06]">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-white/[0.06]">
           <Icone
             className={cn("size-4 shrink-0", corDoIcone)}
             aria-hidden="true"

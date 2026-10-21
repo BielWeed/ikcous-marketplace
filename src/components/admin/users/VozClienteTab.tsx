@@ -94,7 +94,7 @@ function EstadoVazioSecao({
 }) {
   return (
     <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
-      <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
+      <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 shadow-inner">
         {icone}
       </div>
       <p className="text-sm font-bold text-zinc-500">{titulo}</p>
@@ -183,7 +183,7 @@ function ListaPerguntas({ perguntas }: { perguntas: PerguntaDaFicha[] }) {
               {q.respostas.map((r) => (
                 <div
                   key={r.id}
-                  className="rounded-lg border border-zinc-800/60 bg-zinc-950/60 p-2"
+                  className="rounded-lg border border-admin-border bg-zinc-950/60 p-2"
                 >
                   <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500">
                     Resposta{" "}
@@ -217,7 +217,7 @@ export function VozClienteTab({
         {[1, 2].map((i) => (
           <div
             key={i}
-            className="space-y-2 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-4"
+            className="space-y-2 rounded-2xl border border-admin-border bg-zinc-900/40 p-4"
           >
             <Skeleton className="h-3 w-24 animate-pulse rounded bg-white/5" />
             <Skeleton className="h-3 w-3/4 animate-pulse rounded bg-white/5" />
@@ -247,7 +247,7 @@ export function VozClienteTab({
         <button
           type="button"
           onClick={onTentarDeNovo}
-          className="mt-4 min-h-11 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-admin-gold/30 hover:text-admin-gold"
+          className="mt-4 min-h-11 rounded-lg border border-admin-border bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-admin-gold/30 hover:text-admin-gold"
         >
           Tentar novamente
         </button>
@@ -268,8 +268,8 @@ export function VozClienteTab({
 
   return (
     <div className="space-y-6 p-4">
-      <section className="overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/20">
-        <h3 className="flex items-center gap-2 border-b border-zinc-800/50 bg-zinc-900/50 p-3 text-[11px] font-black uppercase tracking-[0.2em] text-white">
+      <section className="overflow-hidden rounded-2xl border border-admin-border bg-zinc-900/20">
+        <h3 className="flex items-center gap-2 border-b border-admin-border bg-admin-surface p-3 text-[11px] font-black uppercase tracking-[0.2em] text-white">
           <Star className="size-3.5 text-admin-gold" />
           Avaliações
           <span className="ml-1 text-zinc-500">({avaliacoes.length})</span>
@@ -277,8 +277,8 @@ export function VozClienteTab({
         <ListaAvaliacoes avaliacoes={avaliacoes} />
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/20">
-        <h3 className="flex items-center gap-2 border-b border-zinc-800/50 bg-zinc-900/50 p-3 text-[11px] font-black uppercase tracking-[0.2em] text-white">
+      <section className="overflow-hidden rounded-2xl border border-admin-border bg-zinc-900/20">
+        <h3 className="flex items-center gap-2 border-b border-admin-border bg-admin-surface p-3 text-[11px] font-black uppercase tracking-[0.2em] text-white">
           <MessageSquare className="size-3.5 text-admin-gold" />
           Perguntas
           <span className="ml-1 text-zinc-500">({perguntas.length})</span>

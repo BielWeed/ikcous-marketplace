@@ -1045,7 +1045,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           key={i}
                           aria-hidden="true"
                           className={cn(
-                            "produto-esqueleto flex animate-pulse flex-col gap-3 rounded-2xl border border-white/10 bg-[#101013] p-4",
+                            "produto-esqueleto flex animate-pulse flex-col gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4",
                             ALTURA_DO_ESQUELETO_DETALHADO,
                           )}
                         >
@@ -1078,7 +1078,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                         <div
                           key={i}
                           aria-hidden="true"
-                          className="produto-esqueleto flex min-h-[260px] animate-pulse flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#101013]"
+                          className="produto-esqueleto flex min-h-[260px] animate-pulse flex-col gap-3 overflow-hidden rounded-2xl border border-admin-border bg-admin-surface"
                         >
                           <Skeleton className="h-[60px] w-full bg-white/5" />
                           <div className="space-y-3 p-3">
@@ -1146,8 +1146,8 @@ export const AdminProductsView = memo(function AdminProductsView({
 
         {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
         {!effectiveLoading && !loadError && products?.length === 0 && (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-white/10 bg-[#101013] px-5 py-7 text-center">
-            <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-admin-border bg-admin-surface px-5 py-7 text-center">
+            <div className="relative z-10 mb-3 rounded-full border border-admin-border bg-admin-surface p-4 shadow-xl">
               {temBuscaOuFiltro ? (
                 <Search aria-hidden="true" className="size-6 text-indigo-300" />
               ) : (
@@ -1193,7 +1193,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         {!effectiveLoading && loadError && products?.length === 0 && (
           <div
             role="alert"
-            className="rounded-3xl border border-white/10 bg-[#101013] p-6 text-center"
+            className="rounded-3xl border border-admin-border bg-admin-surface p-6 text-center"
           >
             <AlertTriangle
               aria-hidden="true"
@@ -1256,7 +1256,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 "flex-1 flex min-h-11 items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "concepts"
                   ? "border border-admin-gold bg-admin-gold/10 text-admin-gold"
-                  : "border border-white/10 bg-[#17171c] text-zinc-300 hover:text-white",
+                  : "border border-admin-border bg-admin-raised text-zinc-300 hover:text-white",
               )}
             >
               <BookOpen className="size-3.5" />
@@ -1270,7 +1270,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 "flex-1 flex min-h-11 items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "simulator"
                   ? "border border-admin-gold bg-admin-gold/10 text-admin-gold"
-                  : "border border-white/10 bg-[#17171c] text-zinc-300 hover:text-white",
+                  : "border border-admin-border bg-admin-raised text-zinc-300 hover:text-white",
               )}
             >
               <Calculator className="size-3.5" />
@@ -1369,7 +1369,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     }) => (
                       <div
                         key={titulo}
-                        className="rounded-2xl border border-white/10 bg-[#101013] p-4"
+                        className="rounded-2xl border border-admin-border bg-admin-surface p-4"
                       >
                         <div className="flex items-start gap-3">
                           <Icone
@@ -1417,7 +1417,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             ) : (
               /* Simulador de Lucratividade */
               <div className="space-y-5">
-                <div className="space-y-4 rounded-3xl border border-white/5 bg-zinc-900/20 p-4">
+                <div className="space-y-4 rounded-3xl border border-admin-border bg-zinc-900/20 p-4">
                   <h4 className="border-l-2 border-violet-300/50 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                     Parâmetros do Produto
                   </h4>
@@ -1440,7 +1440,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simCost}
                           onChange={(e) => setSimCost(e.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
                           placeholder="0.00"
                         />
                       </div>
@@ -1464,7 +1464,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simPrice}
                           onChange={(e) => setSimPrice(e.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
                           placeholder="0.00"
                         />
                       </div>
@@ -1487,7 +1487,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simStock}
                           onChange={(e) => setSimStock(e.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
                           placeholder="0"
                         />
                       </div>
@@ -1514,7 +1514,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     Análise de Performance
                   </h4>
 
-                  <div className="rounded-2xl border border-white/10 bg-[#101013] p-4 text-xs text-zinc-400">
+                  <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 text-xs text-zinc-400">
                     <p className="mb-3 text-sm font-bold text-white">
                       Como interpretar a margem
                     </p>
@@ -1551,7 +1551,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                         "bg-rose-950/20 border-rose-500/20 text-rose-400",
                     )}
                   >
-                    <div className="shrink-0 rounded-xl border border-white/5 bg-white/5 p-1.5">
+                    <div className="shrink-0 rounded-xl border border-admin-border bg-white/5 p-1.5">
                       <Sparkles className="size-4 animate-pulse" />
                     </div>
                     <div>
@@ -1592,7 +1592,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     ].map(({ rotulo, valor }, indice) => (
                       <div
                         key={rotulo}
-                        className={`flex min-h-20 min-w-0 flex-col justify-between gap-2 rounded-2xl border bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 ${indice === 0 ? (simulatorMetrics.health === "excellent" ? "border-emerald-500/20" : simulatorMetrics.health === "good" ? "border-teal-500/20" : simulatorMetrics.health === "low" ? "border-amber-500/20" : "border-rose-500/20") : "border-white/10"}`}
+                        className={`flex min-h-20 min-w-0 flex-col justify-between gap-2 rounded-2xl border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-4 ${indice === 0 ? (simulatorMetrics.health === "excellent" ? "border-emerald-500/20" : simulatorMetrics.health === "good" ? "border-teal-500/20" : simulatorMetrics.health === "low" ? "border-amber-500/20" : "border-rose-500/20") : "border-admin-border"}`}
                       >
                         <p className="text-xs font-semibold leading-tight text-zinc-300">
                           {rotulo}
@@ -1604,7 +1604,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     ))}
                   </div>
 
-                  <div className="relative flex min-h-20 flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#101013] p-4">
+                  <div className="relative flex min-h-20 flex-wrap items-center justify-between gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4">
                     <div className="relative z-10">
                       <p className="text-[11px] font-bold text-zinc-300">
                         Lucro bruto do lote simulado
@@ -1637,7 +1637,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           open={productToDelete !== null}
           onOpenChange={(open) => !open && setProductToDelete(null)}
         >
-          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-white/10 bg-[#17171c]">
+          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-xl font-bold text-white">
                 <Trash2
@@ -1674,7 +1674,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           open={productToDuplicate !== null}
           onOpenChange={(open) => !open && setProductToDuplicate(null)}
         >
-          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-white/10 bg-[#17171c]">
+          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-xl font-bold text-white">
                 <Copy
@@ -1816,9 +1816,9 @@ function MenuDoProduto({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="produto-menu z-50 w-80 max-w-[calc(100vw-40px)] rounded-3xl border border-white/10 bg-[#17171c] p-4 text-zinc-100 shadow-2xl"
+        className="produto-menu z-50 w-80 max-w-[calc(100vw-40px)] rounded-3xl border border-admin-border bg-admin-raised p-4 text-zinc-100 shadow-2xl"
       >
-        <div className="mb-3 flex gap-3 border-b border-white/10 pb-4">
+        <div className="mb-3 flex gap-3 border-b border-admin-border pb-4">
           <div className="size-12 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
             <FotoDoCatalogo product={product} />
           </div>
@@ -2047,7 +2047,7 @@ const AdminProductCard = memo(function AdminProductCard({
       >
         <div
           className={cn(
-            "produto-cartao content-visibility-detailed-card rounded-3xl border border-white/10 bg-[#101013] p-3",
+            "produto-cartao content-visibility-detailed-card rounded-3xl border border-admin-border bg-admin-surface p-3",
             RESERVA_DO_CARTAO_DETALHADO,
           )}
         >
@@ -2162,7 +2162,7 @@ const AdminProductCard = memo(function AdminProductCard({
             id={`metricas-produto-${product.id}`}
             data-metricas-do-produto
             hidden={!maisMetricas}
-            className="produto-detalhes mt-3 rounded-2xl bg-[#17171c] p-3 text-[11px]"
+            className="produto-detalhes mt-3 rounded-2xl bg-admin-raised p-3 text-[11px]"
           >
             {variantesAtivas.length > 0 && (
               <p className="mb-2 text-zinc-400">
@@ -2272,7 +2272,7 @@ const AdminProductCard = memo(function AdminProductCard({
       onMouseEnter={onPrefetch}
       onTouchStart={onPrefetch}
     >
-      <div className="produto-cartao content-visibility-compact-card flex w-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#101013]">
+      <div className="produto-cartao content-visibility-compact-card flex w-full flex-col overflow-hidden rounded-3xl border border-admin-border bg-admin-surface">
         <MenuDoProduto
           {...acoes}
           className="block shrink-0 overflow-hidden rounded-t-3xl"

@@ -147,14 +147,14 @@ describe("AdminLayout — a barra inferior do celular cobre o conteúdo", () => 
     const nav = await montar();
     const classes = nav.className.split(/\s+/);
     expect(classes).not.toContain("admin-glass");
-    expect(classes).toContain("bg-[#141418]");
+    expect(classes).toContain("bg-admin-nav");
     // Nenhuma opacidade no fundo: `bg-…/95`, `bg-…/[0.95]` (arbitrária) nem
     // `bg-opacity-*`. O `bg-zinc-950` sólido não casa.
     const comOpacidade = classes.filter(
       (c) => /^bg-.+\/(\d+|\[.+\])$/.test(c) || /^bg-opacity-/.test(c),
     );
     expect(comOpacidade).toEqual([]);
-    expect(classes).toContain("border-white/15");
+    expect(classes).toContain("border-admin-border-strong");
     // Fundo opaco: o blur não serve a nada.
     expect(classes).not.toContain("backdrop-blur-2xl");
   });

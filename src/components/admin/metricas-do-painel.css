@@ -4,9 +4,13 @@
 
 .metricas-painel .metricas-painel-resumo {
   position: relative;
-  border: 1px solid #343039;
+  border: 1px solid hsl(var(--admin-border));
   border-radius: 14px;
-  background: linear-gradient(135deg, #17161b, #111114);
+  background: linear-gradient(
+    135deg,
+    hsl(var(--admin-raised)),
+    hsl(var(--admin-surface))
+  );
 }
 
 .metricas-painel .metricas-painel-principais {
@@ -22,7 +26,7 @@
 }
 
 .metricas-painel .metricas-painel-destaque + .metricas-painel-destaque {
-  border-left: 1px solid #ffffff12;
+  border-left: 1px solid hsl(var(--admin-border));
   padding-left: 10px;
 }
 
@@ -67,12 +71,12 @@
 }
 
 .metricas-painel .metricas-painel-controle:hover {
-  background: #ffffff08;
+  background: hsl(var(--admin-hover));
 }
 
 .metricas-painel .metricas-painel-secundarias {
   gap: 6px 14px;
-  border-top: 1px solid #ffffff0d;
+  border-top: 1px solid hsl(var(--admin-border));
   padding: 9px 12px;
   font-size: 11px;
   line-height: 15px;

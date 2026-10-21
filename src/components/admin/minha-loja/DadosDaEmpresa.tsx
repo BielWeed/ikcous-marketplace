@@ -173,7 +173,7 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
           aria-describedby={
             erros.razaoSocial ? "empresa-razao-social-erro" : undefined
           }
-          className={`${CLASSE_DO_CAMPO} ${erros.razaoSocial ? "border-red-500/60" : "border-white/10"}`}
+          className={`${CLASSE_DO_CAMPO} ${erros.razaoSocial ? "border-red-500/60" : "border-admin-border"}`}
         />
         {erros.razaoSocial && (
           <p
@@ -215,7 +215,7 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
           aria-describedby={
             erros.documento ? "empresa-documento-erro" : undefined
           }
-          className={`${CLASSE_DO_CAMPO} ${erros.documento ? "border-red-500/60" : "border-white/10"}`}
+          className={`${CLASSE_DO_CAMPO} ${erros.documento ? "border-red-500/60" : "border-admin-border"}`}
         />
         {erros.documento && (
           <p
@@ -252,7 +252,7 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
           placeholder="atendimento@sualoja.com.br"
           aria-invalid={erros.email ? true : undefined}
           aria-describedby={erros.email ? "empresa-email-erro" : undefined}
-          className={`${CLASSE_DO_CAMPO} ${erros.email ? "border-red-500/60" : "border-white/10"}`}
+          className={`${CLASSE_DO_CAMPO} ${erros.email ? "border-red-500/60" : "border-admin-border"}`}
         />
         {erros.email && (
           <p

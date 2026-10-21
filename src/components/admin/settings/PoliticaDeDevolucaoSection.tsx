@@ -125,7 +125,7 @@ export function erroDoVicio(v: string): string | null {
 }
 
 const CAMPO =
-  "h-11 w-full rounded-xl border border-white/5 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-violet-300 focus:outline-none";
+  "h-11 w-full rounded-xl border border-admin-border bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-violet-300 focus:outline-none";
 const ROTULO = "mb-2 block text-sm font-bold leading-snug text-zinc-200";
 const CAIXA = `${CARTAO_AJUSTES} space-y-4`;
 
@@ -265,7 +265,7 @@ export function PoliticaDeDevolucaoSection({
         <button
           type="button"
           onClick={() => void carregar()}
-          className="min-h-11 rounded-xl border border-white/10 bg-white/5 px-4 text-[11px] font-bold text-zinc-200"
+          className="min-h-11 rounded-xl border border-admin-border bg-white/5 px-4 text-[11px] font-bold text-zinc-200"
         >
           Tentar de novo
         </button>
@@ -411,7 +411,7 @@ export function PoliticaDeDevolucaoSection({
           <IconeDeAjustes icone={Clock} matiz="rosa" />
           Prazos (dias após a entrega)
         </h4>
-        <div className="grid gap-4 [&>div]:grid [&>div]:grid-cols-[1fr_76px] [&>div]:items-center [&>div]:gap-3 [&>div]:border-b [&>div]:border-white/10 [&>div]:pb-4">
+        <div className="grid gap-4 [&>div]:grid [&>div]:grid-cols-[1fr_76px] [&>div]:items-center [&>div]:gap-3 [&>div]:border-b [&>div]:border-admin-border-strong [&>div]:pb-4">
           <div>
             <label htmlFor="politica-arrependimento" className={ROTULO}>
               Arrependimento
@@ -630,7 +630,7 @@ export function PoliticaDeDevolucaoSection({
                     "min-h-11 rounded-xl border px-3 text-[11px] font-bold transition-colors",
                     marcada
                       ? "border-admin-gold/50 bg-admin-gold/10 text-admin-gold"
-                      : "border-white/10 text-zinc-400 hover:text-white",
+                      : "border-admin-border text-zinc-400 hover:text-white",
                   )}
                 >
                   {nome}
@@ -645,7 +645,9 @@ export function PoliticaDeDevolucaoSection({
         </p>
       </div>
 
-      <div className={`${CAIXA} bg-gradient-to-br from-[#24242e] to-[#101013]`}>
+      <div
+        className={`${CAIXA} bg-gradient-to-br from-admin-raised to-admin-surface`}
+      >
         <h4 className="flex items-center gap-3 text-base font-bold">
           <IconeDeAjustes icone={FileText} matiz="rosa" />
           Texto da política
@@ -660,7 +662,7 @@ export function PoliticaDeDevolucaoSection({
           rows={5}
           onFlush={(v) => mudar("texto_politica", v)}
           placeholder="Ex.: Aceitamos trocas em até 30 dias, com etiqueta e sem uso."
-          className="min-h-48 w-full rounded-2xl border border-white/15 bg-[#17171c] p-4 text-sm leading-relaxed text-white placeholder:text-zinc-400 focus:border-pink-300 focus:outline-none"
+          className="min-h-48 w-full rounded-2xl border border-admin-border-strong bg-admin-raised p-4 text-sm leading-relaxed text-white placeholder:text-zinc-400 focus:border-pink-300 focus:outline-none"
         />
         <p className="text-right text-[11px] tabular-nums text-zinc-500">
           {form.texto_politica.length}/4000
@@ -757,7 +759,7 @@ function Escolha<T extends string>({
               "min-h-11 rounded-lg border px-2 text-[11px] font-bold transition-colors",
               valor === chave
                 ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
-                : "border-white/10 text-zinc-400 hover:text-white",
+                : "border-admin-border text-zinc-400 hover:text-white",
             )}
           >
             {texto}

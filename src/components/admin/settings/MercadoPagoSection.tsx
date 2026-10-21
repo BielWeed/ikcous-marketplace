@@ -249,7 +249,7 @@ function Expansor({
   readonly children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/5 bg-zinc-950/60">
+    <div className="overflow-hidden rounded-2xl border border-admin-border bg-zinc-950/60">
       <button
         type="button"
         onClick={onAlternar}
@@ -277,7 +277,7 @@ function Expansor({
         />
       </button>
       {aberto && (
-        <div className="space-y-3 border-t border-white/5 p-3.5 duration-200 animate-in fade-in">
+        <div className="space-y-3 border-t border-admin-border p-3.5 duration-200 animate-in fade-in">
           {children}
         </div>
       )}
@@ -949,7 +949,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Pedido pronto para colar no agente
             </span>
-            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/5 bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
+            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-admin-border bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
               {promptDoAgente}
             </pre>
             <button
@@ -958,7 +958,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               className={`flex min-h-11 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${
                 copiado
                   ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                  : "border-white/15 bg-[#202026] text-zinc-100 hover:bg-white/10"
+                  : "border-admin-border-strong bg-admin-raised text-zinc-100 hover:bg-admin-hover"
               }`}
             >
               {copiado ? (
@@ -996,7 +996,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 placeholder="APP_USR-…"
                 autoComplete="off"
                 spellCheck={false}
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-admin-border bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -1024,7 +1024,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a chave secreta de produção…"
                 }
                 autoComplete="new-password"
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-admin-border bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -1055,7 +1055,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a senha dos avisos da sua loja"
                 }
                 autoComplete="new-password"
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-admin-border bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
               {!config.mascara_webhook && (
                 <p className="text-[11px] leading-relaxed text-orange-300">

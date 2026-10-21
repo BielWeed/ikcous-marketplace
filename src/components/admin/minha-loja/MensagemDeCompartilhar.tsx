@@ -286,7 +286,7 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
           Como chega no WhatsApp de quem recebe
         </span>
 
-        <div className="relative mx-auto flex h-[420px] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0b141a] shadow-2xl">
+        <div className="relative mx-auto flex h-[420px] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-admin-border bg-[#0b141a] shadow-2xl">
           <div className="z-10 flex shrink-0 items-center justify-between border-b border-[#222e35]/50 bg-[#1f2c34] px-3.5 py-2">
             <div className="flex items-center gap-2.5">
               <div className="relative flex size-8 shrink-0 items-center justify-center rounded-full border border-admin-gold/30 bg-admin-gold/15 text-[11px] font-black text-admin-gold">
@@ -332,7 +332,7 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
                 {/* Card de link: fiel ao compartilhamento de um produto. */}
                 <div className="mb-1.5 flex w-full min-w-0 flex-col overflow-hidden rounded-lg border border-[#004d40] bg-[#013c32] shadow-sm">
                   <div className="flex w-full min-w-0 gap-2.5 bg-black/10 p-2">
-                    <div className="relative flex size-14 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-zinc-900 shadow-inner">
+                    <div className="relative flex size-14 shrink-0 overflow-hidden rounded-lg border border-admin-border bg-zinc-900 shadow-inner">
                       <img
                         src={
                           exemplo.images?.[0] || EXEMPLO_SEM_CATALOGO.images[0]
@@ -379,7 +379,7 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
         </div>
       </div>
 
-      <div className="space-y-2 border-t border-white/5 pt-4">
+      <div className="space-y-2 border-t border-admin-border pt-4">
         <Label
           id="rotulo-texto-mensagem"
           className="block text-sm font-bold text-white"
@@ -404,7 +404,7 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
             onInput={sincronizarComOEditor}
             onBlur={sincronizarComOEditor}
             onPaste={aoColar}
-            className="relative min-h-[140px] cursor-text overflow-y-auto rounded-xl border border-white/10 bg-black/40 p-3.5 pl-10 text-sm font-medium leading-relaxed text-white outline-none transition-all empty:before:pointer-events-none empty:before:absolute empty:before:left-10 empty:before:top-3.5 empty:before:text-zinc-500 empty:before:content-['Escreva_a_mensagem_de_compartilhamento_do_produto...'] focus:bg-black/60 focus:ring-2 focus:ring-admin-gold/50"
+            className="relative min-h-[140px] cursor-text overflow-y-auto rounded-xl border border-admin-border bg-black/40 p-3.5 pl-10 text-sm font-medium leading-relaxed text-white outline-none transition-all empty:before:pointer-events-none empty:before:absolute empty:before:left-10 empty:before:top-3.5 empty:before:text-zinc-500 empty:before:content-['Escreva_a_mensagem_de_compartilhamento_do_produto...'] focus:bg-black/60 focus:ring-2 focus:ring-admin-gold/50"
           />
         </div>
 
@@ -460,7 +460,7 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           autoComplete="off"
-          className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-4 text-sm font-bold text-white outline-none transition-all placeholder:text-zinc-500 focus:border-purple-500/50 focus:bg-black/60"
+          className="h-11 w-full rounded-xl border border-admin-border bg-black/40 px-4 text-sm font-bold text-white outline-none transition-all placeholder:text-zinc-500 focus:border-purple-500/50 focus:bg-black/60"
         />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {modelosFiltrados.length > 0 ? (
@@ -469,7 +469,7 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
                 key={modelo.name}
                 type="button"
                 onClick={() => aplicarModelo(modelo.text)}
-                className="group flex min-h-11 flex-col items-start gap-1.5 rounded-xl border border-white/5 bg-zinc-950/60 p-3.5 text-left transition-all hover:border-purple-500/30 hover:bg-purple-950/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50 active:scale-[0.98]"
+                className="group flex min-h-11 flex-col items-start gap-1.5 rounded-xl border border-admin-border bg-zinc-950/60 p-3.5 text-left transition-all hover:border-purple-500/30 hover:bg-purple-950/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50 active:scale-[0.98]"
               >
                 <div className="flex w-full items-center justify-between">
                   <span className="text-xs font-black uppercase tracking-wider text-purple-400 group-hover:text-purple-300">
@@ -479,7 +479,7 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
                     Aplicar
                   </span>
                 </div>
-                <p className="line-clamp-3 w-full rounded-lg border border-white/5 bg-black/30 p-2 font-mono text-xs font-medium leading-relaxed text-zinc-400">
+                <p className="line-clamp-3 w-full rounded-lg border border-admin-border bg-black/30 p-2 font-mono text-xs font-medium leading-relaxed text-zinc-400">
                   {modelo.text}
                 </p>
                 <span className="text-xs italic text-zinc-500">

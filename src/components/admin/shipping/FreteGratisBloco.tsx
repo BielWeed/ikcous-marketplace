@@ -129,7 +129,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
               className={`flex min-h-11 items-start gap-2.5 rounded-xl border px-4 py-3 text-left transition-colors duration-200 disabled:pointer-events-none disabled:opacity-50 ${
                 ativo
                   ? "border-admin-accent/70 bg-admin-accent/10"
-                  : "border-white/10 hover:border-white/25"
+                  : "border-admin-border hover:border-white/25"
               }`}
             >
               <span
@@ -170,8 +170,8 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
           contrato de presets —, então salvar vazio DESLIGAVA o grátis sem a
           pessoa perceber. O `min` bloqueia 0/negativo digitado. */}
       {preset === "acima_de_valor" && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/5 pb-1 pt-4 duration-200 animate-in fade-in">
-          <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">
+          <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2">
             <span className="text-xs font-semibold text-zinc-500">R$</span>
             <input
               id="frete-gratis-acima-de"

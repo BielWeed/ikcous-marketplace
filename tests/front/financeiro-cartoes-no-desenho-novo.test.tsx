@@ -37,9 +37,17 @@ import {
 } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
 
-const CASCA_DO_CARTAO = ["rounded-2xl", "border-white/10", "bg-[#17171C]"];
+const CASCA_DO_CARTAO = [
+  "rounded-2xl",
+  "border-admin-border",
+  "bg-admin-raised",
+];
 
-const CASCA_DA_LINHA_BOTAO = ["rounded-2xl", "border-white/10", "bg-[#101013]"];
+const CASCA_DA_LINHA_BOTAO = [
+  "rounded-2xl",
+  "border-admin-border",
+  "bg-admin-surface",
+];
 
 const normalizar = (t: string | null | undefined) =>
   (t ?? "").replace(/\s+/g, " ").trim();
@@ -243,7 +251,7 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     const selo = hospedeiro.querySelector("svg")?.parentElement;
     comACasca(
       selo,
-      ["size-8", "rounded-xl", "border-white/10", "bg-white/[0.06]"],
+      ["size-8", "rounded-xl", "border-admin-border", "bg-white/[0.06]"],
       "selo do ícone",
     );
     expect(classes(rotulo)).toContain("pr-9");
@@ -426,7 +434,7 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
       comACasca(linha, CASCA_DA_LINHA_BOTAO, normalizar(linha.textContent));
       // Alvo de toque de pelo menos 44px (a conta tem 56px, com o selo).
       expect(classes(linha).some((c) => /^min-h-(11|14)$/.test(c))).toBe(true);
-      expect(classes(linha)).toContain("hover:bg-[#1E1E24]");
+      expect(classes(linha)).toContain("hover:bg-admin-raised");
       // "Editar" continua no nome acessível do botão.
       expect(normalizar(linha.textContent)).toContain("Editar");
       const seta = linha.querySelector("svg.lucide-chevron-right");

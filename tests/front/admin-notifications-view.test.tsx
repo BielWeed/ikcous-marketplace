@@ -279,10 +279,10 @@ describe("AvisoCard — desenho aprovado v5", () => {
     await montar();
     const cartao = container?.querySelector('[data-aviso="pedido"]');
     expect(cartao).not.toBeNull();
-    for (const classe of ["rounded-2xl", "min-h-11", "bg-[#101013]"]) {
+    for (const classe of ["rounded-2xl", "min-h-11", "bg-admin-surface"]) {
       expect(cartao?.classList.contains(classe)).toBe(true);
     }
-    expect(cartao?.className).toContain("border-white/10");
+    expect(cartao?.className).toContain("border-admin-border");
     // Seta no padrão novo: ChevronRight de 20px.
     expect(
       cartao?.querySelector("svg.lucide-chevron-right.size-5"),

@@ -167,7 +167,7 @@ export function IdentitySettingsSection({
                 {color && (
                   <span
                     aria-label={`Amostra: ${label}`}
-                    className="size-8 shrink-0 rounded-md border border-white/20"
+                    className="size-8 shrink-0 rounded-md border border-admin-border-strong"
                     style={{
                       backgroundColor: /^#[0-9a-f]{6}$/i.test(value)
                         ? value
@@ -189,12 +189,12 @@ export function IdentitySettingsSection({
             <section
               key={role}
               aria-label={`Prévia: ${label}`}
-              className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl"
+              className="space-y-3 rounded-2xl border border-admin-border bg-zinc-950/40 p-4 shadow-xl"
             >
               <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                 {label}
               </h3>
-              <div className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl bg-zinc-900/80 p-3">
+              <div className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl bg-admin-surface p-3">
                 <img
                   src={url(editor.origin, asset)}
                   alt={`${label} — ${draft.fields.storeName}`}
@@ -247,7 +247,7 @@ export function IdentitySettingsSection({
       </p>
       {/* Recolhida, mas montada: fechar só aplica `hidden` (SecaoRecolhivel),
           então upload em curso e escolhas do rascunho não se perdem. */}
-      <div className="rounded-2xl border border-white/5 bg-zinc-950/40 px-4 pb-4 shadow-xl">
+      <div className="rounded-2xl border border-admin-border bg-zinc-950/40 px-4 pb-4 shadow-xl">
         <SecaoRecolhivel titulo="Ícones do app (avançado)">
           <div className="space-y-5">
             {advanced.map(([role, label, hint]) => (
@@ -261,7 +261,7 @@ export function IdentitySettingsSection({
             ))}
             <section
               aria-label="Fontes guardadas"
-              className="space-y-3 border-t border-white/10 pt-4"
+              className="space-y-3 border-t border-admin-border pt-4"
             >
               <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                 Fontes guardadas ({draft.assets.originals.length}/8)
@@ -273,7 +273,7 @@ export function IdentitySettingsSection({
               {draft.assets.originals.map((asset, index) => (
                 <div
                   key={`${asset.path}-${index}`}
-                  className="space-y-2 rounded-xl border border-white/10 bg-zinc-900/40 p-3"
+                  className="space-y-2 rounded-xl border border-admin-border bg-zinc-900/40 p-3"
                 >
                   <a
                     href={url(editor.origin, asset)}

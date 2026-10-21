@@ -576,7 +576,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                   >
                     <span
                       aria-hidden="true"
-                      className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors group-hover:text-white"
+                      className="flex size-9 items-center justify-center rounded-[12px] border border-admin-border bg-zinc-900 text-zinc-300 transition-colors group-hover:text-white"
                     >
                       <HelpCircle className="size-[17px]" />
                     </span>
@@ -588,14 +588,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         aria-label="Mais ações"
                         title="Mais ações"
                         disabled={salvandoVitrines}
-                        className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors hover:text-white"
+                        className="flex size-9 items-center justify-center rounded-[12px] border border-admin-border bg-zinc-900 text-zinc-300 transition-colors hover:text-white"
                       >
                         <MoreHorizontal className="size-[17px]" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="end"
-                      className="min-w-56 rounded-2xl border-white/10 bg-zinc-900 p-1.5 text-zinc-200"
+                      className="min-w-56 rounded-2xl border-admin-border bg-zinc-900 p-1.5 text-zinc-200"
                     >
                       <DropdownMenuItem
                         onSelect={() => setConfirmarRestaurar(true)}
@@ -616,7 +616,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-          <div className="grid flex-1 grid-cols-2 overflow-hidden rounded-[20px] border border-white/5 bg-zinc-900/40">
+          <div className="grid flex-1 grid-cols-2 overflow-hidden rounded-[20px] border border-admin-border bg-zinc-900/40">
             <div className="px-4 py-3.5">
               <b className="block text-[22px] font-extrabold tabular-nums tracking-tight text-white">
                 {activeVitrinesCount}
@@ -628,7 +628,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                 ligadas na loja
               </span>
             </div>
-            <div className="border-l border-white/5 px-4 py-3.5">
+            <div className="border-l border-admin-border px-4 py-3.5">
               <b className="block text-[22px] font-extrabold tabular-nums tracking-tight text-white">
                 {totalProductsInActiveVitrines}
               </b>
@@ -730,7 +730,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
         open={confirmarRestaurar}
         onOpenChange={setConfirmarRestaurar}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
             <div className="flex size-11 items-center justify-center rounded-[14px] bg-rose-500/10 text-rose-400">
               <RotateCcw className="size-5" />
@@ -779,7 +779,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           if (!aberto) setVitrineParaExcluir(null);
         }}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
             <div className="flex size-11 items-center justify-center rounded-[14px] bg-rose-500/10 text-rose-400">
               <Trash2 className="size-5" />

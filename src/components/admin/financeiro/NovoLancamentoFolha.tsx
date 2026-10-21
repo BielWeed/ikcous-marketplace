@@ -599,7 +599,7 @@ export function NovoLancamentoFolha({
         </Campo>
         <section
           aria-label="Confira antes de salvar"
-          className="mt-3 rounded-3xl border border-white/10 bg-[#17171C] p-4"
+          className="mt-3 rounded-3xl border border-admin-border bg-admin-raised p-4"
         >
           <h3 className="text-base font-bold text-white">
             Confira antes de salvar

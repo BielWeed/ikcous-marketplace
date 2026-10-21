@@ -111,7 +111,7 @@ const STATUS_ORDER_COLORS = new Map(
 
 const FOCO_PEDIDOS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
-const BOTAO_PEDIDOS = `flex min-h-11 items-center justify-center gap-2 whitespace-normal rounded-2xl border border-white/10 bg-[#1E1E24] px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-[#26262E] disabled:text-zinc-400 ${FOCO_PEDIDOS}`;
+const BOTAO_PEDIDOS = `flex min-h-11 items-center justify-center gap-2 whitespace-normal rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-admin-hover disabled:text-zinc-400 ${FOCO_PEDIDOS}`;
 const OPCAO_PEDIDOS = `${BOTAO_PEDIDOS} w-full rounded-full text-left`;
 const SELECIONADO_PEDIDOS =
   "border-admin-gold bg-admin-gold/10 ring-1 ring-admin-gold";
@@ -1520,7 +1520,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         <div className="relative size-16">
           <div className="absolute inset-0 animate-ping rounded-full border-2 border-amber-500/10 duration-1000" />
           <div className="size-16 animate-spin rounded-full border-2 border-amber-500/10 border-t-amber-500" />
-          <div className="absolute inset-4 flex items-center justify-center rounded-full border border-white/5 bg-zinc-900">
+          <div className="absolute inset-4 flex items-center justify-center rounded-full border border-admin-border bg-zinc-900">
             <span className="size-2.5 animate-pulse rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
           </div>
         </div>
@@ -1565,7 +1565,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </p>
           <button
             onClick={() => onNavigate("admin-orders")}
-            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30 hover:bg-amber-500/10"
+            className="mt-4 rounded-lg border border-admin-border bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30 hover:bg-amber-500/10"
           >
             Voltar aos pedidos
           </button>
@@ -1615,7 +1615,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   return (
     <div
       ref={viewRef}
-      className="pb-admin h-auto bg-[#08080A] font-sans text-white lg:pb-12"
+      className="pb-admin h-auto bg-admin-bg font-sans text-white lg:pb-12"
     >
       <header className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
         <div className="min-w-0">
@@ -1655,7 +1655,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               </span>
             )}
           </button>
-          <div className="[&_.text-amber-500]:text-orange-300 [&_.text-zinc-500]:text-zinc-400 [&_.tracking-widest]:tracking-normal [&_.truncate]:overflow-visible [&_.truncate]:text-clip [&_.truncate]:whitespace-normal [&_.uppercase]:normal-case [&_[data-testid=alertas-cancelados-alavanca]]:size-11 [&_[data-testid=alertas-cancelados-alavanca]]:rounded-2xl [&_[data-testid=alertas-cancelados-alavanca]]:border-white/10 [&_[data-testid=alertas-cancelados-alavanca]]:bg-[#17171C] [&_[data-testid=alertas-cancelados-alavanca]]:text-red-300 [&_[data-testid=alertas-cancelados-badge]]:bg-red-300 [&_[id=alertas-cancelados-conteudo]]:rounded-[24px] [&_[id=alertas-cancelados-conteudo]]:bg-[#17171C] [&_button]:min-h-11">
+          <div className="[&_.text-amber-500]:text-orange-300 [&_.text-zinc-500]:text-zinc-400 [&_.tracking-widest]:tracking-normal [&_.truncate]:overflow-visible [&_.truncate]:text-clip [&_.truncate]:whitespace-normal [&_.uppercase]:normal-case [&_[data-testid=alertas-cancelados-alavanca]]:size-11 [&_[data-testid=alertas-cancelados-alavanca]]:rounded-2xl [&_[data-testid=alertas-cancelados-alavanca]]:border-admin-border-strong [&_[data-testid=alertas-cancelados-alavanca]]:bg-admin-raised [&_[data-testid=alertas-cancelados-alavanca]]:text-red-300 [&_[data-testid=alertas-cancelados-badge]]:bg-red-300 [&_[id=alertas-cancelados-conteudo]]:rounded-[24px] [&_[id=alertas-cancelados-conteudo]]:bg-admin-raised [&_button]:min-h-11">
             <AlertasCancelados
               pagoCanceladoCount={paidOnCancelledCount}
               avisoPagoAposCancelado={avisoPagoAposCancelado}
@@ -1787,7 +1787,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         >
           <DialogContent
             showCloseButton={false}
-            className="bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-white/15 bg-[#17171C] p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
+            className="bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-admin-border-strong bg-admin-raised p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
           >
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-xl font-bold">
@@ -1841,7 +1841,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   />
                   Abrir filtros
                 </button>
-                <fieldset className="space-y-3 border-t border-white/10 pt-4">
+                <fieldset className="space-y-3 border-t border-admin-border pt-4">
                   <legend className="text-xs font-bold uppercase tracking-wide text-zinc-400">
                     Visualização
                   </legend>
@@ -1911,7 +1911,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     {(["start", "end"] as const).map((limite) => (
                       <label
                         key={limite}
-                        className="min-w-0 rounded-2xl border border-white/10 bg-[#101013] p-3 text-xs text-zinc-400"
+                        className="min-w-0 rounded-2xl border border-admin-border bg-admin-surface p-3 text-xs text-zinc-400"
                         htmlFor={`filter-date-${limite}`}
                       >
                         {limite === "start" ? "Início" : "Fim"}
@@ -2003,7 +2003,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     />
                     Status de Pagamento
                   </legend>
-                  <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#101013]">
+                  <div className="overflow-hidden rounded-2xl border border-admin-border bg-admin-surface">
                     {(["all", ...PAYMENT_STATUS_FILTER_VALUES] as const).map(
                       (valor) => (
                         <button
@@ -2015,7 +2015,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                             setCurrentPage(0);
                           }}
                           className={cn(
-                            "flex min-h-11 w-full items-center gap-2 border-b border-white/5 px-3 py-3 text-left text-sm text-zinc-200",
+                            "flex min-h-11 w-full items-center gap-2 border-b border-admin-border px-3 py-3 text-left text-sm text-zinc-200",
                             FOCO_PEDIDOS,
                             paymentFilter === valor && "bg-admin-gold/10",
                           )}
@@ -2170,7 +2170,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   </div>
                 )
               ) : paginatedOrders.length === 0 && !erroDaListagem ? (
-                <div className="flex flex-col items-center justify-center rounded-[24px] border border-white/10 bg-[#101013] px-5 py-8 text-center">
+                <div className="flex flex-col items-center justify-center rounded-[24px] border border-admin-border bg-admin-surface px-5 py-8 text-center">
                   <div className="mb-4 rounded-2xl border border-indigo-300/20 bg-indigo-300/10 p-3 text-indigo-300">
                     <Package aria-hidden="true" className="size-6" />
                   </div>
@@ -2366,7 +2366,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               Ciclo de Vida do Pedido
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-[#101013] p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-admin-surface p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="size-2.5 rounded-full bg-blue-500" />
                   Pendente
@@ -2377,7 +2377,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-[#101013] p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-admin-surface p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="size-2.5 rounded-full bg-amber-500" />
                   Pago / Em Processamento
@@ -2388,7 +2388,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-[#101013] p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-admin-surface p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="size-2.5 rounded-full bg-indigo-500" />
                   Enviado
@@ -2399,7 +2399,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-[#101013] p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-admin-surface p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="size-2.5 rounded-full bg-emerald-500" />
                   Entregue

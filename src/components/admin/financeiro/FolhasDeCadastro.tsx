@@ -453,7 +453,7 @@ export function CategoriaFolha({
                   "flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl border p-3 transition-colors",
                   escolhido
                     ? "border-admin-gold/50 bg-admin-gold/10"
-                    : "border-white/10 bg-[#17171C] hover:bg-white/5",
+                    : "border-admin-border bg-admin-raised hover:bg-white/5",
                 )}
               >
                 <input

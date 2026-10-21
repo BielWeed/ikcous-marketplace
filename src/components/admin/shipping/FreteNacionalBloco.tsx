@@ -169,7 +169,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           <button
             type="button"
             onClick={onTentarDeNovo}
-            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-4 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-admin-border px-4 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
           >
             <RefreshCw className="size-3.5" />
             Tentar de novo
@@ -189,8 +189,8 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
                   : p.estado === "incompleta"
                     ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
                     : p.estado === "chave_salva"
-                      ? "border-white/10 bg-white/5 text-zinc-300"
-                      : "border-white/5 bg-transparent text-zinc-600"
+                      ? "border-admin-border bg-white/5 text-zinc-300"
+                      : "border-admin-border bg-transparent text-zinc-600"
               }`}
             >
               {p.nome}: {ROTULO_DO_ESTADO[p.estado]}
@@ -261,7 +261,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           <button
             type="button"
             onClick={onAbrirMinhaLoja}
-            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-admin-border px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
           >
             Alterar em Minha loja
           </button>
@@ -296,7 +296,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           <button
             type="button"
             onClick={onAbrirTransportadoras}
-            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-admin-border px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
           >
             Abrir Transportadoras
             <ChevronRight className="size-3.5 text-admin-accent" />
@@ -323,7 +323,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
             type="button"
             onClick={onAbrirEstrategiasNacionais}
             disabled={desabilitado}
-            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-admin-border px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
           >
             Estratégias do frete nacional
             <ChevronRight className="size-3.5 text-admin-accent" />

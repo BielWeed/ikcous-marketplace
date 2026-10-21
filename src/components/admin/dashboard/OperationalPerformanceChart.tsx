@@ -183,7 +183,7 @@ export const OperationalPerformanceChart = memo(
 
           <div className="relative z-30 flex flex-col items-end gap-3 sm:flex-row sm:items-center">
             {/* Timeframe Selectors */}
-            <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-white/10 bg-white/5 p-1">
+            <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-admin-border bg-white/5 p-1">
               {(["30", "90", "all"] as const).map((t) => (
                 <button
                   key={t}
@@ -201,7 +201,7 @@ export const OperationalPerformanceChart = memo(
             </div>
 
             {/* Toggle Chart Mode Buttons */}
-            <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1 rounded-2xl border border-white/10 bg-white/5 p-1 sm:gap-2">
+            <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1 rounded-2xl border border-admin-border bg-white/5 p-1 sm:gap-2">
               <button
                 onClick={() => handleChartModeChange("revenue")}
                 className={cn(
@@ -350,7 +350,7 @@ export const OperationalPerformanceChart = memo(
           {loading || !isChartReady ? (
             <Skeleton className="size-full animate-pulse rounded-3xl bg-white/5" />
           ) : !stats?.revenueHistory || stats.revenueHistory.length === 0 ? (
-            <div className="flex size-full flex-col items-center justify-center space-y-4 rounded-3xl border border-white/5 bg-white/5">
+            <div className="flex size-full flex-col items-center justify-center space-y-4 rounded-3xl border border-admin-border bg-white/5">
               <div className="flex size-16 items-center justify-center rounded-2xl border border-admin-gold/10 bg-admin-gold/5">
                 <BarChart3 className="size-8 text-admin-gold/30" />
               </div>
@@ -411,7 +411,7 @@ export const OperationalPerformanceChart = memo(
                           typeof data.orders === "number" ? data.orders : 0;
 
                         return (
-                          <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-white/10 backdrop-blur-3xl">
+                          <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-admin-border px-2.5 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-admin-border backdrop-blur-3xl">
                             <div className="flex items-center gap-2">
                               <span className="whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em] text-white/50">
                                 {data.full_date || data.date}
@@ -550,7 +550,7 @@ export const OperationalPerformanceChart = memo(
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
                         return (
-                          <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-white/10 px-2.5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-white/10 backdrop-blur-3xl">
+                          <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-admin-border px-2.5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-admin-border backdrop-blur-3xl">
                             <div className="flex items-center gap-2">
                               <span className="whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em] text-white/50">
                                 {data.full_date || data.date}

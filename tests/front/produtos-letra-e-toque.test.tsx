@@ -143,8 +143,8 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
     );
     expect(cartoes).toHaveLength(2);
     for (const cartao of cartoes) {
-      expect(cartao).toContain("bg-[#101013]");
-      expect(cartao).toContain("border-white/10");
+      expect(cartao).toContain("bg-admin-surface");
+      expect(cartao).toContain("border-admin-border");
       expect(cartao).not.toMatch(/shadow-lg|shadow-\[|border-y/);
     }
     expect(FONTE.match(/produto-esqueleto/g)).toHaveLength(2);

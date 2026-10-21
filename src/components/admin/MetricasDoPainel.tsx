@@ -174,7 +174,7 @@ export function MetricasDoPainel({
                 key={card.label}
                 aria-label={card.label}
                 data-metrica
-                className="min-w-0 rounded-2xl bg-[#101013] p-3"
+                className="min-w-0 rounded-2xl bg-admin-surface p-3"
               >
                 <card.icon
                   aria-hidden="true"

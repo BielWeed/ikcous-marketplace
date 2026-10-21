@@ -40,12 +40,12 @@ const ALTURA_MINIMA_DO_CARTAO = "min-h-[100px] sm:min-h-24";
 
 /**
  * Fundo do cartão FORA do `cn()`: o `tailwind-merge` deste projeto trata
- * `bg-gradient-to-*` como cor de fundo e descarta o `bg-zinc-900/70` quando os
- * dois passam juntos pelo `cn` (medido: `twMerge("bg-zinc-900/70 bg-gradient-to-b")`
+ * `bg-gradient-to-*` como cor de fundo e descarta o `bg-admin-surface` quando os
+ * dois passam juntos pelo `cn` (medido: `twMerge("bg-admin-surface bg-gradient-to-b")`
  * devolve só o gradiente). Concatenado depois do `cn`, os dois chegam ao DOM.
  */
 const SUPERFICIE_DO_CARTAO =
-  "bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent";
+  "bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent";
 
 /**
  * Setas do carrossel: só no computador (`hidden sm:flex` — abaixo de 640px elas
@@ -56,7 +56,7 @@ const SUPERFICIE_DO_CARTAO =
  * hover sem fazer nada.
  */
 const SETA_BASE =
-  "absolute top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-white/10 hidden sm:flex items-center justify-center text-zinc-400 hover:text-white opacity-0 pointer-events-none transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95";
+  "absolute top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-admin-border hidden sm:flex items-center justify-center text-zinc-400 hover:text-white opacity-0 pointer-events-none transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95";
 const SETA_REVELADA =
   "sm:group-hover/carousel:opacity-100 sm:group-hover/carousel:pointer-events-auto sm:group-focus-within/carousel:opacity-100 sm:group-focus-within/carousel:pointer-events-auto";
 
@@ -88,7 +88,7 @@ const KpiCard = memo(function KpiCard({
   return (
     <div
       className={`${cn(
-        "group relative flex select-none flex-col justify-center overflow-hidden rounded-2xl border border-white/10 p-3.5 shadow-lg transition-colors duration-300 sm:py-3",
+        "group relative flex select-none flex-col justify-center overflow-hidden rounded-2xl border border-admin-border p-3.5 shadow-lg transition-colors duration-300 sm:py-3",
         "h-full",
         ALTURA_MINIMA_DO_CARTAO,
         stat.hoverBorder || "hover:border-admin-gold/30",
@@ -96,7 +96,7 @@ const KpiCard = memo(function KpiCard({
     >
       <div
         className={cn(
-          "absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] transition-colors duration-300",
+          "absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border border-admin-border bg-white/[0.06] transition-colors duration-300",
           stat.iconBg,
           stat.accent,
         )}
@@ -136,7 +136,7 @@ const KpiSkeleton = memo(function KpiSkeleton() {
     // abaixo da faixa não pula quando os números chegam.
     <div
       className={cn(
-        "relative flex select-none flex-col justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/70 p-3.5 shadow-lg sm:py-3",
+        "relative flex select-none flex-col justify-center gap-2 rounded-2xl border border-admin-border bg-admin-surface p-3.5 shadow-lg sm:py-3",
         ALTURA_MINIMA_DO_CARTAO,
       )}
     >
@@ -324,7 +324,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex min-h-11 items-center gap-1.5 rounded-xl border border-white/5 bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:border-white/10 hover:bg-white/10 hover:text-white"
+            className="flex min-h-11 items-center gap-1.5 rounded-xl border border-admin-border bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:border-admin-border-strong hover:bg-white/10 hover:text-white"
           >
             {isExpanded ? (
               <>
