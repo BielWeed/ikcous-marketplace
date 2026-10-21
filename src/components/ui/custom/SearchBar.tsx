@@ -10,7 +10,22 @@ import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { ArrowRight, Search, Sparkles, Tag, X } from "lucide-react";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+// A caixinha só precisa do desenho da categoria quando há categoria na resposta: carregado sob demanda.
+const IconeDaCategoriaBuscada = lazy(() =>
+  import("./IconeDaCategoriaBuscada").then((m) => ({
+    default: m.IconeDaCategoriaBuscada,
+  })),
+);
 
 interface SearchBarProps {
   readonly value: string;
@@ -355,7 +370,12 @@ export function SearchBar({
                       onClick={() => handleSuggestionClick(cat)}
                       className="shadow-2xs flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
                     >
-                      <Tag className="size-3" />
+                      <Suspense fallback={<Tag className="size-3" />}>
+                        <IconeDaCategoriaBuscada
+                          nome={cat}
+                          className="size-3"
+                        />
+                      </Suspense>
                       <span>{cat}</span>
                     </button>
                   ))}

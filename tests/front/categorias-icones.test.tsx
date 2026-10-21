@@ -106,3 +106,58 @@ it("reserva a mesma altura dos blocos e anuncia carregamento", () => {
   ).toContain("h-[108px]");
   expect(host.querySelector("button")).toBeNull();
 });
+
+// A forma que a lojista escolheu no catálogo do painel (categorias.icone_forma) vem no mesmo payload da
+// categoria e é desenhada pela vitrine sem baixar catálogo nenhum.
+const FORMA = "M3 3h18v18H3zM8 12h8";
+const comForma = (name: string, iconeForma: unknown, icone?: string | null) =>
+  ({
+    ...categoria(name, icone),
+    iconeForma,
+  }) as Category;
+const caminhoDoChip = (indice = 1) => {
+  const desenho = host.querySelectorAll("svg")[indice];
+  return desenho?.querySelector("path")?.getAttribute("d");
+};
+
+it("desenha a forma gravada na categoria, antes da chave das 14 e da dedução pelo nome", () => {
+  renderizar([comForma("Brinquedo", FORMA, "casa")]);
+  const svg = host.querySelectorAll("svg")[1];
+  expect(svg.getAttribute("data-icone")).toBe("forma");
+  expect(caminhoDoChip()).toBe(FORMA);
+  // sem chave nem forma, o nome ainda deduz (comportamento de sempre)
+  renderizar([comForma("Calçados", null)]);
+  expect(host.querySelectorAll("svg")[1].getAttribute("data-icone")).toBe(
+    "calcados",
+  );
+});
+
+it("forma inválida nunca vira desenho: cai na chave, depois na dedução, depois na etiqueta", () => {
+  for (const ruim of [
+    "<script>alert(1)</script>",
+    'M0 0" onload="x',
+    "javascript:alert(1)",
+    "",
+    "L0 0",
+    `M${"1".repeat(400)}`,
+    42,
+    {},
+  ]) {
+    renderizar([comForma("Brinquedo", ruim, "casa")]);
+    expect(host.querySelectorAll("svg")[1].getAttribute("data-icone")).toBe(
+      "casa",
+    );
+    renderizar([comForma("Novidades", ruim)]);
+    expect(host.querySelectorAll("svg")[1].getAttribute("data-icone")).toBe(
+      "etiqueta",
+    );
+  }
+  expect(host.innerHTML).not.toMatch(/script|onload/);
+});
+
+it("cache antigo, sem a propriedade da forma, cai no fallback sem quebrar", () => {
+  renderizar([categoria("Brinquedo", "moda")]); // sem iconeForma
+  expect(host.querySelectorAll("svg")[1].getAttribute("data-icone")).toBe(
+    "moda",
+  );
+});
