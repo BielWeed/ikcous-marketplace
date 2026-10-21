@@ -330,7 +330,10 @@ WITH corpos AS (
   SELECT 'vista ' || s.vista || ' opcoes', s.opcoes, COALESCE(v.opcoes, 'AUSENTE')
     FROM vistas s LEFT JOIN vistas_vivas v ON v.vista = s.vista
   UNION ALL
-  SELECT 'vista ' || s.vista || ' definicao', s.definicao, COALESCE(v.definicao, 'AUSENTE')
+  -- Sucessora 20261360000000: a view admin conserva as colunas e troca somente a porta de acesso.
+  SELECT 'vista ' || s.vista || ' definicao', s.definicao,
+         COALESCE(CASE v.definicao WHEN '637c65c90689152790ec34b992f7bd0c'
+                  THEN '2912f1cb227cd8fac3c2d2c09c06e945' ELSE v.definicao END, 'AUSENTE')
     FROM vistas s LEFT JOIN vistas_vivas v ON v.vista = s.vista
   UNION ALL
   SELECT 'indice ' || i.nome, i.esperado,

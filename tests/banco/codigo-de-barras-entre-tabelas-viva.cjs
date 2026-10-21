@@ -28,6 +28,7 @@ const MENSAGEM =
   "Este código de barras já está em uso por outro produto ou variação.";
 const CONSTRAINT = "codigo_barras_unico_entre_produto_e_variacao";
 const id = (n) => `c3470000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const U_ADMIN = id(990);
 const URL_EFEMERA = lerDatabaseUrlEfemera();
 const C = new Client({ connectionString: URL_EFEMERA });
 
@@ -78,12 +79,17 @@ async function tudoOk(sql, n) {
 }
 async function papel(nome, admin = false) {
   await C.query("RESET ROLE");
-  await C.query("SELECT set_config('request.jwt.claims', $1, true)", [
-    JSON.stringify({
-      role: nome,
-      app_metadata: { role: admin ? "admin" : "customer" },
-    }),
-  ]);
+  await C.query(
+    "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
+    [
+      admin ? U_ADMIN : "",
+      JSON.stringify({
+        sub: admin ? U_ADMIN : undefined,
+        role: nome,
+        app_metadata: { role: admin ? "admin" : "customer" },
+      }),
+    ],
+  );
   // So literais fechados deste teste, nunca identificador recebido de rede.
   if (nome === "anon") await C.query("SET LOCAL ROLE anon");
   else if (nome === "authenticated")
@@ -143,6 +149,15 @@ async function retratoDeEstrutura() {
 async function parte1() {
   await C.query("BEGIN");
   try {
+    await C.query(
+      "INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1, 'admin-barras@exemplo.invalid', '{\"role\":\"admin\"}'::jsonb)",
+      [U_ADMIN],
+    );
+    await C.query(
+      "INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin barras', 'admin')",
+      [U_ADMIN],
+    );
+
     // 0. Aplicada (o CI aplicou do zero): 74a verde; 74b so reprova a ausencia (os objetos existem).
     await tudoOk(A, 5);
     const antesB = await conferir(B, 3);
