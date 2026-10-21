@@ -93,7 +93,7 @@ const updateQuestionsCache = (productId: string, newQuestions: Question[]) => {
 };
 
 const bc =
-  typeof window !== "undefined"
+  typeof window !== "undefined" && typeof BroadcastChannel !== "undefined"
     ? new BroadcastChannel("ikcous_questions_sync")
     : null;
 

@@ -34,7 +34,7 @@ import { z } from "zod";
 const MAX_ITEM_QUANTITY = 500; // Nuclear deterrent against inflation
 
 const cartItemSchema = z.object({
-  product: z.any(),
+  product: z.custom<Product>((v) => typeof v === "object" && v !== null),
   quantity: z.number().int().positive().max(MAX_ITEM_QUANTITY),
   variantId: z.string().optional().nullable(),
   // Achado da revisão (17/08/2026): sem esta chave o Zod descarta
