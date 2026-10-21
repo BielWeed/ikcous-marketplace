@@ -3306,11 +3306,11 @@ export function useOrders(
         // — quando o pedido não está na página carregada (deep link,
         // paginação: AdminOrdersView.tsx:604-635, AdminUserDetailView.tsx),
         // `order` é `undefined` e a guarda inteira era pulada, deixando a
-        // RPC gravar sem checar nada. Agora `esperado` vem do que a TELA
-        // sabia — `order.status` quando o pedido está carregado, senão o
-        // `statusEsperado` que o chamador informou (ex.: a ficha aberta por
-        // deep link) — e a guarda não exige mais `order`.
-        const esperado = order?.status ?? statusEsperado;
+        // RPC gravar sem checar nada. A origem que a TELA capturou ao abrir
+        // o diálogo prevalece, mesmo que `orders` já tenha recebido o
+        // cancelamento. Só sem origem explícita usamos `order.status`.
+        // A guarda não exige que o pedido esteja em `orders`.
+        const esperado = statusEsperado ?? order?.status;
 
         if (
           isAdmin &&

@@ -3483,6 +3483,7 @@ export function CheckoutViewDaConta({
   // exigência entra num lugar, não em dois.
   const botaoFinalizarDesabilitado =
     cart.length === 0 ||
+    !!aplicandoCupom ||
     leituraDaRetomadaPendente ||
     !isValid ||
     isSubmitting ||
@@ -3648,7 +3649,8 @@ export function CheckoutViewDaConta({
 
   const handleSubmitEvent = async () => {
     // Este handler cria uma compra nova; retomada paga o pedido já existente.
-    if (cart.length === 0) return;
+    if (cart.length === 0 || aplicandoCupom || aplicacaoDoCupomEmVooRef.current)
+      return;
     const contaEsperada = user?.id ?? null;
     // Pedido retomado com a primeira leitura em voo: o pedido JÁ existe, e
     // este envio criaria um segundo. Antes da trava de envio de propósito —

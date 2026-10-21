@@ -348,7 +348,7 @@ describe("AdminOrdersView — a ficha aberta por DEEP LINK reflete o status VERD
     expect(updateOrderStatus.mock.calls[0][4]).toBe("processing");
   });
 
-  it("controle: o pedido selecionado muda para OUTRO enquanto a confirmação de pagamento pendente está aberta — o 5º argumento vai `undefined`, NUNCA o status do pedido errado (rodada 3, mutação i)", async () => {
+  it("O1: trocar o pedido selecionado fecha a confirmação sem avançar o anterior", async () => {
     // Pagamento "aguardando" faz `OrderDetail.requestStatusChange` desviar
     // para a confirmação (`setPendingAdvance`) em vez de chamar
     // `handleStatusChange` direto — é essa pausa que abre a janela para o
@@ -401,27 +401,8 @@ describe("AdminOrdersView — a ficha aberta por DEEP LINK reflete o status VERD
       await Promise.resolve();
     });
 
-    // A ficha agora mostra o pedido B — o diálogo de confirmação continua
-    // aberto, com o id do pedido A ainda capturado dentro dele.
     expect(hospedeiro.textContent).toContain(numeroDoPedido(PEDIDO_ID_OUTRO));
-    const botaoConfirmar = botaoConfirmarAvancoMesmoAssim();
-    expect(botaoConfirmar).toBeTruthy();
-
-    await act(async () => {
-      botaoConfirmar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    // `updateOrderStatus` é chamado com o id do pedido A (o que estava
-    // sendo confirmado), mas o `selectedOrder` no instante da chamada já é
-    // o pedido B — os ids NÃO batem, e o 5º argumento tem que vir
-    // `undefined`. Se `AdminOrdersView.tsx:971` mandasse
-    // `selectedOrder.status` sem conferir o id (mutação i), este teste
-    // receberia o status do pedido ERRADO (B) em vez de `undefined`.
-    expect(updateOrderStatus).toHaveBeenCalledTimes(1);
-    expect(updateOrderStatus.mock.calls[0][0]).toBe(PEDIDO_ID);
-    expect(updateOrderStatus.mock.calls[0][4]).toBeUndefined();
+    expect(botaoConfirmarAvancoMesmoAssim()).toBeUndefined();
+    expect(updateOrderStatus).not.toHaveBeenCalled();
   });
 });

@@ -17,6 +17,10 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const createOrder = vi.fn().mockResolvedValue({ id: "pedido-cupom" });
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 
@@ -133,7 +137,7 @@ vi.mock("@/hooks/useCoupons", () => ({
 }));
 
 vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ createOrder: vi.fn(), updateOrderStatus: vi.fn() }),
+  useOrders: () => ({ createOrder, updateOrderStatus: vi.fn() }),
 }));
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
@@ -237,6 +241,76 @@ afterEach(() => {
 });
 
 describe("CheckoutView — a validação do toque em 'Aplicar' (tarefa 18)", () => {
+  async function prepararFinalizacao() {
+    createOrder.mockClear();
+    const { pararABuscaDeCep } = await import("./duble-busca-de-cep");
+    pararABuscaDeCep();
+    await renderizar();
+    const pix = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Pix na Entrega"),
+    )!;
+    await act(async () => pix.click());
+    for (const [id, valor] of [
+      ["checkout-name", "Cliente Teste"],
+      ["checkout-tel", "34999999999"],
+      ["guest-cep", "01310-100"],
+      ["guest-street", "Rua Teste"],
+      ["guest-number", "100"],
+      ["guest-neighborhood", "Centro"],
+      ["guest-city", "Cidade Teste"],
+      ["guest-state", "SP"],
+    ]) {
+      await act(async () => {
+        const el = document.getElementById(id) as HTMLInputElement;
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(el, valor);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 420));
+    });
+    const botao = document.querySelector<HTMLButtonElement>(
+      '[aria-label="Finalizar pedido"]',
+    )!;
+    expect(botao.disabled).toBe(false);
+    return botao;
+  }
+
+  it("CK1: Aplicando desabilita Finalizar e volta a liberar após a validação", async () => {
+    let responder!: (v: RespostaDaValidacao) => void;
+    respostaDaValidacao = () =>
+      new Promise((resolve) => {
+        responder = resolve;
+      });
+    const botao = await prepararFinalizacao();
+    await aplicarPeloCampo("VIP15");
+    expect(hospedeiro.textContent).toContain("Aplicando");
+    expect(botao.disabled).toBe(true);
+    await act(async () => responder({ valid: true, discount: 15 }));
+    expect(botao.disabled).toBe(false);
+    await act(async () => botao.click());
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("CK1: envio direto também não cria pedido enquanto o cupom valida", async () => {
+    respostaDaValidacao = () => new Promise(() => {});
+    const botao = await prepararFinalizacao();
+    await aplicarPeloCampo("VIP15");
+    // Mesmo acesso ao handler real de checkout-transportadora-exige-antecipado.
+    const chave = Object.keys(botao).find((k) =>
+      k.startsWith("__reactProps$"),
+    )!;
+    const props = Reflect.get(botao, chave) as { onClick: () => void };
+    await act(async () => {
+      props.onClick();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
   it("toque duplo com a validação em voo não valida de novo", async () => {
     respostaDaValidacao = () => new Promise(() => {});
     await renderizar();

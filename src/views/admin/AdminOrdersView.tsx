@@ -1281,7 +1281,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
   // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
-  // onStatusChange` (OrderDetail.tsx) tem assinatura de 2 argumentos, sem
+  // onStatusChange` (OrderDetail.tsx) recebe a origem no 3º argumento, sem
   // `silent` — nenhum clique de verdade passa `true` aqui. Mantido mesmo
   // assim (não removido) porque `updateOrderStatus` do hook já aceita e usa
   // esse parâmetro para outros chamadores (ex.: CheckoutView, no cancelamento
@@ -1299,6 +1299,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const handleStatusChange = async (
     orderId: string,
     newStatus: OrderStatus,
+    statusEsperado?: OrderStatus,
     silent = false,
   ) => {
     // A RPC VEM PRIMEIRO (PEDIDO-090, #87).
@@ -1308,18 +1309,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // agora está: Em Trânsito" de uma mudança que não aconteceu, e a tela do
     // admin fazia rollback. Notificação não tem desfazer.
     try {
-      // Rodada 2 (achado 1 do laudo): o `statusEsperado` só importa quando
-      // o pedido não está em `orders` (deep link/paginação) — o hook usa
-      // `order.status` quando o pedido está carregado e só cai para este
-      // argumento na ausência dele (ver `esperado` em useOrders.ts). Nunca
-      // passar `selectedOrder.status` sem conferir o id: comparar contra o
-      // status de OUTRO pedido seria pior que não comparar nada.
+      // A origem capturada pelo diálogo prevalece sobre o estado atualizado.
+      // Sem diálogo, usa a ficha selecionada apenas se for do MESMO pedido.
       await updateOrderStatus(
         orderId,
         newStatus,
         undefined,
         silent,
-        selectedOrder?.id === orderId ? selectedOrder.status : undefined,
+        statusEsperado ??
+          (selectedOrder?.id === orderId ? selectedOrder.status : undefined),
       );
       haptic.success();
 
