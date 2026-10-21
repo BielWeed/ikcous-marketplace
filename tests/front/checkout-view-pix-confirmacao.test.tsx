@@ -240,9 +240,13 @@ vi.mock("@/lib/flags", () => ({
   lerFlagPagamentoOnline: (v: string | undefined) => v === "true",
 }));
 
-vi.mock("@/components/checkout/PagamentoOnline", () => ({
-  PagamentoOnline: () => null,
-}));
+vi.mock("@/components/checkout/PagamentoOnline", async (importOriginal) => {
+  const real =
+    await importOriginal<
+      typeof import("@/components/checkout/PagamentoOnline")
+    >();
+  return { ...real, PagamentoOnline: () => null };
+});
 
 // Cartão pelo app (26/09/2026): o checkout lê `config_pagamento_cartao` ao
 // montar (useConfigDoCartao) — uma consulta que não é do polling que este

@@ -65,8 +65,18 @@ vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
 }));
 
+const { tempoReal } = vi.hoisted(() => ({
+  tempoReal: { avisar: null as null | ((evento: unknown) => void) },
+}));
 vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ createOrder: vi.fn(), updateOrderStatus: vi.fn() }),
+  useOrders: (
+    _ligado: boolean,
+    _admin: boolean,
+    opcoes?: { onRealtimeEvent?: (evento: unknown) => void },
+  ) => {
+    if (opcoes?.onRealtimeEvent) tempoReal.avisar = opcoes.onRealtimeEvent;
+    return { createOrder: vi.fn(), updateOrderStatus: vi.fn() };
+  },
 }));
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
@@ -99,12 +109,19 @@ vi.mock("@/lib/flags", () => ({
 }));
 
 let propsCapturadasDoPagamento: Record<string, unknown> | null = null;
-vi.mock("@/components/checkout/PagamentoOnline", () => ({
-  PagamentoOnline: (props: Record<string, unknown>) => {
-    propsCapturadasDoPagamento = props;
-    return null;
-  },
-}));
+vi.mock("@/components/checkout/PagamentoOnline", async (importOriginal) => {
+  const real =
+    await importOriginal<
+      typeof import("@/components/checkout/PagamentoOnline")
+    >();
+  return {
+    ...real,
+    PagamentoOnline: (props: Record<string, unknown>) => {
+      propsCapturadasDoPagamento = props;
+      return null;
+    },
+  };
+});
 
 vi.mock("@/hooks/useConfigDoCartao", async () => {
   const { ESTADO_PRONTO_SEM_CARTAO } = await import(
@@ -172,6 +189,51 @@ describe("CheckoutView — pedido morto no servidor chega ao PagamentoOnline", (
       await vi.advanceTimersByTimeAsync(10_000);
     });
   }
+
+  it.each(["recusado", "estornado"])(
+    "%s na consulta encerra o PIX, sem prometer confirmação",
+    async (payment_status) => {
+      await montarNaTelaDoPix();
+      await lerOServidor({ payment_status, status: "cancelled" });
+      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+        "Este pagamento não foi concluído.",
+      );
+      expect(hospedeiro.textContent).not.toContain("confirmação aparece aqui");
+      expect(hospedeiro.querySelector("img, textarea, a")).toBeNull();
+      expect(hospedeiro.textContent).not.toContain("Copiar código PIX");
+      expect(hospedeiro.textContent).not.toContain("Seu pedido está reservado");
+      const chamadas = lerPoll.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(lerPoll).toHaveBeenCalledTimes(chamadas);
+      const botao = [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent === "Ver meus pedidos",
+      );
+      expect(botao).toBeDefined();
+      act(() => botao!.click());
+      expect(irPara).toHaveBeenCalledWith("orders");
+    },
+  );
+
+  it.each(["recusado", "estornado"])(
+    "%s no tempo real encerra o PIX sem esperar outra consulta",
+    async (payment_status) => {
+      await montarNaTelaDoPix();
+      await act(async () => {
+        tempoReal.avisar?.({
+          eventType: "UPDATE",
+          new: { id: PEDIDO, payment_status },
+        });
+      });
+      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+        "Este pagamento não foi concluído.",
+      );
+      expect(hospedeiro.textContent).not.toContain("confirmação aparece aqui");
+      expect(hospedeiro.querySelector("img, textarea, a")).toBeNull();
+      expect(hospedeiro.textContent).not.toContain("Copiar código PIX");
+    },
+  );
 
   it("antes de qualquer leitura do servidor: pedidoMortoNoServidor é falso", async () => {
     await montarNaTelaDoPix();

@@ -1,6 +1,7 @@
 import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
 import type { CartaoEmCurso } from "@/components/checkout/PagamentoComCartao";
 import {
+  AvisoDePixEncerrado,
   type CategoriaErroPagamento,
   type MetodoOnline,
   PagamentoOnline,
@@ -868,6 +869,11 @@ export function CheckoutViewDaConta({
       } else if (pedidoAtualizado.payment_status === "pago_apos_expirar") {
         setStatusPagamentoPix("fora-do-prazo");
       } else if (
+        pedidoAtualizado.payment_status === "recusado" ||
+        pedidoAtualizado.payment_status === "estornado"
+      ) {
+        setStatusPagamentoPix("nao-concluido");
+      } else if (
         pedidoAtualizado.gateway_payment_id === null &&
         (cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id ||
           cartaoEncerradoRef.current?.orderId === pedidoAtualizado.id)
@@ -1473,12 +1479,12 @@ export function CheckoutViewDaConta({
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
   // function, dentro do PagamentoOnline (ver comentário lá).
   const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
-  // CHECKOUT-090: estado de três valores, não dois booleanos independentes
+  // CHECKOUT-090: estado exclusivo, não booleanos independentes
   // — dois booleanos podem divergir (os dois `true` ao mesmo tempo, ou os
   // dois `false` quando um dos dois status chegou), e essa divergência é
   // exatamente o defeito que esta tarefa existe para impedir. `null` é o
-  // QR ainda valendo; os outros dois são finais, sem caminho de volta a
-  // `null` nem um para o outro.
+  // QR ainda valendo; os outros são finais, sem caminho de volta a `null`.
+  // 'nao-concluido' é a recusa ou o estorno confirmado pelo servidor.
   //
   // 'confirmado' é o `payment_status === 'pago'` de sempre.
   //
@@ -1504,7 +1510,7 @@ export function CheckoutViewDaConta({
   // rede de segurança contra WebSocket caído) — e nenhum dos dois estados
   // finais tem caminho de volta a `null`.
   const [statusPagamentoPix, setStatusPagamentoPix] = useState<
-    "confirmado" | "fora-do-prazo" | null
+    "confirmado" | "fora-do-prazo" | "nao-concluido" | null
   >(null);
   // F1 (04/10/2026): o SERVIDOR já gravou este pedido como morto
   // (`expirado`, ou `aguardando` + `cancelled`) — a tela do PIX deixa de
@@ -3250,14 +3256,12 @@ export function CheckoutViewDaConta({
         );
       }
 
-      // Os outros dois status terminais não têm tela própria aqui — só
-      // param de consultar (a constraint do banco não modela caminho de
-      // volta a partir deles, ver
-      // `supabase/migrations/20260807000000_reserva_com_expiracao.sql:17`).
+      // Recusa e estorno encerram este código: não há confirmação a esperar.
       if (
         data.payment_status === "recusado" ||
         data.payment_status === "estornado"
       ) {
+        setStatusPagamentoPix("nao-concluido");
         parado = true;
         clearInterval(intervalId);
         return;
@@ -4637,6 +4641,16 @@ export function CheckoutViewDaConta({
           orderId={orderId}
           valor={valorDoPedido}
           onNavigate={onNavigate}
+        />
+      );
+    }
+
+    if (statusPagamentoPix === "nao-concluido") {
+      return (
+        <AvisoDePixEncerrado
+          orderId={orderId}
+          pagamentoNaoConcluido
+          onVerMeusPedidos={() => onNavigate("orders")}
         />
       );
     }

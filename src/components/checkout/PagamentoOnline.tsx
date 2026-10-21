@@ -578,6 +578,62 @@ export function PagamentoOnline({
   );
 }
 
+/** Mesmo aviso do código expirado, sem promessa de confirmação em estado final. */
+export function AvisoDePixEncerrado({
+  orderId,
+  onVerMeusPedidos,
+  pagamentoNaoConcluido = false,
+}: {
+  orderId: string;
+  onVerMeusPedidos?: () => void;
+  pagamentoNaoConcluido?: boolean;
+}) {
+  const idTitulo = useId();
+  return (
+    <section
+      aria-labelledby={idTitulo}
+      className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6"
+    >
+      <header className="space-y-1 text-center">
+        <h2
+          id={idTitulo}
+          className="text-xs font-bold uppercase tracking-wider text-zinc-500"
+        >
+          Pagamento via Pix
+        </h2>
+        {orderId && (
+          <p className="text-xs text-zinc-500">
+            Pedido #{numeroDoPedido(orderId)}
+          </p>
+        )}
+      </header>
+      <div
+        role="alert"
+        className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
+      >
+        <AlertCircle
+          aria-hidden="true"
+          className="mt-0.5 size-5 shrink-0 text-amber-600"
+        />
+        <p className="text-sm text-amber-800">
+          {pagamentoNaoConcluido
+            ? "Este pagamento não foi concluído. Confira em Meus pedidos antes de fazer um novo pedido."
+            : "Este código não vale mais. Se você já pagou, fique nesta tela: a confirmação aparece aqui. Se ainda não pagou, faça um pedido novo."}
+        </p>
+      </div>
+      {onVerMeusPedidos && (
+        <button
+          type="button"
+          onClick={onVerMeusPedidos}
+          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+        >
+          Ver meus pedidos
+        </button>
+      )}
+    </section>
+  );
+}
+
 function PagamentoComPix({
   orderId,
   valor,
@@ -774,46 +830,10 @@ function PagamentoComPix({
   // reserva venceu": essa frase é da tela de "pago fora do prazo".
   if (pix && pedidoMortoNoServidor) {
     return (
-      <section
-        aria-labelledby={idTitulo}
-        className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6"
-      >
-        <header className="space-y-1 text-center">
-          <h2
-            id={idTitulo}
-            className="text-xs font-bold uppercase tracking-wider text-zinc-500"
-          >
-            Pagamento via Pix
-          </h2>
-          {orderId && (
-            <p className="text-xs text-zinc-500">
-              Pedido #{numeroDoPedido(orderId)}
-            </p>
-          )}
-        </header>
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
-        >
-          <AlertCircle
-            aria-hidden="true"
-            className="mt-0.5 size-5 shrink-0 text-amber-600"
-          />
-          <p className="text-sm text-amber-800">
-            Este código não vale mais. Se você já pagou, fique nesta tela: a
-            confirmação aparece aqui. Se ainda não pagou, faça um pedido novo.
-          </p>
-        </div>
-        {onVerMeusPedidos && (
-          <button
-            type="button"
-            onClick={onVerMeusPedidos}
-            className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
-          >
-            Ver meus pedidos
-          </button>
-        )}
-      </section>
+      <AvisoDePixEncerrado
+        orderId={orderId}
+        onVerMeusPedidos={onVerMeusPedidos}
+      />
     );
   }
 
