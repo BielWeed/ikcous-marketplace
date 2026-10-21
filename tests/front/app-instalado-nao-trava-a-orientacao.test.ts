@@ -5,9 +5,9 @@
 // (No iPhone o valor é ignorado; no navegador comum a tela já gira.)
 //
 // "any" deixa o aparelho decidir: gira se a pessoa deixou a rotação
-// automática ligada. Isso só vale porque a tela do PDV é um fluxo vertical
-// rolável, sem altura de tela travada — o segundo teste guarda essa premissa.
-// Não mede a tela num aparelho real.
+// automática ligada. Este teste guarda a estrutura e as regras de rolagem:
+// título e resumo também pertencem ao corpo do fechamento, não à parte fixa.
+// Não mede a altura disponível nem o alcance físico; isso exige navegador.
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { MANIFESTO_BASE } from "@/config/manifestoBase";
@@ -32,7 +32,7 @@ describe("o app instalado não trava a orientação", () => {
   });
 });
 
-describe("a tela do PDV funciona deitada: fluxo vertical rolável, sem altura de tela travada", () => {
+describe("a tela do PDV funciona deitada sem cortar conteúdo", () => {
   const pasta = "src/components/admin/pdv";
   const arquivos = [
     "src/views/admin/AdminPdvView.tsx",
@@ -40,6 +40,27 @@ describe("a tela do PDV funciona deitada: fluxo vertical rolável, sem altura de
       .filter((nome) => nome.endsWith(".tsx"))
       .map((nome) => `${pasta}/${nome}`),
   ];
+
+  it("altura externa travada só é aceita com rolagem dos dois corpos", () => {
+    const css = ler("src/components/admin/pdv/pdv.css");
+    expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*overflow:\s*hidden/);
+    for (const classe of ["pdv-checkout-body", "pdv-variation-options"]) {
+      const bloco = css.match(new RegExp(`\\.${classe}\\s*\\{([^}]+)\\}`))?.[1];
+      expect(bloco, classe).toMatch(/min-height:\s*0/);
+      expect(bloco, classe).toMatch(/overflow-y:\s*(auto|scroll)/);
+      expect(bloco, classe).toMatch(/overscroll-behavior:\s*contain/);
+    }
+  });
+
+  it("título e resumo do fechamento ficam dentro do corpo que rola", () => {
+    const codigo = ler("src/components/admin/pdv/FechamentoDaVenda.tsx");
+    const inicio = codigo.indexOf('className="pdv-checkout-body"');
+    const barra = codigo.indexOf('<AcaoDaBarra aria-label="Registrar a venda"');
+    const corpo = codigo.slice(inicio, barra);
+    expect(inicio).toBeGreaterThan(-1);
+    expect(corpo).toContain('className="pdv-layer-heading"');
+    expect(corpo).toContain('className="pdv-cupom pdv-stack"');
+  });
 
   it("encontrou os arquivos do PDV", () => {
     expect(arquivos.length).toBeGreaterThan(5);

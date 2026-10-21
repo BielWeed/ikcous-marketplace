@@ -305,13 +305,11 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     expect(TELAS_DE_ENTRADA).toContain("admin-pdv");
   });
 
-  it("a raiz da view carrega pb-admin — no navegador do celular o 'Registrar venda' não pode ficar por trás da barra de navegação fixa (relato do dono em teste real, 19/09)", async () => {
+  it("a raiz limita a altura e reserva a barra acoplada, sem rolagem externa", async () => {
     await montar();
-    // O respiro inferior é o MESMO das outras telas do admin (index.css
-    // .pb-admin); sem ele a rolagem termina exatamente onde o último botão
-    // encosta na barra fixa — inalcançável no dedo.
     const raizDaView = hospedeiro.firstElementChild as HTMLElement;
-    expect(raizDaView?.className).toContain("pb-admin");
+    expect(raizDaView?.className).toContain("pdv-viewport");
+    expect(raizDaView?.dataset.etapa).toBe("cupom");
   });
 
   it("caso 4 — abrir a camada de cliente empurra pushState com {modal: 'pdv'}, na MESMA URL", async () => {

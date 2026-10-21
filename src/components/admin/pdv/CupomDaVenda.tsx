@@ -125,46 +125,62 @@ export function CupomDaVenda({
 
   return (
     <div className="pdv-flow" data-etapa={estado.etapa}>
+      {limparCupom && temVendaParaCancelar && !confirmandoCancelamento && (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={estado.enviando}
+          className="pdv-secondary pdv-cancel"
+          onClick={() => setConfirmandoCancelamento(true)}
+        >
+          <XCircle aria-hidden="true" className="pdv-red size-5" />
+          Cancelar<span className="sr-only"> venda</span>
+        </Button>
+      )}
       {escolha && (
-        <section className="pdv-card pdv-stack" aria-label="Escolher variação">
-          <h3 className="pdv-heading">
-            <PackagePlus aria-hidden="true" className="pdv-icon pdv-pink" />
-            Escolher variação
-          </h3>
-          <p className="font-bold">
-            Qual combinação de "{escolha.produtoNome}"?
-          </p>
-          {escolha.opcoes.map((opcao) => (
-            <button
-              key={opcao.variant_id}
+        <section className="pdv-variation-layer" aria-label="Escolher variação">
+          <div className="pdv-variation-heading">
+            <h3 className="pdv-heading">
+              <PackagePlus aria-hidden="true" className="pdv-icon pdv-pink" />
+              Escolher variação
+            </h3>
+            <Button
               type="button"
-              disabled={opcao.estoque <= 0}
-              onClick={() =>
-                despachar({ tipo: "variacao_escolhida", opcao, em: agora() })
-              }
-              className="pdv-result"
+              variant="outline"
+              className="pdv-secondary pdv-variation-cancel"
+              onClick={() => despachar({ tipo: "variacao_cancelada" })}
             >
-              <span>
-                <strong>
-                  {opcao.nome} {opcao.valor}
-                </strong>
-                <span className="pdv-muted">
-                  {opcao.estoque <= 0
-                    ? "Esgotado"
-                    : `R$ ${reais(opcao.preco)} · ${opcao.estoque} em estoque`}
+              Cancelar
+            </Button>
+          </div>
+          <div className="pdv-card pdv-stack pdv-variation-options">
+            <p className="font-bold">
+              Qual combinação de "{escolha.produtoNome}"?
+            </p>
+            {escolha.opcoes.map((opcao) => (
+              <button
+                key={opcao.variant_id}
+                type="button"
+                disabled={opcao.estoque <= 0}
+                onClick={() =>
+                  despachar({ tipo: "variacao_escolhida", opcao, em: agora() })
+                }
+                className="pdv-result"
+              >
+                <span>
+                  <strong>
+                    {opcao.nome} {opcao.valor}
+                  </strong>
+                  <span className="pdv-muted">
+                    {opcao.estoque <= 0
+                      ? "Esgotado"
+                      : `R$ ${reais(opcao.preco)} · ${opcao.estoque} em estoque`}
+                  </span>
                 </span>
-              </span>
-              <Plus aria-hidden="true" className="pdv-icon pdv-teal" />
-            </button>
-          ))}
-          <Button
-            type="button"
-            variant="outline"
-            className="pdv-secondary"
-            onClick={() => despachar({ tipo: "variacao_cancelada" })}
-          >
-            Cancelar
-          </Button>
+                <Plus aria-hidden="true" className="pdv-icon pdv-teal" />
+              </button>
+            ))}
+          </div>
         </section>
       )}
 
@@ -253,160 +269,145 @@ export function CupomDaVenda({
         </div>
       )}
 
-      <section
-        className="pdv-cupom pdv-stack"
-        aria-label="Itens da venda"
-        data-resumo={
-          estado.etapa === "cliente" || estado.etapa === "fechamento"
-        }
-      >
-        <div className="pdv-heading">
-          <ShoppingCart aria-hidden="true" className="pdv-icon pdv-purple" />
-          <h3 className="flex-1">Venda atual</h3>
-          <span className="pdv-muted">
-            {estado.itens.length} {estado.itens.length === 1 ? "item" : "itens"}
-          </span>
-          {(estado.etapa === "cliente" || estado.etapa === "fechamento") && (
-            <strong className="text-sm">R$ {reais(subtotal)}</strong>
-          )}
-        </div>
-        {estado.itens.length === 0 ? (
-          <div className="pdv-card pdv-stack pdv-empty">
-            <p className="pdv-heading">Bipe o primeiro produto</p>
-            <p className="pdv-muted">Nenhum item na venda ainda.</p>
-          </div>
-        ) : (
-          <ul>
-            {estado.itens.map((item) => {
-              const destacado = estado.ultimaEntrada?.chave === item.chave;
-              return (
-                <li
-                  key={item.chave}
-                  data-destacado={destacado ? "true" : "false"}
-                  className="pdv-item"
-                >
-                  {item.imagem ? (
-                    <img
-                      src={item.imagem}
-                      alt={item.nome}
-                      className="pdv-item-image"
-                    />
-                  ) : (
-                    <div className="pdv-item-image flex items-center justify-center bg-violet-400/15">
-                      <PackagePlus
-                        aria-hidden="true"
-                        className="pdv-purple size-5"
-                      />
-                    </div>
-                  )}
-                  <div className="pdv-item-info">
-                    <strong>
-                      <span className="pdv-resumo-qtd">
-                        {item.quantidade} ×{" "}
-                      </span>
-                      {item.nome}
-                    </strong>
-                    {item.variacao && (
-                      <span className="pdv-muted">{item.variacao} · </span>
-                    )}
-                    <span className="pdv-muted pdv-unit-price">
-                      R$ {reais(item.preco)} / un.
-                    </span>
-                  </div>
-                  <div className="pdv-item-controls">
-                    {destacado && (
-                      <span className="pdv-added">
-                        <Check aria-hidden="true" className="inline size-3" />{" "}
-                        Adicionado
-                      </span>
-                    )}
-                    <div className="pdv-quantity">
-                      <button
-                        type="button"
-                        aria-label={`Diminuir quantidade de ${item.nome}`}
-                        disabled={estado.enviando}
-                        onClick={() =>
-                          despachar({
-                            tipo: "quantidade_alterada",
-                            chave: item.chave,
-                            delta: -1,
-                          })
-                        }
-                        className="pdv-touch"
-                      >
-                        <Minus aria-hidden="true" className="size-5" />
-                      </button>
-                      <span>{item.quantidade}</span>
-                      <button
-                        type="button"
-                        aria-label={`Aumentar quantidade de ${item.nome}`}
-                        disabled={
-                          estado.enviando || item.quantidade >= item.estoque
-                        }
-                        onClick={() =>
-                          despachar({
-                            tipo: "quantidade_alterada",
-                            chave: item.chave,
-                            delta: 1,
-                          })
-                        }
-                        className="pdv-touch pdv-teal"
-                      >
-                        <Plus aria-hidden="true" className="size-5" />
-                      </button>
-                    </div>
-                    <span className="pdv-line-total">
-                      R$ {reais(item.preco * item.quantidade)}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Remover ${item.nome} da venda`}
-                      disabled={estado.enviando}
-                      onClick={() =>
-                        despachar({ tipo: "item_removido", chave: item.chave })
-                      }
-                      className="pdv-touch pdv-pink"
-                    >
-                      <Trash2 aria-hidden="true" className="size-5" />
-                    </button>
-                    {item.quantidade >= item.estoque && (
-                      <p className="pdv-muted pdv-stock-limit w-full">
-                        Limite do estoque · {item.estoque} un.
-                      </p>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      <div className="pdv-actions">
-        <Button
-          type="button"
-          variant="outline"
-          className="pdv-secondary"
-          onClick={() => despachar({ tipo: "etapa_pedida", etapa: "cliente" })}
+      {estado.etapa !== "fechamento" && (
+        <section
+          className="pdv-cupom pdv-stack"
+          aria-label="Itens da venda"
+          data-resumo={estado.etapa === "cliente"}
         >
-          <UserRound aria-hidden="true" className="pdv-blue size-5" />
-          {estado.cliente.tipo === "sem_cliente"
-            ? "Cliente (opcional)"
-            : `Cliente: ${estado.cliente.nome}`}
-        </Button>
-        {limparCupom && temVendaParaCancelar && !confirmandoCancelamento && (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={estado.enviando}
-            className="pdv-secondary"
-            onClick={() => setConfirmandoCancelamento(true)}
-          >
-            <XCircle aria-hidden="true" className="pdv-red size-5" />
-            Cancelar venda
-          </Button>
-        )}
-      </div>
+          <div className="pdv-heading">
+            <ShoppingCart aria-hidden="true" className="size-5" />
+            <h3 className="flex-1">Venda atual</h3>
+            <span className="pdv-muted">
+              {estado.itens.length}{" "}
+              {estado.itens.length === 1 ? "item" : "itens"}
+            </span>
+            {estado.etapa === "cliente" && (
+              <strong className="text-sm">R$ {reais(subtotal)}</strong>
+            )}
+          </div>
+          {estado.etapa === "cliente" &&
+            estado.cliente.tipo !== "sem_cliente" && (
+              <p className="pdv-muted">Cliente: {estado.cliente.nome}</p>
+            )}
+          {estado.itens.length === 0 ? (
+            <div className="pdv-card pdv-stack pdv-empty">
+              <p className="pdv-heading">Bipe o primeiro produto</p>
+              <p className="pdv-muted">
+                Os itens aparecem aqui, com quantidade e total.
+              </p>
+              <span className="sr-only">Nenhum item na venda ainda.</span>
+            </div>
+          ) : (
+            <ul>
+              {estado.itens.map((item) => {
+                const destacado = estado.ultimaEntrada?.chave === item.chave;
+                return (
+                  <li
+                    key={item.chave}
+                    data-destacado={destacado ? "true" : "false"}
+                    className="pdv-item"
+                  >
+                    {item.imagem ? (
+                      <img
+                        src={item.imagem}
+                        alt={item.nome}
+                        className="pdv-item-image"
+                      />
+                    ) : (
+                      <div className="pdv-item-image flex items-center justify-center bg-admin-raised">
+                        <PackagePlus
+                          aria-hidden="true"
+                          className="pdv-purple size-5"
+                        />
+                      </div>
+                    )}
+                    <div className="pdv-item-info">
+                      <strong>
+                        <span className="pdv-resumo-qtd">
+                          {item.quantidade} ×{" "}
+                        </span>
+                        {item.nome}
+                      </strong>
+                      {item.variacao && (
+                        <span className="pdv-muted">{item.variacao} · </span>
+                      )}
+                      {destacado && (
+                        <span className="pdv-added">
+                          <Check aria-hidden="true" className="inline size-3" />{" "}
+                          Adicionado
+                        </span>
+                      )}
+                      <span className="pdv-muted pdv-unit-price">
+                        R$ {reais(item.preco)} / un.
+                      </span>
+                    </div>
+                    <div className="pdv-item-controls">
+                      <div className="pdv-quantity">
+                        <button
+                          type="button"
+                          aria-label={
+                            item.quantidade === 1
+                              ? `Remover ${item.nome} da venda`
+                              : `Diminuir quantidade de ${item.nome}`
+                          }
+                          disabled={estado.enviando}
+                          onClick={() =>
+                            item.quantidade === 1
+                              ? despachar({
+                                  tipo: "item_removido",
+                                  chave: item.chave,
+                                })
+                              : despachar({
+                                  tipo: "quantidade_alterada",
+                                  chave: item.chave,
+                                  delta: -1,
+                                })
+                          }
+                          className={`pdv-touch ${item.quantidade === 1 ? "pdv-red" : ""}`}
+                        >
+                          {item.quantidade === 1 ? (
+                            <Trash2 aria-hidden="true" className="size-4" />
+                          ) : (
+                            <Minus aria-hidden="true" className="size-4" />
+                          )}
+                        </button>
+                        <span>{item.quantidade}</span>
+                        <button
+                          type="button"
+                          aria-label={`Aumentar quantidade de ${item.nome}`}
+                          disabled={
+                            estado.enviando || item.quantidade >= item.estoque
+                          }
+                          onClick={() =>
+                            despachar({
+                              tipo: "quantidade_alterada",
+                              chave: item.chave,
+                              delta: 1,
+                            })
+                          }
+                          className="pdv-touch pdv-teal"
+                        >
+                          <Plus aria-hidden="true" className="size-5" />
+                        </button>
+                      </div>
+                      <span className="pdv-line-total">
+                        R$ {reais(item.preco * item.quantidade)}
+                      </span>
+                      {item.quantidade >= item.estoque && (
+                        <p className="pdv-muted pdv-stock-limit w-full">
+                          Limite do estoque · {item.estoque} un.
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+
       {limparCupom && temVendaParaCancelar && confirmandoCancelamento && (
         <div role="group" aria-label="Cancelar venda" className="pdv-notice">
           <p className="pdv-heading">
@@ -449,14 +450,33 @@ export function CupomDaVenda({
         ativa={estado.etapa !== "fechamento"}
         aria-label="Fechamento da venda"
       >
-        <div className="pdv-footer">
+        <div className="pdv-footer" data-etapa={estado.etapa}>
+          <Button
+            type="button"
+            variant="outline"
+            className="pdv-secondary pdv-client-chip"
+            onClick={() =>
+              despachar({ tipo: "etapa_pedida", etapa: "cliente" })
+            }
+          >
+            <UserRound aria-hidden="true" className="size-4" />
+            {estado.cliente.tipo === "sem_cliente" ? (
+              <>
+                Cliente <span className="sr-only">(opcional)</span>
+                <span aria-hidden="true">· opcional</span>
+              </>
+            ) : (
+              `Cliente: ${estado.cliente.nome}`
+            )}
+            <ChevronRight aria-hidden="true" className="ml-auto size-4" />
+          </Button>
           <div className="pdv-total">
             <span className="pdv-muted">Subtotal</span>
             <strong>R$ {reais(subtotal)}</strong>
           </div>
           <Button
             type="button"
-            className="pdv-primary admin-barra-principal bg-admin-gold text-black"
+            className="pdv-primary pdv-sale-action bg-green-600 text-white"
             disabled={estado.itens.length === 0}
             onClick={() =>
               despachar({ tipo: "etapa_pedida", etapa: "fechamento" })
@@ -467,10 +487,13 @@ export function CupomDaVenda({
             ) : (
               <ChevronRight aria-hidden="true" className="size-5" />
             )}
-            Fechar venda{estado.itens.length > 0 && ` · R$ ${reais(subtotal)}`}
+            Fechar venda
+            <span className="sr-only">
+              {estado.itens.length > 0 && ` · R$ ${reais(subtotal)}`}
+            </span>
           </Button>
           {estado.itens.length === 0 && (
-            <p className="pdv-muted">
+            <p className="sr-only">
               Indisponível: adicione pelo menos um item.
             </p>
           )}

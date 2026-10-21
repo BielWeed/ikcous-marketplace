@@ -270,6 +270,7 @@
 :where(html.admin-mode[data-admin-tema]) .bg-\[\#B82243\].text-white{color:#fff}
 :where(html.admin-mode[data-admin-tema]) .bg-\[\#BE123C\].text-white{color:#fff}
 :where(html.admin-mode[data-admin-tema]) .bg-emerald-500.text-white{color:#fff}
+:where(html.admin-mode[data-admin-tema]) .bg-green-600.text-white{color:#fff}
 :where(html.admin-mode[data-admin-tema]) .bg-red-500.text-white{color:#fff}
 :where(html.admin-mode[data-admin-tema]) .bg-red-600.text-white{color:#fff}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-\[\#BE123C\]:hover.text-white{color:#fff}

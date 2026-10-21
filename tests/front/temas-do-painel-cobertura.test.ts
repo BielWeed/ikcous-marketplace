@@ -138,8 +138,7 @@ const ESCURO_SOBRE_CLARO =
   "texto/ícone escuro sobre preenchimento claro ou vivo (botão dourado, pílula branca): serve nos três temas";
 const SOMBRA = "véu escuro translúcido: escurece em qualquer tema";
 const CORTINA = "cortina de modal: escurece o fundo em qualquer tema";
-const INEXISTENTE =
-  "tom que não existe no Tailwind do projeto (zinc-555/655/955): a classe não gera CSS, sem efeito";
+const INEXISTENTE = "tom que não existe no Tailwind do projeto: sem efeito";
 const SERIE = "cor de série de gráfico/legenda: identidade, não superfície";
 const MEDALHA =
   "medalha prateada (1º/2º lugar) com texto escuro: identidade, igual nos três temas";
@@ -152,6 +151,12 @@ const CLARO_SOLIDO =
   "preenchimento claro sólido (miolo de interruptor, selo claro) com texto escuro por cima: fica claro nos três temas";
 const MANTIDAS = new Map<string, string>([
   ["bg-zinc-100", CLARO_SOLIDO],
+  ["hover:bg-zinc-200", CLARO_SOLIDO],
+  ["bg-[#BE123C]", "ação negativa sólida com texto branco AA nos três temas"],
+  [
+    "hover:bg-[#BE123C]",
+    "ação negativa sólida com texto branco AA nos três temas",
+  ],
   ["bg-zinc-50", CLARO_SOLIDO],
   ["[&_[data-slot=switch-thumb]]:bg-zinc-50", CLARO_SOLIDO],
   ["bg-[#0b141a]", PREVIA_DE_APARELHO],
@@ -180,10 +185,6 @@ const MANTIDAS = new Map<string, string>([
   ["bg-black/20", SOMBRA],
   ["bg-black/80", CORTINA],
   ["border-zinc-955", INEXISTENTE],
-  ["text-zinc-555", INEXISTENTE],
-  ["text-zinc-655", INEXISTENTE],
-  ["bg-slate-300", SERIE],
-  ["bg-slate-400", SERIE],
   ["bg-zinc-300", SERIE],
   ["bg-zinc-400", SERIE],
   ["data-[state=checked]:bg-zinc-300", SERIE],
