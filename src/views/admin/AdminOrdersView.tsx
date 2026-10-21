@@ -18,7 +18,6 @@ import {
   rotuloDoStatus,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
-import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
@@ -1617,7 +1616,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       ref={viewRef}
       className="pb-admin h-auto bg-admin-bg font-sans text-white lg:pb-12"
     >
-      <header className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
+      <header className="admin-topo-cabecalho flex h-[76px] items-center justify-between gap-3 px-5">
         <div className="min-w-0">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-orders"]} />
           <div className="mt-1 flex items-center gap-2">
@@ -1632,15 +1631,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            aria-label="Guia de Ajuda e Explicações"
-            title="Guia de Ajuda e Explicações"
-            onClick={() => setShowHelpModal(true)}
-            className={`${BOTAO_PEDIDOS} size-11 min-h-11 min-w-11 p-0`}
-          >
-            <HelpCircle aria-hidden="true" className="size-5" />
-          </button>
           <button
             type="button"
             aria-label={`Devoluções${devolucoesAbertas ? `, ${devolucoesAbertas} em andamento` : ""}`}
@@ -1676,15 +1666,34 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               onVerPedidos={irParaPedidosCancelados}
             />
           </div>
+          <button
+            type="button"
+            aria-label="Guia de Ajuda e Explicações"
+            title="Guia de Ajuda e Explicações"
+            onClick={() => setShowHelpModal(true)}
+            className={`${BOTAO_PEDIDOS} size-11 min-h-11 min-w-11 p-0`}
+          >
+            <HelpCircle aria-hidden="true" className="size-5" />
+          </button>
         </div>
       </header>
 
-      <div className="space-y-7 px-5 pt-3">
+      <div className="admin-topo-conteudo px-5">
         {active && (
-          <div className="space-y-3">
+          <div className="admin-topo-resumo">
             <LocalErrorBoundary>
               <MetricasDoPainel
                 titulo="Métricas de Pedidos"
+                nota={
+                  avisoPagamentoAConferir ? (
+                    <span role="status" data-aviso="pagamento-a-conferir">
+                      {avisoPagamentoAConferir}
+                    </span>
+                  ) : (
+                    "Para preparar: só pedidos com pagamento liberado."
+                  )
+                }
+                onEntender={() => setShowHelpModal(true)}
                 legendasDoResumo={[
                   "Para preparar",
                   "Aguardando pagamento",
@@ -1693,17 +1702,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 ]}
                 cards={kpiCards}
               />
-              <p className="mt-2 text-xs text-zinc-400">
-                Para preparar: só pedidos com pagamento liberado.
-              </p>
             </LocalErrorBoundary>
-            {avisoPagamentoAConferir && (
-              <div role="status" data-aviso="pagamento-a-conferir">
-                <SeloDeStatus tom="atencao" className="rounded-2xl text-left">
-                  {avisoPagamentoAConferir}
-                </SeloDeStatus>
-              </div>
-            )}
           </div>
         )}
         <BarraDeBusca
@@ -1734,7 +1733,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             dateRange.end ||
             canalFilter !== "all" ||
             paymentFilter !== "all") && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 gap-2">
               {[
                 {
                   ativo: Boolean(dateRange.start || dateRange.end),
@@ -2070,7 +2069,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         </Dialog>
 
         {/* Orders List */}
-        <div id="admin-pedidos-lista" className="relative">
+        <div id="admin-pedidos-lista" className="admin-topo-lista relative">
           {avisoDaAnulacao && (
             <div
               role="status"
@@ -2141,18 +2140,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             </p>
           )}
           {!isLoaded && (
-            <p role="status" className="mb-3 text-sm text-zinc-400">
+            <p role="status" className="sr-only">
               Carregando pedidos...
             </p>
           )}
           <LocalErrorBoundary>
             <div
               className={cn(
-                "relative min-h-[220px] space-y-6 transition-opacity duration-300",
+                "relative min-h-[220px] transition-opacity duration-300",
                 !isLoaded && "opacity-50 pointer-events-none",
               )}
             >
-              {isLoaded && showVisualLoading && (
+              {(!isLoaded || showVisualLoading) && (
                 <div className="admin-sync-progress-bar" />
               )}
               {!isLoaded && paginatedOrders.length === 0 ? (

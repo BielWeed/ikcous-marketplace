@@ -1,6 +1,6 @@
 import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Info } from "lucide-react";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import "./metricas-do-painel.css";
 
@@ -70,11 +70,15 @@ export function MetricasDoPainel({
   legendasDoResumo,
   cards,
   loading = false,
+  nota = titulo,
+  onEntender,
 }: {
   readonly titulo: string;
   readonly legendasDoResumo: readonly string[];
   readonly cards: readonly KpiCardConfig[];
   readonly loading?: boolean;
+  readonly nota?: ReactNode;
+  readonly onEntender?: () => void;
 }) {
   const [expandido, setExpandido] = useState(false);
   const esqueleto = (
@@ -89,22 +93,27 @@ export function MetricasDoPainel({
       aria-label={titulo}
       aria-busy={loading}
       data-expandido={expandido}
-      className="metricas-painel min-w-0"
+      className={cn(
+        "metricas-painel min-w-0",
+        expandido ? "h-[404px]" : "h-[148px]",
+      )}
     >
       {(loading || cards.every((card) => card.value === "—")) && (
-        <p
-          role="status"
-          className="mb-2 text-[11px] font-semibold text-zinc-400"
-        >
+        <p role="status" className="sr-only">
           Aguardando métricas
         </p>
       )}
-      <div className={expandido ? undefined : "metricas-painel-resumo"}>
+      <div className="metricas-painel-resumo h-full">
+        {!expandido && (
+          <div className="metricas-painel-nota h-7 truncate border-b border-admin-border px-3 text-[11px] leading-7">
+            {nota}
+          </div>
+        )}
         <div
           className={
             expandido
-              ? "mb-3 flex flex-wrap items-center justify-between gap-2"
-              : "metricas-painel-principais"
+              ? "metricas-painel-cabecalho flex items-center justify-between gap-2"
+              : "metricas-painel-principais h-[76px]"
           }
         >
           {expandido ? (
@@ -142,6 +151,16 @@ export function MetricasDoPainel({
               </div>
             ))
           )}
+          {expandido && onEntender && (
+            <button
+              type="button"
+              aria-label="Entender valores"
+              onClick={onEntender}
+              className={cn(BOTAO_METRICAS, "size-11 shrink-0 justify-center")}
+            >
+              <Info aria-hidden="true" className="size-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setExpandido(!expandido)}
@@ -168,13 +187,13 @@ export function MetricasDoPainel({
           </button>
         </div>
         {expandido ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="metricas-painel-grade grid grid-cols-2 gap-2.5">
             {cards.map((card) => (
               <article
                 key={card.label}
                 aria-label={card.label}
                 data-metrica
-                className="min-w-0 rounded-2xl bg-admin-surface p-3"
+                className="min-w-0 rounded-2xl bg-admin-surface p-2"
               >
                 <card.icon
                   aria-hidden="true"
@@ -189,15 +208,13 @@ export function MetricasDoPainel({
                 <p className="mt-2 break-words text-xs font-semibold text-zinc-100">
                   {card.label}
                 </p>
-                <p className="mt-2 break-words text-xs text-zinc-400">
-                  {card.subValue}
-                </p>
+                <p className="sr-only">{card.subValue}</p>
               </article>
             ))}
           </div>
         ) : (
-          <div className="metricas-painel-secundarias flex w-full flex-wrap text-xs text-zinc-400">
-            {cards.slice(2).map((card, i) => (
+          <div className="metricas-painel-secundarias flex h-10 w-full items-center gap-3 text-xs text-zinc-400">
+            {cards.slice(2, 4).map((card, i) => (
               <div
                 key={card.label}
                 role="group"
@@ -211,7 +228,7 @@ export function MetricasDoPainel({
                     card.accent,
                   )}
                 />
-                <div className="flex min-w-0 flex-wrap items-baseline gap-1">
+                <div className="flex min-w-0 items-baseline gap-1">
                   <p className="sr-only">{card.label}</p>
                   <span
                     aria-hidden="true"
@@ -226,6 +243,19 @@ export function MetricasDoPainel({
                 </div>
               </div>
             ))}
+            {onEntender && (
+              <button
+                type="button"
+                aria-label="Entender valores"
+                onClick={onEntender}
+                className={cn(
+                  BOTAO_METRICAS,
+                  "size-11 shrink-0 justify-center",
+                )}
+              >
+                <Info aria-hidden="true" className="size-4" />
+              </button>
+            )}
           </div>
         )}
       </div>

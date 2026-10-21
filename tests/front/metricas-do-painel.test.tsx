@@ -279,7 +279,12 @@ it("números e rótulos longos podem quebrar linha, sem truncar o resumo", async
     expect(valor.className).toContain("break-words");
     expect(valor.className).toContain("tabular-nums");
   }
-  expect(secao.innerHTML).not.toMatch(/truncate|line-clamp|whitespace-nowrap/);
+  expect(
+    secao.querySelector(".metricas-painel-principais")!.innerHTML,
+  ).not.toMatch(/truncate|line-clamp|whitespace-nowrap/);
+  expect(secao.querySelector(".metricas-painel-nota")!.className).toContain(
+    "truncate",
+  );
 });
 
 it("durante o carregamento de Produtos, reserva os valores sem afirmar números antes da resposta", async () => {

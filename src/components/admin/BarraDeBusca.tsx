@@ -153,7 +153,7 @@ export function BarraDeBusca({
   return (
     <div
       data-barra-de-busca
-      className="sticky top-0 z-30 -mx-5 space-y-2 border-b border-admin-border bg-admin-bg/95 px-5 py-2 backdrop-blur-md"
+      className="sticky top-0 z-30 -mx-5 h-[117px] shrink-0 space-y-2 border-b border-admin-border bg-admin-bg/95 px-5 py-2 backdrop-blur-md"
     >
       <div className="flex items-center gap-2">
         <div className="group relative min-w-0 flex-1">
@@ -217,11 +217,11 @@ export function BarraDeBusca({
         ref={faixaDeOpcoes}
         role="group"
         aria-label={grupo}
-        className="custom-scrollbar-hidden flex gap-2 overflow-x-auto"
+        className="custom-scrollbar-hidden flex h-11 gap-2 overflow-x-auto"
       >
         <OpcoesDaBusca opcoes={opcoes} />
+        {children}
       </div>
-      {children}
       {!onAbrirFiltros && (
         <Dialog open={aberta} onOpenChange={setAberta}>
           <DialogContent
