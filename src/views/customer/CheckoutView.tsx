@@ -112,7 +112,7 @@ import {
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
-import { arredondarParaCentavos, cn } from "@/lib/utils";
+import { arredondarParaCentavos, cn, formatCurrency } from "@/lib/utils";
 import type {
   Address,
   CartItem,
@@ -4692,8 +4692,8 @@ export function CheckoutViewDaConta({
         </h1>
         {valorFinalDiferenteDoCarrinho && (
           <p className="text-sm font-medium text-zinc-900">
-            Valor final do pedido: R${" "}
-            {valorDoPedido.toFixed(2).replace(".", ",")}
+            Valor final do pedido:{" "}
+            {formatCurrency(arredondarParaCentavos(valorDoPedido))}
           </p>
         )}
         <p className="text-xs text-zinc-500">

@@ -335,7 +335,7 @@ describe("CheckoutView — cartão pelo app", () => {
     expect(ultimas.orderId).toBe("ped-777");
   });
 
-  it.each([120.03, 119.97])(
+  it.each([120.03, 119.97, 1234.56])(
     "o pagamento usa o total gravado (%s), avisa a diferença e não o troca pelo carrinho limpo",
     async (totalAmount) => {
       createOrder.mockResolvedValueOnce({ id: "ped-777", totalAmount });
@@ -345,11 +345,14 @@ describe("CheckoutView — cartão pelo app", () => {
       await finalizar();
       expect(propsDoPagamento.at(-1)!.valor).toBe(totalAmount);
       const texto = hospedeiro.textContent?.replace(/\s/g, " ");
-      expect(texto).toContain(
-        totalAmount === 120.03
-          ? "Valor final do pedido: R$ 120,03"
-          : "Valor final do pedido: R$ 119,97",
-      );
+      // Mesmo formato do valor mostrado no cartão (formatCurrency): com
+      // separador de milhar a partir de R$ 1.000.
+      const esperado = new Map([
+        [120.03, "R$ 120,03"],
+        [119.97, "R$ 119,97"],
+        [1234.56, "R$ 1.234,56"],
+      ]).get(totalAmount);
+      expect(texto).toContain(`Valor final do pedido: ${esperado}`);
       await act(async () => {
         (propsDoPagamento.at(-1)!.onTrocarParaPix as (vivo: boolean) => void)(
           false,

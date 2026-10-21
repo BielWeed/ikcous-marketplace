@@ -177,6 +177,41 @@ describe("total do pagamento vem do pedido gravado", () => {
     expect(supabase.rpc).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["erro devolvido pelo banco (RLS)", "devolvido"],
+    ["leitura que lança (rede)", "lancado"],
+  ])(
+    "a causa original da leitura falha chega ao console.error: %s",
+    async (_nome, jeito) => {
+      const causa = { message: "new row violates RLS", code: "42501" };
+      if (jeito === "devolvido") {
+        lerPedido.mockResolvedValueOnce({ data: null, error: causa });
+      } else {
+        lerPedido.mockRejectedValueOnce(causa);
+      }
+      const registro = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const { createOrder } = useOrders(false, false);
+        const erro = await createOrder(DADOS_MINIMOS, {
+          comPagamentoOnline: true,
+        }).catch((e: unknown) => e);
+        // O fluxo não muda: continua bloqueando com o mesmo código.
+        expect(erro).toMatchObject({ code: "TOTAL_DO_PEDIDO_INDISPONIVEL" });
+        expect((erro as { cause?: unknown }).cause).toBe(causa);
+        // E a causa original é o que o log recebe.
+        const registrados = registro.mock.calls.flat();
+        expect(
+          registrados.some(
+            (arg) =>
+              arg === causa || (arg as { cause?: unknown })?.cause === causa,
+          ),
+        ).toBe(true);
+      } finally {
+        registro.mockRestore();
+      }
+    },
+  );
+
   it("pedido na entrega não faz a leitura adicional", async () => {
     const { createOrder } = useOrders(false, false);
     await createOrder(DADOS_MINIMOS);

@@ -3942,15 +3942,23 @@ export function useOrders(
               !Number.isFinite(Number(total)) ||
               Number(total) <= 0
             ) {
-              throw new Error("Total indisponível");
+              throw Object.assign(new Error("Total indisponível"), {
+                cause: erroDaLeitura ?? undefined,
+              });
             }
             totalAmount = Number(total);
-          } catch {
+          } catch (causa: any) {
             // O pedido JÁ nasceu: não voltar ao total do cliente nem permitir
             // outra finalização. A tela encaminha à retomada em Meus pedidos.
+            // A causa original (RLS, rede) vai em `cause`, para o
+            // console.error do catch externo mostrá-la: só o erro do banco ou
+            // da rede, nunca o pedido nem os dados do cliente.
             throw Object.assign(
               new Error("Não foi possível conferir o valor final do pedido."),
-              { code: "TOTAL_DO_PEDIDO_INDISPONIVEL" },
+              {
+                code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+                cause: causa?.cause ?? causa,
+              },
             );
           }
         }

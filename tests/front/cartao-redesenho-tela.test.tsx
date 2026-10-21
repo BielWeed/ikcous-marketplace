@@ -405,7 +405,7 @@ describe("tela do cartão redesenhada", () => {
         nome: "cartão desabilitado",
         motivo: "Cartão desabilitado. Fale com o seu banco.",
         titulo:
-          "Este cartão não aceita compras online; use outro cartão ou PIX",
+          "Este cartão ainda não está liberado para compras online. Fale com o seu banco ou escolha outra forma de pagamento.",
         outroCartao: true,
       },
       {
@@ -452,7 +452,7 @@ describe("tela do cartão redesenhada", () => {
     it.each([
       [
         "Cartão desabilitado. Fale com o seu banco.",
-        "Este cartão não aceita compras online; use outro cartão ou PIX",
+        "Este cartão ainda não está liberado para compras online. Fale com o seu banco ou escolha outra forma de pagamento.",
       ],
       [
         "Esse parcelamento não está disponível para este cartão.",

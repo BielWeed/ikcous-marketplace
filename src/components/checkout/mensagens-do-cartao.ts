@@ -104,7 +104,7 @@ export const TEXTOS_DO_CARTAO = {
   parcelamento:
     "Este parcelamento não está disponível. Escolha menos parcelas ou use outro cartão.",
   desabilitado:
-    "Este cartão não aceita compras online; use outro cartão ou PIX",
+    "Este cartão ainda não está liberado para compras online. Fale com o seu banco ou escolha outra forma de pagamento.",
   recusaGeral:
     "Não conseguimos concluir este pagamento. Nenhum valor foi cobrado",
   cargaFalhou: "Não foi possível carregar o formulário do cartão",
