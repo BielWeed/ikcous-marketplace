@@ -34,7 +34,7 @@ interface AdminNotificationsViewProps {
 
 const FOCO =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
-const SECUNDARIO = `flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1E1E24] px-3 py-2 text-xs font-semibold text-zinc-100 transition-colors hover:bg-[#26262E] ${FOCO}`;
+const SECUNDARIO = `flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-xs font-semibold text-zinc-100 transition-colors hover:bg-admin-hover ${FOCO}`;
 
 /**
  * O que cada tipo de aviso veste. Tabela em vez de uma escada de `if`: o
@@ -130,7 +130,7 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
   }
 
   return (
-    <article className="break-words rounded-2xl border border-white/10 bg-[#17171C]">
+    <article className="break-words rounded-2xl border border-admin-border bg-admin-raised">
       <h3>
         <button
           ref={botaoDoCartao}
@@ -175,7 +175,7 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
       <div
         id={conteudoId}
         hidden={!aberta}
-        className="mx-3.5 space-y-3 border-t border-white/10 py-3.5"
+        className="mx-3.5 space-y-3 border-t border-admin-border py-3.5"
       >
         {grupos.map(({ titulo, itens }) =>
           itens.length > 0 ? (
@@ -299,8 +299,8 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
         privacidade
           ? "border-rose-300/20 bg-gradient-to-b from-[#25191D] to-[#151115]"
           : orientacao
-            ? "border-rose-300/20 bg-gradient-to-b from-[#23171F] to-[#101013]"
-            : "border-white/10 bg-[#101013]"
+            ? "border-rose-300/20 bg-gradient-to-b from-[#23171F] to-admin-surface"
+            : "border-admin-border bg-admin-surface"
       }`}
     >
       <div className="mb-2 flex items-start gap-2">
@@ -463,8 +463,8 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
   const deOlho = avisos.filter((aviso) => !aviso.contaNoCracha);
 
   return (
-    <div className="pb-admin min-h-screen bg-[#08080A] text-zinc-50 duration-200 animate-in fade-in lg:pb-12">
-      <div className="sticky top-0 z-20 bg-[#08080A]/95 px-5 py-4 backdrop-blur-xl">
+    <div className="pb-admin min-h-screen bg-admin-bg text-zinc-50 duration-200 animate-in fade-in lg:pb-12">
+      <div className="sticky top-0 z-20 bg-admin-bg/95 px-5 py-4 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="flex size-8 items-center justify-center rounded-lg border border-admin-gold/30 bg-admin-gold/10 text-admin-gold">
@@ -513,7 +513,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
               titulo?.scrollIntoView({ block: "start" });
               titulo?.focus();
             }}
-            className={`flex min-h-11 w-full items-center gap-2 rounded-2xl border border-white/10 bg-[#17171C] px-3 py-2 text-left text-sm text-violet-300 ${FOCO}`}
+            className={`flex min-h-11 w-full items-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-left text-sm text-violet-300 ${FOCO}`}
           >
             <Sparkles aria-hidden="true" className="size-5 shrink-0" />
             <span className="min-w-0 flex-1">
@@ -588,7 +588,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
           escolheu dizer a verdade; a tela nao pode desmentir a fonte dela.
         */}
         {avisos.length === 0 && !carregando && fontesComFalha.length === 0 && (
-          <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/10 bg-gradient-to-b from-emerald-400/10 to-[#101013] px-6 py-8 text-center">
+          <div className="flex flex-col items-center gap-4 rounded-3xl border border-admin-border bg-gradient-to-b from-emerald-400/10 to-admin-surface px-6 py-8 text-center">
             <div className="flex size-14 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
               <CheckCircle2 aria-hidden="true" className="size-6" />
             </div>

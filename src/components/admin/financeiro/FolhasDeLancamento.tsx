@@ -156,7 +156,7 @@ export function DetalheDoLancamentoFolha({
     >
       <div className="flex flex-col gap-5">
         <div className="flex items-center gap-3">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-admin-border bg-white/5">
             <IconeDaOrigem
               origem={linha.origem}
               tipo={linha.tipo}
@@ -202,7 +202,7 @@ export function DetalheDoLancamentoFolha({
         </dl>
 
         {doPedido ? (
-          <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-xs text-zinc-400">
+          <p className="flex items-start gap-2 rounded-xl border border-admin-border bg-admin-surface p-3 text-xs text-zinc-400">
             <Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
             Este valor vem do pedido — o Financeiro só lê. Para mudar, mexa no
             pedido (pagamento, estorno ou devolução).
@@ -352,7 +352,7 @@ export function BaixarLancamentoFolha({
       }
     >
       <div className="flex flex-col gap-4">
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+        <div className="rounded-2xl border border-admin-border bg-admin-surface p-4">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
             Valor · baixa integral
           </p>
@@ -473,7 +473,7 @@ export function CancelarLancamentoDialogo({
         if (!aberto) aoFechar();
       }}
     >
-      <AlertDialogContent className="z-[130] max-w-md rounded-3xl border border-white/10 bg-[#17171C] p-5 text-white">
+      <AlertDialogContent className="z-[130] max-w-md rounded-3xl border border-admin-border bg-admin-raised p-5 text-white">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-3 text-xl font-bold text-white">
             <X aria-hidden="true" className="size-7 shrink-0 text-red-400" />

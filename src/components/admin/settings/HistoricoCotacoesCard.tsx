@@ -222,7 +222,7 @@ export const HistoricoCotacoesSection = memo(
             Nenhuma cotação registrada recentemente.
           </p>
         ) : (
-          <div className="rounded-2xl border border-white/5 bg-zinc-950/60 sm:overflow-x-auto">
+          <div className="rounded-2xl border border-admin-border bg-zinc-950/60 sm:overflow-x-auto">
             {/* J5 (celular): abaixo de `sm:` cada consulta é um BLOCO (grade de
               duas colunas: Quando · Status / CEP · Transportadora / Tempo) e
               a tabela não rola na lateral; de `sm:` para cima volta a ser
@@ -240,7 +240,7 @@ export const HistoricoCotacoesSection = memo(
               >
                 <tr
                   {...papel("row")}
-                  className="border-b border-white/5 text-[11px] font-black uppercase tracking-wide text-zinc-500 sm:table-row"
+                  className="border-b border-admin-border text-[11px] font-black uppercase tracking-wide text-zinc-500 sm:table-row"
                 >
                   <th {...papel("columnheader")} className="p-2.5">
                     Quando
@@ -261,13 +261,13 @@ export const HistoricoCotacoesSection = memo(
               </thead>
               <tbody
                 {...papel("rowgroup")}
-                className="block text-zinc-300 sm:table-row-group sm:divide-y sm:divide-white/5"
+                className="block text-zinc-300 sm:table-row-group sm:divide-y sm:divide-admin-border-strong"
               >
                 {grupos.map(({ log, repeticoes }) => (
                   <Fragment key={log.id}>
                     <tr
                       {...papel("row")}
-                      className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-white/5 px-3 pb-1 pt-3 first:border-t-0 hover:bg-white/5 sm:table-row sm:border-t-0 sm:p-0"
+                      className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-admin-border px-3 pb-1 pt-3 first:border-t-0 hover:bg-white/5 sm:table-row sm:border-t-0 sm:p-0"
                     >
                       <td
                         {...papel("cell")}

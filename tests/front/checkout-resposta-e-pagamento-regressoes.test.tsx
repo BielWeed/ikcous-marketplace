@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigDoCartao } from "@/lib/config-do-cartao";
 import type { CartItem } from "@/types";
 
-const createOrder = vi.fn().mockResolvedValue({ id: "ped-777" });
+const createOrder = vi
+  .fn()
+  .mockResolvedValue({ id: "ped-777", totalAmount: 120 });
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const limparCarrinho = vi.fn();
@@ -245,7 +247,7 @@ function respostaPendente() {
 describe("CheckoutView — resposta atrasada, centavos e reserva por método", () => {
   beforeEach(() => {
     createOrder.mockReset();
-    createOrder.mockResolvedValue({ id: "ped-777" });
+    createOrder.mockResolvedValue({ id: "ped-777", totalAmount: 120 });
     limparCarrinho.mockReset();
     limparCarrinho.mockImplementation(() => {
       mockCart = [];
@@ -421,6 +423,7 @@ describe("CheckoutView — resposta atrasada, centavos e reserva por método", (
   });
 
   it("cupom de meio centavo envia 9,60 ao pedido e ao pagamento", async () => {
+    createOrder.mockResolvedValueOnce({ id: "ped-777", totalAmount: 9.6 });
     mockCartTotal = 10.1;
     mockShippingFee = 0;
     mockSelectedShippingOption = { ...ENTREGA_LOCAL, price: 0 };

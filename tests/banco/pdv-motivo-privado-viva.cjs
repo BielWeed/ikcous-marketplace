@@ -624,6 +624,11 @@ async function main() {
   await c.connect();
   const resultados = [];
   try {
+    await c.query("BEGIN");
+    await require("./pdv-total-conferido-posterior.cjs").desfazerTotalConferidoNaTransacao(
+      c,
+    );
+    await c.query("COMMIT");
     assert.equal(
       (await catalogo(c)).hash,
       HASH,

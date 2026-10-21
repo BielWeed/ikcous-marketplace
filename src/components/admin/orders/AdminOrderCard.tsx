@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { PerguntaDoRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import {
   OrderStatusBadge,
@@ -71,7 +72,7 @@ interface AdminOrderCardProps {
 
 const FOCO =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
-const SECUNDARIO = `relative z-10 flex min-h-11 items-center justify-center gap-2 whitespace-normal rounded-2xl border border-white/10 bg-[#1E1E24] px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-[#26262E] disabled:cursor-not-allowed disabled:text-zinc-400 ${FOCO}`;
+const SECUNDARIO = `relative z-10 flex min-h-11 items-center justify-center gap-2 whitespace-normal rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-admin-hover disabled:cursor-not-allowed disabled:text-zinc-400 ${FOCO}`;
 const PRINCIPAL = `${SECUNDARIO} min-h-14 border-[#F6D365]/50 bg-gradient-to-b from-[#F6D365] to-[#E4AD18] text-[#211A05] hover:brightness-105`;
 const PERIGO = `${SECUNDARIO} border-red-300/15 bg-red-400/10 text-red-300 hover:bg-red-400/20`;
 const ETAPAS: readonly OrderStatus[] = [
@@ -242,10 +243,10 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     <article
       data-testid="pedido-card"
       className={cn(
-        "relative flex h-full min-w-0 flex-col break-words rounded-[24px] border bg-[#101013] p-3 text-zinc-100",
+        "relative flex h-full min-w-0 flex-col break-words rounded-[24px] border bg-admin-surface p-3 text-zinc-100",
         changeType
           ? "border-sky-300/60 ring-1 ring-sky-300/30"
-          : "border-white/10",
+          : "border-admin-border",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -300,7 +301,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           <LazyImage
             src={itens[0].image}
             alt={itens[0].name}
-            className="size-11 shrink-0 rounded-2xl border border-white/10 object-cover"
+            className="size-11 shrink-0 rounded-2xl border border-admin-border object-cover"
           />
         ) : (
           <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-indigo-300/20 bg-indigo-300/10 text-indigo-300">
@@ -323,7 +324,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
         />
       </button>
       {grande && itens.length > 0 && (
-        <ul className="mb-2 space-y-1.5 rounded-2xl border border-white/10 bg-[#17171C] p-3 text-sm text-zinc-200">
+        <ul className="mb-2 space-y-1.5 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm text-zinc-200">
           {itens.slice(0, 3).map((item, i) => (
             <li
               key={`${item.productId}-${item.variantId ?? i}`}
@@ -488,7 +489,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             evento.preventDefault();
             menuRef.current?.focus();
           }}
-          className="fixed bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] w-full max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-white/15 bg-[#17171C] p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
+          className="fixed bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] w-full max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-admin-border-strong bg-admin-raised p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
         >
           <span
             aria-hidden="true"
@@ -510,7 +511,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             {nome} · #{numero} · R$ {total}
           </DialogDescription>
           {painel === "acoes" ? (
-            <div className="space-y-2 border-t border-white/10 pt-2">
+            <div className="space-y-2 border-t border-admin-border pt-2">
               {[
                 {
                   label: "Ver detalhes",
@@ -615,7 +616,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
               onAnularVenda ? (
                 <fieldset
                   disabled={isOffline}
-                  className="space-y-2 rounded-2xl border border-white/10 p-3 [&_button]:min-h-11 [&_textarea]:text-sm"
+                  className="space-y-2 rounded-2xl border border-admin-border p-3 [&_button]:min-h-11 [&_textarea]:text-sm"
                 >
                   {!anulada && !anulando && (
                     <p className="text-xs text-zinc-400">
@@ -650,6 +651,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 </button>
               )}
             </div>
+          ) : painel === "receber" ? (
+            <PerguntaDoRecebimento
+              total={order.total || 0}
+              disabled={bloqueado || !faltaReceber}
+              aoCancelar={() => setPainel(null)}
+              aoConfirmar={() => void executar(undefined, true)}
+            />
           ) : (
             <>
               <h3 className="text-lg font-bold">
@@ -694,18 +702,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 <button
                   type="button"
                   disabled={
-                    bloqueado ||
-                    (painel === "cancelar" && !podeCancelar) ||
-                    (painel === "receber" && !faltaReceber)
+                    bloqueado || (painel === "cancelar" && !podeCancelar)
                   }
                   onClick={() =>
                     void executar(
-                      painel === "cancelar"
-                        ? "cancelled"
-                        : painel === "receber"
-                          ? undefined
-                          : destinoConfirmado,
-                      painel === "receber" || painel === "entregar",
+                      painel === "cancelar" ? "cancelled" : destinoConfirmado,
+                      painel === "entregar",
                     )
                   }
                   className={
@@ -742,7 +744,7 @@ export function AdminOrderCardSkeleton({
   return (
     <div
       aria-hidden="true"
-      className="space-y-3 rounded-[24px] border border-white/10 bg-[#101013] p-3"
+      className="space-y-3 rounded-[24px] border border-admin-border bg-admin-surface p-3"
     >
       <div className="flex justify-between">
         <Skeleton className="h-5 w-28 rounded-full" />

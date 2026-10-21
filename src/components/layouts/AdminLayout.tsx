@@ -1,4 +1,5 @@
 import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
+import { useTemaDoPainelNaRaiz } from "@/components/admin/temaDoPainel";
 import {
   ContextoDaBarra,
   useBarraAcoplada,
@@ -59,6 +60,9 @@ import {
   WifiOff,
 } from "lucide-react";
 import React from "react";
+
+import "./temas-do-painel.css";
+import "./temas-do-painel-cores.css";
 
 /**
  * Pedidos que ainda exigem ação do lojista — alias de `STATUS_PARA_PREPARAR`
@@ -133,12 +137,9 @@ export function AdminLayout({
   const { loadOrders } = useOrders(false, true);
   const { isLeader } = useLeaderElection();
 
-  React.useEffect(() => {
-    document.documentElement.classList.add("admin-mode");
-    return () => {
-      document.documentElement.classList.remove("admin-mode");
-    };
-  }, []);
+  // `admin-mode` + o tema escolhido (Escuro/Claro/Confortável) na <html>, antes da
+  // primeira pintura; ao sair do painel os dois saem (a vitrine nunca os recebe).
+  useTemaDoPainelNaRaiz();
 
   const [pendingOrdersCount, setPendingOrdersCount] = React.useState(0);
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
@@ -807,7 +808,7 @@ export function AdminLayout({
     ContextoDaBarra.Provider,
     { value: barraAcoplada },
     <div
-      className="flex size-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-50 lg:flex-row"
+      className="flex size-full flex-col overflow-hidden bg-admin-bg font-sans text-zinc-50 lg:flex-row"
       style={
         {
           // iPhone instalado: o app desenha por baixo da barra de status/notch
@@ -823,7 +824,7 @@ export function AdminLayout({
     >
       {/* No computador, os mesmos destinos e estados ficam na lateral. */}
       <aside
-        className="z-50 hidden w-64 shrink-0 flex-col justify-between gap-6 overflow-y-auto border-r border-white/5 bg-[#101013] p-5 lg:flex"
+        className="z-50 hidden w-64 shrink-0 flex-col justify-between gap-6 overflow-y-auto border-r border-admin-border bg-admin-nav p-5 lg:flex"
         style={
           {
             viewTransitionName: isViewTransitionSupported
@@ -858,10 +859,10 @@ export function AdminLayout({
               onMouseLeave={handleMouseLeave}
               onTouchStart={() => handleMouseEnter("admin-pdv", true)}
               className={cn(
-                "mb-3 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-white/10 px-3 text-left text-sm font-semibold transition-transform active:scale-95",
+                "mb-3 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-admin-border-strong px-3 text-left text-sm font-semibold transition-transform active:scale-95",
                 currentView === "admin-pdv"
                   ? "bg-[#3B3016] text-admin-gold"
-                  : "bg-[#17171C] text-zinc-50",
+                  : "bg-admin-raised text-zinc-50",
               )}
             >
               <span
@@ -942,7 +943,7 @@ export function AdminLayout({
             }}
             onMouseEnter={() => handleMouseEnter(parentView as any)}
             onMouseLeave={handleMouseLeave}
-            className="min-h-11 w-full justify-start gap-3 rounded-2xl border border-white/10 bg-[#17171C] px-3 text-xs text-zinc-50"
+            className="min-h-11 w-full justify-start gap-3 rounded-2xl border border-admin-border-strong bg-admin-raised px-3 text-xs text-zinc-50"
           >
             <ArrowLeft aria-hidden="true" className="size-5 text-violet-300" />
             {isSubView ? "Voltar" : "Perfil"}
@@ -961,7 +962,7 @@ export function AdminLayout({
             }}
             onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
             onMouseLeave={handleMouseLeave}
-            className="relative min-h-11 w-full justify-start gap-3 rounded-2xl border border-white/10 bg-[#17171C] px-3 text-xs text-zinc-50"
+            className="relative min-h-11 w-full justify-start gap-3 rounded-2xl border border-admin-border-strong bg-admin-raised px-3 text-xs text-zinc-50"
           >
             <Bell
               aria-hidden="true"
@@ -990,7 +991,7 @@ export function AdminLayout({
             a lista rola por baixo dele (mesmo caso da barra inferior); com
             95% + blur o texto de baixo ainda se lia atrás dos títulos. */}
         <header
-          className="sticky top-0 z-50 flex-shrink-0 border-b border-white/5 bg-[#101013] px-5 py-0 shadow-md lg:border-0 lg:shadow-none"
+          className="sticky top-0 z-50 flex-shrink-0 border-b border-admin-border bg-admin-nav px-5 py-0 shadow-md lg:border-0 lg:shadow-none"
           style={
             {
               viewTransitionName: isViewTransitionSupported
@@ -1013,7 +1014,7 @@ export function AdminLayout({
                 }}
                 onMouseEnter={() => handleMouseEnter(parentView as any)}
                 onMouseLeave={handleMouseLeave}
-                className="min-h-11 min-w-11 shrink-0 gap-1.5 rounded-full border border-white/10 bg-[#17171C] px-2 text-xs font-semibold text-zinc-50 hover:bg-[#26262E]"
+                className="min-h-11 min-w-11 shrink-0 gap-1.5 rounded-full border border-admin-border-strong bg-admin-raised px-2 text-xs font-semibold text-zinc-50 hover:bg-admin-hover"
               >
                 <span className="flex size-6 items-center justify-center rounded-full border border-violet-300/20 bg-violet-300/10">
                   <ArrowLeft
@@ -1059,7 +1060,7 @@ export function AdminLayout({
                     className={
                       naoConseguiuConferirAvisos
                         ? "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1 text-[11px] font-bold text-white"
-                        : "absolute right-0 top-0 size-2 animate-pulse rounded-full bg-red-500 ring-2 ring-[#101013]"
+                        : "absolute right-0 top-0 size-2 animate-pulse rounded-full bg-red-500 ring-2 ring-admin-nav"
                     }
                   >
                     {naoConseguiuConferirAvisos ? "!" : null}
@@ -1070,7 +1071,7 @@ export function AdminLayout({
 
             {/* Row 2: Coupled Sub-Header Bar (Admin Banners) */}
             {currentView === "admin-banners" && (
-              <div className="border-t border-white/5 py-2">
+              <div className="border-t border-admin-border py-2">
                 <div className="flex min-h-14 items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-pink-300/20 bg-pink-300/10 text-pink-300">
@@ -1096,7 +1097,7 @@ export function AdminLayout({
                     className={cn(
                       "flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-bold transition-transform active:scale-95",
                       isOffline
-                        ? "border border-white/15 bg-[#1E1E24] text-[#A1A1AD]"
+                        ? "border border-admin-border-strong bg-admin-raised text-[#A1A1AD]"
                         : "bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] text-[#1B1300] shadow-lg",
                     )}
                   >
@@ -1123,7 +1124,7 @@ export function AdminLayout({
 
             {/* Row 2: Coupled Sub-Header Bar (Admin Carousels) */}
             {currentView === "admin-carousels" && (
-              <div className="flex min-h-11 items-center gap-2 border-t border-white/5 py-2">
+              <div className="flex min-h-11 items-center gap-2 border-t border-admin-border py-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-violet-300/20 bg-violet-300/10 text-violet-300">
                     <Layers className="size-3" />
@@ -1180,7 +1181,7 @@ export function AdminLayout({
                 haptic.light();
                 onNavigate(notificationBellTarget);
               }}
-              className="min-h-11 rounded-xl border border-white/15 bg-[#1E1E24] px-4 font-semibold text-zinc-50"
+              className="min-h-11 rounded-xl border border-admin-border-strong bg-admin-raised px-4 font-semibold text-zinc-50"
             >
               Ver avisos
             </button>
@@ -1189,7 +1190,7 @@ export function AdminLayout({
 
         {/* Main Content Area */}
         <main
-          className="w-full flex-1 overflow-x-hidden bg-[#09090b]"
+          className="w-full flex-1 overflow-x-hidden bg-admin-bg"
           style={
             {
               viewTransitionName: isViewTransitionSupported
@@ -1242,7 +1243,7 @@ export function AdminLayout({
               exit={{ y: 120, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
               aria-label="Navegação inferior do painel"
-              className="fixed inset-x-5 z-[60] mx-auto max-w-lg rounded-[2rem] border border-white/15 bg-[#141418] shadow-[0_12px_28px_rgba(0,0,0,0.6)] lg:hidden"
+              className="fixed inset-x-5 z-[60] mx-auto max-w-lg rounded-[2rem] border border-admin-border-strong bg-admin-nav shadow-[0_12px_28px_rgba(0,0,0,0.6)] lg:hidden"
               style={
                 {
                   bottom: `calc(0.75rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)) * 0.5)`,
@@ -1307,7 +1308,7 @@ export function AdminLayout({
                         pendingOrdersCount > 0 && (
                           <span
                             aria-hidden="true"
-                            className="absolute -top-2 right-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1 text-[11px] font-bold text-white ring-2 ring-[#141418]"
+                            className="absolute -top-2 right-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1 text-[11px] font-bold text-white ring-2 ring-admin-nav"
                           >
                             {pendingOrdersCount > 99
                               ? "99+"

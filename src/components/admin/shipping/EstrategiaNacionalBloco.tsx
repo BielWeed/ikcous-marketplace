@@ -150,7 +150,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
               className={`flex min-h-11 items-start gap-2.5 rounded-xl border px-4 py-3 text-left transition-colors duration-200 disabled:pointer-events-none disabled:opacity-50 ${
                 ativo
                   ? "border-admin-accent/70 bg-admin-accent/10"
-                  : "border-white/10 hover:border-white/25"
+                  : "border-admin-border hover:border-white/25"
               }`}
             >
               <span
@@ -187,7 +187,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
       {/* Tipo do desconto — pills próprias, FORA do radiogroup da estratégia
           (dois grupos de radio distintos, cada um com sua semântica). */}
       {ehDesconto && (
-        <div className="border-t border-white/5 pb-1 pt-4 duration-200 animate-in fade-in">
+        <div className="border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">
           <div
             role="radiogroup"
             aria-label="Tipo de desconto"
@@ -206,7 +206,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                   className={`min-h-11 rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                     ativo
                       ? "border-admin-accent/70 bg-admin-accent/10 text-zinc-100"
-                      : "border-white/10 text-zinc-400 hover:border-white/25"
+                      : "border-admin-border text-zinc-400 hover:border-white/25"
                   }`}
                 >
                   {tipo === "percentual" ? "Percentual" : "Valor fixo"}
@@ -216,7 +216,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2">
+            <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2">
               {tipoDesconto === "fixo" && (
                 <span className="text-xs font-semibold text-zinc-500">R$</span>
               )}
@@ -246,7 +246,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
           </div>
 
           {tipoDesconto !== null && valorDesconto > 0 && (
-            <div className="mt-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+            <div className="mt-4 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
               <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                 Prévia (exemplo)
               </p>
@@ -276,8 +276,8 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
 
       {/* Mínimo — "acima de X" obrigatório, mínimo do desconto opcional. */}
       {mostraMinimo && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/5 pb-1 pt-4 duration-200 animate-in fade-in">
-          <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">
+          <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2">
             <span className="text-xs font-semibold text-zinc-500">R$</span>
             <input
               id="frete-nacional-minimo"
@@ -305,7 +305,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
       {/* Alcance — só para as estratégias de GRÁTIS; o desconto é sempre
           "mais barata" por definição. */}
       {mostraAlcance && (
-        <div className="border-t border-white/5 pb-1 pt-4 duration-200 animate-in fade-in">
+        <div className="border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">
           <div
             role="radiogroup"
             aria-label="Alcance do frete grátis nacional"
@@ -327,7 +327,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                   className={`min-h-11 rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                     ativo
                       ? "border-admin-accent/70 bg-admin-accent/10 text-zinc-100"
-                      : "border-white/10 text-zinc-400 hover:border-white/25"
+                      : "border-admin-border text-zinc-400 hover:border-white/25"
                   }`}
                 >
                   {a.nome}

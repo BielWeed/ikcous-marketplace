@@ -137,7 +137,7 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
       .querySelector("h3")!
       .closest(".group")!
       .className.split(/\s+/);
-    expect(classes).toContain("bg-zinc-900/70");
+    expect(classes).toContain("bg-admin-surface");
     expect(classes).toContain("bg-gradient-to-b");
   });
 

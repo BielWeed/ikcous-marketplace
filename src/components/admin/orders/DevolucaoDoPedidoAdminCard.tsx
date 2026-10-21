@@ -35,14 +35,14 @@ export function DevolucaoDoPedidoAdminCard({
 
   if (erro) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 text-white">
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-white">
         <p className="text-xs font-medium text-zinc-400">
           Não consegui conferir as devoluções deste pedido.
         </p>
         <button
           type="button"
           onClick={recarregar}
-          className="min-h-11 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-medium text-zinc-200"
+          className="min-h-11 shrink-0 rounded-xl border border-admin-border bg-white/5 px-3 text-xs font-medium text-zinc-200"
         >
           Tentar de novo
         </button>
@@ -60,7 +60,7 @@ export function DevolucaoDoPedidoAdminCard({
   return (
     <section
       data-testid="devolucao-do-pedido-admin"
-      className="space-y-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 text-white sm:p-5"
+      className="space-y-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-white sm:p-5"
     >
       <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-200">
         <RotateCcw className="size-4" />
@@ -79,7 +79,7 @@ export function DevolucaoDoPedidoAdminCard({
                   "group flex min-h-11 w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-default",
                   d.status === "solicitada"
                     ? "border-amber-500/30 bg-amber-500/[0.06]"
-                    : "border-white/5 bg-zinc-950/40 hover:border-white/10",
+                    : "border-admin-border bg-zinc-950/40 hover:border-admin-border-strong",
                 )}
               >
                 <div className="min-w-0 flex-1 space-y-1">

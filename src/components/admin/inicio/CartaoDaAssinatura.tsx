@@ -172,7 +172,7 @@ export function CartaoDaAssinatura({
         ) : null}
         {recursosVisiveis.length > 0 ? (
           <ul
-            className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4"
+            className="grid grid-cols-2 gap-3 border-t border-admin-border pt-4"
             aria-label="Recursos do plano"
           >
             {recursosVisiveis.map((recurso) => (

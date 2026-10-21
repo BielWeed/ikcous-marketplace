@@ -243,6 +243,14 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       montarProduto({});
       await montar();
 
+      const rodape = hospedeiro.querySelector(".metricas-painel-secundarias")!;
+      expect(rodape.textContent).toContain("Produtos no Catálogo");
+      expect(rodape.textContent).toContain("130,2%");
+      expect(
+        hospedeiro
+          .querySelector('section[aria-label="Métricas de Produtos"]')!
+          .getAttribute("data-expandido"),
+      ).toBe("false");
       const tela = hospedeiro.textContent ?? "";
       expect(tela).toContain("Lucro sobre o custo");
       expect(tela).toContain("130,2%");
@@ -261,7 +269,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
     async function faturamento() {
       if (!document.querySelector('[role="dialog"]')) {
         const abrir = [...hospedeiro.querySelectorAll("button")].find(
-          (botao) => botao.textContent?.trim() === "Entender valores",
+          (botao) => botao.getAttribute("aria-label") === "Entender valores",
         );
         expect(abrir).toBeDefined();
         await act(async () => abrir!.click());
@@ -272,6 +280,17 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
     it("resumo usa a mesma base do lucro e o total do estoque fica nos detalhes", async () => {
       montarProduto({ price: 15, stock: 2, costPrice: null });
       await montar();
+      expect(
+        hospedeiro.querySelector(".metricas-painel-secundarias")!.textContent,
+      ).toContain("130,2%");
+      expect(
+        hospedeiro.querySelector('[aria-label="Venda prevista (com custo)"]'),
+      ).toBeNull();
+      await act(async () =>
+        hospedeiro
+          .querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!
+          .click(),
+      );
       expect(
         hospedeiro.querySelector('[aria-label="Venda prevista (com custo)"]')
           ?.textContent,
@@ -506,7 +525,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       expect(atalho).not.toBeNull();
       expect(metricas.hidden).toBe(false);
       expect(metricas.closest("[hidden]")).toBeNull();
-      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(6);
+      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(4);
       expect(metricas.querySelectorAll("article")).toHaveLength(0);
       expect(atalho?.textContent).toContain("Expandir");
       expect(atalho?.getAttribute("aria-expanded")).toBe("false");
@@ -525,21 +544,25 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         "Lucro sobre o custo",
         "Produtos no Catálogo",
       ]);
-      const recolher = metricas.querySelector<HTMLButtonElement>("button");
+      const recolher = metricas.querySelector<HTMLButtonElement>(
+        "button[aria-expanded]",
+      );
       expect(recolher?.textContent).toContain("Recolher");
       expect(recolher?.getAttribute("aria-expanded")).toBe("true");
-      expect(metricas.querySelectorAll("button")).toHaveLength(1);
+      expect(metricas.querySelectorAll("button[aria-expanded]")).toHaveLength(
+        1,
+      );
       await act(async () => recolher?.click());
       expect(metricas.hidden).toBe(false);
       expect(metricas.querySelectorAll("article")).toHaveLength(0);
-      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(6);
+      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(4);
       expect(
-        metricas.querySelector("button")?.getAttribute("aria-expanded"),
+        metricas
+          .querySelector("button[aria-expanded]")
+          ?.getAttribute("aria-expanded"),
       ).toBe("false");
       expect(
-        hospedeiro.querySelector(
-          'button[title="Guia Completo de Métricas e Ajuda"]',
-        ),
+        hospedeiro.querySelector('button[aria-label="Guia e simulador"]'),
       ).not.toBeNull();
     });
 
@@ -591,7 +614,13 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         const item = cartao(modo);
         expect(hospedeiro.textContent).toContain("Sem conexão com o servidor");
         expect(hospedeiro.textContent).toContain(
-          "voltam quando a internet voltar",
+          "ações indisponíveis até a internet voltar",
+        );
+        const nota = hospedeiro.querySelector(".metricas-painel-nota")!;
+        expect(nota.textContent).toContain("1 produto sem custo");
+        expect(nota.querySelector(".text-amber-400 svg")).not.toBeNull();
+        expect(nota.querySelector(".text-amber-400")!.className).toContain(
+          "leading-5",
         );
         for (const nome of ["Ações de", "Editar", "Pausar"]) {
           const botao = item.querySelector<HTMLButtonElement>(
@@ -839,13 +868,12 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       ].filter(
         (botao) =>
           botao.textContent?.trim() === "Guia e simulador" ||
-          botao.getAttribute("aria-label") ===
-            "Guia Completo de Métricas e Ajuda",
+          botao.getAttribute("aria-label") === "Guia e simulador",
       );
       expect(acessos).toHaveLength(1);
       const acesso = acessos.at(0);
       if (!acesso) throw new Error("Acesso ao guia ausente");
-      expect(acesso.textContent?.trim()).toBe("Guia e simulador");
+      expect(acesso.getAttribute("aria-label")).toBe("Guia e simulador");
       await act(async () => {
         acesso.click();
         await esperarMicrotarefas();
@@ -859,7 +887,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
 
     async function abrirGuia() {
       const ajuda = hospedeiro.querySelector(
-        'button[title="Guia Completo de Métricas e Ajuda"]',
+        'button[aria-label="Guia e simulador"]',
       ) as HTMLButtonElement | null;
       expect(ajuda, "botão do guia ausente").not.toBeNull();
       await act(async () => {
@@ -933,7 +961,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       for (const caixa of [...grade.children] as HTMLElement[]) {
         const classes = caixa.className.split(/\s+/);
         expect(classes).toContain("rounded-2xl");
-        expect(classes).toContain("bg-zinc-900/70");
+        expect(classes).toContain("bg-admin-surface");
         expect(classes).toContain("bg-gradient-to-b");
         const [rotuloDaCaixa, valorDaCaixa] = [...caixa.children];
         // rótulo em frase normal, cinza 300; valor grande e tabular

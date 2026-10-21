@@ -132,11 +132,12 @@ export const PhoneSimulator = memo(function PhoneSimulator({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
+      data-tema-fixo=""
       className="fixed inset-0 z-[100] flex flex-col bg-zinc-950/70 text-zinc-100 backdrop-blur-xl"
     >
       {/* Modal Header — fundo mais sólido que o véu do overlay para o texto
           ficar nítido sobre o formulário embaçado atrás. */}
-      <div className="flex items-center justify-between border-b border-white/5 bg-zinc-950/85 px-6 py-4 backdrop-blur-md">
+      <div className="flex items-center justify-between border-b border-admin-border bg-zinc-950/85 px-6 py-4 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
             <Smartphone className="size-4" />
@@ -154,7 +155,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
         {/* Controls & Close */}
         <div className="flex items-center gap-4">
           {/* Toggle Selector */}
-          <div className="flex items-center gap-1 rounded-xl border border-white/5 bg-zinc-900 p-1">
+          <div className="flex items-center gap-1 rounded-xl border border-admin-border bg-zinc-900 p-1">
             <button
               type="button"
               onClick={() => setPreviewMode("card")}
@@ -185,7 +186,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-9 cursor-pointer items-center justify-center rounded-xl border border-white/5 bg-zinc-900 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white active:scale-95"
+            className="flex size-9 cursor-pointer items-center justify-center rounded-xl border border-admin-border bg-zinc-900 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white active:scale-95"
           >
             <X className="size-5" />
           </button>
@@ -202,7 +203,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
           className="relative flex w-full max-w-sm justify-center"
         >
           {/* Phone frame styling wrapper (premium aesthetics) */}
-          <div className="relative rounded-[3.25rem] border border-white/10 bg-zinc-900 p-4 shadow-[0_25px_60px_rgba(0,0,0,0.8)]">
+          <div className="relative rounded-[3.25rem] border border-admin-border bg-zinc-900 p-4 shadow-[0_25px_60px_rgba(0,0,0,0.8)]">
             {/* Speaker / Notch simulator */}
             <div className="absolute left-1/2 top-6 z-20 flex h-4 w-24 -translate-x-1/2 items-center justify-center rounded-full bg-zinc-950">
               <div className="h-1 w-8 rounded-full bg-zinc-850" />
@@ -210,11 +211,11 @@ export const PhoneSimulator = memo(function PhoneSimulator({
             </div>
 
             {/* Live Content Screen */}
-            <div className="relative flex flex-col overflow-hidden rounded-[2.5rem] border border-white/5 bg-zinc-950 text-left">
+            <div className="relative flex flex-col overflow-hidden rounded-[2.5rem] border border-admin-border bg-zinc-950 text-left">
               {previewMode === "card" ? (
                 <div className="relative flex w-[240px] flex-col overflow-hidden bg-zinc-50/5 text-left shadow-2xl transition-all duration-300">
                   {/* Image Container */}
-                  <div className="relative aspect-[4/5] overflow-hidden bg-zinc-900/50">
+                  <div className="relative aspect-[4/5] overflow-hidden bg-admin-surface">
                     {validImages.length > 0 ? (
                       <img
                         src={validImages[0]}
@@ -277,7 +278,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
 
                       {/* Bestseller (HOT) Badge */}
                       {formData.isBestseller && (
-                        <div className="flex shrink-0 select-none items-center gap-1 whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-900/95 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-white shadow-sm backdrop-blur-md">
+                        <div className="flex shrink-0 select-none items-center gap-1 whitespace-nowrap rounded-full border border-admin-border bg-zinc-900/95 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-white shadow-sm backdrop-blur-md">
                           <Flame className="size-2 fill-orange-400 text-orange-400" />
                           <span>EM ALTA</span>
                         </div>
@@ -286,7 +287,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                   </div>
 
                   {/* Content */}
-                  <div className="flex flex-1 flex-col gap-1.5 border-t border-white/5 bg-zinc-950 p-3.5">
+                  <div className="flex flex-1 flex-col gap-1.5 border-t border-admin-border bg-zinc-950 p-3.5">
                     <div className="space-y-0.5">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <p className="max-w-[65%] truncate text-[8px] font-bold uppercase tracking-widest text-zinc-500">
@@ -474,7 +475,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                           </span>
                         )}
                       {formData.isBestseller && (
-                        <span className="flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/95 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-white shadow-sm backdrop-blur-md">
+                        <span className="flex items-center gap-1 rounded-full border border-admin-border bg-zinc-900/95 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-white shadow-sm backdrop-blur-md">
                           <Flame className="size-2.5 fill-orange-400 text-orange-400" />
                           EM ALTA
                         </span>
@@ -806,7 +807,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                                   </span>
                                 </div>
                               </div>
-                              <div className="space-y-1 border-t border-white/5 pt-1">
+                              <div className="space-y-1 border-t border-admin-border pt-1">
                                 {[5, 4, 3, 2, 1].map((star) => (
                                   <div
                                     key={star}

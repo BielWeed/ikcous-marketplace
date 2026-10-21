@@ -1,0 +1,83 @@
+# Uma loja por execução. Nenhum dispatch deve ocorrer antes da revisão de
+# risco e do deploy da auth-send-email ACTIVE com verify_jwt=false.
+# Ativar exige essa publicação sem verificação de login (Auth assina o webhook).
+# Preparar cria desligado; se já preparado, preserva ligado/desligado e o segredo.
+# Desfazer: mesma loja/SHA aprovado, acao=desativar (só PATCH enabled=false).
+name: E-mail do login por loja
+run-name: "email do login em ${{ inputs.projeto }}: ${{ inputs.acao }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      projeto:
+        description: "Loja explícita (nunca um ref livre)"
+        required: true
+        type: choice
+        default: ikcous-publicada
+        options:
+          - ikcous-publicada
+          - savy
+      acao:
+        description: "Medir; preparar sem desligar hook pronto; ativar com guardas; desativar para desfazer"
+        required: true
+        type: choice
+        default: medir
+        options:
+          - medir
+          - preparar
+          - ativar
+          - desativar
+      expected_sha:
+        description: "SHA completo aprovado (40 hex), igual ao GITHUB_SHA deste run"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: email-do-login-${{ inputs.projeto }}
+  cancel-in-progress: false
+
+jobs:
+  email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confere o alvo e o SHA antes de checkout e segredos
+        env:
+          PROJETO: ${{ inputs.projeto }}
+          ACAO: ${{ inputs.acao }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          case "$PROJETO" in
+            ikcous-publicada|savy) ;;
+            *) echo "::error::projeto desconhecido"; exit 1 ;;
+          esac
+          case "$ACAO" in
+            medir|preparar|ativar|desativar) ;;
+            *) echo "::error::ação desconhecida"; exit 1 ;;
+          esac
+          if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+            echo "::error::expected_sha completo e igual ao GITHUB_SHA é obrigatório"; exit 1
+          fi
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      # O token só chega ao script, e só o da loja escolhida. Nunca fallback.
+      - name: Mede ou configura só os campos do Send Email Hook
+        env:
+          SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          PROJETO: ${{ inputs.projeto }}
+          ACAO: ${{ inputs.acao }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: node scripts/publicacao/ativar-email-do-login.cjs

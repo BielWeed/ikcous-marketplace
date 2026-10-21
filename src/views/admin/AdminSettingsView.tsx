@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Coins,
+  Droplet,
   GalleryHorizontal,
   HelpCircle,
   ImageIcon,
@@ -34,6 +35,7 @@ import {
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { IconePix } from "@/components/admin/primitivos/IconePix";
+import { AparenciaDoPainel } from "@/components/admin/settings/AparenciaDoPainel";
 import {
   CartaoPeloAppBloco,
   FormasDePagamentoSection,
@@ -269,7 +271,7 @@ const ConnectionDiagnosticsSection = memo(
         </button>
         <div
           hidden={!isOpen}
-          className="space-y-4 rounded-3xl border border-white/15 bg-gradient-to-br from-[#24242e] to-[#101013] p-4"
+          className="space-y-4 rounded-3xl border border-admin-border-strong bg-gradient-to-br from-admin-raised to-admin-surface p-4"
         >
           <p className="text-xs leading-relaxed text-zinc-400">
             Teste se a internet deste aparelho chega bem até a sua loja. Ajuda a
@@ -321,7 +323,7 @@ const ConnectionDiagnosticsSection = memo(
               <summary className="min-h-11 cursor-pointer py-3 text-sm text-zinc-200">
                 Ver os números
               </summary>
-              <ul className="space-y-3 rounded-2xl bg-[#17171c] p-3">
+              <ul className="space-y-3 rounded-2xl bg-admin-raised p-3">
                 {medida.media !== null && (
                   <>
                     <li>Tempo médio de resposta: {medida.media} ms</li>
@@ -404,7 +406,7 @@ function SecaoColapsavel({
   }, [abrirGatilho]);
 
   return (
-    <div className="min-w-0 rounded-2xl border border-white/10 bg-[#101013] p-3">
+    <div className="min-w-0 rounded-2xl border border-admin-border bg-admin-surface p-3">
       <button
         type="button"
         onClick={() => {
@@ -499,6 +501,15 @@ const ICONE_DA_PORTA = new Map<TelaDoPainel, React.ReactNode>([
     />,
   ],
   [
+    "admin-app-color",
+    <Droplet
+      key="c"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
+  ],
+  [
     "admin-shipping",
     <Truck
       key="t"
@@ -535,10 +546,10 @@ function PortaDeAjustes({
           onNavigate(porta.tela);
         }
       }}
-      className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-white/20 hover:from-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
+      className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-admin-border-strong hover:from-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
     >
       <div
-        className={`flex size-10 shrink-0 items-center justify-center rounded-xl border ${porta.tela === "admin-banners" ? "border-pink-400/30 bg-pink-400/15 text-pink-300" : porta.tela === "admin-carousels" ? "border-violet-400/30 bg-violet-400/15 text-violet-300" : porta.tela === "admin-shipping" ? "border-orange-400/30 bg-orange-400/15 text-orange-300" : "border-blue-400/30 bg-blue-400/15 text-blue-300"}`}
+        className={`flex size-10 shrink-0 items-center justify-center rounded-xl border ${porta.tela === "admin-banners" ? "border-pink-400/30 bg-pink-400/15 text-pink-300" : porta.tela === "admin-carousels" ? "border-violet-400/30 bg-violet-400/15 text-violet-300" : porta.tela === "admin-app-color" ? "border-amber-400/30 bg-amber-400/15 text-amber-300" : porta.tela === "admin-shipping" ? "border-orange-400/30 bg-orange-400/15 text-orange-300" : "border-blue-400/30 bg-blue-400/15 text-blue-300"}`}
       >
         {ICONE_DA_PORTA.get(porta.tela)}
       </div>
@@ -607,7 +618,7 @@ function GrupoDeAjustes({
     subtituloExtra ??
     subtitulos.get(chave) ??
     (chave === "aparencia"
-      ? "Banners e vitrines"
+      ? "Banners, vitrines e cor do app"
       : chave === "devolucao"
         ? "Prazos, formas de devolver e política"
         : undefined);
@@ -694,7 +705,7 @@ function GrupoDeAjustes({
           id={`conteudo-${chave}`}
           data-conteudo-grupo=""
           hidden={!aberta}
-          className="space-y-3 border-t border-white/10 p-3"
+          className="space-y-3 border-t border-admin-border p-3"
         >
           {grupo.portas.map((porta) => (
             <PortaDeAjustes
@@ -921,7 +932,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   return (
     <div className="ajustes pb-admin h-auto duration-200 animate-in fade-in lg:pb-12">
       {/* Elite Header */}
-      <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#08080a]/95 p-5 backdrop-blur-md">
+      <div className="sticky top-0 z-30 mb-3 border-b border-admin-border bg-admin-bg/95 p-5 backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-settings"]}>
             <button
@@ -933,7 +944,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             >
               <span
                 aria-hidden="true"
-                className="flex size-11 items-center justify-center rounded-full border border-white/10 bg-zinc-900/60 text-zinc-300 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                className="flex size-11 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-300 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
               >
                 <HelpCircle aria-hidden="true" className="size-5" />
               </span>
@@ -963,7 +974,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             {[1, 2].map((i) => (
               <div
                 key={i}
-                className="flex h-20 flex-col justify-between rounded-[2rem] border border-white/5 bg-zinc-900/30 p-6"
+                className="flex h-20 flex-col justify-between rounded-[2rem] border border-admin-border bg-zinc-900/30 p-6"
               >
                 <Skeleton className="h-4 w-1/3 rounded-md bg-white/5" />
                 <Skeleton className="h-3 w-1/2 rounded-md bg-white/5" />
@@ -1134,7 +1145,17 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   chave="aparencia"
                   onNavigate={onNavigate}
                   subtitulos={subtitulos}
-                />
+                >
+                  {/* Cores do PRÓPRIO painel (Escuro, Claro, Confortável), só
+                  neste aparelho: não mexe na vitrine dos clientes. */}
+                  <SecaoColapsavel
+                    titulo="Aparência do painel"
+                    subtitulo="Escuro, claro ou confortável, só neste aparelho"
+                    icone={Palette}
+                  >
+                    <AparenciaDoPainel />
+                  </SecaoColapsavel>
+                </GrupoDeAjustes>
 
                 {/* Entrega e frete: só a PORTA para a tela de Frete e o
                 subtítulo do grupo (H5, painel simples, 09/10/2026). As
@@ -1314,7 +1335,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                           <button
                             type="button"
                             onClick={irParaOPixEmPagamentos}
-                            className="flex min-h-11 w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#17171c] p-3 text-left text-xs text-zinc-300"
+                            className="flex min-h-11 w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-admin-border bg-admin-raised p-3 text-left text-xs text-zinc-300"
                           >
                             <span>
                               O estado do PIX pelo app fica no topo de
@@ -1367,7 +1388,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               <h4 className="border-l-2 border-sky-400 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                 {grupo.titulo}
               </h4>
-              <p className="rounded-2xl border border-white/5 bg-zinc-900/40 p-4 text-xs text-zinc-400">
+              <p className="rounded-2xl border border-admin-border bg-zinc-900/40 p-4 text-xs text-zinc-400">
                 {grupo.ajuda}
               </p>
             </div>

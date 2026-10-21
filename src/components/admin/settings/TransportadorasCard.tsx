@@ -1102,7 +1102,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         <button
           type="button"
           onClick={() => carregar()}
-          className="min-h-11 self-start rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
+          className="min-h-11 self-start rounded-lg border border-admin-border bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
         >
           Tentar de novo
         </button>
@@ -1149,7 +1149,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       ))}
 
       {/* Bloco separado (R2-1): liga/desliga não mexe em nenhuma credencial. */}
-      <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-3.5">
+      <div className="space-y-3 rounded-2xl border border-admin-border bg-zinc-950/60 p-3.5">
         <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
           <Truck aria-hidden="true" className="size-3.5 text-admin-gold" />
           <span>Provedores ligados na loja</span>
@@ -1204,8 +1204,8 @@ export const TransportadorasSection = memo(function TransportadorasSection({
                 key={provider}
                 className={`flex min-h-11 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${
                   podeLigar
-                    ? "border-white/5 bg-zinc-900/40"
-                    : "border-white/5 bg-zinc-900/20 opacity-50"
+                    ? "border-admin-border bg-zinc-900/40"
+                    : "border-admin-border bg-zinc-900/20 opacity-50"
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -1330,7 +1330,7 @@ function CartaoDoProvedor({
   );
 
   return (
-    <div className="rounded-2xl border border-white/5 bg-zinc-950/60">
+    <div className="rounded-2xl border border-admin-border bg-zinc-950/60">
       <button
         type="button"
         aria-expanded={aberto}
@@ -1424,7 +1424,7 @@ function CartaoDoProvedor({
                 ? "Cole uma chave nova só se quiser trocar a salva..."
                 : "Cole aqui a chave de acesso da sua conta..."
             }
-            className="h-11 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none"
+            className="h-11 flex-1 rounded-lg border border-admin-border bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none"
           />
           <button
             type="button"
@@ -1473,7 +1473,7 @@ function CartaoDoProvedor({
               className={`h-11 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:outline-none ${
                 emailComAviso
                   ? "border-red-500/50 focus:border-red-400"
-                  : "border-white/5 focus:border-admin-gold"
+                  : "border-admin-border focus:border-admin-gold"
               }`}
             />
             {emailComAviso && (
@@ -1623,7 +1623,7 @@ function CartaoDoProvedor({
                   return (
                     <label
                       key={servico.codigo}
-                      className="flex min-h-11 flex-col justify-center gap-0.5 rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-xs"
+                      className="flex min-h-11 flex-col justify-center gap-0.5 rounded-lg border border-admin-border bg-zinc-900/40 px-2.5 py-1.5 text-xs"
                     >
                       <span className="flex items-center gap-2">
                         <input
@@ -1659,12 +1659,12 @@ function CartaoDoProvedor({
             )}
         </div>
 
-        <div className="flex justify-end border-t border-white/5 pt-3">
+        <div className="flex justify-end border-t border-admin-border pt-3">
           <button
             type="button"
             disabled={rascunho.salvando || rascunho.testando}
             onClick={onSalvar}
-            className="flex min-h-11 shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex min-h-11 shrink-0 select-none items-center gap-1.5 rounded-lg border border-admin-border bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
           >
             {rascunho.salvando ? (
               <RefreshCw className="size-3 animate-spin text-admin-gold" />

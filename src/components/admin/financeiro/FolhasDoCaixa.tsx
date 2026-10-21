@@ -616,7 +616,7 @@ export function FecharCaixaFolha({
           diferenca={previa?.diferenca ?? null}
           situacao={previa?.situacao ?? null}
         />
-        <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-xs text-zinc-400">
+        <p className="flex items-start gap-2 rounded-xl border border-admin-border bg-admin-surface p-3 text-xs text-zinc-400">
           <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <span>
             A diferença gera um lançamento automático:{" "}
@@ -663,7 +663,7 @@ function ComparativoDoFechamento({
           : "Diferença";
   return (
     <dl
-      className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-[#17171C] p-4"
+      className="flex flex-col gap-3 rounded-3xl border border-admin-border bg-admin-raised p-4"
       aria-label="Esperado, contado e diferença"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2 py-2">
@@ -681,7 +681,7 @@ function ComparativoDoFechamento({
       <div
         className={
           situacao === null
-            ? "flex flex-wrap items-baseline justify-between gap-2 border-t border-white/10 py-3"
+            ? "flex flex-wrap items-baseline justify-between gap-2 border-t border-admin-border py-3"
             : cn(
                 "flex flex-wrap items-baseline justify-between gap-2 rounded-2xl border p-3",
                 situacao === "quebra" && "border-red-500/30 bg-red-500/10",

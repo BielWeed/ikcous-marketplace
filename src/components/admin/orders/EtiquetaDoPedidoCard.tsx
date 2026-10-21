@@ -508,7 +508,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                 </span>
               </div>
 
-              <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2">
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-admin-border bg-black/40 px-3 py-2">
                 <div className="min-w-0">
                   <span className="block text-xs text-zinc-400">
                     Código de rastreio
@@ -540,7 +540,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   type="button"
                   onClick={handleConsultarRastreio}
                   disabled={consultandoRastreio || isOffline}
-                  className="flex h-10 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
+                  className="flex h-10 items-center gap-1.5 rounded-xl border border-admin-border bg-white/5 px-3 text-sm font-medium text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
                 >
                   <RefreshCw
                     className={`size-4 ${consultandoRastreio ? "animate-spin" : ""}`}
@@ -591,7 +591,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                     setCpfInput(formatarCpfEnquantoDigita(e.target.value));
                     setCpfErro(null);
                   }}
-                  className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 font-mono text-sm font-medium text-white outline-none focus:border-admin-gold/50 disabled:opacity-40"
+                  className="h-11 w-full rounded-xl border border-admin-border bg-black/40 px-3 font-mono text-sm font-medium text-white outline-none focus:border-admin-gold/50 disabled:opacity-40"
                 />
                 {cpfErro && (
                   <p

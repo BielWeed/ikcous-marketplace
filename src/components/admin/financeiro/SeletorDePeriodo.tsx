@@ -46,7 +46,7 @@ export function OpcoesDePeriodo({
     <div
       role="group"
       aria-label="Período"
-      className="flex flex-col gap-2 rounded-3xl border border-white/10 bg-[#101013] p-3"
+      className="flex flex-col gap-2 rounded-3xl border border-admin-border bg-admin-surface p-3"
     >
       {PRESETS.map((preset) => (
         <button
@@ -102,7 +102,7 @@ export function SeletorDePeriodo({
         type="button"
         onClick={aoPedirOpcoes}
         aria-label={`Período: ${rotulo}`}
-        className="flex min-h-12 items-center gap-2 rounded-2xl bg-[#17171C] px-3 py-2 text-left text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 lg:hidden"
+        className="flex min-h-12 items-center gap-2 rounded-2xl bg-admin-raised px-3 py-2 text-left text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 lg:hidden"
       >
         <CalendarRange
           aria-hidden="true"
@@ -135,7 +135,7 @@ export function SeletorDePeriodo({
                 "min-h-11 shrink-0 select-none rounded-full border px-4 text-xs font-black transition-colors",
                 ativo
                   ? "border-admin-gold/50 bg-admin-gold/10 text-admin-gold"
-                  : "border-white/10 bg-white/[0.03] text-zinc-400 hover:bg-white/5 hover:text-white",
+                  : "border-admin-border bg-admin-raised text-zinc-400 hover:bg-white/5 hover:text-white",
               )}
             >
               {preset.rotulo}

@@ -519,6 +519,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/notes-do-pedido-fechada-viva.cjs",
     // 20261249000000: o motivo do desconto fica na nota privada, preservando trava e idempotencia.
     "tests/banco/pdv-motivo-privado-viva.cjs",
+    // 20261280000000: total conferido do balcão pelo servidor, com a assinatura nova e a anterior.
+    "tests/banco/pdv-total-conferido-viva.cjs",
     // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",

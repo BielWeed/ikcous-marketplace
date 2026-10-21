@@ -42,6 +42,13 @@ vi.mock("@/hooks/useLeaderElection", () => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          single: async () => ({ data: { total: 100 }, error: null }),
+        }),
+      }),
+    }),
     rpc: vi.fn().mockResolvedValue({ data: "ped-1", error: null }),
     functions: {
       invoke: vi.fn().mockResolvedValue({ data: {}, error: null }),

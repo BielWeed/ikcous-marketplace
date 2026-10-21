@@ -74,10 +74,27 @@
       15px
     );
 
-    /* Admin Specific Colors */
+    /* Admin Specific Colors — escala de ELEVAÇÃO (só o painel; o tema escuro é
+       o único do admin). Cada degrau separa do anterior por ≥4 de L* (CIE), e
+       o conjunto foi medido (texto principal ≥7:1; texto secundário #A1A1AD
+       ≥4,5:1 sobre surface E raised; dourado/verde ≥3:1):
+         bg      ≈ L* 2,5  fundo do app
+         surface ≈ L* 11,5 cartões e seções   (+9 sobre bg)
+         raised  ≈ L* 17,8 campos, chips, botões secundários, itens dentro de
+                          cartão (+6 sobre surface)
+         hover   ≈ L* 22,9 pressionado/hover de raised
+         nav     ≈ L* 15,3 barra inferior, cabeçalho e lateral (+13 sobre bg)
+         border  ≈ L* 21,9 contorno de cartão/divisor (+10 sobre surface)
+         border-strong ≈ L* 30 contorno de destaque (campo em foco, barra)
+       A vitrine NÃO usa estes tokens (usa --background/--card). */
     --admin-bg: 240 10% 3.9%;
-    --admin-card: 240 10% 6%;
-    --admin-border: 240 5% 15%;
+    --admin-surface: 240 7% 12.8%;
+    --admin-card: var(--admin-surface);
+    --admin-raised: 240 6% 18%;
+    --admin-hover: 240 6% 22.5%;
+    --admin-nav: 240 6% 16%;
+    --admin-border: 240 5% 21.5%;
+    --admin-border-strong: 240 5% 29%;
     --admin-accent: 142 71% 45%;
 
     /* Emerald */
@@ -526,7 +543,7 @@ body.admin-mode :focus-visible {
 
   /* Admin Elite Styles */
   .admin-glass {
-    @apply backdrop-blur-2xl bg-zinc-950/40 border border-white/5 shadow-2xl;
+    @apply backdrop-blur-2xl bg-admin-surface border border-admin-border shadow-2xl;
   }
 
   .gpu-accelerated {
@@ -1169,7 +1186,7 @@ body.admin-modal-open .active-scroll-container {
   inset-inline: 14px;
   bottom: 0;
   height: 1px;
-  background: #ffffff14;
+  background: hsl(var(--admin-border-strong));
   content: "";
 }
 .admin-acoes-da-barra {
@@ -1194,7 +1211,7 @@ body.admin-modal-open .active-scroll-container {
   color: #1b1300;
 }
 .admin-acoes-da-barra button:disabled {
-  background: #17171c;
+  background: hsl(var(--admin-raised));
   color: #a7a7b5;
   opacity: 1;
   cursor: not-allowed;
@@ -1210,7 +1227,7 @@ body.admin-modal-open .active-scroll-container {
   order: 20;
   margin-top: 20px;
   padding: 10px 0;
-  background: #141418;
+  background: hsl(var(--admin-nav));
 }
 
 @media (width >= 768px) {

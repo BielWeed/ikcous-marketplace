@@ -401,6 +401,7 @@ export interface StoreConfig {
     active: boolean;
     type?: "new_arrivals" | "offers" | "bestsellers" | "custom";
     maxItems?: number;
+    layout?: "padrao" | "compacto";
     productIds?: string[];
     isCustom?: boolean;
   }[];
@@ -522,6 +523,7 @@ export type View =
   | "admin-coupon-form"
   | "admin-banners"
   | "admin-carousels"
+  | "admin-app-color"
   | "admin-shipping"
   | "admin-shipping-national"
   | "admin-settings"

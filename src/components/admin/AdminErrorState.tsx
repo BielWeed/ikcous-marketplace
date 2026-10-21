@@ -16,7 +16,7 @@ export const AdminErrorState = React.memo(function AdminErrorState({
   isLoading = false,
 }: AdminErrorStateProps) {
   return (
-    <div className="mx-auto my-6 flex min-h-[300px] max-w-lg flex-col items-center justify-center space-y-6 rounded-[2rem] border border-white/5 bg-[#121214]/40 p-8 text-center duration-300 animate-in fade-in zoom-in-95">
+    <div className="mx-auto my-6 flex min-h-[300px] max-w-lg flex-col items-center justify-center space-y-6 rounded-[2rem] border border-admin-border bg-admin-surface p-8 text-center duration-300 animate-in fade-in zoom-in-95">
       <div className="flex size-16 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.1)]">
         <AlertCircle className="size-8" />
       </div>
@@ -34,7 +34,7 @@ export const AdminErrorState = React.memo(function AdminErrorState({
         <Button
           onClick={onRetry}
           disabled={isLoading}
-          className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-zinc-900 px-6 text-[11px] font-bold uppercase tracking-widest text-white transition-all hover:bg-zinc-800 active:scale-95"
+          className="flex min-h-11 items-center gap-2 rounded-xl border border-admin-border bg-zinc-900 px-6 text-[11px] font-bold uppercase tracking-widest text-white transition-all hover:bg-zinc-800 active:scale-95"
         >
           <RefreshCw
             className={`size-3.5 ${isLoading ? "animate-spin" : ""}`}

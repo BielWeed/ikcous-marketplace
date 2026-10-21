@@ -47,6 +47,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+const {
+  desfazerPagamentoAdiantadoNaTransacao,
+} = require("./pagamento-adiantado-posterior.cjs");
 
 const MIGRATIONS = path.resolve(
   __dirname,
@@ -1178,6 +1181,8 @@ prova(
   "MIGRATION: reaplicar 2x e em CRLF = mesmos corpos; rollback devolve os de antes e é idempotente; recusa com marca; pré-voo recusa corpo divergente SEM escrever",
   () =>
     emTransacao(async () => {
+      // Só esta prova reaplica a 241; as demais medem o corpo de produção.
+      await desfazerPagamentoAdiantadoNaTransacao(C);
       const sigs = Object.values(SIG);
       const antes = {};
       for (const s of sigs) antes[s] = await hashDe(s);

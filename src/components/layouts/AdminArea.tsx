@@ -64,6 +64,11 @@ const AdminBanners = lazyWithPreload(() =>
     default: m.AdminBannersView,
   })),
 );
+const AdminAppColor = lazyWithPreload(() =>
+  import("@/views/admin/AdminAppColorView").then((m) => ({
+    default: m.AdminAppColorView,
+  })),
+);
 const AdminCarousels = lazyWithPreload(() =>
   import("@/views/admin/AdminCarouselsView").then((m) => ({
     default: m.AdminCarouselsView,
@@ -187,7 +192,7 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   const isDashboard = view === "admin-dashboard" || view === "admin";
 
   if (!isReady) {
-    return <div className="size-full bg-[#09090b]" />;
+    return <div className="size-full bg-admin-bg" />;
   }
 
   // Nome único do painel: o mesmo do menu e do título da tela carregada.
@@ -196,7 +201,7 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
 
   if (isDashboard) {
     return (
-      <div className="size-full select-none bg-[#09090b] pb-28 text-white lg:pb-10">
+      <div className="size-full select-none bg-admin-bg pb-28 text-white lg:pb-10">
         <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
           <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
             <span className="flex flex-nowrap items-baseline whitespace-nowrap">
@@ -210,7 +215,7 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="flex h-[128px] flex-col justify-between rounded-3xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-5"
+                className="flex h-[128px] flex-col justify-between rounded-3xl border border-admin-border bg-admin-surface bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-5"
               >
                 <div className="flex items-center gap-3">
                   <div className="premium-shimmer size-10 rounded-xl" />
@@ -222,11 +227,11 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
           </div>
           <div className="px-0 sm:px-6">
             <div className="grid h-[220px] grid-cols-1 gap-6 md:grid-cols-2">
-              <div className="premium-shimmer rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6" />
-              <div className="premium-shimmer rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6" />
+              <div className="premium-shimmer rounded-[2rem] border border-admin-border bg-admin-surface p-6" />
+              <div className="premium-shimmer rounded-[2rem] border border-admin-border bg-admin-surface p-6" />
             </div>
           </div>
-          <div className="h-[350px] rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6">
+          <div className="h-[350px] rounded-[2rem] border border-admin-border bg-admin-surface p-6">
             <div className="premium-shimmer mb-6 h-6 w-48 rounded-lg" />
             <div className="premium-shimmer h-4/5 w-full rounded-2xl" />
           </div>
@@ -236,7 +241,7 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   }
 
   return (
-    <div className="size-full select-none bg-[#09090b] pb-28 text-white lg:pb-10">
+    <div className="size-full select-none bg-admin-bg pb-28 text-white lg:pb-10">
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
           <span className="flex flex-nowrap items-baseline whitespace-nowrap">
@@ -246,7 +251,7 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
         <div className="premium-shimmer h-10 w-32 rounded-2xl" />
       </div>
       <div className="mt-6 px-6">
-        <div className="h-[400px] rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6">
+        <div className="h-[400px] rounded-[2rem] border border-admin-border bg-admin-surface p-6">
           <div className="premium-shimmer mb-6 h-6 w-48 rounded-lg" />
           <div className="premium-shimmer h-4/5 w-full rounded-2xl" />
         </div>
@@ -661,6 +666,19 @@ export function AdminArea({
                             active: currentView === "admin-banners",
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-app-color":
+                    return (
+                      <LocalErrorBoundary key="admin-app-color">
+                        <PreloadedOrLazy
+                          component={AdminAppColor}
+                          props={{
+                            onNavigate,
+                            active: currentView === "admin-app-color",
+                            onSetDirty: setIsAdminDirty,
                           }}
                         />
                       </LocalErrorBoundary>

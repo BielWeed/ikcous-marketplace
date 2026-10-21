@@ -144,12 +144,16 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
    `action_required`/`created` é cancelado no MP antes de virar PIX; em `processing`, 409.
 3. `webhook-mercadopago` (sem JWT; autentica por **HMAC x-signature**): nunca confia no
    corpo — reconsulta o MP e **confere o valor (±R$ 0,05)**; chama a RPC
-   **`confirmar_pagamento`**, a ÚNICA escrita de pagamento (FOR UPDATE, idempotente).
+   **`confirmar_pagamento`** confirma pagamento (FOR UPDATE, idempotente);
+   **`concluir_estorno`** conclui o ledger de estornos na mesma transação.
+   Estorno integral de pending nunca pago cancela, devolve estoque e grava paid_at.
+   Pedido já pago ou adiantado não cancela nem reestoca.
    Em pago/pago_apos_expirar: push aos admins; só em pago: comprovante por e-mail.
    Recusa/expiração de order de CARTÃO e order cancelada vão para `liberar_cobranca_do_pedido`,
    nunca para `confirmar_pagamento` (sem `payment_method.type` legível, decide o `metodo_online`
    gravado). Notificação da rota `payment` sobre id diferente do gravado só aplica
    pago/estornado se a order GRAVADA confirmar o mesmo desfecho (cobrança órfã não vira pago).
+   A conclusão integral grava `paid_at` se ausente; a parcial preserva pagamento e data.
    Na virada para `estornado`, o gatilho `tr_marca_estorno_direto_do_pedido`
    (`marca_estorno_direto_do_pedido`, migration `20261176`) **só carimba
    `estorno_manual_registrado_em`** (BEFORE UPDATE OF payment_status, COALESCE — não toca

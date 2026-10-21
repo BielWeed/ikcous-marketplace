@@ -95,7 +95,7 @@ function BlocoNumerado({
   return (
     <section
       aria-labelledby={idDoTitulo}
-      className="admin-glass rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6"
+      className="admin-glass rounded-2xl border border-admin-border p-4 shadow-2xl sm:p-6"
     >
       <div className="flex items-center gap-3">
         <span
@@ -123,6 +123,7 @@ function BlocoNumerado({
 }
 
 export const AdminAboutStoreView = memo(function AdminAboutStoreView({
+  onNavigate,
   active = true,
   onSetDirty,
   secaoInicial,
@@ -323,9 +324,9 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   );
 
   return (
-    <div className="pb-admin relative min-h-screen bg-[#09090b] font-sans text-zinc-400 lg:pb-12">
+    <div className="pb-admin relative min-h-screen bg-admin-bg font-sans text-zinc-400 lg:pb-12">
       {/* Elite Header */}
-      <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
+      <div className="sticky top-0 z-30 mb-3 border-b border-admin-border bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
           <AdminPageHeader
             titulo={NOMES_DO_PAINEL["admin-about-store"]}
@@ -421,7 +422,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         <BlocoNumerado
           numero="1"
           titulo="Marca da loja"
-          descricao="Nome, logo e cores que aparecem no app inteiro — inclusive na página Sobre a Loja."
+          descricao="Nome e logo que aparecem no app inteiro — inclusive na página Sobre a Loja."
           refDoTitulo={guardarTitulo("marca")}
         >
           <Suspense
@@ -432,6 +433,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             <IdentitySettingsSection
               active={active}
               onDirtyChange={setIdentidadePendente}
+              onNavigate={onNavigate}
             />
           </Suspense>
         </BlocoNumerado>
@@ -451,7 +453,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             onMudou={setMudancaEndereco}
           />
           {queryPrevia && (
-            <div className="mt-4 overflow-hidden rounded-2xl border border-white/5">
+            <div className="mt-4 overflow-hidden rounded-2xl border border-admin-border">
               <div className="relative h-40 w-full">
                 {/* credentialless: mantido mesmo sem o COEP do app (removido do
                     vercel.json em 26/09/2026 — decisão do dono, travava o Card
@@ -505,7 +507,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             rows={5}
             maxLength={4000}
             placeholder="Conte a história da loja, o que vende e o que a diferencia…"
-            className="mt-2 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 py-3 text-sm leading-relaxed text-white"
+            className="mt-2 w-full rounded-xl border border-admin-border bg-black/50 px-3.5 py-3 text-sm leading-relaxed text-white"
           />
           <p className="mt-1.5 text-[11px] text-zinc-500">
             Texto simples, sem negrito nem imagens.

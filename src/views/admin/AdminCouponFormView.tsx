@@ -408,8 +408,8 @@ function FormularioDoCupom({
   };
 
   return (
-    <div className="pb-admin relative min-h-screen bg-[#08080A] font-sans text-zinc-400 lg:pb-12">
-      <div className="sticky top-0 z-20 bg-[#08080A]/95 px-5 py-4 backdrop-blur-xl">
+    <div className="pb-admin relative min-h-screen bg-admin-bg font-sans text-zinc-400 lg:pb-12">
+      <div className="sticky top-0 z-20 bg-admin-bg/95 px-5 py-4 backdrop-blur-xl">
         <div className="mx-auto flex max-w-xl flex-wrap items-center justify-between gap-3 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight">
           <AdminPageHeader
             titulo={`${isEditing ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-coupon-form"].toLowerCase()}`}
@@ -472,7 +472,7 @@ function FormularioDoCupom({
               aria-controls="coupon-preview"
               ref={previaBotaoRef}
               onClick={() => setPreviaAberta(!previaAberta)}
-              className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-violet-200/15 bg-gradient-to-br from-[#2C2838] to-[#17171C] px-3.5 py-3 text-left text-sm text-zinc-50 ${FOCO}`}
+              className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-violet-200/15 bg-gradient-to-br from-[#2C2838] to-admin-raised px-3.5 py-3 text-left text-sm text-zinc-50 ${FOCO}`}
             >
               <span className="min-w-0 break-words">
                 {formData.code ? (
@@ -497,7 +497,7 @@ function FormularioDoCupom({
             </button>
             {previaAberta && (
               <div id="coupon-preview" className="mt-3 space-y-3">
-                <div className="space-y-4 rounded-[24px] border border-violet-200/20 bg-gradient-to-br from-[#2C2838] to-[#17171C] p-5 shadow-xl">
+                <div className="space-y-4 rounded-[24px] border border-violet-200/20 bg-gradient-to-br from-[#2C2838] to-admin-raised p-5 shadow-xl">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="flex items-center gap-2 text-xs font-bold text-zinc-400">
                       <Selo
@@ -515,7 +515,7 @@ function FormularioDoCupom({
                         "rounded-full border px-3 py-1 text-xs font-bold",
                         formData.active
                           ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-300"
-                          : "border-white/15 bg-white/5 text-zinc-400",
+                          : "border-admin-border-strong bg-white/5 text-zinc-400",
                       )}
                     >
                       {formData.active ? "Ativo" : "Inativo"}
@@ -524,7 +524,7 @@ function FormularioDoCupom({
                   <p className="break-all text-2xl font-bold uppercase text-zinc-50">
                     {formData.code || "CUPOMEXEMPLO"}
                   </p>
-                  <div className="flex flex-wrap items-end justify-between gap-4 border-t border-white/10 pt-3">
+                  <div className="flex flex-wrap items-end justify-between gap-4 border-t border-admin-border pt-3">
                     <div>
                       <p className="text-xs text-zinc-400">Desconto</p>
                       <p className="mt-1 text-3xl font-bold tabular-nums text-zinc-50">

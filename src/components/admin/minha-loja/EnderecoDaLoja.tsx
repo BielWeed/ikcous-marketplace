@@ -52,7 +52,7 @@ interface EnderecoDaLojaProps {
 }
 
 const CAMPO =
-  "h-11 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 disabled:opacity-50";
+  "h-11 w-full rounded-xl border border-admin-border bg-black/50 px-3.5 text-sm text-white placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 disabled:opacity-50";
 const ROTULO = "text-sm text-zinc-300";
 
 const PARTES_VAZIAS: PartesDoEndereco = {

@@ -97,8 +97,9 @@ Deno.test("avaliarFase0 não recusa o par; nenhum dos dois abre ou fecha transa�
 });
 
 Deno.test("ponto de partida: a 20261010 é a última OUTRA definição da fila; a tabela e o carimbo nascem aqui", () => {
+  // O ponto de partida só considera migrations anteriores à testada.
   const nomes = [...Deno.readDirSync(`${DIR}../supabase/migrations`)]
-    .filter((e) => e.isFile && /^\d+_.*\.sql$/.test(e.name) && e.name !== NOME)
+    .filter((e) => e.isFile && /^\d+_.*\.sql$/.test(e.name) && e.name < NOME)
     .map((e) => e.name)
     .sort();
   const fila = nomes.filter((n) =>

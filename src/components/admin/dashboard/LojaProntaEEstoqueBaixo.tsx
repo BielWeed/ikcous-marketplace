@@ -219,7 +219,7 @@ export function LojaProntaEEstoqueBaixo({
             <button
               type="button"
               onClick={() => onNavigate("admin-shipping")}
-              className={`${LINHA_INICIO} border-t border-white/10`}
+              className={`${LINHA_INICIO} border-t border-admin-border`}
             >
               <SeloDoInicio icone={Truck} tom="laranja" />
               <span className="min-w-0 flex-1 text-sm leading-relaxed text-orange-300">
@@ -237,7 +237,7 @@ export function LojaProntaEEstoqueBaixo({
           {listaAberta ? (
             <ul
               id={idDaLista}
-              className="divide-y divide-white/10 border-t border-white/10"
+              className="divide-y divide-admin-border border-t border-admin-border"
             >
               {passos.map((passo) => {
                 const Icone = ICONE_DO_PASSO[passo.chave];

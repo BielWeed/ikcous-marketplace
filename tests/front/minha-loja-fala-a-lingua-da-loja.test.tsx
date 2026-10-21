@@ -161,7 +161,7 @@ describe("Minha loja — texto sem linguagem interna", () => {
     const descartar = botao("Descartar horário");
     expect(descartar.className).toContain("min-h-11");
     expect(descartar.className).toContain("disabled:opacity-40");
-    expect(descartar.className).toContain("border-white/15");
+    expect(descartar.className).toContain("border-admin-border-strong");
   });
 
   it("o campo do horário tem 44px e o rótulo não repete o título do bloco", () => {

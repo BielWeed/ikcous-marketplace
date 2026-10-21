@@ -132,7 +132,7 @@ export function ParaFazer({
       </div>
       <div className={CARTAO_INICIO}>
         {painel && pendentes === 0 ? (
-          <div className="mb-1 flex items-start gap-3 border-b border-white/10 pb-3">
+          <div className="mb-1 flex items-start gap-3 border-b border-admin-border pb-3">
             <SeloDoInicio icone={CheckCircle2} tom="verde" />
             <div>
               <p className="text-base font-bold text-white">Tudo em dia</p>
@@ -151,7 +151,7 @@ export function ParaFazer({
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-white/10">
+          <ul className="divide-y divide-admin-border">
             {visiveis.map((item) => (
               <li key={item.chave}>
                 <button

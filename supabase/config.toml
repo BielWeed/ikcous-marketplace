@@ -121,3 +121,8 @@ verify_jwt = true
 # navegador. NUNCA publicar com --no-verify-jwt.
 [functions."credenciais-email"]
 verify_jwt = true
+
+# Auth Send Email Hook: não tem JWT de usuário. A função exige a assinatura
+# Standard Webhooks ANTES de ler o cofre ou abrir SMTP.
+[functions."auth-send-email"]
+verify_jwt = false

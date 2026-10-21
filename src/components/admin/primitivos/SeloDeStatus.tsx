@@ -32,7 +32,7 @@ function tomDoSelo(tom: TomDoSelo): { icone: LucideIcon; classe: string } {
     default:
       return {
         icone: Info,
-        classe: "border-white/10 bg-zinc-900/60 text-zinc-300",
+        classe: "border-admin-border bg-admin-surface text-zinc-300",
       };
   }
 }

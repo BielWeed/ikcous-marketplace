@@ -21,6 +21,7 @@ import {
   PackageOpen,
   QrCode,
   ShieldCheck,
+  Store,
   Truck,
   WifiOff,
   XCircle,
@@ -28,61 +29,15 @@ import {
 import { memo, useState } from "react";
 import { toast } from "sonner";
 
-// O `color` roda a 11px sobre o `panel` (a cor `*-50` cheia, sem
-// transparência) — abaixo do limiar de "texto grande" do WCAG, então o
-// mínimo AA é 4,5:1. Tom 600/700 escolhido por família para fechar a conta
-// contra o `*-50` (o mais apertado é blue-600/blue-50, ~4,9).
 const statusConfig: Record<
   OrderStatus,
-  {
-    label: string;
-    color: string;
-    panel: string;
-    bar: string;
-    icon: typeof Package;
-    desc: string;
-  }
+  { icon: typeof Package; desc: string }
 > = {
-  pending: {
-    label: "Pedido Recebido",
-    color: "text-blue-600",
-    panel: "bg-blue-50 border-blue-100",
-    bar: "bg-blue-500",
-    icon: ClipboardCheck,
-    desc: "A loja já recebeu seu pedido",
-  },
-  processing: {
-    label: "Em Separação",
-    color: "text-amber-700",
-    panel: "bg-amber-50 border-amber-100",
-    bar: "bg-amber-500",
-    icon: PackageOpen,
-    desc: "Preparando seu envio",
-  },
-  shipping: {
-    label: "Em Trânsito",
-    color: "text-indigo-600",
-    panel: "bg-indigo-50 border-indigo-100",
-    bar: "bg-indigo-500",
-    icon: Truck,
-    desc: "A caminho do seu endereço",
-  },
-  delivered: {
-    label: "Entregue",
-    color: "text-emerald-700",
-    panel: "bg-emerald-50 border-emerald-100",
-    bar: "bg-emerald-500",
-    icon: PackageCheck,
-    desc: "Pedido entregue",
-  },
-  cancelled: {
-    label: "Cancelado",
-    color: "text-rose-700",
-    panel: "bg-rose-50 border-rose-100",
-    bar: "bg-rose-500",
-    icon: XCircle,
-    desc: "Este pedido foi cancelado",
-  },
+  pending: { icon: ClipboardCheck, desc: "A loja já recebeu seu pedido" },
+  processing: { icon: PackageOpen, desc: "Preparando seu envio" },
+  shipping: { icon: Truck, desc: "A caminho do seu endereço" },
+  delivered: { icon: PackageCheck, desc: "Pedido entregue" },
+  cancelled: { icon: XCircle, desc: "Este pedido foi cancelado" },
 };
 
 const trailSteps = ["Recebido", "Separação", "A caminho", "Entregue"];
@@ -111,53 +66,122 @@ const paymentConfig: Record<PaymentMethod, { label: string; icon: any }> = {
   online: { label: "Pagamento online", icon: CreditCard },
 };
 
-// Trilha das 4 etapas com o nome de cada uma embaixo: o cliente vê de relance
-// quanto falta. Pedido cancelado não tem trilha — não há etapa a percorrer.
+// Só a etapa atual ocupa uma pílula: os nomes deixam de cortar no celular.
+// Entregue e cancelado não têm mais progresso a percorrer.
 function OrderStatusTrail({
   status,
-  config,
   retiradaNaLoja,
 }: {
   status: OrderStatus;
-  config: (typeof statusConfig)[OrderStatus];
   retiradaNaLoja?: boolean;
 }) {
   const passos = retiradaNaLoja ? trailStepsRetirada : trailSteps;
   const currentStep = statusStep.get(status) ?? 0;
-  if (currentStep < 0) return null;
+  if (currentStep < 0 || status === "delivered") return null;
+  const atual = passos[currentStep];
+  const proxima = passos[currentStep + 1];
 
   return (
-    <div className="mt-2.5" data-testid="order-status-trail">
-      <div className="flex gap-1">
+    <div
+      className="mt-3"
+      data-testid="order-status-trail"
+      role="progressbar"
+      aria-label="Andamento do pedido"
+      aria-valuemin={1}
+      aria-valuemax={4}
+      aria-valuenow={currentStep + 1}
+      aria-valuetext={`Etapa ${currentStep + 1} de 4: ${atual}. Próxima: ${proxima}`}
+    >
+      <div className="flex h-7 items-center" aria-hidden="true">
         {passos.map((step, idx) => (
-          <span
-            key={step}
-            className={cn(
-              "h-1 flex-1 rounded-full",
-              idx <= currentStep ? config.bar : "bg-zinc-200",
-              idx === currentStep && status !== "delivered" && "animate-pulse",
+          <div key={step} className="contents">
+            {idx > 0 && (
+              <span
+                className={cn(
+                  "h-0.5 min-w-0 flex-1",
+                  idx <= currentStep ? "bg-zinc-950" : "bg-zinc-300",
+                )}
+              />
             )}
-          />
+            {idx === currentStep ? (
+              <span
+                className={cn(
+                  "flex h-7 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-xs font-semibold text-white",
+                  retiradaNaLoja && status === "shipping"
+                    ? "bg-emerald-700"
+                    : "bg-zinc-950",
+                )}
+              >
+                {step}
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  "flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                  idx < currentStep
+                    ? "bg-zinc-950 text-white"
+                    : "border-[1.5px] border-zinc-500 text-zinc-600",
+                )}
+              >
+                {idx < currentStep ? <Check className="size-3" /> : idx + 1}
+              </span>
+            )}
+          </div>
         ))}
       </div>
-      <div className="mt-1.5 grid grid-cols-4 text-[9px] font-bold uppercase tracking-wide">
-        {passos.map((step, idx) => (
-          <span
-            key={step}
-            className={cn(
-              "truncate",
-              idx === 0 && "text-left",
-              idx === 1 && "text-center",
-              idx === 2 && "text-center",
-              idx === 3 && "text-right",
-              // zinc-600, não 500: sobre blue-50 e indigo-50 o zinc-500
-              // fica em 4,42 e 4,30 (reprova AA a 9px); zinc-600 passa ~7.
-              idx === currentStep ? config.color : "text-zinc-600",
-            )}
-          >
-            {step}
-          </span>
-        ))}
+      <span className="sr-only">{passos.join(", ")}</span>
+    </div>
+  );
+}
+
+function fraseDoCancelado(paymentStatus: Order["paymentStatus"]) {
+  switch (paymentStatus) {
+    case "expirado":
+      return "O prazo para pagar terminou. Se não pagou, é só comprar de novo.";
+    case "aguardando":
+      return "Se o pagamento ainda estiver aberto no seu banco, não pague.";
+    case "pago":
+      return "Seu pagamento foi recebido. Toque para ver o que acontece com ele.";
+    case "recebido_na_entrega":
+    case "pago_apos_expirar":
+      return "Seu pagamento foi recebido. Fale com a loja para resolver.";
+    case "recusado":
+      return "O pagamento não foi aprovado e o pedido foi cancelado.";
+    case "estornado":
+      return "O pagamento foi estornado. Fale com a loja.";
+    default:
+      return "Toque para ver os detalhes do pedido.";
+  }
+}
+
+function OrderCardSkeleton() {
+  return (
+    <div
+      data-testid="order-card-skeleton"
+      aria-hidden="true"
+      className="min-h-[278px] rounded-2xl border border-zinc-100 bg-white p-3.5"
+    >
+      <div className="flex h-14 items-center gap-3">
+        <div className="size-14 shrink-0 rounded-xl bg-zinc-100" />
+        <div className="flex-1 space-y-2">
+          <div className="h-3 w-3/4 rounded bg-zinc-100" />
+          <div className="h-3 w-1/2 rounded bg-zinc-100" />
+        </div>
+      </div>
+      <div className="mt-3 min-h-[136px] rounded-[14px] border border-zinc-200 bg-zinc-50 p-3">
+        <div className="h-[18px] w-3/4 rounded bg-zinc-200" />
+        <div className="mt-2 h-6 w-40 rounded-full bg-zinc-200" />
+        <div className="mt-3 flex h-7 items-center justify-between">
+          <div className="h-7 w-24 rounded-full bg-zinc-200" />
+          <div className="size-6 rounded-full bg-zinc-200" />
+          <div className="size-6 rounded-full bg-zinc-200" />
+          <div className="size-6 rounded-full bg-zinc-200" />
+        </div>
+        <div className="mt-2 h-3.5 w-1/2 rounded bg-zinc-200" />
+      </div>
+      <div className="mt-3 flex h-8 items-center justify-between">
+        <div className="h-3 w-20 rounded bg-zinc-100" />
+        <div className="h-3 w-16 rounded bg-zinc-100" />
       </div>
     </div>
   );
@@ -382,15 +406,25 @@ export const OrderList = memo(function OrderList({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div
+      className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+      aria-busy={isLoadingOrders && orders.length === 0}
+    >
       {avisoDeFalha && <div className="col-span-full">{avisoDeFalha}</div>}
+      {isLoadingOrders && orders.length === 0 && (
+        <>
+          <span className="sr-only">Carregando pedidos</span>
+          <OrderCardSkeleton />
+          <OrderCardSkeleton />
+        </>
+      )}
       {orders.map((order, idx) => {
         const statusBase = statusConfig[order.status] || statusConfig.pending;
         const status =
           order.retiradaNaLoja === true && order.status === "shipping"
             ? {
                 ...statusBase,
-                label: "Pronto para retirar",
+                icon: Store,
                 desc: "Venha retirar na loja",
               }
             : statusBase;
@@ -499,46 +533,81 @@ export const OrderList = memo(function OrderList({
                   expirado e recusado, e por isso fica sempre visível aqui). */}
               <div
                 data-testid="order-status-panel"
+                role="group"
+                aria-label="Situação do pedido"
                 className={cn(
-                  "mt-3 rounded-xl border px-3 py-2.5",
-                  status.panel,
+                  "mt-3 rounded-[14px] border border-zinc-200 bg-zinc-50 p-3",
+                  order.status === "delivered"
+                    ? "min-h-[74px]"
+                    : order.status === "cancelled"
+                      ? order.paymentStatus
+                        ? "min-h-[110px]"
+                        : "min-h-[78px]"
+                      : order.paymentStatus
+                        ? "min-h-[136px]"
+                        : "min-h-[104px]",
                 )}
               >
-                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-                  <div
+                <div className="flex min-w-0 items-start gap-1.5">
+                  <StatusIcon
+                    aria-hidden="true"
                     className={cn(
-                      "flex min-w-0 items-center gap-1.5",
-                      status.color,
+                      "mt-px size-4 shrink-0 stroke-[2.5]",
+                      order.status === "cancelled"
+                        ? "text-rose-700"
+                        : order.status === "delivered" ||
+                            (order.retiradaNaLoja &&
+                              order.status === "shipping")
+                          ? "text-emerald-700"
+                          : "text-zinc-950",
                     )}
-                  >
-                    <StatusIcon className="size-3.5 flex-shrink-0 stroke-[2.5]" />
-                    <span className="truncate text-[11px] font-black uppercase tracking-wide">
-                      {status.desc}
-                    </span>
-                  </div>
-                  <CustomerPaymentBadge
-                    paymentStatus={order.paymentStatus}
-                    orderStatus={order.status}
                   />
+                  <span className="text-[13px] font-bold leading-[18px] text-zinc-950">
+                    {status.desc}
+                  </span>
                 </div>
+                <CustomerPaymentBadge
+                  paymentStatus={order.paymentStatus}
+                  orderStatus={order.status}
+                  variant="lista"
+                  className="mt-2"
+                />
 
                 <OrderStatusTrail
                   status={order.status}
-                  config={status}
                   retiradaNaLoja={order.retiradaNaLoja}
                 />
 
-                {/* Rastreio (PEDIDO-060, #105): visível sem abrir o
-                    pedido. `trim()` porque o campo do painel é texto
-                    livre — apagar deixa "" ou espaço, e um rótulo
-                    "Rastreio:" em branco parece envio que não houve. */}
-                {order.trackingCode?.trim() && (
-                  <div className="mt-2 flex min-w-0 items-center gap-1 text-[10px] text-zinc-600">
-                    <Truck className="size-3 flex-shrink-0 stroke-[2.5]" />
-                    <span className="truncate font-mono font-semibold tracking-tight">
-                      {order.trackingCode.trim()}
+                {/* Código livre nunca é cortado; substitui a próxima etapa,
+                    sem esconder rastreio já existente no histórico. */}
+                {order.trackingCode?.trim() ? (
+                  <div className="mt-2 flex min-w-0 items-start gap-1 text-[11px] leading-[14px] text-zinc-700">
+                    <Truck
+                      aria-hidden="true"
+                      className="mt-px size-3 shrink-0"
+                    />
+                    <span className="break-all font-mono font-semibold">
+                      Rastreio {order.trackingCode.trim()}
                     </span>
                   </div>
+                ) : order.status !== "cancelled" &&
+                  order.status !== "delivered" ? (
+                  <p
+                    aria-hidden="true"
+                    className="mt-2 text-[11px] font-medium leading-[14px] text-zinc-600"
+                  >
+                    Próxima etapa:{" "}
+                    {
+                      (order.retiradaNaLoja ? trailStepsRetirada : trailSteps)[
+                        (statusStep.get(order.status) ?? 0) + 1
+                      ]
+                    }
+                  </p>
+                ) : null}
+                {order.status === "cancelled" && (
+                  <p className="mt-2 min-h-7 text-[11px] font-medium leading-[14px] text-zinc-700">
+                    {fraseDoCancelado(order.paymentStatus)}
+                  </p>
                 )}
               </div>
 

@@ -17,7 +17,8 @@
  *   última entalando uma chave legada, foram o sinal de que a porta era o
  *   problema, não o contrato dela). Este arquivo só faz o que é
  *   inerentemente HTTP: ler o corpo da requisição, validar a forma do
- *   `orderId` recebido de fora, e traduzir o desfecho em `Response`.
+ *   `orderId` recebido de fora, validar a sessão no Auth e conferir dono/admin
+ *   atual antes do envio, e traduzir o desfecho em `Response`.
  *
  * A TRAVA CONTRA E-MAIL REPETIDO MORA NO BANCO
  *   `reivindicar_email_de_confirmacao` faz um UPDATE condicional atomico e
@@ -49,6 +50,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enviarComprovantePedido } from "../_shared/comprovante.ts";
+import { adminAtualDaSessao } from "../_shared/admin-atual.ts";
 import { readKey } from "../_shared/webpush.ts";
 
 export {
@@ -107,7 +109,12 @@ const emTeste =
  */
 export async function handler(
   req: Request,
-  deps: { supabase?: ReturnType<typeof createClient> } = {},
+  deps: {
+    supabase?: ReturnType<typeof createClient>;
+    adminAtual?: (authorization: string | null) => Promise<string | null>;
+    enviarComprovante?: typeof enviarComprovantePedido;
+    fetchImpl?: typeof fetch;
+  } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -127,6 +134,7 @@ export async function handler(
       supabase = createClient(
         Deno.env.get("SUPABASE_URL"),
         readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+        deps.fetchImpl ? { global: { fetch: deps.fetchImpl } } : {},
       );
     } catch (err) {
       console.error(
@@ -140,7 +148,40 @@ export async function handler(
     }
   }
 
-  const desfecho = await enviarComprovantePedido({ supabase, orderId });
+  const authorization = req.headers.get("Authorization");
+  const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const recusar = (status: number) => new Response(
+    JSON.stringify({ ok: false, motivo: "nao_autorizado" }),
+    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+  if (!token) return recusar(401);
+  try {
+    // getUser consulta o Auth; decodificar o JWT não valida a sessão.
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user?.id) return recusar(401);
+    const { data: pedido, error: erroPedido } = await supabase
+      .from("marketplace_orders").select("user_id").eq("id", orderId).maybeSingle();
+    if (erroPedido) return montarResposta({ ok: false, motivo: "envio_falhou" });
+    // Ausente e alheio têm a mesma resposta: não revela se o UUID existe.
+    if (!pedido) return recusar(403);
+    if (pedido.user_id !== user.id) {
+      const adminAtual = deps.adminAtual ?? ((header: string | null) =>
+        adminAtualDaSessao(header, {
+          url: Deno.env.get("SUPABASE_URL") ?? "",
+          chavePublica: readKey("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY"),
+          chaveDeServico: readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+          fetchImpl: deps.fetchImpl,
+          rotulo: "[send-order-confirmation]",
+        }));
+      if (await adminAtual(authorization) !== user.id) return recusar(403);
+    }
+  } catch {
+    return recusar(401);
+  }
+
+  // O backend existente importa o miolo diretamente (efeitos-do-pagamento);
+  // não precisa abrir uma exceção de service role na porta pública.
+  const desfecho = await (deps.enviarComprovante ?? enviarComprovantePedido)({ supabase, orderId });
   return montarResposta(desfecho);
 }
 

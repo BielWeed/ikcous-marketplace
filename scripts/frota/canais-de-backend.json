@@ -299,9 +299,27 @@
       "versoes": ["20261260000000"],
       "ausenciaConfirmadaPor": "56b-antes-motivo-da-recusa-do-cartao-base-vigente",
       "_comentario": "Migration ADITIVA 20261260: UMA tabela privada nova (tentativas_cartao_diagnostico) com o motivo de recusa/analise do cartao; so service_role (SELECT, INSERT, UPDATE), RLS ligada e nenhuma politica; nenhuma RPC, politica de cliente nem dado reescrito. Sem backfill e sem aplicacao automatica. ORDEM: banco ANTES das edges (criar-pagamento, webhook-mercadopago e reconciliar-pagamentos gravam nela; falha do diagnostico nao altera a decisao financeira). Provar 56a; se negativa, exigir 56b positiva (tabela ausente, dependencias de pe) e mais nova antes de aplicar, depois repetir 56a. 56a/56b: catalogo, rol fechado proprio de 7 e 4 linhas; nenhuma tentativa e lida. ROLLBACK: rollback-manual-20261260000000_o_cartao_guarda_o_motivo_da_recusa.sql derruba SO a tabela e RECUSA se ja houver historico (apagar dado real exige o dono); reverter as edges antes."
+    },
+    {
+      "consulta": "57a-conferir-pagamento-adiantado-e-estorno-aplicado",
+      "versoes": ["20261270000000"],
+      "ausenciaConfirmadaPor": "57b-antes-pagamento-adiantado-e-estorno-base-vigente",
+      "_comentario": "UMA migration ADITIVA de APPLY NORMAL, DINHEIRO, sem backfillLedger e sem nuncaAplicar. CREATE OR REPLACE de concluir_estorno e pagamentos_a_reconciliar; nenhuma linha existente muda. Estorno integral de pending nunca pago cancela, devolve estoque e grava paid_at; pedido ja pago ou adiantado nao cancela nem reestoca. Processing/shipping aguardando entram na reconciliacao, nunca na expiracao. ORDEM OBRIGATORIA: DEPOIS da 20261226 e da 20261241; a 57b exige os objetos e corpos da 241 e os dois corpos antigos exatos, pois as preflights ancestrais recusam concluir_estorno novo. Banco de CADA loja ANTES das edges desta frente. Valem IKCOUS e Savy; lojas de teste ficam fora. 57a/57b: so catalogo, rol fechado de 5 linhas cada; 57a negativa exige 57b positiva e mais nova antes do apply; repetir 57a depois. Rollback-manual-20261270000000_pagamento_adiantado_e_estorno_antes_da_confirmacao.sql restaura os dois corpos antigos e o COMMENT, sem mudar ACL ou dado; pre-voo por hash recusa corpo desconhecido. Reverter primeiro as edges, depois o banco; desfazer 270 antes de ancestrais. Provas de comportamento e corrida em tests/banco/pagamentos-rpc-viva.cjs; execucao no Postgres efemero do CI, nao em lojas reais."
+    },
+    {
+      "consulta": "58a-conferir-total-do-balcao-aplicado",
+      "versoes": ["20261280000000"],
+      "ausenciaConfirmadaPor": "58b-antes-total-do-balcao-base-vigente",
+      "_comentario": "Migration 20261280: troca a assinatura de 8 pela de 9 argumentos (p_total_esperado), sem apagar dados; DROP e recriacao na mesma transacao, sem sobrecarga. Sem backfill e sem aplicacao automatica. ORDEM OBRIGATORIA: banco ANTES do front em CADA loja; o front novo envia p_total_esperado e contra a 249 falha PGRST202, parando o balcao. Provar 58a; se negativa, exigir 58b positiva e mais nova antes de aplicar, depois repetir 58a. 58a/58b (nasceram 57a/57b na frente do balcao; renumeradas na integracao porque o lote 57 ficou com o pagamento adiantado da 20261270): somente catalogo, rol fechado de 11 linhas; exigem respectivamente a assinatura de 9 argumentos/corpo exato da 280 e a assinatura de 8/corpo exato da 249, sem sobrecargas, atributos e ACL fechada. ROLLBACK: publicar de volta o FRONT anterior (sem p_total_esperado) ANTES de desfazer o banco; nenhum pedido e apagado."
+    },
+    {
+      "consulta": "59a-conferir-online-sem-forma-aplicado",
+      "versoes": ["20261290000000"],
+      "ausenciaConfirmadaPor": "59b-antes-online-sem-forma-base-vigente",
+      "_comentario": "Migration ADITIVA 20261290: CREATE OR REPLACE de fin__forma_do_pedido (online sem metodo passa a online_desconhecido em vez de pix); mesma assinatura, IMMUTABLE, search_path e REVOKE; nenhuma linha de pedido e reescrita, so o rotulo derivado no Financeiro/CRM muda. Sem backfill e sem aplicacao automatica. ORDEM: depois da 20261177; o front desta release ja conhece o rotulo online_desconhecido, entao o banco vai junto da publicacao do front em CADA loja (IKCOUS e Savy). Provar 59a; se negativa, exigir 59b positiva e mais nova antes de aplicar, depois repetir 59a. 59a/59b: somente catalogo, rol fechado de 4 linhas cada; exigem respectivamente o corpo exato da 290 e o da 177 (md5 sem CR), mais assinatura/atributos e EXECUTE negado a PUBLIC, anon e authenticated. ROLLBACK: rollback-manual-20261290000000_online_sem_forma_nao_e_pix.sql restaura o corpo da 177 byte a byte e o mesmo REVOKE; pre-voo por hash recusa corpo desconhecido; nenhum dado e apagado. Provas de comportamento e do rollback em tests/banco/financeiro-viva.cjs, no Postgres efemero do CI, nao em lojas reais."
     }
   ],
-  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; e, desde 13/10/2026 por decisao do dono, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, SO pelo nome (e, desde 14/10/2026, a credenciais-email, o painel onde a lojista cadastra o Gmail da loja): antes, uma delas que mudasse na release deixava a loja PARADA; a send-order-whatsapp segue proibida, nenhuma outra loja ganha rota, e a pre-condicao de publicar cada uma e medir o que esta no ar em CADA loja antes, passo 6 de docs/runbooks/producao-unica-fonte.md; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
+  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; e, desde 13/10/2026 por decisao do dono, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, SO pelo nome (e, desde 14/10/2026, a credenciais-email, o painel onde a lojista cadastra o Gmail da loja; e, desde 21/10/2026, a auth-send-email, o Send Email Hook autenticado por assinatura Standard Webhooks): antes, uma delas que mudasse na release deixava a loja PARADA; a send-order-whatsapp segue proibida, nenhuma outra loja ganha rota, e a pre-condicao de publicar cada uma e medir o que esta no ar em CADA loja antes, passo 6 de docs/runbooks/producao-unica-fonte.md; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
   "canais": {
     "cafkrminfnokvgjqtkle": {
       "nome": "IKCOUS",
@@ -320,7 +338,8 @@
         "send-otp-email",
         "melhor-envio-etiqueta",
         "send-push",
-        "credenciais-email"
+        "credenciais-email",
+        "auth-send-email"
       ]
     },
     "gnjsrucsmjkajijrakzr": {
@@ -340,7 +359,8 @@
         "send-otp-email",
         "melhor-envio-etiqueta",
         "send-push",
-        "credenciais-email"
+        "credenciais-email",
+        "auth-send-email"
       ]
     }
   }

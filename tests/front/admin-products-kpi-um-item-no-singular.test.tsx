@@ -216,7 +216,16 @@ describe("AdminProductsView — 'Produtos no Catálogo' concorda com o número",
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 450));
     });
-    return hospedeiro.textContent ?? "";
+    expect(
+      hospedeiro
+        .querySelector('section[aria-label="Métricas de Produtos"]')
+        ?.getAttribute("data-expandido"),
+    ).toBe("false");
+    return (
+      hospedeiro.querySelector(
+        '.metricas-painel-secundarias [aria-label="Produtos no Catálogo"]',
+      )?.textContent ?? ""
+    );
   }
 
   it("um produto so: '1 item', nunca '1 itens'", async () => {

@@ -48,8 +48,13 @@ module.exports = {
         },
         "admin-gold": "hsl(var(--admin-gold))",
         "admin-bg": "hsl(var(--admin-bg))",
+        "admin-surface": "hsl(var(--admin-surface))",
         "admin-card": "hsl(var(--admin-card))",
+        "admin-raised": "hsl(var(--admin-raised))",
+        "admin-hover": "hsl(var(--admin-hover))",
+        "admin-nav": "hsl(var(--admin-nav))",
         "admin-border": "hsl(var(--admin-border))",
+        "admin-border-strong": "hsl(var(--admin-border-strong))",
         "admin-accent": "hsl(var(--admin-accent))",
         blackTier: {
           DEFAULT: "#ffffff",

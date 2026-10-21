@@ -29,6 +29,11 @@ const PASTAS_VARRIDAS = ["src/views/admin", "src/components/admin"];
 const REDUNDANTES = new Set([
   "border",
   "border-white/5",
+  // Desde a escala de elevação do painel (index.css), `.admin-glass` fixa
+  // `bg-admin-surface` e `border-admin-border` (os valores antigos, white/5 e
+  // zinc-950/40, ficaram só como redundantes de código legado).
+  "border-admin-border",
+  "bg-admin-surface",
   "shadow-2xl",
   "bg-zinc-950/40",
   "backdrop-blur-2xl",

@@ -23,6 +23,8 @@
  */
 
 const assert = require("node:assert");
+const { readFileSync } = require("node:fs");
+const path = require("node:path");
 const { Client } = require("pg");
 const {
   falhar,
@@ -1386,6 +1388,226 @@ PROVAS.push({
       { ok: true, payment_status: "estornado" },
       "mutante S3_guarda_antes_do_ja_estornado: o segundo clique seria recusado",
     );
+  },
+});
+
+PROVAS.push({
+  nome: "(forma desconhecida) online sem método não entra como PIX; resumo e extrato preservam valores",
+  corpo: async (cliente) => {
+    for (const [metodo, forma] of [
+      [null, "online_desconhecido"],
+      ["pix", "pix"],
+      ["credito", "credito"],
+      ["debito", "debito"],
+    ]) {
+      assert.equal(
+        await rpc(
+          cliente,
+          "SELECT public.fin__forma_do_pedido('online', $1) AS r",
+          [metodo],
+        ),
+        forma,
+      );
+    }
+    for (const [metodo, forma] of [
+      ["cash", "dinheiro"],
+      ["pix", "pix"],
+      ["card", "cartao"],
+      ["x", "outro"],
+    ]) {
+      assert.equal(
+        await rpc(
+          cliente,
+          "SELECT public.fin__forma_do_pedido($1, NULL) AS r",
+          [metodo],
+        ),
+        forma,
+      );
+    }
+    await logar(cliente, U_ADMIN);
+    await cliente.query("BEGIN");
+    try {
+      const resumo = () =>
+        rpc(cliente, "SELECT public.fin_resumo($1, $2) AS r", [
+          estado.inicio,
+          estado.hoje,
+        ]);
+      const antes = await resumo();
+      const desconhecido = "5eeeeeee-0000-0000-0000-000000000001";
+      const pix = "5eeeeeee-0000-0000-0000-000000000002";
+      await pedido(cliente, desconhecido, {
+        total: 80,
+        pagamento: "online",
+        paymentStatus: "pago",
+        paidAt: new Date(),
+        status: "processing",
+      });
+      await pedido(cliente, pix, {
+        total: 20,
+        pagamento: "online",
+        metodoOnline: "pix",
+        paymentStatus: "pago",
+        paidAt: new Date(),
+        status: "processing",
+      });
+      const depois = await resumo();
+      const valorDaForma = (r, forma) =>
+        num(r.por_forma.find((f) => f.forma === forma)?.valor || 0);
+      assert.equal(
+        num(
+          valorDaForma(depois, "online_desconhecido") -
+            valorDaForma(antes, "online_desconhecido"),
+        ),
+        80,
+      );
+      assert.equal(
+        num(valorDaForma(depois, "pix") - valorDaForma(antes, "pix")),
+        20,
+      );
+      assert.equal(num(depois.entradas - antes.entradas), 100);
+      const extrato = await rpc(
+        cliente,
+        "SELECT public.fin_extrato($1, $2) AS r",
+        [estado.inicio, estado.hoje],
+      );
+      const linha = extrato.find((m) => m.id === `pedido:${desconhecido}`);
+      assert.equal(linha.forma_pagamento, "online_desconhecido");
+      assert.equal(linha.conta_id, MP);
+      assert.equal(num(linha.valor), 80);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(forma desconhecida) rollback restaura a função anterior e recusa corpo divergente",
+  corpo: async (cliente) => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do companion versionado; sem entrada externa.
+    const rollback = readFileSync(
+      path.join(
+        __dirname,
+        "../../supabase/migrations/rollback-manual-20261290000000_online_sem_forma_nao_e_pix.sql",
+      ),
+      "utf8",
+    );
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo da migration versionada; sem entrada externa.
+    const migration = readFileSync(
+      path.join(
+        __dirname,
+        "../../supabase/migrations/20261290000000_online_sem_forma_nao_e_pix.sql",
+      ),
+      "utf8",
+    );
+    const retrato = async () =>
+      (
+        await cliente.query(
+          `SELECT pg_get_functiondef(oid) AS definicao, proacl::text AS acl
+         FROM pg_proc
+        WHERE oid = 'public.fin__forma_do_pedido(text,text)'::regprocedure`,
+        )
+      ).rows[0];
+    await cliente.query("BEGIN");
+    try {
+      const antes = await retrato();
+      await cliente.query(rollback);
+      assert.equal(
+        await rpc(
+          cliente,
+          "SELECT public.fin__forma_do_pedido('online', NULL) AS r",
+        ),
+        "pix",
+      );
+      for (const papel of ["anon", "authenticated"]) {
+        assert.equal(
+          await rpc(
+            cliente,
+            "SELECT has_function_privilege($1, 'public.fin__forma_do_pedido(text,text)', 'EXECUTE') AS r",
+            [papel],
+          ),
+          false,
+        );
+      }
+      assert.equal((await retrato()).acl, antes.acl);
+      await cliente.query("SAVEPOINT repetido");
+      await assert.rejects(cliente.query(rollback), /B1_BASELINE_DIVERGENT/);
+      await cliente.query("ROLLBACK TO SAVEPOINT repetido");
+      await cliente.query(migration);
+      assert.deepEqual(await retrato(), antes);
+
+      await cliente.query(`CREATE OR REPLACE FUNCTION public.fin__forma_do_pedido(p_payment_method text, p_metodo_online text)
+        RETURNS text LANGUAGE sql IMMUTABLE SET search_path = public
+        AS $$ SELECT 'posterior'::text $$;`);
+      const posterior = await retrato();
+      await cliente.query("SAVEPOINT divergente");
+      await assert.rejects(cliente.query(rollback), /B1_BASELINE_DIVERGENT/);
+      await cliente.query("ROLLBACK TO SAVEPOINT divergente");
+      assert.deepEqual(await retrato(), posterior);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(forma desconhecida) consultas 59a/59b: depois da 290 só a 59a passa; depois do rollback só a 59b; corpo alheio e EXECUTE aberto reprovam as duas",
+  corpo: async (cliente) => {
+    const lerSql = (pasta, arquivo) =>
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- Somente literais desta prova, nunca entrada externa.
+      readFileSync(path.join(__dirname, "..", "..", pasta, arquivo), "utf8");
+    const rollback = lerSql(
+      "supabase/migrations",
+      "rollback-manual-20261290000000_online_sem_forma_nao_e_pix.sql",
+    );
+    const depois = lerSql(
+      "scripts/publicacao/consultas",
+      "59a-conferir-online-sem-forma-aplicado.sql",
+    );
+    const antes = lerSql(
+      "scripts/publicacao/consultas",
+      "59b-antes-online-sem-forma-base-vigente.sql",
+    );
+    const linhas = async (sql) => {
+      const r = (await cliente.query(sql)).rows;
+      assert.equal(r.length, 4);
+      return r;
+    };
+    const positivo = async (sql) => {
+      const r = await linhas(sql);
+      assert.ok(
+        r.every((l) => l.ok === true),
+        JSON.stringify(r),
+      );
+    };
+    const negativo = async (sql, trecho) => {
+      const r = await linhas(sql);
+      const item = r.find((l) => l.item.includes(trecho));
+      assert.ok(item, trecho);
+      assert.equal(item.ok, false, JSON.stringify(r));
+    };
+    await cliente.query("BEGIN");
+    try {
+      await positivo(depois);
+      await negativo(antes, "corpo da 20261177000000");
+      await cliente.query(rollback);
+      await positivo(antes);
+      await negativo(depois, "corpo da 20261290000000");
+
+      await cliente.query("SAVEPOINT acl_aberta");
+      await cliente.query(
+        "GRANT EXECUTE ON FUNCTION public.fin__forma_do_pedido(text,text) TO anon",
+      );
+      await negativo(antes, "sem EXECUTE");
+      await cliente.query("ROLLBACK TO SAVEPOINT acl_aberta");
+
+      await cliente.query(`CREATE OR REPLACE FUNCTION public.fin__forma_do_pedido(p_payment_method text, p_metodo_online text)
+        RETURNS text LANGUAGE sql IMMUTABLE SET search_path = public
+        AS $$ SELECT 'posterior'::text $$;`);
+      await negativo(antes, "corpo da 20261177000000");
+      await negativo(depois, "corpo da 20261290000000");
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
   },
 });
 

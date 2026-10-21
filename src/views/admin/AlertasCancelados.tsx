@@ -254,7 +254,7 @@ export function AlertasCancelados({
       {aberto && (
         <div
           id="alertas-cancelados-conteudo"
-          className="absolute right-0 top-full z-50 mt-3 max-h-[min(70vh,640px)] w-[min(calc(100vw-3rem),640px)] space-y-4 overflow-y-auto rounded-[2rem] border border-white/10 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl"
+          className="absolute right-0 top-full z-50 mt-3 max-h-[min(70vh,640px)] w-[min(calc(100vw-3rem),640px)] space-y-4 overflow-y-auto rounded-[2rem] border border-admin-border bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl"
         >
           {avisoIncompleto}
 
@@ -346,7 +346,7 @@ export function AlertasCancelados({
               que devia R$ 100 a quem nunca pagou nada). Some sozinha assim que
               `confirmarRetornoDoProduto` resolve o pedido. */}
           {pedidosEsperandoRetorno.length > 0 && (
-            <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
+            <div className="admin-glass relative overflow-hidden rounded-[2rem] border-admin-border p-6">
               <h3 className="text-[11px] font-black uppercase tracking-widest text-zinc-400">
                 Produtos que ainda não voltaram
               </h3>
@@ -371,7 +371,7 @@ export function AlertasCancelados({
                     // NOME encurta; o valor nunca some.
                     <li
                       key={pedido.id}
-                      className="flex flex-col gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-3 rounded-xl border border-admin-border bg-black/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0">
                         <span className="block truncate text-[11px] font-black uppercase tracking-widest text-white">
@@ -416,7 +416,7 @@ export function AlertasCancelados({
               pedido pode aparecer nos dois baldes, cada um respondendo uma
               pergunta diferente (BLOQUEIA 2 da revisão de 26/08/2026). */}
           {pedidosParaDevolverAgora.length > 0 && (
-            <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
+            <div className="admin-glass relative overflow-hidden rounded-[2rem] border-admin-border p-6">
               <h3 className="text-[11px] font-black uppercase tracking-widest text-zinc-400">
                 Devolver ao cliente
               </h3>
@@ -469,7 +469,7 @@ export function AlertasCancelados({
                       <li
                         key={pedido.id}
                         data-testid={`devolver-agora-item-${pedido.id}`}
-                        className="rounded-xl border border-white/5 bg-black/20 px-4 py-3"
+                        className="rounded-xl border border-admin-border bg-black/20 px-4 py-3"
                       >
                         <span className="block truncate text-[11px] font-black uppercase tracking-widest text-white">
                           #{pedido.id.slice(-6).toUpperCase()}

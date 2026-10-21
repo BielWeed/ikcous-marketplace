@@ -5,7 +5,7 @@
 // `save_store_identity` recusa pacote incompleto e compara a fotografia
 // INTEIRA da identidade (as 8 chaves, cidade e UF incluídas): se o Endereço
 // grava a cidade nova e a marca ainda guarda a antiga, o próximo "Salvar
-// identidade" (a cor, por exemplo) ou REVERTE a cidade ou cai em conflito.
+// identidade" (o nome, por exemplo) ou REVERTE a cidade ou cai em conflito.
 // Estes casos prendem os dois erros:
 //  - a marca relê sozinha quando a cidade/UF do config muda por fora;
 //  - a edição da marca em andamento sobrevive a essa releitura;
@@ -186,10 +186,11 @@ afterEach(() => {
 });
 
 describe("Minha loja — a marca não pede Cidade/UF e não reverte a cidade do endereço", () => {
-  it("a marca mostra nome e cores, e NÃO pede Cidade nem UF", async () => {
+  it("a marca mostra nome, oferece o atalho de cor e NÃO pede Cidade nem UF", async () => {
     await render();
     expect(input("store-name").value).toBe("Loja Teste");
-    expect(input("store-color-hex").value).toBe("#ABCDEF");
+    expect(host.querySelector("#store-color-hex")).toBeNull();
+    expect(host.textContent).toContain("A cor do app fica em Aparência do app");
     expect(host.querySelector("#store-city")).toBeNull();
     expect(host.querySelector("#store-state")).toBeNull();
     expect(host.textContent).not.toContain("Estado (UF)");
@@ -197,7 +198,7 @@ describe("Minha loja — a marca não pede Cidade/UF e não reverte a cidade do 
 
   it("o pacote continua com as 8 chaves, cidade e UF incluídas (a RPC recusa pacote incompleto)", async () => {
     await render();
-    await type("store-color-hex", "#112233");
+    await type("store-name", "Marca atualizada");
     await click("Salvar identidade");
 
     const intent = h.save.mock.calls[0][0] as StoreIdentityIntent;
@@ -218,7 +219,7 @@ describe("Minha loja — a marca não pede Cidade/UF e não reverte a cidade do 
     expect(intent.desired.store_state).toBe("MG");
   });
 
-  it("salvar o endereço (cidade nova) e depois a cor: a cor sai com a cidade NOVA e nenhum conflito aparece", async () => {
+  it("salvar o endereço (cidade nova) e depois a Marca: o nome sai com a cidade NOVA e nenhum conflito aparece", async () => {
     await render();
     expect(h.read).toHaveBeenCalledTimes(1);
 
@@ -227,7 +228,7 @@ describe("Minha loja — a marca não pede Cidade/UF e não reverte a cidade do 
     await enderecoGravouACidade("São Paulo", "SP");
     expect(h.read).toHaveBeenCalledTimes(2);
 
-    await type("store-color-hex", "#112233");
+    await type("store-name", "Marca atualizada");
     await click("Salvar identidade");
 
     expect(h.save).toHaveBeenCalledTimes(1);
@@ -238,24 +239,26 @@ describe("Minha loja — a marca não pede Cidade/UF e não reverte a cidade do 
     // …e o que se quer gravar leva a cidade nova, não a antiga
     expect(intent.desired.store_city).toBe("São Paulo");
     expect(intent.desired.store_state).toBe("SP");
-    expect(intent.desired.primary_color).toBe("#112233");
+    expect(intent.desired.store_name).toBe("Marca atualizada");
+    expect(intent.desired.primary_color).toBe("#ABCDEF");
     expect(host.textContent).not.toContain("Outra configuração");
     expect(host.textContent).not.toContain("Conferir configuração atual");
   });
 
-  it("a cor que a lojista já estava editando sobrevive à cidade nova que chega de fora", async () => {
+  it("o nome que a lojista já estava editando sobrevive à cidade nova que chega de fora", async () => {
     await render();
-    await type("store-color-hex", "#112233");
+    await type("store-name", "Marca atualizada");
 
     h.read.mockImplementation(async () => snapshot("11", "São Paulo", "SP"));
     await enderecoGravouACidade("São Paulo", "SP");
 
-    expect(input("store-color-hex").value).toBe("#112233");
+    expect(input("store-name").value).toBe("Marca atualizada");
     await click("Salvar identidade");
 
     const intent = h.save.mock.calls[0][0] as StoreIdentityIntent;
     expect(intent.expected.revision).toBe("11");
-    expect(intent.desired.primary_color).toBe("#112233");
+    expect(intent.desired.store_name).toBe("Marca atualizada");
+    expect(intent.desired.primary_color).toBe("#ABCDEF");
     expect(intent.desired.store_city).toBe("São Paulo");
     expect(host.textContent).not.toContain("Outra configuração");
   });
@@ -275,11 +278,11 @@ describe("Minha loja — a marca não pede Cidade/UF e não reverte a cidade do 
 
   it("releitura que falha não derruba a marca: o rascunho fica e o Salvar continua possível", async () => {
     await render();
-    await type("store-color-hex", "#112233");
+    await type("store-name", "Marca atualizada");
     h.read.mockRejectedValue(new Error("rede"));
     await enderecoGravouACidade("São Paulo", "SP");
 
-    expect(input("store-color-hex").value).toBe("#112233");
+    expect(input("store-name").value).toBe("Marca atualizada");
     expect(
       [...host.querySelectorAll("button")].find(
         (b) => b.textContent === "Salvar identidade",

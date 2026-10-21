@@ -98,6 +98,7 @@ const {
 // aqui `noEstado` também a desfaz antes de montar o estado (o módulo "posterior" dela, a mesma régua da 20261242).
 const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
   (s) =>
+    s.nome !== "20261280000000_o_balcao_registra_so_o_total_conferido.sql" &&
     s.nome !== NOME_CUSTO_DO_DIA &&
     s.nome !== "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql" &&
     s.nome !==
@@ -258,6 +259,9 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    await require("./pdv-total-conferido-posterior.cjs").desfazerTotalConferidoNaTransacao(
+      C,
+    );
     await devolverAoEstadoAnteriorAoCustoDoDia(C);
     await desfazerEntregaNaCidadeNaTransacao(C);
     const montado = montar ? await montar(C) : undefined;

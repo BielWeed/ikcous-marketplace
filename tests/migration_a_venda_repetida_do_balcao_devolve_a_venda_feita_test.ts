@@ -341,14 +341,12 @@ Deno.test("as consultas 36a/36b, a 8e e a 9a citam os md5 REAIS dos dois corpos"
   assert.ok(c36a.includes(`f.m = '${hashSucessora}'`));
   assert.ok(!c36b.includes(hashSucessora), "36b nao aceita quem ja tem trava");
   // A 9a (igualdade exata) acompanha o corpo FINAL vivo, hoje o sucessor da
-  // 20261249. O hash da 235 continua obrigatório na 8e e na 36a acima.
+  // 20261280. Os hashes da 235 e 249 continuam obrigatórios na 8e/36a acima.
   const c9a = lerArquivo(
     "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
   );
   const sucessora = funcao(
-    ler(
-      "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql",
-    ),
+    ler("20261280000000_o_balcao_registra_so_o_total_conferido.sql"),
     "registrar_venda_presencial",
   );
   assert.ok(
