@@ -97,6 +97,56 @@ describe("criar imagem do banner com IA", () => {
     );
   });
 
+  it("mantém o botão habilitado e o foco durante a cópia pendente", async () => {
+    let concluir!: () => void;
+    copiar.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          concluir = resolve;
+        }),
+    );
+    const copiarBotao = botao("Copiar texto");
+    copiarBotao.focus();
+    act(() => copiarBotao.click());
+    expect(copiarBotao.disabled).toBe(false);
+    expect(document.activeElement).toBe(copiarBotao);
+    await act(async () => concluir());
+    expect(document.activeElement).toBe(copiarBotao);
+    expect(tela.querySelector('[role="status"]')?.textContent).toBe(
+      "Texto copiado",
+    );
+  });
+
+  it.each(["text/plain", "application/pdf", ""])(
+    "recusa arquivo que não é imagem (%s), avisa e permite corrigir",
+    (tipo) => {
+      const campo = tela.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement;
+      const limpar = vi.spyOn(campo, "value", "set");
+      Object.defineProperty(campo, "files", {
+        configurable: true,
+        value: [new File(["arquivo"], "banner.txt", { type: tipo })],
+      });
+      act(() => campo.dispatchEvent(new Event("change", { bubbles: true })));
+      expect(aoEscolherImagem).not.toHaveBeenCalled();
+      expect(limpar).toHaveBeenCalledWith("");
+      expect(tela.querySelector('[role="alert"]')?.textContent).toBe(
+        "Escolha um arquivo de imagem (JPG, PNG ou WebP).",
+      );
+      const imagem = new File(["imagem"], "banner.webp", {
+        type: "image/webp",
+      });
+      Object.defineProperty(campo, "files", {
+        configurable: true,
+        value: [imagem],
+      });
+      act(() => campo.dispatchEvent(new Event("change", { bubbles: true })));
+      expect(aoEscolherImagem).toHaveBeenCalledWith(imagem);
+      expect(tela.querySelector('[role="alert"]')).toBeNull();
+    },
+  );
+
   it("seleciona o texto e usa a cópia antiga se o clipboard recusar", async () => {
     copiar.mockRejectedValue(new Error("indisponível"));
     let selecionado = "";

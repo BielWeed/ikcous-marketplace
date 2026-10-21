@@ -30,6 +30,7 @@ export function CriarBannerComIa({
   const [produto, definirProduto] = useState(produtoInicial);
   const [estilo, definirEstilo] = useState<"escuro" | "claro">("escuro");
   const [copiando, definirCopiando] = useState(false);
+  const [erroDaImagem, definirErroDaImagem] = useState(false);
   const [aviso, definirAviso] = useState({ texto: "", mensagem: "" });
   const caixaDeTexto = useRef<HTMLTextAreaElement>(null);
   const entradaDeImagem = useRef<HTMLInputElement>(null);
@@ -41,6 +42,7 @@ export function CriarBannerComIa({
   });
 
   async function copiarTexto() {
+    if (copiando) return;
     definirCopiando(true);
     definirAviso({ texto, mensagem: "" });
     let copiou = false;
@@ -159,7 +161,6 @@ export function CriarBannerComIa({
         <Button
           type="button"
           onClick={copiarTexto}
-          disabled={copiando}
           className="min-h-11 w-full whitespace-normal bg-admin-gold font-bold text-black hover:bg-admin-gold/90"
         >
           <Copy aria-hidden="true" />
@@ -188,7 +189,10 @@ export function CriarBannerComIa({
           onChange={(evento) => {
             const arquivo = evento.target.files?.[0];
             evento.target.value = "";
-            if (arquivo) aoEscolherImagem(arquivo);
+            if (!arquivo) return;
+            const imagem = arquivo.type.startsWith("image/");
+            definirErroDaImagem(!imagem);
+            if (imagem) aoEscolherImagem(arquivo);
           }}
         />
         <Button
@@ -199,6 +203,11 @@ export function CriarBannerComIa({
         >
           <Upload aria-hidden="true" /> Enviar a imagem pronta
         </Button>
+        {erroDaImagem && (
+          <p role="alert" className="text-sm text-zinc-300">
+            Escolha um arquivo de imagem (JPG, PNG ou WebP).
+          </p>
+        )}
       </section>
     </div>
   );
