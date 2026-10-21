@@ -156,7 +156,10 @@ describe("F3 — produto no computador e celular preservado", () => {
     ).toBe(true);
     expect(secoes.contains(elemento("#reviews-section"))).toBe(true);
     expect(secoes.contains(elemento("#chat-section"))).toBe(true);
-    expect(secoes.contains(elemento(".h-44"))).toBe(true);
+    expect(host.querySelector(".h-44")).toBeNull();
+    expect(host.firstElementChild!.classList.contains("pb-customer")).toBe(
+      true,
+    );
     const textos = [
       "Início",
       "Blusa de teste",
@@ -235,7 +238,8 @@ describe("F3 — produto no computador e celular preservado", () => {
 
   it("F3.5 esconde a barra dockada e sua reserva só no desktop", async () => {
     await montar();
-    classe(".h-44", "h-44 md:h-36", "lg:hidden");
+    expect(host.querySelector(".h-44")).toBeNull();
+    expect(host.firstElementChild!.classList.contains("lg:pb-0")).toBe(true);
     expect(
       elemento(".bottom-docked-navigation", document).classList.contains(
         "lg:hidden",

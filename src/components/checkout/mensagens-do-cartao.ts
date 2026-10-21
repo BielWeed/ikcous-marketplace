@@ -95,7 +95,7 @@ export const TEXTOS_DO_CARTAO = {
   juros:
     "No parcelado, o cartão pode cobrar juros a partir de 2x. O valor de cada parcela e o total aparecem na escolha das parcelas.",
   confianca:
-    "Pagamento processado pelo Mercado Pago. A loja não vê nem guarda os dados do seu cartão.",
+    "Pagamento processado pelo Mercado Pago. Seus dados do cartão não passam pela loja.",
   carregando: "Carregando o formulário do cartão...",
   dados: "Confira os dados do cartão",
   semLimite: "O cartão não tem limite para este valor",

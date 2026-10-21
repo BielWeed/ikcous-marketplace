@@ -34,6 +34,7 @@ import {
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -1776,13 +1777,6 @@ export const ProductView = React.memo(function ProductView({
                 </div>
               </div>
             )}
-
-            {/* Reserva o fim da página para as barras fixas (compra dockada +
-            navegação inferior) não cobrirem a última fileira de cards. */}
-            <div
-              aria-hidden="true"
-              className={cn("h-44 md:h-36", "lg:hidden")}
-            />
           </div>
         </div>
       </div>
@@ -1792,12 +1786,13 @@ export const ProductView = React.memo(function ProductView({
           <AnimatePresence>
             {scrolled && (
               <motion.div
+                ref={medirRodapeCliente}
                 initial={{ y: 100, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
                 className={cn(
-                  "bottom-docked-navigation fixed inset-x-0 z-50 flex items-center justify-between gap-3 border-t border-zinc-200/60 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-xl md:bottom-[88px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-2xl md:border-x md:border-zinc-200/60",
+                  "bottom-docked-navigation fixed inset-x-0 z-50 flex items-center justify-between gap-3 border-t border-zinc-200/60 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-xl md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-2xl md:border-x md:border-zinc-200/60",
                   "lg:hidden",
                 )}
               >

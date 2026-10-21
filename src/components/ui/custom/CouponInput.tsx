@@ -111,12 +111,12 @@ export const CouponInput = memo(function CouponInput({
           aria-describedby={error ? "erro-cupom" : undefined}
           // Laudo 05/09, M3: o override que apagava o anel de foco global
           // morreu — anel só para teclado, padrão do BottomNav.
-          className="flex-1 rounded-md bg-transparent text-base outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 md:text-sm"
+          className="min-w-0 flex-1 rounded-md bg-transparent text-base outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 md:text-sm"
         />
         <button
           type="submit"
           disabled={!code.trim() || aplicando}
-          className="flex min-h-[44px] items-center rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
+          className="flex min-h-[44px] min-w-[70px] shrink-0 items-center justify-center rounded-lg bg-zinc-900 px-2 py-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
         >
           {aplicando ? "Aplicando…" : "Aplicar"}
         </button>

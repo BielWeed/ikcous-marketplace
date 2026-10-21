@@ -12,7 +12,7 @@ import {
 } from "@/lib/config-do-cartao";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { arredondarParaCentavos, formatCurrency } from "@/lib/utils";
-import { Clock, Loader2 } from "lucide-react";
+import { Clock, Loader2, Shield } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { BotaoDoCartao, PainelDoCartao } from "./AvisoDoCartao";
 import type {
@@ -1963,11 +1963,14 @@ export function PagamentoComCartao({
       </div>
 
       {formularioAtivo && (
-        // Verdadeira e sem selo: o que o Mercado Pago e a loja de fato fazem
-        // com o número do cartão (o dado mora em iframes do Mercado Pago; o
-        // app só recebe o token de uso único). Nada de ícone de certificação.
-        <p className="text-sm leading-snug text-zinc-600">
-          {TEXTOS_DO_CARTAO.confianca}
+        // O escudo acompanha a explicação, não representa certificação:
+        // os campos seguros são do Mercado Pago; o app só recebe o token.
+        <p className="flex items-start gap-2 text-xs leading-snug text-zinc-600">
+          <Shield
+            aria-hidden="true"
+            className="size-4 shrink-0 text-emerald-600"
+          />
+          <span>{TEXTOS_DO_CARTAO.confianca}</span>
         </p>
       )}
     </section>
