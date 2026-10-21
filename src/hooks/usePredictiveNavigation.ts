@@ -41,6 +41,7 @@ export function usePredictiveNavigation(currentView: string) {
         "admin-coupons",
         "admin-banners",
         "admin-carousels",
+        "admin-app-color",
         "admin-dashboard",
       ];
     }

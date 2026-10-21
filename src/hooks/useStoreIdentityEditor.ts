@@ -52,6 +52,7 @@ interface EditorState {
   intent?: StoreIdentityIntent;
   current?: StoreIdentitySnapshot;
   message?: string;
+  saveStatus?: "confirmed" | "rejected";
   progress?: { uploadedBytes: number; totalBytes: number };
 }
 export type IdentityUploadTarget =
@@ -199,6 +200,7 @@ export function useStoreIdentityEditor(active = true) {
     publish({
       ...model.current,
       phase: kind,
+      saveStatus: undefined,
       message: undefined,
       progress: undefined,
     });
@@ -218,6 +220,7 @@ export function useStoreIdentityEditor(active = true) {
       scope: model.current.scope,
       phase: "editing",
       draft,
+      saveStatus: "confirmed",
       message: readback
         ? `Esta identidade está salva no cadastro. ${savedMessage.split(". ").slice(1).join(". ")}`
         : savedMessage,
@@ -303,7 +306,14 @@ export function useStoreIdentityEditor(active = true) {
       finish({ ...before, phase: "editing", message: undefined });
     }
   }
+  const estavaAtivo = useRef(active);
   useEffect(() => {
+    const voltou = active && !estavaAtivo.current;
+    estavaAtivo.current = active;
+    // Marca e Cor são telas mantidas montadas: voltar concilia a fotografia
+    // nova sem apagar a escolha local, como já acontece com cidade/UF.
+    if (voltou && allowed && origin && model.current.phase === "editing")
+      void syncExternalLocation();
     if (active && allowed && origin && model.current.phase === "idle")
       void read();
     // The operation reads the latest committed session, not a captured access token.
@@ -325,6 +335,7 @@ export function useStoreIdentityEditor(active = true) {
     try {
       publish({
         ...model.current,
+        saveStatus: undefined,
         draft: changeIdentityEditorDraft(
           model.current.draft!,
           change,
@@ -353,7 +364,8 @@ export function useStoreIdentityEditor(active = true) {
     if (target.kind === "app-icons" && !iconColor) {
       publish({
         ...before,
-        message: "Defina a cor principal antes de enviar o ícone.",
+        message:
+          "Escolha a cor do app (Ajustes → Aparência do app → Cor do app) antes de enviar o ícone.",
       });
       return;
     }
@@ -503,7 +515,7 @@ export function useStoreIdentityEditor(active = true) {
       message: "Envio cancelado. A imagem anterior permanece no rascunho.",
     });
   }
-  async function save() {
+  async function save(onlyPrimaryColor = false) {
     if (!editable()) return;
     const before = model.current;
     const color = validaCorDaLoja(before.draft!.fields.primaryColor);
@@ -512,14 +524,22 @@ export function useStoreIdentityEditor(active = true) {
         ...before,
         message:
           color.motivo === "preto"
-            ? "Preto não pode ser a cor da loja. Escolha outro tom para a cor principal."
-            : "Use o formato #RRGGBB nas cores.",
+            ? "Preto puro não funciona bem como cor do app. Escolha outro tom em Ajustes → Aparência do app → Cor do app."
+            : "Confira a cor em Ajustes → Aparência do app → Cor do app. Use o formato #RRGGBB.",
       });
       return;
     }
     let intent: StoreIdentityIntent;
     try {
       intent = buildIdentityEditorIntent(before.draft!, latest.current.origin);
+      if (onlyPrimaryColor) {
+        // A tela de cor não edita nome, endereço ou imagens. Reenvia as oito
+        // chaves EXATAS da fotografia; nem a normalização do codec pode tocá-las.
+        intent = {
+          expected: intent.expected,
+          desired: { ...intent.expected.identity, primary_color: color.cor },
+        };
+      }
     } catch {
       publish({
         ...before,
@@ -559,6 +579,7 @@ export function useStoreIdentityEditor(active = true) {
           finish({
             ...before,
             phase: "editing",
+            saveStatus: "rejected",
             message:
               "A identidade não foi gravada. Confira os dados e o acesso de administrador antes de tentar novamente.",
           });
@@ -671,7 +692,8 @@ export function useStoreIdentityEditor(active = true) {
     setField,
     upload,
     cancelUpload,
-    save,
+    save: () => save(),
+    savePrimaryColor: () => save(true),
     resolveConflict,
     discard,
     keepSource,

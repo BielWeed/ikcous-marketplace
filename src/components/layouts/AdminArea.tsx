@@ -64,6 +64,11 @@ const AdminBanners = lazyWithPreload(() =>
     default: m.AdminBannersView,
   })),
 );
+const AdminAppColor = lazyWithPreload(() =>
+  import("@/views/admin/AdminAppColorView").then((m) => ({
+    default: m.AdminAppColorView,
+  })),
+);
 const AdminCarousels = lazyWithPreload(() =>
   import("@/views/admin/AdminCarouselsView").then((m) => ({
     default: m.AdminCarouselsView,
@@ -661,6 +666,19 @@ export function AdminArea({
                             active: currentView === "admin-banners",
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-app-color":
+                    return (
+                      <LocalErrorBoundary key="admin-app-color">
+                        <PreloadedOrLazy
+                          component={AdminAppColor}
+                          props={{
+                            onNavigate,
+                            active: currentView === "admin-app-color",
+                            onSetDirty: setIsAdminDirty,
                           }}
                         />
                       </LocalErrorBoundary>
