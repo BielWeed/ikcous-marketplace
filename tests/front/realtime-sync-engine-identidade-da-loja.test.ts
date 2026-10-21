@@ -19,6 +19,15 @@ vi.mock("@/lib/supabase", () => ({ supabase: {} }));
 
 const { TABLE_CONFIGS } = await import("@/lib/realtimeSyncEngine");
 
+it("sincronizar categorias preserva o ícone escolhido e tolera banco antigo", () => {
+  const mapear = TABLE_CONFIGS.find((c) => c.table === "categorias")!
+    .mapRecord!;
+  expect(mapear({ id: "c1", nome: "Brinquedo", icone: "moda" }).icone).toBe(
+    "moda",
+  );
+  expect(mapear({ id: "c1", nome: "Brinquedo" }).icone ?? null).toBeNull();
+});
+
 describe("realtimeSyncEngine — identidade da loja no mapRecord de store_config", () => {
   function mapearStoreConfig(raw: Record<string, unknown>) {
     const tabela = TABLE_CONFIGS.find((c) => c.table === "store_config");

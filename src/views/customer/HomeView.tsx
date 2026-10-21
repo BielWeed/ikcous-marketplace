@@ -596,27 +596,31 @@ export const HomeView = React.memo(function HomeView({
         {/* Integrated Filter Bar - Premium Glassmorphism & STICKY */}
         <div
           className={cn(
-            "sticky top-[-2px] z-40 -mx-3 px-3 sm:-mx-4 sm:px-4 pb-1.5 pt-0 bg-white/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5 gpu-accelerated",
+            "sticky top-[-2px] z-40 -mx-3 px-3 sm:-mx-4 sm:px-4 pb-1.5 pt-0 bg-background/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5 gpu-accelerated",
             scrollProgress > 20
               ? "shadow-sm border-b border-zinc-200/60"
               : "border-b border-transparent",
           )}
         >
-          {/* Interactive Header Bar */}
-          <div className="flex items-center gap-3 py-1">
-            <div className="min-w-0 flex-1">
-              {isLoading ? (
-                <div className="h-9 w-full animate-pulse rounded-full bg-zinc-100" />
-              ) : (
-                <CategoryFilter
-                  categories={categories}
-                  selectedCategory={selectedCategory}
-                  onCategoryChange={onCategoryChange}
-                  isLoading={isLoadingCategories}
-                />
-              )}
-            </div>
-
+          <CategoryFilter
+            categories={categories}
+            selectedCategory={selectedCategory}
+            onCategoryChange={onCategoryChange}
+            isLoading={isLoading || isLoadingCategories}
+          />
+          <div className="flex min-h-14 items-center justify-between gap-3 border-t border-border py-2">
+            <p
+              data-testid="resultado-categoria"
+              aria-live="polite"
+              className="min-w-0 text-sm text-foreground"
+            >
+              <span className="font-bold">{selectedCategory}</span>
+              <span className="text-muted-foreground">
+                {isLoading
+                  ? " · Carregando produtos…"
+                  : ` · ${filteredProducts.length} ${filteredProducts.length === 1 ? "produto" : "produtos"}`}
+              </span>
+            </p>
             <div className="flex flex-shrink-0 items-center gap-2">
               <div className="relative">
                 <button
@@ -632,12 +636,13 @@ export const HomeView = React.memo(function HomeView({
                       setShowSortMenu(false);
                     }
                   }}
-                  className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-bold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
                   aria-expanded={showSortMenu}
                   aria-haspopup="listbox"
                   title="Filtrar e Ordenar"
                 >
-                  <SlidersHorizontal className="size-4" />
+                  <SlidersHorizontal aria-hidden="true" className="size-4" />
+                  Filtros
                 </button>
 
                 {showSortMenu && (

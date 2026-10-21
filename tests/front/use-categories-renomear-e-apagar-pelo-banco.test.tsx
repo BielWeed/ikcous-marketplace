@@ -24,6 +24,7 @@ interface LinhaDeCategoria {
   descricao: string;
   ativo: boolean;
   created_at: string;
+  icone?: string | null;
 }
 
 const { rpcMock, fromMock, escritasNaTabela, banco } = vi.hoisted(() => ({
@@ -93,6 +94,8 @@ beforeEach(() => {
               const alvo = banco.categorias.find((c) => c.id === id);
               if (alvo && "ativo" in payload)
                 alvo.ativo = payload.ativo as boolean;
+              if (alvo && "icone" in payload)
+                alvo.icone = payload.icone as string | null;
               return { data: alvo ? [{ id }] : [], error: null };
             },
           }),
@@ -191,6 +194,72 @@ async function montar() {
     },
   };
 }
+
+describe("useCategories — ícone opcional", () => {
+  it("lê a chave explícita e tolera campo ausente em banco antigo", async () => {
+    banco.categorias[0].icone = "casa";
+    const t = await montar();
+    expect(t.hook().categories[0].icone).toBe("casa");
+    expect(t.hook().categories[1].icone ?? null).toBeNull();
+    t.desmontar();
+  });
+
+  it("se o schema cache recusa a coluna, relê só os campos antigos", async () => {
+    const selecoes: string[] = [];
+    fromMock.mockImplementation(() => ({
+      select: (campos: string) => {
+        selecoes.push(campos);
+        return {
+          order: async () =>
+            campos === "*"
+              ? {
+                  data: null,
+                  error: {
+                    code: "42703",
+                    message: "column categorias.icone does not exist",
+                  },
+                }
+              : { data: categoriasIniciais(), error: null },
+        };
+      },
+    }));
+    const t = await montar();
+    expect(t.linhas()).toEqual(["Brinquedo|brinquedo|true", "Cama|cama|true"]);
+    expect(selecoes).toEqual(["*", "id,nome,slug,descricao,ativo,created_at"]);
+    t.desmontar();
+  });
+
+  it("salva só o ícone e atualiza o retrato local após a confirmação", async () => {
+    const t = await montar();
+    await act(async () => {
+      await t.hook().updateCategory("c1", { icone: "casa" });
+    });
+    expect(escritasNaTabela).toEqual([
+      { operacao: "update", payload: { icone: "casa" } },
+    ]);
+    expect(t.hook().categories[0].icone).toBe("casa");
+    await act(async () => {
+      await t.hook().updateCategory("c1", { icone: null });
+    });
+    expect(t.hook().categories[0].icone).toBeNull();
+    t.desmontar();
+  });
+
+  it("não anuncia sucesso nem muda o ícone quando a política não retorna linha", async () => {
+    const t = await montar();
+    let falha: unknown;
+    await act(async () => {
+      try {
+        await t.hook().updateCategory("inexistente", { icone: "casa" });
+      } catch (e) {
+        falha = e;
+      }
+    });
+    expect(falha).toBeInstanceOf(Error);
+    expect(t.hook().categories[0].icone ?? null).toBeNull();
+    t.desmontar();
+  });
+});
 
 describe("useCategories — renomear passa SÓ pela porta do banco", () => {
   it("renameCategory chama renomear_categoria com o id e o nome novo, e NÃO escreve na tabela", async () => {
