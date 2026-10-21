@@ -203,8 +203,10 @@ export function useCategories() {
             .select("*")
             .order("nome");
 
-          // Loja ainda sem a migration (ou schema cache antigo): não perde
-          // o catálogo por causa do campo opcional. Erro de rede não é vazio.
+          // select("*") funciona mesmo sem icone: a propriedade ausente
+          // vira null no mapeamento abaixo. Este fallback é só defensivo se
+          // a camada de consulta devolver erro explícito de coluna; não é o
+          // caminho normal de um banco antigo. Erro de rede não vira vazio.
           if (
             error &&
             ["42703", "PGRST204"].includes(error.code) &&

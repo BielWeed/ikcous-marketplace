@@ -204,7 +204,10 @@ describe("useCategories — ícone opcional", () => {
     t.desmontar();
   });
 
-  it("se o schema cache recusa a coluna, relê só os campos antigos", async () => {
+  it("erro sintético de coluna aciona a releitura defensiva dos campos antigos", async () => {
+    // PostgREST real não produz este erro por faltar icone num select("*").
+    // O caso anterior prova a tolerância normal ao campo ausente; este
+    // dublê injeta a falha só para conservar a cobertura da defesa.
     const selecoes: string[] = [];
     fromMock.mockImplementation(() => ({
       select: (campos: string) => {

@@ -50,6 +50,14 @@ it("mostra Todas primeiro, só categorias ativas e ícone explícito antes da de
     "casa",
   );
   expect(botoes[1].className).toContain("focus-visible:ring-2");
+  const blocoAtivo = botoes[1].querySelector("span")!;
+  const blocoInativo = botoes[0].querySelector("span")!;
+  // Par neutro e inverso também no glass, onde --background é transparente.
+  expect(blocoAtivo.className).toContain("bg-foreground text-card");
+  expect(blocoAtivo.className).not.toMatch(/zinc-|text-white|primary/);
+  expect(blocoInativo.className).toContain(
+    "group-hover:border-muted-foreground",
+  );
   act(() => botoes[0].click());
   expect(mudar).toHaveBeenCalledWith("Todas");
 });

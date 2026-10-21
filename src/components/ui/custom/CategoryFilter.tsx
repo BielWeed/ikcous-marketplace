@@ -65,8 +65,8 @@ export const CategoryFilter = memo(function CategoryFilter({
               <span
                 className={`flex size-16 shrink-0 items-center justify-center rounded-[20px] border transition-colors ${
                   isActive
-                    ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-500"
-                    : "border-border bg-card text-muted-foreground group-hover:border-zinc-400"
+                    ? "border-foreground bg-foreground text-card"
+                    : "border-border bg-card text-muted-foreground group-hover:border-muted-foreground"
                 }`}
               >
                 <IconeDaCategoria
