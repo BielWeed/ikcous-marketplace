@@ -1,4 +1,27 @@
 {
+  "1.5.47": {
+    "titulo": "Telas redesenhadas: Finalizar compra, Balcão, categorias e mototáxi",
+    "novidades": [
+      "A tela de Finalizar compra e de pagamento ficou mais clara: explica que o pagamento é feito pelo Mercado Pago e deixa espaço livre acima das barras fixas.",
+      "O aviso de frete grátis da página inicial pode ser Compacto, mais baixo e direto. Você escolhe em Ajustes, Aparência do app.",
+      "As categorias ganharam ícones na loja. No painel, você escolhe o ícone de cada categoria.",
+      "Em Frete, você pode cadastrar o contato do seu mototáxi. No pedido de entrega local aparece o botão Enviar ao mototáxi. O número fica só no painel, nunca aparece para o cliente.",
+      "No Balcão, o fechamento da venda ocupa a tela inteira, inclusive com o celular deitado, e o botão de registrar a venda é verde.",
+      "Na lista de Pedidos, o botão de Devoluções agora mostra um ícone e a palavra, para não parecer um botão de recarregar.",
+      "A ficha do cliente foi redesenhada e usa o ícone oficial do WhatsApp.",
+      "Ao criar ou editar um produto, a barra de salvar fica sempre à vista.",
+      "Em Minha loja, há um único botão Salvar para todos os blocos; cada bloco continua gravando só os seus campos."
+    ],
+    "correcoes": [
+      "A tela Cor do app rola até o fim no celular, sem esconder o último bloco atrás da barra de baixo.",
+      "No painel, os temas Claro e Confortável ganharam cores de texto mais fáceis de ler."
+    ],
+    "melhorias": [
+      "A tela Cor do app tem uma prévia nova antes de salvar.",
+      "O ícone oficial do WhatsApp aparece nas telas do cliente.",
+      "Os banners do painel foram reorganizados."
+    ]
+  },
   "1.5.46": {
     "titulo": "Pagamentos e Balcão mais seguros, e painel com temas",
     "novidades": [
