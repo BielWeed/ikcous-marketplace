@@ -361,11 +361,9 @@ it("bipar, digitar, buscar, cancelar e ajustar itens mantêm alvos de pelo menos
       seletor === ".pdv-touch" ? "width" : "min-width",
     ]) {
       const valores = corpos.flatMap((corpo) =>
-        [
-          ...corpo.matchAll(
-            new RegExp(`(?:^|\\s)${propriedade}:\\s*(\\d+)px`, "g"),
-          ),
-        ].map((m) => Number(m[1])),
+        [...corpo.matchAll(/(?:^|\s)(min-height|min-width|width):\s*(\d+)px/g)]
+          .filter((m) => m[1] === propriedade)
+          .map((m) => Number(m[2])),
       );
       expect(valores.length, `${seletor} ${propriedade}`).toBeGreaterThan(0);
       for (const valor of valores) {
