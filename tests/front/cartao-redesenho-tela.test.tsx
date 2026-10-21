@@ -62,7 +62,7 @@ const FRASE_SEGURANCA =
 const TITULO_DADOS = "Confira os dados do cartão";
 const TITULO_LIMITE = "O cartão não tem limite para este valor";
 const TITULO_AUTORIZACAO =
-  "Seu banco pediu autorização. Abra o app do banco e tente de novo";
+  "Seu banco precisa autorizar esta compra. Entre em contato com o banco e tente de novo, ou use outro cartão ou PIX.";
 const TITULO_GERAL =
   "Não conseguimos concluir este pagamento. Nenhum valor foi cobrado";
 const TITULO_CARGA = "Não foi possível carregar o formulário do cartão";
@@ -395,6 +395,20 @@ describe("tela do cartão redesenhada", () => {
         outroCartao: false,
       },
       {
+        nome: "parcelamento indisponível",
+        motivo: "Esse parcelamento não está disponível para este cartão.",
+        titulo:
+          "Este parcelamento não está disponível. Escolha menos parcelas ou use outro cartão.",
+        outroCartao: true,
+      },
+      {
+        nome: "cartão desabilitado",
+        motivo: "Cartão desabilitado. Fale com o seu banco.",
+        titulo:
+          "Este cartão não aceita compras online; use outro cartão ou PIX",
+        outroCartao: true,
+      },
+      {
         nome: "outra recusa (segurança)",
         motivo: FRASE_SEGURANCA,
         titulo: TITULO_GERAL,
@@ -434,6 +448,33 @@ describe("tela do cartão redesenhada", () => {
         expect(botao("Pagar com PIX")).toBeDefined();
       });
     }
+
+    it.each([
+      [
+        "Cartão desabilitado. Fale com o seu banco.",
+        "Este cartão não aceita compras online; use outro cartão ou PIX",
+      ],
+      [
+        "Esse parcelamento não está disponível para este cartão.",
+        "Este parcelamento não está disponível. Escolha menos parcelas ou use outro cartão.",
+      ],
+    ])(
+      "categoria outra do servidor preserva a ação conhecida: %s",
+      async (motivo, titulo) => {
+        const { create } = instalarSdkFalso();
+        criarPagamento.mockResolvedValue({
+          paymentId: null,
+          statusPagamento: "recusado",
+          motivoRecusa: motivo,
+          categoriaDaRecusa: "outra",
+          podeTentarDeNovo: true,
+        });
+        await render();
+        await enviar(create);
+        expect(hospedeiro.textContent).toContain(titulo);
+        expect(botao("Tentar outro cartão")).toBeDefined();
+      },
+    );
 
     it("o foco vai para o título do erro quando ele aparece", async () => {
       const { create } = instalarSdkFalso();

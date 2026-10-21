@@ -293,6 +293,15 @@ const ORDEM_CAMPOS_FOCO = [
  * o teste já está montado.
  */
 const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
+  if (
+    (error as { code?: string } | null)?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL"
+  ) {
+    return {
+      acao: "conferir_antes",
+      mensagem:
+        "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.",
+    };
+  }
   if ((error as { code?: string } | null)?.code === "PEDIDO_SEM_RESPOSTA") {
     return {
       acao: "conferir_antes",
@@ -1698,11 +1707,11 @@ export function CheckoutViewDaConta({
     cancelamentoBloqueadoPelaGuardaDoCartao,
     setCancelamentoBloqueadoPelaGuardaDoCartao,
   ] = useState(false);
-  // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
-  // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
-  // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
-  // valor que não bate com o total já gravado no pedido.
+  // Valor relido do pedido gravado: limpar o carrinho não altera o total que
+  // o cabeçalho mostra e que o Brick recebe.
   const [valorDoPedido, setValorDoPedido] = useState(0);
+  const [valorFinalDiferenteDoCarrinho, setValorFinalDiferenteDoCarrinho] =
+    useState(false);
   // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
   // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
@@ -2017,7 +2026,9 @@ export function CheckoutViewDaConta({
       setAvisoDaRetomada(
         verificacao === "recusado"
           ? "O pagamento com cartão não foi concluído."
-          : null,
+          : erroPagamento
+            ? "O pagamento com cartão não passou desta vez. Nenhum valor foi cobrado. Tente de novo em alguns instantes ou pague com PIX."
+            : null,
       );
       setRetomadaBloqueadaPorSentinela(false);
       setCobrancaEmDuvida(null);
@@ -2025,7 +2036,7 @@ export function CheckoutViewDaConta({
       setErroCancelamento(null);
       setRetomadaEscolhendoForma(true);
     },
-    [],
+    [erroPagamento],
   );
   // C6 (P2, 02/10/2026): "Pagar com PIX" da verificação com o 3DS de order
   // CONFIRMADA (`paymentId` do GET) — a mesma troca da tela do cartão da
@@ -4077,7 +4088,14 @@ export function CheckoutViewDaConta({
         );
       }
       setOrderId(order.id);
-      setValorDoPedido(pedido.valor);
+      setValorDoPedido(order.totalAmount);
+      setValorFinalDiferenteDoCarrinho(
+        ehOnline &&
+          Math.abs(
+            Math.round(order.totalAmount * 100) -
+              Math.round(pedido.valor * 100),
+          ) > 0,
+      );
       // CHECKOUT-070 (#197): cancelar devolve só o que saiu do carrinho.
       // Linha preservada por ter mudado não pode ser somada de novo depois.
       itensDoPedidoParaRestaurarRef.current = [];
@@ -4192,6 +4210,7 @@ export function CheckoutViewDaConta({
         `Falha no Pedido: ${
           ehFalhaDeRedeAntesDoEnvio(error) ||
           error?.code === "PEDIDO_SEM_RESPOSTA" ||
+          error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" ||
           saida.acao === "reenviar_mesma_compra"
             ? saida.mensagem
             : mensagemAmigavelErroPedido(error)
@@ -4671,6 +4690,12 @@ export function CheckoutViewDaConta({
         <h1 className="text-lg font-bold text-zinc-900">
           Finalize o pagamento
         </h1>
+        {valorFinalDiferenteDoCarrinho && (
+          <p className="text-sm font-medium text-zinc-900">
+            Valor final do pedido: R${" "}
+            {valorDoPedido.toFixed(2).replace(".", ",")}
+          </p>
+        )}
         <p className="text-xs text-zinc-500">
           {metodoDoPedido === "cartao"
             ? "Reservamos seus itens enquanto o pagamento é concluído. Se o banco não confirmar a tempo, o pedido é cancelado e os itens voltam para a loja."
