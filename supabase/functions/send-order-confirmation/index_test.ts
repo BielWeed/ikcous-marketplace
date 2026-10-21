@@ -397,6 +397,44 @@ for (const [papelAuth, papelPerfil, status] of [
   });
 }
 
+Deno.test("M9: pedido inexistente e pedido alheio devolvem a mesma resposta 403", async () => {
+  const respostas = [];
+  let envios = 0;
+  for (const pedido of [null, { user_id: "outro-cliente" }]) {
+    const supabase = {
+      auth: { getUser: async () => ({ data: { user: { id: "cliente" } }, error: null }) },
+      from: (tabela: string) => {
+        assertEquals(tabela, "marketplace_orders");
+        return { select: (campos: string) => {
+          assertEquals(campos, "user_id");
+          return { eq: (coluna: string, valor: string) => {
+            assertEquals([coluna, valor], ["id", PEDIDO.id]);
+            return { maybeSingle: async () => ({ data: pedido, error: null }) };
+          } };
+        } };
+      },
+    };
+    const resposta = await handler(new Request("http://localhost", {
+      method: "POST",
+      headers: { Authorization: "Bearer sessao-de-teste" },
+      body: JSON.stringify({ orderId: PEDIDO.id }),
+    }), {
+      supabase: supabase as never,
+      adminAtual: async () => null,
+      enviarComprovante: async () => { envios++; return { ok: true }; },
+    });
+    assertEquals(resposta.status, 403);
+    respostas.push({
+      status: resposta.status,
+      headers: [...resposta.headers],
+      corpo: await resposta.json(),
+    });
+  }
+  assertEquals(respostas[0], respostas[1]);
+  assertEquals(respostas[0].corpo, { ok: false, motivo: "nao_autorizado" });
+  assertEquals(envios, 0);
+});
+
 // --- handler: a chave de service role sumindo do ambiente -----------------
 
 /** Devolve a variavel ao estado anterior. Ternario como comando e erro de lint. */

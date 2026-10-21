@@ -7,6 +7,11 @@ import {
 import { Check } from "lucide-react";
 import { useRef, useState } from "react";
 
+const FOCO =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
+const SECUNDARIO = `relative z-10 flex min-h-11 items-center justify-center gap-2 whitespace-normal rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-admin-hover disabled:cursor-not-allowed disabled:text-zinc-400 ${FOCO}`;
+const PRINCIPAL = `${SECUNDARIO} min-h-14 border-[#F6D365]/50 bg-gradient-to-b from-[#F6D365] to-[#E4AD18] text-[#211A05] hover:brightness-105`;
+
 interface PerguntaProps {
   total: number;
   disabled?: boolean;
@@ -33,19 +38,14 @@ export function PerguntaDoRecebimento({
         confirme abaixo — o registro fica salvo no pedido.
       </p>
       <div className="flex flex-col gap-3">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={aoCancelar}
-          className="min-h-11 rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-admin-hover disabled:opacity-50"
-        >
+        <button type="button" onClick={aoCancelar} className={SECUNDARIO}>
           Ainda não
         </button>
         <button
           type="button"
           disabled={disabled}
           onClick={aoConfirmar}
-          className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-[#F6D365]/50 bg-gradient-to-b from-[#F6D365] to-[#E4AD18] px-3 py-2 text-sm font-semibold text-[#211A05] hover:brightness-105 disabled:opacity-50"
+          className={PRINCIPAL}
         >
           <Check aria-hidden="true" className="size-5" />
           Recebi

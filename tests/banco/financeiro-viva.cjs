@@ -23,6 +23,8 @@
  */
 
 const assert = require("node:assert");
+const { readFileSync } = require("node:fs");
+const path = require("node:path");
 const { Client } = require("pg");
 const {
   falhar,
@@ -1472,6 +1474,75 @@ PROVAS.push({
       assert.equal(linha.forma_pagamento, "online_desconhecido");
       assert.equal(linha.conta_id, MP);
       assert.equal(num(linha.valor), 80);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(forma desconhecida) rollback restaura a função anterior e recusa corpo divergente",
+  corpo: async (cliente) => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do companion versionado; sem entrada externa.
+    const rollback = readFileSync(
+      path.join(
+        __dirname,
+        "../../supabase/migrations/rollback-manual-20261290000000_online_sem_forma_nao_e_pix.sql",
+      ),
+      "utf8",
+    );
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo da migration versionada; sem entrada externa.
+    const migration = readFileSync(
+      path.join(
+        __dirname,
+        "../../supabase/migrations/20261290000000_online_sem_forma_nao_e_pix.sql",
+      ),
+      "utf8",
+    );
+    const retrato = async () =>
+      (
+        await cliente.query(
+          `SELECT pg_get_functiondef(oid) AS definicao, proacl::text AS acl
+         FROM pg_proc
+        WHERE oid = 'public.fin__forma_do_pedido(text,text)'::regprocedure`,
+        )
+      ).rows[0];
+    await cliente.query("BEGIN");
+    try {
+      const antes = await retrato();
+      await cliente.query(rollback);
+      assert.equal(
+        await rpc(
+          cliente,
+          "SELECT public.fin__forma_do_pedido('online', NULL) AS r",
+        ),
+        "pix",
+      );
+      for (const papel of ["anon", "authenticated"]) {
+        assert.equal(
+          await rpc(
+            cliente,
+            "SELECT has_function_privilege($1, 'public.fin__forma_do_pedido(text,text)', 'EXECUTE') AS r",
+            [papel],
+          ),
+          false,
+        );
+      }
+      assert.equal((await retrato()).acl, antes.acl);
+      await cliente.query("SAVEPOINT repetido");
+      await assert.rejects(cliente.query(rollback), /B1_BASELINE_DIVERGENT/);
+      await cliente.query("ROLLBACK TO SAVEPOINT repetido");
+      await cliente.query(migration);
+      assert.deepEqual(await retrato(), antes);
+
+      await cliente.query(`CREATE OR REPLACE FUNCTION public.fin__forma_do_pedido(p_payment_method text, p_metodo_online text)
+        RETURNS text LANGUAGE sql IMMUTABLE SET search_path = public
+        AS $$ SELECT 'posterior'::text $$;`);
+      const posterior = await retrato();
+      await cliente.query("SAVEPOINT divergente");
+      await assert.rejects(cliente.query(rollback), /B1_BASELINE_DIVERGENT/);
+      await cliente.query("ROLLBACK TO SAVEPOINT divergente");
+      assert.deepEqual(await retrato(), posterior);
     } finally {
       await cliente.query("ROLLBACK");
     }

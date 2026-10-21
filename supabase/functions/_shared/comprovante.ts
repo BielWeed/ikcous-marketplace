@@ -593,10 +593,6 @@ export async function enviarComprovantePedido(args: {
     .limit(1)
     .maybeSingle();
 
-  const aguardandoPagamento =
-    String(pedido.payment_method ?? "") === "online" &&
-    String(pedido.payment_status ?? "") !== "pago";
-
   try {
     await enviarEmail({
       para: destinatario,
@@ -606,7 +602,7 @@ export async function enviarComprovantePedido(args: {
         itens: itensComVariacao,
         endereco: montarEndereco(fonteDoEndereco),
         nomeDaLoja: config?.store_name ?? "",
-        aguardandoPagamento,
+        aguardandoPagamento: false,
         canal: String(pedido.canal ?? "online"),
         retirada: retiradaDoPedido(pedido.customer_data),
       }),
