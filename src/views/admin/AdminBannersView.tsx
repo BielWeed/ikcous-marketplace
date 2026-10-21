@@ -3341,7 +3341,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                 setConfirmarFimVencido(false);
                 handleSubmit();
               }}
-              className="min-h-11 rounded-xl border-0 bg-white px-4 py-2 text-xs font-bold text-black hover:bg-white"
+              className="min-h-11 rounded-xl border-0 bg-white px-4 py-2 text-xs font-bold text-black ring-1 ring-inset ring-admin-border-strong hover:bg-white"
             >
               Salvar mesmo assim
             </AlertDialogAction>
