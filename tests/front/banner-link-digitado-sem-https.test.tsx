@@ -21,6 +21,11 @@ import {
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  abrirMaisOpcoes,
+  configurarTextos,
+  escolherImagemPropria,
+} from "./helpers/editor-de-banner";
 
 describe("linkDoBannerParaSalvar: entrada da lojista -> link gravado", () => {
   it.each([
@@ -247,10 +252,9 @@ describe("AdminBannersView: o link digitado chega corrigido ao salvar", () => {
     await act(async () => {
       botaoComTexto(hospedeiro, "Novo Banner")?.click();
     });
+    await escolherImagemPropria();
     // O link só se edita no modo Completo (passo 3: Destino).
-    await act(async () => {
-      botaoComTexto(document.body, "Completo")?.click();
-    });
+    await configurarTextos(true);
     const entrada = document.getElementById(
       "banner-upload",
     ) as HTMLInputElement;
@@ -263,13 +267,7 @@ describe("AdminBannersView: o link digitado chega corrigido ao salvar", () => {
       await esperar();
       await esperar();
     });
-    for (let passo = 0; passo < 2; passo++) {
-      await act(async () => {
-        botaoComTexto(document.body, "Continuar")?.click();
-        // AnimatePresence "wait": o passo novo só monta depois da saída.
-        await esperar(400);
-      });
-    }
+    await abrirMaisOpcoes();
     await act(async () => {
       botaoComTexto(document.body, "Link / URL")?.click();
     });

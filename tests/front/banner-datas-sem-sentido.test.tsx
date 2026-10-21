@@ -19,6 +19,11 @@ import { act } from "react";
 import { flushSync } from "react-dom";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  abrirMaisOpcoes,
+  configurarTextos,
+  escolherImagemPropria,
+} from "./helpers/editor-de-banner";
 
 // Datas de calendário LOCAL: o teste vale em qualquer fuso.
 const local = (a: number, m: number, d: number, h = 12, min = 0) =>
@@ -260,16 +265,8 @@ describe("AdminBannersView: datas sem sentido", () => {
 
   /** Passa para o passo 3 (Destino), onde mora a "Programação Temporal". */
   async function irParaOPasso3() {
-    await act(async () => {
-      botaoComTexto(document.body, "Completo")?.click();
-    });
-    for (let passo = 0; passo < 2; passo++) {
-      await act(async () => {
-        botaoComTexto(document.body, "Continuar")?.click();
-        // AnimatePresence "wait": o passo novo só monta depois da saída.
-        await esperar(400);
-      });
-    }
+    await configurarTextos(true);
+    await abrirMaisOpcoes();
   }
 
   /** "Novo Banner" com imagem enviada, já no passo 3. */
@@ -278,6 +275,7 @@ describe("AdminBannersView: datas sem sentido", () => {
     await act(async () => {
       botaoComTexto(hospedeiro, "Novo Banner")?.click();
     });
+    await escolherImagemPropria();
     const entrada = document.getElementById(
       "banner-upload",
     ) as HTMLInputElement;

@@ -16,6 +16,10 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  configurarTextos,
+  escolherImagemPropria,
+} from "./helpers/editor-de-banner";
 
 import {
   CHAVE_DO_MODO_DO_EDITOR,
@@ -268,7 +272,10 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     });
   }
 
-  const abrirNovo = () => clicar(botao("Novo Banner"));
+  const abrirNovo = async () => {
+    await clicar(botao("Novo Banner"));
+    await escolherImagemPropria();
+  };
   const abrirEdicao = () =>
     clicar(document.body.querySelector<HTMLElement>('button[title="Editar"]'));
 
@@ -299,7 +306,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     await abrirNovo();
     expect(a.mapa.has(CHAVE_DO_MODO_DO_EDITOR)).toBe(false);
 
-    await clicar(botao("Completo"));
+    await configurarTextos(true);
     expect(a.mapa.get(CHAVE_DO_MODO_DO_EDITOR)).toBe("complete");
   });
 
@@ -308,7 +315,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     vi.stubGlobal("localStorage", a.api);
     await montar();
     await abrirNovo();
-    await clicar(botao("Completo"));
+    await configurarTextos(true);
     await aguardarATroca();
     expect(emModoCompleto()).toBe(true);
 
@@ -325,7 +332,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     await abrirNovo();
     expect(emModoCompleto()).toBe(true);
 
-    await clicar(botao("Simples"));
+    await configurarTextos(false);
     await aguardarATroca();
     expect(emModoSimples()).toBe(true);
     expect(a.mapa.get(CHAVE_DO_MODO_DO_EDITOR)).toBe("simple");
@@ -393,7 +400,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     expect(emModoSimples()).toBe(true);
 
     // Tocar no alternador troca o modo na tela mesmo sem conseguir lembrar.
-    await clicar(botao("Completo"));
+    await configurarTextos(true);
     await aguardarATroca();
     expect(emModoCompleto()).toBe(true);
   });

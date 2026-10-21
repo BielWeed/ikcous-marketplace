@@ -16,6 +16,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { abrirMaisOpcoes } from "./helpers/editor-de-banner";
 
 const lista = vi.hoisted(() => ({
   banners: [] as unknown[],
@@ -173,7 +174,7 @@ describe("AdminBannersView — preço do produto com vírgula", () => {
 
   it("o preço do produto já vinculado aparece como R$ 89,90", async () => {
     await abrirEditorDoBanner("prod-1234567890");
-    await clicar(botao("3Destino"));
+    await abrirMaisOpcoes();
     await esperar(600);
 
     const texto = (document.body.textContent ?? "").replace(/\s+/g, " ");
@@ -184,7 +185,7 @@ describe("AdminBannersView — preço do produto com vírgula", () => {
 
   it("a lista de produtos para vincular mostra R$ 89,90", async () => {
     await abrirEditorDoBanner(undefined);
-    await clicar(botao("3Destino"));
+    await abrirMaisOpcoes();
     await esperar(600);
     await clicar(botao("Abrir Produto"));
 

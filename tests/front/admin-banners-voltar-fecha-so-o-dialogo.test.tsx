@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Achado AdminBannersView-1156: o override registrado por
 // AdminBannersView ao abrir o diálogo ("Novo Banner"/editar) nunca
@@ -35,6 +34,8 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+import { escolherImagemPropria } from "./helpers/editor-de-banner";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -226,7 +227,8 @@ describe("AdminBannersView — Voltar do celular com o diálogo aberto fecha só
       botaoNovoBanner.click();
       await esperarMicrotarefas();
     });
-    // Diálogo realmente aberto (o botão "Salvar Banner" só existe dentro dele).
+    await escolherImagemPropria();
+    // Editor aberto depois da escolha de criação.
     expect(localizarBotaoPorTexto(hospedeiro, "Salvar Banner")).toBeDefined();
   }
 
