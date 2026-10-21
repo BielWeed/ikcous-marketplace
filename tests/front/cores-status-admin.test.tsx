@@ -58,7 +58,7 @@ describe("contrato das cores nas telas", () => {
 
   it("cupom expirado usa o mesmo selo neutro dos indisponíveis", () => {
     expect(fonte("views/admin/AdminCouponsView.tsx")).toMatch(
-      /Expirado:\s*`border-zinc-500\/20 bg-zinc-500\/10 \$\{classeDoTexto\("neutro"\)\}`/,
+      /Expirado:\s*"neutro"/,
     );
   });
 

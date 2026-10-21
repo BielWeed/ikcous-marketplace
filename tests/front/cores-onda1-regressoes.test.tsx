@@ -1,8 +1,69 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
-import { OrderStatusBadge } from "@/components/admin/orders/OrderStatusBadge";
+import {
+  OrderStatusBadge,
+  PaymentStatusBadge,
+  type PaymentStatusKey,
+  paymentStatusConfig,
+  rotuloDoPagamento,
+} from "@/components/admin/orders/OrderStatusBadge";
+import type { Coupon } from "@/types";
+import { AdminCouponsView } from "@/views/admin/AdminCouponsView";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/hooks/useCoupons", () => ({
+  useCoupons: () => ({
+    coupons: [
+      {
+        id: "ativo",
+        code: "ATIVO",
+        type: "percentage",
+        value: 10,
+        usageCount: 0,
+        active: true,
+      },
+      {
+        id: "expirado",
+        code: "EXPIRADO",
+        type: "percentage",
+        value: 10,
+        usageCount: 0,
+        active: true,
+        validUntil: "2000-01-01T00:00:00Z",
+      },
+      {
+        id: "inativo",
+        code: "INATIVO",
+        type: "percentage",
+        value: 10,
+        usageCount: 0,
+        active: false,
+      },
+      {
+        id: "esgotado",
+        code: "ESGOTADO",
+        type: "percentage",
+        value: 10,
+        usageCount: 1,
+        usageLimit: 1,
+        active: true,
+      },
+    ] satisfies Coupon[],
+    loading: false,
+    updateCoupon: vi.fn(),
+    deleteCoupon: vi.fn(),
+    refreshCoupons: vi.fn(),
+  }),
+}));
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { enableCoupons: true },
+    isLoaded: true,
+    updateConfig: vi.fn(),
+  }),
+}));
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 const fonte = (caminho: string) =>
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- arquivos locais fixos dos casos abaixo
@@ -45,6 +106,82 @@ describe("cores mínimas após integrar as duas frentes", () => {
       : /bg-(?:amber|red|emerald)-(?:300|400|500)\//;
     expect(semBotao.match(tinta)?.[0]).toBeUndefined();
   });
+
+  it.each([
+    ["Ativo", "text-emerald-400", "bg-emerald-400"],
+    ["Expirado", "text-zinc-400", "bg-zinc-400"],
+    ["Inativo", "text-zinc-400", "bg-zinc-400"],
+    ["Esgotado", "text-zinc-400", "bg-zinc-400"],
+  ])(
+    "selo de cupom %s renderiza ponto e texto sem fundo nem borda",
+    (rotulo, cor, ponto) => {
+      const host = document.createElement("div");
+      host.innerHTML = renderToStaticMarkup(
+        <AdminCouponsView onNavigate={() => {}} />,
+      );
+      const card = host
+        .querySelector(`[aria-label="Copiar código ${rotulo.toUpperCase()}"]`)
+        ?.closest(".group");
+      expect(card).not.toBeNull();
+      const selo = [...card!.querySelectorAll("span")].find(
+        (el) => el.textContent?.trim() === rotulo,
+      )!;
+      expect(selo).toBeDefined();
+      const classes = [selo, ...selo.querySelectorAll("*")].flatMap((el) => [
+        ...el.classList,
+      ]);
+      expect(
+        classes.filter((classe) =>
+          /^(?:bg|border)-[a-z]+-500\/\d+/.test(classe),
+        ),
+      ).toEqual([]);
+      expect(
+        [...selo.classList].some((classe) =>
+          /^(?:bg-|border(?:-|$))/.test(classe),
+        ),
+      ).toBe(false);
+      expect(selo.classList.contains(cor)).toBe(true);
+      expect(
+        selo.querySelector(`[aria-hidden="true"].${ponto}`),
+      ).not.toBeNull();
+    },
+  );
+
+  it.each(Object.keys(paymentStatusConfig) as PaymentStatusKey[])(
+    "pagamento %s renderiza ponto e texto sem recipiente pintado nas duas escalas",
+    (estado) => {
+      const paymentStatus = estado === "sem_cobranca" ? null : estado;
+      for (const tamanho of ["padrao", "cartao"] as const) {
+        for (const compact of [false, true]) {
+          const host = document.createElement("div");
+          host.innerHTML = renderToStaticMarkup(
+            <PaymentStatusBadge
+              paymentStatus={paymentStatus}
+              tamanho={tamanho}
+              compact={compact}
+            />,
+          );
+          const classes = [...host.querySelectorAll("*")].flatMap((el) => [
+            ...el.classList,
+          ]);
+          expect(
+            classes.filter((classe) =>
+              /^(?:bg|border)-[a-z]+-500\/\d+/.test(classe),
+            ),
+          ).toEqual([]);
+          expect(host.firstElementChild?.classList.contains("border")).toBe(
+            false,
+          );
+          expect(host.querySelector('[aria-hidden="true"]')).not.toBeNull();
+          if (compact)
+            expect(host.firstElementChild?.getAttribute("title")).toBe(
+              rotuloDoPagamento(paymentStatus),
+            );
+          else expect(host.textContent).toBe(rotuloDoPagamento(paymentStatus));
+        }
+      }
+    },
+  );
 
   it("aviso do PDV usa âmbar adaptável ao Claro, não hex fixo", () => {
     const css = fonte("components/admin/pdv/pdv.css");

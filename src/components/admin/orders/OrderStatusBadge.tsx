@@ -396,16 +396,18 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   return (
     <div
       title={compact ? label : undefined}
-      className={`flex max-w-full items-center ${
-        tamanho === "cartao"
-          ? ""
-          : `rounded-full border px-2 py-0.5 ${cfg.bgColor} ${cfg.borderColor}`
+      className={`flex max-w-full items-center gap-1.5 ${
+        tamanho === "cartao" ? "" : "px-2 py-0.5"
       } ${
         cfg.needsAttention && tamanho !== "cartao"
           ? "animate-pulse ring-1 ring-red-500/60"
           : ""
       } ${className || ""}`}
     >
+      <span
+        aria-hidden="true"
+        className={`size-1.5 shrink-0 rounded-full bg-current ${cfg.color}`}
+      />
       <span
         className={`whitespace-normal break-words ${
           tamanho === "cartao"

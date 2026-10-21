@@ -7,6 +7,7 @@ import {
   SECUNDARIO,
   Selo,
 } from "@/components/admin/coupons/apresentacao";
+import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +33,7 @@ import {
   cupomPodeCobrirACompraInteira,
 } from "@/lib/cupom-que-cobre-a-compra";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
-import { classeDoTexto } from "@/lib/tons-de-estado";
+import { type TomDeEstado, classeDoTexto } from "@/lib/tons-de-estado";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { type RotuloDeCupom, rotuloDoCupom } from "@/utils/status-do-cupom";
@@ -80,11 +81,11 @@ const itemVariants: Variants = {
 
 // Aparência do selo de status por rótulo (achado do lote 1: cupom vencido
 // não pode continuar com a mesma cara de "Ativo").
-const classesDoSeloPorRotulo: Record<RotuloDeCupom, string> = {
-  Ativo: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-  Expirado: `border-zinc-500/20 bg-zinc-500/10 ${classeDoTexto("neutro")}`,
-  Inativo: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
-  Esgotado: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+const tomDoSeloPorRotulo: Record<RotuloDeCupom, TomDeEstado> = {
+  Ativo: "positivo",
+  Expirado: "neutro",
+  Inativo: "neutro",
+  Esgotado: "neutro",
 };
 
 interface AdminCouponsViewProps {
@@ -659,11 +660,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                             ? `${coupon.value ?? 0}% OFF`
                             : formatCurrency(Number(coupon.value ?? 0))}
                         </p>
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-bold ${classesDoSeloPorRotulo[rotulo]}`}
-                        >
-                          {rotulo}
-                        </span>
+                        <EstadoComPonto
+                          tom={tomDoSeloPorRotulo[rotulo]}
+                          texto={rotulo}
+                          className="px-2.5 py-1 text-xs font-bold"
+                        />
                       </div>
                       <div className="mt-1 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs leading-relaxed text-zinc-400">
                         <span>
