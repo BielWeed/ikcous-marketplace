@@ -716,7 +716,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 <div className="group/item flex items-center justify-between gap-3 py-2 text-xs transition-colors hover:bg-zinc-900/20">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex min-w-0 flex-col">
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                         Email
                       </span>
                       <span className="break-all font-semibold text-zinc-300">
@@ -729,7 +729,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       type="button"
                       aria-label="Copiar e-mail"
                       onClick={() => handleCopy(profile.email!, "email")}
-                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-500 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-400 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
                       title="Copiar e-mail"
                     >
                       {copiedField === "email" ? (
@@ -745,7 +745,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 <div className="group/item flex items-center justify-between gap-3 py-2 text-xs transition-colors hover:bg-zinc-900/20">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex min-w-0 flex-col">
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                         Telefone / WhatsApp
                       </span>
                       <span className="break-all font-semibold text-zinc-300">
@@ -758,7 +758,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       type="button"
                       aria-label="Copiar telefone"
                       onClick={() => handleCopy(profile.whatsapp!, "whatsapp")}
-                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-500 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-400 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
                       title="Copiar telefone"
                     >
                       {copiedField === "whatsapp" ? (
@@ -772,7 +772,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
                 <div className="flex min-w-0 items-center justify-between gap-3 py-2 text-xs">
                   <div className="flex min-w-0 flex-col">
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                       ID do cliente
                     </span>
                     <button
@@ -784,7 +784,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       {copiedField === "id" ? (
                         <Check className="size-3.5 shrink-0 text-emerald-500" />
                       ) : (
-                        <Copy className="size-3.5 shrink-0 text-zinc-500" />
+                        <Copy className="size-3.5 shrink-0 text-zinc-400" />
                       )}
                     </button>
                   </div>
@@ -804,7 +804,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   e os testes vivos da tela leem o cartão por este rótulo. */}
               <div className="col-span-2 flex min-w-0 items-center justify-between pb-5">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-1 text-[11px] font-semibold text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Total já comprado
                   </span>
                   <span
@@ -818,14 +818,14 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               {/* Total Orders Widget */}
               <div className="flex min-w-0 items-center justify-end pb-5 text-right">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-1 text-[11px] font-semibold text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Pedidos feitos
                   </span>
                   <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
                     {pedidosQueContam.length}
                   </span>
                   {pedidosDescartados > 0 && (
-                    <span className="mt-0.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                    <span className="mt-0.5 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                       {/* "fora da conta" e nao "cancelado": `pedidosDescartados`
                           conta cancelado E devolvido, entao dizer "cancelado"
                           rotularia um pedido devolvido de cancelado. Hoje nao ha
@@ -845,7 +845,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   porque foi MEDIDO (o `ELSE 0` do servidor), não inventado. */}
               <div className="flex min-w-0 items-start border-t border-admin-border pr-2 pt-4">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-1 text-[11px] font-semibold text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Valor médio por venda
                   </span>
                   <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
@@ -861,7 +861,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   conta, "—" — nunca data inventada. */}
               <div className="flex min-w-0 items-start border-t border-admin-border px-2 pt-4">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-1 text-[11px] font-semibold text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Última Compra
                   </span>
                   <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
@@ -880,12 +880,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   faziam a lojista desconfiar de todos. */}
               <div className="flex min-w-0 items-start border-t border-admin-border pl-2 pt-4">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-1 text-[11px] font-semibold text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Carrinho do cliente
                   </span>
                   <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
                     {cartItems.length}{" "}
-                    <span className="text-[11px] font-semibold text-zinc-500">
+                    <span className="text-[11px] font-semibold text-zinc-400">
                       {cartItems.length === 1 ? "produto" : "produtos"}
                     </span>
                   </span>
@@ -899,7 +899,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 <TabsList className="mb-4 grid h-auto w-full grid-cols-4 gap-1 rounded-3xl border border-admin-border bg-admin-surface p-1">
                   <TabsTrigger
                     value="orders"
-                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
+                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-400 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
                   >
                     <Package className="size-3.5" />
                     <span>Pedidos</span>
@@ -909,7 +909,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </TabsTrigger>
                   <TabsTrigger
                     value="cart"
-                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
+                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-400 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
                   >
                     <ShoppingCart className="size-3.5" />
                     <span>Carrinho</span>
@@ -919,7 +919,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </TabsTrigger>
                   <TabsTrigger
                     value="addresses"
-                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
+                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-400 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
                   >
                     <MapPin className="size-3.5" />
                     <span>Endereços</span>
@@ -929,7 +929,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </TabsTrigger>
                   <TabsTrigger
                     value="voz"
-                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
+                    aria-label="Voz do Cliente"
+                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-400 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
                   >
                     <Star className="size-3.5" />
                     <span>
@@ -976,25 +977,25 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                               >
                                 <TableHead
                                   {...papel("columnheader")}
-                                  className="px-6 py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                                  className="px-6 py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
                                 >
                                   Registro
                                 </TableHead>
                                 <TableHead
                                   {...papel("columnheader")}
-                                  className="py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                                  className="py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
                                 >
                                   Timeline
                                 </TableHead>
                                 <TableHead
                                   {...papel("columnheader")}
-                                  className="max-w-[120px] py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                                  className="max-w-[120px] py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
                                 >
                                   Situação
                                 </TableHead>
                                 <TableHead
                                   {...papel("columnheader")}
-                                  className="py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                                  className="py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
                                 >
                                   Volume
                                 </TableHead>
@@ -1068,7 +1069,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       variant="ghost"
                                       size="icon"
                                       aria-label={`Abrir o pedido ${numeroDoPedido(order.id)}`}
-                                      className="size-11 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-white"
+                                      className="size-11 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white"
                                     >
                                       <ExternalLink className="size-4" />
                                     </Button>

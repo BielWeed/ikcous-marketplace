@@ -168,6 +168,16 @@ describe("ficha do cliente — alvos de 44px (onda L)", () => {
     }
   });
 
+  it("a aba Voz mantém o nome acessível completo no celular", async () => {
+    await abrirFicha();
+
+    const voz = [...hospedeiro.querySelectorAll('[role="tab"]')].find((aba) =>
+      aba.textContent?.includes("Voz"),
+    );
+    expect(voz).toBeDefined();
+    expect(voz?.getAttribute("aria-label")).toBe("Voz do Cliente");
+  });
+
   it("copiar e-mail e copiar telefone têm min-h-11 min-w-11, type=button e nome", async () => {
     await abrirFicha();
 
