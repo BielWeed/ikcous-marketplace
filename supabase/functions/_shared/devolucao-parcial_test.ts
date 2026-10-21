@@ -127,11 +127,83 @@ Deno.test("formato: `status: refunded` + `partially_refunded` (a doc se contradi
   assertEquals(decisao.provado, true);
 });
 
-Deno.test("formato: só `refunded_amount` do pagamento (sem a lista de refunds) prova, sem devolução a registrar", () => {
+// Achado 4340526799 (Codex, dinheiro): o `refunded_amount` agregado NUNCA prova sozinho. Se a lista de
+// devoluções concluídas (a que vira linha em order_refunds) vier vazia ou somar MENOS que o agregado, confirmar
+// o pagamento deixaria dinheiro devolvido sem registro (receita superestimada, saldo devolvível errado).
+Deno.test("agregado: só `refunded_amount` do pagamento (sem a lista de refunds) NÃO prova", () => {
   const order = orderParcial();
   order.transactions = { payments: order.transactions.payments };
-  const decisao = devolucaoParcialProvaPagamento({ order, pedido: pedido() });
-  assertEquals(decisao, { provado: true, valorOriginal: 100, devolvido: 20, devolucoes: [] });
+  assertEquals(devolucaoParcialProvaPagamento({ order, pedido: pedido() }), {
+    provado: false,
+    motivo: "sem_devolucao_concluida",
+  });
+});
+
+Deno.test("agregado: lista de refunds VAZIA com refunded_amount > 0 NÃO prova", () => {
+  const order = orderParcial();
+  order.transactions.refunds = [];
+  assertEquals(devolucaoParcialProvaPagamento({ order, pedido: pedido() }), {
+    provado: false,
+    motivo: "sem_devolucao_concluida",
+  });
+});
+
+Deno.test("agregado: lista que soma MENOS que o refunded_amount NÃO prova (parte do dinheiro ficaria sem registro)", () => {
+  const order = orderParcial();
+  order.transactions.refunds = [{ id: "REF01", amount: "20.00", status: "processed" }];
+  order.transactions.payments[0].refunded_amount = "50.00";
+  assertEquals(devolucaoParcialProvaPagamento({ order, pedido: pedido() }), {
+    provado: false,
+    motivo: "devolucao_nao_comprovada_por_inteiro",
+  });
+});
+
+Deno.test("agregado: um centavo a menos na lista já recusa; a soma IGUAL ao agregado prova com a lista completa", () => {
+  const menos = orderParcial();
+  menos.transactions.refunds = [
+    { id: "REF01", amount: "20.00", status: "processed" },
+    { id: "REF02", amount: "29.99", status: "processed" },
+  ];
+  menos.transactions.payments[0].refunded_amount = "50.00";
+  assertEquals(devolucaoParcialProvaPagamento({ order: menos, pedido: pedido() }).motivo, "devolucao_nao_comprovada_por_inteiro");
+
+  const igual = orderParcial();
+  igual.transactions.refunds = [
+    { id: "REF01", amount: "20.00", status: "processed" },
+    { id: "REF02", amount: "30.00", status: "processed" },
+  ];
+  igual.transactions.payments[0].refunded_amount = "50.00";
+  assertEquals(devolucaoParcialProvaPagamento({ order: igual, pedido: pedido() }), {
+    provado: true,
+    valorOriginal: 100,
+    devolvido: 50,
+    devolucoes: [{ id: "REF01", valor: 20 }, { id: "REF02", valor: 30 }],
+  });
+});
+
+Deno.test("agregado: lista que soma MAIS que o refunded_amount (o MP atualiza o agregado depois) prova pela soma da lista", () => {
+  const order = orderParcial();
+  order.transactions.refunds = [
+    { id: "REF01", amount: "20.00", status: "processed" },
+    { id: "REF02", amount: "30.00", status: "processed" },
+  ];
+  order.transactions.payments[0].refunded_amount = "20.00";
+  assertEquals(devolucaoParcialProvaPagamento({ order, pedido: pedido() }), {
+    provado: true,
+    valorOriginal: 100,
+    devolvido: 50,
+    devolucoes: [{ id: "REF01", valor: 20 }, { id: "REF02", valor: 30 }],
+  });
+});
+
+Deno.test("agregado: refund em andamento (processing) + refunded_amount > 0 NÃO prova (só o concluído conta)", () => {
+  const order = orderParcial();
+  order.transactions.refunds = [
+    { id: "REF01", amount: "20.00", status: "processed" },
+    { id: "REF02", amount: "30.00", status: "processing" },
+  ];
+  order.transactions.payments[0].refunded_amount = "50.00";
+  assertEquals(devolucaoParcialProvaPagamento({ order, pedido: pedido() }).motivo, "devolucao_nao_comprovada_por_inteiro");
 });
 
 Deno.test("formato: só a lista de refunds concluídos (sem `refunded_amount`) prova", () => {

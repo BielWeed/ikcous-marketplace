@@ -71,6 +71,7 @@ export type MotivoDaRecusaDaDevolucaoParcial =
   | "order"
   | "nao_e_devolucao_parcial"
   | "sem_devolucao_concluida"
+  | "devolucao_nao_comprovada_por_inteiro"
   | "devolucao_total_ou_maior"
   | "pedido_ausente"
   | "pedido_ja_resolvido"
@@ -171,15 +172,21 @@ export function devolucaoParcialProvaPagamento(args: {
   if (presente(o.currency) && o.currency !== "BRL") return recusa("moeda");
   if (presente(o.currency_id) && o.currency_id !== "BRL") return recusa("moeda");
 
-  // Dinheiro devolvido COM comprovação: refund concluído na lista, ou o valor
-  // devolvido que o próprio pagamento informa. Detalhe sozinho não basta.
+  // Dinheiro devolvido COM comprovação: só a LISTA de devoluções concluídas (id e
+  // valor legíveis) prova — é ela que o chamador registra em `order_refunds`.
+  // O `refunded_amount` agregado do pagamento é só CONFERÊNCIA CRUZADA, nunca
+  // prova isolada: se a lista vier vazia ou somar MENOS que o agregado, parte do
+  // dinheiro devolvido ficaria sem registro (receita superestimada e saldo
+  // devolvível errado), então "na dúvida, ainda não". Soma MAIOR que o agregado
+  // (o MP atualiza o agregado depois) segue valendo: o devolvido é a soma da lista.
   const devolucoes = devolucoesConcluidasDaOrder(o);
   const somaDasDevolucoes = devolucoes.reduce((s, d) => s + centavos(d.valor), 0);
-  const devolvidoEmCentavos = Math.max(
-    somaDasDevolucoes,
-    devolvidoNoPagamento !== null && devolvidoNoPagamento > 0 ? centavos(devolvidoNoPagamento) : 0,
-  );
-  if (!(devolvidoEmCentavos > 0)) return recusa("sem_devolucao_concluida");
+  if (!(somaDasDevolucoes > 0)) return recusa("sem_devolucao_concluida");
+  const agregadoEmCentavos = devolvidoNoPagamento !== null && devolvidoNoPagamento > 0
+    ? centavos(devolvidoNoPagamento)
+    : 0;
+  if (somaDasDevolucoes < agregadoEmCentavos) return recusa("devolucao_nao_comprovada_por_inteiro");
+  const devolvidoEmCentavos = somaDasDevolucoes;
 
   // O pedido: relido do banco, ainda esperando pagamento.
   const ped = args.pedido;
