@@ -38,6 +38,11 @@ function builderDaReleitura() {
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "lojista-1" } } },
+      }),
+    },
     functions: { invoke: vi.fn() },
     rpc,
     from: (...args: unknown[]) => from(...args),
@@ -56,6 +61,8 @@ vi.mock("sonner", () => ({
     success: vi.fn(),
     info: vi.fn(),
     warning: vi.fn(),
+    loading: vi.fn(() => "fila-do-pedido"),
+    dismiss: vi.fn(),
   },
 }));
 
@@ -418,6 +425,84 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
     });
     expect(toast.info).toHaveBeenCalledTimes(1);
   });
+
+  it.each([false, true])(
+    "revisao M8: dois avancos offline chegam a delivered preservando a origem (fila legada=%s)",
+    async (legado) => {
+      vi.useFakeTimers();
+      Object.defineProperty(navigator, "onLine", {
+        configurable: true,
+        get: () => false,
+      });
+      let statusNoServidor = "processing";
+      instalarRpc(async (args) => {
+        if (args.p_status_esperado !== statusNoServidor) {
+          return { error: { code: "P0001", message: "pedido_status_mudou" } };
+        }
+        statusNoServidor = args.p_new_status;
+        linhasParaCarga = [linhaCrua(pedidoFake(args.p_new_status))];
+        return { error: null };
+      });
+      try {
+        const { pegarOrders, updateOrderStatus } = await montarSondaAdmin(
+          pedidoFake("processing"),
+        );
+        await act(async () => {
+          await updateOrderStatus("pedido-1", "shipping");
+        });
+        expect(pegarOrders().find((o) => o.id === "pedido-1")?.status).toBe(
+          "shipping",
+        );
+        if (legado) {
+          const [itemOriginal] = JSON.parse(
+            armazem.get("orders_offline_updates_queue:lojista-1") || "[]",
+          );
+          itemOriginal.statusEsperado = undefined;
+          armazem.set(
+            "orders_offline_updates_queue:lojista-1",
+            JSON.stringify([itemOriginal]),
+          );
+        }
+        await act(async () => {
+          await updateOrderStatus("pedido-1", "delivered");
+        });
+        expect(pegarOrders().find((o) => o.id === "pedido-1")?.status).toBe(
+          "delivered",
+        );
+        expect(chamadasUpdateOrderStatus).toHaveLength(0);
+        const fila = JSON.parse(
+          armazem.get("orders_offline_updates_queue:lojista-1") || "[]",
+        );
+        expect(fila).toHaveLength(1);
+        expect(fila[0].status).toBe("delivered");
+        expect(fila[0].statusEsperado).toBe(legado ? undefined : "processing");
+        Object.defineProperty(navigator, "onLine", {
+          configurable: true,
+          get: () => true,
+        });
+        await act(async () => {
+          window.dispatchEvent(new Event("online"));
+          await vi.advanceTimersByTimeAsync(1000);
+        });
+        expect(rpc).toHaveBeenCalledWith("avancar_status_do_pedido", {
+          p_order_id: "pedido-1",
+          p_status_esperado: "processing",
+          p_new_status: "delivered",
+          p_notes: null,
+        });
+        expect(statusNoServidor).toBe("delivered");
+        expect(armazem.has("orders_offline_updates_queue:lojista-1")).toBe(
+          false,
+        );
+        expect(pegarOrders().find((o) => o.id === "pedido-1")?.status).toBe(
+          "delivered",
+        );
+      } finally {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+      }
+    },
+  );
 
   // Rodada 2 (laudo do revisor, achado 1 BLOQUEIA): a condição original
   // exigia `order` (achada em `orders`), então o pedido que chega por deep

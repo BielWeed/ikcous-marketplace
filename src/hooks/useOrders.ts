@@ -3457,6 +3457,14 @@ export function useOrders(
           );
           const queueStr = localStorage.getItem(chaveDaFila) || "[]";
           const queue = JSON.parse(queueStr);
+          const itemOriginal = queue.find(
+            (item: ItemDaFila) => item.orderId === orderId,
+          );
+          // Avancos offline seguintes mudam so o destino, nao a ultima origem
+          // confirmada. Sem esse campo no legado, mantem a releitura ao reconectar.
+          const statusEsperadoNaFila = itemOriginal
+            ? itemOriginal.statusEsperado
+            : esperado;
           const cleanQueue = queue.filter(
             (item: any) => item.orderId !== orderId,
           );
@@ -3465,7 +3473,7 @@ export function useOrders(
             status,
             notes,
             silent,
-            statusEsperado: esperado,
+            statusEsperado: statusEsperadoNaFila,
             timestamp: Date.now(),
           });
           localStorage.setItem(chaveDaFila, JSON.stringify(cleanQueue));
