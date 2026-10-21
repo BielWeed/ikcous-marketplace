@@ -229,6 +229,10 @@ export const AVISO_BASE_CHAVES_DE_TESTE =
 export const AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE =
   "Chave de TESTE: o PIX não vai receber dinheiro de verdade.";
 
+/** Mesmo aviso da edge: o servidor substitui o e-mail do cliente pelo de teste. */
+export const AVISO_MODO_DE_TESTE_EM_PRODUCAO =
+  "Seu app está em modo de teste: os pagamentos com cartão vão ao Mercado Pago com um e-mail de teste no lugar do e-mail do cliente, o que pode fazer o cartão ser recusado. Peça para desligar o modo de teste (segredo MP_SANDBOX_PAYER_EMAIL) no servidor.";
+
 /** Recado de segurança exibido embaixo do formulário. */
 export const RECADO_DE_SEGURANCA =
   "Suas chaves ficam guardadas cifradas no servidor do seu app. Ninguém vê a chave secreta inteira — nem aqui na tela, que mostra só o finalzinho para você reconhecer qual colou.";

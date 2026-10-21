@@ -521,8 +521,21 @@ describe("OrderDetail (ficha do pedido) — pergunta se recebeu ao avançar para
       await Promise.resolve();
     });
 
+    expect(onRegistrarPagamentoMock).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(
+      "Recebeu os R$ 100,00 deste pedido?",
+    );
+    const aindaNao = botaoComTexto(document.body, "Ainda não");
+    expect(aindaNao).toBeTruthy();
+    await act(async () => aindaNao!.click());
+    expect(onRegistrarPagamentoMock).not.toHaveBeenCalled();
+    await act(async () => botaoMarcar!.click());
+    const recebi = botaoComTexto(document.body, "Recebi");
+    expect(recebi).toBeTruthy();
+    await act(async () => recebi!.click());
     expect(onRegistrarPagamentoMock).toHaveBeenCalledTimes(1);
     expect(onRegistrarPagamentoMock).toHaveBeenCalledWith("ped-7", true);
+    expect(onStatusChangeMock).not.toHaveBeenCalled();
   });
 });
 

@@ -208,7 +208,7 @@ export function VisaoGeralDoCrm({
         aria-labelledby="crm-historico-titulo"
         className="space-y-6 sm:space-y-10"
       >
-        <div className="space-y-0.5 border-t border-white/5 pt-6">
+        <div className="space-y-0.5 border-t border-admin-border pt-6">
           <h2
             id="crm-historico-titulo"
             className="text-sm font-semibold leading-snug text-white"

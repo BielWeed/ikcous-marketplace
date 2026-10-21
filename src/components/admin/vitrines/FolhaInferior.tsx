@@ -49,7 +49,7 @@ export function FolhaInferior({
           evento.preventDefault();
           (evento.currentTarget as HTMLElement | null)?.focus();
         }}
-        className="mx-auto max-h-[92dvh] w-full gap-0 rounded-t-[28px] border-white/10 bg-zinc-950 p-0 text-white sm:max-w-xl"
+        className="mx-auto max-h-[92dvh] w-full gap-0 rounded-t-[28px] border-admin-border bg-zinc-950 p-0 text-white sm:max-w-xl"
       >
         <SheetHeader className="px-5 pb-1 pt-3 text-left">
           <span
@@ -76,7 +76,7 @@ export function FolhaInferior({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
           {children}
         </div>
-        <SheetFooter className="mt-0 flex-row items-center gap-2.5 border-t border-white/5 px-5 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3">
+        <SheetFooter className="mt-0 flex-row items-center gap-2.5 border-t border-admin-border px-5 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3">
           {rodape}
         </SheetFooter>
       </SheetContent>

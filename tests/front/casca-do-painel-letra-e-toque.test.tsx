@@ -77,18 +77,18 @@ describe("AdminLayout — topo e menu sem letra miúda", () => {
 });
 
 describe("AdminLayout — cabeçalho móvel sólido", () => {
-  it("a tag <header> usa fundo sólido #101013 sem opacidade e sem backdrop-blur", () => {
+  it("a tag <header> usa fundo sólido bg-admin-nav sem opacidade e sem backdrop-blur", () => {
     const fonte = lerFonte("src/components/layouts/AdminLayout.tsx");
     const inicio = fonte.indexOf("<header");
     expect(inicio).toBeGreaterThan(-1);
     const tag = fonte.slice(inicio, fonte.indexOf(">", inicio));
     const classes = /className="([^"]*)"/.exec(tag)?.[1] ?? "";
-    expect(classes).toMatch(/(^|\s)bg-\[#101013\](\s|$)/);
-    expect(classes).not.toContain("bg-[#101013]/");
+    expect(classes).toMatch(/(^|\s)bg-admin-nav(\s|$)/);
+    expect(classes).not.toContain("bg-admin-nav/");
     expect(classes).not.toContain("bg-zinc-950/");
     expect(classes).not.toContain("#09090b");
     expect(classes).not.toContain("backdrop-blur");
-    expect(classes).toContain("border-b border-white/5");
+    expect(classes).toContain("border-b border-admin-border");
     expect(classes).toContain("shadow-md");
   });
 });

@@ -112,6 +112,7 @@ export function paiDaTelaDoAdmin(
     case "admin-shipping":
     case "admin-banners":
     case "admin-carousels":
+    case "admin-app-color":
     case "admin-about-store":
       return "admin-settings";
     case "admin-whatsapp-config":

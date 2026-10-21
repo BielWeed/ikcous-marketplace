@@ -3,9 +3,9 @@ import { AlertTriangle, type LucideIcon, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 
 export const CARTAO_INICIO =
-  "min-w-0 rounded-[22px] border border-white/10 bg-zinc-900/50 p-4";
+  "min-w-0 rounded-[22px] border border-admin-border bg-admin-surface p-4";
 export const BOTAO_INICIO =
-  "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:opacity-50";
+  "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-admin-border-strong bg-white/[0.06] px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:opacity-50";
 export const ACAO_PRINCIPAL_INICIO =
   "flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-amber-300 to-yellow-500 px-4 py-3 text-base font-bold text-zinc-950 shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white";
 export const LINHA_INICIO =

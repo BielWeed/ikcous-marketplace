@@ -311,7 +311,7 @@ describe("Clientes no celular (J4)", () => {
     const linha = rotuloTotal!.parentElement?.parentElement;
     const cartao = linha!.closest('[role="button"]');
     expect(cartao?.className).toContain("rounded-2xl");
-    expect(cartao?.className).toContain("border-white/10");
+    expect(cartao?.className).toContain("border-admin-border");
     const rotuloPedidos = [...linha!.querySelectorAll("span")].find(
       (s) => s.textContent?.trim() === "Pedidos",
     );

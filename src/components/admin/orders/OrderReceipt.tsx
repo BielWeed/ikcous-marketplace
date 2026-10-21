@@ -52,7 +52,10 @@ export const OrderReceipt = memo(function OrderReceipt({
   const storeName = storeNameProp ?? branding.appName;
   return (
     <>
-      <div className="mx-auto hidden max-w-[80mm] border border-gray-200 bg-white p-8 font-mono text-sm text-black print:block">
+      <div
+        data-tema-fixo=""
+        className="mx-auto hidden max-w-[80mm] border border-gray-200 bg-white p-8 font-mono text-sm text-black print:block"
+      >
         <div className="mb-4 border-b border-dashed border-black pb-4 text-center">
           <h2 className="text-xl font-bold uppercase">{storeName}</h2>
           <p className="text-xs">Pedido #{numeroDoPedido(order.id)}</p>

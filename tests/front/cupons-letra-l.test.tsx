@@ -154,8 +154,8 @@ describe("cupons — resumo compacto sem perder valores e detalhes", () => {
     expect(pos).toBeGreaterThan(-1);
     const casca = fonte.slice(pos, fonte.indexOf(">", pos));
     expect(casca).toContain("rounded-[20px]");
-    expect(casca).toContain("border-white/10");
-    expect(casca).toContain("bg-[#101013]");
+    expect(casca).toContain("border-admin-border");
+    expect(casca).toContain("bg-admin-surface");
     expect(casca).toContain("p-3");
     expect(casca).toContain("min-w-0");
   });

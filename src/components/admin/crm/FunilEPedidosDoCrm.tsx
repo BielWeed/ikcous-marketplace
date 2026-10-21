@@ -134,7 +134,7 @@ function estiloDoStatus(status: string): {
       return {
         icone: Package,
         cor: "text-zinc-300",
-        chip: "border-white/10 bg-white/5",
+        chip: "border-admin-border bg-white/5",
       };
   }
 }
@@ -161,7 +161,7 @@ const CLASSES_DO_DESTAQUE_DE_PAGAMENTO: Record<
     rotulo: "text-rose-300/80",
   },
   neutra: {
-    caixa: "border-white/10 bg-white/[0.04]",
+    caixa: "border-admin-border bg-admin-raised",
     rotulo: "text-zinc-400",
   },
 };
@@ -270,7 +270,7 @@ function FunilProporcional({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
                 className={cn(
                   "mx-auto flex h-8 items-center justify-center rounded-lg text-[11px] font-black tabular-nums",
                   vazio
-                    ? "border border-dashed border-white/15 bg-transparent text-zinc-500"
+                    ? "border border-dashed border-admin-border-strong bg-transparent text-zinc-500"
                     : "bg-gradient-to-b from-emerald-400/80 to-emerald-500/60 text-emerald-950",
                 )}
                 style={{ width: `${largura}%` }}
@@ -305,7 +305,7 @@ function FunilEmEtapas({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
               aria-hidden="true"
             />
           ) : null}
-          <div className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950/60 px-1.5 py-2 text-center">
+          <div className="min-w-0 flex-1 rounded-xl border border-admin-border bg-zinc-950/60 px-1.5 py-2 text-center">
             <p className="truncate text-2xl font-black tabular-nums text-white">
               {formatarInteiro(etapa.valor)}
             </p>
@@ -442,7 +442,7 @@ function Pipeline({
                         </span>
                       ) : null}
                     </span>
-                    <span className="min-w-8 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-center text-[11px] font-black tabular-nums text-zinc-200">
+                    <span className="min-w-8 rounded-full border border-admin-border bg-white/5 px-2 py-0.5 text-center text-[11px] font-black tabular-nums text-zinc-200">
                       {formatarInteiro(etapa.quantidade)}
                     </span>
                     <ChevronRight

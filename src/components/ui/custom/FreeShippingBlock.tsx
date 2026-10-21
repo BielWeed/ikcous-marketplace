@@ -44,48 +44,53 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
   // R$ 0,01" e "faltam R$ 0,01" — a loja que dá grátis SEMPRE não tem meta.
   if (preset === "sempre") {
     return (
-      <div className="group relative h-full overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950 p-3.5 shadow-md transition-all duration-300 hover:border-zinc-700 sm:p-4">
+      <div className="group relative flex min-h-[172px] flex-col overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950 p-3.5 shadow-md transition-all duration-300 hover:border-zinc-700">
         <div className="absolute -right-6 -top-6 size-24 rounded-full bg-emerald-500/10 blur-2xl transition-all duration-700 group-hover:bg-emerald-500/20" />
-
-        <div className="relative z-10 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
-              <CheckCircle2 className="size-5 text-emerald-400" />
+        <div className="relative z-10 flex flex-1 flex-col justify-center">
+          <div className="flex gap-2.5">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-[14px] border border-zinc-800 bg-zinc-900 shadow-inner">
+              <CheckCircle2
+                aria-hidden="true"
+                className="size-5 text-emerald-400"
+              />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="mb-0.5 flex items-center gap-1.5 overflow-hidden">
-                <span className="truncate text-[9px] font-semibold text-zinc-400">
-                  {soLocal ? "Entrega na cidade" : "Toda a loja"}
-                </span>
+              <div className="text-[11px] font-semibold leading-[14px] text-zinc-400">
+                {soLocal ? "Entrega na cidade" : "Toda a loja"}
               </div>
-              <h3 className="truncate text-xs font-bold leading-tight text-white sm:text-sm">
+              <h3 className="mt-0.5 text-[15px] font-bold leading-5 text-white">
                 <span className="text-emerald-400 font-extrabold">
                   {soLocal
                     ? "Frete grátis na cidade"
                     : "Frete grátis em toda a loja"}
                 </span>
               </h3>
-              <p className="truncate text-[10px] font-medium text-zinc-400">
-                {soLocal
-                  ? "Pedido com entrega local sai grátis."
-                  : "Qualquer pedido sai com entrega grátis."}
-              </p>
             </div>
           </div>
-
-          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-            <div className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-3 py-1 shadow-2xs">
-              <Sparkles className="size-3 text-emerald-400 animate-pulse" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400">
-                Liberado
-              </span>
-            </div>
-          </div>
+          <p className="mt-2 text-xs font-medium leading-4 text-zinc-300">
+            {soLocal
+              ? "Pedido com entrega local sai grátis."
+              : "Qualquer pedido sai com entrega grátis."}
+          </p>
         </div>
-
-        {/* Barra cheia: o grátis é incondicional, não há progresso a fazer. */}
-        <div className="absolute inset-x-0 bottom-0 h-1 bg-zinc-900">
-          <div className="h-full w-full bg-emerald-500" />
+        <div className="h-2 shrink-0" />
+        <div className="relative z-10 mt-auto flex h-5 items-center gap-2.5">
+          {/* Grátis incondicional: não há progresso a fazer. */}
+          <div
+            aria-hidden="true"
+            className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-800"
+          >
+            <div className="h-full w-full rounded-full bg-emerald-500" />
+          </div>
+          <div className="flex h-5 shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-2.5 shadow-2xs">
+            <Sparkles
+              aria-hidden="true"
+              className="size-3 text-emerald-400 motion-safe:animate-pulse"
+            />
+            <span className="text-[11px] font-bold text-emerald-400">
+              Liberado
+            </span>
+          </div>
         </div>
       </div>
     );
@@ -113,8 +118,8 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
           Oba!{" "}
           <span className="text-emerald-400 font-extrabold">
             Frete Grátis {soLocal ? "na Cidade " : ""}Liberado!
-          </span>{" "}
-          🎉
+          </span>
+          {" "}🎉
         </>
       );
     }
@@ -124,8 +129,8 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
           Falta pouquinho pro{" "}
           <span className="text-emerald-400 font-extrabold">
             Frete Grátis{soLocal ? " na Cidade" : ""}!
-          </span>{" "}
-          ✨
+          </span>
+          {" "}✨
         </>
       );
     }
@@ -175,37 +180,29 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
   // (estado convidado com CTA ENTRAR) era a promessa falsa que a trava
   // `&& user` sustentava no carrinho.
   return (
-    <div className="group relative h-full overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950 p-3.5 shadow-md transition-all duration-300 hover:border-zinc-700 sm:p-4">
-      {/* Subtle Glow */}
+    <div className="group relative flex min-h-[172px] flex-col overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950 p-3.5 shadow-md transition-all duration-300 hover:border-zinc-700">
       <div className="absolute -right-6 -top-6 size-24 rounded-full bg-emerald-500/10 blur-2xl transition-all duration-700 group-hover:bg-emerald-500/20" />
-
-      <div className="relative z-10 flex items-center justify-between gap-3">
-        {/* Esquerda: Ícone + Copy */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner transition-transform duration-300 group-hover:scale-105">
+      <div className="relative z-10 flex flex-1 flex-col justify-center">
+        <div className="flex gap-2.5">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-[14px] border border-zinc-800 bg-zinc-900 shadow-inner">
             {isGoalReached ? (
-              <CheckCircle2 className="size-5 text-emerald-400" />
+              <CheckCircle2
+                aria-hidden="true"
+                className="size-5 text-emerald-400"
+              />
             ) : (
-              <Truck className="size-5 text-emerald-400" />
+              <Truck aria-hidden="true" className="size-5 text-emerald-400" />
             )}
           </div>
-
           <div className="min-w-0 flex-1">
-            <div className="mb-0.5 flex items-center gap-1.5 overflow-hidden">
-              {/* Sem cidade configurada — ou com cobertura NACIONAL, em que
-                  o selo leria como "entrega só em <cidade>" e seria falso
-                  (#525) — o rótulo e o ponto separador somem os dois:
-                  "Entrega Grátis" fica sozinho, nunca "• Entrega Grátis"
-                  com o separador órfão. */}
+            <div className="text-[11px] leading-[14px]">
+              {/* A cidade só qualifica a cobertura local, nunca a nacional. */}
               {config.storeCity && config.shippingCoverage === "local" && (
-                <>
-                  <span className="whitespace-nowrap text-[9px] font-bold uppercase tracking-wider text-emerald-400">
-                    {config.storeCity}
-                  </span>
-                  <div className="size-1 flex-shrink-0 rounded-full bg-zinc-700" />
-                </>
+                <div className="font-bold uppercase tracking-wider text-emerald-400">
+                  {config.storeCity}
+                </div>
               )}
-              <span className="truncate text-[9px] font-semibold text-zinc-400">
+              <div className="font-semibold text-zinc-400">
                 {isGoalReached
                   ? soLocal
                     ? "Meta Atingida na Cidade"
@@ -213,49 +210,50 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
                   : soLocal
                     ? "Entrega Grátis na Cidade"
                     : "Entrega Grátis"}
-              </span>
+              </div>
             </div>
-
-            <h3 className="truncate text-xs font-bold leading-tight text-white sm:text-sm">
+            <h3 className="mt-0.5 text-[15px] font-bold leading-5 text-white">
               {renderHeadline()}
             </h3>
-
-            <p className="truncate text-[10px] font-medium text-zinc-400">
-              {renderSubtext()}
-            </p>
           </div>
         </div>
-
-        {/* Direita: Badge do Valor / Progresso */}
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-          {isGoalReached ? (
-            <div className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-3 py-1 shadow-2xs">
-              <Sparkles className="size-3 text-emerald-400 animate-pulse" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400">
-                Liberado
-              </span>
-            </div>
-          ) : (
-            <div className="flex flex-col items-end">
-              <span className="text-[11px] font-bold leading-tight text-white sm:text-xs">
-                {formatCurrency(totalCartValue)}
-              </span>
-              <span className="text-[8px] font-semibold uppercase tracking-wider text-emerald-400">
-                {totalCartValue > 0
-                  ? `de ${formatCurrency(minShipping)}`
-                  : "no carrinho"}
-              </span>
-            </div>
-          )}
-        </div>
+        <p className="mt-2 text-xs font-medium leading-4 text-zinc-300">
+          {renderSubtext()}
+        </p>
       </div>
-
-      {/* Slim Progress Bar no Rodapé */}
-      <div className="absolute inset-x-0 bottom-0 h-1 bg-zinc-900">
+      <div className="h-2 shrink-0" />
+      <div className="relative z-10 mt-auto flex h-5 items-center gap-2.5">
         <div
-          className="h-full bg-emerald-500 transition-all duration-700"
-          style={{ width: `${progressPercent}%` }}
-        />
+          role="progressbar"
+          aria-label="Progresso para o frete grátis"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.floor(progressPercent)}
+          aria-valuetext={`${formatCurrency(totalCartValue)} de ${formatCurrency(minShipping)} para o frete grátis`}
+          className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-800"
+        >
+          <div
+            className="h-full rounded-full bg-emerald-500 transition-[width] duration-700 motion-reduce:transition-none"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+        {isGoalReached ? (
+          <div className="flex h-5 shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-2.5 shadow-2xs">
+            <Sparkles
+              aria-hidden="true"
+              className="size-3 text-emerald-400 motion-safe:animate-pulse"
+            />
+            <span className="text-[11px] font-bold text-emerald-400">
+              Liberado
+            </span>
+          </div>
+        ) : (
+          <span className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-white">
+            {formatCurrency(totalCartValue)}{" "}
+            <span className="font-medium text-zinc-400">de</span>{" "}
+            {formatCurrency(minShipping)}
+          </span>
+        )}
       </div>
     </div>
   );

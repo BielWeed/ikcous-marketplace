@@ -216,7 +216,7 @@ export function FormasDePagamentoSection({
           <label
             key={forma}
             htmlFor={`${formasNaEntregaId}-${forma}`}
-            className="flex min-h-11 cursor-pointer items-center justify-between gap-3 border-b border-white/10 py-3 last:border-0 has-[:disabled]:cursor-not-allowed"
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-3 border-b border-admin-border py-3 last:border-0 has-[:disabled]:cursor-not-allowed"
           >
             <span className="flex min-w-0 items-center gap-3">
               <IconeDeAjustes
@@ -489,7 +489,7 @@ export function CartaoPeloAppBloco({
           )}
           {config.credito && (
             <div className="space-y-1">
-              <div className="space-y-2 rounded-2xl border border-white/15 bg-[#17171c] p-3">
+              <div className="space-y-2 rounded-2xl border border-admin-border-strong bg-admin-raised p-3">
                 <label
                   htmlFor={idDasParcelas}
                   className="text-xs text-zinc-300"
@@ -509,7 +509,7 @@ export function CartaoPeloAppBloco({
                         : `Crédito em até ${parcelasMax}x`,
                     );
                   }}
-                  className="min-h-11 w-full rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50"
+                  className="min-h-11 w-full rounded-lg border border-admin-border bg-zinc-900 px-3 py-2 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50"
                 >
                   {OPCOES_DE_PARCELAS.map((n) => (
                     <option

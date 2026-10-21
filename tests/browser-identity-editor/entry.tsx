@@ -1,10 +1,13 @@
 import { IdentitySettingsSection } from "@/components/admin/settings/IdentitySettingsSection";
+import { AdminAppColorView } from "@/views/admin/AdminAppColorView";
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { recordDirty, setFixtureContext, useFixtureContext } from "./contexts";
 
-// This panel changes only the two replaced contexts; it cannot invoke editor actions.
+// Fixture controls replace contexts and navigate; only the real screens save.
 function Bench() {
   const fixture = useFixtureContext();
+  const [corAberta, setCorAberta] = useState(false);
   return (
     <div
       data-bench-scroll
@@ -27,10 +30,31 @@ function Bench() {
             Atualizações: {fixture.refreshes}
           </p>
         </aside>
-        <IdentitySettingsSection
-          active={fixture.active}
-          onDirtyChange={recordDirty}
-        />
+        {corAberta ? (
+          <>
+            <button
+              type="button"
+              disabled={fixture.dirty}
+              onClick={() => setCorAberta(false)}
+            >
+              Voltar à marca
+            </button>
+            <AdminAppColorView
+              active={fixture.active}
+              onSetDirty={recordDirty}
+              onNavigate={() => setCorAberta(false)}
+            />
+          </>
+        ) : (
+          <IdentitySettingsSection
+            active={fixture.active}
+            onDirtyChange={recordDirty}
+            onNavigate={(view) => {
+              if (view === "admin-app-color" && !fixture.dirty)
+                setCorAberta(true);
+            }}
+          />
+        )}
       </main>
     </div>
   );

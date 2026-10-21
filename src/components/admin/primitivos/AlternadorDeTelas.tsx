@@ -23,7 +23,7 @@ export function AlternadorDeTelas({
   return (
     <nav
       aria-label="Telas desta seção"
-      className="flex gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1"
+      className="flex gap-1 rounded-2xl border border-admin-border bg-admin-surface p-1"
     >
       {telas.map((tela) => {
         const ativa = tela === atual;
@@ -41,7 +41,7 @@ export function AlternadorDeTelas({
               "flex min-h-11 flex-1 items-center justify-center rounded-xl px-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold",
               ativa
                 ? "bg-admin-gold text-black"
-                : "text-zinc-300 hover:bg-white/[0.07]",
+                : "text-zinc-300 hover:bg-admin-raised",
             )}
           >
             {nome}

@@ -187,6 +187,8 @@ type TipoDeAviso =
   | "dados"
   | "sem-limite"
   | "autorizacao"
+  | "parcelamento"
+  | "desabilitado"
   | "recusa"
   | "carga-falhou";
 
@@ -207,6 +209,10 @@ function tipoDoAvisoDaRecusa(categoria: CategoriaDaRecusa): TipoDeAviso {
       return "sem-limite";
     case "autorizacao":
       return "autorizacao";
+    case "parcelamento":
+      return "parcelamento";
+    case "desabilitado":
+      return "desabilitado";
     default:
       return "recusa";
   }
@@ -222,6 +228,10 @@ function tituloDoAviso(aviso: AvisoDoFormulario): string {
       return TEXTOS_DO_CARTAO.semLimite;
     case "autorizacao":
       return TEXTOS_DO_CARTAO.autorizacao;
+    case "parcelamento":
+      return TEXTOS_DO_CARTAO.parcelamento;
+    case "desabilitado":
+      return TEXTOS_DO_CARTAO.desabilitado;
     case "carga-falhou":
       return TEXTOS_DO_CARTAO.cargaFalhou;
     default:
@@ -620,7 +630,7 @@ export function classificarRespostaCartao(
         categoria: "terminal",
       };
     }
-    const categoria = categoriaDoServidor(r.categoriaDaRecusa);
+    const categoria = categoriaDoServidor(r.categoriaDaRecusa, motivo);
     return {
       tipo: "recusado",
       motivo: motivo ?? MOTIVO_PADRAO_DA_RECUSA,
@@ -1701,7 +1711,10 @@ export function PagamentoComCartao({
             focarNoTitulo
             titulo={tituloDoAviso(aviso)}
           >
-            {(aviso.tipo === "sem-limite" || aviso.tipo === "recusa") && (
+            {(aviso.tipo === "sem-limite" ||
+              aviso.tipo === "parcelamento" ||
+              aviso.tipo === "desabilitado" ||
+              aviso.tipo === "recusa") && (
               <BotaoDoCartao variante="primario" onClick={tentarOutroCartao}>
                 Tentar outro cartão
               </BotaoDoCartao>

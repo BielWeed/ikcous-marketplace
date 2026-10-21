@@ -110,6 +110,7 @@ describe("gravação da venda do PDV veta a atualização", () => {
           p_cliente_nome: null,
           p_cliente_whatsapp: null,
           p_desconto: 0,
+          p_total_esperado: 10,
           p_observacao: null,
           p_idempotency_key: "chave-fixa",
         });

@@ -59,19 +59,19 @@ export function FolhaDoPainel({
           // cala o aviso do Radix sem inventar um texto que ninguém leria.
           aria-describedby={undefined}
           className={cn(
-            "fixed inset-x-0 bottom-0 z-[100] flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-admin-bg p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] text-left text-sm text-zinc-300 shadow-2xl outline-none",
+            "fixed inset-x-0 bottom-0 z-[100] flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-2xl border border-admin-border-strong bg-admin-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] text-left text-sm text-zinc-300 shadow-2xl outline-none",
             "data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
             "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:max-h-[85vh] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:p-8 sm:pb-8 sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
           )}
         >
-          <div className="mb-4 flex shrink-0 items-center justify-between gap-3 border-b border-white/5 pb-4">
+          <div className="mb-4 flex shrink-0 items-center justify-between gap-3 border-b border-admin-border pb-4">
             <DialogPrimitive.Title className="flex min-w-0 items-center gap-2 text-sm font-black uppercase tracking-[0.2em] text-admin-gold">
               <Icone aria-hidden="true" className="size-5 shrink-0" />
               <span className="min-w-0">{titulo}</span>
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
               aria-label="Fechar"
-              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-900/50 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-admin-gold"
+              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border-strong bg-admin-raised text-zinc-400 transition-colors hover:bg-admin-hover hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-admin-gold"
             >
               <X aria-hidden="true" className="size-5" />
             </DialogPrimitive.Close>
@@ -82,7 +82,7 @@ export function FolhaDoPainel({
           </div>
 
           {rodape != null && (
-            <div className="flex shrink-0 justify-end border-t border-white/5 pt-4">
+            <div className="flex shrink-0 justify-end border-t border-admin-border pt-4">
               {rodape}
             </div>
           )}

@@ -472,10 +472,13 @@ jobs:
                     has_function_privilege('authenticated', 'public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)', 'EXECUTE') as paged8,
                     has_function_privilege('authenticated', 'public.get_admin_orders_cancelados_recentes(integer,integer,integer)', 'EXECUTE') as cancelados,
                     has_function_privilege('authenticated', 'public.buscar_por_codigo_barras(text)', 'EXECUTE') as codigo,
-                    has_function_privilege('authenticated', 'public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)', 'EXECUTE') as venda,
+                    has_function_privilege('authenticated', coalesce(to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)'), to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)')), 'EXECUTE') as venda,
                     exists (select 1 from information_schema.columns where table_name='marketplace_orders' and column_name='canal') as col_canal,
                     exists (select 1 from information_schema.columns where table_name='produtos' and column_name='codigo_barras') as col_codigo\`);
                 console.log('VERIFICAÇÃO:', verificacao);
+                const venda = linhasDaResposta(verificacao)[0]?.venda;
+                if (venda === null || venda === undefined) throw new Error('VERIFICAÇÃO: função de venda presencial ausente (assinaturas de 8 e 9 argumentos).');
+                if (venda !== true) throw new Error('VERIFICAÇÃO: função de venda presencial sem EXECUTE para authenticated.');
                 // (A execução de fumaca das RPCs fica de fora DE PROPÓSITO: o
                 // gate is_admin() delas nega o role postgres da API de
                 // gestão — o RAISE é o próprio gate provando que a função

@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { ConfirmarRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
@@ -270,10 +271,10 @@ const lerNotaInterna = async (pedidoId: string) => {
 
 // Redesenho da ficha (08/10/2026, aprovado pelo dono): a MESMA linguagem do
 // card de pedido redesenhado em 07/10 (`AdminOrderCard`) — blocos
-// `rounded-2xl border-white/5 bg-white/[0.03]`, sem vidro pesado nem brilho,
+// `rounded-2xl border-admin-border bg-admin-raised`, sem vidro pesado nem brilho,
 // rótulos em minúsculas com inicial maiúscula, nada abaixo de 12px. Só
 // APARÊNCIA e ORDEM mudaram: nenhuma regra de dinheiro, status ou permissão.
-const blocoDaFicha = "rounded-2xl border border-white/5 bg-white/[0.03]";
+const blocoDaFicha = "rounded-2xl border border-admin-border bg-admin-raised";
 const tituloDoBloco = "text-sm font-medium text-zinc-200";
 
 // Os selos de status vêm de `OrderStatusBadge.tsx` (componente compartilhado
@@ -453,12 +454,12 @@ function OrderActionBar({
   // competem. Linha separadora embaixo (border-b): ela é o teto da ficha.
   // Fundo OPACO: o conteúdo rola por baixo e não pode aparecer através.
   return (
-    <div className="sticky top-0 z-40 border-b border-white/5 bg-admin-bg">
+    <div className="sticky top-0 z-40 border-b border-admin-border bg-admin-bg">
       <div className="mx-auto flex w-full max-w-[600px] items-center gap-2 px-4 py-3">
         <Button
           variant="ghost"
           onClick={() => globalThis.print()}
-          className="size-11 shrink-0 rounded-xl border border-white/5 bg-white/5 p-0 text-zinc-200 transition-colors hover:bg-white/10 active:scale-95"
+          className="size-11 shrink-0 rounded-xl border border-admin-border bg-white/5 p-0 text-zinc-200 transition-colors hover:bg-white/10 active:scale-95"
           title="Imprimir Pedido"
         >
           <Printer className="size-5" />
@@ -556,7 +557,9 @@ function OrderStepperPipeline({
                 isActive &&
                   "border-admin-gold bg-admin-gold ring-4 ring-admin-gold/20",
                 isCompleted && "border-admin-gold bg-admin-gold",
-                !isActive && !isCompleted && "border-white/20 bg-admin-bg",
+                !isActive &&
+                  !isCompleted &&
+                  "border-admin-border-strong bg-admin-bg",
               )}
             />
             <span
@@ -659,7 +662,7 @@ function OrderDeliveryCard({
         </div>
       )}
 
-      <div className="space-y-2 border-t border-white/5 pt-4">
+      <div className="space-y-2 border-t border-admin-border pt-4">
         <p className="text-xs text-zinc-400">
           {order.retiradaNaLoja ? "Endereço do cliente" : "Endereço de entrega"}
         </p>
@@ -682,7 +685,7 @@ function OrderDeliveryCard({
         <div className="flex items-center gap-2 pt-1">
           <button
             onClick={onCopyAddress}
-            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/5 bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
             title="Copiar Endereço"
           >
             {copiedAddress ? (
@@ -701,7 +704,7 @@ function OrderDeliveryCard({
             href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsUrlQuery)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/5 bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
             title="Ver no Google Maps"
           >
             <MapPin className="size-[15px] text-zinc-400" />
@@ -713,7 +716,7 @@ function OrderDeliveryCard({
       {formaDeEntrega && (
         <p
           data-testid="forma-de-entrega"
-          className="flex items-center gap-2 border-t border-white/5 pt-4 text-sm text-zinc-300"
+          className="flex items-center gap-2 border-t border-admin-border pt-4 text-sm text-zinc-300"
         >
           <Truck className="size-4 shrink-0 text-zinc-400" />
           <span>Como vai: {formaDeEntrega}</span>
@@ -751,7 +754,7 @@ function OrderItemsCard({
           {totalUnits} {totalUnits === 1 ? "unidade" : "unidades"}
         </span>
       </div>
-      <div className="mt-3 divide-y divide-white/5">
+      <div className="mt-3 divide-y divide-admin-border">
         {items.map((item) => {
           const itemSku = item.variantId
             ? skus[`var-${item.variantId}`] || skus[`prod-${item.productId}`]
@@ -763,7 +766,7 @@ function OrderItemsCard({
               key={`${item.productId}-${item.variantId || "default"}`}
               className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
             >
-              <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-white/10">
+              <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-admin-border">
                 <LazyImage
                   src={item.image}
                   alt={item.name}
@@ -804,7 +807,7 @@ function OrderItemsCard({
       <div
         className={cn(
           "space-y-1.5 text-sm tabular-nums",
-          items.length > 0 && "mt-4 border-t border-white/5 pt-4",
+          items.length > 0 && "mt-4 border-t border-admin-border pt-4",
         )}
       >
         <div className="flex justify-between text-zinc-300">
@@ -837,7 +840,7 @@ function OrderItemsCard({
           </span>
         </div>
 
-        <div className="flex justify-between border-t border-white/5 pt-2 text-base font-semibold text-white">
+        <div className="flex justify-between border-t border-admin-border pt-2 text-base font-semibold text-white">
           <span>Total</span>
           <span>R$ {formatarValor(order?.total || 0)}</span>
         </div>
@@ -851,7 +854,7 @@ interface OrderFinanceCardProps {
   /** Task 4b — `undefined` só nos testes que montam `<OrderDetail>` direto
    * sem a prop (ver `OrderDetailProps.onRegistrarPagamento`); nesse caso o
    * bloco de recebimento não renderiza (ver guarda no JSX abaixo). */
-  onRegistrarPagamento?: (orderId: string, recebido: boolean) => void;
+  onRegistrarPagamento?: (orderId: string, recebido: boolean) => Promise<void>;
   registrandoPagamento?: boolean;
 }
 
@@ -974,7 +977,7 @@ function OrderFinanceCard({
           cartão da lista (Task 4). `onRegistrarPagamento` falta só nos
           testes que montam `<OrderDetail>` direto sem a prop. */}
       {onRegistrarPagamento && podeRegistrarPagamento(order) && (
-        <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-4">
+        <div className="flex items-center justify-between gap-2 border-t border-admin-border pt-4">
           {order.pagamentoRecebidoEm ? (
             <>
               <span className="text-sm font-medium text-emerald-400">
@@ -988,18 +991,16 @@ function OrderFinanceCard({
                 order={order}
                 aoDesfazer={() => onRegistrarPagamento(order.id, false)}
                 disabled={registrandoPagamento}
-                className="h-11 shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
+                className="h-11 shrink-0 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
               />
             </>
           ) : (
-            <button
-              type="button"
-              onClick={() => onRegistrarPagamento(order.id, true)}
+            <ConfirmarRecebimento
+              key={order.id}
+              total={order.total}
               disabled={registrandoPagamento}
-              className="h-11 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-400 transition-colors hover:bg-emerald-500 hover:text-black disabled:opacity-50"
-            >
-              {registrandoPagamento ? "Registrando..." : "Marcar como recebido"}
-            </button>
+              aoConfirmar={() => onRegistrarPagamento(order.id, true)}
+            />
           )}
         </div>
       )}
@@ -1007,7 +1008,7 @@ function OrderFinanceCard({
       {(anuladoId === order.id ||
         anulandoId === order.id ||
         podeAnularVendaDoBalcao(order)) && (
-        <div className="border-t border-white/5 pt-4">
+        <div className="border-t border-admin-border pt-4">
           {/* Some ao anular (e durante a chamada): o hook não atualiza o
               pedido local, e com o tempo real atrasado "anule hoje" ficaria
               ao lado de "Venda anulada". */}
@@ -1030,7 +1031,7 @@ function OrderFinanceCard({
       )}
 
       {anulacaoDoBalcaoPassouDoDia(order) && (
-        <p className="border-t border-white/5 pt-4 text-xs leading-relaxed text-zinc-400">
+        <p className="border-t border-admin-border pt-4 text-xs leading-relaxed text-zinc-400">
           {FRASE_ANULAR_SO_NO_MESMO_DIA}{" "}
           {order.userId ? DEPOIS_DO_DIA_COM_CLIENTE : DEPOIS_DO_DIA_SEM_CLIENTE}
         </p>
@@ -1084,7 +1085,7 @@ function OrderLogisticsCard({
           value={trackingValue}
           onChange={(e) => setTrackingValue(e.target.value.toUpperCase())}
           placeholder="EX: BR123456789BR"
-          className="h-11 rounded-xl border-white/10 bg-zinc-950 font-mono text-sm text-white focus:border-admin-gold/30"
+          className="h-11 rounded-xl border-admin-border bg-zinc-950 font-mono text-sm text-white focus:border-admin-gold/30"
           disabled={isSavingTracking}
         />
         <div className="flex justify-end gap-2">
@@ -1269,7 +1270,7 @@ function OrderNotesCard({
           value={notesValue}
           onChange={(e) => setNotesValue(e.target.value)}
           placeholder="Ex: Cliente solicitou entrega após as 18h..."
-          className="h-24 w-full resize-none rounded-xl border border-white/10 bg-zinc-950 p-3 text-sm text-white focus:border-admin-gold/30 focus:outline-none"
+          className="h-24 w-full resize-none rounded-xl border border-admin-border bg-zinc-950 p-3 text-sm text-white focus:border-admin-gold/30 focus:outline-none"
           disabled={isSavingNotes}
         />
         <div className="flex justify-end gap-2">
@@ -2011,7 +2012,7 @@ export const OrderDetail = memo(function OrderDetail({
         <section
           data-testid="envio-lista"
           aria-label="Envio e anotações"
-          className={cn(blocoDaFicha, "divide-y divide-white/5")}
+          className={cn(blocoDaFicha, "divide-y divide-admin-border")}
         >
           {/* Emissão da etiqueta de envio dentro da ficha do pedido — migrou de
               Admin > Frete (busca/seleção global) para o pedido já aberto.
@@ -2090,7 +2091,7 @@ export const OrderDetail = memo(function OrderDetail({
         open={pendingAdvance !== null}
         onOpenChange={(open) => !open && setPendingAdvance(null)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           {pendingAdvance?.perguntaRecebimento ? (
             <>
               {/* Task 4b — pedido de pagamento na entrega, avançando para
@@ -2113,7 +2114,7 @@ export const OrderDetail = memo(function OrderDetail({
               <AlertDialogFooter className="mt-4 gap-2">
                 <AlertDialogAction
                   onClick={confirmPendingAdvance}
-                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white"
+                  className="rounded-xl border border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white"
                 >
                   Ainda não
                 </AlertDialogAction>
@@ -2138,7 +2139,7 @@ export const OrderDetail = memo(function OrderDetail({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter className="mt-4 gap-2">
-                <AlertDialogCancel className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+                <AlertDialogCancel className="rounded-xl border border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
                   Cancelar
                 </AlertDialogCancel>
                 <AlertDialogAction

@@ -41,6 +41,9 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { Client } = require("pg");
 const { falhar, lerDatabaseUrlEfemera } = require("./efemero.cjs");
+const {
+  desfazerPagamentoAdiantadoNaTransacao,
+} = require("./pagamento-adiantado-posterior.cjs");
 
 const REPO = path.resolve(__dirname, "..", "..");
 process.chdir(REPO);
@@ -133,6 +136,7 @@ let PORTAO;
 async function noEstado(montar, consultas = [A, B]) {
   await C.query("BEGIN");
   try {
+    await desfazerPagamentoAdiantadoNaTransacao(C);
     if (montar) await montar(C);
     await C.query(`SET LOCAL ROLE ${RO}`);
     await C.query("SET LOCAL transaction_read_only = on");

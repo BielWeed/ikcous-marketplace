@@ -39,7 +39,7 @@ interface GerenciarCategoriasProps {
 
 const BOTAO =
   "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 disabled:pointer-events-none disabled:opacity-40";
-const BOTAO_NEUTRO = `${BOTAO} border-white/10 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800 hover:text-white`;
+const BOTAO_NEUTRO = `${BOTAO} border-admin-border bg-admin-surface text-zinc-300 hover:bg-zinc-800 hover:text-white`;
 const BOTAO_DOURADO = `${BOTAO} border-admin-gold bg-admin-gold text-black hover:brightness-110`;
 const BOTAO_PERIGO = `${BOTAO} border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20`;
 
@@ -232,7 +232,7 @@ function ConteudoDaGestao() {
           return (
             <li
               key={c.id}
-              className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-4"
+              className="space-y-3 rounded-2xl border border-admin-border bg-zinc-950/60 p-4"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 break-words text-base font-black text-white">
@@ -279,7 +279,7 @@ function ConteudoDaGestao() {
                     onChange={(e) =>
                       setEditando({ id: c.id, valor: e.target.value })
                     }
-                    className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-4 text-sm font-bold text-white focus:border-admin-gold focus:outline-none focus:ring-2 focus:ring-admin-gold/30"
+                    className="min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950 px-4 text-sm font-bold text-white focus:border-admin-gold focus:outline-none focus:ring-2 focus:ring-admin-gold/30"
                   />
                   {nomeReservado ? (
                     <p

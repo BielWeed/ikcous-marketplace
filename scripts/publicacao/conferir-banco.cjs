@@ -2360,7 +2360,42 @@ const ROL_DA_56B = [
   "dependencias: marketplace_orders (id uuid) existe",
   "dependencias: os papeis anon, authenticated e service_role existem",
 ];
+// Lote 57: mesmos cinco fatos de catalogo, corpos diferentes ANTES/DEPOIS.
+const ROL_DA_57 = [
+  "controle: funcoes de public visiveis a este papel",
+  "concluir_estorno: corpo exato (md5)",
+  "pagamentos_a_reconciliar: corpo exato (md5)",
+  "as duas funcoes: assinaturas, atributos e EXECUTE so do servidor",
+  "dependencia 20261241: marcas e corpos do saldo em duvida presentes",
+];
+// Lote 58: a 280 troca a assinatura, sem sobrecarga. ANTES exige só a 249;
+// DEPOIS exige só a 280. A nota privada continua operacional nos dois lados.
+const ROL_DA_58A = [
+  ...ROL_DA_52A.slice(0, 2),
+  "registrar_venda_presencial: corpo da 20261280000000 (total conferido, md5)",
+  ...ROL_DA_52A.slice(3),
+];
+const ROL_DA_58B = [
+  ...ROL_DA_52A.slice(0, 2),
+  "registrar_venda_presencial: corpo da 20261249000000 (base anterior, md5)",
+  ...ROL_DA_52A.slice(3),
+];
+// Lote 59: a 290 so troca o corpo de fin__forma_do_pedido. ANTES exige o corpo
+// da 177; DEPOIS exige o da 290. Assinatura, atributos e ACL iguais nos dois lados.
+const ROL_DA_59A = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin__forma_do_pedido: corpo da 20261290000000 (online sem forma, md5)",
+  "fin__forma_do_pedido: assinatura e atributos (sql, IMMUTABLE, search_path=public, sem SECURITY DEFINER nem sobrecarga)",
+  "fin__forma_do_pedido: sem EXECUTE para PUBLIC, anon e authenticated",
+];
+const ROL_DA_59B = [
+  ROL_DA_59A[0],
+  "fin__forma_do_pedido: corpo da 20261177000000 (base anterior, md5)",
+  ...ROL_DA_59A.slice(2),
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,
+  "57b-antes-pagamento-adiantado-e-estorno-base-vigente": ROL_DA_57,
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
   "8k-subtotal-divergente-ou-vazia-provada": ROL_DA_8K,
@@ -2451,6 +2486,10 @@ const ROL_FECHADO_POR_CONSULTA = {
   "55b-antes-intencao-do-caixa-base-vigente": ROL_DA_55B,
   "56a-conferir-motivo-da-recusa-do-cartao-aplicado": ROL_DA_56A,
   "56b-antes-motivo-da-recusa-do-cartao-base-vigente": ROL_DA_56B,
+  "58a-conferir-total-do-balcao-aplicado": ROL_DA_58A,
+  "58b-antes-total-do-balcao-base-vigente": ROL_DA_58B,
+  "59a-conferir-online-sem-forma-aplicado": ROL_DA_59A,
+  "59b-antes-online-sem-forma-base-vigente": ROL_DA_59B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 

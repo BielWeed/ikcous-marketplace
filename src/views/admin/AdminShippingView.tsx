@@ -743,7 +743,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     [
       "limpo",
       {
-        estilo: "border border-white/10 bg-transparent text-zinc-500",
+        estilo: "border border-admin-border bg-transparent text-zinc-500",
         rotulo: "Salvo",
         icone: <Check className="size-3.5" />,
       },
@@ -800,7 +800,7 @@ export const AdminShippingView = memo(function AdminShippingView({
           botão Salvar (shrink-0) são os dois únicos filhos desta linha —
           sem quebra, os dois nunca encolhem e forçam a página a alargar em
           375px. */}
-      <div className="sticky top-0 z-30 border-b border-white/5 bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
+      <div className="sticky top-0 z-30 border-b border-admin-border bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
           <AdminPageHeader
             titulo={NOMES_DO_PAINEL["admin-shipping"]}
@@ -814,7 +814,7 @@ export const AdminShippingView = memo(function AdminShippingView({
             >
               <span
                 aria-hidden="true"
-                className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                className="flex size-7 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
               >
                 <HelpCircle className="size-4" />
               </span>
@@ -826,12 +826,12 @@ export const AdminShippingView = memo(function AdminShippingView({
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
         {!isLoaded ? (
           <div className="animate-pulse space-y-12" aria-busy="true">
-            <div className="h-20 border-y border-white/10 bg-white/[0.02]" />
+            <div className="h-20 border-y border-admin-border bg-admin-raised" />
             {[1, 2, 3].map((i) => (
               <div key={i} className="space-y-5">
                 <div className="h-3.5 w-44 rounded bg-white/5" />
-                <div className="h-12 border-b border-white/5" />
-                <div className="h-12 border-b border-white/5" />
+                <div className="h-12 border-b border-admin-border" />
+                <div className="h-12 border-b border-admin-border" />
               </div>
             ))}
           </div>
@@ -1134,7 +1134,7 @@ export const AdminShippingView = memo(function AdminShippingView({
             <span className="font-bold text-zinc-200">frete grátis</span> (você
             escolhe UMA estratégia pronta e edita do seu jeito).
           </p>
-          <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+          <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
               <AlertCircle className="size-4 text-amber-500" />A taxa fixa foi
               aposentada
@@ -1147,7 +1147,7 @@ export const AdminShippingView = memo(function AdminShippingView({
               entrega apenas na cidade.
             </p>
           </div>
-          <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+          <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
               <HelpCircle className="size-4 text-amber-500" />
               Onde estão as transportadoras
@@ -1165,7 +1165,7 @@ export const AdminShippingView = memo(function AdminShippingView({
               .
             </p>
           </div>
-          <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+          <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
               <AlertCircle className="size-4 text-amber-500" />
               Não esqueça

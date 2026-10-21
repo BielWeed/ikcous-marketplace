@@ -474,7 +474,9 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
 
   it("grupos sem passo próprio usam descrição, e Ferramentas mostra a conexão real", async () => {
     await renderizar();
-    expect(subtituloDoGrupo("Aparência do app")).toBe("Banners e vitrines");
+    expect(subtituloDoGrupo("Aparência do app")).toBe(
+      "Banners, vitrines e cor do app",
+    );
     expect(subtituloDoGrupo("Regras de troca e devolução")).toBe(
       "Prazos, formas de devolver e política",
     );
@@ -758,13 +760,15 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // Minha loja, fechado e sem ler nada do banco até a lojista abrir.
     // O oitavo é a linha do Cartão pelo app (17/10/2026), logo abaixo do
     // termômetro do PIX: mesma linha à vista, diagnóstico fechado.
+    // O nono é "Aparência do painel" (20/10/2026): o seletor Escuro/Claro/
+    // Confortável, no grupo Aparência do app; também nasce fechado.
     const gruposRecolhidos = hospedeiro.querySelectorAll(
       "button[data-cabecalho-grupo][aria-expanded]",
     );
     expect(gruposRecolhidos).toHaveLength(5);
     for (const grupo of gruposRecolhidos)
       expect(grupo.getAttribute("aria-expanded")).toBe("false");
-    expect(cabecalhos.length).toBe(8);
+    expect(cabecalhos.length).toBe(9);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }
@@ -925,7 +929,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     await renderizar(undefined, onNavigate);
 
     const portas = [...hospedeiro.querySelectorAll("[data-porta-ajustes]")];
-    expect(portas.length).toBe(4);
+    expect(portas.length).toBe(5);
     await act(async () => {
       for (const porta of portas) {
         porta.dispatchEvent(new MouseEvent("click", { bubbles: true }));

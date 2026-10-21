@@ -81,6 +81,10 @@ vi.mock("@/components/admin/pdv/LeitorDeCodigo", () => ({
 // Importado DEPOIS dos `vi.mock` acima — a view REAL, com a máquina de
 // estados REAL (C3.1) e as seções reais (C3.2/C3.3), é o que estes casos
 // precisam para provar a chamada de verdade da RPC de fechamento.
+import {
+  estadoInicialDaVenda,
+  serializarRascunho,
+} from "@/hooks/useVendaPresencial";
 import { mensagemDaFalhaDaVenda } from "@/lib/erro-da-venda-presencial";
 import { AdminPdvView } from "@/views/admin/AdminPdvView";
 
@@ -346,10 +350,11 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     expect(chamadas[0][1]).toMatchObject({
       p_desconto: desconto,
       p_observacao: observacao,
+      p_total_esperado: desconto === 5 ? 34.9 : 39.9,
     });
   });
 
-  it("caso 1 — sucesso: os 8 parâmetros por nome, `p_itens` com 3 chaves, recibo, rascunho apagado, e-mail disparado, sem aviso ao lojista", async () => {
+  it("caso 1 — sucesso: os 9 parâmetros por nome, `p_itens` com 3 chaves, recibo, rascunho apagado, e-mail disparado, sem aviso ao lojista", async () => {
     registrarImplRef.atual = async () => ({
       data: {
         ja_existia: false,
@@ -385,7 +390,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     expect(chamadas).toHaveLength(1);
     const params = chamadas[0][1];
 
-    // Os 8 parâmetros, POR NOME — nenhum a mais, nenhum a menos.
+    // Os 9 parâmetros, POR NOME — nenhum a mais, nenhum a menos.
     expect(Object.keys(params).sort()).toEqual(
       [
         "p_cliente_nome",
@@ -396,6 +401,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
         "p_itens",
         "p_observacao",
         "p_pagamento",
+        "p_total_esperado",
       ].sort(),
     );
     // `p_itens` com EXATAMENTE as três chaves que a RPC lê — nunca preço
@@ -408,6 +414,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     expect(params.p_cliente_nome).toBeNull();
     expect(params.p_cliente_whatsapp).toBeNull();
     expect(params.p_desconto).toBe(0);
+    expect(params.p_total_esperado).toBe(39.9);
     expect(typeof params.p_idempotency_key).toBe("string");
 
     expect(hospedeiro.textContent).toContain("Compra na loja");
@@ -421,11 +428,142 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     ).toBe(false);
   });
 
-  it("caso 2 — `ja_existia: true` mostra o MESMO recibo, sem nenhum aviso de erro", async () => {
+  it.each(["cash", "pix"] as const)(
+    "%s: valor mudou — atualiza preços sem perder cliente, desconto, pagamento ou chave, e exige nova conferência",
+    async (pagamento) => {
+      const cliente = {
+        tipo: "avulso" as const,
+        nome: "Cliente Teste",
+        whatsapp: "11999990000",
+      };
+      const item = {
+        chave: "produto-1::variante-1",
+        productId: "produto-1",
+        variantId: "variante-1",
+        nome: "Camiseta Lisa",
+        variacao: "M",
+        preco: 39.9,
+        quantidade: 3,
+        estoque: 10,
+        imagem: "",
+      };
+      localStorage.setItem(
+        "admin_pdv_venda_draft:lojista-1",
+        serializarRascunho({
+          ...estadoInicialDaVenda(() => "chave-da-venda-teste"),
+          etapa: "fechamento",
+          itens: [item],
+          cliente,
+          pagamento,
+          desconto: 5,
+          motivoDoDesconto: "Fidelidade",
+        }),
+      );
+      registrarImplRef.atual = async () => ({
+        data: null,
+        error: {
+          code: "PDV01",
+          message: "O valor da venda mudou.",
+          details: JSON.stringify({
+            total: 144.7,
+            itens: [
+              {
+                product_id: "produto-1",
+                variant_id: "variante-1",
+                price: 49.9,
+              },
+            ],
+          }),
+        },
+      });
+      await act(async () => {
+        raiz.render(<AdminPdvView onNavigate={vi.fn()} />);
+      });
+      await avancar();
+      const botao = () =>
+        localizarBotaoPorTexto(hospedeiro, "Registrar venda")!;
+      const conferir = () =>
+        (
+          hospedeiro.querySelector('input[type="checkbox"]') as HTMLInputElement
+        ).click();
+      if (pagamento === "pix") {
+        await act(async () => {
+          conferir();
+        });
+        await avancar();
+      }
+      expect(botao().disabled).toBe(false);
+      await act(async () => {
+        botao().click();
+      });
+      await avancar(400);
+
+      expect(hospedeiro.textContent).toContain(
+        "O valor mudou: agora é R$ 144,70. Confira e registre de novo.",
+      );
+      expect(invokeMock).not.toHaveBeenCalled();
+      const rascunho = JSON.parse(
+        localStorage.getItem("admin_pdv_venda_draft:lojista-1")!,
+      );
+      expect(rascunho).toMatchObject({
+        cliente,
+        pagamento,
+        desconto: 5,
+        motivoDoDesconto: "Fidelidade",
+        chaveDeIdempotencia: "chave-da-venda-teste",
+        itens: [{ ...item, preco: 49.9 }],
+      });
+      if (pagamento === "pix") {
+        expect(botao().disabled).toBe(true);
+        await act(async () => {
+          conferir();
+        });
+        await avancar();
+      }
+      expect(botao().disabled).toBe(false);
+      registrarImplRef.atual = async () => ({
+        data: {
+          ja_existia: false,
+          order: {
+            ...pedidoDeExemplo("22222222-2222-2222-2222-222222222222"),
+            total: 144.7,
+            subtotal: 149.7,
+            discount: 5,
+            payment_method: pagamento,
+          },
+          items: [],
+        },
+        error: null,
+      });
+      await act(async () => {
+        botao().click();
+      });
+      await avancar();
+      const chamadas = chamadasDeRegistro();
+      expect(chamadas).toHaveLength(2);
+      expect(chamadas[0][1].p_total_esperado).toBe(114.7);
+      expect(chamadas[1][1]).toMatchObject({
+        p_total_esperado: 144.7,
+        p_idempotency_key: "chave-da-venda-teste",
+        p_desconto: 5,
+        p_observacao: "Fidelidade",
+        p_pagamento: pagamento,
+        p_cliente_nome: cliente.nome,
+        p_cliente_whatsapp: cliente.whatsapp,
+      });
+      expect(hospedeiro.textContent).toContain("Compra na loja");
+    },
+  );
+
+  it("caso 2 — `ja_existia: true` mostra o recibo gravado mesmo quando o total esperado é outro", async () => {
     registrarImplRef.atual = async () => ({
       data: {
         ja_existia: true,
-        order: pedidoDeExemplo("22222222-2222-2222-2222-222222222222"),
+        order: {
+          ...pedidoDeExemplo("22222222-2222-2222-2222-222222222222"),
+          total: 120,
+          subtotal: 120,
+        },
         items: [],
       },
       error: null,
@@ -440,6 +578,8 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
 
     expect(hospedeiro.textContent).toContain("Compra na loja");
     expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+    expect(hospedeiro.textContent).toContain("120,00");
+    expect(chamadasDeRegistro()[0][1].p_total_esperado).toBe(39.9);
   });
 
   it("caso 3 — retentativa: a primeira rejeita por rede, a segunda registra — as DUAS com o MESMO `p_idempotency_key`", async () => {

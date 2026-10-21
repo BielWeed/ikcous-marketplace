@@ -566,13 +566,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const renderContentSkeleton = () => (
     <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
       {/* Left Column: Profile Card Skeleton */}
-      <div className="space-y-6 rounded-3xl border border-zinc-800/80 bg-zinc-900/40 p-6 backdrop-blur-3xl lg:col-span-4">
+      <div className="space-y-6 rounded-3xl border border-admin-border bg-zinc-900/40 p-6 backdrop-blur-3xl lg:col-span-4">
         <div className="flex flex-col items-center space-y-3">
           <Skeleton className="size-20 animate-pulse rounded-full bg-white/5" />
           <Skeleton className="h-5 w-40 animate-pulse rounded bg-white/5" />
           <Skeleton className="h-4 w-28 animate-pulse rounded bg-white/5" />
         </div>
-        <div className="space-y-4 border-t border-white/5 pt-4">
+        <div className="space-y-4 border-t border-admin-border pt-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex justify-between">
               <Skeleton className="h-3 w-16 animate-pulse rounded bg-white/5" />
@@ -588,19 +588,19 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="space-y-2 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-4"
+              className="space-y-2 rounded-2xl border border-admin-border bg-zinc-900/40 p-4"
             >
               <Skeleton className="h-3 w-12 animate-pulse rounded bg-white/5" />
               <Skeleton className="h-6 w-20 animate-pulse rounded bg-white/5" />
             </div>
           ))}
         </div>
-        <div className="space-y-4 rounded-3xl border border-zinc-800/80 bg-zinc-900/40 p-6">
+        <div className="space-y-4 rounded-3xl border border-admin-border bg-zinc-900/40 p-6">
           <Skeleton className="h-4.5 w-32 animate-pulse rounded bg-white/5" />
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="flex items-center justify-between border-b border-white/5 py-2 last:border-0"
+              className="flex items-center justify-between border-b border-admin-border py-2 last:border-0"
             >
               <div className="flex-1 space-y-1.5">
                 <Skeleton className="h-3.5 w-1/3 animate-pulse rounded bg-white/5" />
@@ -632,19 +632,19 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             >
               <span
                 aria-hidden="true"
-                className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                className="flex size-8 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
               >
                 <HelpCircle className="size-4.5" />
               </span>
             </button>
           </AdminPageHeader>
           <div className="mt-1 flex items-center gap-2">
-            <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+            <span className="rounded border border-admin-border bg-zinc-900 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
               ID
             </span>
             <button
               onClick={() => handleCopy(userId, "id")}
-              className="group flex min-h-11 items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 font-mono text-[11px] text-zinc-400 transition-all hover:border-zinc-700 hover:bg-zinc-800/80 hover:text-white"
+              className="group flex min-h-11 items-center gap-1.5 rounded border border-admin-border bg-admin-surface px-2 py-0.5 font-mono text-[11px] text-zinc-400 transition-all hover:border-zinc-700 hover:bg-zinc-800/80 hover:text-white"
             >
               <span className="blur-[0.3px] transition-all group-hover:blur-none">
                 {userId}
@@ -666,7 +666,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           </p>
           <button
             onClick={() => fetchUserData()}
-            className="mt-4 min-h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+            className="mt-4 min-h-11 rounded-lg border border-admin-border bg-white/5 px-4 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
           >
             Tentar novamente
           </button>
@@ -679,9 +679,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           <div className="pointer-events-none absolute left-1/2 top-1/3 h-[600px] w-full -translate-x-1/2 -translate-y-1/2 rounded-full bg-admin-gold/5 blur-[120px]" />
 
           {/* Left Column: Profile Card */}
-          <Card className="group/card relative h-fit overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-900/40 shadow-2xl backdrop-blur-3xl lg:col-span-4">
+          <Card className="group/card relative h-fit overflow-hidden rounded-3xl border border-admin-border bg-zinc-900/40 shadow-2xl backdrop-blur-3xl lg:col-span-4">
             {/* Header Banner Effect */}
-            <div className="absolute left-0 top-0 z-0 block h-24 w-full border-b border-white/5 bg-gradient-to-b from-zinc-800/60 via-zinc-900/30 to-transparent opacity-50" />
+            <div className="absolute left-0 top-0 z-0 block h-24 w-full border-b border-admin-border bg-gradient-to-b from-zinc-800/60 via-zinc-900/30 to-transparent opacity-50" />
 
             <CardHeader className="relative z-10 flex flex-col items-center pb-0 pt-6">
               <div className="group relative">
@@ -707,7 +707,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   {profile?.full_name || "Usuário Não-Nomeado"}
                 </CardTitle>
                 <Badge
-                  className={`mt-2 rounded border px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.15em] ${profile?.role === "admin" ? "border-admin-gold/50 bg-admin-gold text-black" : "border-zinc-800 bg-black text-zinc-500"}`}
+                  className={`mt-2 rounded border px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.15em] ${profile?.role === "admin" ? "border-admin-gold/50 bg-admin-gold text-black" : "border-admin-border bg-black text-zinc-500"}`}
                 >
                   {rotuloDoPapel(profile?.role)}
                 </Badge>
@@ -736,7 +736,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 {/* Email row */}
                 <div className="group/item flex items-center justify-between p-3 text-xs transition-colors hover:bg-zinc-900/20">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800/50 bg-zinc-900 text-zinc-500">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-admin-border bg-zinc-900 text-zinc-500">
                       <Mail className="size-3.5" />
                     </div>
                     <div className="flex min-w-0 flex-col">
@@ -768,7 +768,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 {/* Phone row */}
                 <div className="group/item flex items-center justify-between p-3 text-xs transition-colors hover:bg-zinc-900/20">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800/50 bg-zinc-900 text-zinc-500">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-admin-border bg-zinc-900 text-zinc-500">
                       <Phone className="size-3.5" />
                     </div>
                     <div className="flex min-w-0 flex-col">
@@ -799,7 +799,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
                 {/* Registered at row */}
                 <div className="flex items-center gap-3 p-3 text-xs">
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800/50 bg-zinc-900 text-zinc-500">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-admin-border bg-zinc-900 text-zinc-500">
                     <Calendar className="size-3.5" />
                   </div>
                   <div className="flex flex-col">
@@ -830,7 +830,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               {/* Cartão do "total gasto" do resumo. O rótulo é "Total já
                   comprado": o mesmo nome deste número na lista de Clientes,
                   e os testes vivos da tela leem o cartão por este rótulo. */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-admin-gold/50">
+              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-admin-border bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-admin-gold/50">
                 <div className="flex min-w-0 flex-col">
                   <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
                     Total já comprado
@@ -845,7 +845,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               </div>
 
               {/* Total Orders Widget */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-zinc-700">
+              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-admin-border bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-zinc-700">
                 <div className="flex min-w-0 flex-col">
                   <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
                     Pedidos feitos
@@ -875,7 +875,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   deste cliente; a regra completa vive em
                   `ficha-resumo.ts`, regra 4). Zero pedido pago mostra R$ 0,00
                   porque foi MEDIDO (o `ELSE 0` do servidor), não inventado. */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-purple-500/50">
+              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-admin-border bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-purple-500/50">
                 <div className="flex min-w-0 flex-col">
                   <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
                     Valor médio por venda
@@ -894,7 +894,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   regra do `last_order_date` do servidor; um PIX aguardando
                   feito ontem prova que o cliente está ativo). Sem pedido que
                   conta, "—" — nunca data inventada. */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-sky-500/50">
+              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-admin-border bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-sky-500/50">
                 <div className="flex min-w-0 flex-col">
                   <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
                     Última Compra
@@ -916,7 +916,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   carrinho), a mesma conta do selo e da aba — três números
                   diferentes para a mesma coisa (4 itens / 3 produtos / 4)
                   faziam a lojista desconfiar de todos. */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-green-500/50">
+              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-admin-border bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-green-500/50">
                 <div className="flex min-w-0 flex-col">
                   <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
                     Carrinho do cliente
@@ -935,9 +935,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </div>
 
             {/* Operational Tabs */}
-            <div className="rounded-3xl border border-zinc-800/80 bg-zinc-900/40 p-2 shadow-2xl backdrop-blur-md">
+            <div className="rounded-3xl border border-admin-border bg-zinc-900/40 p-2 shadow-2xl backdrop-blur-md">
               <Tabs defaultValue="orders" className="w-full">
-                <TabsList className="mb-4 grid h-auto w-full grid-cols-2 rounded-2xl border border-zinc-800/50 bg-zinc-950/80 p-1.5 shadow-inner sm:grid-cols-4">
+                <TabsList className="mb-4 grid h-auto w-full grid-cols-2 rounded-2xl border border-admin-border bg-zinc-950/80 p-1.5 shadow-inner sm:grid-cols-4">
                   <TabsTrigger
                     value="orders"
                     className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
@@ -987,7 +987,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 {/* Orders Matrix */}
                 <TabsContent value="orders" className="mt-0 outline-none">
                   <div className="overflow-hidden rounded-[1.2rem] bg-zinc-900/20">
-                    <div className="border-b border-zinc-800/50 bg-zinc-900/50 p-4">
+                    <div className="border-b border-admin-border bg-admin-surface p-4">
                       <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
                         Extrato Histórico
                       </h2>
@@ -995,7 +995,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <div className="p-0">
                       {orders.length === 0 ? (
                         <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
-                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
+                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 shadow-inner">
                             <Package className="size-6 text-zinc-700" />
                           </div>
                           <p className="text-sm font-bold text-zinc-500">
@@ -1009,7 +1009,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       ) : (
                         <div className="overflow-x-auto">
                           <Table>
-                            <TableHeader className="border-b border-zinc-800/80 bg-zinc-950/60 hover:bg-zinc-950/60">
+                            <TableHeader className="border-b border-admin-border bg-zinc-950/60 hover:bg-zinc-950/60">
                               <TableRow className="border-none hover:bg-transparent">
                                 <TableHead className="px-6 py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                   Registro
@@ -1030,7 +1030,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                               {orders.map((order) => (
                                 <TableRow
                                   key={order.id}
-                                  className="cursor-pointer border-none border-zinc-800 transition-colors hover:bg-zinc-800/40"
+                                  className="cursor-pointer border-none border-admin-border transition-colors hover:bg-zinc-800/40"
                                   onClick={() =>
                                     // "order-details" é a tela do CLIENTE
                                     // (App.tsx) e busca em `fetchUserOrders()`
@@ -1090,7 +1090,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   <div className="relative overflow-hidden rounded-[1.2rem] border border-green-500/10 bg-zinc-900/20">
                     <div className="pointer-events-none absolute -left-40 -top-40 size-96 rounded-full bg-green-500/5 blur-[100px]" />
 
-                    <div className="relative z-10 flex flex-col justify-between gap-3 border-b border-zinc-800/50 bg-zinc-900/50 p-5 sm:flex-row sm:items-center">
+                    <div className="relative z-10 flex flex-col justify-between gap-3 border-b border-admin-border bg-admin-surface p-5 sm:flex-row sm:items-center">
                       <div>
                         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-white">
                           Carrinho do cliente
@@ -1124,7 +1124,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <div className="relative z-10 p-0">
                       {cartItems.length === 0 ? (
                         <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
-                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
+                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 shadow-inner">
                             <ShoppingCart className="size-6 text-zinc-700" />
                           </div>
                           <p className="text-sm font-bold text-zinc-500">
@@ -1153,7 +1153,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                           >
                             <thead
                               {...papel("rowgroup")}
-                              className="sr-only border-b border-zinc-800/80 bg-zinc-950/60 sm:not-sr-only sm:table-header-group"
+                              className="sr-only border-b border-admin-border bg-zinc-950/60 sm:not-sr-only sm:table-header-group"
                             >
                               <tr {...papel("row")} className="sm:table-row">
                                 <th
@@ -1220,7 +1220,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       className="col-start-1 row-start-1 block min-w-0 sm:table-cell sm:px-6 sm:py-3"
                                     >
                                       <div className="flex min-w-0 items-center gap-3">
-                                        <Avatar className="size-10 shrink-0 rounded-lg border border-zinc-800 shadow-xl">
+                                        <Avatar className="size-10 shrink-0 rounded-lg border border-admin-border shadow-xl">
                                           <AvatarImage
                                             src={item.product.images[0]}
                                             className="object-cover"
@@ -1265,7 +1265,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       <span className="sm:hidden">
                                         Quantidade:{" "}
                                       </span>
-                                      <span className="font-black text-zinc-300 sm:inline-flex sm:size-7 sm:items-center sm:justify-center sm:rounded sm:border sm:border-zinc-800 sm:bg-zinc-950">
+                                      <span className="font-black text-zinc-300 sm:inline-flex sm:size-7 sm:items-center sm:justify-center sm:rounded sm:border sm:border-admin-border sm:bg-zinc-950">
                                         {item.quantity}
                                       </span>
                                     </td>
@@ -1354,7 +1354,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 {/* Addresses Matrix */}
                 <TabsContent value="addresses" className="mt-0 outline-none">
                   <div className="overflow-hidden rounded-[1.2rem] bg-zinc-900/20">
-                    <div className="border-b border-zinc-800/50 bg-zinc-900/50 p-4">
+                    <div className="border-b border-admin-border bg-admin-surface p-4">
                       <h2 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-white">
                         <MapPin className="size-3.5 text-admin-gold" />
                         Destinos de Entrega
@@ -1363,7 +1363,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <div className="p-4">
                       {addresses.length === 0 ? (
                         <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
-                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
+                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 shadow-inner">
                             <MapPin className="size-6 text-zinc-700" />
                           </div>
                           <p className="text-sm font-bold text-zinc-500">
@@ -1378,7 +1378,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                           {addresses.map((addr) => (
                             <div
                               key={addr.id}
-                              className="group relative overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-inner transition-colors hover:border-zinc-700"
+                              className="group relative overflow-hidden rounded-xl border border-admin-border bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-inner transition-colors hover:border-zinc-700"
                             >
                               {addr.is_default && (
                                 <div className="pointer-events-none absolute right-0 top-0 size-12 overflow-hidden before:absolute before:-right-2 before:-top-2 before:border-[16px] before:border-transparent before:border-r-admin-gold/20 before:border-t-admin-gold/20 before:content-['']" />
@@ -1442,7 +1442,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 {/* Voz do Cliente Matrix */}
                 <TabsContent value="voz" className="mt-0 outline-none">
                   <div className="overflow-hidden rounded-[1.2rem] bg-zinc-900/20">
-                    <div className="border-b border-zinc-800/50 bg-zinc-900/50 p-4">
+                    <div className="border-b border-admin-border bg-admin-surface p-4">
                       <h2 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-white">
                         <Star className="size-3.5 text-admin-gold" />O Que Este
                         Cliente Escreveu
@@ -1485,7 +1485,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               Seções do Perfil
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <CreditCard className="size-4 text-admin-gold" />
                   Resumo do Topo
@@ -1497,7 +1497,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   expirar ou recebida na entrega).
                 </p>
               </div>
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <MapPin className="size-4 text-emerald-500" />
                   Endereços de Entrega
@@ -1508,7 +1508,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <ShoppingCart className="size-4 text-admin-gold" />
                   Histórico de Pedidos
@@ -1519,7 +1519,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Package className="size-4 text-sky-500" />
                   Carrinho Atual (Abandonado)
@@ -1531,7 +1531,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <User className="size-4 text-purple-500" />
                   Funções Administrativas
@@ -1543,7 +1543,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Star className="size-4 text-admin-gold" />
                   Voz do Cliente
@@ -1564,7 +1564,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         open={fichaCarregada && cartItemToRemove !== null}
         onOpenChange={(open) => !open && setCartItemToRemove(null)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Remover Item?
@@ -1574,7 +1574,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
@@ -1593,7 +1593,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         open={fichaCarregada && isClearingCart}
         onOpenChange={(open) => !open && setIsClearingCart(false)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Limpar Carrinho?
@@ -1604,7 +1604,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction

@@ -59,7 +59,7 @@ function OpcaoDeAlcance({
       aria-checked={ativa}
       disabled={desabilitado}
       onClick={onEscolher}
-      className={`flex min-h-11 flex-col items-start gap-1 rounded-xl border border-solid p-4 text-left transition-colors active:scale-[0.99] disabled:opacity-50 ${ativa ? "border-admin-accent bg-admin-accent/10" : "border-white/10 bg-zinc-900/60 hover:border-white/25"}`}
+      className={`flex min-h-11 flex-col items-start gap-1 rounded-xl border border-solid p-4 text-left transition-colors active:scale-[0.99] disabled:opacity-50 ${ativa ? "border-admin-accent bg-admin-accent/10" : "border-admin-border bg-admin-surface hover:border-white/25"}`}
     >
       <span className="text-sm font-bold text-zinc-100">{titulo}</span>
       <span className="text-[12.5px] leading-snug text-zinc-400">{efeito}</span>
@@ -288,7 +288,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       onChange={(e) => onFaixa(e.target.value)}
       placeholder="Ex: 38500-000, 38509-999"
       disabled={desabilitado}
-      className="h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
+      className="h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
     />
   );
   const avisoDaFaixa = avisoDaFaixaDeCep({
@@ -378,7 +378,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             <button
               type="button"
               onClick={() => onNavigate("admin-about-store")}
-              className="mt-2 flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+              className="mt-2 flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-admin-border px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
             >
               Abrir Minha loja
             </button>
@@ -411,7 +411,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             cidade) — mudou a casca, não o comportamento. */}
           <label
             htmlFor="local-delivery-fee"
-            className="flex min-h-11 cursor-text items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2"
+            className="flex min-h-11 cursor-text items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2"
           >
             <span className="text-xs font-semibold text-zinc-400">R$</span>
             <input
@@ -432,7 +432,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           {onDias && (
             <label
               htmlFor="local-delivery-days"
-              className="flex min-h-11 cursor-text items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2"
+              className="flex min-h-11 cursor-text items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2"
             >
               <input
                 id="local-delivery-days"
@@ -522,7 +522,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 }}
                 placeholder="Ex: 38500-123"
                 disabled={desabilitado}
-                className="mt-1.5 flex h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
+                className="mt-1.5 flex h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
               />
               <div role="status" aria-live="polite">
                 {entraNoTeste !== null && (
@@ -546,7 +546,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                     // O botão some (a região entrou): o foco volta ao campo.
                     campoDeTesteRef.current?.focus();
                   }}
-                  className="mt-2 flex min-h-11 items-center rounded-lg border border-solid border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-200 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:opacity-50"
+                  className="mt-2 flex min-h-11 items-center rounded-lg border border-solid border-admin-border px-3.5 py-2 text-[12px] font-bold text-zinc-200 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:opacity-50"
                 >
                   Incluir a região deste CEP
                 </button>
@@ -592,7 +592,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             <button
               type="button"
               onClick={() => onNavigate("admin-about-store")}
-              className="flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+              className="flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-admin-border px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
             >
               Cadastrar endereço em Minha loja
             </button>

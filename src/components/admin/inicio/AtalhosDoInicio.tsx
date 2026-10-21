@@ -41,7 +41,7 @@ export function AtalhosDoInicio({
           onMouseEnter={() => aoPrepararDestino?.(botao.destino)}
           onFocus={() => aoPrepararDestino?.(botao.destino)}
           onTouchStart={() => aoPrepararDestino?.(botao.destino)}
-          className="flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2 rounded-[1.125rem] border border-white/10 bg-[#17171C] p-2 text-left transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          className="flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2 rounded-[1.125rem] border border-admin-border bg-admin-raised p-2 text-left transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
         >
           <SeloDoInicio icone={botao.icone} tom={botao.tom} />
           <span className="min-w-0 break-words text-sm font-bold text-white [overflow-wrap:anywhere]">

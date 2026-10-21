@@ -69,7 +69,7 @@ export function PaginacaoAdmin({
             onClick={() => aoMudar(Math.max(0, paginaEfetiva - 1))}
             disabled={paginaEfetiva === 0}
             className={cn(
-              "h-11 rounded-xl border-white/5 bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white",
+              "h-11 rounded-xl border-admin-border bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white",
               aparencia === "clientes" &&
                 "disabled:opacity-100 focus-visible:ring-sky-300",
             )}
@@ -89,9 +89,9 @@ export function PaginacaoAdmin({
             }
             disabled={paginaEfetiva >= totalPaginas - 1}
             className={cn(
-              "h-11 rounded-xl border-white/5 bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white",
+              "h-11 rounded-xl border-admin-border bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white",
               aparencia === "clientes" &&
-                "bg-[#1E1E24] text-zinc-100 disabled:opacity-100 focus-visible:ring-sky-300",
+                "bg-admin-raised text-zinc-100 disabled:opacity-100 focus-visible:ring-sky-300",
             )}
           >
             Próximo <ChevronRight className="ml-1.5 size-4" />

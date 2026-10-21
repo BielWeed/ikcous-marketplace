@@ -3924,6 +3924,47 @@ export function useOrders(
         if (error) throw error;
         if (!data) throw new Error("Falha ao obter ID do pedido");
 
+        // A RPC devolve só o ID. No pagamento online, o valor do Brick tem de
+        // ser o que o banco recalculou, não o checksum enviado pelo carrinho.
+        let totalAmount = orderData.totalAmount;
+        if (opts?.comPagamentoOnline) {
+          try {
+            const { data: pedido, error: erroDaLeitura } = await supabase
+              .from("marketplace_orders")
+              .select("total")
+              .eq("id", data)
+              .single();
+            const total: unknown = pedido?.total;
+            if (
+              erroDaLeitura ||
+              (typeof total !== "number" && typeof total !== "string") ||
+              (typeof total === "string" && total.trim() === "") ||
+              !Number.isFinite(Number(total)) ||
+              Number(total) <= 0
+            ) {
+              throw Object.assign(new Error("Total indisponível"), {
+                cause: erroDaLeitura ?? undefined,
+              });
+            }
+            totalAmount = Number(total);
+          } catch (causa: any) {
+            // O pedido JÁ nasceu: não voltar ao total do cliente nem permitir
+            // outra finalização. A tela encaminha à retomada em Meus pedidos.
+            // A causa original (RLS, rede) vai em `cause`, para o
+            // console.error do catch externo mostrá-la junto do pedidoId:
+            // só o ID da própria cliente, no navegador dela, sem os demais
+            // dados do pedido nem os dados pessoais do cliente.
+            throw Object.assign(
+              new Error("Não foi possível conferir o valor final do pedido."),
+              {
+                code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+                pedidoId: data,
+                cause: causa?.cause ?? causa,
+              },
+            );
+          }
+        }
+
         // PEDIDO-020 (#89). Depois do `throw`, para não avisar de pedido que não
         // existe; e antes do return, para o disparo sair mesmo que a tela navegue
         // em seguida.
@@ -3947,6 +3988,7 @@ export function useOrders(
 
         return {
           ...orderData,
+          totalAmount,
           id: data,
           status: "pending" as const,
           createdAt: new Date().toISOString(),

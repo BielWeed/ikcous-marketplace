@@ -134,7 +134,7 @@ function StatusPagamento({
   const alturas = ["h-1.5", "h-2.5", "h-3.5"];
 
   return (
-    <div className="rounded-2xl border border-white/5 bg-zinc-950/40">
+    <div className="rounded-2xl border border-admin-border bg-zinc-950/40">
       <button
         type="button"
         onClick={() => setAberto((antes) => !antes)}
@@ -195,7 +195,7 @@ function StatusPagamento({
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <p className="border-t border-white/5 px-4 pb-3 pt-2.5 text-[11px] leading-relaxed text-zinc-400">
+            <p className="border-t border-admin-border px-4 pb-3 pt-2.5 text-[11px] leading-relaxed text-zinc-400">
               {diagnosticos.get(nivel) ?? ""}
             </p>
           </motion.div>

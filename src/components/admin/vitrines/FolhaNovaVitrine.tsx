@@ -67,7 +67,7 @@ export function FolhaNovaVitrine({
           if (evento.key === "Enter") aoCriar();
         }}
         placeholder="Ex.: Kits de presente"
-        className="h-12 w-full rounded-[14px] border border-white/10 bg-zinc-900 px-3.5 text-[15px] font-semibold text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none"
+        className="h-12 w-full rounded-[14px] border border-admin-border bg-zinc-900 px-3.5 text-[15px] font-semibold text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none"
       />
 
       <p className="mb-2 mt-4 px-0.5 text-xs font-semibold text-zinc-400">
@@ -79,7 +79,7 @@ export function FolhaNovaVitrine({
             key={sugestao}
             type="button"
             onClick={() => aoMudarTitulo(sugestao)}
-            className="h-8 rounded-[10px] border border-white/10 bg-zinc-900 px-3 text-[13px] font-semibold text-zinc-300 transition-colors hover:border-admin-gold/40 hover:text-admin-gold"
+            className="h-8 rounded-[10px] border border-admin-border bg-zinc-900 px-3 text-[13px] font-semibold text-zinc-300 transition-colors hover:border-admin-gold/40 hover:text-admin-gold"
           >
             {sugestao}
           </button>

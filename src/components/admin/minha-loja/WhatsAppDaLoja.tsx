@@ -55,7 +55,7 @@ export function WhatsAppDaLoja({
         {/* Âncora no centro do campo (h-11): o bloco cresce para baixo quando
             a validação acusa erro, e o meio dele empurraria o ícone e o +55
             para fora da linha do campo. */}
-        <div className="pointer-events-none absolute left-3.5 top-[22px] flex h-5 -translate-y-1/2 items-center gap-1.5 border-r border-white/10 pr-2.5">
+        <div className="pointer-events-none absolute left-3.5 top-[22px] flex h-5 -translate-y-1/2 items-center gap-1.5 border-r border-admin-border pr-2.5">
           <span aria-hidden="true" className="relative size-4 text-[#25d366]">
             <MessageCircle className="size-4" />
             <Phone className="absolute left-1 top-1 size-2" />
@@ -74,7 +74,7 @@ export function WhatsAppDaLoja({
           value={valor}
           onFlush={onMudar}
           placeholder="(00) 00000-0000"
-          className="h-11 rounded-xl border-white/10 bg-black/40 pl-[4.5rem] text-sm font-bold text-white transition-all placeholder:text-zinc-500 focus:bg-black/60 focus:ring-admin-gold/50"
+          className="h-11 rounded-xl border-admin-border bg-black/40 pl-[4.5rem] text-sm font-bold text-white transition-all placeholder:text-zinc-500 focus:bg-black/60 focus:ring-admin-gold/50"
           autoComplete="tel"
           disabled={desabilitado}
           validate={validarWhatsapp}

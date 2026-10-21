@@ -94,6 +94,7 @@ describe("a constante dos grupos de Ajustes", () => {
     expect(porGrupo["Aparência do app"]).toEqual([
       "admin-banners",
       "admin-carousels",
+      "admin-app-color",
     ]);
     expect(porGrupo["Entrega e frete"]).toEqual(["admin-shipping"]);
     expect(porGrupo.Pagamentos).toEqual([]);
@@ -195,6 +196,7 @@ describe("a tela de Ajustes", () => {
     expect(idas).not.toContain("admin-push");
     expect(idas).toContain("admin-banners");
     expect(idas).toContain("admin-carousels");
+    expect(idas).toContain("admin-app-color");
     expect(idas).toContain("admin-about-store");
     expect(idas).toContain("admin-shipping");
   });
@@ -203,8 +205,10 @@ describe("a tela de Ajustes", () => {
     const cartao = porta("Entrega e frete") as HTMLElement;
     expect(cartao.className).toMatch(/\bmin-h-11\b/);
     expect(cartao.className).toContain("rounded-3xl");
-    expect(cartao.closest("section")?.className).toContain("border-white/10");
-    expect(cartao.closest("section")?.className).toContain("bg-[#101013]");
+    expect(cartao.closest("section")?.className).toContain(
+      "border-admin-border",
+    );
+    expect(cartao.closest("section")?.className).toContain("bg-admin-surface");
     // Nome: 15px bold, frase normal (nada de caixa-alta miúda com tracking largo).
     const nome = cartao.querySelector("[data-grupo-titulo]")!;
     expect(nome.className).toContain("text-[15px]");

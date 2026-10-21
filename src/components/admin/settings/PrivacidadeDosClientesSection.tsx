@@ -46,7 +46,7 @@ const CLASSE_DO_BOTAO_DOURADO =
   "ajustes-primario flex min-h-11 items-center justify-center gap-2";
 const CLASSE_DO_BOTAO_NEUTRO = "ajustes-secundario min-h-11";
 const CLASSE_DO_CAMPO =
-  "min-h-20 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 py-2 text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40";
+  "min-h-20 w-full rounded-lg border border-admin-border bg-zinc-950 px-3 py-2 text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40";
 
 const TEXTO_DA_FALHA: Record<FalhaDaDecisao, string> = {
   ja_decidido: TEXTOS_DA_LOJA.falhaJaDecidido,
@@ -233,7 +233,7 @@ export const PrivacidadeDosClientesSection = memo(
                   type="button"
                   aria-pressed={filtro === opcao}
                   onClick={() => setFiltro(opcao)}
-                  className={`flex min-h-11 items-center justify-between gap-3 rounded-2xl border p-3 text-left text-sm ${filtro === opcao ? "border-admin-gold bg-admin-gold/10 text-admin-gold" : "border-white/10 bg-[#17171c] text-zinc-200"}`}
+                  className={`flex min-h-11 items-center justify-between gap-3 rounded-2xl border p-3 text-left text-sm ${filtro === opcao ? "border-admin-gold bg-admin-gold/10 text-admin-gold" : "border-admin-border bg-admin-raised text-zinc-200"}`}
                 >
                   <span>
                     {parcial

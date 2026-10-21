@@ -46,7 +46,7 @@ function LinhaDaConta({
     <div
       className={cn(
         "flex items-baseline justify-between gap-3 py-2 text-sm",
-        total && "mt-1 border-t border-white/10 pt-3",
+        total && "mt-1 border-t border-admin-border pt-3",
       )}
     >
       <dt className={total ? "font-black text-white" : "text-zinc-400"}>
@@ -210,7 +210,7 @@ function CaixaAberto({
             esperado.
           </p>
         ) : (
-          <ul className="flex flex-col divide-y divide-white/5">
+          <ul className="flex flex-col divide-y divide-admin-border">
             {caixa.movimentos.map((movimento) => (
               <li
                 key={movimento.id}
@@ -263,7 +263,7 @@ function CaixaFechado({ abrirFolha }: { readonly abrirFolha: AbrirFolha }) {
   return (
     <CartaoSecao>
       <div className="flex flex-col items-center gap-4 py-6 text-center">
-        <div className="flex size-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+        <div className="flex size-14 items-center justify-center rounded-2xl border border-admin-border bg-white/5">
           <Store aria-hidden="true" className="size-6 text-zinc-300" />
         </div>
         <div>

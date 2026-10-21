@@ -270,17 +270,16 @@ describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
     expect(document.querySelector("#store-city")).toBeNull();
     expect(document.querySelector("#store-state")).toBeNull();
   });
-  it("preserva nome e cor digitados ao atualizar apenas config de horário/frete", async () => {
+  it("preserva nome digitado ao atualizar apenas config de horário/frete", async () => {
     await render();
     await type("store-name", "Meu rascunho");
-    await type("store-color-hex", "#0");
     await act(async () => {
       h.config = { businessHours: "Outro", shippingFee: 99 };
       h.version++;
       for (const callback of h.listeners) callback();
     });
     expect(input("store-name").value).toBe("Meu rascunho");
-    expect(input("store-color-hex").value).toBe("#0");
+    expect(host.querySelector("#store-color-hex")).toBeNull();
     expect(h.update).not.toHaveBeenCalled();
   });
   it("grava pacote único com nome e a cidade/UF que a loja já tem, sem updateConfig e sem inventar nome vazio", async () => {

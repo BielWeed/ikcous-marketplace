@@ -167,7 +167,7 @@ export function QuemPodeUsarOCupom({
                 `flex min-h-11 w-full items-center gap-3 rounded-[20px] border p-4 text-left transition-colors ${FOCO}`,
                 marcado && !desabilitado
                   ? "border-[#F5C542] bg-[#F5C542]/10"
-                  : "border-white/10 bg-[#101013] hover:bg-white/[0.06]",
+                  : "border-admin-border bg-admin-surface hover:bg-white/[0.06]",
               )}
             >
               <Selo icone={Icone} matiz={desabilitado ? "#A1A1AD" : matiz} />
@@ -212,7 +212,7 @@ export function QuemPodeUsarOCupom({
       )}
 
       {alcance === "exclusivo" && (
-        <div className="space-y-3 rounded-[20px] border border-white/10 bg-[#101013] p-4">
+        <div className="space-y-3 rounded-[20px] border border-admin-border bg-admin-surface p-4">
           <label
             htmlFor="coupon-clientes-busca"
             className="block text-sm text-zinc-400"
@@ -280,7 +280,7 @@ export function QuemPodeUsarOCupom({
                           </span>
                         )}
                       </span>
-                      <span className="flex min-h-11 shrink-0 items-center gap-1 rounded-2xl border border-white/15 bg-[#1E1E24] px-3 text-sm font-semibold text-zinc-100">
+                      <span className="flex min-h-11 shrink-0 items-center gap-1 rounded-2xl border border-admin-border-strong bg-admin-raised px-3 text-sm font-semibold text-zinc-100">
                         <UserPlus aria-hidden="true" className="size-3.5" />
                         {jaEsta ? "Na lista" : "Adicionar"}
                       </span>
@@ -291,7 +291,7 @@ export function QuemPodeUsarOCupom({
             </ul>
           )}
 
-          <div className="border-t border-white/5 pt-2">
+          <div className="border-t border-admin-border pt-2">
             <p className="mb-3 text-sm font-bold text-zinc-50">
               {carregandoClientes
                 ? "Carregando a lista…"
@@ -325,7 +325,7 @@ export function QuemPodeUsarOCupom({
               {clientes.map((c) => (
                 <li
                   key={c.id}
-                  className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-[#17171C] py-1 pl-3 pr-1 text-sm text-zinc-100"
+                  className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-admin-raised py-1 pl-3 pr-1 text-sm text-zinc-100"
                 >
                   <span className="min-w-0 break-words [overflow-wrap:anywhere]">
                     {c.nome || c.email || "Cliente sem nome"}

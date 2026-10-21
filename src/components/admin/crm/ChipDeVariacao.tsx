@@ -56,7 +56,7 @@ export function ChipDeVariacao({
         bom === true &&
           "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
         bom === false && "border-rose-500/20 bg-rose-500/10 text-rose-300",
-        bom === null && "border-white/10 bg-white/5 text-zinc-300",
+        bom === null && "border-admin-border bg-white/5 text-zinc-300",
         className,
       )}
     >

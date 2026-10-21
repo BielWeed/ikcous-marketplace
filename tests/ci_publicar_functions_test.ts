@@ -19,9 +19,10 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  *    desconhecido, e resolve `loja`/`savy`/`sandbox` nos refs certos.
  *    Lojas clientes (`ikcous-publicada`, `savy`) só admitem as cinco
  *    Functions financeiras e exigem `expected_sha` igual ao SHA do run.
- *    Exceção: `ikcous-publicada` e `savy` (e só elas) admitem também seis
- *    functions NOMEADAS (send-order-confirmation desde 09/10/2026; as outras
- *    cinco desde 13/10/2026); o apelido `cobranca` fica nas cinco.
+ *    Exceção: `ikcous-publicada` e `savy` (e só elas) admitem também oito
+ *    functions NOMEADAS (send-order-confirmation desde 09/10/2026; outras
+ *    cinco desde 13/10/2026; credenciais-email desde 14/10/2026 e
+ *    auth-send-email desde 21/10/2026); o apelido `cobranca` fica nas cinco.
  *
  * Extraído e não copiado: copiado, o teste passaria enquanto o arquivo
  * apodrece.
@@ -969,6 +970,7 @@ const AS_CINCO_NOMEADAS = [
 // nome. Fica fora do array acima para os testes das "cinco" não mudarem de
 // sentido; o bloco dela está no fim deste arquivo.
 const CREDENCIAIS_EMAIL = "credenciais-email";
+const AUTH_SEND_EMAIL = "auth-send-email";
 
 Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, push) sobem na IKCOUS e na Savy, só ali, só pelo nome", async (t) => {
   const sha = "a".repeat(40);
@@ -1117,7 +1119,7 @@ Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, p
   );
 
   await t.step(
-    "o JSON dos canais lista as cinco nomeadas na IKCOUS e na Savy (e nada além das onze publicáveis)",
+    "o JSON dos canais lista as oito nomeadas na IKCOUS e na Savy (e nada além das treze publicáveis)",
     async () => {
       const canais = JSON.parse(
         await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
@@ -1127,6 +1129,7 @@ Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, p
         "send-order-confirmation",
         ...AS_CINCO_NOMEADAS,
         CREDENCIAIS_EMAIL,
+        AUTH_SEND_EMAIL,
       ].sort();
       assertEquals(
         Object.keys(canais.canais).sort(),
@@ -1268,6 +1271,80 @@ Deno.test("publicar-functions: a credenciais-email (e-mail da loja no painel) so
         'falta o bloco [functions."credenciais-email"] no config.toml',
       );
       assertEquals(bloco![1], "true");
+    },
+  );
+});
+
+Deno.test("publicar-functions: a auth-send-email sobe na IKCOUS e na Savy, só pelo nome, com SHA exato e sem JWT", async (t) => {
+  const sha = "a".repeat(40);
+
+  for (const projeto of ["ikcous-publicada", "savy"]) {
+    const refEsperada = projeto === "savy" ? REF_SAVY : REF_IKCOUS_PUBLICADA;
+
+    await t.step(
+      `${projeto} admite auth-send-email sozinha e junto das outras, sem duplicar`,
+      async () => {
+        const sozinha = await validar(projeto, AUTH_SEND_EMAIL, sha);
+        assertEquals(sozinha.codigo, 0, sozinha.stdout + sozinha.stderr);
+        assertEquals(sozinha.outputs.nomes, AUTH_SEND_EMAIL);
+        assertEquals(sozinha.outputs.ref, refEsperada);
+        const junto = await validar(
+          projeto,
+          `${AUTH_SEND_EMAIL},send-otp-email,${AUTH_SEND_EMAIL}`,
+          sha,
+        );
+        assertEquals(junto.codigo, 0, junto.stdout + junto.stderr);
+        assertEquals(junto.outputs.nomes, `${AUTH_SEND_EMAIL} send-otp-email`);
+      },
+    );
+
+    await t.step(
+      `${projeto} exige o SHA exato para auth-send-email`,
+      async () => {
+        for (const expected of ["", "b".repeat(40), "a".repeat(39)]) {
+          const r = await validar(projeto, AUTH_SEND_EMAIL, expected);
+          assertEquals(r.codigo, 1, `SHA "${expected}"`);
+          assertStringIncludes(r.stdout, "exige expected_sha");
+          assertEquals(r.outputs, {});
+        }
+      },
+    );
+  }
+
+  await t.step(
+    "destino descontinuado recusa auth-send-email, sozinha ou junto das outras",
+    async () => {
+      for (const pedido of [
+        AUTH_SEND_EMAIL,
+        `criar-pagamento,${AUTH_SEND_EMAIL}`,
+      ]) {
+        const r = await validar("almeida", pedido, sha);
+        assertEquals(r.codigo, 1, pedido);
+        assertStringIncludes(r.stdout, "projeto desconhecido: almeida");
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step("o apelido `cobranca` NÃO inclui auth-send-email", async () => {
+    const r = await validar("savy", "cobranca", sha);
+    assertEquals(r.codigo, 0, r.stdout + r.stderr);
+    assert(!r.outputs.nomes.includes(AUTH_SEND_EMAIL));
+  });
+
+  await t.step(
+    "no config.toml auth-send-email tem verify_jwt = false (autentica pela assinatura do hook)",
+    async () => {
+      const toml = await Deno.readTextFile(`${RAIZ}/supabase/config.toml`);
+      const bloco =
+        /\[functions\."auth-send-email"\]\s*\n\s*verify_jwt\s*=\s*(true|false)/.exec(
+          toml,
+        );
+      assert(
+        bloco,
+        'falta o bloco [functions."auth-send-email"] no config.toml',
+      );
+      assertEquals(bloco![1], "false");
     },
   );
 });

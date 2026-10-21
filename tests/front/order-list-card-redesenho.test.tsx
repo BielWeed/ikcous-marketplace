@@ -80,62 +80,154 @@ describe("OrderList — card do pedido redesenhado", () => {
     });
   }
 
-  function etapaAtual(): string | undefined {
-    const trilha = hospedeiro.querySelector(
-      '[data-testid="order-status-trail"]',
-    );
-    // A etapa atual é a única com a cor do status em vez de zinc-600.
-    return (
-      Array.from(trilha?.querySelectorAll("span.truncate") ?? []).find(
-        (el) => !el.classList.contains("text-zinc-600"),
-      )?.textContent ?? undefined
-    );
-  }
-
-  it.each<[OrderStatus, string]>([
-    ["pending", "Recebido"],
-    ["processing", "Separação"],
-    ["shipping", "A caminho"],
-    ["delivered", "Entregue"],
+  it.each<[OrderStatus, string, number]>([
+    ["pending", "Recebido", 1],
+    ["processing", "Separação", 2],
+    ["shipping", "A caminho", 3],
   ])(
-    "status %s: trilha com as 4 etapas e '%s' marcada",
-    async (status, atual) => {
-      await renderizar({ ...pedidoBase, status });
-
-      const trilha = hospedeiro.querySelector(
+    "status %s: etapa atual '%s' nomeada, sem corte no bloco neutro",
+    async (status, atual, numero) => {
+      await renderizar({ ...pedidoBase, status, paymentStatus: "pago" });
+      const painel = hospedeiro.querySelector(
+        '[data-testid="order-status-panel"]',
+      );
+      const trilha = painel?.querySelector(
         '[data-testid="order-status-trail"]',
       );
-      expect(trilha).not.toBeNull();
+      expect(painel?.classList.contains("bg-zinc-50")).toBe(true);
+      expect(painel?.classList.contains("min-h-[136px]")).toBe(true);
+      expect(
+        painel?.querySelector('[class*="truncate"], [class*="line-clamp"]'),
+      ).toBeNull();
+      // Os conectores dividem só a sobra: uma coluna flex por etapa
+      // espremeria a pílula longa de retirada em 320px.
+      expect(trilha?.querySelectorAll("div.contents")).toHaveLength(4);
+      expect(trilha?.getAttribute("role")).toBe("progressbar");
+      expect(trilha?.getAttribute("aria-valuenow")).toBe(String(numero));
+      expect(trilha?.getAttribute("aria-valuetext")).toContain(atual);
+      expect(
+        trilha?.querySelector("span.h-7.rounded-full.bg-zinc-950")?.textContent,
+      ).toBe(atual);
       for (const etapa of ["Recebido", "Separação", "A caminho", "Entregue"]) {
         expect(trilha?.textContent).toContain(etapa);
       }
-      expect(etapaAtual()).toBe(atual);
+      expect(painel?.textContent).toContain("Próxima etapa:");
+      expect(painel?.textContent).not.toContain("Retomar pagamento");
+      const selo = painel?.querySelector(
+        '[data-testid="customer-payment-badge"]',
+      );
+      expect(selo?.classList.contains("h-6")).toBe(true);
+      expect(selo?.querySelector("svg")).not.toBeNull();
     },
   );
 
-  // Achado de revisão (25/09/2026): zinc-500 sobre blue-50 (4,42) e
-  // indigo-50 (4,30) reprova AA a 9px — e `pending` é o status de TODO pedido
-  // novo. As etapas que não são a atual ficam em zinc-600.
-  it.each<OrderStatus>(["pending", "shipping"])(
-    "status %s: etapas não atuais em zinc-600, nenhuma em zinc-500",
-    async (status) => {
-      await renderizar({ ...pedidoBase, status });
+  it("entregue: bloco compacto sem trilha que já não informa progresso", async () => {
+    await renderizar({
+      ...pedidoBase,
+      status: "delivered",
+      paymentStatus: "pago",
+    });
+    const painel = hospedeiro.querySelector(
+      '[data-testid="order-status-panel"]',
+    );
+    expect(painel?.classList.contains("min-h-[74px]")).toBe(true);
+    expect(
+      painel?.querySelector('[data-testid="order-status-trail"]'),
+    ).toBeNull();
+    expect(painel?.textContent).toContain("Pedido entregue");
+  });
 
-      const rotulos = Array.from(
-        hospedeiro.querySelectorAll(
-          '[data-testid="order-status-trail"] span.truncate',
+  it("carregando sem pedidos: dois esqueletos da mesma geometria, sem falso vazio", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    await act(async () => {
+      raiz.render(
+        <OrderList orders={[]} isLoadingOrders onNavigate={onNavigate} />,
+      );
+    });
+    expect(hospedeiro.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(
+      hospedeiro.querySelectorAll('[data-testid="order-card-skeleton"]'),
+    ).toHaveLength(2);
+    expect(
+      hospedeiro.querySelectorAll(
+        '[data-testid="order-card-skeleton"] .min-h-\\[136px\\]',
+      ),
+    ).toHaveLength(2);
+    expect(hospedeiro.textContent).toContain("Carregando pedidos");
+    expect(hospedeiro.textContent).not.toContain("Nenhum pedido");
+  });
+
+  it.each<[PaymentStatus | undefined, string]>([
+    [
+      "expirado",
+      "O prazo para pagar terminou. Se não pagou, é só comprar de novo.",
+    ],
+    [
+      "aguardando",
+      "Se o pagamento ainda estiver aberto no seu banco, não pague.",
+    ],
+    [
+      "pago",
+      "Seu pagamento foi recebido. Toque para ver o que acontece com ele.",
+    ],
+    [
+      "recebido_na_entrega",
+      "Seu pagamento foi recebido. Fale com a loja para resolver.",
+    ],
+    [
+      "pago_apos_expirar",
+      "Seu pagamento foi recebido. Fale com a loja para resolver.",
+    ],
+    ["recusado", "O pagamento não foi aprovado e o pedido foi cancelado."],
+    ["estornado", "O pagamento foi estornado. Fale com a loja."],
+    [undefined, "Toque para ver os detalhes do pedido."],
+  ])(
+    "cancelado com %s: frase do gabarito sem prometer devolução",
+    async (paymentStatus, frase) => {
+      await renderizar({ ...pedidoBase, status: "cancelled", paymentStatus });
+      const painel = hospedeiro.querySelector(
+        '[data-testid="order-status-panel"]',
+      );
+      expect(painel?.textContent).toContain(frase);
+      expect(
+        painel?.classList.contains(
+          paymentStatus ? "min-h-[110px]" : "min-h-[78px]",
         ),
-      );
-      expect(rotulos).toHaveLength(4);
-      const inativos = rotulos.filter((el) =>
-        el.classList.contains("text-zinc-600"),
-      );
-      expect(inativos).toHaveLength(3);
-      expect(rotulos.some((el) => el.classList.contains("text-zinc-500"))).toBe(
-        false,
-      );
+      ).toBe(true);
+      expect(
+        painel?.querySelector('[class*="truncate"], [class*="line-clamp"]'),
+      ).toBeNull();
     },
   );
+
+  it("sem cobrança: altura menor, sem selo e sem botão de pagamento", async () => {
+    await renderizar(pedidoBase);
+    const painel = hospedeiro.querySelector(
+      '[data-testid="order-status-panel"]',
+    );
+    expect(painel?.classList.contains("min-h-[104px]")).toBe(true);
+    expect(
+      painel?.querySelector('[data-testid="customer-payment-badge"]'),
+    ).toBeNull();
+    expect(painel?.querySelector("button")).toBeNull();
+  });
+
+  it("rastreio ocupa a legenda, quebra sem corte e não muda o mínimo do andamento", async () => {
+    await renderizar({
+      ...pedidoBase,
+      status: "shipping",
+      paymentStatus: "pago",
+      trackingCode: "CODIGO-LONGO-1234567890123456789",
+    });
+    const painel = hospedeiro.querySelector(
+      '[data-testid="order-status-panel"]',
+    );
+    expect(painel?.classList.contains("min-h-[136px]")).toBe(true);
+    expect(painel?.querySelector(".break-all")?.textContent).toContain(
+      "CODIGO-LONGO",
+    );
+    expect(painel?.textContent).not.toContain("Próxima etapa:");
+  });
 
   it("pedido sem itens: sem <img> quebrada, mostra o ícone no lugar da foto", async () => {
     await renderizar({ ...pedidoBase, items: [] });
@@ -144,7 +236,7 @@ describe("OrderList — card do pedido redesenhado", () => {
     expect(hospedeiro.textContent).toContain("N/A");
   });
 
-  it("cancelado: sem trilha, faixa vermelha e o aviso 'não pague' dentro dela", async () => {
+  it("cancelado: bloco neutro, ícone rosa e o aviso 'não pague' dentro dele", async () => {
     await renderizar({
       ...pedidoBase,
       status: "cancelled",
@@ -157,7 +249,11 @@ describe("OrderList — card do pedido redesenhado", () => {
     const faixa = hospedeiro.querySelector(
       '[data-testid="order-status-panel"]',
     );
-    expect(faixa?.classList.contains("bg-rose-50")).toBe(true);
+    expect(faixa?.classList.contains("bg-zinc-50")).toBe(true);
+    expect(faixa?.querySelector("svg.text-rose-700")).not.toBeNull();
+    expect(faixa?.textContent).toContain(
+      "Se o pagamento ainda estiver aberto no seu banco, não pague.",
+    );
     expect(faixa?.textContent).toContain("Este pedido foi cancelado");
     const selo = faixa?.querySelector('[data-testid="customer-payment-badge"]');
     expect(selo?.textContent).toContain("Cancelado — não pague");

@@ -130,7 +130,7 @@ export function GuiaDoPagamentoQueNaoFechou() {
         Pagamento que não fechou sozinho
       </h4>
 
-      <div className="space-y-3 rounded-2xl border border-white/10 bg-[#101013] p-4 [&_li]:leading-relaxed [&_p]:leading-relaxed">
+      <div className="space-y-3 rounded-2xl border border-admin-border bg-admin-surface p-4 [&_li]:leading-relaxed [&_p]:leading-relaxed">
         <p className="text-xs font-bold text-white">
           Cliente diz que pagou com cartão, mas o pedido segue “{aguardando}”
         </p>
@@ -218,7 +218,7 @@ export function GuiaDoPagamentoQueNaoFechou() {
         </ol>
       </div>
 
-      <div className="space-y-3 rounded-2xl border border-white/10 bg-[#101013] p-4 [&_li]:leading-relaxed [&_p]:leading-relaxed">
+      <div className="space-y-3 rounded-2xl border border-admin-border bg-admin-surface p-4 [&_li]:leading-relaxed [&_p]:leading-relaxed">
         <p className="text-xs font-bold text-white">
           Pedido “{pagoForaDoFluxo}”
         </p>

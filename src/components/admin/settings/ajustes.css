@@ -1,6 +1,6 @@
 .ajustes {
-  color: #f5f5f7;
-  background: #08080a;
+  color: var(--lit-t-f5f5f7, #f5f5f7);
+  background: hsl(var(--admin-bg));
 }
 
 .ajustes h1 {
@@ -25,7 +25,7 @@
 .ajustes
   [data-testid="politica-devolucao"]
   [data-slot="switch"][data-state="checked"] {
-  border-color: #f4c43f;
+  border-color: var(--lit-b-f4c43f, #f4c43f);
   background: #f4c43f18;
 }
 
@@ -38,13 +38,13 @@
   [data-slot="switch"][data-state="checked"]::after {
   content: "✓";
   margin: auto;
-  color: #f4c43f;
+  color: var(--lit-t-f4c43f, #f4c43f);
   font-size: 24px;
 }
 
 .ajustes .text-zinc-500,
 .ajustes .text-zinc-600 {
-  color: #b6b6c2;
+  color: var(--lit-t-b6b6c2, #b6b6c2);
 }
 
 .ajustes .truncate {
@@ -64,25 +64,25 @@
 }
 
 .ajustes :is(button, a):focus-visible {
-  outline: 2px solid #b6a0f7;
+  outline: 2px solid var(--lit-t-b6a0f7, #b6a0f7);
   outline-offset: 3px;
 }
 
 .ajustes :is(input, textarea, select) {
-  background: #17171c;
-  border-color: #3c3c46;
+  background: hsl(var(--admin-raised));
+  border-color: hsl(var(--admin-border-strong));
   border-radius: 16px;
   font-size: 14px;
 }
 
 .ajustes :is(input, textarea)::placeholder {
-  color: #b6b6c2;
+  color: var(--lit-t-b6b6c2, #b6b6c2);
 }
 
 .ajustes button:disabled,
 .ajustes input:disabled {
   opacity: 1;
-  color: #b6b6c2;
+  color: var(--lit-t-b6b6c2, #b6b6c2);
 }
 
 .ajustes [data-slot="switch"] {
@@ -90,8 +90,8 @@
   height: 44px;
   min-height: 44px;
   transform: none;
-  background: #363640;
-  border: 1px solid #555560;
+  background: var(--lit-b-363640, #363640);
+  border: 1px solid var(--lit-b-555560, #555560);
 }
 
 .ajustes [data-slot="switch"][data-state="checked"] {
@@ -111,12 +111,12 @@
 }
 
 .ajustes [data-slot="switch"]:disabled {
-  background: #292931;
-  border-color: #454550;
+  background: var(--lit-b-292931, #292931);
+  border-color: var(--lit-b-454550, #454550);
 }
 
 .ajustes [data-slot="switch"]:disabled [data-slot="switch-thumb"] {
-  background: #b6b6c2;
+  background: var(--lit-b-b6b6c2, #b6b6c2);
 }
 
 .ajustes-primario {
@@ -133,8 +133,8 @@
 
 .ajustes .ajustes-primario:disabled,
 .ajustes-dialog .ajustes-primario:disabled {
-  background: #24242e;
-  color: #b6b6c2;
+  background: hsl(var(--admin-raised));
+  color: var(--lit-t-b6b6c2, #b6b6c2);
   box-shadow: none;
 }
 
@@ -146,23 +146,27 @@
   justify-content: center;
   gap: 8px;
   padding: 10px 16px;
-  border: 1px solid #383840;
+  border: 1px solid hsl(var(--admin-border-strong));
   border-radius: 16px;
-  background: #202026;
-  color: #f5f5f7;
+  background: hsl(var(--admin-raised));
+  color: var(--lit-t-f5f5f7, #f5f5f7);
   font-size: 14px;
   font-weight: 600;
 }
 
 .ajustes-dialog {
-  border: 1px solid #454550;
+  border: 1px solid hsl(var(--admin-border-strong));
   border-radius: 24px;
-  background: linear-gradient(160deg, #24242e, #101013);
-  color: #f5f5f7;
+  background: linear-gradient(
+    160deg,
+    hsl(var(--admin-raised)),
+    hsl(var(--admin-surface))
+  );
+  color: var(--lit-t-f5f5f7, #f5f5f7);
 }
 
 .ajustes-dialog [data-slot="alert-dialog-description"] {
-  color: #b6b6c2;
+  color: var(--lit-t-b6b6c2, #b6b6c2);
 }
 
 @media (prefers-reduced-motion: reduce) {

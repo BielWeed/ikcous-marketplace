@@ -91,7 +91,7 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
         disabled={saving || !active}
         onChange={(event) => setValue(event.target.value)}
         placeholder="Ex: Ter a Sáb, 9h às 18h"
-        className="h-11 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white"
+        className="h-11 w-full rounded-xl border border-admin-border bg-black/50 px-3.5 text-sm text-white"
       />
       {error && (
         <p role="alert">
@@ -115,7 +115,7 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
             setValue(saved);
             setError(false);
           }}
-          className="min-h-11 rounded-xl border border-white/15 bg-white/5 px-4 font-bold text-white disabled:opacity-40"
+          className="min-h-11 rounded-xl border border-admin-border-strong bg-white/5 px-4 font-bold text-white disabled:opacity-40"
         >
           Descartar horário
         </button>
