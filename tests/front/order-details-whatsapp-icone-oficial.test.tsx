@@ -88,7 +88,15 @@ describe("pedido do cliente — contato com o glifo oficial do WhatsApp", () => 
     );
     expect(topo).not.toBeNull();
     expect(rodape).toBeDefined();
+    expect(topo?.classList.contains("bg-zinc-100")).toBe(true);
+    expect(topo?.classList.contains("border-zinc-200")).toBe(true);
+    expect(topo?.classList.contains("hover:bg-zinc-200")).toBe(true);
+    expect(
+      rodape?.querySelector("span")?.classList.contains("bg-zinc-100"),
+    ).toBe(true);
     for (const botao of [topo, rodape]) {
+      expect(botao?.matches(".bg-muted, .border-border")).toBe(false);
+      expect(botao?.querySelector(".bg-muted, .border-border")).toBeNull();
       // Assinatura do path do simple-icons em IconeWhatsapp, sem mock do ícone.
       expect(botao?.querySelector('path[d^="M17.472 14.382"]')).not.toBeNull();
       expect(botao?.querySelector(".lucide-message-circle")).toBeNull();

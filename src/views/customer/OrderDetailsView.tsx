@@ -1010,7 +1010,7 @@ export function OrderDetailsView({
               // Laudo 05/09, M5: botão só-ícone era "botão" para o leitor
               // de tela — sem nome, pedir ajuda ficava sem significado.
               aria-label="Falar com a loja no WhatsApp"
-              className="flex size-11 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-muted transition-all active:scale-90"
+              className="flex size-11 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 transition-all hover:bg-zinc-200 active:scale-95"
             >
               <IconeWhatsapp className="size-5 text-[#25D366]" />
             </button>
@@ -1617,7 +1617,7 @@ export function OrderDetailsView({
               onClick={handleWhatsAppSupport}
               className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100"
             >
-              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-muted">
+              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100">
                 <IconeWhatsapp className="size-4 text-[#25D366]" />
               </span>
               Falar com a loja

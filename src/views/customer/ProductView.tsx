@@ -1303,7 +1303,7 @@ export const ProductView = React.memo(function ProductView({
                   title="Dúvidas no WhatsApp"
                   aria-label="Dúvidas no WhatsApp"
                   className={cn(
-                    "flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border bg-muted transition-all duration-300 hover:bg-accent active:scale-95",
+                    "flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-zinc-200/50 bg-white transition-all duration-300 hover:bg-zinc-50 active:scale-95",
                     // Altura do CTA no desktop: os dois botões da linha de
                     // cima ficam alinhados (48px) em vez de 44 vs 48.
                     "lg:size-12",
