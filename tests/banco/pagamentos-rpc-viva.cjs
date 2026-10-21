@@ -1788,13 +1788,13 @@ const POSTERIORES_A_97 = [
   DESFAZER_RECEBIMENTO,
   // 20261330000000: o contato do mototaxi. A RPC salvar_config_mototaxi usa is_admin_atual() e a politica
   // config_mototaxi_admin_select usa rls_admin_atual(): sem esta entrada o rollback da 97 recusa
-  // (B1_BASELINE_DIVERGENT). O rollback-manual dela so REVOGA acessos; o gancho `depois` apaga a funcao e a
-  // politica inertes. Definicao unica em tests/banco/mototaxi-posterior.cjs. No FIM da lista de proposito.
+  // (B1_BASELINE_DIVERGENT). O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em
+  // tests/banco/mototaxi-posterior.cjs. No FIM da lista de proposito.
   MOTOTAXI,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {
-  for (const { nome, noAr, depois } of POSTERIORES_A_97) {
+  for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,
       "..",
@@ -1808,7 +1808,6 @@ async function desfazerPosterioresNaTransacao(c) {
     const r = await c.query(noAr);
     if (!r.rows[0] || r.rows[0].sim !== true) continue;
     await c.query(lerMigracao(`rollback-manual-${nome}`));
-    if (depois) await depois(c);
   }
 }
 

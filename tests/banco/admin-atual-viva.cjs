@@ -362,8 +362,7 @@ const POSTERIORES_A_97 = [
   // 20261330000000: o contato do mototaxi (exclusivo do painel). A RPC salvar_config_mototaxi usa
   // is_admin()/is_admin_atual() e a politica config_mototaxi_admin_select usa rls_admin_atual(): sem esta
   // entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "funcoes fora da 20261197000000 ainda usam ...").
-  // O rollback-manual dela so REVOGA acessos (a funcao e a politica ficam inertes), entao o gancho `depois`
-  // apaga as duas dentro da transacao da prova. Definicao unica em tests/banco/mototaxi-posterior.cjs.
+  // O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em tests/banco/mototaxi-posterior.cjs.
   // No FIM da lista de proposito (as provas enderecam 202/200/99/98 por indice).
   MOTOTAXI,
 ];
@@ -399,7 +398,7 @@ async function desfazerPosterioresNaTransacao(cliente) {
   // As sucessoras da 99 (20261212, 20261214: redefinem corpos dela) saem
   // primeiro — sem isso o rollback da 99 recusa (B1_BASELINE_DIVERGENT).
   await desfazerSucessorasDa99(cliente);
-  for (const { nome, noAr, depois } of POSTERIORES_A_97) {
+  for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,
       "..",
@@ -414,7 +413,6 @@ async function desfazerPosterioresNaTransacao(cliente) {
     if (!r.rows[0] || r.rows[0].sim !== true) continue;
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
     await cliente.query(fs.readFileSync(caminho, "utf8"));
-    if (depois) await depois(cliente);
   }
   assert.equal(
     (await catalogo(cliente, REEMITIR)).hash,
@@ -1571,8 +1569,6 @@ PROVAS.push({
           "utf8",
         ),
       );
-      // Gancho opcional da entrada (hoje so a MOTOTAXI): o que o rollback-manual dela deixa inerte.
-      await POSTERIORES_A_97[i].depois?.(cliente);
     };
     // As posteriores desta pilha têm de estar no ar (a 202, a 200 e a 99).
     for (const i of [0, 1, 2])

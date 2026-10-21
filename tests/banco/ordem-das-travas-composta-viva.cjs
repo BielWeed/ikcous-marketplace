@@ -75,9 +75,6 @@ const {
   desfazerReembolsoEmDuvidaNaTransacao,
 } = require("./reembolso-em-duvida-posterior.cjs");
 const {
-  apagarResiduoDoMototaxiNaTransacao,
-} = require("./mototaxi-posterior.cjs");
-const {
   falhar,
   lerDatabaseUrlEfemera,
   anexarAoSummary,
@@ -1309,11 +1306,6 @@ PROVAS.push({
       console.log(`    [h] rollbacks na ordem: ${pilha.join(" -> ")}`);
       for (const prefixo of pilha) {
         await cliente.query(rollbackDe(prefixo));
-        // A 1330 (mototaxi) tem rollback que so REVOGA acessos: a funcao salvar_config_mototaxi (is_admin_atual)
-        // e a politica (rls_admin_atual) ficam inertes e o rollback da 97 recusaria. Apaga as duas, so aqui na
-        // transacao da prova (tests/banco/mototaxi-posterior.cjs); tabela e contato intactos.
-        if (prefixo === "20261330000000")
-          await apagarResiduoDoMototaxiNaTransacao(cliente);
       }
       assert.equal(await vivo(FN_98), false, "a 98 saiu");
       assert.equal(await vivo(FN_97), false, "a 97 saiu");
