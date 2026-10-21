@@ -1,16 +1,61 @@
 {
-  "1.5.43": {
-    "titulo": "Calcule o líquido previsto do estoque",
+  "1.5.46": {
+    "titulo": "Pagamentos e Balcão mais seguros, e painel com temas",
     "novidades": [
-      "Em Produtos, toque em Calcular líquido e informe o total de despesas previstas para ver quanto pode sobrar."
+      "O painel ganhou os temas Claro e Confortável, além do Escuro. A escolha fica em Ajustes e vale só para este aparelho; a loja que a cliente vê não muda.",
+      "Nova tela Cor do app: a cor da sua marca nos botões, na barra do celular e na tela de abertura, com prévia antes de salvar.",
+      "As vitrines de ofertas podem usar o layout Compacto, além do Padrão.",
+      "Em Ajustes do Mercado Pago, o painel avisa quando o app está em modo de teste usando chaves de produção, situação que pode fazer o cartão do cliente ser recusado."
     ],
     "correcoes": [
-      "O líquido deixou de ser um texto fixo: agora desconta as despesas que você informar, inclusive zero quando confirmado."
+      "No pagamento com cartão, o valor mostrado e cobrado é o total gravado no pedido. Se não for possível conferir esse total, o pagamento não abre e o cliente é orientado a retomar por Meus pedidos.",
+      "O valor final do pedido aparece no mesmo formato, com ponto de milhar, no resumo e no pagamento com cartão.",
+      "Quando o cartão ainda não está liberado para compras online, a mensagem explica isso e orienta falar com o banco ou escolher outra forma de pagamento.",
+      "No Balcão, a venda só é registrada se o total conferido na tela for o mesmo que a loja calcula. Se um preço mudou no meio, nada é gravado e a tela avisa que o valor mudou para você conferir.",
+      "Se o Mercado Pago devolver o valor inteiro de um pedido ainda à espera do pagamento, antes de a confirmação chegar ao app, o pedido é cancelado e os produtos voltam ao estoque. Pedido já confirmado, já adiantado ou com devolução parcial não volta ao estoque por isso.",
+      "Pedido que você adiantou (preparando ou a caminho) enquanto o pagamento online ainda não estava confirmado continua sendo conferido com o Mercado Pago até a confirmação chegar.",
+      "No Financeiro e no CRM (aba Canais), um pagamento online sem forma identificada não é mais somado como Pix: aparece como \"Pagamento online (forma não identificada)\".",
+      "O comprovante por e-mail de pedido online só é enviado depois que o pagamento é confirmado, e só o próprio cliente ou o administrador da loja consegue pedir o envio.",
+      "Na ficha do pedido, marcar que recebeu o dinheiro agora pede confirmação antes, como já acontecia na lista de pedidos."
     ],
     "melhorias": [
-      "A simulação indica quando é parcial, permite prejuízo e pede nova confirmação quando o resumo do estoque muda.",
-      "A estimativa vale nesta tela e não altera os lançamentos do Financeiro."
+      "O andamento dos pedidos na área do cliente foi redesenhado, com as etapas sem cortar o texto.",
+      "No celular, o aviso de frete aparece inteiro."
     ]
+  },
+  "1.5.45": {
+    "titulo": "Caixa mais seguro e cartão parcelado sem erro",
+    "novidades": [],
+    "correcoes": [
+      "No Caixa, se a internet cair no meio de um lançamento ou de uma sangria, ao tentar de novo o valor não é lançado duas vezes. Abrir a mesma folha em duas abas também não perde o lançamento que estava pendente.",
+      "Pedido pago no cartão parcelado com juros agora é aceito: o valor cobrado a mais pelo Mercado Pago não gera mais o aviso falso de valor diferente.",
+      "Quando um cartão é recusado, o motivo informado pelo Mercado Pago passa a ser registrado internamente, para a equipe do app investigar recusas se precisar."
+    ],
+    "melhorias": []
+  },
+  "1.5.44": {
+    "titulo": "Painel e carrinho mais seguros",
+    "novidades": [],
+    "correcoes": [
+      "Na ficha do cliente, trocar rápido de cliente não mistura os dados nem limpa o carrinho de outra pessoa.",
+      "Ao enviar uma notificação, o destinatário mostrado é sempre o escolhido, e a mensagem nova que você escreve durante o envio não some.",
+      "Ao trocar de cupom no painel, os campos do cupom anterior não ficam misturados.",
+      "Nos banners, a imagem que sobra de um envio é apagada, e dá para enviar o mesmo arquivo de novo.",
+      "Em Perguntas e respostas, ao responder ou excluir a última pergunta de uma página, a tela volta para uma página que existe.",
+      "No endereço, campos obrigatórios preenchidos só com espaços não passam mais.",
+      "No carrinho, se não for possível conferir as variações do produto, o preço base não aparece como se fosse o da variação; limpar o carrinho também limpa o cupom guardado."
+    ],
+    "melhorias": []
+  },
+  "1.5.43": {
+    "titulo": "Mais segurança ao editar banners e responder perguntas",
+    "novidades": [],
+    "correcoes": [
+      "Uma resposta enviada não apaga a nova pergunta ou resposta que você começou a escrever.",
+      "O envio e o recorte de banners aguardam o salvamento terminar, sem trocar a imagem de outro banner nem apagar a imagem publicada.",
+      "Ao atualizar Produtos, os números e avisos da consulta mais recente são preservados."
+    ],
+    "melhorias": []
   },
   "1.5.42": {
     "titulo": "Resumo de Produtos mais limpo",

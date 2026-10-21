@@ -55,6 +55,7 @@
  *   no ar. Se um dia o import quebrar, o sintoma aparece no envio, nao no CI.
  */
 
+import { connect } from "node:net";
 import { classificarFalhaDeEnvio } from "./email-da-loja.ts";
 
 const HOST = "smtp.gmail.com";
@@ -99,7 +100,7 @@ function conferirRemetente(remetente) {
   }
 }
 
-async function abrirTransporte({ usuario, senha }, deps) {
+async function abrirTransporte({ usuario, senha }, deps, opcoesDoPrazo?) {
   // Ver o cabecalho: tardio de proposito, para a suite de testes nao morrer na
   // resolucao do especificador `npm:`.
   const { default: nodemailer } = await (deps?.carregarNodemailer
@@ -110,24 +111,66 @@ async function abrirTransporte({ usuario, senha }, deps) {
     port: PORTA,
     secure: true,
     auth: { user: usuario, pass: senha },
+    ...opcoesDoPrazo?.(),
   });
 }
 
-async function enviarPor(credencial, { para, assunto, html }, deps) {
-  const transporter = await abrirTransporte(credencial, deps);
+async function enviarPor(credencial, { para, assunto, html, texto }, deps) {
+  let socket;
+  let relogio;
+  let transporter;
+  const prazo = deps?.prazoFinalMs;
+  const erroDePrazo = () => Object.assign(new Error("SMTP: prazo esgotado"), { code: "ETIMEDOUT" });
+  const restante = () => {
+    const ms = Math.floor(prazo - performance.now());
+    if (!Number.isFinite(ms) || ms <= 0) throw erroDePrazo();
+    return ms;
+  };
+  // Opt-in do hook: pedidos existentes mantêm seus timeouts e sua reserva.
+  const opcoesDoPrazo = prazo === undefined ? undefined : () => ({
+    connectionTimeout: restante(),
+    greetingTimeout: restante(),
+    socketTimeout: restante(),
+    dnsTimeout: restante(),
+    // close() do transporte sem pool NÃO encerra envios ativos. O socket é
+    // nosso para poder destruí-lo no prazo TOTAL, mesmo com bytes pingando.
+    // Nodemailer envolve este TCP em TLS quando secure=true (porta 465).
+    getSocket(opcoes, callback) {
+      let devolveu = false;
+      const devolver = (erro, resultado?) => {
+        if (devolveu) return;
+        devolveu = true;
+        callback(erro, resultado);
+      };
+      try {
+        const ms = restante();
+        socket = connect({ host: opcoes.host, port: opcoes.port });
+        relogio = setTimeout(() => socket.destroy(erroDePrazo()), ms);
+        socket.once("error", (erro) => devolver(erro));
+        socket.once("connect", () => devolver(null, { connection: socket }));
+      } catch (erro) {
+        devolver(erro);
+      }
+    },
+  });
   try {
+    // Reconfere o prazo DEPOIS do import tardio: nunca inicia envio atrasado.
+    transporter = await abrirTransporte(credencial, deps, opcoesDoPrazo);
     await transporter.sendMail({
       from: credencial.usuario,
       to: para,
       subject: assunto,
       html,
+      ...(texto === undefined ? {} : { text: texto }),
     });
   } catch (e) {
     // Reembrulha: o erro do nodemailer carrega o objeto de configuracao, e com
     // ele a senha, para o log de quem chamar.
     throw new ErroDeEnvio(e);
   } finally {
-    transporter.close?.();
+    clearTimeout(relogio);
+    socket?.destroy();
+    transporter?.close?.();
   }
 }
 
@@ -151,7 +194,7 @@ async function registrar(remetente, resultado) {
  * Devolve `{ origem }` — quem de fato enviou.
  */
 export async function enviarEmail(
-  mensagem: { para: string; assunto: string; html: string },
+  mensagem: { para: string; assunto: string; html: string; texto?: string },
   remetente,
   deps?,
 ): Promise<{ origem: string }> {

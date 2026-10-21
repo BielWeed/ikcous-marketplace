@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { build } from "vite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escalasEnxutasDoGrafico } from "../../scripts/escalasEnxutasDoGrafico";
+import { graficoEnxuto } from "../../scripts/graficoEnxuto";
 import { helpersCompartilhadosDoGrafico } from "../../scripts/helpersCompartilhadosDoGrafico";
 
 const RAIZ = fileURLToPath(new URL("../..", import.meta.url));
@@ -28,6 +29,7 @@ const CODIGO = `
 import { createElement as h, Fragment } from 'react';
 import { FluxoDeCaixaGrafico } from '@/components/admin/financeiro/FluxoDeCaixaGrafico';
 import { OperationalPerformanceChart } from '@/components/admin/dashboard/OperationalPerformanceChart';
+import { StrategicIntelligenceBlocks } from '@/components/admin/dashboard/StrategicIntelligenceBlocks';
 import { Area, Bar, Cell, ComposedChart, Line, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts';
 const pontos = [
  {dia:'2026-08-29',entradas:120,saidas:80,resultado:40,saldo:null},
@@ -40,6 +42,7 @@ export function tela() {
  return h(Fragment, null,
   h('section', {id:'fluxo'}, h(FluxoDeCaixaGrafico, {pontos,carregando:false,ativo:true,marco:'2026-08-30'})),
   h('section', {id:'operacional'}, h(OperationalPerformanceChart, {stats,loading:false,active:true})),
+  h('section', {id:'categorias'}, h(StrategicIntelligenceBlocks, {categoryData:[{name:'roupas',value:300},{name:'calcados',value:200},{name:'acessorios',value:100}],loading:false,active:true})),
   h('section', {id:'composto'}, h(ComposedChart, {width:520,height:300,data:pontos,stackOffset:'sign'},
    h(XAxis,{dataKey:'dia'}),h(YAxis),h(Tooltip),
    h(Area,{type:'monotone',dataKey:'saldo',isAnimationActive:false,activeDot:{r:5}}),
@@ -52,7 +55,11 @@ export function tela() {
 }
 `;
 
-async function compilar(comPlugin: boolean) {
+async function compilar(
+  comPlugin: boolean,
+  enxuto = false,
+  setorQuebrado = false,
+) {
   let transformados = 0;
   const plugin = helpersCompartilhadosDoGrafico();
   const transform = plugin.transform as (
@@ -79,6 +86,23 @@ async function compilar(comPlugin: boolean) {
     plugins: [
       escalasEnxutasDoGrafico(),
       ...(comPlugin ? [plugin] : []),
+      ...(enxuto ? [graficoEnxuto()] : []),
+      // Controle negativo: comprova que a captura enxerga perder o Sector real.
+      ...(setorQuebrado
+        ? [
+            {
+              name: "controle-negativo-sector",
+              enforce: "pre" as const,
+              load(id: string) {
+                return /\/recharts\/es6\/shape\/Sector\.js$/.test(
+                  id.replaceAll("\\", "/"),
+                )
+                  ? "export const Sector = () => null;"
+                  : null;
+              },
+            },
+          ]
+        : []),
       {
         name: "entrada-svg",
         resolveId: (id) => (id === ENTRADA ? ID : null),
@@ -107,6 +131,21 @@ async function compilar(comPlugin: boolean) {
     "output" in r ? r.output.filter((c) => c.type === "chunk") : [],
   );
   expect(chunks).toHaveLength(1);
+  if (enxuto) {
+    const vivos = Object.entries(chunks[0].modules)
+      .filter(([, modulo]) => modulo.renderedLength > 0)
+      .map(([id]) => id.replaceAll("\\", "/"));
+    expect(
+      vivos.filter((id) =>
+        /\/node_modules\/(d3-color|d3-interpolate|d3-format)\//.test(id),
+      ),
+    ).toEqual([]);
+    expect(
+      vivos.filter((id) =>
+        /\/d3-shape\/src\/(curve\/(basis|step|natural|bump)|symbol)/.test(id),
+      ),
+    ).toEqual([]);
+  }
   const modulo = { exports: {} as { tela: () => ReactNode } };
   new Function("require", "module", "exports", chunks[0].code)(
     createRequire(import.meta.url),
@@ -185,12 +224,24 @@ afterEach(() => {
   dom.window.close();
 });
 
-function capturar(tela: () => ReactNode) {
+function capturar(tela: () => ReactNode, movel = true) {
   vi.useFakeTimers();
+  dom.window.matchMedia = () =>
+    ({
+      matches: movel,
+      addEventListener() {},
+      removeEventListener() {},
+    }) as unknown as MediaQueryList;
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   const quadros: string[][] = [];
+  const concluirAnimacao = () => {
+    if (!movel)
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+  };
   // Só o contador global de IDs do Recharts é normalizado, como na prova
   // das escalas. Caminhos, atributos, números, cores e texto ficam intactos.
   const registrar = () =>
@@ -224,6 +275,9 @@ function capturar(tela: () => ReactNode) {
     act(() => {
       vi.advanceTimersByTime(500);
     });
+    // No desktop os componentes reais mantêm a animação de entrada. Ela só
+    // começa depois de o gráfico sair do esqueleto; avança numa etapa separada.
+    concluirAnimacao();
     expect(container.querySelectorAll("#fluxo .recharts-surface")).toHaveLength(
       2,
     );
@@ -239,7 +293,21 @@ function capturar(tela: () => ReactNode) {
     expect(
       container.querySelectorAll(".recharts-line-curve").length,
     ).toBeGreaterThan(0);
-    expect(container.querySelectorAll(".recharts-pie-sector")).toHaveLength(4);
+    expect(
+      container.querySelectorAll("#pizza .recharts-pie-sector"),
+    ).toHaveLength(4);
+    expect(
+      container.querySelectorAll("#categorias .recharts-pie-sector"),
+    ).toHaveLength(3);
+    expect(
+      container.querySelectorAll("#categorias path.recharts-sector"),
+    ).toHaveLength(3);
+    expect(
+      container.querySelector("#categorias svg.recharts-surface")?.textContent,
+    ).toContain("Total");
+    expect(
+      container.querySelector("#categorias svg.recharts-surface")?.textContent,
+    ).toContain("600,00");
     registrar();
     mover("#fluxo .recharts-wrapper:last-child");
     expect(
@@ -262,6 +330,52 @@ function capturar(tela: () => ReactNode) {
         .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     registrar();
+    const fatia = container.querySelector("#categorias .recharts-pie-sector")!;
+    act(() => {
+      fatia.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    expect(
+      container.querySelector("#categorias .recharts-active-shape path"),
+    ).toBeTruthy();
+    expect(
+      container.querySelector("#categorias svg.recharts-surface")?.textContent,
+    ).toContain("Roupas");
+    expect(
+      container.querySelector("#categorias svg.recharts-surface")?.textContent,
+    ).toContain("(50.0%)");
+    registrar();
+    act(() => {
+      fatia.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+      vi.advanceTimersByTime(200);
+    });
+    expect(
+      container.querySelector("#categorias svg.recharts-surface")?.textContent,
+    ).toContain("Total");
+    registrar();
+    const ocultar = container.querySelector<HTMLButtonElement>(
+      '#categorias button[title="Ocultar do gráfico"]',
+    )!;
+    act(() => ocultar.click());
+    concluirAnimacao();
+    expect(
+      container.querySelectorAll("#categorias path.recharts-sector"),
+    ).toHaveLength(2);
+    expect(
+      container.querySelector("#categorias svg.recharts-surface")?.textContent,
+    ).toContain("300,00");
+    registrar();
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>(
+          '#categorias button[title="Mostrar no gráfico"]',
+        )!
+        .click(),
+    );
+    concluirAnimacao();
+    expect(
+      container.querySelectorAll("#categorias path.recharts-sector"),
+    ).toHaveLength(3);
+    registrar();
     const roi = [
       ...container.querySelectorAll<HTMLButtonElement>("#operacional button"),
     ].find((b) => b.textContent?.includes("Retorno do estoque"));
@@ -272,6 +386,7 @@ function capturar(tela: () => ReactNode) {
     act(() => {
       vi.advanceTimersByTime(500);
     });
+    concluirAnimacao();
     expect(
       container.querySelectorAll("#operacional .recharts-area-area").length,
     ).toBeGreaterThan(0);
@@ -292,5 +407,18 @@ describe("helpers compartilhados — SVG dos gráficos reais", () => {
     const original = await compilar(false);
     const compartilhado = await compilar(true);
     expect(capturar(compartilhado)).toEqual(capturar(original));
+  }, 120_000);
+
+  it("a economia remove os módulos não usados sem mudar SVG, tooltip, activeShape ou Label central", async () => {
+    const original = await compilar(true);
+    const enxuto = await compilar(true, true);
+    for (const movel of [true, false]) {
+      expect(capturar(enxuto, movel)).toEqual(capturar(original, movel));
+    }
+  }, 120_000);
+
+  it("controle negativo: perder Sector é detectado pela pizza real de categorias", async () => {
+    const quebrado = await compilar(true, false, true);
+    expect(() => capturar(quebrado)).toThrow();
   }, 120_000);
 });

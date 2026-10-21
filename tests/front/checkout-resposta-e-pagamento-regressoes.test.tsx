@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigDoCartao } from "@/lib/config-do-cartao";
 import type { CartItem } from "@/types";
 
-const createOrder = vi.fn().mockResolvedValue({ id: "ped-777" });
+const createOrder = vi
+  .fn()
+  .mockResolvedValue({ id: "ped-777", totalAmount: 120 });
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const limparCarrinho = vi.fn();
@@ -245,7 +247,7 @@ function respostaPendente() {
 describe("CheckoutView — resposta atrasada, centavos e reserva por método", () => {
   beforeEach(() => {
     createOrder.mockReset();
-    createOrder.mockResolvedValue({ id: "ped-777" });
+    createOrder.mockResolvedValue({ id: "ped-777", totalAmount: 120 });
     limparCarrinho.mockReset();
     limparCarrinho.mockImplementation(() => {
       mockCart = [];
@@ -421,6 +423,7 @@ describe("CheckoutView — resposta atrasada, centavos e reserva por método", (
   });
 
   it("cupom de meio centavo envia 9,60 ao pedido e ao pagamento", async () => {
+    createOrder.mockResolvedValueOnce({ id: "ped-777", totalAmount: 9.6 });
     mockCartTotal = 10.1;
     mockShippingFee = 0;
     mockSelectedShippingOption = { ...ENTREGA_LOCAL, price: 0 };
@@ -455,8 +458,7 @@ describe("CheckoutView — resposta atrasada, centavos e reserva por método", (
       const texto = hospedeiro.textContent?.replace(/\s+/g, " ");
       const avisoPix =
         "Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os itens voltam para o estoque e o pedido é cancelado.";
-      const avisoCartao =
-        "Reservamos seus itens enquanto o pagamento é concluído. Se o banco não confirmar a tempo, o pedido é cancelado e os itens voltam para a loja.";
+      const avisoCartao = "Reservamos seus itens enquanto você paga.";
       expect(texto).toContain(metodo === "pix" ? avisoPix : avisoCartao);
       expect(texto).not.toContain(metodo === "pix" ? avisoCartao : avisoPix);
       if (metodo === "cartao") {

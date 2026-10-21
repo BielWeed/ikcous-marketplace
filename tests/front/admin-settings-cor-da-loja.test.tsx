@@ -210,46 +210,27 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Sobre a Loja — cor principal na identidade", () => {
-  it("exibe a fotografia do banco, sem usar a semente do build para gravar", async () => {
+describe("Minha loja — a cor agora mora em Aparência do app", () => {
+  it("não exibe campos de cor e mantém o caminho até a tela nova", async () => {
     await render();
-    expect(input("store-color-hex").value).toBe("#ABCDEF");
+    expect(host.querySelector("#store-color-hex")).toBeNull();
+    expect(host.querySelector("#store-secondary-color")).toBeNull();
+    expect(host.querySelector("#store-accent-color")).toBeNull();
+    expect(host.textContent).toContain("A cor do app fica em Aparência do app");
+    expect(host.textContent).toContain(
+      "Nome e logo que aparecem no app inteiro",
+    );
   });
-  it("recusa preto primário sem gravar e explica a recusa no formulário", async () => {
+  it("salvar a Marca continua enviando as três cores salvas e as oito chaves", async () => {
+    const before = snapshot();
     await render();
-    await type("store-color-hex", "#000000");
-    await click("Salvar identidade");
-    expect(h.save).not.toHaveBeenCalled();
-    expect(host.textContent).toContain("Preto não pode ser a cor da loja");
-  });
-  it("hex com letras aceita maiúsculas e grava o canônico do novo codec", async () => {
-    await render();
-    await type("store-color-hex", "#ff5733");
-    await click("Salvar identidade");
-    expect(h.save.mock.calls[0][0].desired.primary_color).toBe("#FF5733");
+    await type("store-name", "Nova loja");
+    await click("Salvar alterações");
+    expect(h.save.mock.calls[0][0].desired).toEqual({
+      ...before.identity,
+      store_name: "Nova loja",
+    });
+    expect(Object.keys(h.save.mock.calls[0][0].desired)).toHaveLength(8);
     expect(h.update).not.toHaveBeenCalled();
-  });
-  it("hex numérico válido chega ao pacote e refresh somente lê", async () => {
-    await render();
-    await type("store-color-hex", "#059669");
-    await click("Salvar identidade");
-    expect(h.save.mock.calls[0][0].desired.primary_color).toBe("#059669");
-    expect(h.refresh).toHaveBeenCalledExactlyOnceWith({ onlyConfig: true });
-  });
-  it("formato inválido é recusado antes da RPC", async () => {
-    await render();
-    await type("store-color-hex", "verde");
-    await click("Salvar identidade");
-    expect(h.save).not.toHaveBeenCalled();
-    expect(host.textContent).toContain("#RRGGBB");
-  });
-  it("falha de gravação não celebra nem apaga a cor digitada", async () => {
-    h.save.mockResolvedValue({ status: "rejected", code: "invalid" });
-    await render();
-    await type("store-color-hex", "#123456");
-    await click("Salvar identidade");
-    expect(input("store-color-hex").value).toBe("#123456");
-    expect(h.refresh).not.toHaveBeenCalled();
-    expect(host.textContent).not.toContain("Identidade salva no cadastro");
   });
 });

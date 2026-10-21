@@ -24,10 +24,12 @@ import {
   parseContas,
   parseDre,
   parseExtrato,
+  parseFechamento,
   parsePrevistos,
   parseResumo,
   parseValorBR,
   percentualDaReceita,
+  rotuloDaForma,
   saldoCorrenteRetroativo,
   serieDoFluxoDeCaixa,
   situacaoDoVencimento,
@@ -44,6 +46,15 @@ import type { LinhaDoExtrato } from "@/types/financeiro";
 
 /** O Intl põe espaço inseparável depois de "R$"; o teste compara texto. */
 const semNbsp = (texto: string) => texto.replace(/\s/g, " ");
+
+it("forma online desconhecida não é rotulada como PIX nem modifica as conhecidas", () => {
+  expect(rotuloDaForma("online_desconhecido")).toBe(
+    "Pagamento online (forma não identificada)",
+  );
+  expect(rotuloDaForma("pix")).toBe("PIX");
+  expect(rotuloDaForma("credito")).toBe("Cartão de crédito");
+  expect(rotuloDaForma("debito")).toBe("Cartão de débito");
+});
 
 describe("dinheiro em pt-BR", () => {
   it.each([
@@ -737,6 +748,46 @@ describe("formulários", () => {
 });
 
 describe("caixa e erros", () => {
+  it("aceita replay extra no resultado do fechamento", () => {
+    expect(
+      parseFechamento({
+        id: "sessao-1",
+        esperado: 100,
+        contado: 90,
+        diferenca: -10,
+        replay: true,
+      }),
+    ).toEqual({
+      id: "sessao-1",
+      esperado: 100,
+      contado: 90,
+      diferenca: -10,
+    });
+  });
+
+  it.each(["fechamento_divergente", "tentativa_divergente"])(
+    "traduz DETAIL %s como conflito, não conexão",
+    (details) => {
+      expect(
+        mensagemDeErroFinanceiro({
+          code: "22023",
+          details,
+          message: "mensagem técnica",
+        }),
+      ).toBe(
+        "Esta operação já foi registrada com valores diferentes. Confira o histórico antes de tentar de novo.",
+      );
+    },
+  );
+
+  it("reconhece função ausente pela mensagem mesmo sem código", () => {
+    expect(
+      mensagemDeErroFinanceiro({
+        message: "Could not find the function public.fin_caixa_fechar_sessao",
+      }),
+    ).toBe("O Financeiro ainda não foi instalado no banco desta loja.");
+  });
+
   it("diferença do fechamento", () => {
     expect(diferencaDoFechamento(480.5, 470)).toEqual({
       diferenca: -10.5,

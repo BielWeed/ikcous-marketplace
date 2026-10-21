@@ -494,7 +494,7 @@ async function htmlDoComprovante(
     subtotal: 100,
     total: 100,
     payment_method: paymentMethod,
-    payment_status: "recebido_na_entrega",
+    payment_status: paymentMethod === "online" ? "pago" : "recebido_na_entrega",
     ...valores,
   };
   if (canal !== undefined) pedido.canal = canal;
@@ -634,7 +634,7 @@ Deno.test("PIX pelo site JÁ PAGO -> abertura de CONFIRMADO, nunca a de 'aguarda
   );
 });
 
-Deno.test("PIX pelo site AINDA aguardando pagamento -> abertura de 'aguardando', nunca a de confirmado", async () => {
+Deno.test("PIX pelo site AINDA aguardando pagamento não envia nem consome a reserva", async () => {
   const pedido = {
     id: UUID_PEDIDO,
     customer_data: { email: "cliente@exemplo.com" },
@@ -663,18 +663,33 @@ Deno.test("PIX pelo site AINDA aguardando pagamento -> abertura de 'aguardando',
     },
   });
 
-  assertEquals(desfecho, { ok: true });
-  assertEquals(chamadasEnvio.length, 1);
-  assertStringIncludes(
-    chamadasEnvio[0].html,
-    "Recebemos seu pedido e ele está aguardando a confirmação do pagamento. Assim que o pagamento for confirmado, ele entra na fila de separação.",
-  );
-  assertEquals(
-    chamadasEnvio[0].html.includes("Guarde este e-mail: ele é o resumo do que você comprou"),
-    false,
-    "pedido online AINDA aguardando pagamento não pode dizer que está confirmado",
-  );
+  assertEquals(desfecho, { ok: false, motivo: "pagamento_nao_confirmado" });
+  assertEquals(chamadasEnvio.length, 0);
 });
+
+for (const status of [null, "aguardando", "recusado", "expirado", "estornado", "pago_apos_expirar", "recebido_na_entrega"]) {
+  Deno.test(`online ${status}: não reivindica reserva; após pago ainda pode enviar`, async () => {
+    const chamadas: Chamada[] = [];
+    const pedido = {
+      id: UUID_PEDIDO, payment_method: "online", payment_status: status,
+      customer_data: { email: "cliente@exemplo.com" }, total: 100,
+    };
+    const supabase = clienteFalso({ pedido, chamadas, reservou: true });
+    let envios = 0;
+    const deps = {
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
+      enviarEmail: async () => { envios++; },
+    };
+    const args = { supabase: supabase as never, orderId: UUID_PEDIDO, deps };
+    assertEquals(await enviarComprovantePedido(args), { ok: false, motivo: "pagamento_nao_confirmado" });
+    assertEquals(chamadas.filter(c => c.tipo === "rpc"), []);
+    assertEquals(envios, 0);
+    pedido.payment_status = "pago";
+    assertEquals(await enviarComprovantePedido(args), { ok: true });
+    assertEquals(envios, 1);
+    assertEquals(chamadas.filter(c => c.nome === "reivindicar_email_de_confirmacao").length, 1);
+  });
+}
 
 // --- VARIAÇÃO (tamanho/cor) no e-mail do pedido -------------------------------
 //

@@ -20,9 +20,11 @@ import {
 import {
   VALOR_MAXIMO,
   diferencaDoFechamento,
+  ehDivergenciaDoCaixa,
   mensagemDeErroFinanceiro,
   parseValorBR,
 } from "@/lib/financeiro";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import {
   CONTA_CAIXA_DA_LOJA,
@@ -41,6 +43,10 @@ import {
   EstadoDeErro,
   useConfirmacaoFinanceira,
 } from "./partes";
+import {
+  chaveDaTentativaDoCaixa,
+  esquecerTentativaDoCaixa,
+} from "./tentativasDoCaixa";
 
 /** Contas que podem ser gaveta: as do tipo caixa (a de sistema primeiro). */
 function contasDeCaixa(contas: readonly ContaFinanceira[]): ContaFinanceira[] {
@@ -91,22 +97,35 @@ function RodapeDeAcao({
 }
 
 /** Estado de envio com trava síncrona contra toque duplo. */
-function useEnvio() {
+function useEnvio(
+  aoMudarEnviando?: (enviando: boolean) => void,
+  aoDivergir?: (erro: unknown) => Promise<void>,
+) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const trava = useRef(false);
   async function enviar(acao: () => Promise<void>) {
     if (trava.current) return;
     trava.current = true;
+    aoMudarEnviando?.(true);
     setEnviando(true);
     setErro(null);
     try {
       await acao();
     } catch (falha) {
-      setErro(mensagemDeErroFinanceiro(falha));
+      if (aoDivergir && ehDivergenciaDoCaixa(falha)) {
+        try {
+          await aoDivergir(falha);
+        } catch (falhaDaRecarga) {
+          setErro(
+            `${mensagemDeErroFinanceiro(falha)} ${mensagemDeErroFinanceiro(falhaDaRecarga)}`,
+          );
+        }
+      } else setErro(mensagemDeErroFinanceiro(falha));
     } finally {
       trava.current = false;
       setEnviando(false);
+      aoMudarEnviando?.(false);
     }
   }
   return { enviando, erro, enviar };
@@ -173,7 +192,7 @@ export function AbrirCaixaFolha({
       titulo="Abrir caixa"
       icone={Archive}
       matiz="#2DD4BF"
-      descricao="Conte o dinheiro que já está na gaveta antes da primeira venda."
+      descricao="Antes de vender, conte o dinheiro da gaveta."
       aoFechar={aoFechar}
       rodape={
         <RodapeDeAcao
@@ -191,7 +210,7 @@ export function AbrirCaixaFolha({
           id="fin-caixa-abertura"
           rotulo="Dinheiro na gaveta (R$)"
           erro={erroValor}
-          ajuda="Troco inicial: notas e moedas contadas agora. Pode ser 0,00."
+          ajuda="Troco inicial: notas e moedas contadas. Pode ser 0,00."
         >
           <LocalBufferedInput
             id="fin-caixa-abertura"
@@ -234,6 +253,10 @@ export function AbrirCaixaFolha({
 
 /** Sangria (tira dinheiro da gaveta) ou suprimento (coloca troco). */
 export function MovimentarCaixaFolha({
+  autorId,
+  aoReconciliar,
+  aoMudarEnviando,
+  sessaoId,
   movimento,
   esperado,
   contas,
@@ -242,12 +265,16 @@ export function MovimentarCaixaFolha({
   aoSalvar,
   aoMudarSujo,
 }: {
+  readonly autorId: string | null;
+  readonly aoReconciliar: (mensagem: string) => Promise<void>;
+  readonly aoMudarEnviando: (enviando: boolean) => void;
+  readonly sessaoId: string;
   readonly movimento: "sangria" | "suprimento";
   readonly esperado: number;
   readonly contas: readonly ContaFinanceira[];
   readonly contaDoCaixa: string | null;
   readonly aoFechar: () => void;
-  readonly aoSalvar: (mensagem: string) => void;
+  readonly aoSalvar: (mensagem: string, tom?: "sucesso" | "informacao") => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
@@ -255,8 +282,19 @@ export function MovimentarCaixaFolha({
   const [valor, setValor] = useState("");
   const [descricao, setDescricao] = useState("");
   const [contrapartida, setContrapartida] = useState("");
+  const chave = useRef<string | null>(null);
   const [tentou, setTentou] = useState(false);
-  const { enviando, erro, enviar } = useEnvio();
+  function esquecer() {
+    esquecerTentativaDoCaixa(autorId, sessaoId, movimento, chave.current);
+    chave.current = null;
+  }
+  const { enviando, erro, enviar } = useEnvio(
+    aoMudarEnviando,
+    async (falha) => {
+      await aoReconciliar(mensagemDeErroFinanceiro(falha));
+      esquecer();
+    },
+  );
 
   useEffect(() => {
     aoMudarSujo(
@@ -282,20 +320,41 @@ export function MovimentarCaixaFolha({
     setTentou(true);
     if (numero === null || numero <= 0 || numero > VALOR_MAXIMO) return;
     void enviar(async () => {
-      await movimentarCaixa({
+      // Campos podem mudar, identidade não: o servidor devolve o original
+      // ou recusa a divergência, sem gravar uma segunda transferência.
+      chave.current ??= chaveDaTentativaDoCaixa(autorId, sessaoId, movimento);
+      const enviada = {
+        sessaoId,
+        chave: chave.current,
         tipo: movimento,
         valor: numero,
         descricao:
           descricao.trim() ||
           (sangria ? "Sangria do caixa" : "Suprimento do caixa"),
         contaContrapartida: contrapartida || null,
-      });
+      };
+      const resultado = await movimentarCaixa(enviada);
+      esquecer();
+      if (resultado.status !== "realizado") {
+        aoSalvar(
+          "Operação localizada no histórico. Confira a situação do lançamento antes de tentar de novo.",
+          "informacao",
+        );
+        return;
+      }
+      if (resultado.replay) {
+        aoSalvar(
+          sangria
+            ? "Esta sangria já estava registrada por uma tentativa anterior; nada novo foi gravado. Se esta é outra sangria, registre de novo."
+            : "Este suprimento já estava registrado por uma tentativa anterior; nada novo foi gravado. Se este é outro suprimento, registre de novo.",
+          "informacao",
+        );
+        return;
+      }
       confirmarVisualmente({
         titulo: sangria ? "Sangria registrada." : "Suprimento registrado.",
-        descricao:
-          descricao.trim() ||
-          (sangria ? "Sangria do caixa" : "Suprimento do caixa"),
-        valor: numero,
+        descricao: enviada.descricao,
+        valor: enviada.valor,
         sentido: sangria ? -1 : 1,
         linhas: [
           {
@@ -307,7 +366,7 @@ export function MovimentarCaixaFolha({
           {
             rotulo: "Contrapartida",
             texto:
-              contas.find((c) => c.id === contrapartida)?.nome ??
+              contas.find((c) => c.id === enviada.contaContrapartida)?.nome ??
               "Nenhuma conta da loja",
           },
         ],
@@ -323,8 +382,8 @@ export function MovimentarCaixaFolha({
       matiz={sangria ? "#FF9F5A" : "#2DD4BF"}
       descricao={
         sangria
-          ? "Tirar dinheiro da gaveta (levar ao banco, guardar no cofre)."
-          : "Colocar dinheiro na gaveta (troco que chegou)."
+          ? "Tirar dinheiro da gaveta: banco ou cofre."
+          : "Colocar troco na gaveta."
       }
       aoFechar={aoFechar}
       rodape={
@@ -360,7 +419,12 @@ export function MovimentarCaixaFolha({
           </dl>
         ) : null}
         {passaDoEsperado ? (
-          <p className="flex items-start gap-2 rounded-xl border border-orange-400/20 bg-orange-400/5 p-3 text-xs text-orange-300">
+          <p
+            className={cn(
+              "flex items-start gap-2 rounded-xl p-3 text-xs",
+              classeDoTexto("atencao"),
+            )}
+          >
             <AlertTriangle
               aria-hidden="true"
               className="mt-0.5 size-4 shrink-0"
@@ -380,7 +444,7 @@ export function MovimentarCaixaFolha({
           <LocalBufferedInput
             id="fin-caixa-mov-descricao"
             value={descricao}
-            maxLength={200}
+            maxLength={140}
             placeholder={
               sangria ? "Ex.: depósito no banco" : "Ex.: troco para o dia"
             }
@@ -393,7 +457,7 @@ export function MovimentarCaixaFolha({
           rotulo={
             sangria ? "Para onde foi (opcional)" : "De onde veio (opcional)"
           }
-          ajuda="Se o dinheiro foi para (ou veio de) outra conta da loja, escolha-a: o valor sai de uma e entra na outra, sem virar despesa."
+          ajuda="Se saiu para outra conta da loja ou veio dela, escolha-a. O valor muda de conta, sem virar despesa."
         >
           <select
             id="fin-caixa-mov-conta"
@@ -421,11 +485,15 @@ export function MovimentarCaixaFolha({
  * em dinheiro enquanto ela contava).
  */
 export function FecharCaixaFolha({
+  aoReconciliar,
+  aoMudarEnviando,
   caixa,
   aoFechar,
   aoFechado,
   aoMudarSujo,
 }: {
+  readonly aoReconciliar: (mensagem: string) => Promise<void>;
+  readonly aoMudarEnviando: (enviando: boolean) => void;
   readonly caixa: CaixaAtual;
   readonly aoFechar: () => void;
   /** Chamado assim que o servidor confirma (a tela atualiza por baixo). */
@@ -436,7 +504,12 @@ export function FecharCaixaFolha({
   const [observacao, setObservacao] = useState("");
   const [tentou, setTentou] = useState(false);
   const [resultado, setResultado] = useState<FechamentoDeCaixa | null>(null);
-  const { enviando, erro, enviar } = useEnvio();
+  const { enviando, erro, enviar } = useEnvio(
+    aoMudarEnviando,
+    async (falha) => {
+      await aoReconciliar(mensagemDeErroFinanceiro(falha));
+    },
+  );
 
   useEffect(() => {
     aoMudarSujo(
@@ -461,6 +534,7 @@ export function FecharCaixaFolha({
     if (contado === null || contado < 0 || contado > VALOR_MAXIMO) return;
     void enviar(async () => {
       const fechamento = await fecharCaixa({
+        sessaoId: caixa.id,
         valorContado: contado,
         observacao: observacao.trim() || null,
       });
@@ -539,8 +613,8 @@ export function FecharCaixaFolha({
           />
         </Campo>
         <p className="text-xs leading-relaxed text-zinc-400">
-          O fechamento usa os valores confirmados pelo servidor. A prévia pode
-          mudar se houver movimento durante a contagem.
+          O servidor confirma os valores ao fechar. A prévia pode mudar durante
+          a contagem.
         </p>
         <ComparativoDoFechamento
           esperado={caixa.esperado}
@@ -548,16 +622,14 @@ export function FecharCaixaFolha({
           diferenca={previa?.diferenca ?? null}
           situacao={previa?.situacao ?? null}
         />
-        <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-xs text-zinc-400">
+        <p className="flex items-start gap-2 rounded-xl border border-admin-border bg-admin-surface p-3 text-xs text-zinc-400">
           <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <span>
-            Se o contado não bater com o esperado, a diferença vira um
-            lançamento automático de{" "}
+            A diferença gera um lançamento automático:{" "}
             <strong className="text-zinc-200">Quebra de caixa</strong> (faltou
             dinheiro) ou{" "}
             <strong className="text-zinc-200">Sobra de caixa</strong> (sobrou).
-            Assim o saldo do caixa fica igual ao dinheiro que está de verdade na
-            gaveta.
+            O saldo passa a ser o contado.
           </span>
         </p>
         <Campo id="fin-caixa-observacao" rotulo="Observação (opcional)">
@@ -597,7 +669,7 @@ function ComparativoDoFechamento({
           : "Diferença";
   return (
     <dl
-      className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-[#17171C] p-4"
+      className="flex flex-col gap-3 rounded-3xl border border-admin-border bg-admin-raised p-4"
       aria-label="Esperado, contado e diferença"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2 py-2">
@@ -615,13 +687,9 @@ function ComparativoDoFechamento({
       <div
         className={
           situacao === null
-            ? "flex flex-wrap items-baseline justify-between gap-2 border-t border-white/10 py-3"
+            ? "flex flex-wrap items-baseline justify-between gap-2 border-t border-admin-border py-3"
             : cn(
-                "flex flex-wrap items-baseline justify-between gap-2 rounded-2xl border p-3",
-                situacao === "quebra" && "border-red-500/30 bg-red-500/10",
-                situacao === "sobra" && "border-orange-400/30 bg-orange-400/10",
-                situacao === "bateu" &&
-                  "border-emerald-500/30 bg-emerald-500/10",
+                "flex flex-wrap items-baseline justify-between gap-2 border-t border-admin-border py-3",
               )
         }
       >
@@ -629,9 +697,9 @@ function ComparativoDoFechamento({
         <dd
           className={cn(
             "text-2xl font-bold",
-            situacao === "quebra" && "text-red-300",
-            situacao === "sobra" && "text-orange-300",
-            situacao === "bateu" && "text-emerald-300",
+            situacao === "quebra" && classeDoTexto("negativo"),
+            situacao === "sobra" && classeDoTexto("atencao"),
+            situacao === "bateu" && classeDoTexto("neutro"),
           )}
         >
           {diferenca === null ? "—" : <Dinheiro valor={diferenca} comSinal />}

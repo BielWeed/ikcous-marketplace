@@ -137,7 +137,7 @@ describe("Balcão — busca de produto: corrida e foco", () => {
     });
     await avancar();
     await act(async () => {
-      botao(hospedeiro, "Buscar produto")!.click();
+      botao(hospedeiro, "Buscar")!.click();
     });
     if (resolverListaBase) {
       await resolver(0, pagina([], 0));

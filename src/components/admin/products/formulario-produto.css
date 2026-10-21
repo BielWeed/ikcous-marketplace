@@ -1,8 +1,8 @@
 /* Apresentação local do formulário e dos seus modais; sem alterar os primitivos. */
 .produto-formulario,
 .produto-modal {
-  color: #fafafa;
-  background: #08080a;
+  color: var(--lit-t-fafafa, #fafafa);
+  background: hsl(var(--admin-bg));
 }
 
 :is(.produto-formulario, .produto-modal) :is(label, button, p, h3, h4, span) {
@@ -19,11 +19,11 @@
     .text-zinc-650,
     .text-zinc-800
   ) {
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
 }
 
 :is(.produto-formulario, .produto-modal) :is(.text-red-500, .text-rose-500) {
-  color: #fda4af;
+  color: var(--lit-t-fda4af, #fda4af);
 }
 
 :is(.produto-formulario, .produto-modal)
@@ -34,56 +34,56 @@
   ) {
   min-width: 0;
   min-height: 48px;
-  border-color: #38383f;
+  border-color: hsl(var(--admin-border-strong));
   border-radius: 16px;
-  background: #17171c;
-  color: #fafafa;
+  background: hsl(var(--admin-raised));
+  color: var(--lit-t-fafafa, #fafafa);
   font-size: 14px;
   font-weight: 400;
 }
 
 :is(.produto-formulario, .produto-modal) :is(input, textarea)::placeholder {
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
   opacity: 1;
 }
 
 :is(.produto-formulario, .produto-modal)
   :is(input, textarea, button):focus-visible {
-  outline: 2px solid #8bb4ff;
+  outline: 2px solid var(--lit-t-8bb4ff, #8bb4ff);
   outline-offset: 3px;
 }
 
 :is(.produto-formulario, .produto-modal) label:not(:has(input[type="file"])) {
   font-weight: 400;
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
 }
 
 .produto-formulario .produto-campo {
   position: relative;
   min-width: 0;
   padding: 0;
-  border: 1px solid #38383f;
-  border-radius: 16px;
-  background: #17171c;
+  border: 1px solid hsl(var(--admin-border));
+  border-radius: 18px;
+  background: hsl(var(--admin-surface));
 }
 
 .produto-formulario .produto-campo > label {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
+  top: 10px;
+  left: 16px;
+  right: 16px;
   z-index: 1;
   display: block;
   margin: 0;
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
 }
 
 .produto-formulario .produto-campo :is(input, textarea, [role="combobox"]) {
-  min-height: 72px;
-  padding: 32px 12px 12px;
+  min-height: 64px;
+  padding: 30px 16px 10px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -93,8 +93,8 @@
 .produto-formulario
   .produto-campo
   :is(input[name="price"], input[name="stock"]) {
-  min-height: 92px;
-  padding-top: 52px;
+  min-height: 64px;
+  padding-top: 30px;
   padding-right: 28px;
 }
 
@@ -103,8 +103,8 @@
 }
 
 .produto-campo:has(input[name="price"]) .absolute.left-0 {
-  top: 52px;
-  left: 12px;
+  top: 30px;
+  left: 16px;
   transform: none;
 }
 
@@ -123,10 +123,10 @@
   width: 52px;
   height: 44px;
   padding: 4px;
-  border: 1px solid #71717a;
+  border: 1px solid var(--lit-b-71717a, #71717a);
   border-radius: 999px;
   appearance: none;
-  background: #3f3f46;
+  background: var(--lit-b-3f3f46, #3f3f46);
   cursor: pointer;
 }
 
@@ -159,22 +159,32 @@
 }
 
 .produto-formulario input:disabled {
-  color: #b2b2bd;
+  color: var(--lit-t-b2b2bd, #b2b2bd);
   opacity: 1;
 }
 
+.produto-secao {
+  border: 1px solid hsl(var(--admin-border));
+  border-radius: 24px;
+  background: hsl(var(--admin-surface));
+}
+
 .produto-secao > section > button {
-  min-height: 76px;
-  padding: 12px 12px 12px 62px;
-  border: 1px solid #2d2d34;
-  border-radius: 20px;
-  background: #101013;
+  min-height: 72px;
+  padding: 12px 16px 12px 68px;
+  border: 0;
+  border-radius: 24px;
+  background: transparent;
+}
+
+.produto-secao > section > div {
+  padding: 8px 16px 16px;
 }
 
 .produto-secao > section > button > span > span:first-child {
   font-size: 16px;
   font-weight: 700;
-  color: #fafafa;
+  color: var(--lit-t-fafafa, #fafafa);
 }
 
 .produto-secao > section > button > span > span:last-child {
@@ -184,21 +194,18 @@
 }
 
 .produto-secao > section > button > svg {
-  width: 44px;
-  height: 44px;
-  padding: 12px;
-  border: 1px solid #38383f;
-  border-radius: 14px;
-  background: #1e1e24;
+  width: 20px;
+  height: 20px;
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
 }
 
 .produto-secao-aviso > section > button {
-  border-color: #795055;
-  background: #25171a;
+  border-color: var(--lit-b-795055, #795055);
+  background: var(--lit-b-25171a, #25171a);
 }
 
 .produto-secao-aviso > section > button > span > span:last-child {
-  color: #fda4af;
+  color: var(--lit-t-fda4af, #fda4af);
 }
 
 :where(.produto-modal) button {
@@ -214,10 +221,162 @@
   appearance: none;
 }
 
+.produto-formulario .produto-campo:has(input[name="costPrice"]) input {
+  padding-left: 44px;
+}
+
+.produto-formulario .produto-campo:has(input[name="costPrice"]) .absolute {
+  top: 30px;
+  left: 16px;
+  transform: none;
+}
+
+.produto-formulario .produto-dados .produto-campo textarea {
+  min-height: 92px;
+}
+
+.produto-formulario .produto-campo:has(input[name="stock"]) .absolute {
+  top: 30px;
+  right: 12px;
+  transform: none;
+}
+
+.produto-formulario .produto-campo:has(input[name="price"]) input {
+  font-weight: 600;
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+/* A barra usa a prateleira do AdminLayout: nenhuma faixa fixa própria. */
+.admin-acoes-da-barra:has(> .produto-acoes) {
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.admin-acao-inline:has(> .produto-acoes) {
+  margin: 16px auto 0;
+  padding: 16px;
+  max-width: 48rem;
+  border: 1px solid hsl(var(--admin-border));
+  border-radius: 24px;
+  background: hsl(var(--admin-surface));
+}
+
+.produto-acoes .produto-salvar:not(:disabled),
+.produto-fotos .produto-fotos-camera {
+  background: hsl(var(--admin-text, 0 0% 98%));
+  color: hsl(var(--admin-bg));
+}
+
+.produto-acoes .produto-prever {
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-acoes button:disabled {
+  background: hsl(var(--admin-raised));
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
+}
+
+.produto-acoes .produto-status {
+  min-height: 20px;
+  line-height: 1.5;
+}
+
+.produto-acoes .produto-status button {
+  min-height: 44px;
+}
+
+.produto-formulario .produto-progresso > span {
+  height: 6px;
+  flex: 1;
+  border-radius: 999px;
+  background: hsl(var(--admin-border));
+}
+
+.produto-formulario .produto-progresso > .produto-etapa-preenchida {
+  background: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-formulario .produto-fotos {
+  padding: 12px;
+  border: 1px dashed hsl(var(--admin-border-strong));
+  border-radius: 26px;
+  background: hsl(var(--admin-surface));
+}
+
+.produto-fotos .produto-fotos-vazio {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 360px;
+  margin: auto;
+}
+
+.produto-fotos .produto-fotos-envio {
+  grid-column: 1 / -1;
+  border: 0;
+  background: transparent;
+}
+
+.produto-fotos-envio .size-14 {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: hsl(var(--admin-raised));
+  box-shadow: none;
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
+}
+
+.produto-fotos-envio p:first-child {
+  font-size: 15px;
+  font-weight: 700;
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-fotos-envio .flex-wrap {
+  display: none;
+}
+
+.produto-fotos .produto-fotos-camera,
+.produto-fotos .produto-fotos-galeria {
+  min-height: 44px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.produto-fotos > div > p {
+  text-align: center;
+}
+
+.produto-dados > div:first-child > div:first-child {
+  display: none;
+}
+
+.produto-dados h3 {
+  font-size: 16px;
+}
+
+.produto-dados h3 > span {
+  font-size: 12px;
+}
+
+.produto-formulario .produto-secao > span {
+  left: 16px;
+  top: 16px;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+}
+
+.produto-formulario .produto-secao .produto-campo {
+  background: hsl(var(--admin-surface));
+}
+
 /* As folhas de ajuda são portais compartilhados. Este escopo só existe
    enquanto o formulário está montado; os componentes comuns ficam intactos. */
 body:has(.produto-formulario) [role="dialog"] h2 {
-  color: #fafafa;
+  color: var(--lit-t-fafafa, #fafafa);
   font-size: 18px;
   letter-spacing: normal;
   text-transform: none;

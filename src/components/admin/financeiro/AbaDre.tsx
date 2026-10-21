@@ -19,6 +19,7 @@ import {
   percentualDaReceita,
   sublinhasDaDre,
 } from "@/lib/financeiro";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { DreFinanceira, IntervaloDeDatas } from "@/types/financeiro";
 import {
@@ -78,9 +79,19 @@ function RotuloDaLinha({
   );
 }
 
+function corDaLinha(chave: ChaveDaDre, valor: number): string {
+  return chave === "lucro_bruto" ||
+    chave === "margem_contribuicao" ||
+    chave === "resultado_operacional" ||
+    chave === "resultado_financeiro" ||
+    chave === "lucro_liquido"
+    ? classeDoTexto(tomDoValor(valor))
+    : "text-white";
+}
+
 function classeDaLinha(linha: LinhaDaCascata): string {
   if (linha.final) return "border-t-2 border-violet-400/40 bg-violet-400/5";
-  if (linha.subtotal) return "border-t border-white/10 bg-white/[0.03]";
+  if (linha.subtotal) return "border-t border-admin-border bg-admin-raised";
   return "";
 }
 
@@ -122,7 +133,7 @@ function TabelaDoPeriodo({
               <tr
                 data-linha-dre={linha.chave}
                 className={cn(
-                  "grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border-b border-white/5 py-3 sm:table-row sm:py-0",
+                  "grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border-b border-admin-border py-3 sm:table-row sm:py-0",
                   classeDaLinha(linha),
                   linha.subtotal ? "font-black text-white" : "text-zinc-300",
                 )}
@@ -143,7 +154,7 @@ function TabelaDoPeriodo({
                     valor={linha.valor}
                     className={cn(
                       linha.final && "text-2xl sm:text-base",
-                      linha.valor < 0 ? "text-red-400" : "text-white",
+                      corDaLinha(linha.chave, linha.valor),
                     )}
                   />
                 </td>
@@ -156,7 +167,7 @@ function TabelaDoPeriodo({
               {sublinhas.map((sub) => (
                 <tr
                   key={`${linha.chave}-${sub.rotulo}`}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border-b border-white/5 py-3 text-xs text-zinc-400 sm:table-row sm:py-0"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border-b border-admin-border py-3 text-xs text-zinc-400 sm:table-row sm:py-0"
                 >
                   <th
                     scope="row"
@@ -200,7 +211,7 @@ function TabelaMensal({
   const valorNoMes = (indice: number, chave: ChaveDaDre) =>
     cascatas.at(indice)?.find((l) => l.chave === chave)?.valor ?? 0;
   const colunaFixa =
-    "sticky left-0 z-10 w-32 min-w-32 max-w-32 break-words border-r border-white/10 bg-[#101013] pr-3 text-left sm:w-56 sm:min-w-56 sm:max-w-56";
+    "sticky left-0 z-10 w-32 min-w-32 max-w-32 break-words border-r border-admin-border bg-admin-surface pr-3 text-left sm:w-56 sm:min-w-56 sm:max-w-56";
 
   return (
     <div
@@ -269,15 +280,19 @@ function TabelaMensal({
                       key={rotulo}
                       className="whitespace-nowrap px-3 py-2 text-right"
                     >
-                      <Dinheiro valor={valorNoMes(indice, linha.chave)} />
+                      <Dinheiro
+                        valor={valorNoMes(indice, linha.chave)}
+                        className={corDaLinha(
+                          linha.chave,
+                          valorNoMes(indice, linha.chave),
+                        )}
+                      />
                     </td>
                   ))}
                   <td className="whitespace-nowrap px-3 py-2 text-right">
                     <Dinheiro
                       valor={linha.valor}
-                      className={
-                        linha.valor < 0 ? "text-red-400" : "text-white"
-                      }
+                      className={corDaLinha(linha.chave, linha.valor)}
                     />
                   </td>
                 </tr>
@@ -399,12 +414,12 @@ export function AbaDre({
           rotulo="Lucro líquido"
           icone={BarChart3}
           destaque="text-violet-300"
-          className="bg-[#17171C]"
+          className="bg-admin-raised"
           detalhe={`Margem líquida ${formatarPercentual(margemLiquida)}`}
         >
           <Dinheiro
             valor={dados.lucroLiquido}
-            className={dados.lucroLiquido < 0 ? "text-red-400" : "text-white"}
+            className={classeDoTexto(tomDoValor(dados.lucroLiquido))}
           />
         </BlocoKpi>
         <BlocoKpi
@@ -422,7 +437,7 @@ export function AbaDre({
         >
           <Dinheiro
             valor={dados.lucroBruto}
-            className={dados.lucroBruto < 0 ? "text-red-400" : "text-white"}
+            className={classeDoTexto(tomDoValor(dados.lucroBruto))}
           />
         </BlocoKpi>
         <BlocoKpi
@@ -435,9 +450,7 @@ export function AbaDre({
         >
           <Dinheiro
             valor={dados.margemContribuicao}
-            className={
-              dados.margemContribuicao < 0 ? "text-red-400" : "text-white"
-            }
+            className={classeDoTexto(tomDoValor(dados.margemContribuicao))}
           />
         </BlocoKpi>
       </div>

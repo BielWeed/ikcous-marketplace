@@ -119,7 +119,7 @@ describe("TransportadorasSection — Melhor Envio ganha e-mail de contato (R3-7)
 
   async function abrir() {
     const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
+      "./apoio/transportadoras-isoladas"
     );
     await act(async () => {
       raiz.render(<TransportadorasSection />);
@@ -142,7 +142,7 @@ describe("TransportadorasSection — Melhor Envio ganha e-mail de contato (R3-7)
     ] as HTMLInputElement[];
   // Melhor Envio é o PRIMEIRO cartão (ORDEM_DOS_PROVEDORES).
   const emailME = () => camposEmail()[0];
-  const botaoSalvarME = () => botoes(/^Salvar$/)[0];
+  const botaoSalvarME = () => botoes(/^Salvar transportadora$/)[0];
   const botaoTestarME = () => botoes(/^Testar$/)[0];
 
   async function clicar(b: HTMLElement | undefined) {
@@ -270,7 +270,7 @@ describe("TransportadorasSection — Melhor Envio ganha e-mail de contato (R3-7)
               ...RESPOSTA_BASE.provedores,
               melhor_envio: {
                 ...RESPOSTA_BASE.provedores.melhor_envio,
-                contato_email: "",
+                contato_email: "contato@exemplo.com",
               },
             },
           },
@@ -294,9 +294,10 @@ describe("TransportadorasSection — Melhor Envio ganha e-mail de contato (R3-7)
 
     // Marca a caixa "Melhor Envio" no bloco de ligados (tem chave, sem
     // sandbox — pode marcar, mesmo sem e-mail: a recusa é do SERVIDOR).
-    const caixaMelhorEnvio = [
-      ...hospedeiro.querySelectorAll('input[type="checkbox"]'),
-    ][0] as HTMLInputElement;
+    // O e-mail existia na leitura; a recusa simula outra aba removendo-o no servidor.
+    const caixaMelhorEnvio = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Ligar Melhor Envio"]',
+    )!;
     await act(async () => {
       caixaMelhorEnvio.click();
     });

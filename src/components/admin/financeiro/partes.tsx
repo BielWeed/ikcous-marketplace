@@ -8,6 +8,7 @@ import { type ReactNode, createContext, useContext, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatarBRL, formatarBRLComSinal } from "@/lib/financeiro";
+import { classeDoPonto, classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -48,7 +49,7 @@ export function ReciboFinanceiro({
     <section
       role="status"
       aria-label={confirmacao.titulo}
-      className="rounded-3xl border border-teal-400/20 bg-[#17171C] p-5"
+      className="rounded-3xl border border-teal-400/20 bg-admin-raised p-5"
     >
       <div className="flex items-start gap-3">
         <SeloFinanceiro icone={Check} matiz="#2DD4BF" />
@@ -153,9 +154,9 @@ export function Dinheiro({
 
 /** Cor de valor com sinal: verde entra, vermelho sai, neutro zero. */
 export function corDoValor(valor: number): string {
-  if (Math.round(valor * 100) > 0) return "text-emerald-400";
-  if (Math.round(valor * 100) < 0) return "text-red-400";
-  return "text-zinc-300";
+  const tom = tomDoValor(Math.round(valor * 100));
+  // Zero segue zinc-300 (mais claro que o neutro -400 das cores de estado).
+  return tom === "neutro" ? "text-zinc-300" : classeDoTexto(tom);
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +208,7 @@ export function CartaoSecao({
       id={id}
       aria-label={titulo}
       className={cn(
-        "min-w-0 rounded-3xl border border-white/10 bg-[#101013] p-4 sm:p-5",
+        "min-w-0 rounded-3xl border border-admin-border bg-admin-surface p-4 sm:p-5",
         className,
       )}
     >
@@ -231,14 +232,14 @@ export function CartaoSecao({
 
 /** Superfície elevada das métricas, com rótulo de 12px em frase normal. */
 export const CLASSE_CASCA_DO_CARTAO =
-  "rounded-2xl border border-white/10 bg-[#17171C]";
+  "rounded-2xl border border-admin-border bg-admin-raised";
 
 export const CLASSE_ROTULO_DO_CARTAO =
   "text-xs font-semibold leading-tight text-zinc-300";
 
 /** Linha acionável: superfície, foco azul e seta, sem dourado decorativo. */
 export const CLASSE_CASCA_DA_LINHA_BOTAO =
-  "group rounded-2xl border border-white/10 bg-[#101013] text-left transition-colors hover:bg-[#1E1E24] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.99]";
+  "group rounded-2xl border border-admin-border bg-admin-surface text-left transition-colors hover:bg-admin-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.99]";
 
 export const CLASSE_SETA_DA_LINHA_BOTAO =
   "size-5 shrink-0 text-zinc-400 transition-transform group-hover:translate-x-0.5 group-hover:text-white";
@@ -274,7 +275,7 @@ export function BlocoKpi({
       {/* O ícone fica num selo no canto (nunca some); o rótulo reserva a
           faixa dele (`pr-9`) só quando há ícone, e o valor usa a largura toda. */}
       {Icone ? (
-        <span className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06]">
+        <span className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-xl border border-admin-border bg-white/[0.06]">
           <Icone
             aria-hidden="true"
             className={cn("size-4 shrink-0", destaque ?? "text-zinc-400")}
@@ -347,7 +348,7 @@ export function EstadoVazio({
   readonly acao?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-start gap-4 rounded-3xl border border-white/10 bg-[#101013] p-5">
+    <div className="flex flex-col items-start gap-4 rounded-3xl border border-admin-border bg-admin-surface p-5">
       <SeloFinanceiro icone={Icone} matiz="#BA9AFF" />
       <p className="text-xl font-bold text-white">{titulo}</p>
       {texto ? (
@@ -387,7 +388,7 @@ export function EstadoDeErro({
   return (
     <div
       role="alert"
-      className="flex flex-col items-start gap-4 rounded-3xl border border-red-400/25 bg-[#17171C] p-5"
+      className="flex flex-col items-start gap-4 rounded-3xl border border-red-400/25 bg-admin-raised p-5"
     >
       <div className="flex min-w-0 flex-1 items-start gap-2">
         <SeloFinanceiro icone={AlertTriangle} matiz="#FF9F5A" />
@@ -449,16 +450,16 @@ export function EstadoDeErro({
 // ---------------------------------------------------------------------------
 
 export const CLASSE_BOTAO_PRIMARIO =
-  "inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#F9D65B] to-[#EABD28] px-4 py-3 text-sm font-bold text-[#171308] shadow-[0_8px_24px_#EABD2814] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:from-[#26262E] disabled:to-[#26262E] disabled:text-zinc-400 disabled:shadow-none";
+  "inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#F9D65B] to-[#EABD28] px-4 py-3 text-sm font-bold text-[#171308] shadow-[0_8px_24px_#EABD2814] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:from-admin-hover disabled:to-admin-hover disabled:text-zinc-400 disabled:shadow-none";
 
 export const CLASSE_BOTAO_SECUNDARIO =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1E1E24] px-4 py-2.5 text-sm font-bold text-zinc-100 transition-colors hover:bg-[#26262E] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-zinc-400";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-4 py-2.5 text-sm font-bold text-zinc-100 transition-colors hover:bg-admin-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-zinc-400";
 
 export const CLASSE_BOTAO_PERIGO =
   "inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-red-400/25 bg-red-400/10 px-4 py-2.5 text-sm font-bold text-red-300 transition-colors hover:bg-red-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-zinc-400";
 
 export const CLASSE_CAMPO =
-  "min-h-[72px] w-full min-w-0 rounded-2xl border border-white/15 bg-[#1E1E24] px-3 pb-2 pt-7 text-base text-white outline-none transition-colors placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-sky-300 aria-invalid:border-red-400 disabled:cursor-not-allowed disabled:text-zinc-400 [&>option]:bg-[#1E1E24]";
+  "min-h-[72px] w-full min-w-0 rounded-2xl border border-admin-border-strong bg-admin-raised px-3 pb-2 pt-7 text-base text-white outline-none transition-colors placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-sky-300 aria-invalid:border-red-400 disabled:cursor-not-allowed disabled:text-zinc-400 [&>option]:bg-admin-raised";
 
 export const CLASSE_ROTULO = "text-xs font-bold text-zinc-300";
 
@@ -534,7 +535,7 @@ export function Segmentado<V extends string>({
     <div
       role="group"
       aria-label={rotulo}
-      className={cn("flex gap-1 rounded-2xl bg-[#17171C] p-1", className)}
+      className={cn("flex gap-1 rounded-2xl bg-admin-raised p-1", className)}
     >
       {opcoes.map((opcao) => (
         <button
@@ -544,7 +545,7 @@ export function Segmentado<V extends string>({
           disabled={opcao.desabilitada}
           onClick={() => aoMudar(opcao.valor)}
           className={cn(
-            "min-h-11 min-w-0 flex-1 break-words rounded-xl border border-transparent px-2 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-[#1E1E24] disabled:text-zinc-400",
+            "min-h-11 min-w-0 flex-1 break-words rounded-xl border border-transparent px-2 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:border-admin-border-strong disabled:bg-admin-raised disabled:text-zinc-400",
             opcao.valor === valor
               ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
               : "text-zinc-400 hover:bg-white/5 hover:text-white",
@@ -565,19 +566,28 @@ export function Etiqueta({
   readonly children: ReactNode;
   readonly tom?: "neutro" | "aviso" | "perigo" | "sucesso" | "ouro";
 }) {
+  const estado =
+    tom === "aviso"
+      ? "atencao"
+      : tom === "perigo"
+        ? "negativo"
+        : tom === "sucesso"
+          ? "positivo"
+          : "neutro";
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center rounded-lg border px-2 py-1 text-xs font-medium",
-        tom === "neutro" && "border-white/10 bg-white/5 text-zinc-400",
-        tom === "aviso" &&
-          "border-orange-400/30 bg-orange-400/10 text-orange-300",
-        tom === "perigo" && "border-red-500/30 bg-red-500/10 text-red-300",
-        tom === "sucesso" &&
-          "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-        tom === "ouro" && "border-white/10 bg-white/5 text-zinc-300",
+        "inline-flex max-w-full items-center gap-1.5 text-xs font-medium",
+        classeDoTexto(estado),
       )}
     >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-[7px] shrink-0 rounded-full",
+          classeDoPonto(estado),
+        )}
+      />
       {children}
     </span>
   );

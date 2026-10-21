@@ -11,6 +11,12 @@ import {
   fraseDoRenome,
   mensagemDaFalhaDeCategoria,
 } from "@/lib/gestao-de-categorias";
+import {
+  CHAVES_DE_ICONES,
+  IconeDaCategoria,
+  iconeDaCategoria,
+  nomeDoIcone,
+} from "@/lib/icones-de-categoria";
 import { Eye, EyeOff, Layers, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -39,7 +45,7 @@ interface GerenciarCategoriasProps {
 
 const BOTAO =
   "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 disabled:pointer-events-none disabled:opacity-40";
-const BOTAO_NEUTRO = `${BOTAO} border-white/10 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800 hover:text-white`;
+const BOTAO_NEUTRO = `${BOTAO} border-admin-border bg-admin-surface text-zinc-300 hover:bg-zinc-800 hover:text-white`;
 const BOTAO_DOURADO = `${BOTAO} border-admin-gold bg-admin-gold text-black hover:brightness-110`;
 const BOTAO_PERIGO = `${BOTAO} border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20`;
 
@@ -62,7 +68,13 @@ export function GerenciarCategorias({
 
 function ConteudoDaGestao() {
   const { usos, carregando, erro, recarregar } = useUsoDasCategorias();
-  const { renameCategory, deleteCategory, setCategoryActive } = useCategories();
+  const {
+    categories = [],
+    renameCategory,
+    deleteCategory,
+    setCategoryActive,
+    updateCategory,
+  } = useCategories();
 
   const [editando, setEditando] = useState<{
     readonly id: string;
@@ -221,6 +233,10 @@ function ConteudoDaGestao() {
 
       <ul className="space-y-3">
         {(usos ?? []).map((c) => {
+          const categoria = categories.find((item) => item.id === c.id) ?? {
+            name: c.nome,
+            icone: null,
+          };
           const uso = descreverUso(c);
           const emUso = categoriaEmUso(c);
           const nestaLinha = ocupado === c.id;
@@ -232,9 +248,13 @@ function ConteudoDaGestao() {
           return (
             <li
               key={c.id}
-              className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-4"
+              className="space-y-3 rounded-2xl border border-admin-border bg-zinc-950/60 p-4"
             >
               <div className="flex flex-wrap items-center gap-2">
+                <IconeDaCategoria
+                  icone={iconeDaCategoria(categoria)}
+                  className="size-6 shrink-0 text-zinc-300"
+                />
                 <span className="min-w-0 break-words text-base font-black text-white">
                   {c.nome}
                 </span>
@@ -249,6 +269,39 @@ function ConteudoDaGestao() {
                   ? `Em uso: ${uso}.`
                   : "Sem nenhum produto, banner ou regra."}
               </p>
+
+              <details>
+                <summary className="flex min-h-11 cursor-pointer items-center rounded-lg text-sm font-bold text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400">
+                  Escolher ícone
+                </summary>
+                <fieldset
+                  disabled={ocupado !== null}
+                  className="grid grid-cols-3 gap-2 pt-2 sm:grid-cols-5"
+                >
+                  <legend className="sr-only">Ícone de {c.nome}</legend>
+                  {[null, ...CHAVES_DE_ICONES].map((chave) => (
+                    <button
+                      type="button"
+                      key={chave ?? "automatico"}
+                      aria-label={`Ícone ${chave ? nomeDoIcone(chave) : "Automático"} para ${c.nome}`}
+                      aria-pressed={(categoria.icone ?? null) === chave}
+                      className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border border-admin-border bg-admin-surface px-1 py-2 text-xs text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 aria-pressed:border-zinc-400 aria-pressed:bg-zinc-800 disabled:opacity-40"
+                      onClick={() =>
+                        void executar(c.id, async () => {
+                          await updateCategory(c.id, { icone: chave }, true);
+                          return `Ícone de “${c.nome}” atualizado.`;
+                        })
+                      }
+                    >
+                      <IconeDaCategoria
+                        icone={chave ?? iconeDaCategoria({ name: c.nome })}
+                        className="size-6"
+                      />
+                      {chave ? nomeDoIcone(chave) : "Automático"}
+                    </button>
+                  ))}
+                </fieldset>
+              </details>
 
               {esteEdita ? (
                 <form
@@ -279,7 +332,7 @@ function ConteudoDaGestao() {
                     onChange={(e) =>
                       setEditando({ id: c.id, valor: e.target.value })
                     }
-                    className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-4 text-sm font-bold text-white focus:border-admin-gold focus:outline-none focus:ring-2 focus:ring-admin-gold/30"
+                    className="min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950 px-4 text-sm font-bold text-white focus:border-admin-gold focus:outline-none focus:ring-2 focus:ring-admin-gold/30"
                   />
                   {nomeReservado ? (
                     <p

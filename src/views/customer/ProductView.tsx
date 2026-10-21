@@ -3,6 +3,7 @@ import {
   CONTAINER_DO_COMPUTADOR,
   ROTULO_NO_COMPUTADOR,
 } from "@/components/desktop/medidas";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { LinkDeTrocas } from "@/components/politicas/LinksDasPoliticas";
 import { GaleriaDoProduto } from "@/components/ui/custom/GaleriaDoProduto";
 import { MarkdownRenderer } from "@/components/ui/custom/MarkdownRenderer";
@@ -33,6 +34,7 @@ import {
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -44,7 +46,6 @@ import {
   ChevronRight,
   Flame,
   Heart,
-  MessageCircle,
   Share2,
   ShoppingCart,
   Star,
@@ -1301,14 +1302,15 @@ export const ProductView = React.memo(function ProductView({
                 <button
                   onClick={handleWhatsApp}
                   title="Dúvidas no WhatsApp"
+                  aria-label="Dúvidas no WhatsApp"
                   className={cn(
-                    "flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95",
+                    "flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-zinc-200/50 bg-white transition-all duration-300 hover:bg-zinc-50 active:scale-95",
                     // Altura do CTA no desktop: os dois botões da linha de
                     // cima ficam alinhados (48px) em vez de 44 vs 48.
                     "lg:size-12",
                   )}
                 >
-                  <MessageCircle className="size-5" />
+                  <IconeWhatsapp className="size-5 text-[#25D366]" />
                 </button>
               )}
 
@@ -1410,7 +1412,7 @@ export const ProductView = React.memo(function ProductView({
             {/* Luxury Segmented Tabs - iOS Style & STICKY */}
             <div
               className={cn(
-                "sticky top-0 z-40 transition-all duration-300 -mx-6 px-6 py-1 flex flex-col border-b mb-4",
+                "sticky top-0 z-40 transition-all duration-300 -mx-5 px-5 py-1 flex flex-col border-b mb-4",
                 scrolled
                   ? "bg-white/80 backdrop-blur-md border-zinc-200/60 shadow-sm"
                   : "bg-transparent border-transparent",
@@ -1775,13 +1777,6 @@ export const ProductView = React.memo(function ProductView({
                 </div>
               </div>
             )}
-
-            {/* Reserva o fim da página para as barras fixas (compra dockada +
-            navegação inferior) não cobrirem a última fileira de cards. */}
-            <div
-              aria-hidden="true"
-              className={cn("h-44 md:h-36", "lg:hidden")}
-            />
           </div>
         </div>
       </div>
@@ -1791,12 +1786,13 @@ export const ProductView = React.memo(function ProductView({
           <AnimatePresence>
             {scrolled && (
               <motion.div
+                ref={medirRodapeCliente}
                 initial={{ y: 100, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
                 className={cn(
-                  "bottom-docked-navigation fixed inset-x-0 z-50 flex items-center justify-between gap-3 border-t border-zinc-200/60 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-xl md:bottom-[88px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-2xl md:border-x md:border-zinc-200/60",
+                  "bottom-docked-navigation fixed inset-x-0 z-50 flex items-center justify-between gap-3 border-t border-zinc-200/60 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-xl md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-2xl md:border-x md:border-zinc-200/60",
                   "lg:hidden",
                 )}
               >

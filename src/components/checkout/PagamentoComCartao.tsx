@@ -12,7 +12,7 @@ import {
 } from "@/lib/config-do-cartao";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { arredondarParaCentavos, formatCurrency } from "@/lib/utils";
-import { Clock, Loader2 } from "lucide-react";
+import { Clock, Loader2, Shield } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { BotaoDoCartao, PainelDoCartao } from "./AvisoDoCartao";
 import type {
@@ -187,6 +187,8 @@ type TipoDeAviso =
   | "dados"
   | "sem-limite"
   | "autorizacao"
+  | "parcelamento"
+  | "desabilitado"
   | "recusa"
   | "carga-falhou";
 
@@ -207,6 +209,10 @@ function tipoDoAvisoDaRecusa(categoria: CategoriaDaRecusa): TipoDeAviso {
       return "sem-limite";
     case "autorizacao":
       return "autorizacao";
+    case "parcelamento":
+      return "parcelamento";
+    case "desabilitado":
+      return "desabilitado";
     default:
       return "recusa";
   }
@@ -222,6 +228,10 @@ function tituloDoAviso(aviso: AvisoDoFormulario): string {
       return TEXTOS_DO_CARTAO.semLimite;
     case "autorizacao":
       return TEXTOS_DO_CARTAO.autorizacao;
+    case "parcelamento":
+      return TEXTOS_DO_CARTAO.parcelamento;
+    case "desabilitado":
+      return TEXTOS_DO_CARTAO.desabilitado;
     case "carga-falhou":
       return TEXTOS_DO_CARTAO.cargaFalhou;
     default:
@@ -620,7 +630,7 @@ export function classificarRespostaCartao(
         categoria: "terminal",
       };
     }
-    const categoria = categoriaDoServidor(r.categoriaDaRecusa);
+    const categoria = categoriaDoServidor(r.categoriaDaRecusa, motivo);
     return {
       tipo: "recusado",
       motivo: motivo ?? MOTIVO_PADRAO_DA_RECUSA,
@@ -1701,7 +1711,10 @@ export function PagamentoComCartao({
             focarNoTitulo
             titulo={tituloDoAviso(aviso)}
           >
-            {(aviso.tipo === "sem-limite" || aviso.tipo === "recusa") && (
+            {(aviso.tipo === "sem-limite" ||
+              aviso.tipo === "parcelamento" ||
+              aviso.tipo === "desabilitado" ||
+              aviso.tipo === "recusa") && (
               <BotaoDoCartao variante="primario" onClick={tentarOutroCartao}>
                 Tentar outro cartão
               </BotaoDoCartao>
@@ -1950,11 +1963,14 @@ export function PagamentoComCartao({
       </div>
 
       {formularioAtivo && (
-        // Verdadeira e sem selo: o que o Mercado Pago e a loja de fato fazem
-        // com o número do cartão (o dado mora em iframes do Mercado Pago; o
-        // app só recebe o token de uso único). Nada de ícone de certificação.
-        <p className="text-sm leading-snug text-zinc-600">
-          {TEXTOS_DO_CARTAO.confianca}
+        // O escudo acompanha a explicação, não representa certificação:
+        // os campos seguros são do Mercado Pago; o app só recebe o token.
+        <p className="flex items-start gap-2 text-xs leading-snug text-zinc-600">
+          <Shield
+            aria-hidden="true"
+            className="size-4 shrink-0 text-emerald-600"
+          />
+          <span>{TEXTOS_DO_CARTAO.confianca}</span>
         </p>
       )}
     </section>

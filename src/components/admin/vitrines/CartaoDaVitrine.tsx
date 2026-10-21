@@ -39,6 +39,7 @@ export function CartaoDaVitrine({
   aoAlternarAtiva,
   aoMover,
   aoSoltar,
+  aoAlterarLayout,
   travado,
 }: {
   readonly secao: SecaoDaHome;
@@ -49,6 +50,7 @@ export function CartaoDaVitrine({
   readonly aoAlternarAtiva: (id: string) => void;
   readonly aoMover: (indice: number, direcao: "up" | "down") => void;
   readonly aoSoltar: () => void;
+  readonly aoAlterarLayout: (id: string, layout: "padrao" | "compacto") => void;
   /** Ordem sendo gravada: nada no cartão responde até o banco confirmar. */
   readonly travado: boolean;
 }) {
@@ -76,8 +78,8 @@ export function CartaoDaVitrine({
         className={cn(
           "relative rounded-2xl border p-3 pl-2 transition-colors",
           secao.active
-            ? "border-white/5 bg-zinc-900/40"
-            : "border-dashed border-white/10 bg-transparent",
+            ? "border-admin-border bg-zinc-900/40"
+            : "border-dashed border-admin-border bg-transparent",
         )}
       >
         <button
@@ -148,14 +150,14 @@ export function CartaoDaVitrine({
           )}
         >
           {visiveis.length === 0 ? (
-            <span className="flex h-[42px] items-center rounded-[12px] border border-dashed border-white/15 px-3 text-xs font-semibold text-zinc-400">
+            <span className="flex h-[42px] items-center rounded-[12px] border border-dashed border-admin-border-strong px-3 text-xs font-semibold text-zinc-400">
               Sem produtos
             </span>
           ) : (
             visiveis.map((produto) => (
               <span
                 key={produto.id}
-                className="relative flex size-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-white/5 bg-zinc-800"
+                className="relative flex size-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-admin-border bg-zinc-800"
                 title={produto.name}
               >
                 {produto.images?.[0] ? (
@@ -182,7 +184,7 @@ export function CartaoDaVitrine({
         <div className="pointer-events-none relative ml-7 mt-3 flex flex-wrap items-center gap-1.5">
           <span
             className={cn(
-              "flex h-[30px] items-center whitespace-nowrap rounded-[10px] border border-white/5 bg-white/5 px-2.5 text-xs font-semibold text-zinc-300",
+              "flex h-[30px] items-center whitespace-nowrap rounded-[10px] border border-admin-border bg-white/5 px-2.5 text-xs font-semibold text-zinc-300",
               !secao.active && "opacity-50",
             )}
           >
@@ -201,7 +203,7 @@ export function CartaoDaVitrine({
           ) : (
             <span
               className={cn(
-                "flex h-[30px] items-center whitespace-nowrap rounded-[10px] border border-white/5 bg-white/5 px-2.5 text-xs font-semibold text-zinc-300",
+                "flex h-[30px] items-center whitespace-nowrap rounded-[10px] border border-admin-border bg-white/5 px-2.5 text-xs font-semibold text-zinc-300",
                 !secao.active && "opacity-50",
               )}
             >
@@ -216,7 +218,7 @@ export function CartaoDaVitrine({
               disabled={travado || indice === 0}
               aria-label={`Subir vitrine ${titulo}`}
               title="Subir"
-              className="flex size-[30px] items-center justify-center rounded-[10px] border border-white/5 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
+              className="flex size-[30px] items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
             >
               <ArrowUp className="size-3.5" />
             </button>
@@ -226,12 +228,62 @@ export function CartaoDaVitrine({
               disabled={travado || indice === total - 1}
               aria-label={`Descer vitrine ${titulo}`}
               title="Descer"
-              className="flex size-[30px] items-center justify-center rounded-[10px] border border-white/5 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
+              className="flex size-[30px] items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
             >
               <ArrowDown className="size-3.5" />
             </button>
           </div>
         </div>
+        {secao.id === "offers" && (
+          <div className="relative -mb-1.5 ml-7 mt-1.5 flex items-center gap-1 text-xs font-semibold text-zinc-300">
+            Layout
+            {(["padrao", "compacto"] as const).map((layout) => {
+              const marcado =
+                (secao.layout === "compacto" ? "compacto" : "padrao") ===
+                layout;
+              const nome = layout === "padrao" ? "Padrão" : "Compacto";
+              return (
+                <button
+                  type="button"
+                  key={layout}
+                  aria-label={`Layout ${nome}`}
+                  aria-pressed={marcado}
+                  disabled={travado}
+                  onClick={() => aoAlterarLayout(secao.id, layout)}
+                  className="h-11 disabled:opacity-50"
+                >
+                  <span
+                    className={cn(
+                      "flex h-8 items-center gap-1 rounded-[10px] border px-1.5",
+                      marcado
+                        ? "border-admin-gold/25 bg-admin-gold/10 text-admin-gold"
+                        : "border-admin-border bg-white/5",
+                    )}
+                  >
+                    <svg
+                      aria-hidden="true"
+                      width="30"
+                      height="20"
+                      viewBox="0 0 30 20"
+                      fill="none"
+                      stroke="currentColor"
+                    >
+                      <path
+                        d={
+                          layout === "padrao"
+                            ? "M2 1h26v18H2zM5 4h20v9H5zM5 16h12m3 0h5"
+                            : "M1 1h10v18H1zM14 1h10v18H14zM27 1h3M27 1v18h3M3 4h6v8H3zM16 4h6v8h-6zM3 15h6m7 0h6"
+                        }
+                      />
+                    </svg>
+                    {nome}
+                    {marcado && " ✓"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </Reorder.Item>
   );

@@ -1,3 +1,4 @@
+import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -14,9 +15,13 @@ import {
 } from "@/lib/avisos-do-aparelho";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { BellOff, BellRing, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BOTAO_INICIO, CARTAO_INICIO } from "./visualDoInicio";
+import { BOTAO_INICIO } from "./visualDoInicio";
+
+const TILE_DO_AVISO =
+  "flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-raised";
 
 type EstadoDoTeste = "ocioso" | "enviando" | "enviado" | "falhou" | "sem-rede";
 
@@ -206,19 +211,16 @@ function CartaoInterno({
   ) => (
     <section
       aria-label="Avisos de pedido novo neste aparelho"
-      className={CARTAO_INICIO}
+      className="min-w-0 py-3"
     >
       <div className="flex items-start gap-3">
-        <span
-          className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-300/25 bg-sky-300/10 text-sky-300"
-          aria-hidden="true"
-        >
+        <span className={TILE_DO_AVISO} aria-hidden="true">
           {icone}
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold leading-snug text-white">
+          <h3 className="text-base font-bold leading-snug text-white">
             {titulo}
-          </h2>
+          </h3>
           {corpo}
         </div>
       </div>
@@ -228,7 +230,7 @@ function CartaoInterno({
   if (inscricaoNova) {
     return regiao(
       "Avisos ligados neste aparelho",
-      <BellRing className="size-5" />,
+      <BellRing className={`size-5 ${classeDoTexto("positivo")}`} />,
       <>
         <p className="mt-1 text-xs leading-relaxed text-zinc-200">
           Pronto: a partir de agora o pedido novo avisa neste aparelho. Quer
@@ -256,21 +258,21 @@ function CartaoInterno({
           </button>
         </div>
         {teste === "enviado" ? (
-          <p role="status" className="mt-3 text-xs text-emerald-300">
+          <p role="status" className="mt-3 text-xs text-emerald-400">
             Aviso de teste enviado. Ele deve aparecer neste aparelho em
             instantes. Se não aparecer, confira se as notificações do aparelho
             estão ligadas.
           </p>
         ) : null}
         {teste === "falhou" ? (
-          <p role="alert" className="mt-3 text-xs text-red-300">
+          <p role="alert" className="mt-3 text-xs text-red-400">
             O aviso de teste não foi enviado. Os avisos podem não estar chegando
             neste aparelho: toque em Mandar um aviso de teste de novo ou ligue
             os avisos outra vez.
           </p>
         ) : null}
         {teste === "sem-rede" ? (
-          <p role="alert" className="mt-3 text-xs text-red-300">
+          <p role="alert" className="mt-3 text-xs text-red-400">
             Sem internet agora. Conecte-se e toque de novo.
           </p>
         ) : null}
@@ -301,7 +303,7 @@ function CartaoInterno({
       Agora não · ocultar por 7 dias
     </button>
   );
-  const icone = <BellOff className="size-5" />;
+  const icone = <BellOff className={`size-5 ${classeDoTexto("atencao")}`} />;
 
   if (situacao === "instalar-no-ios") {
     return regiao(
@@ -372,7 +374,7 @@ function CartaoInterno({
   return (
     <section
       aria-label="Avisos de pedido novo neste aparelho"
-      className={`${CARTAO_INICIO} space-y-3 !p-3`}
+      className="min-w-0 space-y-3 py-3"
     >
       <button
         type="button"
@@ -382,24 +384,27 @@ function CartaoInterno({
         aria-label={ligando ? "Ligando..." : "Ligar avisos neste aparelho"}
         className="flex min-h-12 w-full items-center gap-3 rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:opacity-60"
       >
-        <span
-          aria-hidden="true"
-          className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-300/25 bg-sky-300/10 text-sky-300"
-        >
+        <span aria-hidden="true" className={TILE_DO_AVISO}>
           {ligando ? (
-            <RefreshCw className="size-5 animate-spin" />
+            <RefreshCw className="size-5 animate-spin text-zinc-300" />
           ) : (
-            <BellOff className="size-5" />
+            <BellOff className={`size-5 ${classeDoTexto("atencao")}`} />
           )}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-bold text-white">
+          <span className="block text-base font-semibold text-white">
             {ligando ? "Ligando..." : "Ligar avisos neste aparelho"}
           </span>
-          <span className="mt-1 block text-xs text-zinc-400">
-            {ligando
-              ? "Aguarde a autorização deste aparelho."
-              : "Desligados · receba novos pedidos"}
+          <span className="mt-0.5 block text-sm text-zinc-400">
+            {ligando ? (
+              "Aguarde a autorização deste aparelho."
+            ) : (
+              <EstadoComPonto
+                tom="atencao"
+                texto="Desligados — ative para receber pedidos"
+                className="font-medium"
+              />
+            )}
           </span>
         </span>
         <ChevronRight
@@ -412,18 +417,18 @@ function CartaoInterno({
           aria-hidden="true"
           className="h-1 overflow-hidden rounded-full bg-white/5"
         >
-          <div className="h-full w-1/3 animate-pulse bg-sky-300" />
+          <div className="h-full w-1/3 animate-pulse bg-zinc-300" />
         </div>
       ) : null}
       {isOffline ? (
-        <p className="text-sm text-orange-300">
+        <p className={`text-sm ${classeDoTexto("atencao")}`}>
           Avisos de pedidos indisponíveis. Conecte-se para ligar ou testar os
           avisos.
         </p>
       ) : null}
       {agoraNao}
       {erroDeLigar ? (
-        <p role="alert" className="mt-3 text-xs text-red-300">
+        <p role="alert" className="mt-3 text-xs text-red-400">
           {erroDeLigar}
         </p>
       ) : null}

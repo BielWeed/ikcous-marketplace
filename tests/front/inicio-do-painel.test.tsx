@@ -173,6 +173,26 @@ describe("Início do painel", () => {
     await esperarAte(() => h.rpc.mock.calls.length >= 2);
   }
 
+  it("prejuízo mensal não pinta de vermelho as vendas do último dia", async () => {
+    h.respostas.set("painel_inicio", {
+      data: { ...PAINEL, mes: { ...PAINEL.mes, lucro_estimado: -1250 } },
+      error: null,
+    });
+    await montar();
+    await esperarAte(
+      () =>
+        hospedeiro.querySelectorAll('[data-testid="serie-14d-barra"]').length >
+        0,
+    );
+    const barras = hospedeiro.querySelectorAll(
+      '[data-testid="serie-14d-barra"]',
+    );
+    expect(barras[barras.length - 1].className).toContain("bg-emerald-400");
+    expect(hospedeiro.querySelector("p.text-red-400")?.textContent).toContain(
+      "1.250",
+    );
+  });
+
   it("chama as duas RPCs do contrato e mostra os 4 números do mês", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     await montar();
@@ -201,9 +221,15 @@ describe("Início do painel", () => {
     expect(pagina).toContain("R$ 350,00");
     expect(pagina).toContain("App");
     expect(pagina).toContain("Balcão");
-    expect(pagina).toContain("+25%");
-    // Receita do mês +23,5% vs. os mesmos dias do mês anterior (12345,67 / 10000).
-    expect(pagina).toContain("+23,5%");
+    // Variação em palavras, com a janela honesta (o banco compara o mesmo dia
+    // da semana passada, não "ontem"): 350 / 280 = +25%.
+    expect(pagina).toContain(
+      "25% a mais que no mesmo dia da semana passada, até esta hora",
+    );
+    // Receita do mês +23,5% sobre os mesmos dias do mês anterior (12345,67 / 10000).
+    expect(pagina).toContain(
+      "23,5% a mais que nos mesmos dias do mês anterior",
+    );
     // Identidade da loja vinda do config e do perfil.
     expect(pagina).toContain("Loja do Gabriel");
     expect(pagina).toContain("Manaus / AM");
@@ -277,7 +303,7 @@ describe("Início do painel", () => {
     await esperarAte(() => texto(hospedeiro).includes("pendências"));
 
     const destinos: [string, string][] = [
-      ["Preparar 5 pedidos", "admin-orders"],
+      ["Preparar pedidos", "admin-orders"],
       ["1 devolução aberta", "admin-devolucoes"],
       ["2 contas vencidas", "admin-financeiro"],
       ["3 produtos com estoque baixo", "admin-products"],
@@ -288,21 +314,21 @@ describe("Início do painel", () => {
       });
       expect(onNavigate).toHaveBeenLastCalledWith(destino);
     }
-    const preparar = botaoPorTexto(hospedeiro, "Preparar 5 pedidos");
-    expect(texto(preparar)).toContain("5");
+    // A contagem dos pedidos mora na linha âmbar acima do botão do destaque.
+    expect(texto(hospedeiro)).toContain("5 pedidos esperando para preparar");
     // 4 pendências acesas: preparar, devolução, vencidas, estoque.
     expect(texto(hospedeiro)).toContain("4 pendências");
   });
 
-  it("o destaque usa dourado e as linhas mantêm a matiz de cada função", async () => {
+  it("o destaque é um botão branco (sem dourado) e as linhas têm tile neutro com o glifo na cor", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     await montar();
     await esperarAte(() => texto(hospedeiro).includes("pendências"));
-    const preparar = botaoPorTexto(hospedeiro, "Preparar 5 pedidos");
-    for (const classe of ["rounded-2xl", "min-h-14", "bg-gradient-to-b"]) {
+    const preparar = botaoPorTexto(hospedeiro, "Preparar pedidos");
+    for (const classe of ["rounded-2xl", "min-h-14", "bg-white"]) {
       expect(preparar.classList.contains(classe)).toBe(true);
     }
-    expect(preparar.className).toContain("to-yellow-500");
+    expect(preparar.className).not.toMatch(/gold|yellow|amber/);
     expect(preparar.querySelector("svg.lucide-package")).not.toBeNull();
 
     const paraFazer = hospedeiro.querySelector<HTMLElement>(
@@ -314,21 +340,33 @@ describe("Início do painel", () => {
     for (const classe of ["rounded-2xl", "min-h-11", "text-left"]) {
       expect(emDia.classList.contains(classe)).toBe(true);
     }
-    expect(vencida.querySelector("span.text-orange-300")).not.toBeNull();
-    const selo = emDia.querySelector("span.size-9");
+    // Vencida = vermelho: a contagem à direita e o subtítulo.
+    expect(vencida.querySelectorAll("span.text-red-400")).toHaveLength(2);
+    // O tile é neutro (nunca pintado); só o glifo carrega a cor.
+    const selo = emDia.querySelector("span.size-10");
     expect(selo).not.toBeNull();
-    expect(selo?.className).toContain("bg-teal-400/10");
+    expect(selo?.className).toContain("bg-admin-raised");
+    expect(selo?.className).not.toMatch(/bg-(teal|sky|blue|orange|amber|red)/);
+    const glifo = selo?.querySelector("svg.lucide-wallet");
+    expect(glifo).not.toBeNull();
+    expect(glifo?.getAttribute("class")).toContain("text-zinc-400");
+    // O glifo da vencida é vermelho; o do estoque, âmbar.
     expect(
-      (selo?.className ?? "")
-        .split(/\s+/)
-        .filter((c) => /^(border|bg)-admin-gold/.test(c)),
-    ).toEqual([]);
-    expect(selo?.querySelector("svg.lucide-wallet")).not.toBeNull();
+      vencida
+        .querySelector("svg.lucide-triangle-alert, svg.lucide-alert-triangle")
+        ?.getAttribute("class"),
+    ).toContain("text-red-400");
+    expect(
+      botaoPorTexto(paraFazer!, "3 produtos com estoque baixo")
+        .querySelector("svg.lucide-package")
+        ?.getAttribute("class"),
+    ).toContain("text-amber-400");
     expect(
       emDia.querySelector("svg.lucide-chevron-right.size-5"),
     ).not.toBeNull();
     expect(emDia.className).not.toContain("rounded-xl");
-    expect(paraFazer?.textContent).not.toContain("Preparar 5 pedidos");
+    // O preparo está no destaque do dia: o "Para fazer" não o repete.
+    expect(paraFazer?.textContent).not.toContain("pedidos para preparar");
   });
 
   it("segue a ordem aprovada e separa as três colunas no computador", async () => {
@@ -345,6 +383,8 @@ describe("Início do painel", () => {
       "atalhos",
       "inicio-mes-titulo",
       "inicio-serie-titulo",
+      "inicio-contas-titulo",
+      "inicio-sua-loja-titulo",
       "inicio-assinatura-titulo",
       "inicio-checklist-titulo",
     ]);
@@ -362,7 +402,7 @@ describe("Início do painel", () => {
     const { buildIdentity } = await import("@/config/buildIdentity");
     await montar();
     const imagem = hospedeiro.querySelector<HTMLImageElement>(
-      'section[aria-label="Sua loja"] img',
+      'section[aria-labelledby="inicio-sua-loja-titulo"] img',
     );
     expect(imagem?.getAttribute("src")).toBe(buildIdentity.localUrls.icon_192);
     expect(imagem?.getAttribute("src")).not.toBe(
@@ -389,7 +429,8 @@ describe("Início do painel", () => {
     );
     const proximo = boasVindas?.querySelector("button");
     expect(proximo).not.toBeNull();
-    expect(proximo?.className).toContain("min-h-14");
+    expect(proximo?.className).toContain("min-h-11");
+    expect(proximo?.classList.contains("bg-white")).toBe(false);
     expect(texto(boasVindas)).toContain("Próximo passo");
     act(() => proximo?.click());
     expect(onNavigate).toHaveBeenLastCalledWith("admin-about-store");

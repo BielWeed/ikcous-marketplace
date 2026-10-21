@@ -45,7 +45,7 @@ const SEM_ABA = ["admin-pdv", "admin-notifications"] as const;
 
 describe("NOMES_DO_PAINEL", () => {
   it("toda tela admin-* (menos admin-login) tem nome não vazio", () => {
-    expect(telasDoPainel).toHaveLength(24);
+    expect(telasDoPainel).toHaveLength(26);
     for (const tela of telasDoPainel) {
       const nome = nomes.get(tela) ?? "";
       expect(nome, tela).toBeTypeOf("string");
@@ -82,6 +82,8 @@ describe("NOMES_DO_PAINEL", () => {
       "admin-whatsapp-config": "Minha loja",
       "admin-banners": "Banners",
       "admin-carousels": "Vitrines",
+      "admin-app-color": "Cor do app",
+      "admin-free-shipping-card": "Card de frete grátis",
       "admin-shipping": "Entrega e frete",
       "admin-shipping-national": "Entrega e frete",
       "admin-notifications": "Notificações",
@@ -144,7 +146,7 @@ describe("PORTAS_DO_PAINEL", () => {
         !(SEM_ABA as readonly string[]).includes(t) &&
         !(t in APELIDOS),
     );
-    expect(esperadas).toHaveLength(11);
+    expect(esperadas).toHaveLength(13);
     for (const tela of esperadas) {
       const abas = ABAS_DO_PAINEL.filter((aba) =>
         portasPorAba.get(aba)?.includes(tela),
@@ -176,6 +178,8 @@ describe("PORTAS_DO_PAINEL", () => {
         "admin-about-store",
         "admin-banners",
         "admin-carousels",
+        "admin-app-color",
+        "admin-free-shipping-card",
         "admin-shipping",
       ],
     });

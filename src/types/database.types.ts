@@ -14,6 +14,13 @@ export type Database = {
   };
   public: {
     Tables: {
+      // Contrato aditivo da 20261330; não consultar store_config para este dado privado.
+      config_mototaxi: {
+        Row: { id: number; whatsapp: string | null; nome: string | null };
+        Insert: { id?: number; whatsapp?: string | null; nome?: string | null };
+        Update: { id?: number; whatsapp?: string | null; nome?: string | null };
+        Relationships: [];
+      };
       _ninja_migrations: {
         Row: {
           applied_at: string | null;
@@ -378,6 +385,7 @@ export type Database = {
       };
       categorias: {
         Row: {
+          icone: string | null;
           ativo: boolean | null;
           created_at: string;
           descricao: string | null;
@@ -386,6 +394,7 @@ export type Database = {
           slug: string | null;
         };
         Insert: {
+          icone?: string | null;
           ativo?: boolean | null;
           created_at?: string;
           descricao?: string | null;
@@ -394,6 +403,7 @@ export type Database = {
           slug?: string | null;
         };
         Update: {
+          icone?: string | null;
           ativo?: boolean | null;
           created_at?: string;
           descricao?: string | null;
@@ -2372,6 +2382,7 @@ export type Database = {
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
+          free_shipping_card_style: string;
           free_shipping_min: number | null;
           home_sections: Json | null;
           id: number;
@@ -2420,6 +2431,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          free_shipping_card_style?: string;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
           id: number;
@@ -2468,6 +2480,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          free_shipping_card_style?: string;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
           id?: number;
@@ -2636,6 +2649,7 @@ export type Database = {
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
+          free_shipping_card_style: string | null;
           free_shipping_min: number | null;
           home_sections: Json | null;
           id: number | null;
@@ -2684,6 +2698,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          free_shipping_card_style?: string | null;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
           id?: number | null;
@@ -2727,6 +2742,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          free_shipping_card_style?: string | null;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
           id?: number | null;
@@ -3091,6 +3107,10 @@ export type Database = {
       };
     };
     Functions: {
+      salvar_config_mototaxi: {
+        Args: { p_whatsapp: string | null; p_nome: string | null };
+        Returns: Json;
+      };
       answer_question_atomic:
         | {
             Args: { p_answer: string; p_question_id: string };
@@ -3369,6 +3389,14 @@ export type Database = {
         Args: { p_observacao?: string | null; p_valor_contado: number };
         Returns: Json;
       };
+      fin_caixa_fechar_sessao: {
+        Args: {
+          p_observacao?: string;
+          p_sessao_id: string;
+          p_valor_contado: number;
+        };
+        Returns: Json;
+      };
       fin_caixa_historico: {
         Args: { p_limite?: number };
         Returns: Json;
@@ -3377,6 +3405,17 @@ export type Database = {
         Args: {
           p_conta_contrapartida?: string | null;
           p_descricao: string;
+          p_tipo: string;
+          p_valor: number;
+        };
+        Returns: Json;
+      };
+      fin_caixa_movimentar_com_chave: {
+        Args: {
+          p_chave: string;
+          p_conta_contrapartida?: string;
+          p_descricao: string;
+          p_sessao_id: string;
           p_tipo: string;
           p_valor: number;
         };
@@ -3910,6 +3949,7 @@ export type Database = {
           p_itens: unknown;
           p_observacao?: string | null;
           p_pagamento: string;
+          p_total_esperado?: number | null;
         };
         Returns: Json;
       };

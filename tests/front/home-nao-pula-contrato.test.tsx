@@ -63,8 +63,9 @@ const matchMediaStub = (consulta: string) => ({
 });
 
 let configDaLoja: Record<string, unknown> = {};
+let configCarregada = true;
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({ config: configDaLoja }),
+  useStore: () => ({ config: configDaLoja, isLoaded: configCarregada }),
 }));
 
 // Banners controláveis por caso: `bannersDaLoja.isLoaded` decide se o
@@ -111,6 +112,10 @@ vi.mock("@/components/ui/custom/CategoryFilter", () => ({
 
 vi.mock("@/components/ui/custom/ProductList", () => ({
   ProductList: () => null,
+}));
+
+vi.mock("@/components/ui/custom/FreeShippingBlock", () => ({
+  FreeShippingBlock: () => null,
 }));
 
 vi.mock("@/components/ui/custom/ProductCarousel", () => ({
@@ -200,24 +205,17 @@ describe("banner do topo: o esqueleto tem a geometria do banner real", () => {
 });
 
 describe("bloco de frete: altura estável da primeira pintura ao config", () => {
-  it("enquanto o config não carrega, um esqueleto de 74px segura o lugar", () => {
+  it("esqueleto e os dois ramos do cartão reservam 172px sem cortar texto", () => {
     const home = fonte(HOME);
-    // A troca esqueleto→real é decidida por configLoaded, e o esqueleto
-    // tem a altura do bloco real (p-3.5 + ícone 44px + borda = 74px).
-    expect(home).toMatch(/const blocoFrete = configLoaded \?/);
-    expect(home).toContain("h-[74px] w-full animate-pulse rounded-[24px]");
-  });
-
-  it("o 74px é assertado CONTRA o bloco real, não solto (laudo da ponte)", () => {
     const frete = fonte(FREE_SHIPPING_BLOCK);
-    // O cálculo do esqueleto (74px) deriva destas três declarações do
-    // bloco real: p-3.5 (28px) + ícone size-11 (44px) + borda (2px).
-    // Se a loja mudar o bloco (p-5, ícone maior), este teste força a
-    // revisão do espelho. Folga conhecida e aceita: o real vira sm:p-4
-    // (78px) em telas >= 640px — 4px de recuo no desktop, fora do alvo
-    // mobile medido.
-    expect(frete).toMatch(/p-3\.5 shadow-md/);
-    expect(frete).toContain("size-11");
+    expect(home).toMatch(/const blocoFrete = configLoaded \?/);
+    expect(home).toContain('config.freeShippingCardStyle === "compacto"');
+    expect(home).toContain('"h-[76px]" : "h-[172px]"');
+    expect(frete).toContain("min-h-[76px]");
+    expect(home).toContain("w-full animate-pulse rounded-[24px]");
+    expect(frete.match(/min-h-\[172px\]/g)).toHaveLength(2);
+    expect(frete).toContain("size-10");
+    expect(frete).not.toMatch(/truncate|line-clamp|text-overflow/);
   });
 
   it("o bloco real carregado continua vindo pelo InfoBlockCarousel", () => {
@@ -243,7 +241,9 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     expect(home).toMatch(
       /if \(secProducts\.length === 0\) \{\s*\n\s*if \(!isLoading\) return null;/,
     );
-    expect(home).toContain("<SecaoOfertasEsqueleto key={section.id} />");
+    expect(home).toContain(
+      "<SecaoOfertasEsqueleto key={section.id} layout={layoutOfertas} />",
+    );
     expect(home).toContain("<SecaoCarrosselEsqueleto key={section.id} />");
   });
 
@@ -271,7 +271,7 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
       "if (derivadaPorFiltro && ultimaVisitaTinhaConteuto === false)",
     );
     const idxEsqueletoOfertas = home.indexOf(
-      "<SecaoOfertasEsqueleto key={section.id} />",
+      "<SecaoOfertasEsqueleto key={section.id} layout={layoutOfertas} />",
     );
     expect(idxIsLoading).toBeGreaterThan(-1);
     expect(idxGuarda).toBeGreaterThan(idxIsLoading);
@@ -289,7 +289,7 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     );
     // E a memória é gravada quando dados e banners da visita resolveram.
     expect(home).toMatch(
-      /if \(isLoading \|\| !bannersLoaded\) return;\s*\n\s*gravarMemoriaDaHome\(\{/,
+      /if \(isLoading \|\| !bannersLoaded \|\| !configLoaded\) return;\s*\n\s*gravarMemoriaDaHome\(\{/,
     );
     // Parecer b7yj9l: memória tem validade (7 dias) — velha demais é
     // descartada e a home cai na aposta de hoje.
@@ -310,7 +310,7 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     expect(home).toMatch(
       /section\.productIds && section\.productIds\.length > 0/,
     );
-    expect(home).toContain("function SecaoOfertasEsqueleto() {");
+    expect(home).toContain("function SecaoOfertasEsqueleto(");
     expect(home).toContain("function SecaoCarrosselEsqueleto() {");
   });
 
@@ -371,23 +371,17 @@ describe("catálogo: o esqueleto do card reserva a mesma proporção do real", (
 });
 
 describe("barra de categorias: altura estável sem dados", () => {
-  it("o esqueleto dos pills espelha o wrapper e a altura dos botões reais", () => {
+  it("o esqueleto dos blocos espelha a altura dos botões reais", () => {
     const src = fonte(CATEGORY_FILTER);
     // Wrapper do esqueleto = wrapper real (flex w-full items-center).
     expect(src).toMatch(
       /<div\s+role="status"\s+className="flex w-full items-center"/,
     );
-    // A faixa de pills do esqueleto usa a MESMA classe da faixa real
-    // (px-1 py-0.5), com pills h-8 (32px ≥ botão real py-2 text-[10px]
-    // ≈ 31px) — sem dados a barra já tem a altura de carregada.
-    expect(src).toContain(
-      '"scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5"',
-    );
-    expect(src).toContain("h-8 w-24");
-    // A altura do botão REAL também é parte do contrato (laudo da ponte,
-    // buraco 2): sem ela, um py-3 no botão real envelhece o pill h-8 do
-    // esqueleto em silêncio.
-    expect(src).toMatch(/rounded-full px-5 py-2 text-\[10px\]/);
+    // Faixa compartilhada e blocos de 108px nos dois estados.
+    expect(src.split("className={FAIXA}").length - 1).toBe(2);
+    expect(src.split("h-[108px] w-20").length - 1).toBe(2);
+    expect(src).toContain("size-16");
+    expect(src).toContain("overscroll-x-contain");
   });
 });
 
@@ -401,6 +395,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
 
   beforeEach(() => {
     configDaLoja = {};
+    configCarregada = true;
     bannersDaLoja = { isLoaded: true, banners: [] };
     // O jsdom deste runner não entrega localStorage funcional (o hook lê
     // dentro de try/catch e cairia sempre em "1ª visita"): um fake por
@@ -436,6 +431,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     temBanner: boolean;
     temOfertas: boolean;
     temBestsellers: boolean;
+    layoutOfertas?: "padrao" | "compacto";
   }) => {
     window.localStorage.setItem(
       "ikcous_home_memoria",
@@ -497,6 +493,86 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     expect(esqueletoDeOfertas()).not.toBeNull();
     expect(esqueletoDeCarrossel()).not.toBeNull();
     expect(esqueletoDeBanner()).not.toBeNull();
+  });
+
+  it("Compacto reserva 306 px já no primeiro desenho sem config, pela memória síncrona", async () => {
+    configCarregada = false;
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+      layoutOfertas: "compacto",
+    });
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).toContain("h-[306px]");
+    expect(
+      esqueletoDeOfertas()?.querySelectorAll("[data-cartao-esqueleto]"),
+    ).toHaveLength(3);
+    expect(
+      esqueletoDeOfertas()?.querySelector("[data-cartao-esqueleto]")?.className,
+    ).toContain("h-[220px]");
+    expect(
+      JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)
+        .layoutOfertas,
+    ).toBe("compacto");
+    configDaLoja = {
+      homeSections: [
+        { id: "offers", title: "Ofertas", active: true, layout: "compacto" },
+      ],
+    };
+    configCarregada = true;
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).toContain("h-[306px]");
+  });
+
+  it("sem memória nem config mantém o Padrão; config Compacta reserva 306 px", async () => {
+    configCarregada = false;
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).not.toContain("h-[306px]");
+    configDaLoja = {
+      homeSections: [
+        { id: "offers", title: "Ofertas", active: true, layout: "compacto" },
+      ],
+    };
+    configCarregada = true;
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).toContain("h-[306px]");
+  });
+
+  it("a config resolvida vence a memória e grava o novo layout para a próxima visita", async () => {
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+      layoutOfertas: "compacto",
+    });
+    configDaLoja = {
+      homeSections: [
+        { id: "offers", title: "Ofertas", active: true, layout: "padrao" },
+      ],
+    };
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).not.toContain("h-[306px]");
+    await montar([criarProduto({ id: "p", originalPrice: 130 })], false);
+    expect(
+      JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)
+        .layoutOfertas,
+    ).toBe("padrao");
+  });
+
+  it("config não resolvida não apaga a memória Compacta mesmo com produtos e banners prontos", async () => {
+    configCarregada = false;
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+      layoutOfertas: "compacto",
+    });
+    await montar([criarProduto({ id: "p", originalPrice: 130 })], false);
+    expect(
+      JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)
+        .layoutOfertas,
+    ).toBe("compacto");
   });
 
   it("volta a loja SEM ofertas e SEM banner: nenhum esqueleto de ofertas/banner nasce", async () => {

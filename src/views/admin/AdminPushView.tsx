@@ -152,7 +152,7 @@ function SecaoColapsavel({
   const reduzirMovimento = useReducedMotion();
 
   return (
-    <div className="rounded-[20px] border border-white/[0.08] bg-admin-card p-4">
+    <div className="rounded-[20px] border border-admin-border bg-admin-card p-4">
       <button
         type="button"
         onClick={() => {
@@ -284,7 +284,10 @@ function PreviaNoCelular({
 
   return (
     <div data-testid="previa-celular" className="min-w-0">
-      <div className="relative mx-auto min-w-0 w-full max-w-[360px] overflow-hidden rounded-[32px] border border-white/[0.14] bg-gradient-to-b from-[#2A2A33] to-[#0D0D11] p-4 shadow-[0_16px_40px_rgba(0,0,0,0.2)] sm:p-5">
+      <div
+        data-tema-fixo=""
+        className="relative mx-auto min-w-0 w-full max-w-[360px] overflow-hidden rounded-[32px] border border-white/[0.14] bg-gradient-to-b from-[#2A2A33] to-[#0D0D11] p-4 shadow-[0_16px_40px_rgba(0,0,0,0.2)] sm:p-5"
+      >
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -top-12 left-1/4 h-28 w-1/2 rounded-full bg-white/[0.13] blur-3xl"
@@ -300,7 +303,7 @@ function PreviaNoCelular({
             {hora}
           </p>
           <div className="mt-5 flex items-start gap-3 rounded-[22px] border border-white/[0.17] bg-white/[0.12] p-3.5 shadow-lg backdrop-blur-xl">
-            <div className="size-11 shrink-0 overflow-hidden rounded-[11px] bg-black ring-1 ring-white/10">
+            <div className="size-11 shrink-0 overflow-hidden rounded-[11px] bg-black ring-1 ring-admin-border">
               <IconeDaLoja logoUrl={logoUrl} nome={nome} />
             </div>
             <div className="min-w-0 flex-1">
@@ -415,6 +418,24 @@ export const AdminPushView = memo(function AdminPushView({
     body: "",
     url: "/",
   });
+  const notificationAtualRef = useRef(notification);
+  useEffect(() => {
+    notificationAtualRef.current = notification;
+  }, [notification]);
+
+  const limparMensagemEnviada = (enviada: typeof notification) => {
+    const aindaEhEnviada = (atual: typeof notification) =>
+      atual.title === enviada.title &&
+      atual.body === enviada.body &&
+      atual.url === enviada.url;
+    // A conclusão de X não pode apagar Y, escolhida enquanto o envio aguardava.
+    if (!aindaEhEnviada(notificationAtualRef.current)) return;
+    setNotification((atual) =>
+      aindaEhEnviada(atual) ? { title: "", body: "", url: "/" } : atual,
+    );
+    setCustomPath("");
+  };
+
   const { isSupported, subscribe } = usePushNotifications();
   const { recordAction } = useVOR();
   const [isTestSubscribed, setIsTestSubscribed] = useState(false);
@@ -428,7 +449,10 @@ export const AdminPushView = memo(function AdminPushView({
   const [predictedReach, setPredictedReach] = useState<ContagemMedida>(null);
   const rodadaDoAlcanceRef = useRef(0);
   const [history, setHistory] = useState<any[] | null>(null);
-  const [targetUserName, setTargetUserName] = useState<string | null>(null);
+  const [targetUserName, setTargetUserName] = useState<{
+    id: string;
+    nome: string | null;
+  } | null>(null);
   const [destType, setDestType] = useState<string>("home");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [customPath, setCustomPath] = useState<string>("");
@@ -532,6 +556,8 @@ export const AdminPushView = memo(function AdminPushView({
   })();
 
   useEffect(() => {
+    let superada = false;
+    setTargetUserName(null);
     if (targetUserId) {
       setSegment(targetUserId);
       const fetchUserName = async () => {
@@ -540,15 +566,17 @@ export const AdminPushView = memo(function AdminPushView({
           .select("full_name")
           .eq("id", targetUserId)
           .single();
-        if (!error && data) {
-          setTargetUserName(data.full_name);
+        if (!superada && !error && data) {
+          setTargetUserName({ id: targetUserId, nome: data.full_name });
         }
       };
       fetchUserName();
     } else {
-      setTargetUserName(null);
       setSegment("all");
     }
+    return () => {
+      superada = true;
+    };
   }, [targetUserId]);
 
   const fetchSubscribers = useCallback(async () => {
@@ -760,6 +788,8 @@ export const AdminPushView = memo(function AdminPushView({
       return;
     }
 
+    // O objeto deste render é o instantâneo usado por todo o envio.
+    const mensagemEnviada = notification;
     setLoading(true);
     try {
       if (!user) throw new Error("Administrador não autenticado");
@@ -830,8 +860,7 @@ export const AdminPushView = memo(function AdminPushView({
               description:
                 "A mensagem foi registrada como aviso dentro do app — ele vai ver na próxima vez que abrir a loja.",
             });
-            setNotification({ title: "", body: "", url: "/" });
-            setCustomPath("");
+            limparMensagemEnviada(mensagemEnviada);
           } catch (inAppErr) {
             console.error("Error saving in-app notification:", inAppErr);
             toast.error("Não foi possível registrar o aviso para este cliente");
@@ -1042,8 +1071,7 @@ export const AdminPushView = memo(function AdminPushView({
       );
 
       if (envioConfirmado && entregues > 0) {
-        setNotification({ title: "", body: "", url: "/" });
-        setCustomPath("");
+        limparMensagemEnviada(mensagemEnviada);
       }
       fetchHistory();
     } catch (error) {
@@ -1112,7 +1140,7 @@ export const AdminPushView = memo(function AdminPushView({
       {/* Top Header Bar — fórmula "Elite Header" (AdminPageHeader), mesma
           casca das ondas anteriores: o título padrão, a ajuda na linha do
           título e os indicadores à direita. O subtítulo fica na view. */}
-      <div className="sticky top-0 z-20 border-b border-white/10 bg-[#09090b]/90 px-4 py-3 backdrop-blur-xl">
+      <div className="sticky top-0 z-20 border-b border-admin-border bg-admin-bg/90 px-4 py-3 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-4xl">
           {/* `flex-wrap` (correção 23/09/2026, pedido do dono): título
               (h1, shrink-0) e o wrapper de `acoes` (selo de status,
@@ -1129,7 +1157,7 @@ export const AdminPushView = memo(function AdminPushView({
               acoes={
                 <>
                   {/* Indicadores no Topbar (os mesmos de antes) */}
-                  <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
+                  <div className="hidden sm:flex items-center gap-2 rounded-lg border border-admin-border bg-admin-surface px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
                     <Smartphone className="size-3.5 text-admin-gold" />
                     <span>
                       <strong className="text-white font-bold">
@@ -1139,7 +1167,7 @@ export const AdminPushView = memo(function AdminPushView({
                     </span>
                   </div>
                   {MOSTRAR_AVISOS_DE_COMPRAS && (
-                    <div className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[11px] font-semibold">
+                    <div className="flex items-center gap-1.5 rounded-lg border border-admin-border bg-admin-surface px-2.5 py-1 text-[11px] font-semibold">
                       <span
                         className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-admin-gold animate-pulse" : "bg-zinc-600"}`}
                       />
@@ -1161,7 +1189,7 @@ export const AdminPushView = memo(function AdminPushView({
               >
                 <span
                   aria-hidden="true"
-                  className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                  className="flex size-7 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
                 >
                   <HelpCircle className="size-4" />
                 </span>
@@ -1228,7 +1256,7 @@ export const AdminPushView = memo(function AdminPushView({
                         notification.body === arch.mensagem.body &&
                         notification.url === arch.mensagem.url
                           ? "border-admin-gold bg-admin-gold/10"
-                          : "border-white/[0.08] bg-admin-card hover:border-white/25"
+                          : "border-admin-border bg-admin-card hover:border-white/25"
                       }`}
                       onClick={() => {
                         setNotification({ ...arch.mensagem });
@@ -1268,7 +1296,7 @@ export const AdminPushView = memo(function AdminPushView({
               </div>
 
               {isOffline && (
-                <div className="flex items-center gap-2.5 rounded-[20px] border border-white/[0.08] bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in">
+                <div className="flex items-center gap-2.5 rounded-[20px] border border-admin-border bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in">
                   <AlertCircle className="size-4 shrink-0" />
                   <div className="text-sm leading-relaxed">
                     <span className="font-bold uppercase">
@@ -1284,7 +1312,7 @@ export const AdminPushView = memo(function AdminPushView({
                   primeiro se escreve, depois se escolhe quem lê). Contadores
                   tabulares para o número não dançar enquanto digita. */}
               <div className="space-y-4">
-                <div className="rounded-2xl border border-white/[0.08] bg-admin-card px-4 py-3 transition-shadow focus-within:border-white/[0.35] focus-within:ring-4 focus-within:ring-white/5 motion-reduce:transition-none">
+                <div className="rounded-2xl border border-admin-border bg-admin-card px-4 py-3 transition-shadow focus-within:border-white/[0.35] focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none">
                   <div className="flex items-center justify-between gap-2">
                     <Label
                       htmlFor="push-title"
@@ -1320,7 +1348,7 @@ export const AdminPushView = memo(function AdminPushView({
                   />
                 </div>
 
-                <div className="min-h-[112px] rounded-2xl border border-white/[0.08] bg-admin-card px-4 py-3 transition-shadow focus-within:border-white/[0.35] focus-within:ring-4 focus-within:ring-white/5 motion-reduce:transition-none">
+                <div className="min-h-[112px] rounded-2xl border border-admin-border bg-admin-card px-4 py-3 transition-shadow focus-within:border-white/[0.35] focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none">
                   <div className="flex items-center justify-between gap-2">
                     <Label
                       htmlFor="push-body"
@@ -1363,7 +1391,7 @@ export const AdminPushView = memo(function AdminPushView({
                   <div
                     data-testid="aviso-codigo-pendente"
                     role="alert"
-                    className="flex items-start gap-2 rounded-[20px] border border-white/[0.08] bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in"
+                    className="flex items-start gap-2 rounded-[20px] border border-admin-border bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in"
                   >
                     <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                     <p className="text-sm leading-relaxed">
@@ -1403,7 +1431,10 @@ export const AdminPushView = memo(function AdminPushView({
                         Mensagem para Cliente Específico
                       </p>
                       <p className="text-xs font-bold text-white mt-0.5">
-                        Cliente: {targetUserName || "Carregando..."}
+                        Cliente:{" "}
+                        {(targetUserName?.id === targetUserId &&
+                          targetUserName.nome) ||
+                          "Carregando..."}
                       </p>
                     </div>
                   </div>
@@ -1425,7 +1456,7 @@ export const AdminPushView = memo(function AdminPushView({
                       inclui `Boolean(targetUserId)` — o `targetUserId &&`
                       daqui era o mesmo termo repetido duas vezes. */}
               {podeGravarAvisoSemPush && (
-                <div className="mt-2 flex items-center gap-2 rounded-[20px] border border-white/[0.08] bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in">
+                <div className="mt-2 flex items-center gap-2 rounded-[20px] border border-admin-border bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in">
                   <AlertCircle className="size-3.5 shrink-0" />
                   <p className="text-sm leading-relaxed">
                     Este cliente não tem aparelho inscrito para push — a
@@ -1490,7 +1521,7 @@ export const AdminPushView = memo(function AdminPushView({
                       className={`flex min-h-[192px] min-w-0 flex-col items-start rounded-[20px] border-[1.5px] p-3.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60 ${
                         segment === s.id && s.count !== 0 && !isOffline
                           ? "border-admin-gold bg-gradient-to-b from-admin-gold/[0.16] to-admin-gold/[0.04]"
-                          : "border-white/[0.08] bg-admin-card enabled:hover:border-white/25"
+                          : "border-admin-border bg-admin-card enabled:hover:border-white/25"
                       } disabled:cursor-not-allowed`}
                     >
                       <span className="flex w-full items-center justify-between gap-2">
@@ -1563,7 +1594,7 @@ export const AdminPushView = memo(function AdminPushView({
                 <SelectTrigger
                   id="push-destination"
                   aria-label="Para onde o cliente vai ao clicar"
-                  className="h-auto min-h-[88px] w-full justify-between gap-3 whitespace-normal rounded-[20px] border-white/[0.08] bg-admin-card dark:bg-admin-card px-3.5 py-3 text-left shadow-none motion-reduce:transition-none focus-visible:border-white/35 focus-visible:ring-white/10 disabled:opacity-60 [&>svg]:hidden"
+                  className="h-auto min-h-[88px] w-full justify-between gap-3 whitespace-normal rounded-[20px] border-admin-border bg-admin-card dark:bg-admin-card px-3.5 py-3 text-left shadow-none motion-reduce:transition-none focus-visible:border-white/35 focus-visible:ring-admin-border-strong disabled:opacity-60 [&>svg]:hidden"
                 >
                   <SeloDeIcone
                     icone={Home}
@@ -1586,7 +1617,7 @@ export const AdminPushView = memo(function AdminPushView({
                     Mudar
                   </span>
                 </SelectTrigger>
-                <SelectContent className="rounded-[20px] border border-white/[0.08] bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
+                <SelectContent className="rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
                   <SelectItem className="min-h-12" value="home">
                     Página Inicial da Loja
                   </SelectItem>
@@ -1628,7 +1659,7 @@ export const AdminPushView = memo(function AdminPushView({
                     value={filtroDeProduto}
                     onChange={(e) => setFiltroDeProduto(e.target.value)}
                     disabled={isOffline || loading || loadingProducts}
-                    className="min-h-12 rounded-2xl border-white/[0.08] bg-admin-card text-sm text-white placeholder:text-zinc-400 focus-visible:border-white/35 focus-visible:ring-white/10"
+                    className="min-h-12 rounded-2xl border-admin-border bg-admin-card text-sm text-white placeholder:text-zinc-400 focus-visible:border-white/35 focus-visible:ring-admin-border-strong"
                   />
                   <Select
                     name="productId"
@@ -1638,7 +1669,7 @@ export const AdminPushView = memo(function AdminPushView({
                   >
                     <SelectTrigger
                       id="push-product-select"
-                      className="h-auto min-h-12 w-full rounded-2xl border border-white/[0.08] bg-admin-card px-3 text-sm text-white focus-visible:border-white/35 focus-visible:ring-white/10 [&>svg]:opacity-50"
+                      className="h-auto min-h-12 w-full rounded-2xl border border-admin-border bg-admin-card px-3 text-sm text-white focus-visible:border-white/35 focus-visible:ring-admin-border-strong [&>svg]:opacity-50"
                     >
                       <SelectValue
                         placeholder={
@@ -1648,7 +1679,7 @@ export const AdminPushView = memo(function AdminPushView({
                         }
                       />
                     </SelectTrigger>
-                    <SelectContent className="max-h-56 overflow-y-auto rounded-[20px] border border-white/[0.08] bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
+                    <SelectContent className="max-h-56 overflow-y-auto rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
                       {produtosVisiveis.map((p) => (
                         <SelectItem
                           className="min-h-12"
@@ -1667,7 +1698,7 @@ export const AdminPushView = memo(function AdminPushView({
                   antes). Recolhido por padrão; abre sozinho quando a URL de
                   um modelo pronto não é uma das telas da lista (destino
                   `custom`), para o caminho nunca ficar escondido. */}
-              <div className="[&>section>button]:min-h-12 [&>section>button]:rounded-[20px] [&>section>button]:border [&>section>button]:border-white/[0.08] [&>section>button]:bg-admin-card [&>section>button]:px-4 [&>section>button>svg]:motion-reduce:transition-none">
+              <div className="[&>section>button]:min-h-12 [&>section>button]:rounded-[20px] [&>section>button]:border [&>section>button]:border-admin-border-strong [&>section>button]:bg-admin-card [&>section>button]:px-4 [&>section>button>svg]:motion-reduce:transition-none">
                 <SecaoRecolhivel
                   titulo="Avançado: abrir outra página"
                   temErro={destType === "custom"}
@@ -1688,7 +1719,7 @@ export const AdminPushView = memo(function AdminPushView({
                       disabled={isOffline || loading}
                       placeholder="/nome-da-pagina"
                       useShadcn={true}
-                      className="min-h-12 rounded-2xl border-white/[0.08] bg-admin-card font-mono text-sm text-white focus-visible:border-white/35 focus-visible:ring-white/10 placeholder:text-zinc-400"
+                      className="min-h-12 rounded-2xl border-admin-border bg-admin-card font-mono text-sm text-white focus-visible:border-white/35 focus-visible:ring-admin-border-strong placeholder:text-zinc-400"
                     />
                   </div>
                 </SecaoRecolhivel>
@@ -1740,7 +1771,7 @@ export const AdminPushView = memo(function AdminPushView({
               única saída honesta é não afirmar: os selos saíram, sem
               inventar substituto.
             */}
-          <div className="rounded-[20px] border border-white/[0.08] bg-admin-card p-4">
+          <div className="rounded-[20px] border border-admin-border bg-admin-card p-4">
             <div className="flex items-center justify-between mb-2">
               <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-400">
                 <Users className="size-3.5 text-zinc-300" /> Clientes Prontos
@@ -1751,7 +1782,7 @@ export const AdminPushView = memo(function AdminPushView({
               </span>
             </div>
 
-            <div className="flex items-baseline justify-between border-b border-white/5 pb-2.5">
+            <div className="flex items-baseline justify-between border-b border-admin-border pb-2.5">
               <div className="flex min-w-0 flex-wrap items-baseline gap-2">
                 <h2 className="text-3xl font-black tabular-nums tracking-tight text-white">
                   {rotuloDaContagem(subCount)}
@@ -1764,7 +1795,7 @@ export const AdminPushView = memo(function AdminPushView({
           </div>
 
           {/* Dica de Vendas — a outra metade do par (o texto é o de antes) */}
-          <div className="flex items-start gap-3 rounded-[20px] border border-white/[0.08] bg-admin-card p-4">
+          <div className="flex items-start gap-3 rounded-[20px] border border-admin-border bg-admin-card p-4">
             <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-admin-border bg-white/5 text-zinc-300">
               <Clock className="size-3.5 text-zinc-300" />
             </div>
@@ -1803,7 +1834,7 @@ export const AdminPushView = memo(function AdminPushView({
                 </p>
               </div>
             ) : history.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 py-7 text-center">
+              <div className="rounded-2xl border border-dashed border-admin-border py-7 text-center">
                 <div className="mb-3 flex justify-center" aria-hidden="true">
                   <Inbox className="size-8 text-zinc-400" />
                 </div>
@@ -1819,7 +1850,7 @@ export const AdminPushView = memo(function AdminPushView({
               history.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-[20px] border border-white/[0.08] bg-white/[0.02] p-3.5"
+                  className="rounded-[20px] border border-admin-border bg-admin-surface p-3.5"
                 >
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
                     <span className="text-zinc-400 font-mono">
@@ -1840,7 +1871,7 @@ export const AdminPushView = memo(function AdminPushView({
                   <p className="mt-1 text-sm text-zinc-400 line-clamp-1">
                     {item.body}
                   </p>
-                  <div className="mt-1.5 flex items-center justify-between border-t border-white/5 pt-1 text-[11px]">
+                  <div className="mt-1.5 flex items-center justify-between border-t border-admin-border pt-1 text-[11px]">
                     <span className="min-w-0 flex-1 font-mono text-zinc-400 truncate">
                       Ao clicar: {item.url}
                     </span>
@@ -1893,8 +1924,8 @@ export const AdminPushView = memo(function AdminPushView({
                 <div
                   className={`rounded-xl border p-3.5 transition-colors duration-300 motion-reduce:transition-none ${
                     config.realTimeSalesAlerts
-                      ? "border-admin-border bg-white/[0.02]"
-                      : "border-white/10 bg-zinc-900/60"
+                      ? "border-admin-border bg-admin-raised"
+                      : "border-admin-border bg-admin-surface"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -1903,7 +1934,7 @@ export const AdminPushView = memo(function AdminPushView({
                         className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-colors duration-300 motion-reduce:transition-none ${
                           config.realTimeSalesAlerts
                             ? "border-admin-border bg-white/5 text-zinc-300"
-                            : "border-white/5 bg-zinc-950 text-zinc-400"
+                            : "border-admin-border bg-zinc-950 text-zinc-400"
                         }`}
                       >
                         <Sparkles className="size-4" />
@@ -1962,7 +1993,7 @@ export const AdminPushView = memo(function AdminPushView({
                         transition={{ duration: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[11px] leading-relaxed text-zinc-400 space-y-1">
+                        <div className="mt-2.5 pt-2.5 border-t border-admin-border text-[11px] leading-relaxed text-zinc-400 space-y-1">
                           <p>
                             Esta opção exibe pequenas notificações discretas na
                             loja quando alguém faz um pedido, passando mais
@@ -2009,7 +2040,7 @@ export const AdminPushView = memo(function AdminPushView({
               O que você pode fazer aqui
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
+              <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Send className="size-3.5 text-admin-gold" />
                   Enviar Notificação
@@ -2020,7 +2051,7 @@ export const AdminPushView = memo(function AdminPushView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
+              <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Sparkles className="size-3.5 text-admin-gold" />
                   Mensagens Prontas
@@ -2031,7 +2062,7 @@ export const AdminPushView = memo(function AdminPushView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
+              <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Users className="size-3.5 text-sky-500" />
                   Quem Vai Receber
@@ -2047,7 +2078,7 @@ export const AdminPushView = memo(function AdminPushView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
+              <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <History className="size-3.5 text-purple-500" />
                   Histórico de Envios

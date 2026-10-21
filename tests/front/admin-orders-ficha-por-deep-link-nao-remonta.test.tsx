@@ -40,6 +40,11 @@ const eqDaBuscaAvulsa = vi.fn();
 // painel-avancar-rele-pedido-do-deep-link.test.tsx: fica VAZIO (o pedido
 // nunca está na página carregada), simulando o caminho de deep link.
 let mockOrders: Order[] = [];
+let devolucoesAbertas = 0;
+
+vi.mock("@/hooks/useDevolucoesAdmin", () => ({
+  useDevolucoesAbertas: () => ({ abertas: devolucoesAbertas }),
+}));
 // Captura o `onRealtimeEvent` que a view passa ao hook, para o teste
 // disparar um UPDATE do realtime sobre o pedido da ficha (revalidação
 // silenciosa, ressalva da revisão de 648).
@@ -229,6 +234,7 @@ describe("AdminOrdersView — ficha aberta por deep link não remonta quando `or
   beforeEach(() => {
     vi.clearAllMocks();
     mockOrders = [];
+    devolucoesAbertas = 0;
     from.mockReset();
     eqDaBuscaAvulsa.mockReset();
     from.mockImplementation(() => builderPedidoUnico(linhaCruaDoDeepLink()));
@@ -324,6 +330,29 @@ describe("AdminOrdersView — ficha aberta por deep link não remonta quando `or
     expect(onNavigate.mock.calls[0][0]).toBe("admin-devolucoes");
     expect(typeof onNavigate.mock.calls[0][1]).toBe("undefined");
   });
+
+  it.each([0, 2])(
+    "Devoluções tem palavra visível e selo só com pendências (%i)",
+    async (abertas) => {
+      devolucoesAbertas = abertas;
+      await renderizar(vi.fn(), "");
+      const botao = hospedeiro.querySelector<HTMLButtonElement>(
+        'header button[title="Devoluções"]',
+      );
+      expect(botao).not.toBeNull();
+      expect(botao?.textContent).toContain("Devoluções");
+      const selo = botao?.querySelector("span.absolute");
+      if (abertas === 0) {
+        expect(selo).toBeNull();
+        expect(botao?.getAttribute("aria-label")).toBe("Devoluções");
+      } else {
+        expect(selo?.textContent).toBe("2");
+        expect(botao?.getAttribute("aria-label")).toBe(
+          "Devoluções, 2 em andamento",
+        );
+      }
+    },
+  );
 
   function botaoAdicionarAnotacao() {
     return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>

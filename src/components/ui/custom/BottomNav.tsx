@@ -57,7 +57,7 @@ export const BottomNav = memo(function BottomNav({
           : undefined) as React.CSSProperties
       }
     >
-      <div className="flex h-[64px] items-center justify-around px-2">
+      <div className="flex h-[var(--nav-height)] items-center justify-around px-2">
         {navItems.map((item) => {
           const isActive =
             currentView === item.view ||

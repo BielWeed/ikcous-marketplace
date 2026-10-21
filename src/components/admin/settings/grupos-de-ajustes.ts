@@ -52,7 +52,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "minha-loja",
     titulo: NOMES_DO_PAINEL["admin-about-store"],
     ajuda:
-      "Nome, logo, cores, endereço, horário de atendimento e a descrição da loja — tudo editado numa única tela. Aqui também fica o E-mail da loja: o Gmail que envia os e-mails do pedido, com o passo a passo para cadastrá-lo. E os Pedidos de privacidade dos clientes: exclusão de conta e correção de e-mail pedidas pelo app, que a loja atende e marca aqui.",
+      "Nome, logo, endereço, horário de atendimento e a descrição da loja — tudo editado numa única tela. Aqui também fica o E-mail da loja: o Gmail que envia os e-mails do pedido, com o passo a passo para cadastrá-lo. E os Pedidos de privacidade dos clientes: exclusão de conta e correção de e-mail pedidas pelo app, que a loja atende e marca aqui.",
     portas: [
       {
         tela: "admin-about-store",
@@ -64,10 +64,15 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "aparencia",
     titulo: "Aparência do app",
     ajuda:
-      "Os Banners (artes, links e agendamentos) e as Vitrines (títulos, ordem e ativação) que a cliente vê no app.",
+      "Os Banners (artes, links e agendamentos), as Vitrines (títulos, ordem e ativação), a Cor do app (a cor da sua marca nos botões, na barra do celular e na tela de abertura) e o Card de frete grátis (completo ou compacto na página inicial) que a cliente vê no app.",
     portas: [
       { tela: "admin-banners", descricao: "Artes, links e agendamentos" },
       { tela: "admin-carousels", descricao: "Títulos, ordem e ativação" },
+      { tela: "admin-app-color", descricao: "A cor da sua marca no app" },
+      {
+        tela: "admin-free-shipping-card",
+        descricao: "Aviso completo ou compacto na Home",
+      },
     ],
   },
   {

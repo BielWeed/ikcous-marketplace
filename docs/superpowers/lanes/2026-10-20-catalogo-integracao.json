@@ -1,0 +1,14 @@
+{
+  "plano": "noturno-catalogo-integracao",
+  "frentes": [
+    {
+      "nome": "catalogo-recarga",
+      "descricao": "Integrar somente a frente aprovada; caixa-db permanece isolado aguardando RED e correção",
+      "posse": [
+        "src/views/admin/AdminProductsView.tsx",
+        "tests/front/admin-products-recarga-mais-recente.test.tsx"
+      ]
+    }
+  ],
+  "liberados": {}
+}

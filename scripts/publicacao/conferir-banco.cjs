@@ -2256,6 +2256,26 @@ const ROL_DA_54B = ROL_DA_54A.map((item) =>
   ),
 );
 
+// Lote 55: 20261252, catálogo apenas; rollback preserva a tabela privada.
+const ROL_DA_55A = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_caixa_fechar_sessao: corpo conhecido (md5)",
+  "fin_caixa_movimentar_com_chave: corpo conhecido (md5)",
+  "rpcs novas do caixa: atributos e dependencias de sempre",
+  "rpcs novas do caixa: EXECUTE de authenticated e service_role, PUBLIC e anon sem",
+  "rpcs antigas do caixa: corpo de sempre (md5)",
+  "fin_caixa_movimento_tentativas: forma conhecida",
+  "fin_caixa_movimento_tentativas: so servidor, RLS e nenhuma politica",
+];
+const ROL_DA_55B = [
+  "controle: funcoes de public visiveis a este papel",
+  "rpcs novas do caixa: ausentes",
+  "rpcs antigas do caixa: corpo de sempre (md5)",
+  "rpcs antigas do caixa: EXECUTE de authenticated e service_role, PUBLIC e anon sem",
+  "fin_caixa_movimento_tentativas: forma conhecida",
+  "fin_caixa_movimento_tentativas: so servidor, RLS e nenhuma politica",
+];
+
 // Lote 49: 20261246000000, catalogo apenas; os dois lados tem o mesmo rol fechado.
 const ROL_DA_49A = [
   "controle: funcoes de public visiveis a este papel",
@@ -2323,7 +2343,94 @@ const ROL_DA_52B = [
   "marketplace_order_internal_notes: dono certo, fora do realtime e sem ACL de coluna",
   "dependencias: marketplace_orders, portas do admin de agora e funcao do carimbo",
 ];
+// Lote 56: 20261260000000, catalogo apenas; tabela privada do diagnostico do cartao. Os dois lados tem rol proprio:
+// a 56a descreve a tabela PRESENTE e fechada ao servidor, a 56b prova a AUSENCIA dela (o rollback derruba a tabela).
+const ROL_DA_56A = [
+  "controle: funcoes de public visiveis a este papel",
+  "tentativas_cartao_diagnostico: forma conhecida (colunas, restricoes, valores padrao, comentario)",
+  "tentativas_cartao_diagnostico: indices (o unico do par mp_order_id e mp_payment_id e o da consulta por pedido), todos validos",
+  "tentativas_cartao_diagnostico: so servidor (service_role com SELECT, INSERT e UPDATE; nada a anon, authenticated e PUBLIC)",
+  "tentativas_cartao_diagnostico: RLS ligada (sem FORCE) e nenhuma politica",
+  "tentativas_cartao_diagnostico: dono certo, sem gatilho, fora do realtime e sem ACL de coluna",
+  "dependencias: marketplace_orders (id uuid) e os papeis anon, authenticated e service_role",
+];
+const ROL_DA_56B = [
+  "controle: funcoes de public visiveis a este papel",
+  "tentativas_cartao_diagnostico: tabela, indices e restricao unica ainda nao existem",
+  "dependencias: marketplace_orders (id uuid) existe",
+  "dependencias: os papeis anon, authenticated e service_role existem",
+];
+// Lote 57: mesmos cinco fatos de catalogo, corpos diferentes ANTES/DEPOIS.
+const ROL_DA_57 = [
+  "controle: funcoes de public visiveis a este papel",
+  "concluir_estorno: corpo exato (md5)",
+  "pagamentos_a_reconciliar: corpo exato (md5)",
+  "as duas funcoes: assinaturas, atributos e EXECUTE so do servidor",
+  "dependencia 20261241: marcas e corpos do saldo em duvida presentes",
+];
+// Lote 58: a 280 troca a assinatura, sem sobrecarga. ANTES exige só a 249;
+// DEPOIS exige só a 280. A nota privada continua operacional nos dois lados.
+const ROL_DA_58A = [
+  ...ROL_DA_52A.slice(0, 2),
+  "registrar_venda_presencial: corpo da 20261280000000 (total conferido, md5)",
+  ...ROL_DA_52A.slice(3),
+];
+const ROL_DA_58B = [
+  ...ROL_DA_52A.slice(0, 2),
+  "registrar_venda_presencial: corpo da 20261249000000 (base anterior, md5)",
+  ...ROL_DA_52A.slice(3),
+];
+// Lote 59: a 290 so troca o corpo de fin__forma_do_pedido. ANTES exige o corpo
+// da 177; DEPOIS exige o da 290. Assinatura, atributos e ACL iguais nos dois lados.
+const ROL_DA_59A = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin__forma_do_pedido: corpo da 20261290000000 (online sem forma, md5)",
+  "fin__forma_do_pedido: assinatura e atributos (sql, IMMUTABLE, search_path=public, sem SECURITY DEFINER nem sobrecarga)",
+  "fin__forma_do_pedido: sem EXECUTE para PUBLIC, anon e authenticated",
+];
+const ROL_DA_59B = [
+  ROL_DA_59A[0],
+  "fin__forma_do_pedido: corpo da 20261177000000 (base anterior, md5)",
+  ...ROL_DA_59A.slice(2),
+];
+const ROL_DA_60 = [
+  "controle: funcoes de public visiveis a este papel",
+  "upsert_store_config: corpo exato (md5)",
+  "upsert_store_config: assinatura, atributos e ACL preservados",
+  "store_config: estilo restrito e com padrao completo",
+  "v_store_config: colunas na ordem e leitura publica preservada",
+];
+const ROL_DA_61A = [
+  "categorias: RLS ativa e quatro policies originais",
+  "categorias: leitura publica e UPDATE authenticated por grant de tabela",
+  "categorias.icone: text nulavel sem default",
+  "categorias_icone_check: 14 chaves exatas e validada",
+];
+const ROL_DA_61B = [
+  ...ROL_DA_61A.slice(0, 2),
+  "categorias.icone: ausente ou text nulavel preservada",
+  "categorias_icone_check: ausente",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
+  "61b-antes-icones-das-categorias": ROL_DA_61B,
+  "62a-conferir-mototaxi-aplicado": [
+    "controle: catalogo publico visivel",
+    "config_mototaxi: colunas e restricoes",
+    "config_mototaxi: RLS admin atual e ACL",
+    "salvar_config_mototaxi: corpo exato e atributos",
+    "salvar_config_mototaxi: ACL restrita",
+    "contato privado: fora da configuracao publica",
+  ],
+  "62b-antes-mototaxi-ausente": [
+    "controle: catalogo publico visivel",
+    "mototaxi: tabela e RPC ausentes",
+    "contato privado: fora da configuracao publica",
+  ],
+  "60a-conferir-estilo-card-frete-aplicado": ROL_DA_60,
+  "60b-antes-estilo-card-frete-base-vigente": ROL_DA_60,
+  "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,
+  "57b-antes-pagamento-adiantado-e-estorno-base-vigente": ROL_DA_57,
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
   "8k-subtotal-divergente-ou-vazia-provada": ROL_DA_8K,
@@ -2410,6 +2517,14 @@ const ROL_FECHADO_POR_CONSULTA = {
   "53b-antes-faturamento-potencial-base-vigente": ROL_DA_53B,
   "54a-conferir-lucro-do-estoque-aplicado": ROL_DA_54A,
   "54b-antes-lucro-do-estoque-base-vigente": ROL_DA_54B,
+  "55a-conferir-intencao-do-caixa-aplicado": ROL_DA_55A,
+  "55b-antes-intencao-do-caixa-base-vigente": ROL_DA_55B,
+  "56a-conferir-motivo-da-recusa-do-cartao-aplicado": ROL_DA_56A,
+  "56b-antes-motivo-da-recusa-do-cartao-base-vigente": ROL_DA_56B,
+  "58a-conferir-total-do-balcao-aplicado": ROL_DA_58A,
+  "58b-antes-total-do-balcao-base-vigente": ROL_DA_58B,
+  "59a-conferir-online-sem-forma-aplicado": ROL_DA_59A,
+  "59b-antes-online-sem-forma-base-vigente": ROL_DA_59B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 

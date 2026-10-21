@@ -6,6 +6,7 @@ import {
   VozClienteTab,
 } from "@/components/admin/users/VozClienteTab";
 import { calcularResumoFicha } from "@/components/admin/users/ficha-resumo";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +41,7 @@ import { papel } from "@/lib/papeis-aria-da-tabela";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { precoVendido } from "@/lib/preco-vendido";
 import { supabase } from "@/lib/supabase";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { formatCurrency } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Address, CartItem, Order, View } from "@/types";
@@ -47,23 +49,19 @@ import { haptic } from "@/utils/haptic";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  Calendar,
   Check,
   Copy,
   CreditCard,
   ExternalLink,
   HelpCircle,
-  Mail,
   MapPin,
-  MessageSquare,
   Package,
-  Phone,
   ShoppingCart,
   Star,
   Trash2,
   User,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface Profile {
@@ -91,6 +89,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const isOffline = useOnlineStatus();
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [idCarregado, setIdCarregado] = useState<string | null>(null);
+  // Troca de cliente, nova tentativa e desmontagem invalidam respostas antigas.
+  const consultaFicha = useRef(0);
+  const consultaVoz = useRef(0);
+  const fichaCarregada = !loading && idCarregado === userId && isAdmin;
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -132,8 +135,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
   const carregarVoz = useCallback(async () => {
     if (!isAdmin) return;
+    const consulta = ++consultaVoz.current;
     setVozCarregando(true);
     setVozErro(null);
+    setAvaliacoes([]);
+    setPerguntas([]);
     try {
       const [resReviews, resQuestions] = await Promise.all([
         supabase
@@ -147,6 +153,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           .eq("user_id", userId)
           .order("created_at", { ascending: false }),
       ]);
+      if (consulta !== consultaVoz.current) return;
       if (resReviews.error) throw resReviews.error;
       if (resQuestions.error) throw resQuestions.error;
 
@@ -188,15 +195,20 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         })),
       );
     } catch (err) {
+      if (consulta !== consultaVoz.current) return;
       console.error("[AdminUserDetail] Erro ao carregar voz do cliente:", err);
       setVozErro("Não foi possível carregar o que este cliente escreveu.");
     } finally {
-      setVozCarregando(false);
+      if (consulta === consultaVoz.current) setVozCarregando(false);
     }
   }, [userId, isAdmin]);
 
   useEffect(() => {
+    const controle = consultaVoz;
     carregarVoz();
+    return () => {
+      controle.current++;
+    };
   }, [carregarVoz]);
 
   const handleCopy = (text: string, field: "id" | "email" | "whatsapp") => {
@@ -224,13 +236,23 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
   const fetchUserData = useCallback(async () => {
     if (!isAdmin) return;
+    const consulta = ++consultaFicha.current;
     setLoading(true);
     setLoadFailed(false);
+    setIdCarregado(null);
+    setProfile(null);
+    setOrders([]);
+    setAddresses([]);
+    setCartItems([]);
+    setCartItemToRemove(null);
+    setIsClearingCart(false);
+    setCopiedField(null);
     try {
       const { data, error } = await supabase.rpc("get_admin_user_detail", {
         p_user_id: userId,
       });
 
+      if (consulta !== consultaFicha.current) return;
       if (error) throw error;
 
       const payload = data as any;
@@ -248,6 +270,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           .select("*, product_variants(*)")
           .in("id", productIds);
 
+        if (consulta !== consultaFicha.current) return;
         if (prodError) throw prodError;
 
         const reconstructedCart: CartItem[] = (payload.cart_items || []).map(
@@ -304,25 +327,33 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       } else {
         setCartItems([]);
       }
+      setIdCarregado(userId);
     } catch (err) {
+      if (consulta !== consultaFicha.current) return;
       console.error("[AdminUserDetail] Error fetching data:", err);
       toast.error("Erro ao carregar dados do usuário");
       setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (consulta === consultaFicha.current) setLoading(false);
     }
   }, [userId, isAdmin]);
 
   useEffect(() => {
+    const controle = consultaFicha;
     fetchUserData();
+    return () => {
+      controle.current++;
+    };
   }, [fetchUserData]);
 
   const handleRemoveCartItem = (productId: string, variantId?: string) => {
+    if (!fichaCarregada) return;
     setCartItemToRemove({ productId, variantId });
   };
 
   const confirmRemoveCartItem = async () => {
-    if (!cartItemToRemove) return;
+    if (!cartItemToRemove || !fichaCarregada || !idCarregado) return;
+    const consulta = consultaFicha.current;
     if (isOffline) {
       toast.error("Operação negada: Você está offline.");
       return;
@@ -334,7 +365,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         .from("cart_items")
         .delete()
         .select("id")
-        .eq("user_id", userId)
+        .eq("user_id", idCarregado)
         .eq("product_id", productId);
 
       if (variantId) {
@@ -345,6 +376,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
       const { data, error } = await query;
 
+      if (consulta !== consultaFicha.current) return;
       if (error) throw error;
 
       // A policy de DELETE de `cart_items` ganhou o ramo de admin na
@@ -371,18 +403,22 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       toast.success("Item removido com sucesso!");
       fetchUserData();
     } catch (err) {
+      if (consulta !== consultaFicha.current) return;
       console.error("Error removing cart item:", err);
       toast.error("Erro ao remover item do carrinho");
     } finally {
-      setCartItemToRemove(null);
+      if (consulta === consultaFicha.current) setCartItemToRemove(null);
     }
   };
 
   const handleClearUserCart = () => {
+    if (!fichaCarregada) return;
     setIsClearingCart(true);
   };
 
   const confirmClearUserCart = async () => {
+    if (!fichaCarregada || !idCarregado) return;
+    const consulta = consultaFicha.current;
     if (isOffline) {
       toast.error("Operação negada: Você está offline.");
       return;
@@ -392,8 +428,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         .from("cart_items")
         .delete()
         .select("id")
-        .eq("user_id", userId);
+        .eq("user_id", idCarregado);
 
+      if (consulta !== consultaFicha.current) return;
       if (error) throw error;
 
       // Mesmo defeito do item único: policy de DELETE sem `is_admin()`
@@ -411,10 +448,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       toast.success("Carrinho limpo com sucesso!");
       fetchUserData();
     } catch (err) {
+      if (consulta !== consultaFicha.current) return;
       console.error("Error clearing user cart:", err);
       toast.error("Erro ao limpar carrinho");
     } finally {
-      setIsClearingCart(false);
+      if (consulta === consultaFicha.current) setIsClearingCart(false);
     }
   };
 
@@ -526,13 +564,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const renderContentSkeleton = () => (
     <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
       {/* Left Column: Profile Card Skeleton */}
-      <div className="space-y-6 rounded-3xl border border-zinc-800/80 bg-zinc-900/40 p-6 backdrop-blur-3xl lg:col-span-4">
+      <div className="space-y-6 rounded-3xl border border-admin-border bg-zinc-900/40 p-6 backdrop-blur-3xl lg:col-span-4">
         <div className="flex flex-col items-center space-y-3">
           <Skeleton className="size-20 animate-pulse rounded-full bg-white/5" />
           <Skeleton className="h-5 w-40 animate-pulse rounded bg-white/5" />
           <Skeleton className="h-4 w-28 animate-pulse rounded bg-white/5" />
         </div>
-        <div className="space-y-4 border-t border-white/5 pt-4">
+        <div className="space-y-4 border-t border-admin-border pt-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex justify-between">
               <Skeleton className="h-3 w-16 animate-pulse rounded bg-white/5" />
@@ -548,19 +586,19 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="space-y-2 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-4"
+              className="space-y-2 rounded-2xl border border-admin-border bg-zinc-900/40 p-4"
             >
               <Skeleton className="h-3 w-12 animate-pulse rounded bg-white/5" />
               <Skeleton className="h-6 w-20 animate-pulse rounded bg-white/5" />
             </div>
           ))}
         </div>
-        <div className="space-y-4 rounded-3xl border border-zinc-800/80 bg-zinc-900/40 p-6">
+        <div className="space-y-4 rounded-3xl border border-admin-border bg-zinc-900/40 p-6">
           <Skeleton className="h-4.5 w-32 animate-pulse rounded bg-white/5" />
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="flex items-center justify-between border-b border-white/5 py-2 last:border-0"
+              className="flex items-center justify-between border-b border-admin-border py-2 last:border-0"
             >
               <div className="flex-1 space-y-1.5">
                 <Skeleton className="h-3.5 w-1/3 animate-pulse rounded bg-white/5" />
@@ -577,8 +615,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   return (
     <div className="pb-admin mx-auto max-w-7xl space-y-6 px-4 duration-200 animate-in fade-in md:px-0 lg:pb-12">
       {/* Header / Actions */}
-      <div className="mt-6 flex items-center gap-4">
-        <div>
+      <div className="mt-6 flex min-w-0 items-center gap-4">
+        <div className="w-full min-w-0">
           {/* Reforma visual (03/09, frente ficha do cliente): o título tinha
               fórmula própria (text-xl sm:text-2xl) — agora nasce do
               AdminPageHeader, igual ao resto do painel (PR #413). O botão de
@@ -592,30 +630,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             >
               <span
                 aria-hidden="true"
-                className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                className="flex size-8 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
               >
                 <HelpCircle className="size-4.5" />
               </span>
             </button>
           </AdminPageHeader>
-          <div className="mt-1 flex items-center gap-2">
-            <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
-              ID
-            </span>
-            <button
-              onClick={() => handleCopy(userId, "id")}
-              className="group flex min-h-11 items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 font-mono text-[11px] text-zinc-400 transition-all hover:border-zinc-700 hover:bg-zinc-800/80 hover:text-white"
-            >
-              <span className="blur-[0.3px] transition-all group-hover:blur-none">
-                {userId}
-              </span>
-              {copiedField === "id" ? (
-                <Check className="size-3 text-emerald-500 duration-200 animate-in fade-in" />
-              ) : (
-                <Copy className="size-3 text-zinc-600 transition-colors group-hover:text-zinc-400" />
-              )}
-            </button>
-          </div>
         </div>
       </div>
 
@@ -626,57 +646,56 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           </p>
           <button
             onClick={() => fetchUserData()}
-            className="mt-4 min-h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+            className="mt-4 min-h-11 rounded-lg border border-admin-border bg-white/5 px-4 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
           >
             Tentar novamente
           </button>
         </div>
-      ) : loading ? (
+      ) : !fichaCarregada ? (
         renderContentSkeleton()
       ) : (
-        <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* Glow Background Global */}
-          <div className="pointer-events-none absolute left-1/2 top-1/3 h-[600px] w-full -translate-x-1/2 -translate-y-1/2 rounded-full bg-admin-gold/5 blur-[120px]" />
-
+        <div className="relative grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-12">
           {/* Left Column: Profile Card */}
-          <Card className="group/card relative h-fit overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-900/40 shadow-2xl backdrop-blur-3xl lg:col-span-4">
-            {/* Header Banner Effect */}
-            <div className="absolute left-0 top-0 z-0 block h-24 w-full border-b border-white/5 bg-gradient-to-b from-zinc-800/60 via-zinc-900/30 to-transparent opacity-50" />
-
-            <CardHeader className="relative z-10 flex flex-col items-center pb-0 pt-6">
-              <div className="group relative">
-                <Avatar className="relative z-10 size-20 border-4 border-zinc-950 shadow-[0_0_30px_rgba(0,0,0,0.5)] ring-2 ring-zinc-800 transition-all duration-500 group-hover:ring-admin-gold/50">
+          <Card className="relative h-fit min-w-0 gap-0 overflow-hidden rounded-3xl border border-admin-border bg-admin-surface py-0 shadow-sm lg:col-span-4">
+            <CardHeader className="relative flex flex-row flex-wrap items-center gap-x-4 gap-y-5 space-y-0 px-4 pb-0 pt-6">
+              <div className="relative shrink-0 rounded-full">
+                <Avatar className="size-16 rounded-full border border-admin-border">
                   <AvatarImage
                     src={profile?.avatar_url || undefined}
                     className="object-cover"
                   />
-                  <AvatarFallback className="border border-zinc-700/50 bg-gradient-to-br from-zinc-800 to-zinc-950 text-2xl font-black text-zinc-500">
+                  <AvatarFallback className="bg-zinc-800 text-xl font-bold text-zinc-300">
                     {profile?.full_name?.substring(0, 2).toUpperCase() || "CX"}
                   </AvatarFallback>
                 </Avatar>
-                <div className="absolute -inset-2 z-0 rounded-full bg-gradient-to-r from-admin-gold to-yellow-600 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-20" />
-                {profile?.whatsapp && (
-                  <div className="absolute bottom-0.5 right-0.5 z-20 flex size-6 items-center justify-center rounded-full border-2 border-zinc-950 bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)]">
-                    <Phone className="size-2.5 fill-zinc-950 text-zinc-950" />
-                  </div>
-                )}
               </div>
 
-              <div className="mt-4 flex w-full flex-col items-center px-4 text-center">
-                <CardTitle className="text-lg font-black tracking-tight text-white">
+              <div className="flex min-w-0 flex-1 flex-col items-start">
+                <CardTitle className="break-words text-lg font-bold tracking-tight text-white">
                   {profile?.full_name || "Usuário Não-Nomeado"}
                 </CardTitle>
-                <Badge
-                  className={`mt-2 rounded border px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.15em] ${profile?.role === "admin" ? "border-admin-gold/50 bg-admin-gold text-black" : "border-zinc-800 bg-black text-zinc-500"}`}
-                >
+                <p className="mt-1 text-xs text-zinc-400">
+                  Cliente desde{" "}
+                  {profile?.created_at
+                    ? format(
+                        new Date(profile.created_at),
+                        "dd 'de' MMM, yyyy",
+                        {
+                          locale: ptBR,
+                        },
+                      )
+                    : "N/A"}
+                </p>
+                <Badge className="mt-2 rounded-full border border-admin-border bg-admin-surface px-2 py-0.5 text-[11px] font-semibold text-zinc-400">
                   {rotuloDoPapel(profile?.role)}
                 </Badge>
               </div>
 
               {/* Direct WhatsApp Call CTA */}
-              <div className="mt-4 w-full px-2">
+              <div className="w-full">
                 <Button
-                  className="h-11 w-full gap-2 rounded-xl border-none bg-gradient-to-br from-green-500 to-green-600 text-[11px] font-black uppercase tracking-widest text-zinc-950 shadow-[0_0_15px_rgba(34,197,94,0.2)] transition-all duration-300 hover:from-green-400 hover:to-green-500 hover:shadow-[0_0_25px_rgba(34,197,94,0.4)] disabled:pointer-events-none disabled:opacity-40"
+                  variant="outline"
+                  className="h-11 w-full gap-2 rounded-full border border-solid border-admin-border bg-admin-surface px-3 text-sm font-semibold text-white hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-40"
                   disabled={!linkWhatsapp || isOffline}
                   title={avisoDoWhatsapp}
                   onClick={() => {
@@ -684,26 +703,23 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     abrirWhatsapp(linkWhatsapp);
                   }}
                 >
-                  <MessageSquare className="size-3.5" />
-                  Contato Direto
+                  <IconeWhatsapp className="size-5 shrink-0 text-[#25D366]" />
+                  Conversar no WhatsApp
                 </Button>
               </div>
             </CardHeader>
 
-            <CardContent className="relative z-10 space-y-4 px-4 py-5">
+            <CardContent className="space-y-4 px-4 py-5">
               {/* Info List */}
-              <div className="space-y-1 divide-y divide-zinc-900/40 overflow-hidden rounded-2xl border border-zinc-800/40 bg-zinc-950/40">
+              <div className="divide-y divide-admin-border border-t border-admin-border">
                 {/* Email row */}
-                <div className="group/item flex items-center justify-between p-3 text-xs transition-colors hover:bg-zinc-900/20">
+                <div className="group/item flex items-center justify-between gap-3 py-2 text-xs transition-colors hover:bg-zinc-900/20">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800/50 bg-zinc-900 text-zinc-500">
-                      <Mail className="size-3.5" />
-                    </div>
                     <div className="flex min-w-0 flex-col">
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                         Email
                       </span>
-                      <span className="w-[130px] truncate font-semibold text-zinc-300 sm:w-[170px]">
+                      <span className="break-all font-semibold text-zinc-300">
                         {profile?.email || "N/A"}
                       </span>
                     </div>
@@ -713,7 +729,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       type="button"
                       aria-label="Copiar e-mail"
                       onClick={() => handleCopy(profile.email!, "email")}
-                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-500 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-400 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
                       title="Copiar e-mail"
                     >
                       {copiedField === "email" ? (
@@ -726,16 +742,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </div>
 
                 {/* Phone row */}
-                <div className="group/item flex items-center justify-between p-3 text-xs transition-colors hover:bg-zinc-900/20">
+                <div className="group/item flex items-center justify-between gap-3 py-2 text-xs transition-colors hover:bg-zinc-900/20">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800/50 bg-zinc-900 text-zinc-500">
-                      <Phone className="size-3.5" />
-                    </div>
                     <div className="flex min-w-0 flex-col">
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                         Telefone / WhatsApp
                       </span>
-                      <span className="font-semibold text-zinc-300">
+                      <span className="break-all font-semibold text-zinc-300">
                         {profile?.whatsapp || "N/A"}
                       </span>
                     </div>
@@ -745,7 +758,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       type="button"
                       aria-label="Copiar telefone"
                       onClick={() => handleCopy(profile.whatsapp!, "whatsapp")}
-                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-500 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-400 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
                       title="Copiar telefone"
                     >
                       {copiedField === "whatsapp" ? (
@@ -757,24 +770,23 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   )}
                 </div>
 
-                {/* Registered at row */}
-                <div className="flex items-center gap-3 p-3 text-xs">
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800/50 bg-zinc-900 text-zinc-500">
-                    <Calendar className="size-3.5" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
-                      Registro Inicial
+                <div className="flex min-w-0 items-center justify-between gap-3 py-2 text-xs">
+                  <div className="flex min-w-0 flex-col">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">
+                      ID do cliente
                     </span>
-                    <span className="font-semibold text-zinc-300">
-                      {profile?.created_at
-                        ? format(
-                            new Date(profile.created_at),
-                            "dd 'de' MMM, yyyy",
-                            { locale: ptBR },
-                          )
-                        : "N/A"}
-                    </span>
+                    <button
+                      onClick={() => handleCopy(userId, "id")}
+                      className="flex min-h-11 min-w-0 items-center gap-3 text-left font-mono text-[11px] text-zinc-300"
+                      aria-label="Copiar ID do cliente"
+                    >
+                      <span className="break-all">{userId}</span>
+                      {copiedField === "id" ? (
+                        <Check className="size-3.5 shrink-0 text-emerald-500" />
+                      ) : (
+                        <Copy className="size-3.5 shrink-0 text-zinc-400" />
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -782,39 +794,38 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           </Card>
 
           {/* Right Column: LTV, Financials and Tabs */}
-          <div className="space-y-6 lg:col-span-8">
+          <div className="min-w-0 space-y-5 lg:col-span-8">
             {/* Quick Stats Grid — o resumo responde "quem é este cliente" sem
                 abrir aba: quanto gastou, quantas vezes, qual o tíquete médio e
                 quando foi a última vez (frente ficha do cliente, 03/09). */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid min-w-0 grid-cols-3 overflow-hidden rounded-3xl border border-admin-border bg-admin-surface p-4 shadow-sm">
               {/* Cartão do "total gasto" do resumo. O rótulo é "Total já
                   comprado": o mesmo nome deste número na lista de Clientes,
                   e os testes vivos da tela leem o cartão por este rótulo. */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-admin-gold/50">
+              <div className="col-span-2 flex min-w-0 items-center justify-between pb-5">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Total já comprado
                   </span>
-                  <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
+                  <span
+                    className={`break-words text-3xl font-bold tracking-tight sm:text-4xl ${classeDoTexto(tomDoValor(resumo.totalGasto))}`}
+                  >
                     {formatCurrency(resumo.totalGasto)}
                   </span>
-                </div>
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-gold/20 bg-zinc-950 text-admin-gold">
-                  <CreditCard className="size-4" />
                 </div>
               </div>
 
               {/* Total Orders Widget */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-zinc-700">
+              <div className="flex min-w-0 items-center justify-end pb-5 text-right">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Pedidos feitos
                   </span>
-                  <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
+                  <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
                     {pedidosQueContam.length}
                   </span>
                   {pedidosDescartados > 0 && (
-                    <span className="mt-0.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                    <span className="mt-0.5 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                       {/* "fora da conta" e nao "cancelado": `pedidosDescartados`
                           conta cancelado E devolvido, entao dizer "cancelado"
                           rotularia um pedido devolvido de cancelado. Hoje nao ha
@@ -825,9 +836,6 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     </span>
                   )}
                 </div>
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-zinc-950 text-blue-500">
-                  <Package className="size-4" />
-                </div>
               </div>
 
               {/* Ticket Médio Widget — total gasto ÷ pedidos COM dinheiro
@@ -835,17 +843,14 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   deste cliente; a regra completa vive em
                   `ficha-resumo.ts`, regra 4). Zero pedido pago mostra R$ 0,00
                   porque foi MEDIDO (o `ELSE 0` do servidor), não inventado. */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-purple-500/50">
+              <div className="flex min-w-0 items-start border-t border-admin-border pr-2 pt-4">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Valor médio por venda
                   </span>
-                  <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
+                  <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
                     {formatCurrency(resumo.ticketMedio)}
                   </span>
-                </div>
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-purple-500/20 bg-zinc-950 text-purple-500">
-                  <CreditCard className="size-4" />
                 </div>
               </div>
 
@@ -854,12 +859,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   regra do `last_order_date` do servidor; um PIX aguardando
                   feito ontem prova que o cliente está ativo). Sem pedido que
                   conta, "—" — nunca data inventada. */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-sky-500/50">
+              <div className="flex min-w-0 items-start border-t border-admin-border px-2 pt-4">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Última Compra
                   </span>
-                  <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
+                  <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
                     {resumo.ultimaCompra
                       ? format(resumo.ultimaCompra, "dd MMM yy", {
                           locale: ptBR,
@@ -867,78 +872,71 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       : "—"}
                   </span>
                 </div>
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-500/20 bg-zinc-950 text-sky-500">
-                  <Calendar className="size-4" />
-                </div>
               </div>
 
               {/* Resumo do carrinho: conta PRODUTOS diferentes (as linhas do
                   carrinho), a mesma conta do selo e da aba — três números
                   diferentes para a mesma coisa (4 itens / 3 produtos / 4)
                   faziam a lojista desconfiar de todos. */}
-              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-green-500/50">
+              <div className="flex min-w-0 items-start border-t border-admin-border pl-2 pt-4">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                  <span className="mb-1 text-[11px] font-semibold text-zinc-400">
                     Carrinho do cliente
                   </span>
-                  <span className="text-xl font-black tracking-tight text-green-400 sm:text-2xl">
+                  <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
                     {cartItems.length}{" "}
-                    <span className="ml-0.5 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                    <span className="text-[11px] font-semibold text-zinc-400">
                       {cartItems.length === 1 ? "produto" : "produtos"}
                     </span>
                   </span>
-                </div>
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-green-500/20 bg-zinc-950 text-green-500">
-                  <ShoppingCart className="size-4" />
                 </div>
               </div>
             </div>
 
             {/* Operational Tabs */}
-            <div className="rounded-3xl border border-zinc-800/80 bg-zinc-900/40 p-2 shadow-2xl backdrop-blur-md">
+            <div className="min-w-0 space-y-4">
               <Tabs defaultValue="orders" className="w-full">
-                <TabsList className="mb-4 grid h-auto w-full grid-cols-2 rounded-2xl border border-zinc-800/50 bg-zinc-950/80 p-1.5 shadow-inner sm:grid-cols-4">
+                <TabsList className="mb-4 grid h-auto w-full grid-cols-4 gap-1 rounded-3xl border border-admin-border bg-admin-surface p-1">
                   <TabsTrigger
                     value="orders"
-                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-400 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
                   >
                     <Package className="size-3.5" />
-                    <span className="hidden sm:inline">Pedidos</span>
-                    <span className="sm:hidden">Ped.</span>
-                    <span className="ml-1 text-[11px] opacity-70">
+                    <span>Pedidos</span>
+                    <span className="absolute right-0 top-0 rounded-full bg-admin-surface px-1 text-[11px] text-zinc-400 sm:right-2">
                       ({orders.length})
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="cart"
-                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:border data-[state=active]:border-admin-gold/20 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold sm:text-xs"
+                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-400 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
                   >
                     <ShoppingCart className="size-3.5" />
-                    <span className="hidden sm:inline">Carrinho</span>
-                    <span className="sm:hidden">Carr.</span>
-                    <span className="ml-1 text-[11px] opacity-70">
+                    <span>Carrinho</span>
+                    <span className="absolute right-0 top-0 rounded-full bg-admin-surface px-1 text-[11px] text-zinc-400 sm:right-2">
                       ({cartItems.length})
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="addresses"
-                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-400 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
                   >
                     <MapPin className="size-3.5" />
-                    <span className="hidden sm:inline">Endereços</span>
-                    <span className="sm:hidden">End.</span>
-                    <span className="ml-1 text-[11px] opacity-70">
+                    <span>Endereços</span>
+                    <span className="absolute right-0 top-0 rounded-full bg-admin-surface px-1 text-[11px] text-zinc-400 sm:right-2">
                       ({addresses.length})
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="voz"
-                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                    aria-label="Voz do Cliente"
+                    className="relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 py-2.5 text-[11px] font-semibold text-zinc-400 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
                   >
                     <Star className="size-3.5" />
-                    <span className="hidden sm:inline">Voz do Cliente</span>
-                    <span className="sm:hidden">Voz</span>
-                    <span className="ml-1 text-[11px] opacity-70">
+                    <span>
+                      Voz<span className="hidden sm:inline"> do Cliente</span>
+                    </span>
+                    <span className="absolute right-0 top-0 rounded-full bg-admin-surface px-1 text-[11px] text-zinc-400 sm:right-2">
                       ({avaliacoes.length + perguntas.length})
                     </span>
                   </TabsTrigger>
@@ -946,16 +944,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
                 {/* Orders Matrix */}
                 <TabsContent value="orders" className="mt-0 outline-none">
-                  <div className="overflow-hidden rounded-[1.2rem] bg-zinc-900/20">
-                    <div className="border-b border-zinc-800/50 bg-zinc-900/50 p-4">
-                      <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
+                  <div className="min-w-0">
+                    <div className="pb-3 pt-1">
+                      <h2 className="text-base font-bold tracking-tight text-white">
                         Extrato Histórico
                       </h2>
                     </div>
                     <div className="p-0">
                       {orders.length === 0 ? (
                         <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
-                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
+                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 shadow-inner">
                             <Package className="size-6 text-zinc-700" />
                           </div>
                           <p className="text-sm font-bold text-zinc-500">
@@ -967,30 +965,55 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                           </p>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto">
-                          <Table>
-                            <TableHeader className="border-b border-zinc-800/80 bg-zinc-950/60 hover:bg-zinc-950/60">
-                              <TableRow className="border-none hover:bg-transparent">
-                                <TableHead className="px-6 py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                        <div className="min-w-0">
+                          <Table {...papel("table")} className="block sm:table">
+                            <TableHeader
+                              {...papel("rowgroup")}
+                              className="sr-only border-b border-admin-border bg-admin-surface sm:not-sr-only sm:table-header-group"
+                            >
+                              <TableRow
+                                {...papel("row")}
+                                className="border-none hover:bg-transparent"
+                              >
+                                <TableHead
+                                  {...papel("columnheader")}
+                                  className="px-6 py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                                >
                                   Registro
                                 </TableHead>
-                                <TableHead className="py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead
+                                  {...papel("columnheader")}
+                                  className="py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                                >
                                   Timeline
                                 </TableHead>
-                                <TableHead className="max-w-[120px] py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead
+                                  {...papel("columnheader")}
+                                  className="max-w-[120px] py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                                >
                                   Situação
                                 </TableHead>
-                                <TableHead className="py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead
+                                  {...papel("columnheader")}
+                                  className="py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                                >
                                   Volume
                                 </TableHead>
-                                <TableHead className="px-6 py-4" />
+                                <TableHead
+                                  {...papel("columnheader")}
+                                  className="px-6 py-4"
+                                />
                               </TableRow>
                             </TableHeader>
-                            <TableBody className="divide-y divide-zinc-800/30">
+                            <TableBody
+                              {...papel("rowgroup")}
+                              className="block space-y-2 sm:table-row-group sm:space-y-0"
+                            >
                               {orders.map((order) => (
                                 <TableRow
                                   key={order.id}
-                                  className="cursor-pointer border-none border-zinc-800 transition-colors hover:bg-zinc-800/40"
+                                  {...papel("row")}
+                                  className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_44px] items-center gap-x-1 rounded-3xl border border-admin-border bg-admin-surface p-3 transition-colors hover:bg-zinc-800/40 sm:table-row sm:rounded-none sm:p-0"
                                   onClick={() =>
                                     // "order-details" é a tela do CLIENTE
                                     // (App.tsx) e busca em `fetchUserOrders()`
@@ -1004,33 +1027,49 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                     onNavigate("admin-orders", order.id)
                                   }
                                 >
-                                  <TableCell className="px-6 py-4 font-mono text-[11px] font-bold text-zinc-300">
+                                  <TableCell
+                                    {...papel("cell")}
+                                    className="col-start-1 row-start-1 min-w-0 whitespace-normal break-words p-0 text-xs font-bold text-zinc-300 sm:px-6 sm:py-4"
+                                  >
+                                    <span className="sm:hidden">Pedido </span>
                                     <span className="mr-1 text-zinc-600">
                                       #
                                     </span>
                                     {numeroDoPedido(order.id)}
                                   </TableCell>
-                                  <TableCell className="py-4 text-xs font-medium text-zinc-400">
+                                  <TableCell
+                                    {...papel("cell")}
+                                    className="col-start-1 row-start-2 min-w-0 whitespace-normal p-0 text-[11px] font-medium text-zinc-400 sm:p-2 sm:py-4"
+                                  >
                                     {format(
                                       new Date(order.createdAt),
                                       "dd MMMM, yy",
                                       { locale: ptBR },
                                     )}
                                   </TableCell>
-                                  <TableCell className="py-4">
-                                    <div className="origin-left scale-90">
+                                  <TableCell
+                                    {...papel("cell")}
+                                    className="col-start-2 row-start-2 p-0 text-right sm:p-2 sm:py-4 sm:text-left"
+                                  >
+                                    <div className="origin-right scale-90 sm:origin-left">
                                       {getStatusBadge(order.status)}
                                     </div>
                                   </TableCell>
-                                  <TableCell className="py-4 text-right font-black tracking-tight text-white">
+                                  <TableCell
+                                    {...papel("cell")}
+                                    className="col-start-2 row-start-1 p-0 text-right text-sm font-bold tracking-tight text-white sm:p-2 sm:py-4"
+                                  >
                                     {formatCurrency(order.total)}
                                   </TableCell>
-                                  <TableCell className="px-6 py-4 text-right">
+                                  <TableCell
+                                    {...papel("cell")}
+                                    className="col-start-3 row-span-2 row-start-1 p-0 text-right sm:px-6 sm:py-4"
+                                  >
                                     <Button
                                       variant="ghost"
                                       size="icon"
                                       aria-label={`Abrir o pedido ${numeroDoPedido(order.id)}`}
-                                      className="size-11 rounded-lg text-zinc-500 hover:bg-admin-gold/10 hover:text-admin-gold"
+                                      className="size-11 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white"
                                     >
                                       <ExternalLink className="size-4" />
                                     </Button>
@@ -1050,7 +1089,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   <div className="relative overflow-hidden rounded-[1.2rem] border border-green-500/10 bg-zinc-900/20">
                     <div className="pointer-events-none absolute -left-40 -top-40 size-96 rounded-full bg-green-500/5 blur-[100px]" />
 
-                    <div className="relative z-10 flex flex-col justify-between gap-3 border-b border-zinc-800/50 bg-zinc-900/50 p-5 sm:flex-row sm:items-center">
+                    <div className="relative z-10 flex flex-col justify-between gap-3 border-b border-admin-border bg-admin-surface p-5 sm:flex-row sm:items-center">
                       <div>
                         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-white">
                           Carrinho do cliente
@@ -1072,7 +1111,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                               variant="ghost"
                               size="sm"
                               onClick={handleClearUserCart}
-                              disabled={isOffline}
+                              disabled={isOffline || !fichaCarregada}
                               className="min-h-11 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 text-[11px] font-black uppercase tracking-widest text-red-500 shadow-sm transition-all hover:bg-red-500/20 disabled:pointer-events-none disabled:opacity-40"
                             >
                               Limpar Carrinho
@@ -1084,7 +1123,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <div className="relative z-10 p-0">
                       {cartItems.length === 0 ? (
                         <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
-                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
+                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 shadow-inner">
                             <ShoppingCart className="size-6 text-zinc-700" />
                           </div>
                           <p className="text-sm font-bold text-zinc-500">
@@ -1113,7 +1152,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                           >
                             <thead
                               {...papel("rowgroup")}
-                              className="sr-only border-b border-zinc-800/80 bg-zinc-950/60 sm:not-sr-only sm:table-header-group"
+                              className="sr-only border-b border-admin-border bg-zinc-950/60 sm:not-sr-only sm:table-header-group"
                             >
                               <tr {...papel("row")} className="sm:table-row">
                                 <th
@@ -1180,7 +1219,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       className="col-start-1 row-start-1 block min-w-0 sm:table-cell sm:px-6 sm:py-3"
                                     >
                                       <div className="flex min-w-0 items-center gap-3">
-                                        <Avatar className="size-10 shrink-0 rounded-lg border border-zinc-800 shadow-xl">
+                                        <Avatar className="size-10 shrink-0 rounded-lg border border-admin-border shadow-xl">
                                           <AvatarImage
                                             src={item.product.images[0]}
                                             className="object-cover"
@@ -1225,7 +1264,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       <span className="sm:hidden">
                                         Quantidade:{" "}
                                       </span>
-                                      <span className="font-black text-zinc-300 sm:inline-flex sm:size-7 sm:items-center sm:justify-center sm:rounded sm:border sm:border-zinc-800 sm:bg-zinc-950">
+                                      <span className="font-black text-zinc-300 sm:inline-flex sm:size-7 sm:items-center sm:justify-center sm:rounded sm:border sm:border-admin-border sm:bg-zinc-950">
                                         {item.quantity}
                                       </span>
                                     </td>
@@ -1262,7 +1301,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                             item.variantId,
                                           )
                                         }
-                                        disabled={isOffline}
+                                        disabled={isOffline || !fichaCarregada}
                                         className="size-11 rounded-lg text-zinc-500 hover:bg-red-500/10 hover:text-red-500 disabled:pointer-events-none disabled:opacity-40"
                                         title="Remover do Carrinho"
                                       >
@@ -1314,7 +1353,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 {/* Addresses Matrix */}
                 <TabsContent value="addresses" className="mt-0 outline-none">
                   <div className="overflow-hidden rounded-[1.2rem] bg-zinc-900/20">
-                    <div className="border-b border-zinc-800/50 bg-zinc-900/50 p-4">
+                    <div className="border-b border-admin-border bg-admin-surface p-4">
                       <h2 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-white">
                         <MapPin className="size-3.5 text-admin-gold" />
                         Destinos de Entrega
@@ -1323,7 +1362,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <div className="p-4">
                       {addresses.length === 0 ? (
                         <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
-                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
+                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 shadow-inner">
                             <MapPin className="size-6 text-zinc-700" />
                           </div>
                           <p className="text-sm font-bold text-zinc-500">
@@ -1338,7 +1377,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                           {addresses.map((addr) => (
                             <div
                               key={addr.id}
-                              className="group relative overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-inner transition-colors hover:border-zinc-700"
+                              className="group relative overflow-hidden rounded-xl border border-admin-border bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-inner transition-colors hover:border-zinc-700"
                             >
                               {addr.is_default && (
                                 <div className="pointer-events-none absolute right-0 top-0 size-12 overflow-hidden before:absolute before:-right-2 before:-top-2 before:border-[16px] before:border-transparent before:border-r-admin-gold/20 before:border-t-admin-gold/20 before:content-['']" />
@@ -1402,7 +1441,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 {/* Voz do Cliente Matrix */}
                 <TabsContent value="voz" className="mt-0 outline-none">
                   <div className="overflow-hidden rounded-[1.2rem] bg-zinc-900/20">
-                    <div className="border-b border-zinc-800/50 bg-zinc-900/50 p-4">
+                    <div className="border-b border-admin-border bg-admin-surface p-4">
                       <h2 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-white">
                         <Star className="size-3.5 text-admin-gold" />O Que Este
                         Cliente Escreveu
@@ -1445,7 +1484,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               Seções do Perfil
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <CreditCard className="size-4 text-admin-gold" />
                   Resumo do Topo
@@ -1457,7 +1496,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   expirar ou recebida na entrega).
                 </p>
               </div>
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <MapPin className="size-4 text-emerald-500" />
                   Endereços de Entrega
@@ -1468,7 +1507,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <ShoppingCart className="size-4 text-admin-gold" />
                   Histórico de Pedidos
@@ -1479,7 +1518,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Package className="size-4 text-sky-500" />
                   Carrinho Atual (Abandonado)
@@ -1491,7 +1530,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <User className="size-4 text-purple-500" />
                   Funções Administrativas
@@ -1503,7 +1542,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Star className="size-4 text-admin-gold" />
                   Voz do Cliente
@@ -1521,10 +1560,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
       {/* Diálogo de Confirmação de Remoção de Item do Carrinho */}
       <AlertDialog
-        open={cartItemToRemove !== null}
+        open={fichaCarregada && cartItemToRemove !== null}
         onOpenChange={(open) => !open && setCartItemToRemove(null)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Remover Item?
@@ -1534,11 +1573,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmRemoveCartItem}
+              disabled={isOffline || !fichaCarregada}
               className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
             >
               Remover Item
@@ -1549,10 +1589,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
       {/* Diálogo de Confirmação de Limpeza de Carrinho */}
       <AlertDialog
-        open={isClearingCart}
+        open={fichaCarregada && isClearingCart}
         onOpenChange={(open) => !open && setIsClearingCart(false)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Limpar Carrinho?
@@ -1563,11 +1603,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmClearUserCart}
+              disabled={isOffline || !fichaCarregada}
               className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
             >
               Limpar Carrinho

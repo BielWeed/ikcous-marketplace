@@ -218,6 +218,13 @@ export interface SessaoDeCaixa {
   readonly status: string;
 }
 
+export interface ResultadoDoMovimentoDeCaixa {
+  readonly id: string;
+  readonly replay: boolean;
+  /** No replay, é a situação ATUAL do lançamento original. */
+  readonly status: string;
+}
+
 export interface FechamentoDeCaixa {
   readonly id: string;
   readonly esperado: number;

@@ -56,7 +56,7 @@ const CLASSE_DO_SELO = new Map<SeloDoEmail["tipo"], string>([
 ]);
 
 const CLASSE_DO_CAMPO =
-  "h-11 w-full min-w-0 rounded-2xl border border-white/15 bg-[#17171c] px-3 text-sm text-white placeholder-zinc-400 focus:border-teal-300 focus:outline-none disabled:cursor-not-allowed aria-[invalid=true]:border-red-400";
+  "h-11 w-full min-w-0 rounded-2xl border border-admin-border-strong bg-admin-raised px-3 text-sm text-white placeholder-zinc-400 focus:border-teal-300 focus:outline-none disabled:cursor-not-allowed aria-[invalid=true]:border-red-400";
 const CLASSE_DO_ROTULO = "block text-xs font-medium text-zinc-400";
 const CLASSE_BOTAO_DOURADO = "ajustes-secundario min-h-11";
 const CLASSE_BOTAO_CONTORNO = "ajustes-secundario min-h-11";
@@ -160,7 +160,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
       <div
         role={carga === "indisponivel" ? "status" : "alert"}
         data-estado={carga}
-        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-zinc-900/60 p-3 text-xs text-zinc-300"
+        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-admin-border bg-admin-surface p-3 text-xs text-zinc-300"
       >
         <span className="flex min-w-0 items-start gap-2">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
@@ -485,7 +485,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
           </div>
 
           {etapa === PASSO_DE_COLAR && (
-            <div className="space-y-3 border-t border-white/5 pt-3">
+            <div className="space-y-3 border-t border-admin-border pt-3">
               <div className="space-y-1.5">
                 <label
                   htmlFor="email-loja-usuario"
@@ -619,7 +619,9 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
           )}
 
           {etapa === PASSO_DO_TESTE && (
-            <div className="border-t border-white/5 pt-3">{botaoDeTeste}</div>
+            <div className="border-t border-admin-border pt-3">
+              {botaoDeTeste}
+            </div>
           )}
 
           {avisoDaAcao}
@@ -665,7 +667,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
           {confirmandoRemocao ? (
             <div
               role="alert"
-              className="space-y-4 rounded-3xl border border-white/15 bg-gradient-to-br from-[#24242e] to-[#101013] p-4"
+              className="space-y-4 rounded-3xl border border-admin-border-strong bg-gradient-to-br from-admin-raised to-admin-surface p-4"
             >
               <p className="text-xs font-bold leading-relaxed text-orange-300">
                 Remover o Gmail da loja?

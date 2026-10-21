@@ -44,7 +44,7 @@ export const CartaoDaDevolucao = memo(function CartaoDaDevolucao({
         "group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all duration-200 active:scale-[0.99]",
         selecionada
           ? "border-admin-gold/40 bg-admin-gold/[0.06]"
-          : "border-white/5 bg-zinc-950/40 hover:border-white/10 hover:bg-zinc-900/40",
+          : "border-admin-border bg-zinc-950/40 hover:border-admin-border-strong hover:bg-zinc-900/40",
       )}
     >
       <div className="min-w-0 flex-1 space-y-1.5">

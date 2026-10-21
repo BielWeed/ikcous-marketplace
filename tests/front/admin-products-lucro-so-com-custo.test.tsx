@@ -161,6 +161,14 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
 
   it("os cartões separam custo conhecido, lucro bruto e líquido não calculado", async () => {
     await montar();
+    expect(
+      hospedeiro.querySelector(".metricas-painel-secundarias")!.textContent,
+    ).toContain("Produtos no Catálogo");
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!
+        .click(),
+    );
     const tela = hospedeiro.textContent ?? "";
     expect(tela).toContain("Custo conhecido em estoque");
     expect(tela).toContain("Lucro bruto potencial");
@@ -195,7 +203,7 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
     await montar();
     // A ajuda (dicionário) só monta com o guia aberto — o botão do cabeçalho.
     const botao = hospedeiro.querySelector<HTMLButtonElement>(
-      'button[title="Guia Completo de Métricas e Ajuda"]',
+      'button[aria-label="Guia e simulador"]',
     );
     expect(botao).toBeTruthy();
     await act(async () => {

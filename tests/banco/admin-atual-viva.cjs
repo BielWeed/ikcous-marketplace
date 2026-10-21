@@ -60,6 +60,7 @@ const {
   DESFAZER_RECEBIMENTO,
   desfazerDesfazerRecebimentoNaTransacao,
 } = require("./desfazer-recebimento-posterior.cjs");
+const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(
@@ -358,7 +359,32 @@ const POSTERIORES_A_97 = [
   // nao depende de nenhuma outra da lista; tem de sair ANTES da 97. No FIM da lista de proposito.
   // Definicao unica em tests/banco/desfazer-recebimento-posterior.cjs.
   DESFAZER_RECEBIMENTO,
+  // 20261330000000: o contato do mototaxi (exclusivo do painel). A RPC salvar_config_mototaxi usa
+  // is_admin()/is_admin_atual() e a politica config_mototaxi_admin_select usa rls_admin_atual(): sem esta
+  // entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "funcoes fora da 20261197000000 ainda usam ...").
+  // O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em tests/banco/mototaxi-posterior.cjs.
+  // No FIM da lista de proposito (as provas enderecam 202/200/99/98 por indice).
+  MOTOTAXI,
 ];
+
+// As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar
+// e preserva tabela e tentativas; sai antes das sucessoras da 99 e da própria 99.
+async function desfazerCaixaIntencaoNaTransacao(cliente) {
+  const r = await cliente.query(
+    "SELECT to_regprocedure('public.fin_caixa_fechar_sessao(uuid,numeric,text)') IS NOT NULL AS sim",
+  );
+  if (r.rows[0]?.sim !== true) return;
+  const caminho = path.join(
+    __dirname,
+    "..",
+    "..",
+    "supabase",
+    "migrations",
+    "rollback-manual-20261252000000_o_caixa_preserva_a_intencao.sql",
+  );
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
+  await cliente.query(fs.readFileSync(caminho, "utf8"));
+}
 
 async function desfazerPosterioresNaTransacao(cliente) {
   assert.equal(
@@ -368,6 +394,7 @@ async function desfazerPosterioresNaTransacao(cliente) {
   );
   // A 20261241000000 (a mais nova; redefine corpos da 1196/1198/1201/1225/1226) sai primeiro de todas.
   await desfazerReembolsoEmDuvidaNaTransacao(cliente);
+  await desfazerCaixaIntencaoNaTransacao(cliente);
   // As sucessoras da 99 (20261212, 20261214: redefinem corpos dela) saem
   // primeiro — sem isso o rollback da 99 recusa (B1_BASELINE_DIVERGENT).
   await desfazerSucessorasDa99(cliente);
@@ -1521,6 +1548,7 @@ PROVAS.push({
       const nome = POSTERIORES_A_97[i].nome;
       // A 20261241000000 (a mais nova de todas) sai antes de qualquer uma desta pilha (só se no ar).
       await desfazerReembolsoEmDuvidaNaTransacao(cliente);
+      await desfazerCaixaIntencaoNaTransacao(cliente);
       // A 20261243000000 (redefine o corpo de registrar_pagamento_recebido que a 97 confere por hash) também sai antes
       // (só se no ar): sem isso a recusa por hash dela vem ANTES da recusa por dependentes que esta prova mede.
       await desfazerDesfazerRecebimentoNaTransacao(cliente);

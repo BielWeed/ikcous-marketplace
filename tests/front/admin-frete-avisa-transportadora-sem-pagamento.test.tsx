@@ -187,7 +187,7 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
       "Transportadora só funciona com pagamento pelo app ligado.",
     );
     expect(aviso()?.textContent).toContain(
-      "Hoje seus clientes de outras cidades não conseguem finalizar a compra.",
+      "Hoje seus clientes de fora da sua região não conseguem finalizar a compra.",
     );
   });
 

@@ -72,6 +72,31 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  "20261330000000_mototaxi_privado.sql": {
+    funcao: "salvar_config_mototaxi",
+    esperado: [
+      "IF NOT public.is_admin() OR NOT public.is_admin_atual()",
+      "INSERT INTO public.config_mototaxi (id, whatsapp, nome)",
+      "ON CONFLICT (id) DO UPDATE SET whatsapp = EXCLUDED.whatsapp, nome = EXCLUDED.nome",
+    ],
+  },
+  "20261310000000_estilo_do_card_de_frete.sql": [
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        {
+          texto:
+            "COALESCE(config_json->>'free_shipping_card_style', 'completo')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "free_shipping_card_style = CASE WHEN config_json ? 'free_shipping_card_style'",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // ⚠️ Corpo HISTÓRICO — não reaponte esta entrada. A
   // 20260729000002_shipping_quote_validation_v23.sql, logo abaixo, reescreveu
   // a v22 como FACHADA PURA ("RETURN public.create_marketplace_order_v23(...)"
@@ -2394,6 +2419,49 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261252: sessão explícita e chave global de tentativa. Os hashes completos,
+  // atributos e ACL são conferidos pela 55a e pelo DO final da migration.
+  "20261252000000_o_caixa_preserva_a_intencao.sql": [
+    {
+      funcao: "fin_caixa_fechar_sessao",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "SELECT * INTO v_s FROM public.fin_caixa_sessoes WHERE id = p_sessao_id FOR UPDATE;",
+          vezes: 1,
+        },
+        { texto: "v_s.fechado_por IS NOT DISTINCT FROM auth.uid()", vezes: 1 },
+        { texto: "v_s.valor_contado IS NOT DISTINCT FROM v_contado", vezes: 1 },
+        { texto: "v_s.observacao IS NOT DISTINCT FROM v_obs", vezes: 1 },
+        { texto: "DETAIL = 'fechamento_divergente'", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_caixa_movimentar_com_chave",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "SELECT * INTO v_s FROM public.fin_caixa_sessoes WHERE id = p_sessao_id FOR UPDATE;",
+          vezes: 1,
+        },
+        { texto: "ON CONFLICT (chave) DO NOTHING;", vezes: 1 },
+        { texto: "v_t.sessao_id IS DISTINCT FROM v_s.id", vezes: 1 },
+        { texto: "v_t.autor IS DISTINCT FROM v_autor", vezes: 1 },
+        { texto: "v_t.tipo IS DISTINCT FROM p_tipo", vezes: 1 },
+        { texto: "v_t.valor IS DISTINCT FROM v_valor", vezes: 1 },
+        { texto: "v_t.descricao IS DISTINCT FROM v_desc", vezes: 1 },
+        {
+          texto: "v_t.contrapartida_id IS DISTINCT FROM v_contra_id",
+          vezes: 1,
+        },
+        { texto: "DETAIL = 'tentativa_divergente'", vezes: 1 },
+      ],
+    },
+  ],
   // Uma tentativa cria o conjunto de parcelas uma única vez (20261246).
   "20261246000000_o_lancamento_repetido_nao_duplica.sql": [
     {
@@ -2468,6 +2536,42 @@ const VERIFICACOES = {
         },
         { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  // Total conferido antes de escrita; mantém gates, chave e motivo privado da 249.
+  "20261280000000_o_balcao_registra_so_o_total_conferido.sql": [
+    {
+      funcao: "registrar_venda_presencial",
+      esperado: [
+        { texto: "ERRCODE='PDV01'", vezes: 1 },
+        { texto: "abs(v_total - p_total_esperado) > 0.01", vezes: 1 },
+        {
+          texto:
+            "v_db_price := (v_itens_conferidos->v_indice_item->>'price')::numeric",
+          vezes: 1,
+        },
+        { texto: "FOR NO KEY UPDATE OF v;", vezes: 1 },
+        {
+          texto:
+            "INSERT INTO public.marketplace_order_internal_notes (order_id, note)",
+          vezes: 1,
+        },
+        {
+          texto: "O motivo do desconto pode ter até 2000 caracteres.",
+          vezes: 1,
+        },
+        {
+          texto:
+            "hashtextextended('venda_presencial:' || p_idempotency_key::text, 0)",
+          vezes: 1,
+        },
+        { texto: "IF public.is_admin() IS DISTINCT FROM true THEN", vezes: 1 },
+        {
+          texto: "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+          vezes: 1,
+        },
+        { texto: "'ja_existia', v_ja_existia,", vezes: 1 },
       ],
     },
   ],

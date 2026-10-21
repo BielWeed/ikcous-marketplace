@@ -86,7 +86,7 @@ export function LinhasDaGrade({
         });
   return (
     <>
-      <div className="space-y-3 rounded-2xl border border-white/10 bg-[#101013] p-3">
+      <div className="space-y-3 rounded-2xl border border-admin-border bg-admin-surface p-3">
         <span className="ml-1 block text-[11px] font-black uppercase tracking-wider text-zinc-300">
           Aplicar para todas
         </span>
@@ -98,7 +98,7 @@ export function LinhasDaGrade({
             aria-label="Estoque para todas as linhas"
             value={aplicarEstoque}
             onFlush={onAplicarEstoque}
-            className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-4 py-3.5 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-4 py-3.5 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             placeholder="estoque"
           />
           <div className="relative flex items-center">
@@ -113,7 +113,7 @@ export function LinhasDaGrade({
               aria-label="Preço para todas as linhas"
               value={aplicarPreco}
               onFlush={onAplicarPreco}
-              className="w-full rounded-2xl border border-white/5 bg-zinc-950 py-3.5 pl-10 pr-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="w-full rounded-2xl border border-admin-border bg-zinc-950 py-3.5 pl-10 pr-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               placeholder={precoDoProdutoEmReais ?? "preço"}
             />
           </div>
@@ -121,7 +121,7 @@ export function LinhasDaGrade({
         <button
           type="button"
           onClick={onAplicarParaTodas}
-          className="min-h-11 w-full rounded-2xl border border-white/10 bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:border-white/30 active:scale-95"
+          className="min-h-11 w-full rounded-2xl border border-admin-border bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:border-white/30 active:scale-95"
         >
           Aplicar para todas
         </button>
@@ -181,7 +181,7 @@ export function LinhasDaGrade({
           type="text"
           value={skuBase}
           onFlush={onSkuBase}
-          className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+          className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
           placeholder="Ex: BLU — vazio nasce sem código"
         />
       </div>
@@ -205,7 +205,7 @@ export function LinhasDaGrade({
       {linhas.map((linha, i) => (
         <div
           key={JSON.stringify([linha.name, linha.value])}
-          className="grid grid-cols-[minmax(0,1fr)_52px_minmax(88px,0.7fr)] items-center gap-2 border-b border-white/5 py-3"
+          className="grid grid-cols-[minmax(0,1fr)_52px_minmax(88px,0.7fr)] items-center gap-2 border-b border-admin-border py-3"
         >
           <div className="min-w-0 space-y-1 break-words">
             <span
@@ -228,7 +228,7 @@ export function LinhasDaGrade({
             aria-label={`Estoque de ${linha.value}`}
             value={linha.estoque}
             onFlush={(val) => onMudarLinha(i, "estoque", val)}
-            className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-2 py-3 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-2 py-3 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
           />
           <div className="relative flex items-center">
             <span className="absolute left-2 text-xs font-black text-zinc-600">
@@ -242,7 +242,7 @@ export function LinhasDaGrade({
               aria-label={`Preço de ${linha.value}`}
               value={linha.preco}
               onFlush={(val) => onMudarLinha(i, "preco", val)}
-              className="w-full rounded-2xl border border-white/5 bg-zinc-950 py-3 pl-7 pr-2 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="w-full rounded-2xl border border-admin-border bg-zinc-950 py-3 pl-7 pr-2 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               placeholder="Auto"
             />
           </div>

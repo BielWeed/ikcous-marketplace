@@ -1,11 +1,15 @@
-import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { BarraDeBusca } from "@/components/admin/BarraDeBusca";
-import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
+import {
+  type MetricaDoPainel,
+  MetricasDoPainel,
+} from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
+import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
+import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   AlertDialog,
@@ -38,6 +42,7 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { parseValorBR } from "@/lib/financeiro";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import { mesmaCategoria } from "@/lib/gestao-de-categorias";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
@@ -58,6 +63,7 @@ import {
   Copy,
   DollarSign,
   Edit2,
+  HelpCircle,
   Package,
   Pause,
   Percent,
@@ -276,13 +282,28 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
   }, [products, viewRef]);
 
+  const geracaoDaRecarga = useRef(0);
+  const catalogoMontado = useRef(false);
+  useEffect(() => {
+    catalogoMontado.current = true;
+    return () => {
+      catalogoMontado.current = false;
+      geracaoDaRecarga.current += 1;
+    };
+  }, []);
+
   const loadData = useCallback(
     async (pageToFetch: number) => {
+      if (!catalogoMontado.current) return;
+      const geracao = ++geracaoDaRecarga.current;
       try {
         const result = await loadProducts(pageToFetch, pageSize, {
           search: searchTerm || undefined,
           category: filterCategory === "all" ? undefined : filterCategory,
         });
+        if (!catalogoMontado.current || geracao !== geracaoDaRecarga.current) {
+          return;
+        }
         if (result) {
           setLoadError(false);
           setTotalProducts(result.total);
@@ -293,15 +314,14 @@ export const AdminProductsView = memo(function AdminProductsView({
             setCurrentPage(maxPage);
           }
         } else {
-          // `loadProducts` nunca lança aqui: numa falha real ela já mostrou
-          // `toast.error` e devolveu `null` (abort de uma busca superada
-          // também devolve `null`, sem toast — o pior caso é este banner
-          // aparecer por um instante numa corrida de busca/filtro, e sumir
-          // sozinho na resposta seguinte).
+          // O null da tentativa atual continua sendo falha; o de uma busca
+          // superada já foi ignorado pela geração, sem alterar o estado atual.
           setLoadError(true);
         }
       } finally {
-        setHasLoadedOnce(true);
+        if (catalogoMontado.current && geracao === geracaoDaRecarga.current) {
+          setHasLoadedOnce(true);
+        }
       }
     },
     [loadProducts, pageSize, searchTerm, filterCategory, setCurrentPage],
@@ -500,7 +520,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     return ["all", ...dbCategories.map((c) => c.name)];
   }, [dbCategories]);
 
-  const kpiCards = useMemo<readonly KpiCardConfig[]>(
+  const kpiCards = useMemo<readonly MetricaDoPainel[]>(
     () => [
       {
         id: "capital-alocado",
@@ -516,12 +536,14 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "lucro-potencial",
         label: "Lucro bruto potencial",
+        parcial: financialStats.parcial,
         value:
           financialStats.potential !== null
             ? `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
             : "—",
         icon: TrendingUp,
-        accent: "text-emerald-300",
+        accent: classeDoTexto("neutro"),
+        tom: tomDoValor(financialStats.potential),
         subValue: financialStats.parcial
           ? "Parcial · só produtos com custo cadastrado, antes das despesas"
           : "Receita com custo cadastrado menos custo · antes das despesas",
@@ -549,7 +571,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         subValue:
           liquidoEstimado !== null
             ? `Estimado${financialStats.parcial ? " · Parcial" : ""} · despesas informadas nesta tela`
-            : "Toque em Calcular líquido e informe as despesas previstas",
+            : "Toque em Entender valores e informe as despesas previstas",
       },
       {
         id: "roi-portfolio",
@@ -832,60 +854,91 @@ export const AdminProductsView = memo(function AdminProductsView({
         active !== false && expandedHelp["global-guide"] ? "aberto" : undefined
       }
     >
-      <header className="px-5 pb-4 pt-5">
-        <div className="flex items-center justify-between gap-3">
+      <header className="admin-topo-cabecalho flex h-[76px] items-center justify-between gap-3 px-5">
+        <div className="min-w-0">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-products"]} />
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="produtos-cupons">
-              <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
-            </div>
+          <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+            {loadError ? (
+              <AlertTriangle
+                aria-hidden="true"
+                className="size-3.5 text-red-300"
+              />
+            ) : (
+              <PontoDeOperacao sincronizando={effectiveLoading} />
+            )}
+            <span
+              className={isOffline || loadError ? "text-red-300" : undefined}
+            >
+              {isOffline
+                ? "Sem conexão com o servidor"
+                : loadError
+                  ? "Não sincronizou"
+                  : effectiveLoading
+                    ? "Recarregando..."
+                    : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
+            </span>
           </div>
         </div>
-        <div className="mt-2 flex items-center gap-2 text-xs text-zinc-400">
-          {loadError ? (
-            <AlertTriangle
-              aria-hidden="true"
-              className="size-3.5 text-red-300"
-            />
-          ) : (
-            <PontoDeOperacao sincronizando={effectiveLoading} />
-          )}
-          <span className={isOffline || loadError ? "text-red-300" : undefined}>
-            {isOffline
-              ? "Sem conexão com o servidor"
-              : loadError
-                ? "Não sincronizou"
-                : effectiveLoading
-                  ? "Recarregando..."
-                  : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
-          </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="produtos-cupons">
+            <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
+          </div>
+          <button
+            type="button"
+            aria-label="Guia e simulador"
+            onClick={() => toggleHelp("global-guide")}
+            className="flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-2xl border border-admin-border bg-admin-raised text-xs text-violet-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          >
+            <HelpCircle aria-hidden="true" className="size-5" />
+          </button>
         </div>
       </header>
 
-      <div className="space-y-7 px-5">
-        {isOffline && (
-          <div
-            role="status"
-            className="flex gap-3 rounded-2xl border border-red-300/15 bg-red-300/10 p-4 text-sm"
-          >
-            <AlertTriangle
-              aria-hidden="true"
-              className="size-5 shrink-0 text-red-300"
-            />
-            <div>
-              <p className="font-bold">Sem conexão com o servidor</p>
-              <p className="mt-1 text-zinc-300">
-                Novo produto e ações dos produtos voltam quando a internet
-                voltar.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-4">
+      <div className="admin-topo-conteudo px-5">
+        <div className="admin-topo-resumo">
           <LocalErrorBoundary>
             <MetricasDoPainel
               titulo="Métricas de Produtos"
+              indicesDoRodape={[4, 5]}
+              onEntender={() => toggleHelp("financial-values")}
+              nota={
+                <span
+                  role={
+                    isOffline ||
+                    !financialStats.coberturaConferida ||
+                    financialStats.parcial
+                      ? "status"
+                      : undefined
+                  }
+                >
+                  {isOffline && (
+                    <>
+                      Sem conexão ·{" "}
+                      <span className="sr-only">
+                        ações indisponíveis até a internet voltar ·{" "}
+                      </span>
+                    </>
+                  )}
+                  {!financialStats.coberturaConferida ? (
+                    "Conferindo custos…"
+                  ) : financialStats.parcial ? (
+                    <SeloDeStatus
+                      tom="atencao"
+                      className="max-w-full py-0 align-middle text-[11px] leading-5 text-amber-400"
+                    >
+                      {financialStats.produtosSemCusto}{" "}
+                      {financialStats.produtosSemCusto === 1
+                        ? "produto sem custo"
+                        : "produtos sem custo"}{" "}
+                      · lucro parcial
+                    </SeloDeStatus>
+                  ) : (
+                    <span className="text-emerald-300">
+                      Todos os produtos em estoque têm custo cadastrado.
+                    </span>
+                  )}
+                </span>
+              }
               legendasDoResumo={[
                 "Custo conhecido",
                 financialStats.parcial
@@ -1051,38 +1104,6 @@ export const AdminProductsView = memo(function AdminProductsView({
               </p>
             </div>
           </FolhaDoPainel>
-          {financialStats.parcial ? (
-            <p role="status" className="text-xs text-amber-200">
-              {financialStats.produtosSemCusto}{" "}
-              {financialStats.produtosSemCusto === 1
-                ? "produto sem custo"
-                : "produtos sem custo"}{" "}
-              · lucro parcial
-            </p>
-          ) : !financialStats.coberturaConferida ? (
-            <p role="status" className="text-xs text-zinc-400">
-              Conferindo custos…
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center justify-between gap-x-4">
-            <button
-              type="button"
-              onClick={() => toggleHelp("financial-values")}
-              aria-haspopup="dialog"
-              className="min-h-11 text-xs font-semibold text-violet-300 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
-            >
-              Calcular líquido
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleHelp("global-guide")}
-              className="flex min-h-11 items-center gap-2 text-xs text-zinc-300 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
-              title="Guia Completo de Métricas e Ajuda"
-            >
-              <BookOpen aria-hidden="true" className="size-4 text-violet-300" />
-              Guia e simulador
-            </button>
-          </div>
         </div>
 
         <BarraDeBusca
@@ -1126,192 +1147,206 @@ export const AdminProductsView = memo(function AdminProductsView({
           </Suspense>
         )}
 
-        {/* Grid view of Products as Assets */}
-        <LocalErrorBoundary>
-          {!effectiveLoading && products?.length === 0 ? null : (
-            <div className="relative" aria-busy={effectiveLoading}>
-              {showVisualLoading && <div className="admin-sync-progress-bar" />}
-              {viewMode === "detailed" ? (
-                <div
-                  key="detailed-grid"
-                  className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3"
-                >
-                  {effectiveLoading && products.length === 0
-                    ? Array.from({ length: 8 }).map((_, i) => (
-                        <div
-                          key={i}
-                          aria-hidden="true"
-                          className={cn(
-                            "produto-esqueleto flex animate-pulse flex-col gap-3 rounded-2xl border border-white/10 bg-[#101013] p-4",
-                            ALTURA_DO_ESQUELETO_DETALHADO,
-                          )}
-                        >
-                          <Skeleton className="h-12 w-full bg-white/5" />
-                          <Skeleton className="h-6 w-3/4 bg-white/5" />
-                          <Skeleton className="h-10 w-full bg-white/5" />
-                        </div>
-                      ))
-                    : products?.map((product) => (
-                        <AdminProductCard
-                          key={product.id}
-                          product={product}
-                          viewMode="detailed"
-                          onNavigate={handleLocalNavigate}
-                          onToggleStatus={handleToggleStatus}
-                          onDuplicate={handleDuplicate}
-                          onDelete={handleDelete}
-                          isOffline={isOffline}
-                          onPrefetch={handlePrefetchProductForm}
-                        />
-                      ))}
-                </div>
-              ) : (
-                <div
-                  key="compact-grid"
-                  className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-                >
-                  {effectiveLoading && products.length === 0
-                    ? Array.from({ length: 12 }).map((_, i) => (
-                        <div
-                          key={i}
-                          aria-hidden="true"
-                          className="produto-esqueleto flex min-h-[260px] animate-pulse flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#101013]"
-                        >
-                          <Skeleton className="h-[60px] w-full bg-white/5" />
-                          <div className="space-y-3 p-3">
-                            <Skeleton className="h-3 w-1/2 bg-white/5" />
-                            <Skeleton className="h-8 w-full bg-white/5" />
+        <div className="admin-topo-lista">
+          {/* Grid view of Products as Assets */}
+          <LocalErrorBoundary>
+            {!effectiveLoading && products?.length === 0 ? null : (
+              <div className="relative" aria-busy={effectiveLoading}>
+                {(effectiveLoading || showVisualLoading) && (
+                  <div className="admin-sync-progress-bar" />
+                )}
+                {viewMode === "detailed" ? (
+                  <div
+                    key="detailed-grid"
+                    className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3"
+                  >
+                    {effectiveLoading && products.length === 0
+                      ? Array.from({ length: 8 }).map((_, i) => (
+                          <div
+                            key={i}
+                            aria-hidden="true"
+                            className={cn(
+                              "produto-esqueleto flex animate-pulse flex-col gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4",
+                              ALTURA_DO_ESQUELETO_DETALHADO,
+                            )}
+                          >
+                            <Skeleton className="h-12 w-full bg-white/5" />
                             <Skeleton className="h-6 w-3/4 bg-white/5" />
-                            <Skeleton className="h-11 w-full bg-white/5" />
+                            <Skeleton className="h-10 w-full bg-white/5" />
                           </div>
-                        </div>
-                      ))
-                    : products?.map((product) => (
-                        <AdminProductCard
-                          key={product.id}
-                          product={product}
-                          viewMode="compact"
-                          onNavigate={handleLocalNavigate}
-                          onToggleStatus={handleToggleStatus}
-                          onDuplicate={handleDuplicate}
-                          onDelete={handleDelete}
-                          isOffline={isOffline}
-                          onPrefetch={handlePrefetchProductForm}
-                        />
-                      ))}
-                </div>
+                        ))
+                      : products?.map((product) => (
+                          <AdminProductCard
+                            key={product.id}
+                            product={product}
+                            viewMode="detailed"
+                            onNavigate={handleLocalNavigate}
+                            onToggleStatus={handleToggleStatus}
+                            onDuplicate={handleDuplicate}
+                            onDelete={handleDelete}
+                            isOffline={isOffline}
+                            onPrefetch={handlePrefetchProductForm}
+                          />
+                        ))}
+                  </div>
+                ) : (
+                  <div
+                    key="compact-grid"
+                    className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+                  >
+                    {effectiveLoading && products.length === 0
+                      ? Array.from({ length: 12 }).map((_, i) => (
+                          <div
+                            key={i}
+                            aria-hidden="true"
+                            className="produto-esqueleto flex min-h-[260px] animate-pulse flex-col gap-3 overflow-hidden rounded-2xl border border-admin-border bg-admin-surface"
+                          >
+                            <Skeleton className="h-[60px] w-full bg-white/5" />
+                            <div className="space-y-3 p-3">
+                              <Skeleton className="h-3 w-1/2 bg-white/5" />
+                              <Skeleton className="h-8 w-full bg-white/5" />
+                              <Skeleton className="h-6 w-3/4 bg-white/5" />
+                              <Skeleton className="h-11 w-full bg-white/5" />
+                            </div>
+                          </div>
+                        ))
+                      : products?.map((product) => (
+                          <AdminProductCard
+                            key={product.id}
+                            product={product}
+                            viewMode="compact"
+                            onNavigate={handleLocalNavigate}
+                            onToggleStatus={handleToggleStatus}
+                            onDuplicate={handleDuplicate}
+                            onDelete={handleDelete}
+                            isOffline={isOffline}
+                            onPrefetch={handlePrefetchProductForm}
+                          />
+                        ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </LocalErrorBoundary>
+
+          <div className="relative">
+            {/* Missão 06 (C2): paginação única do painel */}
+            <PaginacaoAdmin
+              className="produtos-paginacao"
+              pagina={currentPage}
+              totalPaginas={totalPages}
+              totalItens={totalProducts}
+              itensPorPagina={pageSize}
+              aoMudar={(nova) => {
+                setCurrentPage(nova);
+                shouldScrollToTop.current = true;
+              }}
+            />
+            {totalProducts > 0 &&
+              (totalPages > 1 ? (
+                <p className="produtos-pagina text-xs font-semibold">
+                  {Math.min(currentPage + 1, totalPages)} de {totalPages}
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-center gap-4 text-xs">
+                    <button
+                      type="button"
+                      disabled
+                      className="produto-secundario"
+                    >
+                      Anterior
+                    </button>
+                    <span className="font-semibold">1 de 1</span>
+                    <button
+                      type="button"
+                      disabled
+                      className="produto-secundario"
+                    >
+                      Próximo
+                    </button>
+                  </div>
+                  <p className="mt-3 text-center text-[11px] text-zinc-400">
+                    Todos os resultados estão nesta página.
+                  </p>
+                </>
+              ))}
+          </div>
+
+          {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
+          {!effectiveLoading && !loadError && products?.length === 0 && (
+            <div className="flex flex-col items-center justify-center rounded-3xl border border-admin-border bg-admin-surface px-5 py-7 text-center">
+              <div className="relative z-10 mb-3 rounded-full border border-admin-border bg-admin-surface p-4 shadow-xl">
+                {temBuscaOuFiltro ? (
+                  <Search
+                    aria-hidden="true"
+                    className="size-6 text-indigo-300"
+                  />
+                ) : (
+                  <ShoppingBag
+                    aria-hidden="true"
+                    className="size-6 text-indigo-300"
+                  />
+                )}
+              </div>
+              <h3 className="text-lg font-bold text-zinc-50">
+                {temBuscaOuFiltro
+                  ? "Nenhum produto encontrado"
+                  : "Nenhum produto cadastrado"}
+              </h3>
+              {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
+                diz o que está filtrado e dá a saída. */}
+              {!temBuscaOuFiltro && (
+                <p className="mt-3 text-sm text-zinc-400">
+                  Cadastre seu primeiro produto pelo botão Novo produto.
+                </p>
+              )}
+              {temBuscaOuFiltro && (
+                <>
+                  <p className="mt-3 text-sm text-zinc-400">
+                    Nada combina com {descricaoDoFiltro}. Seus produtos
+                    continuam cadastrados.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={limparBuscaEFiltros}
+                    className="produto-secundario mt-4 w-full"
+                  >
+                    Limpar busca e filtros
+                  </button>
+                </>
               )}
             </div>
           )}
-        </LocalErrorBoundary>
 
-        <div className="relative">
-          {/* Missão 06 (C2): paginação única do painel */}
-          <PaginacaoAdmin
-            className="produtos-paginacao"
-            pagina={currentPage}
-            totalPaginas={totalPages}
-            totalItens={totalProducts}
-            itensPorPagina={pageSize}
-            aoMudar={(nova) => {
-              setCurrentPage(nova);
-              shouldScrollToTop.current = true;
-            }}
-          />
-          {totalProducts > 0 &&
-            (totalPages > 1 ? (
-              <p className="produtos-pagina text-xs font-semibold">
-                {Math.min(currentPage + 1, totalPages)} de {totalPages}
-              </p>
-            ) : (
-              <>
-                <div className="flex items-center justify-center gap-4 text-xs">
-                  <button type="button" disabled className="produto-secundario">
-                    Anterior
-                  </button>
-                  <span className="font-semibold">1 de 1</span>
-                  <button type="button" disabled className="produto-secundario">
-                    Próximo
-                  </button>
-                </div>
-                <p className="mt-3 text-center text-[11px] text-zinc-400">
-                  Todos os resultados estão nesta página.
-                </p>
-              </>
-            ))}
-        </div>
-
-        {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
-        {!effectiveLoading && !loadError && products?.length === 0 && (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-white/10 bg-[#101013] px-5 py-7 text-center">
-            <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
-              {temBuscaOuFiltro ? (
-                <Search aria-hidden="true" className="size-6 text-indigo-300" />
-              ) : (
-                <ShoppingBag
-                  aria-hidden="true"
-                  className="size-6 text-indigo-300"
-                />
-              )}
-            </div>
-            <h3 className="text-lg font-bold text-zinc-50">
-              {temBuscaOuFiltro
-                ? "Nenhum produto encontrado"
-                : "Nenhum produto cadastrado"}
-            </h3>
-            {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
-                diz o que está filtrado e dá a saída. */}
-            {!temBuscaOuFiltro && (
-              <p className="mt-3 text-sm text-zinc-400">
-                Cadastre seu primeiro produto pelo botão Novo produto.
-              </p>
-            )}
-            {temBuscaOuFiltro && (
-              <>
-                <p className="mt-3 text-sm text-zinc-400">
-                  Nada combina com {descricaoDoFiltro}. Seus produtos continuam
-                  cadastrados.
-                </p>
-                <button
-                  type="button"
-                  onClick={limparBuscaEFiltros}
-                  className="produto-secundario mt-4 w-full"
-                >
-                  Limpar busca e filtros
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Erro ao carregar — estado distinto do vazio real e do
+          {/* Erro ao carregar — estado distinto do vazio real e do
             carregamento: achado 11 avisava que trocar a mentira "vazio" por
             um esqueleto eterno na falha seria trocar uma mentira por outra. */}
-        {!effectiveLoading && loadError && products?.length === 0 && (
-          <div
-            role="alert"
-            className="rounded-3xl border border-white/10 bg-[#101013] p-6 text-center"
-          >
-            <AlertTriangle
-              aria-hidden="true"
-              className="mx-auto mb-4 size-11 rounded-2xl bg-red-300/10 p-2 text-red-300"
-            />
-            <h3 className="text-lg font-bold">Erro ao Carregar Produtos</h3>
-            <p className="my-4 text-sm text-zinc-400">
-              A lista não chegou. Confira a internet e tente de novo.
-            </p>
-            <button
-              type="button"
-              onClick={() => loadData(currentPage)}
-              disabled={loading}
-              className="produto-secundario w-full"
+          {!effectiveLoading && loadError && products?.length === 0 && (
+            <div
+              role="alert"
+              className="rounded-3xl border border-admin-border bg-admin-surface p-6 text-center"
             >
-              <RefreshCw aria-hidden="true" className="size-4" /> Tentar
-              Novamente
-            </button>
-          </div>
-        )}
-
+              <AlertTriangle
+                aria-hidden="true"
+                className="mx-auto mb-4 size-11 rounded-2xl bg-red-300/10 p-2 text-red-300"
+              />
+              <h3 className="text-lg font-bold">Erro ao Carregar Produtos</h3>
+              <p className="my-4 text-sm text-zinc-400">
+                A lista não chegou. Confira a internet e tente de novo.
+              </p>
+              <button
+                type="button"
+                onClick={() => loadData(currentPage)}
+                disabled={loading}
+                className="produto-secundario w-full"
+              >
+                <RefreshCw aria-hidden="true" className="size-4" /> Tentar
+                Novamente
+              </button>
+            </div>
+          )}
+        </div>
         <AcaoDaBarra ativa={active !== false}>
           <button
             type="button"
@@ -1353,7 +1388,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 "flex-1 flex min-h-11 items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "concepts"
                   ? "border border-admin-gold bg-admin-gold/10 text-admin-gold"
-                  : "border border-white/10 bg-[#17171c] text-zinc-300 hover:text-white",
+                  : "border border-admin-border bg-admin-raised text-zinc-300 hover:text-white",
               )}
             >
               <BookOpen className="size-3.5" />
@@ -1367,7 +1402,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 "flex-1 flex min-h-11 items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "simulator"
                   ? "border border-admin-gold bg-admin-gold/10 text-admin-gold"
-                  : "border border-white/10 bg-[#17171c] text-zinc-300 hover:text-white",
+                  : "border border-admin-border bg-admin-raised text-zinc-300 hover:text-white",
               )}
             >
               <Calculator className="size-3.5" />
@@ -1451,7 +1486,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     {
                       titulo: "Estoque e custo",
                       icone: AlertTriangle,
-                      cor: "text-orange-300",
+                      cor: classeDoTexto("atencao"),
                       descricao: `Crítico: estoque ≤ mínimo (padrão ${LIMIAR_PADRAO_DE_ESTOQUE}). Custo Suspeito: até R$ 0,10. Sem Custo Cadastrado: métricas —. Produtos com variações mostram o estoque total da grade.`,
                       formula: "Estoque ≤ mínimo ➜ Indicador Crítico",
                     },
@@ -1466,7 +1501,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     }) => (
                       <div
                         key={titulo}
-                        className="rounded-2xl border border-white/10 bg-[#101013] p-4"
+                        className="rounded-2xl border border-admin-border bg-admin-surface p-4"
                       >
                         <div className="flex items-start gap-3">
                           <Icone
@@ -1514,7 +1549,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             ) : (
               /* Simulador de Lucratividade */
               <div className="space-y-5">
-                <div className="space-y-4 rounded-3xl border border-white/5 bg-zinc-900/20 p-4">
+                <div className="space-y-4 rounded-3xl border border-admin-border bg-zinc-900/20 p-4">
                   <h4 className="border-l-2 border-violet-300/50 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                     Parâmetros do Produto
                   </h4>
@@ -1537,7 +1572,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simCost}
                           onChange={(e) => setSimCost(e.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
                           placeholder="0.00"
                         />
                       </div>
@@ -1561,7 +1596,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simPrice}
                           onChange={(e) => setSimPrice(e.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
                           placeholder="0.00"
                         />
                       </div>
@@ -1584,7 +1619,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simStock}
                           onChange={(e) => setSimStock(e.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-sky-300 focus:outline-none"
                           placeholder="0"
                         />
                       </div>
@@ -1611,7 +1646,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     Análise de Performance
                   </h4>
 
-                  <div className="rounded-2xl border border-white/10 bg-[#101013] p-4 text-xs text-zinc-400">
+                  <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 text-xs text-zinc-400">
                     <p className="mb-3 text-sm font-bold text-white">
                       Como interpretar a margem
                     </p>
@@ -1624,7 +1659,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <span>20% a &lt; 35%</span>
                     </p>
                     <p className="mt-2 flex justify-between gap-2">
-                      <span className="text-orange-300">Apertada</span>
+                      <span className={classeDoTexto("atencao")}>Apertada</span>
                       <span>10% a &lt; 20%</span>
                     </p>
                     <p className="mt-2 flex justify-between gap-2">
@@ -1635,25 +1670,22 @@ export const AdminProductsView = memo(function AdminProductsView({
                   </div>
 
                   {/* Recomendação de Margem */}
-                  <div
-                    className={cn(
-                      "p-3.5 rounded-2xl border transition-all duration-300 flex items-start gap-3 relative overflow-hidden",
-                      simulatorMetrics.health === "excellent" &&
-                        "bg-emerald-950/20 border-emerald-500/20 text-emerald-400",
-                      simulatorMetrics.health === "good" &&
-                        "bg-teal-950/20 border-teal-500/20 text-teal-400",
-                      simulatorMetrics.health === "low" &&
-                        "bg-amber-950/20 border-amber-500/20 text-amber-400",
-                      simulatorMetrics.health === "danger" &&
-                        "bg-rose-950/20 border-rose-500/20 text-rose-400",
-                    )}
-                  >
-                    <div className="shrink-0 rounded-xl border border-white/5 bg-white/5 p-1.5">
+                  <div className="relative flex items-start gap-3 overflow-hidden rounded-2xl border border-admin-border p-3.5">
+                    <div className="shrink-0 rounded-xl border border-admin-border bg-white/5 p-1.5">
                       <Sparkles className="size-4 animate-pulse" />
                     </div>
                     <div>
                       <p className="text-[11px] font-black uppercase tracking-wider">
-                        {simulatorMetrics.healthLabel}
+                        <EstadoComPonto
+                          tom={
+                            simulatorMetrics.health === "danger"
+                              ? "negativo"
+                              : simulatorMetrics.health === "low"
+                                ? "atencao"
+                                : "positivo"
+                          }
+                          texto={simulatorMetrics.healthLabel}
+                        />
                       </p>
                       <p className="mt-0.5 text-[11px] font-medium leading-normal text-zinc-400">
                         {simulatorMetrics.health === "excellent" &&
@@ -1672,41 +1704,59 @@ export const AdminProductsView = memo(function AdminProductsView({
                     {[
                       {
                         rotulo: "Margem de Lucro",
+                        cor: classeDoTexto(tomDoValor(simulatorMetrics.margin)),
                         valor: percentualComUmaCasa(simulatorMetrics.margin),
                       },
                       {
                         rotulo: "Lucro sobre o custo (por unidade)",
+                        cor: classeDoTexto(tomDoValor(simulatorMetrics.roi)),
                         valor: percentualComUmaCasa(simulatorMetrics.roi),
                       },
                       {
                         rotulo: "Lucro bruto por unidade",
+                        cor: classeDoTexto(
+                          tomDoValor(simulatorMetrics.unitProfit),
+                        ),
                         valor: `R$ ${simulatorMetrics.unitProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
                       },
                       {
                         rotulo: "Capital de Lote (Custo)",
+                        cor: "text-white",
                         valor: `R$ ${simulatorMetrics.totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
                       },
-                    ].map(({ rotulo, valor }, indice) => (
+                    ].map(({ rotulo, valor, cor }) => (
                       <div
                         key={rotulo}
-                        className={`flex min-h-20 min-w-0 flex-col justify-between gap-2 rounded-2xl border bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 ${indice === 0 ? (simulatorMetrics.health === "excellent" ? "border-emerald-500/20" : simulatorMetrics.health === "good" ? "border-teal-500/20" : simulatorMetrics.health === "low" ? "border-amber-500/20" : "border-rose-500/20") : "border-white/10"}`}
+                        className="flex min-h-20 min-w-0 flex-col justify-between gap-2 rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-4"
                       >
                         <p className="text-xs font-semibold leading-tight text-zinc-300">
                           {rotulo}
                         </p>
-                        <p className="text-[17px] font-black tabular-nums leading-tight sm:text-[22px]">
+                        <p
+                          className={cn(
+                            "text-[17px] font-black tabular-nums leading-tight sm:text-[22px]",
+                            cor,
+                          )}
+                        >
                           <span className="whitespace-nowrap">{valor}</span>
                         </p>
                       </div>
                     ))}
                   </div>
 
-                  <div className="relative flex min-h-20 flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#101013] p-4">
+                  <div className="relative flex min-h-20 flex-wrap items-center justify-between gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4">
                     <div className="relative z-10">
                       <p className="text-[11px] font-bold text-zinc-300">
                         Lucro bruto do lote simulado
                       </p>
-                      <p className="mt-0.5 font-mono text-xl font-black text-white">
+                      <p
+                        className={cn(
+                          "mt-0.5 font-mono text-xl font-black",
+                          classeDoTexto(
+                            tomDoValor(simulatorMetrics.totalProfit),
+                          ),
+                        )}
+                      >
                         R${" "}
                         {simulatorMetrics.totalProfit.toLocaleString("pt-BR", {
                           minimumFractionDigits: 2,
@@ -1734,7 +1784,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           open={productToDelete !== null}
           onOpenChange={(open) => !open && setProductToDelete(null)}
         >
-          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-white/10 bg-[#17171c]">
+          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-xl font-bold text-white">
                 <Trash2
@@ -1771,7 +1821,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           open={productToDuplicate !== null}
           onOpenChange={(open) => !open && setProductToDuplicate(null)}
         >
-          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-white/10 bg-[#17171c]">
+          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-xl font-bold text-white">
                 <Copy
@@ -1858,7 +1908,10 @@ function FotoDoCatalogo({ product }: { readonly product: any }) {
       )}
     />
   ) : (
-    <span className="flex size-full flex-col items-center justify-center gap-1 bg-zinc-100 p-2 text-center text-[11px] text-zinc-600">
+    <span
+      data-tema-fixo=""
+      className="flex size-full flex-col items-center justify-center gap-1 bg-zinc-100 p-2 text-center text-[11px] text-zinc-600"
+    >
       <Camera aria-hidden="true" className="size-5 shrink-0 text-slate-600" />
       <span>{foto ? "Foto indisponível" : "Sem foto"}</span>
     </span>
@@ -1913,9 +1966,9 @@ function MenuDoProduto({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="produto-menu z-50 w-80 max-w-[calc(100vw-40px)] rounded-3xl border border-white/10 bg-[#17171c] p-4 text-zinc-100 shadow-2xl"
+        className="produto-menu z-50 w-80 max-w-[calc(100vw-40px)] rounded-3xl border border-admin-border bg-admin-raised p-4 text-zinc-100 shadow-2xl"
       >
-        <div className="mb-3 flex gap-3 border-b border-white/10 pb-4">
+        <div className="mb-3 flex gap-3 border-b border-admin-border pb-4">
           <div className="size-12 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
             <FotoDoCatalogo product={product} />
           </div>
@@ -1947,7 +2000,7 @@ function MenuDoProduto({
           className="produto-menu-item"
         >
           {product.isActive ? (
-            <Pause aria-hidden="true" className="text-orange-300" />
+            <Pause aria-hidden="true" className={classeDoTexto("atencao")} />
           ) : (
             <Play aria-hidden="true" className="text-emerald-300" />
           )}
@@ -2018,10 +2071,10 @@ const AdminProductCard = memo(function AdminProductCard({
   const estado = statusDoProdutoNoPainel(product);
   const classeDoEstado =
     estado === "Offline"
-      ? "text-violet-300"
+      ? classeDoTexto("neutro")
       : estado === "Esgotado"
-        ? "text-red-300"
-        : "text-zinc-400";
+        ? classeDoTexto("negativo")
+        : classeDoTexto("neutro");
   const botoes = (detalhado: boolean, custoSuspeito = false) => (
     <div className="produto-acoes mt-2 flex flex-wrap gap-2">
       <button
@@ -2074,6 +2127,12 @@ const AdminProductCard = memo(function AdminProductCard({
     product.stock,
     product.estoqueMinimo ?? null,
   );
+  const classeDoEstoque =
+    product.stock <= 0
+      ? classeDoTexto("negativo")
+      : estoqueBaixo
+        ? classeDoTexto("atencao")
+        : undefined;
   if (viewMode === "detailed") {
     // Achado 8 da auditoria de 20/08/2026
     // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): `costPrice || 0`
@@ -2144,7 +2203,7 @@ const AdminProductCard = memo(function AdminProductCard({
       >
         <div
           className={cn(
-            "produto-cartao content-visibility-detailed-card rounded-3xl border border-white/10 bg-[#101013] p-3",
+            "produto-cartao content-visibility-detailed-card rounded-3xl border border-admin-border bg-admin-surface p-3",
             RESERVA_DO_CARTAO_DETALHADO,
           )}
         >
@@ -2171,7 +2230,12 @@ const AdminProductCard = memo(function AdminProductCard({
                   {estado}
                 </Badge>
                 {estoqueBaixo && (
-                  <Badge className="produto-status text-[11px] text-orange-300">
+                  <Badge
+                    className={cn(
+                      "produto-status text-[11px]",
+                      classeDoTexto("atencao"),
+                    )}
+                  >
                     Crítico
                   </Badge>
                 )}
@@ -2210,14 +2274,10 @@ const AdminProductCard = memo(function AdminProductCard({
               <p
                 className={cn(
                   "mt-1 text-lg font-bold tabular-nums",
-                  estoqueBaixo && "text-orange-300",
-                  estado === "Esgotado" && "text-red-300",
+                  classeDoEstoque,
                 )}
               >
-                <span className={cn(estoqueBaixo && "text-orange-300")}>
-                  {product.stock}
-                </span>{" "}
-                un.
+                <span className={classeDoEstoque}>{product.stock}</span> un.
               </p>
             </div>
             {!custoSuspeito && (
@@ -2225,7 +2285,10 @@ const AdminProductCard = memo(function AdminProductCard({
                 <p className="text-[11px] text-zinc-400">Margem de Lucro</p>
                 <span
                   data-margem
-                  className="mt-1 block whitespace-nowrap text-lg font-black tabular-nums tracking-tighter"
+                  className={cn(
+                    "mt-1 block whitespace-nowrap text-lg font-black tabular-nums tracking-tighter",
+                    classeDoTexto(tomDoValor(margin)),
+                  )}
                 >
                   {margin === null ? "—" : percentualComUmaCasa(margin)}
                 </span>
@@ -2235,7 +2298,10 @@ const AdminProductCard = memo(function AdminProductCard({
           {custoSuspeito && (
             <div
               data-custo-suspeito
-              className="mt-3 flex gap-2 rounded-xl bg-orange-300/10 p-3 text-orange-300"
+              className={cn(
+                "mt-3 flex gap-2 rounded-xl p-3",
+                classeDoTexto("atencao"),
+              )}
             >
               <AlertTriangle aria-hidden="true" className="size-5 shrink-0" />
               <div className="min-w-0 text-xs">
@@ -2243,7 +2309,10 @@ const AdminProductCard = memo(function AdminProductCard({
                 <p className="mt-1">
                   <span
                     data-margem
-                    className="whitespace-nowrap font-black tabular-nums tracking-tighter"
+                    className={cn(
+                      "whitespace-nowrap font-black tabular-nums tracking-tighter",
+                      classeDoTexto(tomDoValor(margin)),
+                    )}
                   >
                     {margin === null ? "—" : percentualComUmaCasa(margin)}
                   </span>{" "}
@@ -2259,7 +2328,7 @@ const AdminProductCard = memo(function AdminProductCard({
             id={`metricas-produto-${product.id}`}
             data-metricas-do-produto
             hidden={!maisMetricas}
-            className="produto-detalhes mt-3 rounded-2xl bg-[#17171c] p-3 text-[11px]"
+            className="produto-detalhes mt-3 rounded-2xl bg-admin-raised p-3 text-[11px]"
           >
             {variantesAtivas.length > 0 && (
               <p className="mb-2 text-zinc-400">
@@ -2275,13 +2344,15 @@ const AdminProductCard = memo(function AdminProductCard({
                 />
                 Unidades em Estoque
               </p>
-              <span className="font-bold">{product.stock} un.</span>
+              <span className={cn("font-bold", classeDoEstoque)}>
+                {product.stock} un.
+              </span>
             </div>
             <div className="my-2 h-1 overflow-hidden rounded-full bg-white/10">
               <div
                 className={cn(
                   "h-full rounded-full",
-                  estoqueBaixo ? "bg-orange-300" : "bg-sky-200",
+                  estoqueBaixo ? "bg-amber-400" : "bg-sky-200",
                 )}
                 style={{ width: `${Math.min(product.stock * 5, 100)}%` }}
               />
@@ -2298,7 +2369,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 data-lucro-sobre-custo
                 className={cn(
                   "whitespace-nowrap font-black tracking-tighter tabular-nums",
-                  custoSuspeito && "text-orange-300",
+                  classeDoTexto(tomDoValor(roi)),
                 )}
               >
                 {roi === null ? "—" : percentualComUmaCasa(roi)}
@@ -2326,7 +2397,12 @@ const AdminProductCard = memo(function AdminProductCard({
                 />
                 Lucro bruto do estoque
               </p>
-              <span className="font-semibold">
+              <span
+                className={cn(
+                  "font-semibold",
+                  classeDoTexto(tomDoValor(totalProfit)),
+                )}
+              >
                 {totalProfit === null
                   ? "—"
                   : `${totalProfit >= 0 ? "+ " : ""}R$ ${totalProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
@@ -2345,7 +2421,7 @@ const AdminProductCard = memo(function AdminProductCard({
               </div>
             )}
             {custoSuspeito && (
-              <p className="mt-3 text-orange-300">
+              <p className={cn("mt-3", classeDoTexto("atencao"))}>
                 Indicadores de lucro dependem da revisão do custo.
               </p>
             )}
@@ -2369,7 +2445,7 @@ const AdminProductCard = memo(function AdminProductCard({
       onMouseEnter={onPrefetch}
       onTouchStart={onPrefetch}
     >
-      <div className="produto-cartao content-visibility-compact-card flex w-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#101013]">
+      <div className="produto-cartao content-visibility-compact-card flex w-full flex-col overflow-hidden rounded-3xl border border-admin-border bg-admin-surface">
         <MenuDoProduto
           {...acoes}
           className="block shrink-0 overflow-hidden rounded-t-3xl"
@@ -2415,7 +2491,12 @@ const AdminProductCard = memo(function AdminProductCard({
               ) : estado === "Esgotado" || estoqueBaixo ? (
                 <AlertTriangle
                   aria-hidden="true"
-                  className="size-3.5 shrink-0 text-orange-300"
+                  className={cn(
+                    "size-3.5 shrink-0",
+                    classeDoTexto(
+                      estado === "Esgotado" ? "negativo" : "atencao",
+                    ),
+                  )}
                 />
               ) : (
                 <Package aria-hidden="true" className="size-3.5 shrink-0" />
@@ -2429,20 +2510,23 @@ const AdminProductCard = memo(function AdminProductCard({
                 {estado}
               </Badge>
               {estoqueBaixo && estado !== "Esgotado" && (
-                <Badge className="produto-status text-[11px] text-orange-300">
+                <Badge
+                  className={cn(
+                    "produto-status text-[11px]",
+                    classeDoTexto("atencao"),
+                  )}
+                >
                   Crítico
                 </Badge>
               )}
-              <span className={cn(estoqueBaixo && "text-orange-300")}>
-                {product.stock}
-              </span>
+              <span className={classeDoEstoque}>{product.stock}</span>
               <span>
                 {estado === "Em Operação" && !estoqueBaixo
                   ? "em estoque"
                   : "un."}
               </span>
               {estoqueBaixo && estado !== "Esgotado" && (
-                <span className="text-orange-300">
+                <span className={classeDoTexto("atencao")}>
                   · mín. {product.estoqueMinimo ?? LIMIAR_PADRAO_DE_ESTOQUE}
                 </span>
               )}

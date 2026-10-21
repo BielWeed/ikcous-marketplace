@@ -2,7 +2,8 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { lerSupabaseUrl } from "@/lib/env-valores";
 import { cn } from "@/lib/utils";
-import { memo, useEffect, useRef, useState } from "react";
+import type { EditorDeMinhaLoja } from "@/views/admin/AdminAboutStoreView";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // Editor do horário de atendimento (store_config.business_hours), EXTRAÍDO
@@ -15,7 +16,12 @@ import { toast } from "sonner";
 const BusinessHoursEditor = memo(function BusinessHoursEditor({
   onDirtyChange,
   active = true,
-}: { onDirtyChange: (dirty: boolean) => void; active?: boolean }) {
+  onRegistrarSalvamento,
+}: {
+  onDirtyChange: (dirty: boolean) => void;
+  active?: boolean;
+  onRegistrarSalvamento?: (editor: EditorDeMinhaLoja) => void;
+}) {
   const { config, updateConfig } = useStore();
   const saved = config.businessHours ?? "";
   const [baseline, setBaseline] = useState(saved);
@@ -51,8 +57,12 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
       life.serial++;
     };
   }, []);
-  async function save() {
-    if (saving || !active) return;
+  useLayoutEffect(() => {
+    onRegistrarSalvamento?.({ alterado: dirty, salvar: save });
+  });
+
+  async function save(): Promise<boolean> {
+    if (saving || !active) return false;
     const life = lifecycle.current;
     const serial = ++life.serial;
     const isCurrent = () =>
@@ -65,14 +75,18 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
         { businessHours: chosen || null },
         { isCurrent, silent: true },
       );
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       if (success) {
         setBaseline(chosen);
         setValue(chosen);
         toast.success("Horário de atendimento salvo");
-      } else setError(true);
+        return true;
+      }
+      setError(true);
+      return false;
     } catch {
       if (isCurrent()) setError(true);
+      return false;
     } finally {
       if (isCurrent()) setSaving(false);
     }
@@ -91,7 +105,7 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
         disabled={saving || !active}
         onChange={(event) => setValue(event.target.value)}
         placeholder="Ex: Ter a Sáb, 9h às 18h"
-        className="h-11 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white"
+        className="h-11 w-full rounded-xl border border-admin-border bg-black/50 px-3.5 text-sm text-white"
       />
       {error && (
         <p role="alert">
@@ -99,14 +113,16 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
         </p>
       )}
       <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          disabled={saving || !active || !dirty}
-          onClick={() => void save()}
-          className="min-h-11 rounded-xl bg-admin-gold px-4 font-black text-black disabled:opacity-40"
-        >
-          {saving ? "Salvando…" : "Salvar horário"}
-        </button>
+        {!onRegistrarSalvamento && (
+          <button
+            type="button"
+            disabled={saving || !active || !dirty}
+            onClick={() => void save()}
+            className="min-h-11 rounded-xl bg-admin-gold px-4 font-black text-black disabled:opacity-40"
+          >
+            {saving ? "Salvando…" : "Salvar horário"}
+          </button>
+        )}
         <button
           type="button"
           disabled={saving || !active || !dirty}
@@ -115,7 +131,7 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
             setValue(saved);
             setError(false);
           }}
-          className="min-h-11 rounded-xl border border-white/15 bg-white/5 px-4 font-bold text-white disabled:opacity-40"
+          className="min-h-11 rounded-xl border border-admin-border-strong bg-white/5 px-4 font-bold text-white disabled:opacity-40"
         >
           Descartar horário
         </button>
@@ -127,9 +143,11 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
 export function BusinessHoursSection({
   onDirtyChange,
   active,
+  onRegistrarSalvamento,
 }: {
   onDirtyChange: (dirty: boolean) => void;
   active?: boolean;
+  onRegistrarSalvamento?: (editor: EditorDeMinhaLoja) => void;
 }) {
   const { user, session, isAdmin, adminStatus } = useAuth();
   const allowed =
@@ -146,6 +164,7 @@ export function BusinessHoursSection({
     <BusinessHoursEditor
       key={`${lerSupabaseUrl()}|${user.id}`}
       onDirtyChange={onDirtyChange}
+      onRegistrarSalvamento={onRegistrarSalvamento}
       active={active}
     />
   );

@@ -146,7 +146,7 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
 
   it("um provedor ligado com chave: mostra 'ligado', nunca a palavra 'conectado' presa a ele", async () => {
     await abrirTela();
-    expect(hospedeiro.textContent).toMatch(/Melhor Envio ligado/);
+    expect(hospedeiro.textContent).toMatch(/Melhor Envio cota o frete na hora/);
     // F10: a palavra "conectado" pode aparecer só na frase genérica de
     // ausência total ("Nenhuma transportadora conectada"), nunca atribuída
     // a um provedor por ele ter chave.
@@ -159,8 +159,10 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
       error: null,
     });
     await abrirTela();
-    expect(hospedeiro.textContent).not.toMatch(/Melhor Envio ligado/);
-    expect(hospedeiro.textContent).toMatch(/Sem transportadora/i);
+    expect(hospedeiro.textContent).not.toMatch(
+      /Melhor Envio cota o frete na hora/,
+    );
+    expect(hospedeiro.textContent).toMatch(/Nenhuma transportadora ligada/i);
   });
 
   it("dois provedores ligados: a faixa soma 'N provedores ligados'", async () => {
@@ -179,7 +181,9 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
       error: null,
     });
     await abrirTela();
-    expect(hospedeiro.textContent).toMatch(/2 provedores ligados/);
+    expect(hospedeiro.textContent).toMatch(
+      /Melhor Envio e SuperFrete cotam o frete na hora/,
+    );
   });
 
   // ── Achado 2 (revisão Opus): regressão 1.5.5 — SuperFrete com chave e
@@ -197,13 +201,11 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
       });
       await abrirTela();
       const texto = hospedeiro.textContent ?? "";
-      expect(texto).toMatch(/SuperFrete: incompleta/);
-      expect(texto).not.toMatch(/SuperFrete ligado/);
+      expect(texto).toMatch(/Falta o e-mail de contato/);
+      expect(texto).not.toMatch(/SuperFrete cota o frete na hora/);
       expect(texto).not.toMatch(/SuperFrete: chave salva/);
       // H5: o e-mail se preenche no painel Transportadoras desta tela.
-      expect(texto).toMatch(
-        /SuperFrete incompleta — falta o e-mail de contato em Transportadoras\./,
-      );
+      expect(texto).toMatch(/Falta o e-mail de contato/);
     });
 
     it("e-mail salvo INVÁLIDO (gravado direto no banco, sem passar pela validação da edge) também é incompleta", async () => {
@@ -215,8 +217,8 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
       });
       await abrirTela();
       const texto = hospedeiro.textContent ?? "";
-      expect(texto).toMatch(/SuperFrete: incompleta/);
-      expect(texto).not.toMatch(/SuperFrete ligado/);
+      expect(texto).toMatch(/Falta o e-mail de contato/);
+      expect(texto).not.toMatch(/SuperFrete cota o frete na hora/);
     });
 
     it("chave + e-mail válido -> 'ligado' normal (controle)", async () => {
@@ -231,7 +233,7 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
       });
       await abrirTela();
       const texto = hospedeiro.textContent ?? "";
-      expect(texto).toMatch(/SuperFrete ligado/);
+      expect(texto).toMatch(/SuperFrete cota o frete na hora/);
       expect(texto).not.toMatch(/incompleta/i);
     });
 
@@ -259,7 +261,7 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
       });
       await abrirTela();
       const texto = hospedeiro.textContent ?? "";
-      expect(texto).toMatch(/Melhor Envio ligado/);
+      expect(texto).toMatch(/Melhor Envio cota o frete na hora/);
       expect(texto).not.toMatch(/incompleta/i);
     });
 
@@ -291,14 +293,14 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
         await esperarMicrotarefas();
       });
       const cta = [...hospedeiro.querySelectorAll("button")].find((b) =>
-        /preencher em transportadoras/i.test(b.textContent ?? ""),
+        /^ligar transportadora$/i.test(b.textContent ?? ""),
       );
       expect(cta).toBeDefined();
       await act(async () => {
         cta?.click();
       });
       const painel = hospedeiro.querySelector(
-        "#painel-frete-transportadoras > button[aria-expanded]",
+        "#painel-frete-nacional > button[aria-expanded]",
       );
       expect(painel?.getAttribute("aria-expanded")).toBe("true");
       expect(onNavigate).not.toHaveBeenCalled();
@@ -330,7 +332,7 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
     });
     expect(hospedeiro.textContent).toMatch(/Nenhuma transportadora ligada/i);
     const cta = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      /conectar transportadora/i.test(b.textContent ?? ""),
+      /^ligar transportadora$/i.test(b.textContent ?? ""),
     );
     expect(cta).toBeDefined();
   });
@@ -338,7 +340,9 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
   it("leitura da edge falhou: estado honesto 'conexão a confirmar', com 'Tentar de novo'", async () => {
     invoke.mockResolvedValue({ data: { success: false }, error: null });
     await abrirTela();
-    expect(hospedeiro.textContent).toMatch(/conexão a confirmar/i);
+    expect(hospedeiro.textContent).toMatch(
+      /Não deu para confirmar as transportadoras/i,
+    );
     const tentar = [...hospedeiro.querySelectorAll("button")].find((b) =>
       /tentar de novo/i.test(b.textContent ?? ""),
     );
@@ -356,6 +360,8 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
       error: null,
     });
     await abrirTela();
-    expect(hospedeiro.textContent).not.toMatch(/Melhor Envio ligado/);
+    expect(hospedeiro.textContent).not.toMatch(
+      /Melhor Envio cota o frete na hora/,
+    );
   });
 });

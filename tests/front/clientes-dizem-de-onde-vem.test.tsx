@@ -122,9 +122,9 @@ describe("as duas listas de Clientes dizem de onde vêm", () => {
     });
 
     const frase = `Clientes com conta no app. Quem comprou só no balcão aparece em ${NOMES_DO_PAINEL["admin-crm"]} › Clientes.`;
-    const paragrafo = Array.from(hospedeiro.querySelectorAll("p")).find(
-      (p) => texto(p).trim() === frase,
-    );
+    const paragrafo = Array.from(
+      hospedeiro.querySelectorAll(".metricas-painel-nota"),
+    ).find((p) => texto(p).trim() === frase);
     expect(paragrafo, "parágrafo de origem da lista").toBeDefined();
     // Legível: nada de 10px nem de cinza abaixo de zinc-400.
     expect(paragrafo?.className).toContain("text-zinc-400");

@@ -775,6 +775,8 @@ export function rotuloDoCanal(canal: string | null | undefined): string {
  */
 export function rotuloDaFormaDePagamento(forma: string): string {
   switch (forma) {
+    case "online_desconhecido":
+      return "Pagamento online (forma não identificada)";
     case "pix":
       return "PIX";
     case "credito":

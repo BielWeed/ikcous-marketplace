@@ -10,7 +10,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adiar } from "./apoio";
 
 const rpc = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/supabase", () => ({ supabase: { rpc } }));
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    rpc,
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          single: async () => ({ data: { total: 100 }, error: null }),
+        }),
+      }),
+    }),
+  },
+}));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: null, isAdmin: false }),
 }));

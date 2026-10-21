@@ -31,6 +31,7 @@ import type {
   PayloadDaConta,
   PayloadDoLancamento,
   PeriodoEscolhido,
+  ResultadoDoMovimentoDeCaixa,
   ResumoFinanceiro,
   SaldoDeConta,
   SessaoDeCaixa,
@@ -541,6 +542,8 @@ export const FORMAS_DO_LANCAMENTO: readonly string[] = [
 
 export function rotuloDaForma(forma: string | null | undefined): string {
   switch (forma) {
+    case "online_desconhecido":
+      return "Pagamento online (forma não identificada)";
     case "online":
       return "Online (Mercado Pago)";
     case "pix":
@@ -1013,6 +1016,18 @@ export function parseCaixaHistorico(json: unknown): SessaoDeCaixa[] {
       };
     }),
   );
+}
+
+export function parseMovimentoDeCaixa(
+  json: unknown,
+): ResultadoDoMovimentoDeCaixa {
+  const o = comoObjeto(json);
+  const id = o ? textoOuNulo(o.id) : null;
+  const status = o ? textoOuNulo(o.status) : null;
+  if (!o || !id || !status || typeof o.replay !== "boolean") {
+    throw new ErroDeFormatoFinanceiro("fin_caixa_movimentar_com_chave");
+  }
+  return { id, replay: o.replay, status };
 }
 
 export function parseFechamento(json: unknown): FechamentoDeCaixa {
@@ -1712,21 +1727,32 @@ export function validarCategoria(
 // Erros do servidor → frase para a lojista
 // ---------------------------------------------------------------------------
 
-/** O supabase-js devolve `{code, message}` (PostgrestError e o PGRST202 de
+/** O supabase-js devolve `{code, message, details}` (PostgrestError e o PGRST202 de
  * função ausente) sem tipo público — lido pela FORMA, com guarda. */
 function codigoEMensagem(erro: unknown): {
   codigo: string | null;
   mensagem: string | null;
+  detalhe: string | null;
 } {
   const o = comoObjeto(erro);
-  if (!o) return { codigo: null, mensagem: null };
+  if (!o) return { codigo: null, mensagem: null, detalhe: null };
   return {
     codigo: typeof o.code === "string" && o.code !== "" ? o.code : null,
+    detalhe: typeof o.details === "string" ? o.details : null,
     mensagem:
       typeof o.message === "string" && o.message.trim() !== ""
         ? o.message
         : null,
   };
+}
+
+/** Conflito de uma operação já registrada; não é falha de conexão. */
+export function ehDivergenciaDoCaixa(erro: unknown): boolean {
+  const { codigo, detalhe } = codigoEMensagem(erro);
+  return (
+    codigo === "22023" &&
+    (detalhe === "fechamento_divergente" || detalhe === "tentativa_divergente")
+  );
 }
 
 /**
@@ -1741,11 +1767,19 @@ export function mensagemDeErroFinanceiro(erro: unknown): string {
     return "O servidor respondeu num formato que esta versão do app não entende. Atualize o app.";
   }
   const { codigo, mensagem } = codigoEMensagem(erro);
+  if (ehDivergenciaDoCaixa(erro)) {
+    return "Esta operação já foi registrada com valores diferentes. Confira o histórico antes de tentar de novo.";
+  }
+  if (
+    codigo === "PGRST202" ||
+    codigo === "42883" ||
+    codigo === "42P01" ||
+    mensagem?.includes("Could not find the function")
+  ) {
+    return "O Financeiro ainda não foi instalado no banco desta loja.";
+  }
   if (!codigo) {
     return "Não consegui falar com o servidor. Confira a conexão e tente de novo.";
-  }
-  if (codigo === "PGRST202" || codigo === "42883" || codigo === "42P01") {
-    return "O Financeiro ainda não foi instalado no banco desta loja.";
   }
   if (codigo === "42501" || codigo === "PGRST301") {
     return "Só o administrador da loja mexe no Financeiro. Entre de novo com a conta de administrador.";

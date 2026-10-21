@@ -2,6 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { formatarInteiro } from "@/lib/crm";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { Customer } from "@/utils/admin_cache";
@@ -44,6 +45,7 @@ function IdentidadeCliente({
             className="object-cover"
           />
           <AvatarFallback
+            data-tema-fixo=""
             className={cn(
               "text-sm font-bold text-white",
               CORES_DO_AVATAR.at(
@@ -58,7 +60,7 @@ function IdentidadeCliente({
           <span
             role="img"
             aria-label="Avisos ativos"
-            className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-[#101013] bg-teal-400 text-teal-950"
+            className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-admin-surface bg-teal-400 text-teal-950"
           >
             <Zap aria-hidden="true" className="size-3 fill-current" />
           </span>
@@ -117,7 +119,7 @@ export const CartaoCliente = memo(function CartaoCliente({
   return (
     <div
       className={cn(
-        "group relative min-w-0 cursor-pointer rounded-2xl border border-white/10 bg-[#101013] px-3 py-2 text-zinc-400 hover:border-white/20",
+        "group relative min-w-0 cursor-pointer rounded-2xl border border-admin-border bg-admin-surface px-3 py-2 text-zinc-400 hover:border-admin-border-strong",
         FOCO_CLIENTES,
         detalhado &&
           "rounded-[20px] py-4 md:grid md:grid-cols-12 md:items-center md:gap-4",
@@ -177,7 +179,8 @@ export const CartaoCliente = memo(function CartaoCliente({
       <div
         className={cn(
           "mt-1 flex min-w-0 flex-wrap items-end gap-x-5 gap-y-2",
-          detalhado && "mt-3 rounded-xl bg-[#17171C] p-3 md:col-span-3 md:mt-0",
+          detalhado &&
+            "mt-3 rounded-xl bg-admin-raised p-3 md:col-span-3 md:mt-0",
         )}
       >
         <div className="flex min-w-0 flex-[1_1_auto] flex-col">
@@ -186,7 +189,8 @@ export const CartaoCliente = memo(function CartaoCliente({
           </span>
           <span
             className={cn(
-              "whitespace-nowrap text-lg font-bold leading-tight tabular-nums text-white",
+              "whitespace-nowrap text-lg font-bold leading-tight tabular-nums",
+              classeDoTexto(tomDoValor(Number(customer.total_spent || 0))),
               detalhado && "text-xl",
             )}
           >
@@ -208,7 +212,7 @@ export const CartaoCliente = memo(function CartaoCliente({
           </span>
         </div>
         {detalhado && (
-          <div className="w-full border-t border-white/5 pt-2 text-[11px] md:hidden">
+          <div className="w-full border-t border-admin-border pt-2 text-[11px] md:hidden">
             <span className="flex items-center gap-1">
               <Calendar aria-hidden="true" className="size-3 text-violet-300" />
               Desde {new Date(customer.created_at).toLocaleDateString("pt-BR")}
@@ -250,7 +254,7 @@ export const CartaoCliente = memo(function CartaoCliente({
             <button
               type="button"
               aria-label={`Gestão de Cliente: ${customer.full_name || "Usuário"}`}
-              className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#17171C] text-zinc-300 hover:bg-[#26262E] ${FOCO_CLIENTES}`}
+              className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-admin-border bg-admin-raised text-zinc-300 hover:bg-admin-hover ${FOCO_CLIENTES}`}
             >
               <MoreHorizontal aria-hidden="true" className="size-5" />
             </button>
@@ -262,7 +266,7 @@ export const CartaoCliente = memo(function CartaoCliente({
               ? "Avisos ativos."
               : "Sem avisos ativos. Notificação Push continua disponível."}
           </p>
-          <div className="space-y-2 border-t border-white/10 pt-4">
+          <div className="space-y-2 border-t border-admin-border pt-4">
             <button
               type="button"
               onClick={() => abrir("admin-user-detail")}

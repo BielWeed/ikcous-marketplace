@@ -80,6 +80,8 @@ const NOMES = [
   "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql",
   "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql",
   "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql",
+  "20261280000000_o_balcao_registra_so_o_total_conferido.sql",
+  "20261310000000_estilo_do_card_de_frete.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -109,6 +111,11 @@ const SUCESSORAS_DA_99 = NOMES.flatMap((nome) => {
     nome,
     rollback: `rollback-manual-${nome}`,
     assinatura,
+    // A 280 troca a assinatura, mas seu rollback restaura a de oito argumentos.
+    assinaturaAnterior:
+      nome === "20261280000000_o_balcao_registra_so_o_total_conferido.sql"
+        ? "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)"
+        : assinatura,
     hashVigente,
     hashDesta,
     // "No ar" = o corpo vivo é exatamente o que a sucessora deixa.
@@ -217,7 +224,7 @@ async function desfazerSucessorasDa99(c) {
     if ((await hashVivo(c, s.assinatura)) !== s.hashDesta) continue;
     await c.query(ler(s.rollback));
     assert.equal(
-      await hashVivo(c, s.assinatura),
+      await hashVivo(c, s.assinaturaAnterior),
       s.hashVigente,
       `${s.rollback} não devolveu o corpo da 99`,
     );

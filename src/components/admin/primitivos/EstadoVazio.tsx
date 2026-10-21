@@ -16,7 +16,7 @@ export function EstadoVazio({
   readonly acao?: { readonly rotulo: string; readonly aoClicar: () => void };
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/5 bg-zinc-900/30 px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-admin-border bg-admin-surface px-6 py-10 text-center">
       {Icone && <Icone aria-hidden="true" className="size-8 text-zinc-400" />}
       <p className="text-base font-bold text-white">{titulo}</p>
       <p className="max-w-sm text-sm text-zinc-400">{frase}</p>

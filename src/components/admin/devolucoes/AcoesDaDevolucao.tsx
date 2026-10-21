@@ -44,11 +44,11 @@ interface Inspecao {
 export const BOTAO_PRINCIPAL =
   "flex min-h-11 items-center justify-center gap-2 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-widest text-black transition-all hover:bg-admin-gold/90 active:scale-95 disabled:opacity-50";
 export const BOTAO_SECUNDARIO =
-  "flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-[11px] font-bold text-zinc-200 transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50";
+  "flex min-h-11 items-center justify-center gap-2 rounded-xl border border-admin-border bg-white/5 px-4 text-[11px] font-bold text-zinc-200 transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50";
 const BOTAO_PERIGO =
   "flex min-h-11 items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 text-[11px] font-bold text-red-300 transition-all hover:bg-red-500/20 active:scale-95 disabled:opacity-50";
 const CAMPO =
-  "w-full rounded-xl border border-white/10 bg-zinc-950 p-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none";
+  "w-full rounded-xl border border-admin-border bg-zinc-950 p-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none";
 const ROTULO =
   "mb-1.5 block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 
@@ -367,7 +367,7 @@ export function AcoesDaDevolucao({
       {(detalhe.status === "aprovada" || detalhe.status === "em_transito") && (
         <div className="space-y-3">
           {acoes.includes("gerar_etiqueta") && (
-            <div className="space-y-2 rounded-xl border border-white/5 bg-zinc-950/40 p-3">
+            <div className="space-y-2 rounded-xl border border-admin-border bg-zinc-950/40 p-3">
               <p className="text-xs leading-relaxed text-zinc-400">
                 {detalhe.codigo_postagem
                   ? // Achado A2: código já existe, só falta a DC-e (R6) — a
@@ -523,7 +523,7 @@ export function AcoesDaDevolucao({
                 return (
                   <div
                     key={item.id}
-                    className="space-y-2 rounded-xl border border-white/5 bg-zinc-950/40 p-3"
+                    className="space-y-2 rounded-xl border border-admin-border bg-zinc-950/40 p-3"
                   >
                     <p className="truncate text-xs font-bold text-white">
                       {item.quantidade}× {item.product_name || "Produto"}
@@ -543,7 +543,7 @@ export function AcoesDaDevolucao({
                             "min-h-11 rounded-lg border px-2 text-[11px] font-bold transition-colors",
                             i?.condicao === c
                               ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
-                              : "border-white/10 text-zinc-400 hover:text-white",
+                              : "border-admin-border text-zinc-400 hover:text-white",
                           )}
                         >
                           {rotuloCondicao(c)}
@@ -580,7 +580,7 @@ export function AcoesDaDevolucao({
                         "min-h-11 rounded-lg border px-2 text-[11px] font-bold transition-colors",
                         resolucao === r
                           ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
-                          : "border-white/10 text-zinc-400 hover:text-white",
+                          : "border-admin-border text-zinc-400 hover:text-white",
                       )}
                     >
                       {rotuloResolucao(r)}

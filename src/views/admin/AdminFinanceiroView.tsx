@@ -70,9 +70,11 @@ import {
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
+import { useAuth } from "@/hooks/useAuth";
 import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   ContextoDoCacheFinanceiro,
+  conferirCaixaParaReconciliar,
   useCategoriasFinanceiras,
   useContasFinanceiras,
   useValoresOcultos,
@@ -131,6 +133,8 @@ export function AdminFinanceiroView({
   onSetBackOverride,
 }: AdminFinanceiroViewProps) {
   const ativo = active;
+  const { user } = useAuth();
+  const sessaoAtual = useRef<string | null | undefined>(undefined);
   const [cache] = useState(() => new Map<string, unknown>());
   const hoje = useDiaDeSaoPaulo(ativo);
 
@@ -183,15 +187,23 @@ export function AdminFinanceiroView({
     (enviando: boolean) => {
       if (geracaoDaFolha.current === numeroDaFolha) {
         folhaEmEnvio.current = enviando;
+        if (
+          !enviando &&
+          folha?.tipo === "caixa-movimentar" &&
+          sessaoAtual.current !== undefined &&
+          sessaoAtual.current !== folha.sessaoId
+        )
+          fecharFolha();
       }
     },
-    [numeroDaFolha],
+    [numeroDaFolha, folha, fecharFolha],
   );
   const invalidar = useCallback(() => setVersao((v) => v + 1), []);
   const aoSalvar = useCallback(
-    (mensagem: string) => {
+    (mensagem: string, tom: "sucesso" | "informacao" = "sucesso") => {
       invalidar();
-      toast.success(mensagem);
+      if (tom === "informacao") toast.info(mensagem);
+      else toast.success(mensagem);
       // A resposta pertence à folha que iniciou a escrita, mesmo que outra
       // já tenha aberto. Atualizar os dados não deve apagar o formulário novo.
       if (geracaoDaFolha.current !== numeroDaFolha) return;
@@ -199,6 +211,22 @@ export function AdminFinanceiroView({
       fecharFolha();
     },
     [invalidar, fecharFolha, numeroDaFolha],
+  );
+  const aoReconciliarCaixa = useCallback(
+    async (mensagem: string) => {
+      await conferirCaixaParaReconciliar();
+      aoSalvar(mensagem, "informacao");
+    },
+    [aoSalvar],
+  );
+  const aoSessaoAtual = useCallback(
+    (id: string | null) => {
+      sessaoAtual.current = id;
+      if (folha?.tipo === "caixa-movimentar" && folha.sessaoId !== id) {
+        fecharFolha();
+      }
+    },
+    [folha, fecharFolha],
   );
   const abrirPedido = useCallback(
     (pedidoId: string) => {
@@ -331,6 +359,11 @@ export function AdminFinanceiroView({
       case "caixa-movimentar":
         return (
           <MovimentarCaixaFolha
+            key={user?.id ?? "sem-autor"}
+            autorId={user?.id ?? null}
+            aoMudarEnviando={aoMudarEnviando}
+            aoReconciliar={aoReconciliarCaixa}
+            sessaoId={folha.sessaoId}
             movimento={folha.movimento}
             esperado={folha.esperado}
             contaDoCaixa={folha.contaDoCaixa}
@@ -343,6 +376,8 @@ export function AdminFinanceiroView({
       case "caixa-fechar":
         return (
           <FecharCaixaFolha
+            aoMudarEnviando={aoMudarEnviando}
+            aoReconciliar={aoReconciliarCaixa}
             caixa={folha.caixa}
             aoFechar={fecharFolha}
             aoFechado={() => {
@@ -380,7 +415,7 @@ export function AdminFinanceiroView({
     <ContextoDoCacheFinanceiro.Provider value={cache}>
       <ContextoValoresOcultos.Provider value={ocultos}>
         <ContextoConfirmacaoFinanceira.Provider value={setConfirmacao}>
-          <div className="pb-admin h-auto bg-[#08080A] text-white lg:pb-12">
+          <div className="pb-admin h-auto bg-admin-bg text-white lg:pb-12">
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 pb-7 pt-6 [&_h1]:text-[32px] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
               <AdminPageHeader
                 titulo={NOMES_DO_PAINEL["admin-financeiro"]}
@@ -390,7 +425,7 @@ export function AdminFinanceiroView({
                   aria-pressed={ocultos}
                   aria-label={ocultos ? "Mostrar valores" : "Ocultar valores"}
                   title={ocultos ? "Mostrar valores" : "Ocultar valores"}
-                  className="flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#17171C] px-4 text-xs text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-full bg-admin-raised px-4 text-xs text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
                 >
                   {ocultos ? (
                     <EyeOff aria-hidden="true" className="size-4" />
@@ -419,7 +454,7 @@ export function AdminFinanceiroView({
                     aoPedirOpcoes={() => abrirFolha({ tipo: "periodos" })}
                   />
                 ) : (
-                  <p className="flex min-h-12 items-center gap-2 rounded-2xl bg-[#17171C] px-3 text-xs text-zinc-300">
+                  <p className="flex min-h-12 items-center gap-2 rounded-2xl bg-admin-raised px-3 text-xs text-zinc-300">
                     <Clock
                       aria-hidden="true"
                       className="size-5 shrink-0 text-teal-300"
@@ -440,7 +475,7 @@ export function AdminFinanceiroView({
                 }
                 className="min-w-0 gap-7"
               >
-                <div className="sticky top-0 z-20 -mx-5 border-b border-white/10 bg-[#08080A]/95 px-5 py-2 backdrop-blur-sm before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-5 before:bg-gradient-to-r before:from-[#08080A] before:to-transparent after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-5 after:bg-gradient-to-l after:from-[#08080A] after:to-transparent">
+                <div className="sticky top-0 z-20 -mx-5 border-b border-admin-border bg-admin-bg/95 px-5 py-2 backdrop-blur-sm before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-5 before:bg-gradient-to-r before:from-admin-bg before:to-transparent after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-5 after:bg-gradient-to-l after:from-admin-bg after:to-transparent">
                   <TabsList
                     ref={listaDeAbas}
                     aria-label="Abas do Financeiro"
@@ -519,6 +554,7 @@ export function AdminFinanceiroView({
                 </TabsContent>
                 <TabsContent value="caixa">
                   <AbaCaixa
+                    aoSessaoAtual={aoSessaoAtual}
                     ativo={ativo}
                     versao={versao}
                     abrirFolha={abrirFolha}

@@ -150,18 +150,24 @@ describe("Minha loja — texto sem linguagem interna", () => {
     expect(texto).not.toContain("Nome, cores e imagens da sua loja");
   });
 
-  it("'Salvar horário' é botão primário de 44px, com o desligado visível", () => {
-    const salvar = botao("Salvar horário");
+  it("sem edição o Salvar único tem 44px e o desligado visível", () => {
+    const salvar = botao("Nada para salvar");
     expect(salvar.className).toContain("min-h-11");
-    expect(salvar.className).toContain("disabled:opacity-40");
-    expect(salvar.className).toContain("bg-admin-gold");
+    expect(salvar.className).toContain("admin-barra-principal");
+    expect(salvar.getAttribute("aria-disabled")).toBe("true");
+    expect(hospedeiro.textContent).toContain("Tudo salvo");
+    expect(
+      [...hospedeiro.querySelectorAll("button")].some((b) =>
+        b.textContent?.includes("Salvar horário"),
+      ),
+    ).toBe(false);
   });
 
   it("'Descartar horário' é botão secundário de 44px, com o desligado visível", () => {
     const descartar = botao("Descartar horário");
     expect(descartar.className).toContain("min-h-11");
     expect(descartar.className).toContain("disabled:opacity-40");
-    expect(descartar.className).toContain("border-white/15");
+    expect(descartar.className).toContain("border-admin-border-strong");
   });
 
   it("o campo do horário tem 44px e o rótulo não repete o título do bloco", () => {

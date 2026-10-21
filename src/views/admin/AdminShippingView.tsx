@@ -1,26 +1,27 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { normalizarNumeroMototaxi } from "@/components/admin/minha-loja/contato";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import {
   type ConfigDoProvedor,
   NOME_DO_PROVEDOR,
   PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR,
   type ProvedorFrete,
+  type SalvamentoDasTransportadoras,
   TransportadorasSection,
-  buscarConfiguracaoDeFrete,
   emailDeContatoValido,
 } from "@/components/admin/settings/TransportadorasCard";
 import { EstrategiaNacionalBloco } from "@/components/admin/shipping/EstrategiaNacionalBloco";
 import { FreteGratisBloco } from "@/components/admin/shipping/FreteGratisBloco";
 import { FreteLocalBloco } from "@/components/admin/shipping/FreteLocalBloco";
 import { FreteNacionalBloco } from "@/components/admin/shipping/FreteNacionalBloco";
-import { FreteResumoFaixa } from "@/components/admin/shipping/FreteResumoFaixa";
 import { PainelRecolhivel } from "@/components/admin/shipping/PainelRecolhivel";
+import { PreviaDoFrete } from "@/components/admin/shipping/PreviaDoFrete";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useMototaxi } from "@/hooks/useMototaxi";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
-  AVISO_DO_FRETE,
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
@@ -37,17 +38,32 @@ import {
   modoDaEntregaNaCidade,
   retiradaLigadaNaLista,
 } from "@/lib/guarda-de-frete";
-import { alcanceAoMudarOCepDaLoja, cepCompleto } from "@/lib/loja-pronta";
+import {
+  alcanceAoMudarOCepDaLoja,
+  cepCompleto,
+  resumoDoAlcance,
+} from "@/lib/loja-pronta";
 import { usePagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
 import {
   type PresetFreteGratis,
   presetDoConfig,
   valorDoPreset,
 } from "@/lib/presets-de-frete-gratis";
-import { statusDaEntrega } from "@/lib/status-da-entrega";
+import { reais, situacaoDaEntrega } from "@/lib/status-da-entrega";
 import type { EstrategiaDeFreteNacional, View } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { AlertCircle, Check, HelpCircle, RefreshCw, Save } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  Gift,
+  HelpCircle,
+  House,
+  MapPin,
+  RefreshCw,
+  Save,
+  SlidersHorizontal,
+  Truck,
+} from "lucide-react";
 import {
   type ReactNode,
   memo,
@@ -95,75 +111,7 @@ interface AdminShippingViewProps {
   painelInicial?: "local" | "nacional";
 }
 
-/**
- * Tela "Entrega e frete" do painel — UNIFICADA (pedido do dono, 23/09/2026): a tela
- * "Estratégias do frete nacional" (`admin-shipping-national`,
- * `AdminShippingNationalView`, T4 do mesmo dia) foi trazida de volta para
- * cá como o CONTEÚDO do painel "Fora da cidade" — a tela separada existia
- * havia poucas horas e o cabeçalho dela já transbordava no celular. Direção
- * D (03/09/2026, 3 rodadas de iteração visual) segue valendo: faixa-resumo
- * no topo, seções como linhas finas sem caixa/card. O que muda nesta
- * rodada:
- *
- * - QUATRO SEÇÕES VIRAM PAINÉIS RECOLHÍVEIS (`PainelRecolhivel`), todos
- *   FECHADOS por padrão, mostrando título + resumo curto do estado salvo:
- *   "Entrega na sua cidade" (`FreteLocalBloco`), "Fora da cidade"
- *   (`FreteNacionalBloco` + `EstrategiaNacionalBloco`, a estratégia
- *   nacional inteira mora AQUI DENTRO agora), "Estratégias do frete local"
- *   (`FreteGratisBloco`) e "Etiquetas de envio" (a nota que aponta para o
- *   pedido). Os três Blocos ganharam `mostrarCabecalho={false}` aqui: o
- *   `PainelRecolhivel` já é o cabeçalho — dois títulos empilhados seria a
- *   poluição que este pedido veio resolver.
- * - BARRA DE SALVAR FIXA MORREU. No lugar, um botão no CABEÇALHO
- *   (`AdminPageHeader` `acoes`), sempre visível (o cabeçalho já é sticky):
- *   "Salvo" (sem alteração, discreto, desabilitado) → "Salvar" (pendente,
- *   destacado) → "Salvando…" (spinner) → "Tentar de novo" (falha, vermelho,
- *   `aria-live`). O rodapé volta ao `pb-admin` padrão (as outras ~19 telas
- *   do admin) — o `pb-[calc(11rem+...)]` só existia por causa da barra.
- * - FORMULÁRIO ÚNICO: os campos que eram de `AdminShippingNationalView`
- *   viraram estado desta view (`formDataNacional`), com a MESMA guarda de
- *   sincronização por referência que os campos locais já tinham (evita
- *   apagar o que a lojista digitou quando o config muda por fora) — só que
- *   em DOIS refs independentes (local e nacional), porque cada metade
- *   sincroniza contra o config na sua própria velocidade. `isFormDirty`
- *   final é `local OR nacional`, e é isso que vai para `onSetDirty` — o
- *   gate de navegação do App e o diálogo de alterações não salvas nunca
- *   souberam que existiam duas metades.
- * - SALVAR É UMA AÇÃO SÓ: o clique no cabeçalho grava os campos locais E
- *   os nacionais no MESMO `updateConfig` — a conta de cada campo (sentinela
- *   do preset local, `ajustado` do nacional, retirada só se mudou) é
- *   EXATAMENTE a mesma de antes, só que despachada junta.
- * - PAINEL COM ERRO NÃO FECHA: `erro` (validação do formulário nacional,
- *   mesmo espelho do CHECK do banco que `AdminShippingNationalView` já
- *   tinha) vira `comPendencia` do painel "Fora da cidade" — clicar no
- *   cabeçalho dele enquanto há erro não faz nada, e `handleSave` força o
- *   painel aberto (com rolagem) se for chamado com erro pendente, mesmo
- *   que o botão já esteja desabilitado nesse caso (dupla trava).
- * - A ROTA `admin-shipping-national` CONTINUA EXISTINDO: vira uma casca
- *   fininha (`AdminShippingNationalView.tsx`) que renderiza ESTA view com
- *   `painelInicial="nacional"` — menor mudança de roteamento possível
- *   (nada muda em App.tsx/AdminArea.tsx), e o botão "Estratégias do frete
- *   nacional →" dentro de "Fora da cidade" deixou de navegar: agora
- *   garante o painel aberto e rola até `#bloco-estrategia-nacional`.
- *
- * O CEP DA LOJA NÃO É DESTA TELA (D6, painel simples, P2 = um CEP só): o
- * CEP de Minha loja É o de onde saem as entregas. Esta tela o LÊ ("Entregas
- * saem de: CEP …", botão "Alterar em Minha loja"), nunca o edita e o Salvar
- * nunca envia `originCep`. O título vem de `NOMES_DO_PAINEL` ("Entrega e
- * frete") e a régua da faixa-resumo mora em `src/lib/status-da-entrega.ts`.
- *
- * COMPOSIÇÃO DOS DADOS (intacta): o card de taxa fixa NÃO existe — fora da
- * cidade, o preço é só o da cotação real da transportadora.
- *
- * DIVISÃO DE TERRITÓRIO (herdada, segue valendo): Provedor, serviços e
- * credenciais são da seção de Transportadoras (`TransportadorasSection`), que
- * desde o painel simples (H5, 09/10/2026) mora NESTA tela, no painel
- * "Transportadoras" — e continua gravando só pela edge, com os botões dela.
- * Salvar no cabeçalho NÃO envia `shippingProvider`/`enabledShippingMethods`
- * (exceto a retirada, que é exceção única e herdada — ver o `handleSave`).
- * As Consultas de frete (o histórico das cotações) também vieram de Ajustes:
- * painel próprio sob "Avançado".
- */
+/** Perguntas da entrega; o contrato de gravação continua o mesmo. */
 export const AdminShippingView = memo(function AdminShippingView({
   onNavigate,
   active,
@@ -172,6 +120,31 @@ export const AdminShippingView = memo(function AdminShippingView({
 }: Readonly<AdminShippingViewProps>) {
   const { config, isLoaded, updateConfig } = useStore();
   const isOffline = useOnlineStatus();
+  const mototaxi = useMototaxi(active);
+  const [contatoMototaxi, setContatoMototaxi] = useState({
+    whatsapp: "",
+    nome: "",
+  });
+  const mototaxiPendenteRef = useRef(false);
+  useEffect(() => {
+    if (mototaxi.config && !mototaxiPendenteRef.current) {
+      setContatoMototaxi({
+        whatsapp: mototaxi.config.whatsapp ?? "",
+        nome: mototaxi.config.nome ?? "",
+      });
+    }
+  }, [mototaxi.config]);
+  const mototaxiPendente =
+    !!mototaxi.config &&
+    (contatoMototaxi.whatsapp !== (mototaxi.config.whatsapp ?? "") ||
+      contatoMototaxi.nome !== (mototaxi.config.nome ?? ""));
+  const erroMototaxi =
+    !!contatoMototaxi.whatsapp.trim() &&
+    !normalizarNumeroMototaxi(contatoMototaxi.whatsapp);
+  useEffect(() => {
+    mototaxiPendenteRef.current = mototaxiPendente;
+  }, [mototaxiPendente]);
+
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const sincronizacaoSuspensaRef = useRef(false);
@@ -212,28 +185,30 @@ export const AdminShippingView = memo(function AdminShippingView({
     });
   }, []);
 
-  // Transportadoras (H5, painel simples): a seção MONTA na primeira abertura
-  // e NÃO DESMONTA mais. Montar já na entrada da tela faria uma segunda
-  // leitura de `ler_configuracao_frete` (a seção lê a dela ao montar) antes
-  // de a lojista pedir; desmontar ao fechar jogaria fora o token digitado e
-  // não salvo. Fechado, o painel só esconde (`hidden`).
-  const [transportadorasMontada, setTransportadorasMontada] = useState(false);
-  const alternarTransportadoras = useCallback(() => {
-    setTransportadorasMontada(true);
-    alternarPainel("transportadoras");
-  }, [alternarPainel]);
-  // Os atalhos de "Fora da cidade" ("Conectar transportadora", "Abrir
-  // Transportadoras", "Preencher em Transportadoras") abrem o painel e rolam
-  // até ele — antes mandavam para Ajustes, onde a seção morava.
+  const [abaGratis, setAbaGratis] = useState<"local" | "nacional">("local");
+  const [acaoTransportadoras, setAcaoTransportadoras] =
+    useState<SalvamentoDasTransportadoras | null>(null);
+  const somenteTransportadorasRef = useRef(false);
+  const registrarSalvarTransportadoras = useCallback(
+    (acao: SalvamentoDasTransportadoras) => setAcaoTransportadoras(acao),
+    [],
+  );
+  const [escolhidos, setEscolhidos] = useState<readonly ProvedorFrete[] | null>(
+    null,
+  );
+  const escolhaTransportadorasMudou = useCallback(
+    (lista: readonly ProvedorFrete[]) => setEscolhidos(lista),
+    [],
+  );
   const abrirTransportadoras = useCallback(() => {
-    setTransportadorasMontada(true);
-    setPainelAberto((prev) => ({ ...prev, transportadoras: true }));
-    // `setTimeout(0)`: mesmo motivo de `abrirEIrParaEstrategiaNacional`.
-    setTimeout(() => {
-      document
-        .getElementById("painel-frete-transportadoras")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+    setPainelAberto((prev) => ({ ...prev, nacional: true }));
+    setTimeout(
+      () =>
+        document
+          .getElementById("painel-frete-nacional")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      0,
+    );
   }, []);
 
   // ── Formulário LOCAL (herdado, intacto) ───────────────────────────────
@@ -265,6 +240,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   // novo no formulário.
   const atualizarFormData = useCallback(
     (atualizar: (prev: typeof formData) => typeof formData) => {
+      somenteTransportadorasRef.current = false;
       setFalhaAoSalvar(false);
       setFormData(atualizar);
     },
@@ -272,6 +248,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   );
   const atualizarFormDataNacional = useCallback(
     (atualizar: (prev: typeof formDataNacional) => typeof formDataNacional) => {
+      somenteTransportadorasRef.current = false;
       setFalhaAoSalvar(false);
       setFormDataNacional(atualizar);
     },
@@ -291,18 +268,6 @@ export const AdminShippingView = memo(function AdminShippingView({
   // A leitura das transportadoras JÁ chegou ao menos uma vez? Antes disso as
   // listas vazias são "ainda não sei", não "nenhuma ligada".
   const [credsLidas, setCredsLidas] = useState(false);
-
-  const fetchCreds = useCallback(async () => {
-    setCredsErro(false);
-    const resultado = await buscarConfiguracaoDeFrete();
-    if (!resultado.ok) {
-      setCredsErro(true);
-      return;
-    }
-    setLigadosSalvos(new Set(resultado.config.ligados));
-    setProvedoresSalvos(resultado.config.provedores);
-    setCredsLidas(true);
-  }, []);
 
   // A seção de Transportadoras avisa a cada leitura confirmada dela (ao
   // montar e depois de cada salvar): a faixa e "Fora da cidade" passam a
@@ -352,9 +317,8 @@ export const AdminShippingView = memo(function AdminShippingView({
         modo: modoDaEntregaNaCidade(config),
         diasDaEntrega: String(diasDaEntregaPropria(config.localDeliveryDays)),
       });
-      fetchCreds();
     }
-  }, [isLoaded, config, active, fetchCreds]);
+  }, [isLoaded, config, active]);
 
   // ── Sincronização NACIONAL (T4, mesma guarda, ref própria) ────────────
   const jaSincronizouNacionalRef = useRef(false);
@@ -394,17 +358,14 @@ export const AdminShippingView = memo(function AdminShippingView({
           nome: NOME_DO_PROVEDOR.get(p) ?? p,
           estado: incompleta
             ? ("incompleta" as const)
-            : ligadosSalvos.has(p) && temChave
+            : (escolhidos ?? [...ligadosSalvos]).includes(p) && temChave
               ? ("ligado" as const)
               : temChave
                 ? ("chave_salva" as const)
                 : ("sem_chave" as const),
         };
       }),
-    [ligadosSalvos, provedoresSalvos],
-  );
-  const algumProvedorLigado = provedoresNacional.some(
-    (p) => p.estado === "ligado",
+    [ligadosSalvos, provedoresSalvos, escolhidos],
   );
   const nomesLigados = useMemo(
     () =>
@@ -412,14 +373,6 @@ export const AdminShippingView = memo(function AdminShippingView({
         .filter((p) => p.estado === "ligado")
         .map((p) => p.nome),
     [provedoresNacional],
-  );
-
-  // ── Faixa-resumo: descreve o SALVO (intacto) ──────────────────────────
-  // A régua mora em `src/lib/status-da-entrega.ts` (E2) — aqui só se escolhe
-  // o que entra nela.
-  const statusDaFaixa = useMemo(
-    () => statusDaEntrega({ config, credsErro, nomesLigados }),
-    [config, credsErro, nomesLigados],
   );
 
   // Transportadora vendendo + pagamento pelo app desligado = o cliente de
@@ -431,21 +384,29 @@ export const AdminShippingView = memo(function AdminShippingView({
   const pagamentoPeloAppLigado = usePagamentoPeloApp();
   const avisarTransportadoraSemPagamento = transportadoraFicaSemPagamento({
     transportadoraVende: transportadoraVendeForaDaCidade({
-      cobertura: config?.shippingCoverage,
+      cobertura: formData.shippingCoverage,
       nomesLigados: credsErro ? null : nomesLigados,
     }),
     pagamentoPeloAppLigado,
   });
 
-  // Resumo CURTO de cada painel fechado — deriva do MESMO `statusDaFaixa`
-  // (fonte única; regra escrita em dois lugares diverge — lição #53).
-  const resumoPainelLocal = statusDaFaixa[0].detalhe
-    ? `${statusDaFaixa[0].valor} · ${statusDaFaixa[0].detalhe}`
-    : statusDaFaixa[0].valor;
-  const resumoPainelNacional = statusDaFaixa[1].detalhe
-    ? `${statusDaFaixa[1].valor} · ${statusDaFaixa[1].detalhe}`
-    : statusDaFaixa[1].valor;
-  const resumoPainelEstrategiasLocais = statusDaFaixa[2].valor;
+  const resumoPainelLocal = `${formData.modo === "so_retiro" ? "Só retirada na loja · qualquer cliente pode buscar" : formData.modo === "entrego_e_retiro" ? "Você entrega ou o cliente retira" : "Você entrega"}${formData.modo === "so_retiro" ? "" : cepCompleto(config?.originCep) ? ` · ${resumoDoAlcance(config?.originCep, formData.localCepRange)}` : " · até onde, depende do CEP da loja"}`;
+  const resumoPainelNacional =
+    formData.shippingCoverage === "local"
+      ? "Não vende fora da sua região"
+      : credsErro || !credsLidas
+        ? "Não deu para confirmar as transportadoras"
+        : nomesLigados.length
+          ? `${nomesLigados.join(" e ")} ${nomesLigados.length === 1 ? "cota" : "cotam"} o frete na hora`
+          : "Nenhuma transportadora ligada: quem é de fora não compra";
+  const resumoGratisLocal =
+    formData.preset === "desligado"
+      ? "não dá"
+      : formData.preset === "sempre"
+        ? "sempre"
+        : formData.preset === "por_produto"
+          ? "produtos marcados"
+          : `acima de R$ ${reais(formData.acimaDe)}`;
 
   // ── Dirty check LOCAL (intacto) ────────────────────────────────────────
   const isFormDirtyLocal = useMemo(() => {
@@ -499,7 +460,15 @@ export const AdminShippingView = memo(function AdminShippingView({
     );
   }, [formDataNacional, config]);
 
-  const isFormDirty = isFormDirtyLocal || isFormDirtyNacional;
+  const regrasMudaram = isFormDirtyLocal || isFormDirtyNacional;
+  const isFormDirty =
+    regrasMudaram || !!acaoTransportadoras?.mudou || mototaxiPendente;
+  const soMototaxiPendente =
+    mototaxiPendente && !regrasMudaram && !acaoTransportadoras?.mudou;
+  const erroLocal =
+    formData.preset === "acima_de_valor" && formData.acimaDe <= 0
+      ? "Escreva o valor. Para não dar frete grátis, escolha a primeira opção."
+      : null;
 
   // Cada metade atualiza SÓ o próprio ref — é o que a guarda de
   // sincronização de cada metade lê.
@@ -568,20 +537,16 @@ export const AdminShippingView = memo(function AdminShippingView({
     [formDataNacional, erroCentavosNacional],
   );
 
-  // Abre "Fora da cidade" e rola até a estratégia — o botão dentro de
-  // FreteNacionalBloco deixou de NAVEGAR (T4 unificação, 23/09/2026): a
-  // estratégia agora mora no MESMO painel, só mais abaixo.
   const abrirEIrParaEstrategiaNacional = useCallback(() => {
-    setPainelAberto((prev) => ({ ...prev, nacional: true }));
-    // `setTimeout(0)`, não `requestAnimationFrame` — mesmo padrão de
-    // AdminOrdersView.tsx (rolar até a lista de pedidos): mais simples de
-    // testar (jsdom não implementa rAF) e o painel só termina de aparecer
-    // (sai do `hidden`) depois deste tick.
-    setTimeout(() => {
-      document
-        .getElementById("bloco-estrategia-nacional")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+    setPainelAberto((prev) => ({ ...prev, estrategiasLocais: true }));
+    setAbaGratis("nacional");
+    setTimeout(
+      () =>
+        document
+          .getElementById("painel-frete-gratis")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      0,
+    );
   }, []);
 
   // ── Salvar — LOCAL e NACIONAL na MESMA ação (pedido do dono, 23/09) ───
@@ -592,8 +557,13 @@ export const AdminShippingView = memo(function AdminShippingView({
       });
       return;
     }
-    if (isSaving) return;
-    if (erroNacional) {
+    if (isSaving || erroMototaxi) return;
+    if (!soMototaxiPendente && erroLocal) {
+      setPainelAberto((prev) => ({ ...prev, estrategiasLocais: true }));
+      setAbaGratis("local");
+      return;
+    }
+    if (!soMototaxiPendente && erroNacional) {
       // Segunda trava (a primeira é o botão desabilitado): se algo chamar
       // handleSave mesmo assim, o painel com o erro abre e ganha foco em
       // vez de a tela fingir que salvou.
@@ -601,7 +571,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
-    if (retiradaSemEndereco) {
+    if (!soMototaxiPendente && retiradaSemEndereco) {
       // Antes do `setIsSaving`: recusar não pode deixar a tela em "Salvando…".
       toast.error("Cadastre o endereço da loja em Minha loja", {
         description: "Sem endereço, o cliente não sabe onde retirar.",
@@ -609,7 +579,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
-    if (soRetiroSemCep) {
+    if (!soMototaxiPendente && soRetiroSemCep) {
       toast.error("Cadastre o CEP da loja em Minha loja", {
         description:
           "Para vender só com retirada, a loja precisa do CEP. Ou escolha outra forma de entrega.",
@@ -655,27 +625,44 @@ export const AdminShippingView = memo(function AdminShippingView({
     try {
       // Se esta gravação falhar, PARA AQUI (ADMIN-010, #94). O toast de
       // erro sai de dentro do `updateConfig`.
-      const salvou = await updateConfig({
-        freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
-        shippingCoverage: formData.shippingCoverage,
-        localDeliveryFee: Math.max(0, formData.localDeliveryFee),
-        localCepRange: alcance,
-        localDeliveryEnabled: formData.modo !== "so_retiro",
-        localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
-        ...(retiradaMudou
-          ? {
-              enabledShippingMethods: listaComRetirada(
-                config?.enabledShippingMethods,
-                formData.modo !== "entrego",
-              ),
-            }
-          : {}),
-        nationalShippingStrategy: nacionalAjustado.estrategia,
-        nationalShippingMin: nacionalAjustado.minimo,
-        nationalDiscountType: nacionalAjustado.tipoDesconto,
-        nationalDiscountValue: nacionalAjustado.valorDesconto,
-        nationalBenefitScope: nacionalAjustado.alcance,
-      });
+      let mototaxiSalvoNestaRodada = false;
+      if (mototaxiPendente) {
+        const salvouMototaxi = await mototaxi.salvar(contatoMototaxi);
+        if (!salvouMototaxi) {
+          setFalhaAoSalvar(true);
+          toast.error("Não foi possível salvar o mototáxi. Tente de novo.");
+          return;
+        }
+        mototaxiSalvoNestaRodada = true;
+        mototaxiPendenteRef.current = false;
+        setContatoMototaxi({
+          whatsapp: normalizarNumeroMototaxi(contatoMototaxi.whatsapp) ?? "",
+          nome: contatoMototaxi.nome.trim(),
+        });
+      }
+      const salvou = !regrasMudaram
+        ? true
+        : await updateConfig({
+            freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
+            shippingCoverage: formData.shippingCoverage,
+            localDeliveryFee: Math.max(0, formData.localDeliveryFee),
+            localCepRange: alcance,
+            localDeliveryEnabled: formData.modo !== "so_retiro",
+            localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
+            ...(retiradaMudou
+              ? {
+                  enabledShippingMethods: listaComRetirada(
+                    config?.enabledShippingMethods,
+                    formData.modo !== "entrego",
+                  ),
+                }
+              : {}),
+            nationalShippingStrategy: nacionalAjustado.estrategia,
+            nationalShippingMin: nacionalAjustado.minimo,
+            nationalDiscountType: nacionalAjustado.tipoDesconto,
+            nationalDiscountValue: nacionalAjustado.valorDesconto,
+            nationalBenefitScope: nacionalAjustado.alcance,
+          });
       if (!salvou) {
         haptic.error();
         setFalhaAoSalvar(true);
@@ -703,10 +690,23 @@ export const AdminShippingView = memo(function AdminShippingView({
             : prev,
         );
       }
+      if (acaoTransportadoras?.mudou && !(await acaoTransportadoras.salvar())) {
+        somenteTransportadorasRef.current = true;
+        setFalhaAoSalvar(true);
+        toast.error(
+          regrasMudaram
+            ? "As regras foram salvas, mas as transportadoras não. Toque em Tentar de novo."
+            : "As transportadoras não foram salvas. Toque em Tentar de novo.",
+        );
+        return;
+      }
+      somenteTransportadorasRef.current = false;
       setFalhaAoSalvar(false);
       // A guarda acompanha o dirty check e os tokens pendentes pelo efeito.
       haptic.success();
-      toast.success("Regras de frete salvas!");
+      if (regrasMudaram) toast.success("Regras de frete salvas!");
+      else if (mototaxiSalvoNestaRodada)
+        toast.success("Contato do mototáxi salvo");
     } catch (err) {
       console.error("[AdminShippingView] Error saving configs:", err);
       haptic.error();
@@ -729,9 +729,9 @@ export const AdminShippingView = memo(function AdminShippingView({
     !isSaving &&
     !isOffline &&
     isFormDirty &&
-    !erroNacional &&
-    !retiradaSemEndereco &&
-    !soRetiroSemCep;
+    !erroMototaxi &&
+    (soMototaxiPendente ||
+      (!erroLocal && !erroNacional && !retiradaSemEndereco && !soRetiroSemCep));
 
   // Map (não Record indexado por variável): indexação dinâmica dispara
   // `security/detect-object-injection` do eslint e o teto do lint reprova
@@ -743,7 +743,8 @@ export const AdminShippingView = memo(function AdminShippingView({
     [
       "limpo",
       {
-        estilo: "border border-white/10 bg-transparent text-zinc-500",
+        estilo:
+          "border border-admin-border bg-transparent text-[hsl(var(--admin-text-soft))]",
         rotulo: "Salvo",
         icone: <Check className="size-3.5" />,
       },
@@ -752,7 +753,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       "pendente",
       {
         estilo:
-          "bg-admin-accent text-zinc-950 shadow-lg shadow-admin-accent/20 hover:opacity-90",
+          "bg-[hsl(var(--admin-gold-fill))] text-black shadow-lg hover:opacity-90",
         rotulo: "Salvar",
         icone: <Save className="size-3.5" />,
       },
@@ -760,7 +761,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     [
       "salvando",
       {
-        estilo: "bg-admin-accent/60 text-zinc-950",
+        estilo: "bg-[hsl(var(--admin-gold-fill))] text-black opacity-70",
         rotulo: "Salvando…",
         icone: <RefreshCw className="size-3.5 animate-spin" />,
       },
@@ -768,7 +769,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     [
       "erro",
       {
-        estilo: "bg-rose-500/90 text-white hover:bg-rose-500",
+        estilo: "bg-[#BE123C] text-white hover:bg-[#BE123C]",
         rotulo: "Tentar de novo",
         icone: <RefreshCw className="size-3.5" />,
       },
@@ -781,6 +782,11 @@ export const AdminShippingView = memo(function AdminShippingView({
       <button
         type="button"
         disabled={!podeClicarSalvar}
+        style={
+          estadoSalvar === "erro"
+            ? { backgroundColor: "#BE123C", color: "#fff" }
+            : undefined
+        }
         onClick={handleSave}
         className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12px] font-extrabold transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-50 ${infoBotaoSalvar.estilo}`}
       >
@@ -790,255 +796,407 @@ export const AdminShippingView = memo(function AdminShippingView({
     </div>
   );
 
-  // pb-admin: o rodapé padrão de todas as ~19 telas do admin (só o menu
-  // inferior). O pb-[calc(11rem+...)] anterior existia SÓ por causa da
-  // barra de salvar fixa, que morreu nesta rodada.
+  const configDaPrevia = config
+    ? {
+        ...config,
+        freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
+        shippingCoverage: formData.shippingCoverage,
+        localDeliveryFee: formData.localDeliveryFee,
+        localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
+        localDeliveryEnabled: formData.modo !== "so_retiro",
+        localCepRange: formData.localCepRange,
+        enabledShippingMethods: listaComRetirada(
+          config.enabledShippingMethods,
+          formData.modo !== "entrego",
+        ),
+        nationalShippingStrategy: formDataNacional.estrategia,
+        nationalShippingMin: formDataNacional.minimo,
+        nationalDiscountType: formDataNacional.tipoDesconto,
+        nationalDiscountValue: formDataNacional.valorDesconto,
+        nationalBenefitScope: formDataNacional.alcance,
+      }
+    : null;
+
+  const {
+    faltaCep,
+    faltaTransportadora,
+    faltaEndereco,
+    faltaAlcance,
+    confirmarTransportadoras,
+    pendencias,
+  } = situacaoDaEntrega(
+    configDaPrevia,
+    credsErro || !credsLidas ? null : nomesLigados,
+    avisarTransportadoraSemPagamento,
+  );
+  const selo = isOffline
+    ? "Sem internet"
+    : confirmarTransportadoras
+      ? "A confirmar"
+      : pendencias === 0
+        ? "Pronta para vender"
+        : pendencias === 1
+          ? "Falta 1 coisa para vender"
+          : `Faltam ${pendencias} coisas`;
+
   return (
-    <div className="pb-admin min-h-screen bg-admin-bg text-zinc-100 transition-colors duration-200 animate-in fade-in">
-      {/* Top Header Bar — fórmula "Elite Header" + `flex-wrap` (mesmo
-          conserto de AdminPushView, 23/09/2026): título (h1, shrink-0) e o
-          botão Salvar (shrink-0) são os dois únicos filhos desta linha —
-          sem quebra, os dois nunca encolhem e forçam a página a alargar em
-          375px. */}
-      <div className="sticky top-0 z-30 border-b border-white/5 bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
-        <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
-          <AdminPageHeader
-            titulo={NOMES_DO_PAINEL["admin-shipping"]}
-            acoes={botaoSalvar}
-          >
+    <div className="pb-admin min-h-screen bg-admin-bg text-zinc-100">
+      <div className="sticky top-0 z-30 bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
+        <header className="mx-auto max-w-4xl rounded-[20px] border border-admin-border bg-admin-surface p-4">
+          <div className="flex items-center gap-1">
+            <h1 className="min-w-0 break-words text-2xl font-black uppercase italic tracking-tight">
+              {NOMES_DO_PAINEL["admin-shipping"]}
+            </h1>
             <button
               type="button"
-              onClick={() => setShowHelpModal(true)}
-              className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
               title="Ajuda e explicação desta tela"
+              onClick={() => setShowHelpModal(true)}
+              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center text-[hsl(var(--admin-text-soft))]"
             >
-              <span
-                aria-hidden="true"
-                className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
-              >
-                <HelpCircle className="size-4" />
-              </span>
+              <HelpCircle className="size-5" />
             </button>
-          </AdminPageHeader>
-        </div>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <span
+              role="status"
+              className={`rounded-full border border-admin-border px-2.5 py-1 text-xs font-bold ${pendencias || confirmarTransportadoras ? "text-amber-300" : "text-emerald-300"}`}
+            >
+              {selo}
+            </span>
+            {botaoSalvar}
+          </div>
+          {(erroLocal || erroNacional) && (
+            <p className="mt-2 text-xs text-red-300">
+              Corrija o valor em Frete grátis para salvar.
+            </p>
+          )}
+        </header>
       </div>
-
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:px-6">
         {!isLoaded ? (
-          <div className="animate-pulse space-y-12" aria-busy="true">
-            <div className="h-20 border-y border-white/10 bg-white/[0.02]" />
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="space-y-5">
-                <div className="h-3.5 w-44 rounded bg-white/5" />
-                <div className="h-12 border-b border-white/5" />
-                <div className="h-12 border-b border-white/5" />
-              </div>
+          <div aria-busy="true" className="animate-pulse space-y-4">
+            <div className="h-72 rounded-[20px] bg-admin-raised" />
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-24 rounded-[20px] bg-admin-raised" />
             ))}
           </div>
         ) : (
           <>
-            <p className="text-[14.5px] text-zinc-500">
-              Como a entrega funciona hoje — toque numa seção para editar.
-            </p>
-
-            <div className="mt-5">
-              <FreteResumoFaixa status={statusDaFaixa} />
-            </div>
-
-            {avisarTransportadoraSemPagamento && (
-              <div
+            {isOffline && (
+              <p
                 role="status"
-                data-aviso-transportadora-sem-pagamento=""
-                className="mt-4 flex flex-wrap items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-300 duration-200 animate-in fade-in"
+                className="rounded-xl border border-admin-border bg-admin-surface p-3 text-[12.5px] text-zinc-400"
               >
-                <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                <p className="min-w-0 flex-1 text-[12.5px] leading-snug">
-                  <span className="font-bold">{AVISO_DO_FRETE.titulo}</span>{" "}
-                  {AVISO_DO_FRETE.detalhe}
-                </p>
-                {onNavigate && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigate("admin-settings")}
-                    className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
-                  >
-                    Ver pagamento pelo app
-                  </button>
-                )}
-              </div>
+                <b>Sem internet.</b> Você pode olhar tudo, mas precisa estar
+                online para salvar.
+              </p>
             )}
-
-            <div className="mt-8 space-y-7">
-              <PainelRecolhivel
-                id="painel-frete-local"
-                titulo="Entrega na sua cidade"
-                resumo={resumoPainelLocal}
-                aberta={painelAberto.local}
-                onToggle={() => alternarPainel("local")}
-              >
-                <FreteLocalBloco
-                  mostrarCabecalho={false}
-                  valor={formData.localDeliveryFee}
-                  onValor={(valor) =>
-                    atualizarFormData((prev) => ({
-                      ...prev,
-                      localDeliveryFee: valor,
-                    }))
-                  }
-                  faixa={formData.localCepRange}
-                  onFaixa={(faixa) =>
-                    atualizarFormData((prev) => ({
-                      ...prev,
-                      localCepRange: faixa,
-                    }))
-                  }
-                  coverage={formData.shippingCoverage}
-                  onCoverage={(shippingCoverage) =>
-                    atualizarFormData((prev) => ({ ...prev, shippingCoverage }))
-                  }
-                  cidade={config?.storeCity}
-                  uf={config?.storeState}
-                  semOrigem={!config?.originCep}
-                  cepDaLoja={config?.originCep}
-                  desabilitado={isOffline}
-                  modo={formData.modo}
-                  onModo={(modo) =>
-                    atualizarFormData((prev) => ({ ...prev, modo }))
-                  }
-                  dias={formData.diasDaEntrega}
-                  onDias={(diasDaEntrega) => {
-                    if (aceitarDias(diasDaEntrega))
-                      atualizarFormData((prev) => ({ ...prev, diasDaEntrega }));
-                  }}
-                  enderecoDaLoja={config?.storeAddress}
-                  onNavigate={onNavigate}
-                  nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
-                  pagamentoPeloAppLigado={pagamentoPeloAppLigado}
-                />
-              </PainelRecolhivel>
-
-              <PainelRecolhivel
-                id="painel-frete-nacional"
-                titulo="Fora da cidade"
-                resumo={resumoPainelNacional}
-                aberta={painelAberto.nacional}
-                onToggle={() => alternarPainel("nacional")}
-                comPendencia={!!erroNacional}
-              >
-                <div className="space-y-10">
-                  <FreteNacionalBloco
-                    mostrarCabecalho={false}
-                    cepDaLoja={config?.originCep}
-                    onAbrirMinhaLoja={
+            <h2 className="pt-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[hsl(var(--admin-text-soft))]">
+              • Como fica para o cliente
+            </h2>
+            {configDaPrevia && (
+              <PreviaDoFrete
+                config={configDaPrevia}
+                nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
+                pendente={isFormDirty}
+              />
+            )}
+            {pendencias > 0 && (
+              <section aria-label="Antes de vender" className="space-y-3">
+                <h2 className="pt-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[hsl(var(--admin-text-soft))]">
+                  • Antes de vender
+                </h2>
+                {faltaEndereco && (
+                  <AvisoDaEntrega
+                    titulo="Falta o endereço da retirada"
+                    detalhe="O cliente precisa saber onde buscar. Cadastre o endereço da loja."
+                    botao="Abrir Minha loja"
+                    onClick={
                       onNavigate
                         ? () => onNavigate("admin-about-store")
                         : undefined
                     }
-                    provedores={provedoresNacional}
-                    erroNaLeitura={credsErro}
-                    onAbrirTransportadoras={abrirTransportadoras}
-                    onTentarDeNovo={fetchCreds}
-                    desabilitado={isOffline}
-                    resumoDaEstrategiaNacional={
-                      config ? resumoDaEstrategiaNacional(config) : undefined
-                    }
-                    onAbrirEstrategiasNacionais={abrirEIrParaEstrategiaNacional}
                   />
-
-                  {/* Aviso específico da ESTRATÉGIA (herdado de
-                      AdminShippingNationalView, T4): diferente da dica de
-                      "Cotação na hora" acima (que fala da conexão em si),
-                      este avisa que a REGRA de grátis/desconto abaixo só
-                      vale quando alguma transportadora está ligada. */}
-                  {!credsErro && !algumProvedorLigado && (
-                    <p className="flex flex-wrap items-start gap-2 text-[12.5px] font-medium leading-snug text-amber-300 duration-200 animate-in fade-in">
-                      <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                      <span>
-                        Nenhuma transportadora ligada ainda — a estratégia só
-                        vale quando há cotação de transportadora.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={abrirTransportadoras}
-                        className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
-                      >
-                        Conectar transportadora
-                      </button>
-                    </p>
-                  )}
-
-                  <EstrategiaNacionalBloco
-                    estrategia={formDataNacional.estrategia}
-                    minimo={formDataNacional.minimo}
-                    tipoDesconto={formDataNacional.tipoDesconto}
-                    valorDesconto={formDataNacional.valorDesconto}
-                    alcance={formDataNacional.alcance}
-                    onEscolherEstrategia={escolherEstrategiaNacional}
-                    onMinimo={(minimo) =>
-                      atualizarFormDataNacional((prev) => ({ ...prev, minimo }))
+                )}
+                {faltaAlcance && (
+                  <AvisoDaEntrega
+                    titulo="Confira até onde você entrega"
+                    detalhe="A faixa escrita não tem números: nenhum CEP recebe a entrega local."
+                    botao="Ver Na sua região"
+                    onClick={() =>
+                      setPainelAberto((prev) => ({ ...prev, local: true }))
                     }
-                    onTipoDesconto={(tipoDesconto) =>
-                      atualizarFormDataNacional((prev) => ({
-                        ...prev,
-                        tipoDesconto,
-                      }))
-                    }
-                    onValorDesconto={(valorDesconto) =>
-                      atualizarFormDataNacional((prev) => ({
-                        ...prev,
-                        valorDesconto,
-                      }))
-                    }
-                    onAlcance={(alcance) =>
-                      atualizarFormDataNacional((prev) => ({
-                        ...prev,
-                        alcance,
-                      }))
-                    }
-                    desabilitado={isOffline}
                   />
-
-                  {erroNacional && (
-                    <p className="flex items-start gap-2 text-[12px] font-bold leading-snug text-amber-300 duration-200 animate-in fade-in">
-                      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                      {erroNacional}
+                )}
+                {faltaCep && (
+                  <AvisoDaEntrega
+                    titulo="Falta o CEP de onde você envia"
+                    detalhe="Sem ele nenhum frete é calculado e ninguém finaliza a compra."
+                    botao="Cadastrar em Minha loja"
+                    onClick={
+                      onNavigate
+                        ? () => onNavigate("admin-about-store")
+                        : undefined
+                    }
+                  />
+                )}
+                {faltaTransportadora && (
+                  <AvisoDaEntrega
+                    titulo="Ninguém de fora da sua região compra"
+                    detalhe="Nenhuma transportadora está ligada. Se só vende perto, tudo bem."
+                    botao="Ligar transportadora"
+                    onClick={abrirTransportadoras}
+                  />
+                )}
+                {avisarTransportadoraSemPagamento && (
+                  <div data-aviso-transportadora-sem-pagamento="">
+                    <AvisoDaEntrega
+                      titulo="Transportadora só funciona com pagamento pelo app ligado."
+                      detalhe="Hoje seus clientes de fora da sua região não conseguem finalizar a compra."
+                      botao="Ver pagamento pelo app"
+                      onClick={
+                        onNavigate
+                          ? () => onNavigate("admin-settings")
+                          : undefined
+                      }
+                    />
+                  </div>
+                )}
+              </section>
+            )}
+            <h2 className="pt-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[hsl(var(--admin-text-soft))]">
+              • O que você escolhe
+            </h2>
+            <section
+              aria-label="De onde sai"
+              className={`flex flex-wrap items-center gap-3 rounded-[20px] border bg-admin-surface p-4 ${faltaCep ? "border-amber-500/40" : "border-admin-border"}`}
+            >
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-admin-raised text-admin-gold">
+                <MapPin aria-hidden="true" className="size-5" />
+              </span>
+              <div className="min-w-[150px] flex-1 break-words">
+                <h3 className="text-[15px] font-extrabold">De onde sai</h3>
+                <p className="text-[13px] text-[hsl(var(--admin-text-soft))]">
+                  {faltaCep
+                    ? "Sem CEP: nenhum frete é calculado"
+                    : `CEP ${config?.originCep} · ${config?.storeCity ?? ""}/${config?.storeState ?? ""}`}
+                </p>
+              </div>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("admin-about-store")}
+                  className="min-h-11 rounded-xl border border-admin-border bg-admin-raised px-3 text-[13px] font-bold"
+                >
+                  {faltaCep ? "Cadastrar" : "Alterar"}
+                </button>
+              )}
+            </section>
+            <PainelRecolhivel
+              id="painel-frete-local"
+              titulo="Na sua região"
+              icone={House}
+              resumo={resumoPainelLocal}
+              aberta={painelAberto.local}
+              onToggle={() => alternarPainel("local")}
+            >
+              <FreteLocalBloco
+                mostrarCabecalho={false}
+                valor={formData.localDeliveryFee}
+                onValor={(valor) =>
+                  atualizarFormData((prev) => ({
+                    ...prev,
+                    localDeliveryFee: valor,
+                  }))
+                }
+                faixa={formData.localCepRange}
+                onFaixa={(faixa) =>
+                  atualizarFormData((prev) => ({
+                    ...prev,
+                    localCepRange: faixa,
+                  }))
+                }
+                coverage={formData.shippingCoverage}
+                cidade={config?.storeCity}
+                uf={config?.storeState}
+                semOrigem={!config?.originCep}
+                cepDaLoja={config?.originCep}
+                desabilitado={isOffline}
+                modo={formData.modo}
+                onModo={(modo) =>
+                  atualizarFormData((prev) => ({ ...prev, modo }))
+                }
+                dias={formData.diasDaEntrega}
+                onDias={(diasDaEntrega) => {
+                  if (aceitarDias(diasDaEntrega))
+                    atualizarFormData((prev) => ({ ...prev, diasDaEntrega }));
+                }}
+                enderecoDaLoja={config?.storeAddress}
+                onNavigate={onNavigate}
+                nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
+                pagamentoPeloAppLigado={pagamentoPeloAppLigado}
+              />
+              <fieldset
+                disabled={isOffline || isSaving || !mototaxi.config}
+                className="mt-6 space-y-4 border-t border-admin-border pt-5"
+              >
+                <legend className="text-sm font-bold text-zinc-200">
+                  Mototáxi{" "}
+                  <span className="ml-2 text-xs font-normal text-zinc-500">
+                    opcional
+                  </span>
+                </legend>
+                <p className="text-xs text-zinc-500">
+                  Quem faz as entregas para você. O número fica só no painel.
+                </p>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="mototaxi-whatsapp"
+                    className="flex items-center gap-2 text-xs text-zinc-400"
+                  >
+                    <IconeWhatsapp className="size-4 text-emerald-400" />{" "}
+                    WhatsApp do mototáxi
+                  </label>
+                  <input
+                    id="mototaxi-whatsapp"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="off"
+                    value={contatoMototaxi.whatsapp}
+                    aria-invalid={erroMototaxi}
+                    aria-describedby={
+                      erroMototaxi ? "mototaxi-erro" : undefined
+                    }
+                    onChange={(e) => {
+                      setFalhaAoSalvar(false);
+                      setContatoMototaxi((c) => ({
+                        ...c,
+                        whatsapp: e.target.value,
+                      }));
+                    }}
+                    className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3 text-sm text-zinc-100 disabled:opacity-50"
+                    placeholder="(11) 98765-4321"
+                  />
+                  {erroMototaxi && (
+                    <p
+                      id="mototaxi-erro"
+                      role="alert"
+                      className="text-xs text-amber-300"
+                    >
+                      Informe DDD e número brasileiros válidos.
                     </p>
                   )}
                 </div>
-              </PainelRecolhivel>
-
-              {/* Transportadoras (H5, painel simples): a chave de acesso, o
-                  teste, os serviços e quem está ligado — moravam em Ajustes.
-                  A seção grava tudo pela edge (`save_credentials` /
-                  `save_active_providers`), com os botões dela; o Salvar do
-                  cabeçalho continua sem tocar em nada disso. */}
-              <PainelRecolhivel
-                id="painel-frete-transportadoras"
-                titulo="Transportadoras"
-                resumo={
-                  // Fechado com token não salvo: a pista fica aqui, porque
-                  // o Salvar do cabeçalho (das regras) continua "Salvo".
-                  transportadorasPendentes
-                    ? "chave digitada — falta salvar"
-                    : "chave de acesso, teste e quem está ligado"
-                }
-                aberta={painelAberto.transportadoras}
-                onToggle={alternarTransportadoras}
-              >
-                {transportadorasMontada && (
-                  <TransportadorasSection
-                    onDirtyMudou={marcarTransportadorasPendentes}
-                    onLigadosMudou={onLigadosDasTransportadorasMudou}
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="mototaxi-nome"
+                    className="text-xs text-zinc-400"
+                  >
+                    Nome dele (opcional)
+                  </label>
+                  <input
+                    id="mototaxi-nome"
+                    type="text"
+                    autoComplete="off"
+                    maxLength={80}
+                    value={contatoMototaxi.nome}
+                    onChange={(e) => {
+                      setFalhaAoSalvar(false);
+                      setContatoMototaxi((c) => ({
+                        ...c,
+                        nome: e.target.value,
+                      }));
+                    }}
+                    className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3 text-sm text-zinc-100 disabled:opacity-50"
                   />
-                )}
-              </PainelRecolhivel>
-
-              <PainelRecolhivel
-                id="painel-frete-estrategias-locais"
-                titulo="Estratégias do frete local"
-                resumo={resumoPainelEstrategiasLocais}
-                aberta={painelAberto.estrategiasLocais}
-                onToggle={() => alternarPainel("estrategiasLocais")}
+                </div>
+                <p className="text-xs text-zinc-500">
+                  No pedido de entrega local aparece “Enviar ao mototáxi”, com a
+                  mensagem pronta.
+                </p>
+              </fieldset>
+              {mototaxi.erro && (
+                <div role="alert" className="mt-3 text-xs text-amber-300">
+                  Não foi possível carregar o mototáxi.{" "}
+                  <button
+                    type="button"
+                    onClick={mototaxi.recarregar}
+                    className="min-h-11 underline"
+                  >
+                    Tentar carregar de novo
+                  </button>
+                </div>
+              )}
+            </PainelRecolhivel>
+            <PainelRecolhivel
+              id="painel-frete-nacional"
+              titulo="Fora da sua região"
+              icone={Truck}
+              resumo={
+                transportadorasPendentes
+                  ? `${resumoPainelNacional} · chave digitada — falta salvar`
+                  : resumoPainelNacional
+              }
+              aberta={painelAberto.nacional}
+              onToggle={() => alternarPainel("nacional")}
+            >
+              <FreteNacionalBloco
+                coverage={formData.shippingCoverage}
+                onCoverage={(shippingCoverage) =>
+                  atualizarFormData((prev) => ({ ...prev, shippingCoverage }))
+                }
+                desabilitado={isOffline}
+              >
+                <TransportadorasSection
+                  active={active}
+                  onErroMudou={setCredsErro}
+                  onDirtyMudou={marcarTransportadorasPendentes}
+                  onLigadosMudou={onLigadosDasTransportadorasMudou}
+                  onSalvarMudou={registrarSalvarTransportadoras}
+                  onEscolhaMudou={escolhaTransportadorasMudou}
+                  desabilitado={isOffline}
+                />
+              </FreteNacionalBloco>
+            </PainelRecolhivel>
+            <PainelRecolhivel
+              id="painel-frete-gratis"
+              titulo="Frete grátis"
+              icone={Gift}
+              resumo={`Na região: ${resumoGratisLocal} · Fora: ${resumoDaEstrategiaNacional(configDaPrevia ?? config)}`}
+              aberta={painelAberto.estrategiasLocais}
+              onToggle={() => alternarPainel("estrategiasLocais")}
+              comPendencia={!!erroLocal || !!erroNacional}
+            >
+              <div
+                role="tablist"
+                aria-label="Onde dar frete grátis"
+                className="mb-4 flex rounded-full bg-admin-bg p-1"
+              >
+                {(["local", "nacional"] as const).map((aba) => (
+                  <button
+                    key={aba}
+                    type="button"
+                    role="tab"
+                    id={`aba-gratis-${aba}`}
+                    aria-controls={`gratis-${aba}`}
+                    aria-selected={abaGratis === aba}
+                    onClick={() => setAbaGratis(aba)}
+                    className={`min-h-11 min-w-0 flex-1 rounded-full px-2 text-xs font-bold ${abaGratis === aba ? "bg-[hsl(var(--admin-gold-fill))] text-black" : "text-zinc-300"}`}
+                  >
+                    {aba === "local" ? "Na sua região" : "Fora da região"}
+                    {(aba === "local" ? erroLocal : erroNacional) && (
+                      <span className="block text-red-300">
+                        Corrija o valor
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div
+                role="tabpanel"
+                id="gratis-local"
+                aria-labelledby="aba-gratis-local"
+                hidden={abaGratis !== "local"}
               >
                 <FreteGratisBloco
                   mostrarCabecalho={false}
@@ -1060,126 +1218,144 @@ export const AdminShippingView = memo(function AdminShippingView({
                   }
                   desabilitado={isOffline}
                 />
-              </PainelRecolhivel>
-
-              {/* Avançado: consulta rara, no pé da tela. */}
-              <div className="space-y-7 pt-2">
-                <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  Avançado
-                </h2>
-
-                <PainelRecolhivel
-                  id="painel-frete-etiquetas"
-                  titulo="Etiquetas de envio"
-                  resumo="agora ficam no próprio pedido"
-                  aberta={painelAberto.etiquetas}
-                  onToggle={() => alternarPainel("etiquetas")}
-                >
-                  <p className="text-[11px] leading-snug text-zinc-500">
-                    Etiquetas de envio agora ficam no próprio pedido: abra{" "}
-                    {onNavigate ? (
-                      <button
-                        type="button"
-                        onClick={() => onNavigate("admin-orders")}
-                        className="font-semibold text-admin-gold underline decoration-admin-gold/40 underline-offset-2 transition-colors hover:text-admin-gold/80"
-                      >
-                        Pedidos
-                      </button>
-                    ) : (
-                      "Pedidos"
-                    )}
-                    , toque no pedido e use "Etiqueta de envio".
-                  </p>
-                </PainelRecolhivel>
-
-                {/* Consultas de frete (H5): o histórico das cotações, que
-                    morava em Ajustes. Só monta com o painel ABERTO — cada
-                    abertura busca o histórico fresco, como era lá. */}
-                <PainelRecolhivel
-                  id="painel-frete-consultas"
-                  titulo="Consultas de frete"
-                  resumo="as últimas cotações feitas para os clientes"
-                  aberta={painelAberto.consultas}
-                  onToggle={() => alternarPainel("consultas")}
-                >
-                  {painelAberto.consultas && <HistoricoCotacoesSection />}
-                </PainelRecolhivel>
               </div>
-            </div>
-
-            <p className="mt-10 flex items-start gap-2 text-[11px] leading-snug text-zinc-600">
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-              Nada aqui vale antes de salvar. Mexeu? O botão "Salvar" no topo
-              acende para você conferir e salvar.
+              <div
+                role="tabpanel"
+                id="gratis-nacional"
+                aria-labelledby="aba-gratis-nacional"
+                hidden={abaGratis !== "nacional"}
+              >
+                <EstrategiaNacionalBloco
+                  mostrarCabecalho={false}
+                  estrategia={formDataNacional.estrategia}
+                  minimo={formDataNacional.minimo}
+                  tipoDesconto={formDataNacional.tipoDesconto}
+                  valorDesconto={formDataNacional.valorDesconto}
+                  alcance={formDataNacional.alcance}
+                  onEscolherEstrategia={escolherEstrategiaNacional}
+                  onMinimo={(minimo) =>
+                    atualizarFormDataNacional((prev) => ({ ...prev, minimo }))
+                  }
+                  onTipoDesconto={(tipoDesconto) =>
+                    atualizarFormDataNacional((prev) => ({
+                      ...prev,
+                      tipoDesconto,
+                    }))
+                  }
+                  onValorDesconto={(valorDesconto) =>
+                    atualizarFormDataNacional((prev) => ({
+                      ...prev,
+                      valorDesconto,
+                    }))
+                  }
+                  onAlcance={(alcance) =>
+                    atualizarFormDataNacional((prev) => ({
+                      ...prev,
+                      alcance,
+                    }))
+                  }
+                  desabilitado={isOffline}
+                />
+                {erroNacional && (
+                  <p role="alert" className="mt-2 text-[12.5px] text-red-300">
+                    {erroNacional}
+                  </p>
+                )}
+              </div>
+            </PainelRecolhivel>
+            <PainelRecolhivel
+              id="painel-frete-avancado"
+              titulo="Avançado"
+              icone={SlidersHorizontal}
+              resumo="Consultas de frete e etiquetas de envio"
+              aberta={painelAberto.consultas}
+              onToggle={() => alternarPainel("consultas")}
+            >
+              <h3 className="text-sm font-bold">Consultas de frete</h3>
+              <p className="mb-3 text-[12.5px] text-[hsl(var(--admin-text-soft))]">
+                As últimas cotações feitas para os seus clientes.
+              </p>
+              {painelAberto.consultas && <HistoricoCotacoesSection />}
+              <h3 className="mt-5 text-sm font-bold">Etiquetas de envio</h3>
+              <p className="mt-2 text-[12.5px] text-[hsl(var(--admin-text-soft))]">
+                Ficam no próprio pedido: abra Pedidos, toque no pedido e use
+                “Etiqueta de envio”.
+              </p>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("admin-orders")}
+                  className="mt-2 min-h-11 rounded-xl border border-admin-border px-3 text-xs font-bold"
+                >
+                  Abrir Pedidos
+                </button>
+              )}
+            </PainelRecolhivel>
+            <p className="text-xs leading-relaxed text-[hsl(var(--admin-text-soft))]">
+              Mexeu em algo? Toque em Salvar, no alto. A chave de cada
+              transportadora é salva dentro dela.
             </p>
           </>
         )}
-      </div>
-
-      {/* Ajuda da tela — quem procurava o token sai sabendo onde ele está;
-          quem procurava a taxa fixa sai sabendo que ela se foi. */}
+      </main>
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Ajuda — Frete da loja"
+        title="Ajuda — Entrega e frete"
       >
-        <div className="space-y-4">
-          <p className="text-xs leading-relaxed text-zinc-400">
-            A entrega da sua loja tem três partes, cada uma no seu painel
-            recolhível: o{" "}
-            <span className="font-bold text-zinc-200">frete local</span> (você
-            mesmo entrega na cidade), o{" "}
-            <span className="font-bold text-zinc-200">frete nacional</span> (a
-            transportadora cotada na hora) e o{" "}
-            <span className="font-bold text-zinc-200">frete grátis</span> (você
-            escolhe UMA estratégia pronta e edita do seu jeito).
-          </p>
-          <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-              <AlertCircle className="size-4 text-amber-500" />A taxa fixa foi
-              aposentada
-            </div>
-            <p className="text-xs leading-relaxed text-zinc-400">
-              Antes existia um valor fixo para entregas fora da cidade. Ele
-              enganava: parecia frete de verdade sem cotação nenhuma por trás.
-              Agora, fora da sua cidade, o cliente vê SÓ o preço real cotado
-              pela transportadora. Sem transportadora conectada, sua loja
-              entrega apenas na cidade.
-            </p>
-          </div>
-          <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-              <HelpCircle className="size-4 text-amber-500" />
-              Onde estão as transportadoras
-            </div>
-            <p className="text-xs leading-relaxed text-zinc-400">
-              A chave de acesso das transportadoras (Melhor Envio, Frenet,
-              SuperFrete), o teste de conexão, os serviços habilitados e quem
-              está ligado ficam no painel{" "}
-              <span className="font-bold text-zinc-200">Transportadoras</span>,
-              nesta mesma tela. O botão "Abrir Transportadoras" da seção Fora da
-              cidade abre o painel. O histórico das cotações fica em{" "}
-              <span className="font-bold text-zinc-200">
-                Avançado &gt; Consultas de frete
-              </span>
-              .
-            </p>
-          </div>
-          <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-              <AlertCircle className="size-4 text-amber-500" />
-              Não esqueça
-            </div>
-            <p className="text-xs leading-relaxed text-zinc-400">
-              O CEP da loja é obrigatório: sem ele o app não consegue calcular
-              frete nenhum e o cliente não finaliza a compra. Ele se cadastra em
-              Minha loja — aqui você só vê de onde as entregas saem. Mexeu em
-              algo aqui? Toque em "Salvar" no cabeçalho da tela — nada é
-              aplicado antes disso.
-            </p>
-          </div>
-        </div>
+        <p>
+          Em Na sua região, escolha como você entrega ou oferece retirada. Em
+          Fora da sua região, escolha se vende por transportadora e toque no
+          nome dela para conectar a chave.
+        </p>
+        <p>
+          Frete grátis reúne as regras da sua região e de fora em abas
+          separadas. O preço fora da região vem da transportadora, cotado na
+          hora — não há taxa fixa.
+        </p>
+        <p>
+          O CEP e o endereço de onde sai são cadastrados em Minha loja.
+          Consultas e etiquetas ficam em Avançado.
+        </p>
+        <p>
+          Toque em Salvar no topo para gravar as regras e quem está ligado. A
+          chave de acesso é salva dentro da folha da transportadora.
+        </p>
       </AdminHelpModal>
     </div>
   );
 });
+
+function AvisoDaEntrega({
+  titulo,
+  detalhe,
+  botao,
+  onClick,
+}: {
+  readonly titulo: string;
+  readonly detalhe: string;
+  readonly botao: string;
+  readonly onClick?: () => void;
+}) {
+  return (
+    <div
+      role="status"
+      className="rounded-[14px] border border-amber-500/30 bg-amber-500/10 p-3 text-amber-300"
+    >
+      <p className="flex items-start gap-2 text-[13px] font-bold">
+        <AlertCircle aria-hidden="true" className="size-[18px] shrink-0" />
+        {titulo}
+      </p>
+      <p className="mt-1 text-[12.5px]">{detalhe}</p>
+      {onClick && (
+        <button
+          type="button"
+          onClick={onClick}
+          className="mt-2 min-h-11 rounded-lg border border-amber-500/30 px-3 text-xs font-bold"
+        >
+          {botao}
+        </button>
+      )}
+    </div>
+  );
+}

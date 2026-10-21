@@ -35,28 +35,28 @@ const ESTRATEGIAS: readonly {
 }[] = [
   {
     id: "desligado",
-    nome: "Desligado",
-    desc: "nenhuma regra nacional — a transportadora cobra o preço cheio",
+    nome: "Não dar frete grátis",
+    desc: "O cliente paga o preço da transportadora.",
   },
   {
     id: "acima_de_valor",
     nome: "Grátis acima de um valor",
-    desc: "a compra que passa do mínimo não paga o frete da transportadora",
+    desc: "Pedidos a partir do valor não pagam o frete.",
   },
   {
     id: "sempre",
     nome: "Sempre grátis",
-    desc: "toda entrega por transportadora sai grátis, sem mínimo",
+    desc: "Nenhum pedido paga o frete da transportadora.",
   },
   {
     id: "por_produto",
-    nome: "Por produto marcado",
+    nome: "Só produtos marcados",
     desc: 'só o que você marcar como "frete grátis" no cadastro do produto',
   },
   {
     id: "desconto_na_mais_barata",
-    nome: "Desconto na opção mais barata",
-    desc: "um percentual ou valor fixo só na cotação mais barata",
+    nome: "Desconto no frete",
+    desc: "Uma porcentagem ou um valor a menos na opção mais barata.",
   },
 ];
 
@@ -80,6 +80,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
   onValorDesconto,
   onAlcance,
   desabilitado,
+  mostrarCabecalho = true,
 }: {
   readonly estrategia: EstrategiaDeFreteNacional;
   readonly minimo: number;
@@ -94,6 +95,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
   readonly onValorDesconto: (valor: number) => void;
   readonly onAlcance: (alcance: "mais_barata" | "todas") => void;
   readonly desabilitado?: boolean;
+  readonly mostrarCabecalho?: boolean;
 }) {
   const ehDesconto = estrategia === "desconto_na_mais_barata";
   const mostraMinimo = estrategia === "acima_de_valor" || ehDesconto;
@@ -122,20 +124,24 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
       aria-label="Estratégia"
       className="scroll-mt-24"
     >
-      <CabecaDeSecao
-        titulo="Estratégia"
-        estado={
-          <>
-            estratégia:{" "}
-            <b className="font-semibold text-zinc-200">{estadoTexto}</b>
-          </>
-        }
-      />
-
+      {mostrarCabecalho && (
+        <CabecaDeSecao
+          titulo="Estratégia"
+          estado={
+            <>
+              estratégia:{" "}
+              <b className="font-semibold text-zinc-200">{estadoTexto}</b>
+            </>
+          }
+        />
+      )}
+      <p className="text-[12.5px] text-zinc-500">
+        Vale para o frete da transportadora.
+      </p>
       <div
         role="radiogroup"
         aria-label="Estratégia de frete nacional"
-        className="flex flex-col gap-2.5 py-5 md:flex-row md:flex-wrap md:pb-2"
+        className="flex flex-col gap-2.5 py-5 "
       >
         {ESTRATEGIAS.map((e) => {
           const ativo = estrategia === e.id;
@@ -150,7 +156,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
               className={`flex min-h-11 items-start gap-2.5 rounded-xl border px-4 py-3 text-left transition-colors duration-200 disabled:pointer-events-none disabled:opacity-50 ${
                 ativo
                   ? "border-admin-accent/70 bg-admin-accent/10"
-                  : "border-white/10 hover:border-white/25"
+                  : "border-admin-border hover:border-white/25"
               }`}
             >
               <span
@@ -173,7 +179,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                 </span>
                 <span
                   className={`mt-0.5 block text-[11.5px] leading-snug ${
-                    ativo ? "text-admin-accent/80" : "text-zinc-600"
+                    ativo ? "text-zinc-400" : "text-zinc-500"
                   }`}
                 >
                   {e.desc}
@@ -187,7 +193,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
       {/* Tipo do desconto — pills próprias, FORA do radiogroup da estratégia
           (dois grupos de radio distintos, cada um com sua semântica). */}
       {ehDesconto && (
-        <div className="border-t border-white/5 pb-1 pt-4 duration-200 animate-in fade-in">
+        <div className="border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">
           <div
             role="radiogroup"
             aria-label="Tipo de desconto"
@@ -206,21 +212,22 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                   className={`min-h-11 rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                     ativo
                       ? "border-admin-accent/70 bg-admin-accent/10 text-zinc-100"
-                      : "border-white/10 text-zinc-400 hover:border-white/25"
+                      : "border-admin-border text-zinc-400 hover:border-white/25"
                   }`}
                 >
-                  {tipo === "percentual" ? "Percentual" : "Valor fixo"}
+                  {tipo === "percentual" ? "Porcentagem" : "Valor em R$"}
                 </button>
               );
             })}
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2">
+            <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2">
               {tipoDesconto === "fixo" && (
                 <span className="text-xs font-semibold text-zinc-500">R$</span>
               )}
               <input
+                aria-label="Desconto"
                 id="frete-nacional-valor-desconto"
                 type="number"
                 min="0"
@@ -246,7 +253,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
           </div>
 
           {tipoDesconto !== null && valorDesconto > 0 && (
-            <div className="mt-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+            <div className="mt-4 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
               <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                 Prévia (exemplo)
               </p>
@@ -276,10 +283,12 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
 
       {/* Mínimo — "acima de X" obrigatório, mínimo do desconto opcional. */}
       {mostraMinimo && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/5 pb-1 pt-4 duration-200 animate-in fade-in">
-          <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">
+          <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2">
             <span className="text-xs font-semibold text-zinc-500">R$</span>
             <input
+              aria-label={ehDesconto ? "Pedido mínimo" : "A partir de"}
+              aria-invalid={!ehDesconto && minimo <= 0}
               id="frete-nacional-minimo"
               type="number"
               min={ehDesconto ? "0" : "0.01"}
@@ -289,7 +298,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
               onChange={(ev) =>
                 onMinimo(ev.target.value === "" ? 0 : Number(ev.target.value))
               }
-              placeholder={ehDesconto ? "sem mínimo" : "199"}
+              placeholder={ehDesconto ? "opcional" : "199"}
               disabled={desabilitado}
               className="w-28 bg-transparent text-center text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none"
             />
@@ -305,15 +314,18 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
       {/* Alcance — só para as estratégias de GRÁTIS; o desconto é sempre
           "mais barata" por definição. */}
       {mostraAlcance && (
-        <div className="border-t border-white/5 pb-1 pt-4 duration-200 animate-in fade-in">
+        <div className="border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">
+          <p className="mb-2 text-xs font-bold text-zinc-300">
+            Qual entrega fica grátis?
+          </p>
           <div
             role="radiogroup"
             aria-label="Alcance do frete grátis nacional"
             className="flex flex-wrap gap-2"
           >
             {[
-              { id: "mais_barata" as const, nome: "Só a opção mais barata" },
-              { id: "todas" as const, nome: "Todas as opções" },
+              { id: "mais_barata" as const, nome: "Só a mais barata" },
+              { id: "todas" as const, nome: "Qualquer uma" },
             ].map((a) => {
               const ativo = alcance === a.id;
               return (
@@ -327,7 +339,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                   className={`min-h-11 rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                     ativo
                       ? "border-admin-accent/70 bg-admin-accent/10 text-zinc-100"
-                      : "border-white/10 text-zinc-400 hover:border-white/25"
+                      : "border-admin-border text-zinc-400 hover:border-white/25"
                   }`}
                 >
                   {a.nome}
@@ -340,8 +352,8 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
             <p className="mt-3 flex flex-wrap items-start gap-2 text-[12.5px] leading-snug text-amber-300">
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
               <span>
-                Hoje a cliente pode escolher a entrega expressa e o frete dela
-                fica por sua conta. Quer limitar o grátis à opção mais barata?
+                Com “Qualquer uma”, se o cliente escolher a entrega expressa, o
+                frete dela fica por sua conta.
               </span>
               <button
                 type="button"

@@ -88,20 +88,27 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
 
   it("a. o acesso único ao guia e simulador mantém uma área de toque de 44px", () => {
     const botao = tagAntesDe(FONTE, "button", 'toggleHelp("global-guide")}');
-    const valores = tagAntesDe(
-      FONTE,
-      "button",
-      'onClick={() => toggleHelp("financial-values")}',
+    const metricas = readFileSync(
+      join(__dirname, "..", "..", "src/components/admin/MetricasDoPainel.tsx"),
+      "utf8",
     );
-    for (const acesso of [botao, valores]) {
-      expect(acesso).toContain("min-h-11");
-      expect(acesso).toContain("text-xs");
-      expect(acesso).toContain("focus-visible:outline");
-      expect(acesso).not.toContain("w-full");
-    }
-    expect(
-      FONTE.match(/title="Guia Completo de Métricas e Ajuda"/g),
-    ).toHaveLength(1);
+    const valores = tagAntesDe(
+      metricas,
+      "button",
+      'aria-label="Entender valores"',
+    );
+    expect(FONTE).toContain(
+      'onEntender={() => toggleHelp("financial-values")}',
+    );
+    expect(botao).toContain("min-h-11");
+    expect(botao).toContain("text-xs");
+    expect(botao).toContain("focus-visible:outline");
+    expect(botao).not.toContain("w-full");
+    expect(metricas).toContain("min-h-11 min-w-11");
+    expect(metricas).toContain("text-xs font-semibold");
+    expect(metricas).toContain("focus-visible:outline");
+    expect(valores).toContain("size-11");
+    expect(FONTE.match(/aria-label="Guia e simulador"/g)).toHaveLength(1);
     expect(botao).not.toContain("expandedHelp");
     expect(valores).toContain('aria-haspopup="dialog"');
   });
@@ -143,8 +150,8 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
     );
     expect(cartoes).toHaveLength(2);
     for (const cartao of cartoes) {
-      expect(cartao).toContain("bg-[#101013]");
-      expect(cartao).toContain("border-white/10");
+      expect(cartao).toContain("bg-admin-surface");
+      expect(cartao).toContain("border-admin-border");
       expect(cartao).not.toMatch(/shadow-lg|shadow-\[|border-y/);
     }
     expect(FONTE.match(/produto-esqueleto/g)).toHaveLength(2);

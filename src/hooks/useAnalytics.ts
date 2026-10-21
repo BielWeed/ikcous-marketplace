@@ -267,7 +267,7 @@ export function useAnalytics() {
               id: string;
               data: any;
             }>("store_config", "admin_category_data");
-            if (localCategory?.data) {
+            if (localCategory?.data && !cachedCategoryData) {
               cachedCategoryData = localCategory.data;
               setCategoryData(cachedCategoryData);
               broadcastCategory(cachedCategoryData);

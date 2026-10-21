@@ -570,13 +570,21 @@ describe("atenderPorteiro — /identidade.json e /manifest.webmanifest", () => {
     // O app instalado não trava a orientação (a lojista usa o PDV deitada).
     expect(manifest.orientation).toBe("any");
     expect(manifest.theme_color).toBe("#111111");
-    expect(manifest.icons).toHaveLength(3);
+    expect(manifest.icons).toHaveLength(4);
+    expect(manifest.icons[3]).toEqual({
+      src: "/icons/badge-96x96.png",
+      sizes: "96x96",
+      type: "image/png",
+      purpose: "monochrome",
+    });
     expect(
-      manifest.icons.every((icone: { src: string }) =>
-        icone.src.startsWith(
-          "https://projetoaaaaaaaaaaaaa.supabase.co/storage/",
+      manifest.icons
+        .slice(0, 3)
+        .every((icone: { src: string }) =>
+          icone.src.startsWith(
+            "https://projetoaaaaaaaaaaaaa.supabase.co/storage/",
+          ),
         ),
-      ),
     ).toBe(true);
   });
 

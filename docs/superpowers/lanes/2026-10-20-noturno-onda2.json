@@ -1,0 +1,30 @@
+{
+  "plano": "noturno-onda2",
+  "frentes": [
+    {
+      "nome": "caixa-db",
+      "descricao": "Fixar sessão e identidade idempotente de operações do caixa",
+      "posse": [
+        "tests/banco/caixa-intencao-viva.cjs",
+        "scripts/publicacao/consultas/55a-conferir-intencao-do-caixa-aplicado.sql",
+        "scripts/publicacao/consultas/55b-antes-intencao-do-caixa-base-vigente.sql",
+        ".github/workflows/rpc-ci.yml"
+      ],
+      "faixa_migrations": {
+        "de": "20261252",
+        "ate": "20261261"
+      }
+    },
+    {
+      "nome": "catalogo-recarga",
+      "descricao": "Ignorar estado de erro e busy de recarga administrativa obsoleta",
+      "posse": [
+        "src/views/admin/AdminProductsView.tsx",
+        "tests/front/admin-products-recarga-mais-recente.test.tsx"
+      ]
+    }
+  ],
+  "liberados": {
+    ".github/workflows/rpc-ci.yml": "caixa-db"
+  }
+}

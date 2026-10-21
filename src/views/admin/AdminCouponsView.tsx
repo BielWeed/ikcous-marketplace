@@ -7,6 +7,7 @@ import {
   SECUNDARIO,
   Selo,
 } from "@/components/admin/coupons/apresentacao";
+import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +33,7 @@ import {
   cupomPodeCobrirACompraInteira,
 } from "@/lib/cupom-que-cobre-a-compra";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import { type TomDeEstado, classeDoTexto } from "@/lib/tons-de-estado";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { type RotuloDeCupom, rotuloDoCupom } from "@/utils/status-do-cupom";
@@ -79,11 +81,11 @@ const itemVariants: Variants = {
 
 // Aparência do selo de status por rótulo (achado do lote 1: cupom vencido
 // não pode continuar com a mesma cara de "Ativo").
-const classesDoSeloPorRotulo: Record<RotuloDeCupom, string> = {
-  Ativo: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-  Expirado: "border-orange-400/20 bg-orange-400/10 text-orange-300",
-  Inativo: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
-  Esgotado: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+const tomDoSeloPorRotulo: Record<RotuloDeCupom, TomDeEstado> = {
+  Ativo: "positivo",
+  Expirado: "neutro",
+  Inativo: "neutro",
+  Esgotado: "neutro",
 };
 
 interface AdminCouponsViewProps {
@@ -243,7 +245,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         label: "Uso Total",
         icon: Users,
         iconClass: "text-sky-400",
-        iconBg: "bg-zinc-900 border-white/5",
+        iconBg: "bg-zinc-900 border-admin-border",
         hoverBorder:
           "hover:border-sky-500/30 hover:shadow-[0_0_30px_rgba(14,165,233,0.05)]",
         value: totalUsage,
@@ -271,7 +273,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
       {[1, 2, 3, 4, 5, 6].map((i) => (
         <div
           key={i}
-          className="flex min-h-[156px] animate-pulse flex-col justify-between gap-4 rounded-[20px] border border-white/10 bg-[#101013] p-3"
+          className="flex min-h-[156px] animate-pulse flex-col justify-between gap-4 rounded-[20px] border border-admin-border bg-admin-surface p-3"
         >
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
@@ -287,7 +289,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             <Skeleton className="h-4.5 w-full animate-pulse bg-white/5" />
             <Skeleton className="h-3 w-3/4 animate-pulse bg-white/5" />
           </div>
-          <div className="flex items-center justify-between border-t border-white/5 pt-4">
+          <div className="flex items-center justify-between border-t border-admin-border pt-4">
             <Skeleton className="h-3 w-16 animate-pulse bg-white/5" />
             <Skeleton className="size-8 animate-pulse rounded-xl bg-white/5" />
           </div>
@@ -299,9 +301,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   return (
     <div
       ref={viewRef}
-      className="pb-admin relative h-auto bg-[#08080A] font-sans text-zinc-400 duration-500 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200 lg:pb-12"
+      className="pb-admin relative h-auto bg-admin-bg font-sans text-zinc-400 duration-500 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200 lg:pb-12"
     >
-      <div className="sticky top-0 z-20 bg-[#08080A]/95 px-5 py-4 backdrop-blur-xl">
+      <div className="sticky top-0 z-20 bg-admin-bg/95 px-5 py-4 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-coupons"]} />
           {coupons.length > 0 && (
@@ -363,7 +365,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             (metricasAbertas ? (
               <div
                 id="coupon-metrics"
-                className="rounded-[20px] border border-white/10 bg-[#101013] p-4 [&_.bg-admin-gold]:bg-zinc-300 [&_.text-admin-gold]:text-zinc-300 [&_.text-zinc-500]:text-zinc-400"
+                className="rounded-[20px] border border-admin-border bg-admin-surface p-4 [&_.bg-admin-gold]:bg-zinc-300 [&_.text-admin-gold]:text-zinc-300 [&_.text-zinc-500]:text-zinc-400"
               >
                 <AdminKpiCarousel
                   active={active}
@@ -375,7 +377,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             ) : (
               <div
                 id="coupon-metrics"
-                className="grid grid-cols-3 gap-3 rounded-[20px] border border-white/10 bg-[#101013] p-3"
+                className="grid grid-cols-3 gap-3 rounded-[20px] border border-admin-border bg-admin-surface p-3"
               >
                 {kpiCards.map((stat) => (
                   <div key={stat.id} className="flex min-w-0 flex-col gap-2">
@@ -409,7 +411,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         </section>
 
         {configLoaded && (
-          <section className="rounded-[20px] border border-white/10 bg-[#101013] p-3.5">
+          <section className="rounded-[20px] border border-admin-border bg-admin-surface p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <Label
@@ -459,7 +461,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             {isDetailsExpanded && (
               <div
                 id="coupon-settings-help"
-                className="mt-4 space-y-3 border-t border-white/10 pt-4 text-sm leading-relaxed text-zinc-400"
+                className="mt-4 space-y-3 border-t border-admin-border pt-4 text-sm leading-relaxed text-zinc-400"
               >
                 <h3 className="font-bold text-zinc-50">Cupons no checkout</h3>
                 <p>
@@ -483,11 +485,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         {isOffline && (
           <div
             role="status"
-            className="flex gap-3 rounded-[20px] border border-orange-300/20 bg-orange-300/5 p-4 text-sm leading-relaxed"
+            className="flex gap-3 rounded-[20px] border border-admin-border p-4 text-sm leading-relaxed"
           >
             <CloudOff
               aria-hidden="true"
-              className="size-5 shrink-0 text-orange-300"
+              className={`size-5 shrink-0 ${classeDoTexto("negativo")}`}
             />
             <div>
               <p className="font-bold text-zinc-50">Você está offline</p>
@@ -511,7 +513,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         {erroDaListagem ? (
           <div
             role="alert"
-            className="flex flex-wrap items-center gap-3 rounded-[20px] border border-red-300/20 bg-red-300/5 p-4 text-red-300"
+            className={`flex flex-wrap items-center gap-3 rounded-[20px] border border-admin-border bg-admin-surface p-4 ${classeDoTexto("negativo")}`}
           >
             <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
             <p className="min-w-0 flex-1 text-sm leading-relaxed">
@@ -545,7 +547,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="rounded-[20px] border border-white/10 bg-[#101013] p-5"
+              className="rounded-[20px] border border-admin-border bg-admin-surface p-5"
             >
               <Selo icone={Ticket} matiz="#FF91B9" />
               <h3 className="mt-5 text-2xl font-bold text-zinc-50">
@@ -588,7 +590,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                       key={coupon.id}
                       variants={itemVariants}
                       layout
-                      className="group min-w-0 rounded-[20px] border border-white/10 bg-[#101013] p-3"
+                      className="group min-w-0 rounded-[20px] border border-admin-border bg-admin-surface p-3"
                     >
                       <div className="flex items-start gap-2">
                         <button
@@ -596,7 +598,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                           onClick={() => handleCopyCode(coupon.code)}
                           title="Copiar Código"
                           aria-label={`Copiar código ${coupon.code}`}
-                          className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl bg-[#17171C] p-2 text-left ${FOCO}`}
+                          className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl bg-admin-raised p-2 text-left ${FOCO}`}
                         >
                           <Selo
                             icone={
@@ -658,11 +660,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                             ? `${coupon.value ?? 0}% OFF`
                             : formatCurrency(Number(coupon.value ?? 0))}
                         </p>
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-bold ${classesDoSeloPorRotulo[rotulo]}`}
-                        >
-                          {rotulo}
-                        </span>
+                        <EstadoComPonto
+                          tom={tomDoSeloPorRotulo[rotulo]}
+                          texto={rotulo}
+                          className="px-2.5 py-1 text-xs font-bold"
+                        />
                       </div>
                       <div className="mt-1 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs leading-relaxed text-zinc-400">
                         <span>
@@ -682,7 +684,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         </span>
                       </div>
                       {indisponivel && (
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-orange-300">
+                        <p
+                          className={`mt-1 flex items-center gap-1.5 text-xs ${classeDoTexto("atencao")}`}
+                        >
                           <LockKeyhole
                             aria-hidden="true"
                             className="size-3.5"
@@ -693,7 +697,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         </p>
                       )}
                       {cupomPodeCobrirACompraInteira(coupon) && (
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-orange-300">
+                        <p
+                          className={`mt-1 flex items-center gap-1.5 text-xs ${classeDoTexto("atencao")}`}
+                        >
                           <AlertCircle
                             aria-hidden="true"
                             className="size-3.5 shrink-0"
@@ -754,7 +760,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                       {aberto && (
                         <div
                           id={`coupon-details-${coupon.id}`}
-                          className="mt-4 space-y-3 border-t border-white/10 pt-4 text-sm text-zinc-400"
+                          className="mt-4 space-y-3 border-t border-admin-border pt-4 text-sm text-zinc-400"
                         >
                           <p className="break-all font-bold text-zinc-50">
                             {coupon.code}
@@ -803,15 +809,19 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                             {coupon.active ? "Ligada" : "Desligada"}
                           </p>
                           {cupomPodeCobrirACompraInteira(coupon) && (
-                            <p className="text-sm leading-relaxed text-orange-200">
+                            <p
+                              className={`text-sm leading-relaxed ${classeDoTexto("atencao")}`}
+                            >
                               {lojaSoRecebePeloApp
                                 ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
                                 : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
                             </p>
                           )}
                           {indisponivel && (
-                            <div className="rounded-2xl border border-orange-300/20 bg-orange-300/5 p-3">
-                              <p className="font-bold text-orange-300">
+                            <div className="rounded-2xl border border-admin-border p-3">
+                              <p
+                                className={`font-bold ${classeDoTexto("atencao")}`}
+                              >
                                 Cupom indisponível
                               </p>
                               <p className="mt-1 leading-relaxed">
@@ -855,7 +865,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
               Configurações dos Cupons
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-sm font-bold text-zinc-50">
                   <Selo icone={Ticket} matiz="#FF91B9" />
                   Código do Cupom
@@ -866,7 +876,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-sm font-bold text-zinc-50">
                   <Selo icone={Users} matiz="#73BFFF" />
                   Limite de Uso & Mínimos
@@ -879,7 +889,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-sm font-bold text-zinc-50">
                   <Selo icone={Calendar} matiz="#FFA45C" />
                   Validade
@@ -895,7 +905,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-sm font-bold text-zinc-50">
                   <Selo icone={Percent} matiz="#BAA0FF" />
                   Tipos de Desconto
@@ -917,7 +927,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         open={couponToDelete !== null}
         onOpenChange={(open) => !open && setCouponToDelete(null)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
             <Selo icone={Trash} matiz="#FF6868" />
             <AlertDialogTitle className="text-2xl font-bold text-zinc-50">

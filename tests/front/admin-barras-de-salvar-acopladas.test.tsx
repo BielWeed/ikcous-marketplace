@@ -385,12 +385,12 @@ it("política que não carregou não deixa uma ação de salvar na pílula", asy
   ).toBe(true);
 });
 
-it("Minha loja retira a ação do contato ao ficar inativa", async () => {
+it("Minha loja retira a ação única ao ficar inativa", async () => {
   const { AdminAboutStoreView } = await import(
     "@/views/admin/AdminAboutStoreView"
   );
   await montar(<AdminAboutStoreView onNavigate={h.navegar} active />);
-  expect(acoes("Ações do contato da loja").closest("nav")).not.toBeNull();
+  expect(acoes("Ações de Minha loja").closest("nav")).not.toBeNull();
   await montar(<AdminAboutStoreView onNavigate={h.navegar} active={false} />);
   expect(host.querySelector("#settings-whatsapp")).not.toBeNull();
   expect(host.querySelector("[data-prateleira]")?.childElementCount).toBe(0);

@@ -395,11 +395,18 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
       "Valor médio por venda",
       "Pedidos Totais",
     ]);
-    expect(metricas.querySelectorAll("button")).toHaveLength(1);
-    expect(metricas.querySelector("button")?.textContent).toContain("Recolher");
+    expect(metricas.querySelectorAll("button[aria-expanded]")).toHaveLength(1);
     expect(
-      metricas.querySelector("button")?.getAttribute("aria-expanded"),
+      metricas.querySelector("button[aria-expanded]")?.textContent,
+    ).toContain("Recolher");
+    expect(
+      metricas
+        .querySelector("button[aria-expanded]")
+        ?.getAttribute("aria-expanded"),
     ).toBe("true");
+    expect(
+      metricas.querySelector('button[aria-label="Entender valores"]'),
+    ).not.toBeNull();
     expect(metricas.textContent).not.toContain("Carrossel");
     expect(
       metricas.querySelector('[aria-label^="Mostrar o grupo"]'),

@@ -206,6 +206,10 @@ describe("AdminCouponsView — cupom vencido para de dizer Ativo", () => {
 
     const texto = textoDoCard("PROMOVENCIDA");
     expect(texto).toContain("Validade encerrada");
+    const selo = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Expirado",
+    );
+    expect(selo?.classList.contains("text-zinc-400")).toBe(true);
     expect(
       hospedeiro
         .querySelector('[aria-label="Ativação manual de PROMOVENCIDA"]')

@@ -103,8 +103,8 @@ it("cupom mantém nomes completos, controles nomeados e o valor junto à ação 
   expect(linha.textContent).toContain("Limite do estoque");
   expect(botao("Fechar venda").textContent).toContain("R$ 1.198,80");
   expect(
-    botao("Cliente (opcional)").compareDocumentPosition(
-      botao("Cancelar venda"),
+    botao("Cancelar venda").compareDocumentPosition(
+      botao("Cliente (opcional)"),
     ) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   expect(
@@ -176,7 +176,7 @@ it("identificação conserva o subtotal e a ação existente de fechar a venda",
   );
   const resumo = host.querySelector('[aria-label="Fechamento da venda"]')!;
   expect(resumo.textContent).toContain("R$ 1.198,80");
-  const fechar = resumo.querySelector("button")!;
+  const fechar = resumo.querySelector<HTMLButtonElement>(".pdv-sale-action")!;
   expect(fechar.disabled).toBe(false);
   expect(fechar.textContent).toContain("Fechar venda");
   await act(async () => fechar.click());

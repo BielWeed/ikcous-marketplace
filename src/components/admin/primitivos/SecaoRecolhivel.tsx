@@ -40,7 +40,7 @@ export function SecaoRecolhivel({
         aria-expanded={aberta}
         aria-controls={idConteudo}
         onClick={() => setAberta((a) => !a)}
-        className="group flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border-b border-white/10 py-2 text-left"
+        className="group flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border-b border-admin-border py-2 text-left"
       >
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-bold text-zinc-200">

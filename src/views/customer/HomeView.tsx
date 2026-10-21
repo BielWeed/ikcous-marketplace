@@ -23,6 +23,7 @@ import React, { useCallback, useState, useMemo } from "react";
 
 import { FreeShippingBlock } from "@/components/ui/custom/FreeShippingBlock";
 import { InfoBlockCarousel } from "@/components/ui/custom/InfoBlockCarousel";
+import { OfertasCompactasEsqueleto } from "@/components/ui/custom/OfertasCompactasEsqueleto";
 import { PremiumOffers } from "@/components/ui/custom/PremiumOffers";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
 import { ProductCarousel } from "@/components/ui/custom/ProductCarousel";
@@ -127,6 +128,11 @@ export const HomeView = React.memo(function HomeView({
   // NO PRIMEIRO RENDER (localStorage síncrono) — decide a reserva do banner
   // e das seções derivadas por filtro antes de qualquer paint.
   const memoriaDaUltimaVisita = useMemoriaDaHome();
+  const layoutOfertas = configLoaded
+    ? config.homeSections?.find((s) => s.id === "offers")?.layout === "compacto"
+      ? "compacto"
+      : "padrao"
+    : (memoriaDaUltimaVisita?.layoutOfertas ?? "padrao");
 
   React.useEffect(() => {
     if (!onHeaderDockChange) return;
@@ -278,15 +284,18 @@ export const HomeView = React.memo(function HomeView({
   // Sem isto a próxima visita cai na aposta da 1ª visita (comportamento de
   // hoje) — memória é otimização, nunca fonte de verdade.
   React.useEffect(() => {
-    if (isLoading || !bannersLoaded) return;
+    if (isLoading || !bannersLoaded || !configLoaded) return;
     gravarMemoriaDaHome({
       temBanner: topBanners.length > 0,
       temOfertas: offerProducts.length > 0,
       temBestsellers: bestsellerProducts.length > 0,
+      layoutOfertas,
     });
   }, [
     isLoading,
     bannersLoaded,
+    configLoaded,
+    layoutOfertas,
     topBanners.length,
     offerProducts.length,
     bestsellerProducts.length,
@@ -374,11 +383,11 @@ export const HomeView = React.memo(function HomeView({
   // ── CLS da home (frente cls-home-0409, dossiê 2148) ─────────────────────
   // O bloco de frete grátis da home entra com altura estável desde a
   // primeira pintura: enquanto o config da loja não chegou, um esqueleto
-  // de 74px ocupa exatamente o lugar do bloco real (p-3.5 + ícone de 44px
-  // + borda). Sem isto, o bloco "aparece depois" e empurra os lançamentos
+  // de 172px ocupa a altura mínima do cartão real. Sem isto, o bloco
+  // "aparece depois" e empurra os lançamentos
   // — o segundo maior salto medido (0,074 do "Últimos Lançamentos").
   // Trade-off conhecido: loja que DESLIGOU o frete grátis paga um recuo
-  // de ~74px quando o config chega (o default de fábrica é min 350, e o
+  // de ~172px quando o config chega (o default de fábrica é min 350, e o
   // caso medido da vitrine — loja COM frete — fica em Δ=0 de ponta a
   // ponta).
   const blocoFrete = configLoaded ? (
@@ -387,7 +396,9 @@ export const HomeView = React.memo(function HomeView({
     </InfoBlockCarousel>
   ) : (
     <div className="relative mt-2 w-full px-4">
-      <div className="h-[74px] w-full animate-pulse rounded-[24px] bg-zinc-100" />
+      <div
+        className={`${config.freeShippingCardStyle === "compacto" ? "h-[76px]" : "h-[172px]"} w-full animate-pulse rounded-[24px] bg-zinc-100`}
+      />
     </div>
   );
 
@@ -518,7 +529,7 @@ export const HomeView = React.memo(function HomeView({
             if (derivadaPorFiltro && ultimaVisitaTinhaConteuto === false)
               return null;
             return section.id === "offers" ? (
-              <SecaoOfertasEsqueleto key={section.id} />
+              <SecaoOfertasEsqueleto key={section.id} layout={layoutOfertas} />
             ) : (
               <SecaoCarrosselEsqueleto key={section.id} />
             );
@@ -528,6 +539,7 @@ export const HomeView = React.memo(function HomeView({
             return (
               <PremiumOffers
                 key={section.id}
+                layout={layoutOfertas}
                 title={section.title}
                 products={secProducts}
                 favorites={favorites}
@@ -586,27 +598,31 @@ export const HomeView = React.memo(function HomeView({
         {/* Integrated Filter Bar - Premium Glassmorphism & STICKY */}
         <div
           className={cn(
-            "sticky top-[-2px] z-40 -mx-4 px-4 pb-1.5 pt-0 bg-white/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5 gpu-accelerated",
+            "sticky top-[-2px] z-40 -mx-3 px-3 sm:-mx-4 sm:px-4 pb-1.5 pt-0 bg-background/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5 gpu-accelerated",
             scrollProgress > 20
               ? "shadow-sm border-b border-zinc-200/60"
               : "border-b border-transparent",
           )}
         >
-          {/* Interactive Header Bar */}
-          <div className="flex items-center gap-3 py-1">
-            <div className="min-w-0 flex-1">
-              {isLoading ? (
-                <div className="h-9 w-full animate-pulse rounded-full bg-zinc-100" />
-              ) : (
-                <CategoryFilter
-                  categories={categories}
-                  selectedCategory={selectedCategory}
-                  onCategoryChange={onCategoryChange}
-                  isLoading={isLoadingCategories}
-                />
-              )}
-            </div>
-
+          <CategoryFilter
+            categories={categories}
+            selectedCategory={selectedCategory}
+            onCategoryChange={onCategoryChange}
+            isLoading={isLoading || isLoadingCategories}
+          />
+          <div className="flex min-h-14 items-center justify-between gap-3 border-t border-border py-2">
+            <p
+              data-testid="resultado-categoria"
+              aria-live="polite"
+              className="min-w-0 text-sm text-foreground"
+            >
+              <span className="font-bold">{selectedCategory}</span>
+              <span className="text-muted-foreground">
+                {isLoading
+                  ? " · Carregando produtos…"
+                  : ` · ${filteredProducts.length} ${filteredProducts.length === 1 ? "produto" : "produtos"}`}
+              </span>
+            </p>
             <div className="flex flex-shrink-0 items-center gap-2">
               <div className="relative">
                 <button
@@ -622,12 +638,13 @@ export const HomeView = React.memo(function HomeView({
                       setShowSortMenu(false);
                     }
                   }}
-                  className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-bold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
                   aria-expanded={showSortMenu}
                   aria-haspopup="listbox"
                   title="Filtrar e Ordenar"
                 >
-                  <SlidersHorizontal className="size-4" />
+                  <SlidersHorizontal aria-hidden="true" className="size-4" />
+                  Filtros
                 </button>
 
                 {showSortMenu && (
@@ -837,7 +854,8 @@ function SecaoCarrosselEsqueleto() {
 }
 
 /** Espelho do PremiumOffers (seção offers): header compacto + card herói. */
-function SecaoOfertasEsqueleto() {
+function SecaoOfertasEsqueleto({ layout }: { layout?: "padrao" | "compacto" }) {
+  if (layout === "compacto") return <OfertasCompactasEsqueleto />;
   return (
     // data-testid: âncora do teste comportamental "sem ofertas → nenhum
     // esqueleto de ofertas montado" (laudo edj3ka, E2) — sem efeito visual.

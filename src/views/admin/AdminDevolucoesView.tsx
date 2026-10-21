@@ -153,7 +153,7 @@ export function AdminDevolucoesView({
   ];
 
   return (
-    <div className="pb-admin h-auto bg-[#09090b] text-white lg:pb-12">
+    <div className="pb-admin h-auto bg-admin-bg text-white lg:pb-12">
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
           titulo={NOMES_DO_PAINEL["admin-devolucoes"]}
@@ -162,7 +162,7 @@ export function AdminDevolucoesView({
               type="button"
               onClick={recarregar}
               aria-label="Atualizar devoluções"
-              className="flex size-11 items-center justify-center rounded-xl border border-white/5 bg-zinc-900/60 text-zinc-400 transition-all hover:text-white active:scale-95"
+              className="flex size-11 items-center justify-center rounded-xl border border-admin-border bg-admin-surface text-zinc-400 transition-all hover:text-white active:scale-95"
             >
               <RefreshCw
                 className={cn("size-4", lista.carregando && "animate-spin")}
@@ -191,7 +191,7 @@ export function AdminDevolucoesView({
                   "flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3.5 text-[11px] font-bold transition-colors",
                   ativo
                     ? "border-admin-gold/50 bg-admin-gold/10 text-admin-gold"
-                    : "border-white/5 bg-zinc-900/60 text-zinc-400 hover:text-white",
+                    : "border-admin-border bg-admin-surface text-zinc-400 hover:text-white",
                 )}
               >
                 {chip.rotulo}
@@ -231,7 +231,7 @@ export function AdminDevolucoesView({
             onChange={setBusca}
             onTyping={setDigitando}
             delay={350}
-            className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
+            className="h-11 w-full rounded-xl border-admin-border bg-black/40 pl-10 text-xs font-bold text-white placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
           />
         </div>
 
@@ -245,7 +245,7 @@ export function AdminDevolucoesView({
                 <button
                   type="button"
                   onClick={recarregar}
-                  className="min-h-11 rounded-xl border border-white/10 bg-white/5 px-4 text-[11px] font-bold text-zinc-200"
+                  className="min-h-11 rounded-xl border border-admin-border bg-white/5 px-4 text-[11px] font-bold text-zinc-200"
                 >
                   Tentar de novo
                 </button>
@@ -253,8 +253,8 @@ export function AdminDevolucoesView({
             )}
 
             {!lista.erro && !lista.carregando && lista.itens.length === 0 && (
-              <div className="flex flex-col items-center gap-2 rounded-2xl border border-white/5 bg-zinc-950/40 px-6 py-12 text-center">
-                <div className="flex size-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-400">
+              <div className="flex flex-col items-center gap-2 rounded-2xl border border-admin-border bg-zinc-950/40 px-6 py-12 text-center">
+                <div className="flex size-10 items-center justify-center rounded-xl border border-admin-border bg-white/5 text-zinc-400">
                   <RotateCcw className="size-5" />
                 </div>
                 <p className="text-sm font-black text-white">
@@ -286,7 +286,7 @@ export function AdminDevolucoesView({
                 type="button"
                 onClick={lista.carregarMais}
                 disabled={lista.carregando}
-                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/5 bg-zinc-900/60 text-[11px] font-bold text-zinc-300 disabled:opacity-50"
+                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-admin-border bg-admin-surface text-[11px] font-bold text-zinc-300 disabled:opacity-50"
               >
                 {lista.carregando && (
                   <Loader2 className="size-4 animate-spin" />
@@ -304,7 +304,7 @@ export function AdminDevolucoesView({
           </div>
 
           {selecionada ? (
-            <div className="fixed inset-0 z-[130] flex flex-col bg-[#09090b] duration-300 animate-in slide-in-from-bottom-4 lg:sticky lg:inset-auto lg:top-4 lg:z-auto lg:h-[calc(100dvh-9rem)] lg:animate-none lg:overflow-hidden lg:rounded-2xl lg:border lg:border-white/5">
+            <div className="fixed inset-0 z-[130] flex flex-col bg-admin-bg duration-300 animate-in slide-in-from-bottom-4 lg:sticky lg:inset-auto lg:top-4 lg:z-auto lg:h-[calc(100dvh-9rem)] lg:animate-none lg:overflow-hidden lg:rounded-2xl lg:border lg:border-admin-border">
               <DetalheDaDevolucao
                 key={selecionada}
                 id={selecionada}
@@ -316,7 +316,7 @@ export function AdminDevolucoesView({
               />
             </div>
           ) : (
-            <div className="hidden lg:sticky lg:top-4 lg:flex lg:h-64 lg:items-center lg:justify-center lg:rounded-2xl lg:border lg:border-dashed lg:border-white/10 lg:text-xs lg:text-zinc-500">
+            <div className="hidden lg:sticky lg:top-4 lg:flex lg:h-64 lg:items-center lg:justify-center lg:rounded-2xl lg:border lg:border-dashed lg:border-admin-border-strong lg:text-xs lg:text-zinc-500">
               Escolha uma devolução para ver os detalhes.
             </div>
           )}

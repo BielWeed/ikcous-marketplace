@@ -1,11 +1,12 @@
 import { LazyImage } from "@/components/LazyImage";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
-import {
-  AdminKpiCarousel,
-  type KpiCardConfig,
-} from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { CamposDeTextoDoBanner } from "@/components/admin/banners/CamposDeTextoDoBanner";
+import { CriarBannerComIa } from "@/components/admin/banners/CriarBannerComIa";
+import { EscolherCriacaoDoBanner } from "@/components/admin/banners/EscolherCriacaoDoBanner";
+import { GaleriaDeBanners } from "@/components/admin/banners/GaleriaDeBanners";
+import { PreviaImagemPropria } from "@/components/admin/banners/PreviaImagemPropria";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,18 +18,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { BannerPronto } from "@/components/ui/custom/BannerPronto";
 import { ImageAdjuster } from "@/components/ui/custom/ImageAdjuster";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
+import { modeloDoBanner } from "@/lib/banner-modelos";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { branding } from "@/config/branding";
@@ -44,18 +40,23 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
+  CORES_DO_MODELO,
+  INFO_DOS_MODELOS,
+  templateTypeDoModelo,
+} from "@/lib/catalogo-de-banners";
+import {
   MENSAGEM_FIM_ANTES_DO_INICIO,
   fimDoBannerEmTexto,
   problemaDasDatas,
 } from "@/lib/datas-do-banner";
+import { LINK_DA_PAGINA_DA_LOJA } from "@/lib/destino-do-banner";
+import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import {
   AVISO_DE_LINK_RECUSADO,
-  LINK_DA_PAGINA_DA_LOJA,
   avisoDoLinkDigitado,
   linkDaCategoria,
   linkDoBannerParaSalvar,
-} from "@/lib/destino-do-banner";
-import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
+} from "@/lib/link-do-banner-no-painel";
 import {
   gravarModoDoEditor,
   lerModoDoEditor,
@@ -63,33 +64,23 @@ import {
 } from "@/lib/modo-do-editor-de-banner";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
-import { AnimatePresence, type Variants, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
-  Bell,
-  ChevronDown,
-  ChevronUp,
   Edit,
   ExternalLink,
-  Eye,
   HelpCircle,
   Layout,
-  LayoutGrid,
-  List,
   Loader2,
-  Play,
   Plus,
-  Search,
-  SlidersHorizontal,
   Sparkles,
   Trash,
-  Upload,
-  X,
-  Zap,
 } from "lucide-react";
 import {
   type ChangeEvent,
+  type ComponentProps,
   memo,
   useEffect,
   useMemo,
@@ -331,11 +322,6 @@ interface AdminBannersViewProps {
   onSetBackOverride?: (fn: (() => void) | null) => void;
 }
 
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
-};
-
 // ── Redesenho do gerenciador (peça 23): situação em UMA linha por banner ──
 // Mesmos dados de antes (active/startDate/endDate + formatDistanceToNow),
 // só que em vez de espalhar badges empilhadas, cada card mostra um ponto
@@ -344,14 +330,14 @@ const situacaoDoBanner = (
   banner: Banner,
 ): { rotulo: string; ponto: string; texto: string } => {
   if (!banner.active) {
-    return { rotulo: "Pausado", ponto: "bg-zinc-500", texto: "text-zinc-500" };
+    return { rotulo: "Pausado", ponto: "bg-zinc-500", texto: "text-zinc-400" };
   }
   const agora = new Date();
   if (banner.startDate && new Date(banner.startDate) > agora) {
     return {
       rotulo: `Agendado — entra no ar ${formatDistanceToNow(banner.startDate)}`,
-      ponto: "bg-[#FFBF00]",
-      texto: "text-[#FFBF00]",
+      ponto: "bg-amber-400",
+      texto: "text-amber-400",
     };
   }
   if (banner.endDate && new Date(banner.endDate) < agora) {
@@ -403,6 +389,24 @@ interface CartaoDoBannerProps {
   readonly onExcluir: (id: string, imageUrl: string) => void;
 }
 
+function InterruptorDoBanner({
+  id,
+  ...props
+}: ComponentProps<typeof Switch> & { id: string }) {
+  return (
+    <label
+      htmlFor={id}
+      className="flex size-11 shrink-0 cursor-pointer items-center justify-center"
+    >
+      <Switch
+        {...props}
+        id={id}
+        className="data-[state=checked]:bg-admin-accent data-[state=unchecked]:bg-admin-border-strong dark:data-[state=unchecked]:bg-admin-border-strong [&_[data-slot=switch-thumb]]:bg-zinc-50"
+      />
+    </label>
+  );
+}
+
 const CartaoDoBanner = memo(function CartaoDoBanner({
   banner,
   posicaoCurta,
@@ -421,12 +425,10 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
   const ocupado = activeAction?.id === banner.id;
 
   return (
-    <motion.div
-      layout
-      variants={itemVariants}
+    <div
       className={cn(
-        "group relative w-full max-w-full overflow-hidden rounded-2xl border border-white/[0.06] bg-zinc-950/60 transition-colors duration-300 hover:border-white/[0.12] hover:bg-zinc-900/40",
-        !banner.active && "opacity-60",
+        "group relative w-full max-w-full overflow-hidden rounded-2xl border border-admin-border bg-admin-surface transition-colors duration-300 hover:border-white/[0.12] hover:bg-admin-raised",
+        !banner.active && "bg-admin-bg",
       )}
     >
       <div
@@ -444,35 +446,40 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
         >
           <div
             className={cn(
-              "relative shrink-0 overflow-hidden rounded-xl border border-white/5 bg-zinc-900",
+              "relative shrink-0 overflow-hidden rounded-xl border border-admin-border bg-zinc-900",
               detalhado
-                ? "aspect-[21/9] w-full sm:w-44 lg:w-64 xl:w-80"
-                : "aspect-[21/9] w-28 sm:w-32",
+                ? "aspect-[2/1] w-full sm:w-44 lg:w-64 xl:w-80"
+                : "aspect-[2/1] w-28 sm:w-32",
               !banner.active && "opacity-70 grayscale",
             )}
           >
-            <LazyImage
-              src={banner.imageUrl}
-              alt={banner.title || "Banner"}
-              className="size-full object-cover"
-            />
+            {modeloDoBanner(banner.templateType) ? (
+              <BannerPronto banner={banner} />
+            ) : (
+              <LazyImage
+                src={banner.imageUrl}
+                alt={banner.title || "Banner"}
+                className="size-full object-cover"
+              />
+            )}
           </div>
 
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex min-w-0 items-baseline gap-2">
               <h3
                 className={cn(
-                  "min-w-0 max-w-full truncate font-semibold text-white",
+                  "min-w-0 max-w-full truncate font-semibold",
+                  banner.active ? "text-white" : "text-zinc-400",
                   detalhado ? "text-sm sm:text-base" : "text-sm",
                 )}
               >
                 {banner.title || "Campanha sem Título"}
               </h3>
-              <span className="shrink-0 font-mono text-[11px] text-zinc-500">
+              <span className="shrink-0 font-mono text-[11px] text-zinc-400">
                 #{banner.order}
               </span>
               {posicaoCurta && (
-                <span className="hidden shrink-0 text-[11px] text-zinc-500 sm:inline">
+                <span className="hidden shrink-0 text-[11px] text-zinc-400 sm:inline">
                   · {posicaoCurta}
                 </span>
               )}
@@ -490,7 +497,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
             </div>
 
             {banner.link && (
-              <div className="flex min-w-0 items-center gap-1 font-mono text-[11px] text-zinc-500">
+              <div className="flex min-w-0 items-center gap-1 font-mono text-[11px] text-zinc-400">
                 <ExternalLink className="size-2.5 shrink-0" />
                 <span className="min-w-0 truncate">{banner.link}</span>
               </div>
@@ -518,7 +525,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="shrink-0 font-mono text-[11px] text-zinc-500">
+                    <span className="shrink-0 font-mono text-[11px] text-zinc-400">
                       {Math.round(pct)}%
                     </span>
                   </div>
@@ -528,17 +535,17 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
         </div>
 
         {/* Controles: ordem · exibir · editar · excluir */}
-        <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] pt-2.5">
-          <div className="flex items-center gap-1.5">
-            <div className="flex items-center rounded-lg border border-white/[0.06] bg-white/[0.03] p-0.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-admin-border pt-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex items-center rounded-lg border border-admin-border bg-admin-raised p-0.5">
               <button
                 onClick={() => onMover(banner, "up")}
                 disabled={indice === 0 || isProcessing || isOffline}
-                className="flex size-9 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
+                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
                 title="Mover para cima"
               >
                 {ocupado && activeAction?.type === "up" ? (
-                  <Loader2 className="size-4 animate-spin text-[#FFBF00]" />
+                  <Loader2 className="size-4 motion-safe:animate-spin text-zinc-200" />
                 ) : (
                   <ArrowUp className="size-4" />
                 )}
@@ -546,29 +553,27 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
               <button
                 onClick={() => onMover(banner, "down")}
                 disabled={indice === total - 1 || isProcessing || isOffline}
-                className="flex size-9 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
+                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
                 title="Mover para baixo"
               >
                 {ocupado && activeAction?.type === "down" ? (
-                  <Loader2 className="size-4 animate-spin text-[#FFBF00]" />
+                  <Loader2 className="size-4 motion-safe:animate-spin text-zinc-200" />
                 ) : (
                   <ArrowDown className="size-4" />
                 )}
               </button>
             </div>
 
-            <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+            <div className="flex items-center gap-1.5 rounded-lg border border-admin-border bg-admin-raised px-2 py-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                 Exibir
               </span>
-              <Switch
+              <InterruptorDoBanner
                 id={`banner-card-active-${banner.id}`}
                 checked={banner.active}
                 onCheckedChange={() => onAlternar(banner)}
-                disabled={
-                  (ocupado && activeAction?.type === "toggle") || isOffline
-                }
-                className="scale-90 data-[state=checked]:bg-[#FFBF00]"
+                disabled={isProcessing || isOffline}
+                aria-label={`Exibir ${banner.title || "banner"}`}
               />
             </div>
           </div>
@@ -577,19 +582,19 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
             <button
               onClick={() => onEditar(banner)}
               disabled={isProcessing || isOffline}
-              className="flex size-9 items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.03] text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+              className="flex size-11 items-center justify-center rounded-lg border border-admin-border bg-admin-raised text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-40"
               title="Editar"
             >
-              <Edit className="size-4 text-[#FFBF00]" />
+              <Edit className="size-4 text-zinc-200" />
             </button>
             <button
               onClick={() => onExcluir(banner.id, banner.imageUrl)}
               disabled={isProcessing || isOffline}
-              className="flex size-9 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-400 transition-colors hover:bg-rose-500 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+              className="flex size-11 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-400 transition-colors hover:bg-rose-500 hover:text-white disabled:pointer-events-none disabled:opacity-40"
               title="Excluir"
             >
               {ocupado && activeAction?.type === "delete" ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-4 motion-safe:animate-spin" />
               ) : (
                 <Trash className="size-4" />
               )}
@@ -597,19 +602,9 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 });
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 15, scale: 0.98 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: { type: "spring", stiffness: 120, damping: 14 },
-  },
-};
 
 // Fonte única do shape "banner vazio" (~20 campos), achado
 // AdminBannersView-1198: o literal completo (title, imageUrl, link,
@@ -679,7 +674,8 @@ export const isBannerFormDirty = (
     (initial.templateType || "default") ||
   (formData.productId || "") !== (initial.productId || "") ||
   formData.startDate !== initial.startDate ||
-  formData.endDate !== initial.endDate;
+  formData.endDate !== initial.endDate ||
+  (formData.showTextOverlay !== false) !== (initial.showTextOverlay !== false);
 
 export const AdminBannersView = memo(function AdminBannersView({
   onNavigate: _onNavigate,
@@ -727,14 +723,16 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
   const [uploading, setUploading] = useState(false);
+  const geracaoDoUploadPendente = useRef<number | null>(null);
   const geracaoDoEditor = useRef(0);
+  const imagemEnviadaNaoSalvaRef = useRef<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTab, setSelectedTab] = useLocalStorage<
     "all" | "home_top" | "home_middle" | "home_bottom"
   >("admin_banners_selected_tab", "all");
   const [viewMode, setViewMode] = useLocalStorage<"detailed" | "compact">(
     "admin_banners_view_mode",
-    "compact",
+    "detailed",
   );
   const [bannerToDelete, setBannerToDelete] = useState<{
     id: string;
@@ -748,7 +746,9 @@ export const AdminBannersView = memo(function AdminBannersView({
     id: string;
     type: "up" | "down" | "toggle" | "delete";
   } | null>(null);
-  const [activeStep, setActiveStep] = useState<1 | 2 | 3>(1);
+  const [tela, setTela] = useState<"jeito" | "modelos" | "editor" | "ia">(
+    "jeito",
+  );
   const [bannerMode, setBannerMode] = useState<"simple" | "complete">("simple");
   const [bgBrightnessType, setBgBrightnessType] = useState<"light" | "dark">(
     "dark",
@@ -990,19 +990,45 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
   const [adjustingImgUrl, setAdjustingImgUrl] = useState("");
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
+  // O bloqueio síncrono pertence à geração: uma resposta antiga não libera a nova.
+  const geracaoDoRecortePendente = useRef<number | null>(null);
 
   const openAdjuster = (url: string) => {
+    if (isSubmittingRef.current) return;
     setAdjustingImgUrl(url);
     setIsAdjusterOpen(true);
   };
 
+  const adotarImagemEnviada = (url: string) => {
+    // Recorte e upload podem responder antes do próximo render. Compartilham
+    // a imagem substituível, sem depender do formData capturado por cada envio.
+    const imagemAnterior = imagemEnviadaNaoSalvaRef.current;
+    imagemEnviadaNaoSalvaRef.current = url;
+    if (
+      imagemAnterior &&
+      imagemAnterior !== url &&
+      imagemAnterior !== editingBanner?.imageUrl
+    ) {
+      deleteStorageFile(imagemAnterior).catch(() => {});
+    }
+    setFormData((prev) => ({ ...prev, imageUrl: url }));
+  };
+
   const handleAdjustConfirm = async (croppedBlob: Blob) => {
+    if (
+      isSubmittingRef.current ||
+      geracaoDoRecortePendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para salvar a imagem ajustada.",
       });
       return;
     }
+    const geracaoDoRecorte = geracaoDoEditor.current;
+    geracaoDoRecortePendente.current = geracaoDoRecorte;
     setIsUploadingAdjusted(true);
     // Mesmo achado do produto (AdminProductFormView-499): o ImageAdjuster
     // exporta webp — nome/tipo fixos ".jpg"/"image/jpeg" mentiam sobre o
@@ -1013,22 +1039,33 @@ export const AdminBannersView = memo(function AdminBannersView({
     const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       const url = await uploadBannerImage(file);
-      if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
-        deleteStorageFile(formData.imageUrl).catch(() => {});
+      // O recorte pertence à abertura que o iniciou, assim como o upload normal.
+      if (geracaoDoRecorte !== geracaoDoEditor.current) {
+        deleteStorageFile(url).catch(() => {});
+        toast.dismiss(loadingToast);
+        return;
       }
-      setFormData((prev) => ({ ...prev, imageUrl: url }));
+      adotarImagemEnviada(url);
       toast.success("Imagem ajustada com sucesso!", { id: loadingToast });
       setIsAdjusterOpen(false);
     } catch (error) {
+      if (geracaoDoRecorte !== geracaoDoEditor.current) {
+        toast.dismiss(loadingToast);
+        return;
+      }
       console.error("Error uploading adjusted banner image:", error);
       toast.error("Erro ao salvar imagem ajustada", { id: loadingToast });
     } finally {
       fim();
-      setIsUploadingAdjusted(false);
+      if (geracaoDoRecorte === geracaoDoEditor.current) {
+        geracaoDoRecortePendente.current = null;
+        setIsUploadingAdjusted(false);
+      }
     }
   };
 
   const [productSearch, setProductSearch] = useState("");
+  const [mostrarProdutos, setMostrarProdutos] = useState(false);
   const [isPreviewCollapsed, setIsPreviewCollapsed] = useState(false);
 
   const filteredProducts = useMemo(() => {
@@ -1262,7 +1299,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       setIsAdjusterOpen(false);
       setAdjustingImgUrl("");
       setIsUploadingAdjusted(false);
-      setActiveStep(1);
+      setTela("jeito");
       setSelectedCouponCode("");
       setExtractedColors([]);
     }
@@ -1384,6 +1421,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [draftToRecover, setDraftToRecover] = useState<{
     formData: Partial<Banner>;
     editingBannerId?: string;
+    imagemEnviadaNaoSalva?: string | null;
     savedAt: string;
   } | null>(null);
 
@@ -1435,6 +1473,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       const draftData = {
         formData,
         editingBannerId: editingBanner?.id || undefined,
+        imagemEnviadaNaoSalva: imagemEnviadaNaoSalvaRef.current,
         savedAt: new Date().toISOString(),
       };
       localStorage.setItem(chaveDoRascunho, JSON.stringify(draftData));
@@ -1459,9 +1498,13 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const handleOpenDialog = (banner?: Banner) => {
     geracaoDoEditor.current += 1;
+    imagemEnviadaNaoSalvaRef.current = null;
     setUploading(false);
+    setIsUploadingAdjusted(false);
+    setIsAdjusterOpen(false);
     setActiveColorElement("titleColor");
     setProductSearch("");
+    setMostrarProdutos(false);
 
     let initialCoupon = "";
     if (banner?.link) {
@@ -1474,13 +1517,18 @@ export const AdminBannersView = memo(function AdminBannersView({
 
     isSavedRef.current = false;
     setEdicaoPendenteAposSalvar(false);
-    setActiveStep(1);
+    setTela("jeito");
     if (banner?.id) {
+      setTela("editor");
       setEditingBanner(banner);
       // Banner com texto abre SEMPRE em Completo: salvar em Simples apaga
       // título, subtítulo, botão, selo, cores e fonte. Sem texto, vale o modo
       // lembrado neste aparelho (Simples na primeira vez).
-      setBannerMode(modoAoAbrirOBanner(banner, lerModoDoEditor()));
+      setBannerMode(
+        modeloDoBanner(banner.templateType)
+          ? "complete"
+          : modoAoAbrirOBanner(banner, lerModoDoEditor()),
+      );
       // Fallback campo a campo contra defaultBannerFor (não um spread cego):
       // banner vem do banco e pode ter nascido ANTES de um campo novo
       // existir (coluna ainda não preenchida para linhas antigas) — o
@@ -1561,7 +1609,8 @@ export const AdminBannersView = memo(function AdminBannersView({
       setSelectedCouponCode("");
       if (!isSavedRef.current) {
         if (
-          formData.imageUrl &&
+          imagemEnviadaNaoSalvaRef.current &&
+          formData.imageUrl === imagemEnviadaNaoSalvaRef.current &&
           formData.imageUrl !== editingBanner?.imageUrl
         ) {
           deleteStorageFile(formData.imageUrl).catch(() => {});
@@ -1715,6 +1764,12 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (
+      isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description:
@@ -1722,10 +1777,23 @@ export const AdminBannersView = memo(function AdminBannersView({
       });
       return;
     }
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
+    await enviarArquivo(file);
+    input.value = "";
+  };
+
+  const enviarArquivo = async (file: File) => {
+    if (
+      isOffline ||
+      isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current
+    )
+      return;
 
     const geracaoDoUpload = geracaoDoEditor.current;
+    geracaoDoUploadPendente.current = geracaoDoUpload;
     setUploading(true);
     const loadingToast = toast.loading("Enviando imagem do banner...");
     const fim = marcarOperacaoSensivel("upload-de-banner");
@@ -1737,10 +1805,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         toast.dismiss(loadingToast);
         return;
       }
-      if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
-        deleteStorageFile(formData.imageUrl).catch(() => {});
-      }
-      setFormData((prev) => ({ ...prev, imageUrl: url }));
+      adotarImagemEnviada(url);
       toast.success("Imagem enviada com sucesso", { id: loadingToast });
     } catch {
       if (geracaoDoUpload !== geracaoDoEditor.current) {
@@ -1751,6 +1816,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     } finally {
       fim();
       if (geracaoDoUpload === geracaoDoEditor.current) {
+        geracaoDoUploadPendente.current = null;
         setUploading(false);
       }
     }
@@ -1769,7 +1835,13 @@ export const AdminBannersView = memo(function AdminBannersView({
       });
       return;
     }
-    if (isSubmitting) return;
+    if (
+      isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current ||
+      geracaoDoRecortePendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
     const revisaoEnviada = revisaoDaDigitacao.current;
     setIsSubmitting(true);
     isSubmittingRef.current = true;
@@ -1856,6 +1928,8 @@ export const AdminBannersView = memo(function AdminBannersView({
           setEditingBanner({ ...dataToSubmit, id: criado.id } as Banner);
         }
       }
+      // O envio agora pertence ao banner publicado, mesmo se o editor continuar aberto.
+      imagemEnviadaNaoSalvaRef.current = null;
       const mudouDuranteEnvio =
         JSON.stringify(formularioAtual.current.formData) !==
           JSON.stringify(formData) ||
@@ -1870,6 +1944,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         return;
       }
       isSavedRef.current = true;
+      geracaoDoEditor.current += 1;
       setEdicaoPendenteAposSalvar(false);
       if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
       setIsDialogOpen(false);
@@ -1998,3132 +2073,1157 @@ export const AdminBannersView = memo(function AdminBannersView({
       ? positions
       : positions.filter((pos) => pos.value === selectedTab);
 
-  const kpiCards = useMemo<readonly KpiCardConfig[]>(
-    () => [
-      {
-        id: "ativos",
-        label: "Banners Ativos",
-        icon: Eye,
-        iconClass: "text-[#FFBF00] animate-pulse",
-        iconBg: "bg-amber-500/10 border-amber-500/20",
-        hoverBorder:
-          "hover:border-[#FFBF00]/30 hover:shadow-[0_0_30px_rgba(255,191,0,0.05)]",
-        value: activeBanners,
-        accent: "text-[#FFBF00]",
-        subValue: `/ ${totalBanners} total`,
-        // Fiel à contagem (que é só o flag `active`): "visíveis no app" era
-        // falso — a vitrine também respeita início/fim da programação.
-        footer: "Ligados; a vitrine também aplica o período",
-      },
-      {
-        id: "distribuicao",
-        label: "Distribuição",
-        icon: Layout,
-        iconClass: "text-amber-500",
-        iconBg: "bg-zinc-900 border-white/5",
-        hoverBorder:
-          "hover:border-amber-500/30 hover:shadow-[0_0_30px_rgba(245,158,11,0.05)]",
-        value: `${banners.filter((b) => b.position === "home_top").length} Topo`,
-        accent: "text-amber-500",
-        subValue: `Meio: ${banners.filter((b) => b.position === "home_middle").length} • Base: ${banners.filter((b) => b.position === "home_bottom").length}`,
-        footer: "Posicionamento na Home",
-      },
-      {
-        id: "impacto",
-        label: "Impacto Estético",
-        icon: Sparkles,
-        iconClass: "text-[#FFBF00]",
-        iconBg: "bg-[#FFBF00]/10 border-[#FFBF00]/20",
-        hoverBorder:
-          "hover:border-[#FFBF00]/30 hover:shadow-[0_0_30px_rgba(255,191,0,0.05)]",
-        value: impactText,
-        accent: "text-[#FFBF00]",
-        footer: "Preenchimento das seções",
-      },
-    ],
-    [activeBanners, totalBanners, banners, impactText],
-  );
-
-  const renderSkeleton = () => (
-    <div className="animate-pulse select-none space-y-10">
-      {visiblePositions.map((pos) => (
-        <div key={pos.value} className="space-y-3">
-          {selectedTab === "all" && (
-            <div className="flex items-center justify-between px-0.5">
-              <Skeleton className="h-3 w-44 rounded bg-white/5" />
-              <Skeleton className="h-3 w-16 rounded bg-white/5" />
-            </div>
-          )}
-          <div className="space-y-3">
-            {[1, 2].map((i) => (
-              <div
-                key={i}
-                className="rounded-2xl border border-white/5 bg-zinc-950/40 p-3"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Skeleton className="aspect-[21/9] w-full shrink-0 rounded-xl bg-white/5 sm:w-44 lg:w-64 xl:w-80" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <Skeleton className="h-4 w-1/2 rounded bg-white/5" />
-                    <Skeleton className="h-3 w-1/3 rounded bg-white/5" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderCompactSkeleton = () => (
-    <div className="animate-pulse select-none space-y-10">
-      {visiblePositions.map((pos) => (
-        <div key={pos.value} className="space-y-3">
-          {selectedTab === "all" && (
-            <div className="flex items-center justify-between px-0.5">
-              <Skeleton className="h-3 w-36 rounded bg-white/5" />
-              <Skeleton className="h-3 w-14 rounded bg-white/5" />
-            </div>
-          )}
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="rounded-2xl border border-white/5 bg-zinc-950/40 p-3"
-              >
-                <div className="flex items-center gap-3">
-                  <Skeleton className="aspect-[21/9] w-28 shrink-0 rounded-xl bg-white/5 sm:w-32" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <Skeleton className="h-4 w-1/2 rounded bg-white/5" />
-                    <Skeleton className="h-3 w-1/3 rounded bg-white/5" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  const modelo = modeloDoBanner(formData.templateType);
+  const ocupadoComImagem = uploading || isUploadingAdjusted || isSubmitting;
+  const escolherProduto = (produto: (typeof products)[number]) => {
+    if (
+      isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current ||
+      geracaoDoRecortePendente.current === geracaoDoEditor.current
+    )
+      return;
+    setMostrarProdutos(false);
+    if (modelo) {
+      const orfa = imagemEnviadaNaoSalvaRef.current;
+      if (orfa) deleteStorageFile(orfa).catch(() => {});
+      imagemEnviadaNaoSalvaRef.current = null;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      productId: produto.id,
+      link: `/product-detail?id=${encodeURIComponent(produto.id)}`,
+      ...(modelo
+        ? {
+            imageUrl: produto.images?.[0] || "",
+            title: (prev.title || produto.name).slice(0, 60),
+            subtitle: (
+              prev.subtitle ||
+              `A partir de ${formatCurrency(Number(produto.price)).replaceAll(String.fromCharCode(160), " ")}`
+            ).slice(0, 80),
+            buttonText: prev.buttonText || "Comprar agora",
+          }
+        : {}),
+    }));
+  };
 
   return (
     <div
       ref={viewRef}
-      className="relative h-auto w-full max-w-full overflow-x-hidden bg-[#09090b] pb-admin lg:pb-12 font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white"
+      className="min-h-full w-full bg-admin-bg pb-admin font-sans text-zinc-400"
     >
-      {/* Ambient subtle glow */}
-      <div className="pointer-events-none absolute left-1/4 top-0 h-[400px] w-[400px] rounded-full bg-admin-gold/5 blur-[120px]" />
-      <div className="pointer-events-none absolute right-1/4 top-1/3 h-[500px] w-[500px] rounded-full bg-amber-500/5 blur-[150px]" />
-
-      {/* Sticky Desktop Header */}
-      {!isDialogOpen && (
-        <>
-          <div className="hidden lg:block sticky top-0 z-40 w-full border-b border-white/10 bg-[#09090b]/95 px-3.5 sm:px-5 py-2 shadow-lg backdrop-blur-xl transition-all duration-300">
-            <div className="mx-auto flex max-w-7xl items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="flex size-7.5 items-center justify-center rounded-lg border border-[#FFBF00]/25 bg-[#FFBF00]/10 text-[#FFBF00] shadow-[0_0_10px_rgba(255,191,0,0.15)] shrink-0">
-                  <LayoutGrid className="size-3.5" />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    {/* Onda 3 da reforma visual (03/09): o título minúsculo
-                        (text-xs) virou o AdminPageHeader, igual ao das listas
-                        aprovadas; o botão de ajuda continua ao lado. */}
-                    <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-banners"]}>
-                      <button
-                        type="button"
-                        onClick={() => setShowHelpModal(true)}
-                        className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
-                        title={`Como usar os ${NOMES_DO_PAINEL["admin-banners"]}`}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
-                        >
-                          <HelpCircle className="size-4.5" />
-                        </span>
-                      </button>
-                    </AdminPageHeader>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
-                    <span className="size-1.5 rounded-full bg-emerald-400/90" />
-                    <span className="text-zinc-400">
-                      {/* "Ligados" = só o interruptor (active). "No ar" seria
-                          falso: a vitrine também respeita início/fim
-                          (getBannersByPosition), então banner agendado ou
-                          expirado fica ligado mas fora do ar. */}
-                      {activeBanners} ligados
-                    </span>
-                    <span className="text-zinc-700">•</span>
-                    <span>{totalBanners} no total</span>
-                  </div>
-                </div>
-              </div>
-
-              {isLoaded && banners.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleOpenDialog()}
-                  disabled={isOffline}
-                  className="group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] via-amber-450 to-amber-500 px-3 py-1.5 text-[11px] sm:text-xs font-black uppercase tracking-wider text-black shadow-[0_2px_12px_rgba(255,191,0,0.2)] transition-all duration-300 hover:scale-[1.02] hover:from-amber-400 hover:to-amber-500 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+      <div className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6">
+        {isOffline && (
+          <p
+            role="status"
+            className="rounded-xl border border-admin-border bg-admin-surface p-3 text-sm"
+          >
+            Você está offline. Conecte-se para alterar os banners.
+          </p>
+        )}
+        {!isDialogOpen ? (
+          <>
+            <header className="space-y-3">
+              <div className="flex items-center justify-between">
+                <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-banners"]} />
+                <Button
+                  variant="ghost"
+                  className="min-h-11 min-w-11 text-zinc-400"
+                  title="Como usar os Banners"
+                  onClick={() => setShowHelpModal(true)}
                 >
-                  <Plus className="size-3 stroke-[3px] transition-transform duration-300 group-hover:rotate-90" />
-                  <span>Novo Banner</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="relative z-10 mx-auto max-w-7xl space-y-8 p-4 sm:p-6 lg:p-8">
-            {/* Stats Carousel Row */}
-            {isLoaded && banners.length > 0 && (
-              <div className="space-y-4">
-                <AdminKpiCarousel
-                  active={active}
-                  cards={kpiCards}
-                  title="Métricas Visuais"
-                />
+                  <span aria-hidden="true">
+                    <HelpCircle className="size-5" />
+                  </span>
+                </Button>
               </div>
-            )}
-
-            {/* Filter Tabs & Options */}
-            {isLoaded && banners.length > 0 && (
-              <div className="select-none space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-zinc-950/60 p-1">
-                    {(
-                      [
-                        ["all", "Todos"],
-                        ["home_top", "Topo"],
-                        ["home_middle", "Meio"],
-                        ["home_bottom", "Base"],
-                      ] as const
-                    ).map(([valor, rotulo]) => (
-                      <button
-                        key={valor}
-                        onClick={() => setSelectedTab(valor)}
-                        className={cn(
-                          "relative rounded-lg px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors duration-300",
-                          selectedTab === valor
-                            ? "text-black"
-                            : "text-zinc-400 hover:text-white",
-                        )}
-                      >
-                        <span className="relative z-10">{rotulo}</span>
-                        {selectedTab === valor && (
-                          <motion.div
-                            layoutId="activeBannerTab"
-                            className="absolute inset-0 rounded-lg bg-[#FFBF00]"
-                            transition={{
-                              type: "spring",
-                              stiffness: 380,
-                              damping: 30,
-                            }}
-                          />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-
+              <p className="text-sm">
+                O que aparece no topo, meio e base da sua loja.
+              </p>
+              <Button
+                className="min-h-12 w-full rounded-2xl bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current hover:bg-white"
+                disabled={isOffline || !isLoaded}
+                onClick={() => handleOpenDialog()}
+              >
+                <Plus className="mr-2 size-5" />
+                Novo Banner
+              </Button>
+            </header>
+            <details className="rounded-2xl border border-admin-border bg-admin-surface p-3">
+              <summary className="flex min-h-11 cursor-pointer items-center text-sm text-white">
+                Opções da lista · {activeBanners} ligados de {totalBanners}
+              </summary>
+              <p className="py-3 text-sm">
+                Preenchimento: {impactText}.{" "}
+                {banners.filter((b) => b.position === "home_top").length} no
+                topo ·{" "}
+                {banners.filter((b) => b.position === "home_middle").length} no
+                meio ·{" "}
+                {banners.filter((b) => b.position === "home_bottom").length} na
+                base.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["all", "Todos"],
+                    ["home_top", "Topo"],
+                    ["home_middle", "Meio"],
+                    ["home_bottom", "Base"],
+                  ] as const
+                ).map(([id, rotulo]) => (
                   <Button
+                    key={id}
                     variant="outline"
-                    size="icon"
-                    onClick={() =>
-                      setViewMode((prev) =>
-                        prev === "detailed" ? "compact" : "detailed",
-                      )
-                    }
-                    className="group size-10 shrink-0 rounded-xl border-zinc-800 bg-zinc-950/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:ring-0 focus-visible:ring-offset-0"
-                    title={
-                      viewMode === "detailed"
-                        ? "Visualização Compacta"
-                        : "Visualização Detalhada"
-                    }
+                    aria-pressed={selectedTab === id}
+                    className="min-h-11 border-admin-border bg-admin-raised text-white"
+                    onClick={() => setSelectedTab(id)}
                   >
-                    {viewMode === "detailed" ? (
-                      <List className="size-4.5 text-zinc-400 transition-colors group-hover:text-admin-gold" />
-                    ) : (
-                      <LayoutGrid className="size-4.5 text-zinc-400 transition-colors group-hover:text-admin-gold" />
-                    )}
+                    {rotulo}
                   </Button>
-                </div>
-
-                {/* Search & Status Filters Row */}
-                <div className="flex w-full items-center gap-2">
-                  <div className="relative flex-1">
-                    <Input
-                      id="banner-search-input"
-                      name="bannerSearch"
-                      type="text"
-                      placeholder="Buscar campanhas..."
-                      value={searchQueryList}
-                      onChange={(e) => setSearchQueryList(e.target.value)}
-                      className="h-11 rounded-xl border-white/10 bg-zinc-950/60 px-10 text-sm text-white placeholder:text-zinc-500 focus:ring-[#FFBF00]"
-                    />
-                    <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
-                    {searchQueryList && (
-                      <button
-                        onClick={() => setSearchQueryList("")}
-                        className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-500 hover:text-white"
-                        title="Limpar busca"
-                      >
-                        <X className="size-4" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="w-32 shrink-0">
-                    <Select
-                      name="statusFilter"
-                      value={statusFilter}
-                      onValueChange={(val: any) => setStatusFilter(val)}
-                    >
-                      <SelectTrigger
-                        id="banner-status-filter"
-                        className="h-11 rounded-xl border-white/10 bg-zinc-950/60 text-[11px] font-bold uppercase tracking-wider focus:ring-[#FFBF00]"
-                      >
-                        <SelectValue placeholder="Status" />
-                      </SelectTrigger>
-                      <SelectContent className="border-white/10 bg-zinc-950 text-white">
-                        <SelectItem value="all" className="text-xs">
-                          Todos
-                        </SelectItem>
-                        <SelectItem value="active" className="text-xs">
-                          Ativos
-                        </SelectItem>
-                        <SelectItem value="paused" className="text-xs">
-                          Pausados
-                        </SelectItem>
-                        <SelectItem value="scheduled" className="text-xs">
-                          Agendados
-                        </SelectItem>
-                        <SelectItem value="expired" className="text-xs">
-                          Expirados
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                ))}
+                <Button
+                  variant="outline"
+                  className="min-h-11 border-admin-border bg-admin-raised text-white"
+                  onClick={() =>
+                    setViewMode((prev) =>
+                      prev === "detailed" ? "compact" : "detailed",
+                    )
+                  }
+                >
+                  {viewMode === "detailed"
+                    ? "Visualização Compacta"
+                    : "Visualização Detalhada"}
+                </Button>
               </div>
-            )}
-
-            {/* Banner Content List */}
+              <Input
+                id="banner-search-input"
+                className="mt-3 min-h-11 border-admin-border bg-admin-bg text-white"
+                placeholder="Buscar campanhas..."
+                value={searchQueryList}
+                onChange={(e) => setSearchQueryList(e.target.value)}
+              />
+              <Label htmlFor="banner-status-filter" className="mt-3 block">
+                Situação
+              </Label>
+              <select
+                id="banner-status-filter"
+                className="mt-1 min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as typeof statusFilter)
+                }
+              >
+                <option value="all">Todos</option>
+                <option value="active">No ar</option>
+                <option value="paused">Pausados</option>
+                <option value="scheduled">Agendados</option>
+                <option value="expired">Expirados</option>
+              </select>
+              <Button
+                variant="ghost"
+                className="min-h-11 text-white"
+                onClick={() => {
+                  setSearchQueryList("");
+                  setStatusFilter("all");
+                }}
+              >
+                Limpar Filtros
+              </Button>
+            </details>
             {!isLoaded && banners.length === 0 ? (
-              <div className="py-6">
-                {viewMode === "compact"
-                  ? renderCompactSkeleton()
-                  : renderSkeleton()}
+              <div aria-label="Carregando banners" className="space-y-3">
+                <Skeleton className="h-44 w-full rounded-2xl" />
+                <Skeleton className="h-44 w-full rounded-2xl" />
               </div>
-            ) : isLoaded && filteredBannersList.length === 0 ? (
-              <div className="group/empty flex flex-col items-center justify-center rounded-[2.5rem] border border-dashed border-white/5 bg-zinc-950/20 p-12 py-16 text-center backdrop-blur-sm transition-all duration-300 hover:border-zinc-800">
-                <SlidersHorizontal className="mb-3 size-8 animate-pulse text-zinc-700 transition-colors group-hover/empty:text-zinc-500" />
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+            ) : filteredBannersList.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-admin-border bg-admin-surface p-6 text-center">
+                <h2 className="font-semibold text-white">
                   Nenhum Banner encontrado
+                </h2>
+                <p className="mt-2 text-sm">
+                  {banners.length
+                    ? "Tente ajustar a busca ou os filtros."
+                    : "Crie seu primeiro banner com um modelo ou envie sua imagem."}
                 </p>
-                <p className="text-zinc-655 max-w-xs text-[11px] leading-relaxed">
-                  Tente ajustar a busca ou o filtro de status para visualizar as
-                  campanhas.
-                </p>
-                {(searchQueryList || statusFilter !== "all") && (
-                  <button
-                    onClick={() => {
-                      setSearchQueryList("");
-                      setStatusFilter("all");
-                    }}
-                    className="mt-3 text-[11px] font-black uppercase tracking-widest text-[#FFBF00] underline transition-colors hover:text-white"
-                  >
-                    Limpar Filtros
-                  </button>
-                )}
               </div>
             ) : (
-              <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                className={cn(
-                  viewMode === "compact" ? "space-y-8" : "space-y-10",
-                )}
-              >
-                {visiblePositions.map((pos) => {
-                  const positionBanners = filteredBannersList
-                    .filter((b) => b.position === pos.value)
-                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-                  return (
-                    <div
-                      key={pos.value}
-                      className={cn(
-                        viewMode === "compact" ? "space-y-3" : "space-y-3",
-                      )}
-                    >
-                      {selectedTab === "all" && (
-                        <div className="flex select-none items-baseline justify-between px-0.5">
-                          <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-zinc-400">
-                            <span className="size-1.5 rounded-full bg-[#FFBF00]/80" />
-                            {pos.label}
-                          </h2>
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600">
-                            {positionBanners.length}{" "}
-                            {positionBanners.length === 1
-                              ? "banner"
-                              : "banners"}
-                          </span>
-                        </div>
-                      )}
-
-                      {positionBanners.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-zinc-950/20 px-6 py-10 text-center">
-                          <p className="mb-3 text-[11px] font-medium text-zinc-500">
-                            {searchQueryList || statusFilter !== "all"
-                              ? "Nenhum banner neste setor para os filtros ativos"
-                              : "Nenhum banner cadastrado neste setor"}
-                          </p>
-                          {!searchQueryList && statusFilter === "all" && (
-                            <button
-                              onClick={() =>
-                                handleOpenDialog({
-                                  position: pos.value,
-                                } as Banner)
-                              }
-                              disabled={isOffline}
-                              className="rounded-lg border border-[#FFBF00]/30 bg-[#FFBF00]/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#FFBF00] transition-colors hover:bg-[#FFBF00]/20 disabled:pointer-events-none disabled:opacity-50"
-                            >
-                              + Adicionar Primeiro Banner
-                            </button>
+              visiblePositions.map((pos) => {
+                const lista = filteredBannersList
+                  .filter((b) => b.position === pos.value)
+                  .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                const todosNaPosicao = banners
+                  .filter((b) => b.position === pos.value)
+                  .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                return (
+                  <section key={pos.value} className="space-y-3">
+                    <h2 className="flex justify-between text-xs font-semibold uppercase tracking-wider">
+                      <span>{pos.label}</span>
+                      <span>{lista.length} banners</span>
+                    </h2>
+                    {lista.length ? (
+                      lista.map((b) => (
+                        <CartaoDoBanner
+                          key={b.id}
+                          banner={b}
+                          posicaoCurta={null}
+                          indice={todosNaPosicao.findIndex(
+                            (t) => t.id === b.id,
                           )}
-                        </div>
-                      ) : (
-                        <div
-                          className={
-                            viewMode === "compact" ? "grid gap-3" : "grid gap-4"
-                          }
-                        >
-                          {positionBanners.map((banner, index) => (
-                            <CartaoDoBanner
-                              key={banner.id}
-                              banner={banner}
-                              posicaoCurta={
-                                selectedTab === "all"
-                                  ? pos.label.split(" ")[0]
-                                  : null
-                              }
-                              indice={index}
-                              total={positionBanners.length}
-                              detalhado={viewMode === "detailed"}
-                              isProcessing={isProcessing}
-                              isOffline={isOffline}
-                              activeAction={activeAction}
-                              onMover={moveBanner}
-                              onAlternar={handleToggleActive}
-                              onEditar={handleOpenDialog}
-                              onExcluir={handleDelete}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </motion.div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Formulário de Cadastro / Edição (Renderizado Inline como Página) */}
-      {isDialogOpen && (
-        <div
-          onInputCapture={() => {
-            revisaoDaDigitacao.current += 1;
-          }}
-          className="relative z-10 mx-auto w-full max-w-2xl space-y-4 overflow-x-hidden px-4 pb-6 pt-0 text-white sm:px-6 sm:pb-8 sm:pt-0 lg:px-8 lg:pb-10 lg:pt-0"
-        >
-          <div className="pointer-events-none absolute -right-40 -top-40 size-80 rounded-full bg-admin-gold/5 blur-[120px]" />
-          <div className="pointer-events-none absolute bottom-0 -left-40 size-80 rounded-full bg-[#FFBF00]/5 blur-[120px]" />
-
-          <div className="w-full space-y-4 sm:space-y-5">
-            {/* CABEÇALHO ANCORADO / STICKY COM PRÉ-VISUALIZAÇÃO AO VIVO INTEGRADA */}
-            <div className="sticky top-0 z-40 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 bg-[#09090b] border-b border-white/10 shadow-2xl pt-1.5 pb-2 sm:pb-2.5 space-y-1.5 sm:space-y-2 transition-all duration-300">
-              {/* Cabeçalho Ultra-Compacto em Duas Linhas Independentes (Zero Sobreposição) */}
-              <div className="space-y-1.5">
-                {/* Linha 1: Título e Seleção de Modo (Simples / Completo) */}
-                <div className="flex select-none items-center justify-between gap-2 border-b border-white/5 pb-1.5">
-                  <h2 className="flex items-center gap-1.5 text-xs sm:text-sm font-black uppercase italic tracking-wider text-white shrink-0">
-                    <Sparkles className="size-4 shrink-0 text-[#FFBF00] sm:size-5" />
-                    <span>
-                      {editingBanner ? "Editar Banner" : "Novo Banner"}
-                    </span>
-                  </h2>
-
-                  {/* Segmented Control de Modo (Simples / Completo) */}
-                  <div className="flex shrink-0 select-none items-center gap-0.5 rounded-xl border border-white/5 bg-zinc-950 p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => escolherOModo("simple")}
-                      className={cn(
-                        "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all duration-300 relative",
-                        bannerMode === "simple"
-                          ? "text-black font-extrabold"
-                          : "text-zinc-500 hover:text-zinc-300",
-                      )}
-                    >
-                      <span className="relative z-10">Simples</span>
-                      {bannerMode === "simple" && (
-                        <motion.div
-                          layoutId="activeBannerMode"
-                          className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FFBF00] to-amber-500 shadow-md"
-                          transition={{
-                            type: "spring",
-                            stiffness: 380,
-                            damping: 30,
-                          }}
+                          total={todosNaPosicao.length}
+                          detalhado={viewMode === "detailed"}
+                          isProcessing={isProcessing}
+                          isOffline={isOffline}
+                          activeAction={activeAction}
+                          onMover={moveBanner}
+                          onAlternar={handleToggleActive}
+                          onEditar={handleOpenDialog}
+                          onExcluir={handleDelete}
                         />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => escolherOModo("complete")}
-                      className={cn(
-                        "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all duration-300 relative",
-                        bannerMode === "complete"
-                          ? "text-black font-extrabold"
-                          : "text-zinc-500 hover:text-zinc-300",
-                      )}
-                    >
-                      <span className="relative z-10">Completo</span>
-                      {bannerMode === "complete" && (
-                        <motion.div
-                          layoutId="activeBannerMode"
-                          className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FFBF00] to-amber-500 shadow-md"
-                          transition={{
-                            type: "spring",
-                            stiffness: 380,
-                            damping: 30,
-                          }}
-                        />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Linha 2: Stepper Horizontal Compacto e Independente (1 Conteúdo | 2 Estilo | 3 Destino) */}
-                {bannerMode === "complete" && (
-                  <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 py-0.5 select-none border-b border-white/5 pb-1.5">
-                    {[
-                      { step: 1, label: "Conteúdo" },
-                      { step: 2, label: "Estilo" },
-                      { step: 3, label: "Destino" },
-                    ].map((s) => {
-                      const isActive = activeStep === s.step;
-                      const isCompleted = activeStep > s.step;
-                      return (
-                        <button
-                          key={s.step}
-                          type="button"
-                          onClick={() => {
-                            if (
-                              editingBanner ||
-                              isCompleted ||
-                              s.step < activeStep
-                            ) {
-                              setActiveStep(s.step as any);
-                            }
-                          }}
-                          disabled={
-                            !editingBanner &&
-                            !isCompleted &&
-                            s.step > activeStep
-                          }
-                          className={cn(
-                            "flex cursor-pointer items-center gap-1.5 px-2 py-0.5 rounded-lg border transition-all duration-200 focus:outline-none disabled:opacity-40",
-                            isActive
-                              ? "border-[#FFBF00] bg-[#FFBF00]/15 text-white shadow-[0_0_10px_rgba(255,191,0,0.15)] ring-1 ring-[#FFBF00]/50"
-                              : isCompleted
-                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                                : "border-white/5 bg-zinc-900/40 text-zinc-500 hover:border-white/10",
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              "flex size-4.5 items-center justify-center rounded-full text-[11px] font-black shrink-0 transition-all",
-                              isActive
-                                ? "bg-[#FFBF00] text-black shadow-sm"
-                                : isCompleted
-                                  ? "bg-emerald-500 text-black"
-                                  : "bg-zinc-800 text-zinc-400",
-                            )}
-                          >
-                            {isCompleted ? "✓" : s.step}
-                          </div>
-                          <span
-                            className={cn(
-                              "text-[11px] font-black uppercase tracking-wider leading-none",
-                              isActive
-                                ? "text-[#FFBF00]"
-                                : isCompleted
-                                  ? "text-emerald-400"
-                                  : "text-zinc-400",
-                            )}
-                          >
-                            {s.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* CARD SUPERIOR: PAINEL DE PRÉ-VISUALIZAÇÃO AO VIVO DO BANNER (ANCORADO / STICKY EM TODOS OS MODOS) */}
-              <div className="space-y-1.5 sm:space-y-2.5 rounded-xl sm:rounded-2xl border border-amber-500/20 bg-zinc-950 p-2 sm:p-3.5 shadow-2xl transition-all duration-300">
-                <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5 sm:pb-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Eye className="size-3.5 shrink-0 text-[#FFBF00] animate-pulse" />
-                    <h3 className="text-[11px] font-black uppercase italic tracking-wider text-white truncate">
-                      <span>Pré-Visualização ao Vivo</span>
-                      <span className="hidden md:inline text-zinc-400 font-semibold normal-case not-italic ml-1">
-                        (Como o cliente verá)
-                      </span>
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[7px] sm:text-[7.5px] font-black uppercase tracking-wider text-[#FFBF00] whitespace-nowrap">
-                      <span className="sm:hidden">Ao vivo ⚡</span>
-                      <span className="hidden sm:inline">
-                        Atualização em Tempo Real ⚡
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsPreviewCollapsed((prev) => !prev)}
-                      className="flex size-5.5 sm:size-6 items-center justify-center rounded-md sm:rounded-lg border border-white/10 bg-zinc-900 text-zinc-400 transition-all hover:border-amber-400/40 hover:text-white active:scale-95"
-                      title={
-                        isPreviewCollapsed
-                          ? "Expandir pré-visualização"
-                          : "Recolher pré-visualização"
-                      }
-                    >
-                      {isPreviewCollapsed ? (
-                        <ChevronDown className="size-3 sm:size-3.5" />
-                      ) : (
-                        <ChevronUp className="size-3 sm:size-3.5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {!isPreviewCollapsed && (
-                  <div className="relative aspect-[21/9] w-full select-none overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-inner duration-200 animate-in fade-in">
-                    {formData.imageUrl ? (
-                      <img
-                        src={formData.imageUrl}
-                        alt="Banner Preview"
-                        className="size-full object-cover"
-                      />
+                      ))
                     ) : (
-                      <div className="flex size-full items-center justify-center bg-gradient-to-br from-zinc-800 via-zinc-900 to-black p-4 text-center">
-                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-600">
-                          {bannerMode === "simple"
-                            ? "Insira uma imagem de banner para pré-visualizar"
-                            : "Insira uma imagem no Passo 1 ou selecione as cores abaixo"}
-                        </span>
-                      </div>
+                      <Button
+                        variant="outline"
+                        className="min-h-11 w-full border-admin-border bg-admin-surface text-white"
+                        disabled={isOffline}
+                        onClick={() =>
+                          handleOpenDialog({ position: pos.value } as Banner)
+                        }
+                      >
+                        Adicionar Primeiro Banner
+                      </Button>
                     )}
-
-                    {bannerMode !== "simple" &&
-                      formData.showTextOverlay !== false && (
-                        <>
-                          <div
-                            className="absolute inset-0 transition-all duration-200"
-                            style={{
-                              backgroundColor:
-                                formData.overlayColor || "#000000",
-                              opacity: (formData.overlayOpacity ?? 40) / 100,
-                            }}
-                          />
-
-                          <div
-                            className={cn(
-                              "absolute inset-0 flex flex-col p-3.5 sm:p-5 transition-all duration-300",
-                              (formData.templateType || "default") ===
-                                "split_center" &&
-                                "items-center justify-center text-center",
-                              formData.templateType === "split_right" &&
-                                "items-end justify-center text-right",
-                              formData.templateType === "split_left" &&
-                                "items-start justify-center text-left",
-                              formData.templateType === "glassmorphic" &&
-                                "items-center justify-center p-3 text-center",
-                              (formData.templateType || "default") ===
-                                "default" &&
-                                "items-start justify-end text-left",
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                "flex flex-col gap-1 max-w-[88%] transition-all duration-300",
-                                formData.templateType === "glassmorphic" &&
-                                  "rounded-xl border border-white/15 bg-black/40 p-3 backdrop-blur-md shadow-xl",
-                              )}
-                            >
-                              {formData.badgeText && (
-                                <span
-                                  className="w-max rounded-md bg-[#FFBF00] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-black shadow-md self-start"
-                                  style={{
-                                    alignSelf:
-                                      formData.templateType ===
-                                        "split_center" ||
-                                      formData.templateType === "glassmorphic"
-                                        ? "center"
-                                        : formData.templateType ===
-                                            "split_right"
-                                          ? "flex-end"
-                                          : "flex-start",
-                                  }}
-                                >
-                                  {formData.badgeText}
-                                </span>
-                              )}
-
-                              <h2
-                                className={cn(
-                                  "text-xs sm:text-base md:text-lg font-black leading-tight tracking-wide transition-colors",
-                                  formData.fontFamily || "font-sans",
-                                )}
-                                style={{
-                                  color: formData.titleColor || "#FFFFFF",
-                                  textShadow:
-                                    formData.templateType === "neon_glow"
-                                      ? `0 0 12px ${formData.titleColor || "#FFBF00"}`
-                                      : "0 2px 4px rgba(0,0,0,0.6)",
-                                }}
-                              >
-                                {formData.title || "Título da Sua Campanha"}
-                              </h2>
-
-                              <p
-                                className={cn(
-                                  "text-[9px] sm:text-xs font-medium leading-snug opacity-90 transition-colors line-clamp-2",
-                                  formData.fontFamily || "font-sans",
-                                )}
-                                style={{
-                                  color: formData.subtitleColor || "#9CA3AF",
-                                  textShadow: "0 1px 3px rgba(0,0,0,0.7)",
-                                }}
-                              >
-                                {formData.subtitle ||
-                                  "Subtítulo atraente descrevendo sua oferta especial."}
-                              </p>
-
-                              {formData.buttonText && (
-                                <div className="mt-0.5">
-                                  <span
-                                    className={cn(
-                                      "inline-block rounded-lg px-2.5 py-0.5 text-[8px] sm:text-[9.5px] font-black uppercase tracking-wider shadow-lg transition-transform hover:scale-105",
-                                      formData.fontFamily || "font-sans",
-                                    )}
-                                    style={{
-                                      backgroundColor:
-                                        formData.buttonBgColor || "#FFBF00",
-                                      color:
-                                        formData.buttonTextColor || "#000000",
-                                      boxShadow:
-                                        formData.templateType === "neon_glow"
-                                          ? `0 0 10px ${formData.buttonBgColor || "#FFBF00"}`
-                                          : undefined,
-                                    }}
-                                  >
-                                    {formData.buttonText}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </>
-                      )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Draft Recovery Alert */}
-            {draftToRecover && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex select-none flex-col justify-between gap-3.5 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4 duration-300 animate-in fade-in slide-in-from-top-3 sm:flex-row sm:items-center"
+                  </section>
+                );
+              })
+            )}
+          </>
+        ) : (
+          <div
+            onInputCapture={() => {
+              revisaoDaDigitacao.current += 1;
+            }}
+            className="space-y-6"
+          >
+            <header className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                className="min-h-11 min-w-11 border-admin-border bg-admin-surface text-white"
+                disabled={isSubmitting}
+                onClick={() => {
+                  if (tela === "modelos" || tela === "ia") setTela("jeito");
+                  else handleCloseDialog();
+                }}
+                aria-label="Voltar"
               >
-                <div className="flex items-start gap-3">
-                  <Sparkles className="mt-0.5 size-5 shrink-0 animate-pulse text-[#FFBF00]" />
-                  <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-white">
-                      Rascunho Auto-salvo Detectado
-                    </h4>
-                    <p className="mt-1 text-[11px] font-medium leading-tight text-zinc-400">
-                      Você possui alterações não salvas criadas{" "}
-                      {formatDistanceToNow(draftToRecover.savedAt)}. Deseja
-                      recuperar?
-                    </p>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2 self-end sm:sm:self-center">
-                  <button
-                    type="button"
+                <ArrowLeft className="size-5" />
+              </Button>
+              <AdminPageHeader
+                titulo={editingBanner ? "Editar Banner" : "Novo Banner"}
+                tituloEncolhe
+              />
+            </header>
+            {draftToRecover && (
+              <aside className="space-y-3 rounded-2xl border border-admin-border bg-admin-surface p-4">
+                <p className="text-sm text-white">
+                  Rascunho salvo {formatDistanceToNow(draftToRecover.savedAt)}.
+                  Deseja recuperar?
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="min-h-11 border-admin-border bg-admin-raised text-white"
                     onClick={() => {
                       if (chaveDoRascunho)
                         localStorage.removeItem(chaveDoRascunho);
                       setDraftToRecover(null);
-                      toast.info("Rascunho descartado.");
                     }}
-                    className="cursor-pointer rounded-xl border border-white/10 bg-zinc-950 px-3.5 py-2 text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:border-white/20 hover:text-white active:scale-95"
                   >
                     Descartar
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
+                    className="min-h-11 bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current"
                     onClick={() => {
-                      setFormData(draftToRecover.formData);
-                      // Rascunho com texto em Simples: salvar apagaria o
-                      // texto recuperado. O modo se revê como ao abrir.
-                      setBannerMode((m) =>
-                        modoAoAbrirOBanner(draftToRecover.formData, m),
-                      );
-                      setDraftToRecover(null);
-                      toast.success("Rascunho recuperado com sucesso!", {
-                        icon: "⚡",
+                      const imagem = draftToRecover.formData.imageUrl;
+                      const arquivoDoRascunho =
+                        imagem &&
+                        (draftToRecover.imagemEnviadaNaoSalva === imagem ||
+                          imagem.includes(
+                            "/storage/v1/object/public/banners/",
+                          ));
+                      imagemEnviadaNaoSalvaRef.current =
+                        arquivoDoRascunho &&
+                        !banners.some((b) => b.imageUrl === imagem) &&
+                        !products.some((p) => p.images?.includes(imagem))
+                          ? imagem
+                          : null;
+                      setFormData({
+                        ...defaultBannerFor(
+                          editingBanner?.position || "home_top",
+                          editingBanner?.order || 1,
+                        ),
+                        ...draftToRecover.formData,
                       });
+                      setBannerMode((m) =>
+                        modeloDoBanner(draftToRecover.formData.templateType)
+                          ? "complete"
+                          : modoAoAbrirOBanner(draftToRecover.formData, m),
+                      );
+                      setTela("editor");
+                      setDraftToRecover(null);
                     }}
-                    className="cursor-pointer rounded-xl bg-[#FFBF00] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-black shadow-md transition-all hover:bg-[#FFBF00]/95 active:scale-95"
                   >
                     Recuperar
-                  </button>
+                  </Button>
                 </div>
-              </motion.div>
+              </aside>
             )}
-
-            <div className="space-y-5">
-              <AnimatePresence mode="wait">
-                {bannerMode === "simple" ? (
-                  <motion.div
-                    key="simple-view"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-5"
-                  >
-                    {/* Card 1: Imagem da Campanha */}
-                    <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-900/10 p-4">
-                      <div className="flex select-none items-center gap-2 border-b border-white/5 pb-2">
-                        <Upload className="size-4 text-[#FFBF00]" />
-                        <h3 className="text-xs font-black uppercase italic tracking-wider text-white">
-                          Imagem do Banner
-                        </h3>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <div className="mb-0.5 flex select-none items-baseline justify-between gap-2">
-                          <Label
-                            htmlFor="banner-upload"
-                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500 opacity-85"
-                          >
-                            Imagem do Banner
-                          </Label>
-                          <span className="text-right text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                            {formData.position === "home_top"
-                              ? "Recomendado: 4:1 (ex: 1200x300px)"
-                              : "Recomendado: 21:9 (ex: 1200x500px)"}
-                          </span>
-                        </div>
-                        <div className="flex flex-col gap-3">
-                          {uploading ? (
-                            <div className="flex h-24 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/40">
-                              <div className="size-6 animate-spin rounded-full border-2 border-zinc-700 border-t-[#FFBF00]" />
-                              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                                Enviando Imagem...
-                              </span>
-                            </div>
-                          ) : formData.imageUrl ? (
-                            <div className="flex flex-col justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-3 shadow-inner sm:flex-row sm:items-center">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="relative h-14 w-28 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-md">
-                                  <img
-                                    src={formData.imageUrl}
-                                    alt="Preview Thumbnail"
-                                    className="size-full object-cover"
-                                  />
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-[11px] font-black uppercase italic tracking-wider text-white truncate">
-                                    Imagem Selecionada
-                                  </span>
-                                  <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-emerald-400">
-                                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                                    Carregada com Sucesso
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2 shrink-0">
-                                <Label
-                                  htmlFor="banner-upload"
-                                  className="cursor-pointer select-none rounded-xl border border-white/10 bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95"
-                                >
-                                  Alterar
-                                </Label>
-                                <Button
-                                  type="button"
-                                  onClick={() =>
-                                    openAdjuster(formData.imageUrl!)
-                                  }
-                                  className="flex cursor-pointer select-none items-center gap-1.5 rounded-xl bg-[#FFBF00] px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-black shadow-md transition-all duration-200 hover:bg-[#FFBF00]/90 active:scale-95"
-                                >
-                                  <SlidersHorizontal className="size-3.5" />
-                                  Ajustar
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="relative">
-                              <Label
-                                htmlFor="banner-upload"
-                                className="group flex h-28 w-full cursor-pointer flex-col items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-white/5 bg-zinc-900/50 text-[11px] font-black uppercase tracking-wider text-zinc-650 transition-all hover:border-amber-400/30 hover:bg-zinc-900"
-                              >
-                                <Upload className="size-7 text-zinc-500 transition-colors group-hover:text-[#FFBF00]" />
-                                <span>Enviar Imagem Principal</span>
-                              </Label>
-                            </div>
-                          )}
-                          <Input
-                            id="banner-upload"
-                            name="banner-upload"
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={handleFileUpload}
-                            disabled={uploading}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Card 2: Seletor de Posição Interativo e Configurações */}
-                    <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-900/10 p-4">
-                      <div className="flex select-none items-center gap-2 border-b border-white/5 pb-2">
-                        <Layout className="size-4 text-[#FFBF00]" />
-                        <h3 className="text-xs font-black uppercase italic tracking-wider text-white">
-                          Posição de Exibição
-                        </h3>
-                      </div>
-
-                      <div className="space-y-3">
-                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-500">
-                          Selecione a Posição na Home do PWA (Clique para
-                          Ativar)
-                        </span>
-                        <div className="flex select-none justify-center rounded-2xl border border-white/5 bg-zinc-900/10 py-4">
-                          <div className="isolate bg-zinc-955 relative flex h-64 w-36 flex-col justify-between overflow-hidden rounded-[1.8rem] border-2 border-zinc-700 p-2.5 text-left shadow-2xl">
-                            {/* Notch */}
-                            <div className="absolute left-1/2 top-0 z-10 h-3 w-16 -translate-x-1/2 rounded-b-lg bg-zinc-700" />
-
-                            {/* Top Banner Region */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const nextOrder =
-                                  banners.filter(
-                                    (b) => b.position === "home_top",
-                                  ).length + 1;
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  position: "home_top",
-                                  order: nextOrder,
-                                }));
-                              }}
-                              className={cn(
-                                "relative h-12 w-full rounded-lg border flex flex-col items-center justify-center transition-all duration-300 overflow-hidden shrink-0 mt-3 cursor-pointer",
-                                formData.position === "home_top"
-                                  ? "border-[#FFBF00] bg-[#FFBF00]/25 shadow-[0_0_15px_rgba(255,191,0,0.15)]"
-                                  : "border-dashed border-white/10 bg-zinc-900/40 hover:bg-zinc-900",
-                              )}
-                            >
-                              {formData.position === "home_top" && (
-                                <div className="absolute right-1 top-1 size-1 animate-ping rounded-full bg-[#FFBF00]" />
-                              )}
-                              <span
-                                className={cn(
-                                  "text-[7px] font-black uppercase tracking-wider",
-                                  formData.position === "home_top"
-                                    ? "text-[#FFBF00]"
-                                    : "text-zinc-550",
-                                )}
-                              >
-                                Topo do App
-                              </span>
-                              <span className="mt-0.5 text-[5.5px] font-bold leading-none text-zinc-650">
-                                Cabeçalho Home
-                              </span>
-                            </button>
-
-                            {/* Middle Content mock */}
-                            <div className="flex flex-1 flex-col justify-center gap-1.5 py-2">
-                              {/* Search mock */}
-                              <div className="flex h-4 w-full shrink-0 items-center rounded-md border border-white/5 bg-zinc-900/60 px-1.5">
-                                <div className="h-1.5 w-12 rounded bg-zinc-800" />
-                              </div>
-
-                              {/* Middle Banner Region */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const nextOrder =
-                                    banners.filter(
-                                      (b) => b.position === "home_middle",
-                                    ).length + 1;
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    position: "home_middle",
-                                    order: nextOrder,
-                                  }));
-                                }}
-                                className={cn(
-                                  "relative h-12 w-full rounded-lg border flex flex-col items-center justify-center transition-all duration-300 overflow-hidden shrink-0 cursor-pointer",
-                                  formData.position === "home_middle"
-                                    ? "border-[#FFBF00] bg-[#FFBF00]/25 shadow-[0_0_15px_rgba(255,191,0,0.15)]"
-                                    : "border-dashed border-white/10 bg-zinc-900/40 hover:bg-zinc-900",
-                                )}
-                              >
-                                {formData.position === "home_middle" && (
-                                  <div className="absolute right-1 top-1 size-1 animate-ping rounded-full bg-[#FFBF00]" />
-                                )}
-                                <span
-                                  className={cn(
-                                    "text-[7px] font-black uppercase tracking-wider",
-                                    formData.position === "home_middle"
-                                      ? "text-[#FFBF00]"
-                                      : "text-zinc-550",
-                                  )}
-                                >
-                                  Meio do App
-                                </span>
-                                <span className="mt-0.5 text-[5.5px] font-bold leading-none text-zinc-650">
-                                  Entre Vitrines
-                                </span>
-                              </button>
-
-                              {/* Product mock list */}
-                              <div className="flex shrink-0 gap-1.5 overflow-hidden py-0.5">
-                                {[1, 2].map((i) => (
-                                  <div
-                                    key={i}
-                                    className="flex h-10 w-12 flex-col justify-between rounded border border-white/5 bg-zinc-900/20 p-1"
-                                  >
-                                    <div className="size-4 rounded bg-zinc-800" />
-                                    <div className="h-1 w-8 rounded bg-zinc-850" />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Bottom Banner Region */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const nextOrder =
-                                  banners.filter(
-                                    (b) => b.position === "home_bottom",
-                                  ).length + 1;
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  position: "home_bottom",
-                                  order: nextOrder,
-                                }));
-                              }}
-                              className={cn(
-                                "relative h-12 w-full rounded-lg border flex flex-col items-center justify-center transition-all duration-300 overflow-hidden shrink-0 mb-1 cursor-pointer",
-                                formData.position === "home_bottom"
-                                  ? "border-[#FFBF00] bg-[#FFBF00]/25 shadow-[0_0_15px_rgba(255,191,0,0.15)]"
-                                  : "border-dashed border-white/10 bg-zinc-900/40 hover:bg-zinc-900",
-                              )}
-                            >
-                              {formData.position === "home_bottom" && (
-                                <div className="absolute right-1 top-1 size-1 animate-ping rounded-full bg-[#FFBF00]" />
-                              )}
-                              <span
-                                className={cn(
-                                  "text-[7px] font-black uppercase tracking-wider",
-                                  formData.position === "home_bottom"
-                                    ? "text-[#FFBF00]"
-                                    : "text-zinc-555",
-                                )}
-                              >
-                                Rodapé (Base)
-                              </span>
-                              <span className="mt-0.5 text-[5.5px] font-bold leading-none text-zinc-650">
-                                Final da Home
-                              </span>
-                            </button>
-
-                            {/* Navigation mock */}
-                            <div className="flex h-4 shrink-0 items-center justify-between border-t border-white/5 bg-zinc-900/20 px-2">
-                              <div className="h-1 w-3 rounded bg-[#FFBF00]" />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Ordem e Ativo */}
-                      <div className="grid grid-cols-1 gap-3.5 border-t border-white/5 pt-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label
-                            htmlFor="banner-simple-order"
-                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
-                          >
-                            Prioridade de Exibição (Ordem)
-                          </Label>
-                          <Input
-                            id="banner-simple-order"
-                            name="order"
-                            type="number"
-                            value={formData.order ?? ""}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                order: Number(e.target.value),
-                              })
-                            }
-                            className="h-10 rounded-xl border-white/10 bg-zinc-900/50 text-sm font-bold text-white focus:ring-[#FFBF00]"
-                          />
-                        </div>
-
-                        <div className="flex h-10 select-none items-center justify-between self-end rounded-xl border border-white/5 bg-black/40 p-3 shadow-inner">
-                          <Label
-                            htmlFor="banner-simple-active"
-                            className="flex cursor-pointer items-center gap-2 text-[11px] font-black uppercase tracking-wider text-white"
-                          >
-                            Banner Ativo{" "}
-                            <Zap className="size-3 text-[#FFBF00]" />
-                          </Label>
-                          <Switch
-                            id="banner-simple-active"
-                            name="active"
-                            checked={formData.active}
-                            onCheckedChange={(checked) =>
-                              setFormData({ ...formData, active: checked })
-                            }
-                            className="scale-90 data-[state=checked]:bg-[#FFBF00]"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : activeStep === 1 ? (
-                  <motion.div
-                    key="step-1"
-                    initial={{ opacity: 0, x: -15 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 15 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-5"
-                  >
-                    {/* Card 1: Imagem */}
-                    <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
-                      <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <Upload className="size-3.5 text-[#FFBF00]" />
-                          <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
-                            1. Imagem do Banner
-                          </h3>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="mb-0.5 flex select-none items-baseline justify-between gap-2">
-                          <Label
-                            htmlFor="banner-upload"
-                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-400 opacity-90"
-                          >
-                            Imagem do Banner
-                          </Label>
-                          <span className="text-right text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                            {formData.position === "home_top"
-                              ? "Recomendado: 4:1 (ex: 1200x300px)"
-                              : "Recomendado: 21:9 (ex: 1200x500px)"}
-                          </span>
-                        </div>
-
-                        {uploading ? (
-                          <div className="flex h-24 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/40">
-                            <div className="size-6 animate-spin rounded-full border-2 border-zinc-700 border-t-[#FFBF00]" />
-                            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                              Enviando Imagem...
-                            </span>
-                          </div>
-                        ) : formData.imageUrl ? (
-                          <div className="flex flex-col justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-3 shadow-inner sm:flex-row sm:items-center">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="relative h-14 w-28 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-md">
-                                <img
-                                  src={formData.imageUrl}
-                                  alt="Preview Thumbnail"
-                                  className="size-full object-cover"
-                                />
-                              </div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="text-[11px] font-black uppercase italic tracking-wider text-white truncate">
-                                  Imagem Selecionada
-                                </span>
-                                <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-emerald-400">
-                                  <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                                  Carregada com Sucesso
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <Label
-                                htmlFor="banner-upload"
-                                className="cursor-pointer select-none rounded-xl border border-white/10 bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95"
-                              >
-                                Alterar
-                              </Label>
-                              <Button
-                                type="button"
-                                onClick={() => openAdjuster(formData.imageUrl!)}
-                                className="flex cursor-pointer select-none items-center gap-1.5 rounded-xl bg-[#FFBF00] px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-black shadow-md transition-all duration-200 hover:bg-[#FFBF00]/90 active:scale-95"
-                              >
-                                <SlidersHorizontal className="size-3.5" />
-                                Ajustar
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="relative">
-                            <Label
-                              htmlFor="banner-upload"
-                              className="group flex h-28 w-full cursor-pointer flex-col items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-white/5 bg-zinc-900/50 text-[11px] font-black uppercase tracking-wider text-zinc-650 transition-all hover:border-amber-400/30 hover:bg-zinc-900"
-                            >
-                              <Upload className="size-7 text-zinc-500 transition-colors group-hover:text-[#FFBF00]" />
-                              <span>Enviar Imagem Principal</span>
-                            </Label>
-                          </div>
-                        )}
-
-                        <Input
-                          id="banner-upload"
-                          name="banner-upload"
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleFileUpload}
-                          disabled={uploading}
+            {tela === "jeito" ? (
+              <EscolherCriacaoDoBanner aoEscolher={setTela} />
+            ) : tela === "modelos" ? (
+              <GaleriaDeBanners
+                fotoUrl={products[0]?.images?.[0]}
+                aoEscolher={(m) => {
+                  setBannerMode("complete");
+                  setFormData((prev) => ({
+                    ...prev,
+                    templateType: templateTypeDoModelo(m),
+                    overlayColor:
+                      m === "claro" || m === "vitrine" ? "#EDEDF0" : "#2A2A31",
+                    buttonText: "Comprar agora",
+                    badgeText: m === "lancamento" ? "LANÇAMENTO" : "",
+                    showTextOverlay: true,
+                  }));
+                  setTela("editor");
+                }}
+              />
+            ) : tela === "ia" ? (
+              <CriarBannerComIa
+                nomeDaLoja={config?.storeName ?? undefined}
+                produtoInicial={selectedProduct?.name}
+                aoVoltar={() => setTela("jeito")}
+                aoEscolherImagem={(file) => {
+                  setTela("editor");
+                  enviarArquivo(file);
+                }}
+              />
+            ) : (
+              <>
+                <section className="space-y-3" aria-label="Prévia ao vivo">
+                  <div className="flex items-center justify-between text-sm">
+                    <h2 className="font-medium text-white">
+                      {modelo
+                        ? `Modelo ${INFO_DOS_MODELOS.find((m) => m.id === modelo)?.nome}`
+                        : "Imagem própria"}
+                    </h2>
+                    <Button
+                      variant="ghost"
+                      className="min-h-11 text-zinc-400"
+                      onClick={() => setIsPreviewCollapsed((prev) => !prev)}
+                    >
+                      {isPreviewCollapsed
+                        ? "Expandir pré-visualização"
+                        : "Recolher pré-visualização"}
+                    </Button>
+                  </div>
+                  {!isPreviewCollapsed &&
+                    (modelo ? (
+                      <div
+                        data-tema-fixo=""
+                        className="aspect-[2/1] overflow-hidden rounded-2xl"
+                      >
+                        <BannerPronto
+                          banner={{
+                            ...defaultBannerFor("home_top", 1),
+                            ...formData,
+                            id: "previa",
+                          }}
                         />
                       </div>
-                    </div>
-
-                    {/* Card 2: Conteúdo Principal */}
-                    <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
-                      <div className="flex select-none items-center gap-2 border-b border-white/5 pb-1.5">
-                        <Layout className="size-3.5 text-[#FFBF00]" />
-                        <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
-                          2. Textos do Banner
-                        </h3>
-                      </div>
-                      <div className="flex items-center justify-between rounded-xl border border-white/10 bg-zinc-900/60 p-3 mb-2">
-                        <div className="space-y-0.5">
-                          <Label className="text-xs font-bold text-white">
-                            Exibir Textos e Botão Sobrepostos
-                          </Label>
-                          <p className="text-[11px] text-zinc-400">
-                            Desative se a imagem já possui texto ou arte gráfica
-                            integrada.
+                    ) : (
+                      <PreviaImagemPropria
+                        formData={formData}
+                        comTexto={bannerMode === "complete"}
+                      />
+                    ))}
+                </section>
+                {(modelo || destinationMode === "product") && (
+                  <section
+                    className="space-y-3"
+                    aria-labelledby="produto-do-banner"
+                  >
+                    <h2
+                      id="produto-do-banner"
+                      className="text-sm font-semibold text-white"
+                    >
+                      Produto
+                    </h2>
+                    {selectedProduct && (
+                      <div className="flex items-center gap-3 rounded-2xl border border-admin-border bg-admin-surface p-3">
+                        {selectedProduct.images?.[0] && (
+                          <img
+                            src={selectedProduct.images[0]}
+                            alt=""
+                            className="size-12 rounded-xl object-cover"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm text-white">
+                            {selectedProduct.name}
+                          </p>
+                          <p className="text-sm">
+                            {formatCurrency(Number(selectedProduct.price))} ·
+                            foto e link do produto
                           </p>
                         </div>
-                        <Switch
-                          checked={formData.showTextOverlay !== false}
-                          onCheckedChange={(checked) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              showTextOverlay: checked,
-                            }))
-                          }
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label
-                          htmlFor="banner-title"
-                          className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
+                        <Button
+                          variant="ghost"
+                          className="min-h-11 text-white"
+                          disabled={ocupadoComImagem}
+                          onClick={() => {
+                            setProductSearch("");
+                            setMostrarProdutos(true);
+                          }}
                         >
-                          Título da Campanha
-                        </Label>
-                        <LocalBufferedInput
-                          id="banner-title"
-                          name="title"
-                          value={formData.title || ""}
-                          onFlush={(val) =>
-                            setFormData((prev) => ({ ...prev, title: val }))
-                          }
-                          placeholder="Ex: Coleção de Verão"
-                          useShadcn={true}
-                          className="h-9 rounded-xl border-white/10 bg-zinc-900/50 text-xs font-bold text-white transition-all focus:border-[#FFBF00]/50 focus:ring-[#FFBF00]"
-                        />
-                        {productSuggestions &&
-                          productSuggestions.titles.length > 0 && (
-                            <div className="mt-1 select-none duration-200 animate-in fade-in">
-                              <span className="text-[11px] font-black uppercase tracking-wider text-zinc-550">
-                                Sugestões do Produto Selecionado:
-                              </span>
-                              <div className="mt-0.5 flex flex-wrap gap-1">
-                                {productSuggestions.titles.map(
-                                  (titleSuggestion, idx) => (
-                                    <button
-                                      key={idx}
-                                      type="button"
-                                      onClick={() => {
-                                        setFormData((prev) => ({
-                                          ...prev,
-                                          title: titleSuggestion,
-                                        }));
-                                        toast.success("Título preenchido!");
-                                      }}
-                                      className="cursor-pointer rounded-lg border border-white/5 bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white"
-                                    >
-                                      {titleSuggestion}
-                                    </button>
-                                  ),
-                                )}
-                              </div>
-                            </div>
-                          )}
+                          Trocar
+                        </Button>
                       </div>
-
-                      <div className="space-y-1">
+                    )}
+                    {(!modelo || !selectedProduct || mostrarProdutos) && (
+                      <>
                         <Label
-                          htmlFor="banner-subtitle"
-                          className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
+                          htmlFor="banner-product-search"
+                          className="sr-only"
                         >
-                          Subtítulo / Descrição da Oferta
+                          Buscar produto
                         </Label>
                         <Input
-                          id="banner-subtitle"
-                          name="subtitle"
-                          value={formData.subtitle || ""}
-                          onChange={(e) =>
+                          id="banner-product-search"
+                          className="min-h-11 border-admin-border bg-admin-surface text-white"
+                          placeholder="Pesquise o produto pelo nome para vincular..."
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                        />
+                        <div className="max-h-60 space-y-2 overflow-y-auto">
+                          {filteredProducts.slice(0, 20).map((p) => (
+                            <div
+                              key={p.id}
+                              className="flex items-center justify-between gap-2 rounded-xl border border-admin-border bg-admin-surface px-3"
+                            >
+                              <button
+                                type="button"
+                                className="min-h-11 min-w-0 flex-1 truncate text-left text-sm text-white"
+                                disabled={ocupadoComImagem}
+                                onClick={() => escolherProduto(p)}
+                              >
+                                {p.name}
+                              </button>
+                              <span className="text-xs">
+                                {formatCurrency(Number(p.price))}
+                              </span>
+                            </div>
+                          ))}
+                          {filteredProducts.length > 20 && (
+                            <p className="text-xs text-zinc-400" role="status">
+                              mostrando 20 de {filteredProducts.length}: refine
+                              a busca
+                            </p>
+                          )}
+                          {filteredProducts.length === 0 && (
+                            <p className="text-sm">
+                              Nenhum produto correspondente encontrado. Você
+                              também pode usar outra foto.
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </section>
+                )}
+                <section className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      className="min-h-11 border-admin-border bg-admin-surface text-white"
+                      disabled={ocupadoComImagem}
+                      onClick={() =>
+                        document.getElementById("banner-upload")?.click()
+                      }
+                    >
+                      {modelo ? "Usar outra foto" : "Enviar imagem"}
+                    </Button>
+                    {formData.imageUrl && (
+                      <Button
+                        variant="outline"
+                        className="min-h-11 border-admin-border bg-admin-surface text-white"
+                        disabled={ocupadoComImagem}
+                        onClick={() => openAdjuster(formData.imageUrl!)}
+                      >
+                        Ajustar
+                      </Button>
+                    )}
+                  </div>
+                  {formData.imageUrl && !modelo && (
+                    <img
+                      src={formData.imageUrl}
+                      alt="Preview Thumbnail"
+                      className="h-16 w-32 rounded-xl object-cover"
+                    />
+                  )}
+                  <Input
+                    id="banner-upload"
+                    name="banner-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={ocupadoComImagem}
+                    onChange={handleFileUpload}
+                  />
+                  <p className="text-xs">
+                    Imagem horizontal · recomendado 1200 × 600 px.
+                  </p>
+                </section>
+                {modelo && (
+                  <CamposDeTextoDoBanner
+                    formData={formData}
+                    aoMudar={setFormData}
+                  />
+                )}
+                {modelo && (
+                  <section className="space-y-3">
+                    <h2 className="text-sm font-semibold text-white">
+                      Cor do modelo
+                    </h2>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        ...CORES_DO_MODELO,
+                        {
+                          id: "loja",
+                          rotulo: "Loja",
+                          hex: config?.primaryColor || "#2A2A31",
+                        },
+                      ].map((c) => (
+                        <button
+                          type="button"
+                          key={c.id}
+                          aria-pressed={formData.overlayColor === c.hex}
+                          onClick={() =>
                             setFormData((prev) => ({
                               ...prev,
-                              subtitle: e.target.value,
+                              overlayColor: c.hex,
                             }))
                           }
-                          placeholder="Ex: Apenas hoje com cupom de desconto"
-                          className="h-9 rounded-xl border-white/10 bg-zinc-900/50 text-xs font-bold text-white focus:ring-[#FFBF00]"
-                        />
-                        {productSuggestions &&
-                          productSuggestions.subtitles.length > 0 && (
-                            <div className="mt-1 select-none duration-200 animate-in fade-in">
-                              <span className="text-[11px] font-black uppercase tracking-wider text-zinc-550">
-                                Sugestões do Produto Selecionado:
-                              </span>
-                              <div className="mt-0.5 flex flex-wrap gap-1">
-                                {productSuggestions.subtitles.map(
-                                  (subtitleSuggestion, idx) => (
-                                    <button
-                                      key={idx}
-                                      type="button"
-                                      onClick={() => {
-                                        setFormData((prev) => ({
-                                          ...prev,
-                                          subtitle: subtitleSuggestion,
-                                        }));
-                                        toast.success("Subtítulo preenchido!");
-                                      }}
-                                      className="cursor-pointer rounded-lg border border-white/5 bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white"
-                                    >
-                                      {subtitleSuggestion}
-                                    </button>
-                                  ),
-                                )}
-                              </div>
-                            </div>
-                          )}
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                        <div className="space-y-1">
-                          <Label
-                            htmlFor="banner-badge"
-                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
-                          >
-                            Tag / Etiqueta do Cartaz (Badge)
-                          </Label>
-                          <Input
-                            id="banner-badge"
-                            name="badgeText"
-                            value={formData.badgeText || ""}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                badgeText: e.target.value,
-                              }))
-                            }
-                            placeholder="Ex: 50% OFF, Lançamento"
-                            className="h-9 rounded-xl border-white/10 bg-zinc-900/50 text-xs font-bold text-white focus:ring-[#FFBF00]"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label
-                            htmlFor="banner-btn-text"
-                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
-                          >
-                            Texto do Botão (CTA)
-                          </Label>
-                          <Input
-                            id="banner-btn-text"
-                            name="buttonText"
-                            value={formData.buttonText || ""}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                buttonText: e.target.value,
-                              }))
-                            }
-                            placeholder="Ex: Comprar Agora"
-                            className="h-9 rounded-xl border-white/10 bg-zinc-900/50 text-xs font-bold text-white focus:ring-[#FFBF00]"
-                          />
-                          <span className="ml-1 mt-0.5 block text-[11px] font-medium italic text-zinc-500">
-                            Opcional. Ao preencher, exibe o botão no banner e
-                            ativa as cores do botão no Passo 2 (Estilo).
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : activeStep === 2 ? (
-                  <motion.div
-                    key="step-2"
-                    initial={{ opacity: 0, x: -15 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 15 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-6"
-                  >
-                    {/* CARD 1: TEMAS ESTÉTICOS RÁPIDOS */}
-                    <div className="space-y-2 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
-                      <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <Sparkles className="size-3.5 text-[#FFBF00]" />
-                          <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
-                            Temas Estéticos Rápidos
-                          </h3>
-                        </div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 hidden sm:inline">
-                          Prontos para usar
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                        {themePresets.map((preset) => {
-                          const isPresetSelected =
-                            formData.templateType === preset.templateType &&
-                            formData.fontFamily === preset.fontFamily &&
-                            formData.titleColor === preset.titleColor &&
-                            formData.subtitleColor === preset.subtitleColor &&
-                            formData.buttonBgColor === preset.buttonBgColor &&
-                            formData.buttonTextColor ===
-                              preset.buttonTextColor &&
-                            formData.overlayColor === preset.overlayColor &&
-                            Number(formData.overlayOpacity ?? 40) ===
-                              Number(preset.overlayOpacity);
-
-                          return (
-                            <motion.button
-                              key={preset.name}
-                              type="button"
-                              whileHover={{ scale: 1.01 }}
-                              whileTap={{ scale: 0.98 }}
-                              onClick={() => {
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  templateType: preset.templateType,
-                                  fontFamily: preset.fontFamily,
-                                  titleColor: preset.titleColor,
-                                  subtitleColor: preset.subtitleColor,
-                                  buttonBgColor: preset.buttonBgColor,
-                                  buttonTextColor: preset.buttonTextColor,
-                                  overlayColor: preset.overlayColor,
-                                  overlayOpacity: preset.overlayOpacity,
-                                }));
-                                toast.success(
-                                  `Tema "${preset.name}" aplicado!`,
-                                  {
-                                    icon: "🎨",
-                                  },
-                                );
-                              }}
-                              className={cn(
-                                "group flex items-center justify-between gap-1.5 rounded-xl border px-2.5 py-1.5 text-left transition-all cursor-pointer relative overflow-hidden select-none",
-                                isPresetSelected
-                                  ? "border-[#FFBF00] bg-[#FFBF00]/10 shadow-[0_0_12px_rgba(255,191,0,0.12)]"
-                                  : "border-white/5 bg-zinc-900/40 hover:border-amber-400/20 hover:bg-zinc-900",
-                              )}
-                            >
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                {/* Swatches de Cores Compactas */}
-                                <div className="flex shrink-0 select-none items-center -space-x-1">
-                                  <div
-                                    className="size-2.5 rounded-full border border-white/20 shadow-sm z-2"
-                                    style={{
-                                      backgroundColor: preset.titleColor,
-                                    }}
-                                    title={`Título: ${preset.titleColor}`}
-                                  />
-                                  <div
-                                    className="size-2.5 rounded-full border border-white/20 shadow-sm z-1"
-                                    style={{
-                                      backgroundColor: preset.buttonBgColor,
-                                    }}
-                                    title={`Botão: ${preset.buttonBgColor}`}
-                                  />
-                                  <div
-                                    className="size-2.5 rounded-full border border-white/20 shadow-sm"
-                                    style={{
-                                      backgroundColor: preset.overlayColor,
-                                    }}
-                                    title={`Fundo: ${preset.overlayColor}`}
-                                  />
-                                </div>
-
-                                <div className="flex flex-col min-w-0">
-                                  <span
-                                    className={cn(
-                                      "text-[11px] font-black break-words leading-tight",
-                                      isPresetSelected
-                                        ? "text-[#FFBF00]"
-                                        : "text-white group-hover:text-[#FFBF00]",
-                                    )}
-                                  >
-                                    {preset.name}
-                                  </span>
-                                  <span className="break-words text-[11px] leading-tight text-zinc-400">
-                                    {preset.description}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {isPresetSelected && (
-                                <span className="text-[11px] font-bold text-[#FFBF00] shrink-0">
-                                  ✓
-                                </span>
-                              )}
-                            </motion.button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* CARD 2: MODELO DE LAYOUT E TIPOGRAFIA */}
-                    <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
-                      <div className="flex select-none items-center gap-2 border-b border-white/5 pb-1.5">
-                        <SlidersHorizontal className="size-3.5 text-[#FFBF00]" />
-                        <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
-                          Disposição do Layout & Estilo da Fonte
-                        </h3>
-                      </div>
-
-                      {/* Seleção do Layout do Conteúdo */}
-                      <div className="space-y-1.5">
-                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-400">
-                          Alinhamento e Estilo do Layout
-                        </span>
-                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                          {[
-                            {
-                              value: "default",
-                              label: "Inferior Esquerda",
-                              badge: "Padrão",
-                              desc: "Texto no canto inferior esquerdo",
-                            },
-                            {
-                              value: "split_center",
-                              label: "Centralizado",
-                              badge: "Centro",
-                              desc: "Texto limpo centralizado",
-                            },
-                            {
-                              value: "split_left",
-                              label: "Alinhado à Esquerda",
-                              badge: "Esquerda",
-                              desc: "Totalmente à esquerda",
-                            },
-                            {
-                              value: "split_right",
-                              label: "Alinhado à Direita",
-                              badge: "Direita",
-                              desc: "Totalmente à direita",
-                            },
-                            {
-                              value: "neon_glow",
-                              label: "Efeito Neon",
-                              badge: "Brilho Cyber",
-                              desc: "Letras brilhantes e modernas",
-                            },
-                            {
-                              value: "glassmorphic",
-                              label: "Cartão Vidro",
-                              badge: "Efeito Glass",
-                              desc: "Fundo em vidro translúcido",
-                            },
-                          ].map((t) => {
-                            const isSelected =
-                              (formData.templateType || "default") === t.value;
-                            return (
-                              <button
-                                key={t.value}
-                                type="button"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    templateType: t.value,
-                                  }))
-                                }
-                                className={cn(
-                                  "group flex flex-col gap-1 items-start px-2 py-1.5 rounded-xl border text-left transition-all duration-200 active:scale-[0.98] select-none cursor-pointer",
-                                  isSelected
-                                    ? "border-[#FFBF00] bg-[#FFBF00]/10 shadow-[0_0_12px_rgba(255,191,0,0.12)]"
-                                    : "border-white/5 bg-zinc-900/30 hover:border-white/10 hover:bg-zinc-900",
-                                )}
-                              >
-                                <div className="flex w-full flex-wrap items-center justify-between gap-1">
-                                  <span
-                                    className={cn(
-                                      "text-[11px] font-black uppercase tracking-wider break-words min-w-0",
-                                      isSelected
-                                        ? "text-[#FFBF00]"
-                                        : "text-white",
-                                    )}
-                                  >
-                                    {t.label}
-                                  </span>
-                                  <span
-                                    className={cn(
-                                      "text-[11px] font-bold px-1 py-0.2 rounded border shrink-0",
-                                      isSelected
-                                        ? "border-[#FFBF00]/40 text-[#FFBF00] bg-[#FFBF00]/10"
-                                        : "border-white/10 text-zinc-400 bg-black/40",
-                                    )}
-                                  >
-                                    {t.badge}
-                                  </span>
-                                </div>
-
-                                <p className="w-full break-words text-[11px] leading-tight text-zinc-400">
-                                  {t.desc}
-                                </p>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Seleção de Tipografia (Fonte) */}
-                      <div className="space-y-1.5 pt-1.5 border-t border-white/5">
-                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-400">
-                          Estilo da Fonte (Tipografia)
-                        </span>
-                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                          {[
-                            {
-                              value: "system",
-                              label: "Sem Serifa",
-                              fontClass: "font-sans",
-                              preview: "Aa",
-                              desc: "Clean & Moderno",
-                            },
-                            {
-                              value: "font-serif",
-                              label: "Serifa Clássica",
-                              fontClass: "font-serif",
-                              preview: "Aa",
-                              desc: "Editorial",
-                            },
-                            {
-                              value: "font-mono",
-                              label: "Moderno Mono",
-                              fontClass: "font-mono",
-                              preview: "Aa",
-                              desc: "Digital Cyber",
-                            },
-                            {
-                              value: "font-display",
-                              label: "Display Impacto",
-                              fontClass: "font-display font-black uppercase",
-                              preview: "AA",
-                              desc: "Forte Imponente",
-                            },
-                          ].map((f) => {
-                            const isSelected =
-                              (formData.fontFamily || "system") === f.value;
-                            return (
-                              <button
-                                key={f.value}
-                                type="button"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    fontFamily: f.value,
-                                  }))
-                                }
-                                className={cn(
-                                  "group flex flex-col gap-1 items-center justify-between px-2 py-1.5 rounded-xl border text-center transition-all duration-200 active:scale-[0.98] select-none cursor-pointer",
-                                  isSelected
-                                    ? "border-[#FFBF00] bg-[#FFBF00]/10 shadow-[0_0_12px_rgba(255,191,0,0.12)]"
-                                    : "border-white/5 bg-zinc-900/30 hover:border-white/10 hover:bg-zinc-900",
-                                )}
-                              >
-                                <div
-                                  className={cn(
-                                    "size-7 sm:size-8 rounded-lg bg-zinc-950 border border-white/10 flex items-center justify-center text-sm font-black transition-colors shrink-0",
-                                    f.fontClass,
-                                    isSelected
-                                      ? "text-[#FFBF00] border-[#FFBF00]/30 bg-[#FFBF00]/5"
-                                      : "text-zinc-400 group-hover:text-white",
-                                  )}
-                                >
-                                  {f.preview}
-                                </div>
-
-                                <div className="space-y-0.5">
-                                  <h5
-                                    className={cn(
-                                      "text-[11px] font-black uppercase tracking-wider leading-tight",
-                                      isSelected
-                                        ? "text-[#FFBF00]"
-                                        : "text-white group-hover:text-[#FFBF00]",
-                                    )}
-                                  >
-                                    {f.label}
-                                  </h5>
-                                  <p className="text-[11px] leading-tight text-zinc-400">
-                                    {f.desc}
-                                  </p>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* CARD 3: PERSONALIZAÇÃO DE CORES E FILTRO DE ESCURECIMENTO */}
-                    <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
-                      <div className="flex select-none items-center gap-2 border-b border-white/5 pb-1.5">
-                        <SlidersHorizontal className="size-3.5 text-[#FFBF00]" />
-                        <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
-                          {hasButtonText
-                            ? "Personalização de Cores dos Textos e Botão"
-                            : "Personalização de Cores dos Textos e Filtro"}
-                        </h3>
-                      </div>
-
-                      {/* Seletor do Elemento Ativo para Alterar Cor */}
-                      <div className="space-y-1.5">
-                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-400">
-                          Escolha o Elemento para Mudar a Cor:
-                        </span>
-                        <div
-                          className={cn(
-                            "grid grid-cols-3 gap-1",
-                            hasButtonText ? "sm:grid-cols-5" : "sm:grid-cols-3",
-                          )}
+                          className="flex min-h-11 min-w-11 flex-col items-center gap-1 rounded-xl border border-admin-border bg-admin-surface p-2 text-xs text-white ring-1 ring-inset ring-admin-border-strong"
                         >
-                          {colorElements.map((el) => {
-                            const isActive = targetColorEl === el.id;
-                            return (
-                              <button
-                                key={el.id}
-                                type="button"
-                                onClick={() => setActiveColorElement(el.id)}
-                                className={cn(
-                                  "flex items-center justify-between gap-1 px-2 py-1 rounded-lg border transition-all duration-200 select-none cursor-pointer",
-                                  isActive
-                                    ? "border-[#FFBF00] bg-[#FFBF00]/15 text-white shadow-[0_0_10px_rgba(255,191,0,0.15)] ring-1 ring-[#FFBF00]/50"
-                                    : "border-white/5 bg-zinc-950 text-zinc-400 hover:border-white/10 hover:text-zinc-200",
-                                )}
-                              >
-                                <span className="break-words text-[11px] font-extrabold uppercase leading-tight tracking-wider">
-                                  {el.label}
-                                </span>
-                                <span
-                                  className="size-3 rounded-full border border-white/20 shadow-inner shrink-0"
-                                  style={{ backgroundColor: el.value }}
-                                />
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Painel do Editor de Cor do Elemento Selecionado */}
-                      <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-zinc-950/80 p-2.5 duration-200 animate-in fade-in">
-                        {/* Linha Principal: Seletor Interativo + Nome + Restaurar */}
-                        <div className="flex select-none items-center justify-between gap-2 rounded-lg bg-zinc-900/60 p-1.5 border border-white/5">
-                          <div className="flex items-center gap-2.5">
-                            {/* Círculo Interativo Seletor de Cor Nativo */}
-                            <div
-                              className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 shadow-md ring-2 ring-amber-400/30 transition-transform hover:scale-110 active:scale-95 cursor-pointer"
-                              title="Clique para escolher uma cor personalizada"
-                            >
-                              <span
-                                className="absolute inset-0 rounded-full"
-                                style={{
-                                  backgroundColor:
-                                    formData[targetColorEl] || "#FFFFFF",
-                                }}
-                              />
-                              <input
-                                id={targetColorEl}
-                                name={targetColorEl}
-                                type="color"
-                                value={formData[targetColorEl] || "#FFFFFF"}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    [targetColorEl]: e.target.value,
-                                  }))
-                                }
-                                className="absolute inset-0 size-[150%] -translate-x-[15%] -translate-y-[15%] cursor-pointer opacity-0"
-                              />
-                            </div>
-
-                            <div className="flex flex-col">
-                              <span className="text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">
-                                Cor de:{" "}
-                                <span className="font-black text-[#FFBF00]">
-                                  {targetColorEl === "titleColor"
-                                    ? "Título Principal"
-                                    : targetColorEl === "subtitleColor"
-                                      ? "Subtítulo / Descrição"
-                                      : targetColorEl === "buttonBgColor"
-                                        ? "Fundo do Botão (CTA)"
-                                        : targetColorEl === "buttonTextColor"
-                                          ? "Texto do Botão (CTA)"
-                                          : "Filtro da Imagem"}
-                                </span>
-                              </span>
-                              <span className="text-[11px] font-mono text-zinc-400">
-                                {formData[targetColorEl] || "#FFFFFF"}
-                              </span>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const defaults = {
-                                titleColor: "#FFFFFF",
-                                subtitleColor: "#9CA3AF",
-                                buttonBgColor: "#FFBF00",
-                                buttonTextColor: "#000000",
-                                overlayColor: "#000000",
-                              };
-                              setFormData((prev) => ({
-                                ...prev,
-                                [targetColorEl]: defaults[targetColorEl],
-                              }));
-                            }}
-                            className="cursor-pointer text-[11px] font-extrabold uppercase tracking-wider text-amber-500 hover:text-amber-400 hover:underline transition-colors px-1.5 py-0.5"
-                          >
-                            Restaurar Padrão
-                          </button>
-                        </div>
-
-                        {/* Cores Frequentes */}
-                        <div className="flex items-center justify-between gap-2 pt-0.5">
-                          <span className="select-none text-[11px] font-bold uppercase tracking-wider text-zinc-400 shrink-0">
-                            Cores Frequentes:
-                          </span>
-                          <div className="flex select-none flex-wrap gap-1">
-                            {presetColors.map((color) => {
-                              const isSelected =
-                                formData[targetColorEl] === color.hex;
-                              return (
-                                <button
-                                  key={color.hex}
-                                  type="button"
-                                  onClick={() =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      [targetColorEl]: color.hex,
-                                    }))
-                                  }
-                                  className={cn(
-                                    "size-5 rounded-full border border-white/10 relative transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer",
-                                    isSelected &&
-                                      "ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-950 scale-110",
-                                  )}
-                                  style={{ backgroundColor: color.hex }}
-                                  title={color.name}
-                                />
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Cores da Marca da Loja */}
-                        {brandingColors.length > 0 && (
-                          <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-1.5">
-                            <span className="select-none text-[11px] font-extrabold uppercase tracking-wider text-[#FFBF00] shrink-0">
-                              Cores da Sua Marca:
-                            </span>
-                            <div className="flex select-none flex-wrap gap-1">
-                              {brandingColors.map((color) => {
-                                const isSelected =
-                                  formData[targetColorEl] === color.hex;
-                                return (
-                                  <button
-                                    key={color.hex}
-                                    type="button"
-                                    onClick={() =>
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        [targetColorEl]: color.hex,
-                                      }))
-                                    }
-                                    className={cn(
-                                      "group relative flex items-center gap-1 rounded-full border border-white/10 px-2 py-0.5 text-[11px] font-bold transition-all duration-150 hover:scale-105 active:scale-95 cursor-pointer",
-                                      isSelected
-                                        ? "border-[#FFBF00] bg-[#FFBF00]/15 text-[#FFBF00]"
-                                        : "bg-zinc-900 text-zinc-300 hover:border-white/20",
-                                    )}
-                                    style={{
-                                      backgroundColor: `${color.hex}20`,
-                                    }}
-                                  >
-                                    <span
-                                      className="size-2 rounded-full border border-white/20 shadow-sm"
-                                      style={{
-                                        backgroundColor: color.hex,
-                                      }}
-                                    />
-                                    <span>{color.name}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                          <span
+                            className={cn(
+                              "size-8 rounded-full shadow-[inset_0_0_0_1px_hsl(var(--admin-border-strong))]",
+                              formData.overlayColor === c.hex &&
+                                "ring-2 ring-current ring-offset-2 ring-offset-admin-bg",
+                            )}
+                            style={{ backgroundColor: c.hex }}
+                            aria-hidden="true"
+                          />
+                          {c.rotulo}
+                        </button>
+                      ))}
                     </div>
-
-                    {/* Controle de Escurecimento do Fundo */}
-                    <div className="space-y-2 border-t border-white/5 pt-3">
-                      <div className="flex select-none justify-between items-center">
-                        <Label
-                          htmlFor="banner-overlay-opacity"
-                          className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-400"
-                        >
-                          Escurecimento da Imagem de Fundo (Filtro):{" "}
-                          <span className="text-[#FFBF00]">
-                            {formData.overlayOpacity ?? 40}%
-                          </span>
-                        </Label>
-                      </div>
-
-                      <input
-                        id="banner-overlay-opacity"
-                        name="overlayOpacity"
-                        type="range"
-                        min="0"
-                        max="90"
-                        step="5"
-                        value={formData.overlayOpacity ?? 40}
-                        onChange={(e) =>
+                  </section>
+                )}
+                <details className="rounded-2xl border border-admin-border bg-admin-surface p-4">
+                  <summary className="flex min-h-11 cursor-pointer items-center font-medium text-white">
+                    Mais opções
+                  </summary>
+                  <div className="space-y-5 pt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="banner-position">Onde aparece</Label>
+                      <select
+                        id="banner-position"
+                        className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
+                        value={formData.position}
+                        onChange={(e) => {
+                          const position = e.target.value as Banner["position"];
                           setFormData((prev) => ({
                             ...prev,
-                            overlayOpacity: Number(e.target.value),
+                            position,
+                            order:
+                              banners.filter((b) => b.position === position)
+                                .length + 1,
+                          }));
+                        }}
+                      >
+                        {positions.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <Label
+                      htmlFor={
+                        bannerMode === "simple"
+                          ? "banner-simple-order"
+                          : "banner-order"
+                      }
+                    >
+                      Ordem de exibição
+                    </Label>
+                    <Input
+                      id={
+                        bannerMode === "simple"
+                          ? "banner-simple-order"
+                          : "banner-order"
+                      }
+                      type="number"
+                      className="min-h-11 border-admin-border bg-admin-bg text-white"
+                      value={formData.order ?? ""}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          order: Number(e.target.value),
+                        }))
+                      }
+                    />
+                    <div className="flex min-h-11 items-center justify-between">
+                      <Label htmlFor="banner-active">Banner ativo</Label>
+                      <InterruptorDoBanner
+                        id="banner-active"
+                        checked={formData.active ?? true}
+                        onCheckedChange={(active) =>
+                          setFormData((prev) => ({ ...prev, active }))
+                        }
+                      />
+                    </div>
+                    <section className="space-y-3">
+                      <h2 className="text-sm font-semibold text-white">
+                        Ao tocar no banner
+                      </h2>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          className="min-h-11 border-admin-border bg-admin-raised text-white"
+                          onClick={() => {
+                            setDestinationMode("none");
+                            setFormData((prev) => ({
+                              ...prev,
+                              link: "",
+                              productId: "",
+                            }));
+                          }}
+                        >
+                          Apenas Foto
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="min-h-11 border-admin-border bg-admin-raised text-white"
+                          onClick={() => setDestinationMode("product")}
+                        >
+                          Abrir Produto
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="min-h-11 border-admin-border bg-admin-raised text-white"
+                          onClick={() => {
+                            setDestinationMode("route");
+                            setFormData((prev) => ({
+                              ...prev,
+                              link: LINK_DA_PAGINA_DA_LOJA,
+                              productId: "",
+                            }));
+                          }}
+                        >
+                          Página da Loja · Home, Ofertas
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="min-h-11 border-admin-border bg-admin-raised text-white"
+                          onClick={() => setDestinationMode("custom")}
+                        >
+                          Link / URL
+                        </Button>
+                      </div>
+                      {destinationMode === "route" && (
+                        <div className="flex flex-wrap gap-2">
+                          {dynamicRouteSuggestions.map((r) => (
+                            <Button
+                              key={r.path}
+                              variant="outline"
+                              aria-pressed={formData.link === r.path}
+                              className="min-h-11 border-admin-border bg-admin-raised text-white"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  link: r.path,
+                                  productId: "",
+                                }))
+                              }
+                            >
+                              {r.label} {r.path && `(${r.path})`}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                      <Label htmlFor="banner-link-custom">Link</Label>
+                      <LocalBufferedInput
+                        id="banner-link-custom"
+                        value={formData.link || ""}
+                        useShadcn
+                        className="min-h-11 border-admin-border bg-admin-bg text-white"
+                        validate={avisoDoLinkDigitado}
+                        onFlush={(val) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            link: linkDoBannerParaSalvar(val)?.startsWith(
+                              "https://",
+                            )
+                              ? linkDoBannerParaSalvar(val)!
+                              : val,
                           }))
                         }
-                        className="w-full cursor-pointer accent-[#FFBF00]"
                       />
-
-                      {/* Botões Rápidos de Ajuste do Filtro */}
-                      <div className="flex gap-2 pt-1">
-                        {[
-                          { label: "Suave (20%)", val: 20 },
-                          { label: "Equilibrado (40%)", val: 40 },
-                          { label: "Intenso (70%)", val: 70 },
-                        ].map((opt) => (
-                          <button
-                            key={opt.val}
-                            type="button"
-                            onClick={() =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                overlayOpacity: opt.val,
-                              }))
-                            }
-                            className={cn(
-                              "flex-1 py-1 rounded-lg border text-[11px] font-extrabold uppercase transition-all cursor-pointer",
-                              (formData.overlayOpacity ?? 40) === opt.val
-                                ? "border-[#FFBF00] bg-[#FFBF00]/15 text-[#FFBF00]"
-                                : "border-white/5 bg-zinc-900/50 text-zinc-400 hover:border-white/10",
-                            )}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Cores Extraídas da Imagem */}
-                      {extractedColors.length > 0 && (
-                        <div className="space-y-1 border-t border-white/5 pt-1.5">
-                          <div className="flex select-none items-center justify-between">
-                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-400">
-                              Sugestões da Imagem 📸
-                            </span>
-                            <button
-                              type="button"
-                              onClick={handleAutoThemeFromImage}
-                              className="cursor-pointer text-[11px] font-black uppercase tracking-wider text-[#FFBF00] transition-colors hover:text-white"
-                            >
-                              ✨ Tema Inteligente
-                            </button>
-                          </div>
-                          <div className="flex select-none flex-wrap gap-1">
-                            {extractedColors.map((color) => {
-                              const isSelected =
-                                formData[activeColorElement] === color;
-                              return (
-                                <button
-                                  key={color}
-                                  type="button"
-                                  onClick={() =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      [activeColorElement]: color,
-                                    }))
-                                  }
-                                  className={cn(
-                                    "size-5 rounded-full border border-white/10 relative transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer",
-                                    isSelected &&
-                                      "ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-950 scale-110",
-                                  )}
-                                  style={{ backgroundColor: color }}
-                                  title={color}
-                                />
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* CARD 4: GUIA INTELIGENTE DE LEGIBILIDADE E LEITURA FÁCIL (VERSÃO ULTRA COMPACTA) */}
-                    <div className="flex flex-col gap-1.5 rounded-xl border border-white/5 bg-zinc-900/20 p-2 sm:p-2.5 duration-300 animate-in fade-in select-none">
-                      {/* Cabeçalho Compacto com Diagnóstico Resumido e Ação */}
-                      {(() => {
-                        const isTitleOk = computedTitleRatio >= 3.0;
-                        const isSubtitleOk = computedSubtitleRatio >= 4.5;
-                        const isBtnOk = computedButtonRatio >= 4.5;
-                        const isAllOk = isTitleOk && isSubtitleOk && isBtnOk;
-
-                        return (
-                          <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-white/5 pb-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <Sparkles className="size-3 text-[#FFBF00]" />
-                              <span className="text-[11px] font-black uppercase italic tracking-wider text-white">
-                                Guia de Legibilidade
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-[11px] font-black uppercase px-1.5 py-0.2 rounded-full border",
-                                  isAllOk
-                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                    : "bg-amber-500/10 text-amber-400 border-amber-500/30",
-                                )}
-                              >
-                                {isAllOk
-                                  ? "Excelente 🟢"
-                                  : "Ajuste Recomendado 🟡"}
-                              </span>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={handleOptimizeContrast}
-                              className="flex cursor-pointer items-center gap-1 rounded-md border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-[#FFBF00] transition-all hover:bg-[#FFBF00] hover:text-black active:scale-95 ml-auto"
-                            >
-                              <Sparkles className="size-2.5" /> Auto-Ajustar
-                              Cores
-                            </button>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Indicadores Visuais de Contraste para Cada Elemento em Linha Única Compacta */}
-                      <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
-                        <div className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-zinc-950/70 px-2 py-1">
-                          <span className="text-[11px] font-extrabold uppercase text-zinc-400">
-                            Título
-                          </span>
-                          <span
-                            className={cn(
-                              "text-[11px] font-black uppercase px-1 py-0.2 rounded",
-                              computedTitleRatio >= 3.0
-                                ? "bg-emerald-500/10 text-emerald-400"
-                                : "bg-rose-500/10 text-rose-400",
-                            )}
-                          >
-                            {computedTitleRatio >= 3.0
-                              ? "Fácil ✓"
-                              : "Escurecer ⚠️"}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-zinc-950/70 px-2 py-1">
-                          <span className="text-[11px] font-extrabold uppercase text-zinc-400">
-                            Subtítulo
-                          </span>
-                          <span
-                            className={cn(
-                              "text-[11px] font-black uppercase px-1 py-0.2 rounded",
-                              computedSubtitleRatio >= 4.5
-                                ? "bg-emerald-500/10 text-emerald-400"
-                                : "bg-rose-500/10 text-rose-400",
-                            )}
-                          >
-                            {computedSubtitleRatio >= 4.5
-                              ? "Fácil ✓"
-                              : "Escurecer ⚠️"}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-zinc-950/70 px-2 py-1">
-                          <span className="text-[11px] font-extrabold uppercase text-zinc-400">
-                            Botão CTA
-                          </span>
-                          <span
-                            className={cn(
-                              "text-[11px] font-black uppercase px-1 py-0.2 rounded",
-                              computedButtonRatio >= 4.5
-                                ? "bg-emerald-500/10 text-emerald-400"
-                                : "bg-rose-500/10 text-rose-400",
-                            )}
-                          >
-                            {computedButtonRatio >= 4.5
-                              ? "Destacado ✓"
-                              : "Ajustar ⚠️"}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : activeStep === 3 ? (
-                  <motion.div
-                    key="step-3"
-                    initial={{ opacity: 0, x: -15 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 15 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-5"
-                  >
-                    {/* Seletor de Posição Interativo */}
-                    <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-900/10 p-4">
-                      <div className="flex select-none items-center gap-2 border-b border-white/5 pb-2">
-                        <Layout className="size-4 text-[#FFBF00]" />
-                        <h3 className="text-xs font-black uppercase italic tracking-wider text-white">
-                          Posição de Exibição
-                        </h3>
-                      </div>
-
-                      <div className="space-y-3">
-                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-500">
-                          Selecione a Posição na Home do PWA (Clique para
-                          Ativar)
-                        </span>
-                        <div className="flex select-none justify-center rounded-2xl border border-white/5 bg-zinc-900/10 py-4">
-                          <div className="isolate bg-zinc-955 relative flex h-64 w-36 flex-col justify-between overflow-hidden rounded-[1.8rem] border-2 border-zinc-700 p-2.5 text-left shadow-2xl">
-                            {/* Notch */}
-                            <div className="absolute left-1/2 top-0 z-10 h-3 w-16 -translate-x-1/2 rounded-b-lg bg-zinc-700" />
-
-                            {/* Top Banner Region */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const nextOrder =
-                                  banners.filter(
-                                    (b) => b.position === "home_top",
-                                  ).length + 1;
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  position: "home_top",
-                                  order: nextOrder,
-                                }));
-                              }}
-                              className={cn(
-                                "relative h-12 w-full rounded-lg border flex flex-col items-center justify-center transition-all duration-300 overflow-hidden shrink-0 mt-3 cursor-pointer",
-                                formData.position === "home_top"
-                                  ? "border-[#FFBF00] bg-[#FFBF00]/25 shadow-[0_0_15px_rgba(255,191,0,0.15)]"
-                                  : "border-dashed border-white/10 bg-zinc-900/40 hover:bg-zinc-900",
-                              )}
-                            >
-                              {formData.position === "home_top" && (
-                                <div className="absolute right-1 top-1 size-1 animate-ping rounded-full bg-[#FFBF00]" />
-                              )}
-                              <span
-                                className={cn(
-                                  "text-[7px] font-black uppercase tracking-wider",
-                                  formData.position === "home_top"
-                                    ? "text-[#FFBF00]"
-                                    : "text-zinc-550",
-                                )}
-                              >
-                                Topo do App
-                              </span>
-                              <span className="mt-0.5 text-[5.5px] font-bold leading-none text-zinc-650">
-                                Cabeçalho Home
-                              </span>
-                            </button>
-
-                            {/* Middle Content mock */}
-                            <div className="flex flex-1 flex-col justify-center gap-1.5 py-2">
-                              {/* Search mock */}
-                              <div className="flex h-4 w-full shrink-0 items-center rounded-md border border-white/5 bg-zinc-900/60 px-1.5">
-                                <div className="h-1.5 w-12 rounded bg-zinc-800" />
-                              </div>
-
-                              {/* Middle Banner Region */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const nextOrder =
-                                    banners.filter(
-                                      (b) => b.position === "home_middle",
-                                    ).length + 1;
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    position: "home_middle",
-                                    order: nextOrder,
-                                  }));
-                                }}
-                                className={cn(
-                                  "relative h-12 w-full rounded-lg border flex flex-col items-center justify-center transition-all duration-300 overflow-hidden shrink-0 cursor-pointer",
-                                  formData.position === "home_middle"
-                                    ? "border-[#FFBF00] bg-[#FFBF00]/25 shadow-[0_0_15px_rgba(255,191,0,0.15)]"
-                                    : "border-dashed border-white/10 bg-zinc-900/40 hover:bg-zinc-900",
-                                )}
-                              >
-                                {formData.position === "home_middle" && (
-                                  <div className="absolute right-1 top-1 size-1 animate-ping rounded-full bg-[#FFBF00]" />
-                                )}
-                                <span
-                                  className={cn(
-                                    "text-[7px] font-black uppercase tracking-wider",
-                                    formData.position === "home_middle"
-                                      ? "text-[#FFBF00]"
-                                      : "text-zinc-550",
-                                  )}
-                                >
-                                  Meio do App
-                                </span>
-                                <span className="mt-0.5 text-[5.5px] font-bold leading-none text-zinc-650">
-                                  Entre Vitrines
-                                </span>
-                              </button>
-
-                              {/* Product mock list */}
-                              <div className="flex shrink-0 gap-1.5 overflow-hidden py-0.5">
-                                {[1, 2].map((i) => (
-                                  <div
-                                    key={i}
-                                    className="flex h-10 w-12 flex-col justify-between rounded border border-white/5 bg-zinc-900/20 p-1"
-                                  >
-                                    <div className="size-4 rounded bg-zinc-800" />
-                                    <div className="h-1 w-8 rounded bg-zinc-850" />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Bottom Banner Region */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const nextOrder =
-                                  banners.filter(
-                                    (b) => b.position === "home_bottom",
-                                  ).length + 1;
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  position: "home_bottom",
-                                  order: nextOrder,
-                                }));
-                              }}
-                              className={cn(
-                                "relative h-12 w-full rounded-lg border flex flex-col items-center justify-center transition-all duration-300 overflow-hidden shrink-0 mb-1 cursor-pointer",
-                                formData.position === "home_bottom"
-                                  ? "border-[#FFBF00] bg-[#FFBF00]/25 shadow-[0_0_15px_rgba(255,191,0,0.15)]"
-                                  : "border-dashed border-white/10 bg-zinc-900/40 hover:bg-zinc-900",
-                              )}
-                            >
-                              {formData.position === "home_bottom" && (
-                                <div className="absolute right-1 top-1 size-1 animate-ping rounded-full bg-[#FFBF00]" />
-                              )}
-                              <span
-                                className={cn(
-                                  "text-[7px] font-black uppercase tracking-wider",
-                                  formData.position === "home_bottom"
-                                    ? "text-[#FFBF00]"
-                                    : "text-zinc-555",
-                                )}
-                              >
-                                Rodapé (Base)
-                              </span>
-                              <span className="mt-0.5 text-[5.5px] font-bold leading-none text-zinc-650">
-                                Final da Home
-                              </span>
-                            </button>
-
-                            {/* Navigation mock */}
-                            <div className="flex h-4 shrink-0 items-center justify-between border-t border-white/5 bg-zinc-900/20 px-2">
-                              <div className="h-1 w-3 rounded bg-[#FFBF00]" />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-3.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-3 sm:p-4">
-                      {/* Título Principal do Bloco Único */}
-                      <div className="flex select-none flex-col gap-1 border-b border-white/5 pb-2.5">
-                        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                          <div className="flex items-center gap-2">
-                            <ExternalLink className="size-4 text-[#FFBF00]" />
-                            <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
-                              3. DESTINO E AÇÃO DO BANNER
-                            </h3>
-                          </div>
-                          {/* Indicator Badge of Link Origin */}
-                          {(() => {
-                            if (
-                              formData.productId &&
-                              selectedProduct &&
-                              formData.link?.includes(
-                                `/product-detail?id=${formData.productId}`,
-                              )
-                            ) {
-                              return (
-                                <span className="max-w-full break-words rounded border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-0.5 font-mono text-[11px] font-bold text-emerald-400">
-                                  📦 Produto: {selectedProduct.name}
-                                </span>
-                              );
-                            }
-                            if (
-                              formData.link?.startsWith("http://") ||
-                              formData.link?.startsWith("https://")
-                            ) {
-                              return (
-                                <span className="rounded border border-sky-500/30 bg-sky-500/15 px-2.5 py-0.5 font-mono text-[11px] font-bold text-sky-400">
-                                  🌐 Link Externo
-                                </span>
-                              );
-                            }
-                            if (formData.link) {
-                              return (
-                                <span className="rounded border border-purple-500/30 bg-purple-500/15 px-2.5 py-0.5 font-mono text-[11px] font-bold text-purple-300">
-                                  📌 Página da Loja{" "}
-                                  {selectedCouponCode
-                                    ? `(Cupom: ${selectedCouponCode})`
-                                    : ""}
-                                </span>
-                              );
-                            }
-                            return (
-                              <span className="rounded border border-white/5 bg-zinc-800/80 px-2.5 py-0.5 font-mono text-[11px] font-bold text-zinc-400">
-                                ⚪ Apenas Foto (Sem Clique)
-                              </span>
-                            );
-                          })()}
-                        </div>
-                        <p className="text-[11px] text-zinc-400">
-                          Escolha o que acontece quando o cliente clica neste
-                          banner. Simples e rápido.
+                      {selectedCouponCode && (
+                        <p className="text-xs">
+                          Cupom no link: {selectedCouponCode}
                         </p>
-                      </div>
-
-                      {/* SELETOR DE INTENÇÃO DE DESTINO (SIMPLES E INTUITIVO) */}
-                      <div className="space-y-1.5 select-none">
-                        <Label className="text-[11px] font-black uppercase tracking-wider text-amber-400">
-                          Escolha a Ação ao Clicar no Banner:
+                      )}
+                    </section>
+                    <section className="space-y-3">
+                      <div className="flex min-h-11 items-center justify-between">
+                        <Label htmlFor="banner-scheduling-toggle">
+                          Programar datas
                         </Label>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                          {/* 1. Apenas Foto */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDestinationMode("none");
-                              setFormData((prev) => ({
-                                ...prev,
-                                link: "",
-                                productId: "",
-                              }));
-                              toast.info("Banner definido como apenas visual.");
-                            }}
-                            className={cn(
-                              "flex flex-col items-center justify-center p-2.5 rounded-xl border transition-all cursor-pointer text-center duration-200",
-                              destinationMode === "none"
-                                ? "border-amber-400 bg-amber-400/15 text-white font-black shadow-[0_0_12px_rgba(255,191,0,0.15)]"
-                                : "border-white/10 bg-zinc-900/60 text-zinc-400 hover:border-white/20 hover:text-white",
-                            )}
-                          >
-                            <span className="text-base">⚪</span>
-                            <span className="mt-1 text-[11px] font-bold">
-                              Apenas Foto
-                            </span>
-                            <span className="text-[11px] font-medium text-zinc-500">
-                              Sem clique
-                            </span>
-                          </button>
-
-                          {/* 2. Produto Específico */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDestinationMode("product");
-                            }}
-                            className={cn(
-                              "flex flex-col items-center justify-center p-2.5 rounded-xl border transition-all cursor-pointer text-center duration-200",
-                              destinationMode === "product"
-                                ? "border-emerald-400 bg-emerald-400/15 text-white font-black shadow-[0_0_12px_rgba(52,211,153,0.15)]"
-                                : "border-white/10 bg-zinc-900/60 text-zinc-400 hover:border-white/20 hover:text-white",
-                            )}
-                          >
-                            <span className="text-base">📦</span>
-                            <span className="mt-1 text-[11px] font-bold">
-                              Abrir Produto
-                            </span>
-                            <span className="text-[11px] font-medium text-zinc-500">
-                              Leva a 1 item
-                            </span>
-                          </button>
-
-                          {/* 3. Página da Loja */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDestinationMode("route");
-                              if (
-                                !formData.link ||
-                                formData.link.includes("/product-detail")
-                              ) {
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  link: LINK_DA_PAGINA_DA_LOJA,
-                                  productId: "",
-                                }));
-                              }
-                            }}
-                            className={cn(
-                              "flex flex-col items-center justify-center p-2.5 rounded-xl border transition-all cursor-pointer text-center duration-200",
-                              destinationMode === "route"
-                                ? "border-purple-400 bg-purple-400/15 text-white font-black shadow-[0_0_12px_rgba(192,132,252,0.15)]"
-                                : "border-white/10 bg-zinc-900/60 text-zinc-400 hover:border-white/20 hover:text-white",
-                            )}
-                          >
-                            <span className="text-base">🏷️</span>
-                            <span className="mt-1 text-[11px] font-bold">
-                              Página da Loja
-                            </span>
-                            <span className="text-[11px] font-medium text-zinc-500">
-                              Home, Ofertas...
-                            </span>
-                          </button>
-
-                          {/* 4. Link ou URL Externa */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDestinationMode("custom");
-                            }}
-                            className={cn(
-                              "flex flex-col items-center justify-center p-2.5 rounded-xl border transition-all cursor-pointer text-center duration-200",
-                              destinationMode === "custom"
-                                ? "border-sky-400 bg-sky-400/15 text-white font-black shadow-[0_0_12px_rgba(56,189,248,0.15)]"
-                                : "border-white/10 bg-zinc-900/60 text-zinc-400 hover:border-white/20 hover:text-white",
-                            )}
-                          >
-                            <span className="text-base">🌐</span>
-                            <span className="mt-1 text-[11px] font-bold">
-                              Link / URL
-                            </span>
-                            <span className="text-[11px] font-medium text-zinc-500">
-                              Link customizado
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* CONFIGURAÇÃO DO BOTÃO CTA (TEXTO DO BOTÃO NO BANNER) */}
-                      {destinationMode !== "none" && (
-                        <div className="space-y-1.5 border-t border-white/5 pt-3">
-                          <div className="flex select-none items-center justify-between gap-2">
-                            <Label
-                              htmlFor="banner-btn-text-step3"
-                              className="text-[11px] font-black uppercase tracking-wider text-amber-400"
-                            >
-                              <span>Texto do Botão de Ação (CTA)</span>
-                            </Label>
-                            <span className="text-right text-[11px] font-medium text-zinc-500">
-                              {formData.buttonText
-                                ? `Botão: "${formData.buttonText}"`
-                                : "Sem Botão Explícito"}
-                            </span>
-                          </div>
-
-                          <LocalBufferedInput
-                            id="banner-btn-text-step3"
-                            name="buttonText"
-                            value={formData.buttonText || ""}
-                            onFlush={(val) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                buttonText: val,
-                              }))
-                            }
-                            placeholder="Ex: Comprar Agora, Ver Oferta, Confira..."
-                            useShadcn={true}
-                            className="h-9 rounded-xl border-white/10 bg-zinc-900/90 font-sans text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-[#FFBF00] focus:ring-[#FFBF00]"
-                          />
-
-                          <div className="flex select-none flex-wrap items-center gap-1 pt-0.5">
-                            <span className="mr-1 text-[11px] font-bold uppercase text-zinc-500">
-                              Sugestões:
-                            </span>
-                            {[
-                              { label: "🛍️ Ver Produto", value: "Ver Produto" },
-                              {
-                                label: "🛒 Comprar Agora",
-                                value: "Comprar Agora",
-                              },
-                              {
-                                label: "🔥 Aproveitar Oferta",
-                                value: "Aproveitar Oferta",
-                              },
-                              { label: "👁️ Confira", value: "Confira" },
-                            ].map((btn) => (
-                              <button
-                                key={btn.value}
-                                type="button"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    buttonText: btn.value,
-                                  }))
-                                }
-                                className={cn(
-                                  "cursor-pointer rounded-lg border border-white/5 bg-zinc-900 px-2 py-0.5 text-[11px] font-bold text-zinc-300 transition-all hover:border-amber-400/30 hover:bg-zinc-800 hover:text-white active:scale-95",
-                                  formData.buttonText === btn.value &&
-                                    "border-[#FFBF00] bg-[#FFBF00]/20 font-black text-white",
-                                )}
-                              >
-                                {btn.label}
-                              </button>
-                            ))}
-                            {formData.buttonText && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    buttonText: "",
-                                  }))
-                                }
-                                className="cursor-pointer rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[11px] font-bold text-red-400 transition-all hover:bg-red-500/20 active:scale-95"
-                              >
-                                ❌ Limpar Botão
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* SUB-PAINEL DINÂMICO PARA CADA MODO */}
-                      {destinationMode === "none" && (
-                        <div className="select-none rounded-xl border border-white/5 bg-zinc-900/30 p-3 text-center">
-                          <p className="text-[11px] font-bold text-zinc-300">
-                            ⚪ Este banner é apenas visual.
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-zinc-500">
-                            Ao ser exibido para os clientes, ele não terá
-                            redirecionamento ao ser clicado.
-                          </p>
-                        </div>
-                      )}
-
-                      {destinationMode === "product" && (
-                        <div className="space-y-2 border-t border-white/5 pt-3">
-                          <div className="flex select-none items-center justify-between gap-2">
-                            <span className="font-sans text-[11px] font-black uppercase italic tracking-widest text-emerald-400">
-                              📦 Vincular Produto Específico
-                            </span>
-                            <span className="text-right text-[11px] font-medium text-zinc-500">
-                              Leva o cliente diretamente para a página do
-                              produto
-                            </span>
-                          </div>
-
-                          {formData.productId && selectedProduct ? (
-                            <div className="bg-emerald-550/5 flex select-none flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/20 p-2.5 duration-200 animate-in fade-in zoom-in-95">
-                              <div className="flex min-w-0 items-center gap-2.5">
-                                <div className="size-10 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
-                                  {selectedProduct.images?.[0] ? (
-                                    <img
-                                      src={selectedProduct.images[0]}
-                                      alt={selectedProduct.name}
-                                      className="size-full object-cover"
-                                    />
-                                  ) : (
-                                    <div className="flex size-full items-center justify-center bg-zinc-950 text-center text-[11px] leading-tight text-zinc-650">
-                                      Sem foto
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-x-1.5">
-                                    <span className="rounded bg-emerald-500 px-1.5 py-0.2 text-[11px] font-black uppercase text-black">
-                                      Vinculado
-                                    </span>
-                                    <span className="truncate font-mono text-[11px] font-bold text-zinc-550">
-                                      ID: {selectedProduct.id.slice(0, 8)}...
-                                    </span>
-                                  </div>
-                                  <h4 className="mt-0.5 truncate text-[11px] font-bold leading-snug text-white">
-                                    {selectedProduct.name}
-                                  </h4>
-                                  <p className="mt-0.5 font-mono text-[11px] font-black leading-none text-amber-500">
-                                    {formatCurrency(
-                                      Number(selectedProduct.price),
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    productId: "",
-                                    link: "",
-                                  }));
-                                  toast.info("Vínculo com o produto removido.");
-                                }}
-                                className="shrink-0 cursor-pointer rounded-lg border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-red-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
-                              >
-                                Desvincular
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              <div className="relative">
-                                <Input
-                                  id="banner-product-search"
-                                  name="productSearch"
-                                  type="text"
-                                  placeholder="Pesquise o produto pelo nome para vincular..."
-                                  value={productSearch}
-                                  onChange={(e) =>
-                                    setProductSearch(e.target.value)
-                                  }
-                                  className="h-9 rounded-xl border-white/10 bg-zinc-900/50 pl-9 pr-8 text-xs text-white placeholder:text-zinc-500 focus:border-[#FFBF00]/50 focus:ring-[#FFBF00]"
-                                />
-                                <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
-                                {productSearch && (
-                                  <button
-                                    onClick={() => setProductSearch("")}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
-                                  >
-                                    <X className="size-3.5" />
-                                  </button>
-                                )}
-                              </div>
-
-                              <div className="custom-scrollbar max-h-40 space-y-1 overflow-y-auto pr-1">
-                                {filteredProducts.slice(0, 5).map((p) => (
-                                  <button
-                                    key={p.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        productId: p.id,
-                                        link: `/product-detail?id=${p.id}`,
-                                      }));
-                                      setProductSearch("");
-                                      toast.success(`Vinculado a: ${p.name}!`);
-                                    }}
-                                    className="flex w-full cursor-pointer select-none items-center justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-1.5 text-left transition-all hover:border-amber-500/20 hover:bg-zinc-900/30 active:scale-[0.99]"
-                                  >
-                                    <div className="flex min-w-0 items-center gap-2">
-                                      <div className="size-9 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-zinc-900">
-                                        {p.images?.[0] ? (
-                                          <img
-                                            src={p.images[0]}
-                                            alt={p.name}
-                                            className="size-full object-cover"
-                                          />
-                                        ) : (
-                                          <div className="flex size-full items-center justify-center text-center text-[11px] leading-tight text-zinc-600">
-                                            Sem foto
-                                          </div>
-                                        )}
-                                      </div>
-                                      <div className="min-w-0">
-                                        <h5 className="truncate text-[11px] font-bold leading-snug text-white">
-                                          {p.name}
-                                        </h5>
-                                        <p className="truncate text-[11px] leading-none text-zinc-500">
-                                          {p.category || "Sem categoria"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-1.5">
-                                      <span className="font-mono text-[11px] font-black text-amber-500">
-                                        {formatCurrency(Number(p.price))}
-                                      </span>
-                                      <span className="rounded border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-400 transition-colors group-hover:text-white">
-                                        Vincular
-                                      </span>
-                                    </div>
-                                  </button>
-                                ))}
-
-                                {filteredProducts.length === 0 && (
-                                  <div className="py-2 text-center text-[11px] italic text-zinc-650">
-                                    Nenhum produto correspondente encontrado.
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {destinationMode === "route" && (
-                        <div className="space-y-2 border-t border-white/5 pt-3">
-                          <span className="text-[11px] font-black uppercase tracking-wider text-purple-400">
-                            🏷️ Escolha a Página da Loja
-                          </span>
-                          <div className="custom-scrollbar flex max-h-28 flex-wrap gap-1 overflow-y-auto p-0.5">
-                            {dynamicRouteSuggestions.map((route) => (
-                              <button
-                                key={route.path}
-                                type="button"
-                                onClick={() => {
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    link: route.path,
-                                    productId: "",
-                                  }));
-                                  toast.success(
-                                    `Página "${route.label}" selecionada!`,
-                                  );
-                                }}
-                                className={cn(
-                                  "cursor-pointer rounded-lg border border-white/10 bg-zinc-900/80 px-2.5 py-1 text-[11px] font-bold text-zinc-300 transition-all hover:border-purple-400/30 hover:text-white active:scale-95",
-                                  formData.link === route.path &&
-                                    "border-purple-400 bg-purple-400/20 font-extrabold text-white shadow-[0_0_10px_rgba(192,132,252,0.2)]",
-                                )}
-                              >
-                                {route.label} {route.path && `(${route.path})`}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {destinationMode === "custom" && (
-                        <div className="space-y-2 border-t border-white/5 pt-3">
-                          <span className="text-[11px] font-black uppercase tracking-wider text-sky-400">
-                            🌐 Digite a URL ou Link Customizado
-                          </span>
-                          <LocalBufferedInput
-                            id="banner-link-custom"
-                            name="link"
-                            value={formData.link || ""}
-                            onFlush={(val) =>
-                              setFormData((prev) => {
-                                // Endereço de site sem https:// ganha o
-                                // https:// já aqui: sem isso o painel o
-                                // tratava como "Página da Loja" e o campo
-                                // sumia da tela enquanto a lojista digitava.
-                                const gravado = linkDoBannerParaSalvar(val);
-                                return {
-                                  ...prev,
-                                  link: gravado?.startsWith("https://")
-                                    ? gravado
-                                    : val,
-                                };
-                              })
-                            }
-                            validate={avisoDoLinkDigitado}
-                            placeholder="Ex: https://wa.me/5511999999999 ou link externo"
-                            useShadcn={true}
-                            className="h-9 rounded-xl border-white/10 bg-zinc-900/90 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-sky-400 focus:ring-sky-400"
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Seção de Agendamento */}
-                    <div className="space-y-2.5 rounded-xl border border-white/5 bg-zinc-900/20 p-2.5 sm:p-3">
-                      <div className="flex select-none items-center justify-between">
-                        <Label
-                          htmlFor="banner-scheduling-toggle"
-                          className="flex cursor-pointer select-none items-center gap-1.5 text-[11px] font-black uppercase italic tracking-wider text-white"
-                        >
-                          Programação Temporal{" "}
-                          <span title="Define uma data e hora para início e fim da exibição deste banner automaticamente.">
-                            <HelpCircle className="size-3 text-zinc-500 transition-colors hover:text-white" />
-                          </span>
-                        </Label>
-                        <Switch
+                        <InterruptorDoBanner
                           id="banner-scheduling-toggle"
-                          checked={
-                            formData.startDate !== null ||
-                            formData.endDate !== null
-                          }
+                          checked={!!(formData.startDate || formData.endDate)}
                           onCheckedChange={(checked) => {
-                            if (checked) {
-                              const now = new Date();
-                              const startStr = now.toISOString();
-                              const tomorrow = new Date(
-                                now.getTime() + 24 * 60 * 60 * 1000,
-                              );
-                              const endStr = tomorrow.toISOString();
-                              setFormData((prev) => ({
-                                ...prev,
-                                startDate: startStr,
-                                endDate: endStr,
-                              }));
-                            } else {
+                            if (checked) handleApplyDatePreset("24h");
+                            else
                               setFormData((prev) => ({
                                 ...prev,
                                 startDate: null,
                                 endDate: null,
                               }));
-                            }
                           }}
-                          className="scale-90 data-[state=checked]:bg-[#FFBF00]"
                         />
                       </div>
-
-                      {(formData.startDate !== null ||
-                        formData.endDate !== null) && (
-                        <div className="space-y-2 pt-0.5 duration-300 animate-in fade-in slide-in-from-top-2">
-                          {/* Quick Date Presets */}
-                          <div className="flex select-none flex-wrap gap-1">
-                            {[
-                              { label: "⚡ Próximas 24h", value: "24h" },
-                              {
-                                label: "📅 Fim de Semana",
-                                value: "weekend",
-                              },
-                              { label: "🗓️ 7 Dias", value: "7d" },
-                              { label: "📆 30 Dias", value: "30d" },
-                            ].map((preset) => (
-                              <button
-                                key={preset.value}
-                                type="button"
-                                onClick={() =>
-                                  handleApplyDatePreset(preset.value as any)
-                                }
-                                className="cursor-pointer rounded-lg border border-white/5 bg-zinc-900 px-2 py-0.5 text-[11px] font-bold text-zinc-300 transition-all hover:border-[#FFBF00]/30 hover:bg-zinc-800 hover:text-white active:scale-95"
+                      {(formData.startDate || formData.endDate) && (
+                        <>
+                          <div className="flex flex-wrap gap-2">
+                            {(
+                              [
+                                ["24h", "Próximas 24h"],
+                                ["weekend", "Fim de Semana"],
+                                ["7d", "7 Dias"],
+                                ["30d", "30 Dias"],
+                              ] as const
+                            ).map(([valor, rotulo]) => (
+                              <Button
+                                key={valor}
+                                variant="outline"
+                                className="min-h-11 border-admin-border bg-admin-raised text-white"
+                                onClick={() => handleApplyDatePreset(valor)}
                               >
-                                {preset.label}
-                              </button>
+                                {rotulo}
+                              </Button>
                             ))}
                           </div>
-
-                          <div className="grid grid-cols-1 gap-2.5 pt-0.5 sm:grid-cols-2">
-                            <div className="space-y-1">
-                              <Label
-                                htmlFor="banner-start-date"
-                                className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
-                              >
-                                Data/Hora de Início
-                              </Label>
-                              <Input
-                                id="banner-start-date"
-                                name="startDate"
-                                type="datetime-local"
-                                value={toLocalDatetimeLocal(formData.startDate)}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    startDate: e.target.value
-                                      ? new Date(e.target.value).toISOString()
-                                      : null,
-                                  }))
-                                }
-                                className="h-9 rounded-xl border-white/10 bg-zinc-900/50 text-xs font-semibold text-white focus:ring-[#FFBF00]"
-                              />
-                            </div>
-
-                            <div className="space-y-1">
-                              <Label
-                                htmlFor="banner-end-date"
-                                className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
-                              >
-                                Data/Hora de Fim (Expiração)
-                              </Label>
-                              <Input
-                                id="banner-end-date"
-                                name="endDate"
-                                type="datetime-local"
-                                value={toLocalDatetimeLocal(formData.endDate)}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    endDate: e.target.value
-                                      ? new Date(e.target.value).toISOString()
-                                      : null,
-                                  }))
-                                }
-                                className="h-9 rounded-xl border-white/10 bg-zinc-900/50 text-xs font-semibold text-white focus:ring-[#FFBF00]"
-                              />
-                            </div>
-
-                            {problemaDasDatas(
-                              formData.startDate,
-                              formData.endDate,
-                            ) === "fim-antes-do-inicio" ? (
-                              <div
-                                role="alert"
-                                className="col-span-2 select-none rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-[11px] font-bold text-rose-400"
-                              >
-                                ⚠️ {MENSAGEM_FIM_ANTES_DO_INICIO}
-                              </div>
-                            ) : (
-                              formData.endDate && (
-                                <p className="select-none text-[11px] font-bold text-amber-300 sm:col-span-2">
-                                  ⏱ {fimDoBannerEmTexto(formData.endDate)}
-                                </p>
-                              )
-                            )}
-                          </div>
-
-                          {/* Scheduling Sentinel - Campaign Overlap & Clutter Auditor */}
-                          {(() => {
-                            const { list, level } = schedulingConflicts;
-                            if (level === "none") return null;
-
-                            let borderClass =
-                              "border-emerald-500/20 bg-emerald-500/5 text-emerald-400";
-                            let title = "Fricção Baixa (1 Banner Ativo) ✓";
-                            let desc =
-                              "Esta campanha será a única em exibição neste setor durante o período selecionado. Foco total do cliente.";
-                            let IconComponent = Play;
-
-                            if (level === "medium") {
-                              borderClass =
-                                "border-amber-500/20 bg-amber-500/5 text-amber-400";
-                              title = "Fricção Média (2 Banners Ativos) ⇄";
-                              desc =
-                                "Duas campanhas estarão ativas simultaneamente. Os banners serão exibidos em formato de carrossel rotativo.";
-                              IconComponent = SlidersHorizontal;
-                            } else if (level === "high") {
-                              borderClass =
-                                "border-rose-500/20 bg-rose-500/5 text-rose-400";
-                              title = "Fricção Alta (3+ Banners Ativos) ⚠️";
-                              desc =
-                                "Atenção: Três ou mais campanhas estarão ativas simultaneamente. O excesso de rotações pode reduzir o engajamento e a conversão de cada banner individual.";
-                              IconComponent = Bell;
+                          <Label htmlFor="banner-start-date">
+                            Data/Hora de Início
+                          </Label>
+                          <Input
+                            id="banner-start-date"
+                            type="datetime-local"
+                            className="min-h-11 border-admin-border bg-admin-bg text-white"
+                            value={toLocalDatetimeLocal(formData.startDate)}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                startDate: e.target.value
+                                  ? new Date(e.target.value).toISOString()
+                                  : null,
+                              }))
                             }
-
-                            return (
-                              <div
-                                className={cn(
-                                  "rounded-xl border p-2.5 space-y-2 mt-2 select-none animate-in fade-in slide-in-from-top-2 duration-300",
-                                  borderClass,
-                                )}
-                              >
-                                <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider">
-                                  <IconComponent className="size-3 shrink-0" />
-                                  <span>{title}</span>
-                                </div>
-                                <p className="text-[11px] font-medium leading-relaxed opacity-80">
-                                  {desc}
-                                </p>
-                                {list.length > 0 && (
-                                  <div className="space-y-1 border-t border-white/5 pt-1.5">
-                                    <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                                      Campanhas Concorrentes:
-                                    </span>
-                                    <div className="flex flex-wrap gap-1">
-                                      {list.map((c) => (
-                                        <div
-                                          key={c.id}
-                                          className="flex shrink-0 items-center gap-1 rounded-lg border border-white/5 bg-zinc-950/60 px-1.5 py-0.5 text-[11px] font-bold text-white"
-                                        >
-                                          <div className="size-2.5 shrink-0 overflow-hidden rounded-sm border border-white/10 bg-zinc-900">
-                                            {c.imageUrl && (
-                                              <img
-                                                src={c.imageUrl}
-                                                className="size-full object-cover"
-                                                alt=""
-                                              />
-                                            )}
-                                          </div>
-                                          <span className="max-w-[90px] truncate">
-                                            {c.title || "Sem título"}
-                                          </span>
-                                          <span className="font-mono text-[11px] text-zinc-550">
-                                            (#{c.order})
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
+                          />
+                          <Label htmlFor="banner-end-date">
+                            Data/Hora de Fim (Expiração)
+                          </Label>
+                          <Input
+                            id="banner-end-date"
+                            type="datetime-local"
+                            className="min-h-11 border-admin-border bg-admin-bg text-white"
+                            value={toLocalDatetimeLocal(formData.endDate)}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                endDate: e.target.value
+                                  ? new Date(e.target.value).toISOString()
+                                  : null,
+                              }))
+                            }
+                          />
+                          {problemaDasDatas(
+                            formData.startDate,
+                            formData.endDate,
+                          ) === "fim-antes-do-inicio" ? (
+                            <p role="alert" className="text-sm text-rose-400">
+                              {MENSAGEM_FIM_ANTES_DO_INICIO}
+                            </p>
+                          ) : (
+                            formData.endDate && (
+                              <p className="text-sm">
+                                {fimDoBannerEmTexto(formData.endDate)}
+                              </p>
+                            )
+                          )}
+                          {schedulingConflicts.level !== "none" && (
+                            <p className="text-sm">
+                              Neste período:{" "}
+                              {schedulingConflicts.list.length + 1} banners
+                              ligados neste setor.{" "}
+                              {schedulingConflicts.list
+                                .map((b) => b.title || "Sem título")
+                                .join(", ")}
+                            </p>
+                          )}
+                        </>
                       )}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <Label
-                          htmlFor="banner-order"
-                          className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
-                        >
-                          Prioridade de Exibição (Ordem)
-                        </Label>
-                        <Input
-                          id="banner-order"
-                          name="order"
-                          type="number"
-                          value={formData.order ?? ""}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              order: Number(e.target.value),
-                            })
-                          }
-                          className="h-9 rounded-xl border-white/10 bg-zinc-900/50 text-xs font-bold text-white focus:ring-[#FFBF00]"
-                        />
-                      </div>
-
-                      <div className="flex h-9 items-center justify-between self-end rounded-xl border border-white/5 bg-black/40 px-3 shadow-inner">
-                        <Label
-                          htmlFor="banner-active"
-                          className="flex cursor-pointer select-none items-center gap-1.5 text-[11px] font-black uppercase italic tracking-wider text-white"
-                        >
-                          Banner Ativo <Zap className="size-3 text-[#FFBF00]" />
-                        </Label>
-                        <Switch
-                          id="banner-active"
-                          name="active"
-                          checked={formData.active}
-                          onCheckedChange={(checked) =>
-                            setFormData({ ...formData, active: checked })
-                          }
-                          className="scale-85 data-[state=checked]:bg-[#FFBF00]"
-                        />
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-            </div>
-
-            {/* Footer Action buttons */}
-            <div className="flex select-none flex-col gap-2 border-t border-white/5 pt-3 sm:flex-row sm:gap-3">
-              {bannerMode === "simple" ? (
-                <>
+                    </section>
+                    {!modelo && (
+                      <>
+                        <div className="flex min-h-11 items-center justify-between">
+                          <Label htmlFor="banner-textos">
+                            Textos sobre a imagem
+                          </Label>
+                          <InterruptorDoBanner
+                            id="banner-textos"
+                            checked={bannerMode === "complete"}
+                            onCheckedChange={(checked) =>
+                              escolherOModo(checked ? "complete" : "simple")
+                            }
+                          />
+                        </div>
+                        {bannerMode === "complete" && (
+                          <>
+                            <CamposDeTextoDoBanner
+                              formData={formData}
+                              aoMudar={setFormData}
+                            />
+                            <div
+                              className="flex flex-wrap gap-2"
+                              aria-label="Sugestões de botão"
+                            >
+                              {[
+                                "Ver Produto",
+                                "Comprar Agora",
+                                "Aproveitar Oferta",
+                                "Confira",
+                                "",
+                              ].map((texto) => (
+                                <Button
+                                  key={texto}
+                                  variant="outline"
+                                  className="min-h-11 border-admin-border bg-admin-raised text-white"
+                                  onClick={() =>
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      buttonText: texto,
+                                    }))
+                                  }
+                                >
+                                  {texto || "Limpar botão"}
+                                </Button>
+                              ))}
+                            </div>
+                            {productSuggestions && (
+                              <div className="space-y-2">
+                                <p className="text-xs">Sugestões do produto</p>
+                                {productSuggestions.titles.map((t) => (
+                                  <Button
+                                    key={t}
+                                    variant="outline"
+                                    className="min-h-11 max-w-full whitespace-normal border-admin-border bg-admin-raised text-white"
+                                    onClick={() =>
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        title: t.slice(0, 60),
+                                      }))
+                                    }
+                                  >
+                                    {t}
+                                  </Button>
+                                ))}
+                                {productSuggestions.subtitles.map((t) => (
+                                  <Button
+                                    key={t}
+                                    variant="outline"
+                                    className="min-h-11 max-w-full whitespace-normal border-admin-border bg-admin-raised text-white"
+                                    onClick={() =>
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        subtitle: t.slice(0, 80),
+                                      }))
+                                    }
+                                  >
+                                    {t}
+                                  </Button>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex min-h-11 items-center justify-between">
+                              <Label htmlFor="banner-show-overlay">
+                                Exibir textos e botão
+                              </Label>
+                              <InterruptorDoBanner
+                                id="banner-show-overlay"
+                                checked={formData.showTextOverlay !== false}
+                                onCheckedChange={(showTextOverlay) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    showTextOverlay,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <Label htmlFor="banner-old-layout">
+                              Disposição do texto
+                            </Label>
+                            <select
+                              id="banner-old-layout"
+                              className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
+                              value={formData.templateType || "default"}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  templateType: e.target.value,
+                                }))
+                              }
+                            >
+                              {[
+                                ["default", "Inferior esquerda"],
+                                ["split_center", "Centralizado"],
+                                ["split_left", "À esquerda"],
+                                ["split_right", "À direita"],
+                                ["neon_glow", "Neon"],
+                                ["glassmorphic", "Vidro"],
+                              ].map(([id, nome]) => (
+                                <option key={id} value={id}>
+                                  {nome}
+                                </option>
+                              ))}
+                            </select>
+                            <Label htmlFor="banner-font">Fonte</Label>
+                            <select
+                              id="banner-font"
+                              className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
+                              value={formData.fontFamily || "system"}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  fontFamily: e.target.value,
+                                }))
+                              }
+                            >
+                              {[
+                                ["system", "Sem serifa"],
+                                ["font-serif", "Serifa"],
+                                ["font-mono", "Mono"],
+                                ["font-display", "Display"],
+                              ].map(([id, nome]) => (
+                                <option key={id} value={id}>
+                                  {nome}
+                                </option>
+                              ))}
+                            </select>
+                            <details>
+                              <summary className="flex min-h-11 cursor-pointer items-center text-sm text-white">
+                                Cores e filtro da imagem
+                              </summary>
+                              <div className="space-y-3 pt-3">
+                                <Label htmlFor="banner-color-element">
+                                  O que colorir
+                                </Label>
+                                <select
+                                  id="banner-color-element"
+                                  className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
+                                  value={targetColorEl}
+                                  onChange={(e) =>
+                                    setActiveColorElement(
+                                      e.target
+                                        .value as typeof activeColorElement,
+                                    )
+                                  }
+                                >
+                                  {colorElements.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Input
+                                  type="color"
+                                  aria-label="Cor personalizada"
+                                  className="min-h-11 w-full bg-admin-bg"
+                                  value={formData[targetColorEl] || "#FFFFFF"}
+                                  onChange={(e) =>
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      [targetColorEl]: e.target.value,
+                                    }))
+                                  }
+                                />
+                                <div className="flex flex-wrap gap-2">
+                                  {[
+                                    ...brandingColors,
+                                    ...presetColors,
+                                    ...extractedColors.map((hex) => ({
+                                      name: hex,
+                                      hex,
+                                    })),
+                                  ].map((c, i) => (
+                                    <button
+                                      key={`${c.name}-${i}`}
+                                      type="button"
+                                      title={c.name}
+                                      aria-label={c.name}
+                                      className="min-h-11 min-w-11 rounded-xl border border-admin-border-strong ring-1 ring-inset ring-admin-border-strong"
+                                      style={{ backgroundColor: c.hex }}
+                                      onClick={() =>
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          [targetColorEl]: c.hex,
+                                        }))
+                                      }
+                                    />
+                                  ))}
+                                </div>
+                                <Label htmlFor="banner-overlay-opacity">
+                                  Intensidade do filtro:{" "}
+                                  {formData.overlayOpacity ?? 40}%
+                                </Label>
+                                <Input
+                                  id="banner-overlay-opacity"
+                                  type="range"
+                                  min="0"
+                                  max="100"
+                                  className="min-h-11 w-full"
+                                  value={formData.overlayOpacity ?? 40}
+                                  onChange={(e) =>
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      overlayOpacity: Number(e.target.value),
+                                    }))
+                                  }
+                                />
+                                <div className="flex flex-wrap gap-2">
+                                  {[20, 40, 70].map((n) => (
+                                    <Button
+                                      key={n}
+                                      variant="outline"
+                                      className="min-h-11 border-admin-border bg-admin-raised text-white"
+                                      onClick={() =>
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          overlayOpacity: n,
+                                        }))
+                                      }
+                                    >
+                                      {n}%
+                                    </Button>
+                                  ))}
+                                </div>
+                                <p className="text-xs">
+                                  Contraste estimado: título{" "}
+                                  {computedTitleRatio}:1 · subtítulo{" "}
+                                  {computedSubtitleRatio}:1 · botão{" "}
+                                  {computedButtonRatio}:1
+                                </p>
+                                <Button
+                                  variant="outline"
+                                  className="min-h-11 border-admin-border bg-admin-raised text-white"
+                                  onClick={handleOptimizeContrast}
+                                >
+                                  Melhorar contraste
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  className="min-h-11 border-admin-border bg-admin-raised text-white"
+                                  onClick={handleAutoThemeFromImage}
+                                >
+                                  Usar cores da imagem
+                                </Button>
+                                <Label htmlFor="banner-theme">
+                                  Combinações prontas
+                                </Label>
+                                <select
+                                  id="banner-theme"
+                                  defaultValue=""
+                                  className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
+                                  onChange={(e) => {
+                                    const preset = themePresets.find(
+                                      (p) => p.name === e.target.value,
+                                    );
+                                    if (preset) {
+                                      const {
+                                        name: _nome,
+                                        description: _descricao,
+                                        ...cores
+                                      } = preset;
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        ...cores,
+                                      }));
+                                    }
+                                  }}
+                                >
+                                  <option value="" disabled>
+                                    Escolha uma combinação
+                                  </option>
+                                  {themePresets.map((p) => (
+                                    <option key={p.name} value={p.name}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </details>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </details>
+                <div className="flex flex-col gap-2">
                   <Button
-                    variant="ghost"
-                    onClick={handleCloseDialog}
-                    disabled={isSubmitting}
-                    className="h-9.5 flex-1 cursor-pointer rounded-xl text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all hover:bg-white/5 hover:text-white"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
+                    className="min-h-12 w-full rounded-2xl bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current hover:bg-white"
                     onClick={handleSubmit}
-                    disabled={uploading || isSubmitting || isOffline}
-                    className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
+                    disabled={ocupadoComImagem || isOffline}
                   >
                     {isOffline
                       ? "Modo Offline"
-                      : uploading
+                      : uploading || isUploadingAdjusted
                         ? "Enviando Imagem..."
                         : isSubmitting
                           ? "Salvando..."
-                          : "Salvar Banner"}
+                          : modelo
+                            ? editingBanner
+                              ? "Salvar Alterações"
+                              : "Salvar Banner"
+                            : bannerMode === "complete"
+                              ? "Salvar Alterações"
+                              : "Salvar Banner"}
                   </Button>
-                </>
-              ) : (
-                <>
-                  {activeStep > 1 ? (
-                    <Button
-                      variant="ghost"
-                      onClick={() => setActiveStep((prev) => (prev - 1) as any)}
-                      className="h-9.5 flex-1 cursor-pointer rounded-xl text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:bg-white/5 hover:text-white"
-                    >
-                      Voltar
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      onClick={handleCloseDialog}
-                      disabled={isSubmitting}
-                      className="h-9.5 flex-1 cursor-pointer rounded-xl text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all hover:bg-white/5 hover:text-white"
-                    >
-                      Cancelar
-                    </Button>
-                  )}
-                  {activeStep < 3 ? (
-                    <Button
-                      onClick={() => {
-                        if (!formData.imageUrl) {
-                          toast.error(
-                            "Por favor, envie uma imagem antes de prosseguir.",
-                            {
-                              icon: "📸",
-                            },
-                          );
-                          return;
-                        }
-                        setActiveStep((prev) => (prev + 1) as any);
-                      }}
-                      className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] active:scale-95"
-                    >
-                      Continuar
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={handleSubmit}
-                      disabled={uploading || isSubmitting || isOffline}
-                      className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
-                    >
-                      {isOffline
-                        ? "Modo Offline"
-                        : uploading
-                          ? "Enviando Imagem..."
-                          : isSubmitting
-                            ? "Salvando..."
-                            : "Salvar Alterações"}
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
+                  <Button
+                    variant="ghost"
+                    className="min-h-11 text-zinc-400"
+                    disabled={isSubmitting}
+                    onClick={handleCloseDialog}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
-        </div>
-      )}
-
+        )}
+      </div>
       {/* Modal de Ajuda */}
       <AdminHelpModal
         isOpen={showHelpModal}
@@ -5138,49 +3238,49 @@ export const AdminBannersView = memo(function AdminBannersView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-amber-500 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-[#FFBF00]">
+            <h4 className="border-l-2 border-admin-border pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-200">
               Parâmetros dos Banners
             </h4>
             <div className="grid select-none grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white">
                   <Layout className="size-4 text-emerald-500" />
                   Imagem Promocional
                 </div>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-zinc-400">
                   Ideal usar proporção horizontal de 21:9. Imagens com boa
                   legibilidade aumentam a conversão.
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white">
-                  <ExternalLink className="size-4 text-[#FFBF00]" />
+                  <ExternalLink className="size-4 text-zinc-200" />
                   Link de Destino
                 </div>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-zinc-400">
                   A página do app para onde o cliente será levado ao tocar no
                   banner (por exemplo, um produto ou uma categoria).
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white">
                   <ArrowUp className="size-4 text-sky-500" />
                   Sequência / Ordenação
                 </div>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-zinc-400">
                   Prioridade de exibição na fila de slides. Ordene usando os
                   controles simples no painel.
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white">
                   <Sparkles className="size-4 text-purple-500" />
                   Status de Exibição
                 </div>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-zinc-400">
                   Suspenda ou ative a visibilidade de qualquer campanha
                   instantaneamente usando o botão de alternar.
                 </p>
@@ -5225,7 +3325,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         open={confirmarFimVencido}
         onOpenChange={(open) => !open && setConfirmarFimVencido(false)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-admin-surface">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Banner já terminou
@@ -5235,7 +3335,7 @@ export const AdminBannersView = memo(function AdminBannersView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="min-h-11 rounded-xl border-0 bg-admin-raised px-4 py-2 text-xs font-bold text-zinc-200 hover:bg-admin-hover hover:text-white dark:bg-admin-raised dark:hover:bg-admin-hover">
               Voltar e ajustar
             </AlertDialogCancel>
             <AlertDialogAction
@@ -5244,7 +3344,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                 setConfirmarFimVencido(false);
                 handleSubmit();
               }}
-              className="rounded-xl border-0 bg-amber-500 px-4 py-2 text-xs font-bold text-black hover:bg-amber-400"
+              className="min-h-11 rounded-xl border-0 bg-white px-4 py-2 text-xs font-bold text-black ring-1 ring-inset ring-admin-border-strong hover:bg-white"
             >
               Salvar mesmo assim
             </AlertDialogAction>
@@ -5257,7 +3357,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         open={bannerToDelete !== null}
         onOpenChange={(open) => !open && setBannerToDelete(null)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-admin-surface">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Excluir Banner?
@@ -5268,12 +3368,12 @@ export const AdminBannersView = memo(function AdminBannersView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="min-h-11 rounded-xl border-0 bg-admin-raised px-4 py-2 text-xs font-bold text-zinc-200 hover:bg-admin-hover hover:text-white dark:bg-admin-raised dark:hover:bg-admin-hover">
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeleteBanner}
-              className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
+              className="min-h-11 bg-red-600 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
             >
               Excluir Banner
             </AlertDialogAction>

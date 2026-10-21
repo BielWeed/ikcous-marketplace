@@ -159,6 +159,15 @@ export function installFetchBridge(origin, storage, local) {
   window.fetch = async (input, init) => {
     const expected = String(input);
     const url = new URL(expected);
+    // A sonda de conexão usa uma resposta sintética; nenhum banner real é lido.
+    if (
+      url.origin === origin &&
+      url.pathname === "/rest/v1/banners" &&
+      url.search === "?select=id&limit=1" &&
+      !url.hash &&
+      (init?.method ?? "GET") === "GET"
+    )
+      return new Response("[]", { status: 200 });
     const rpc =
       url.origin === origin &&
       /^\/rest\/v1\/rpc\/(read_store_identity|save_store_identity)$/.test(

@@ -6,7 +6,12 @@ import { defineConfig, loadEnv } from "vite";
 import type { UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
+import {
+  authSemWebAuthn,
+  zodSemJsonSchema,
+} from "./scripts/dependenciasEnxutasDaLoja";
 import { escalasEnxutasDoGrafico } from "./scripts/escalasEnxutasDoGrafico";
+import { graficoEnxuto } from "./scripts/graficoEnxuto";
 import { helpersCompartilhadosDoGrafico } from "./scripts/helpersCompartilhadosDoGrafico";
 import { portaoDividido } from "./scripts/portaoDividido";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
@@ -135,10 +140,17 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     },
     plugins: [
       identity.plugin,
+      // Só gerador de JSON Schema e WebAuthn não usados; versões e conteúdo
+      // travados. Validação de formulários e login mantêm a implementação original.
+      zodSemJsonSchema(),
+      authSemWebAuthn(),
       // O recharts mantém o d3-scale INTEIRO por um acesso dinâmico; os gráficos
       // do painel só usam 3 escalas (~6 kB brotli). Detalhes e a trava que
       // protege o caso `scale="time"` em scripts/escalasEnxutasDoGrafico.ts.
       escalasEnxutasDoGrafico(),
+      // Caminhos não usados do Recharts e interpolação só numérica. Guardas e
+      // prova SVG dos três gráficos em tests/front/grafico-enxuto* e helpers*.
+      graficoEnxuto(),
       // Helpers Babel com AST e bindings aprovados passam a uma definição
       // compartilhada, só dentro do Recharts, antes da minificação.
       helpersCompartilhadosDoGrafico(),
@@ -228,6 +240,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
             // Brotli. Lista fechada: não absorver telas ou dependências novas
             // por uma regra genérica de diretório. O nome sem Admin* mantém
             // esta dependência estática do PDV no precache existente.
+            // 20/10/2026: AcaoDaBarra, erro-do-painel e variante-composta eram
+            // chunks de ~0,5 kB cada, citados pelo hash por 2 a 9 chunks e nas
+            // listas de pré-carga: o hash não comprime. Juntos no painel-ui,
+            // o painel caiu 544 B brotli no fixture (471,74 -> 471,20 kB) e o
+            // cliente subiu 13 B. Só entra aqui módulo cujas dependências já
+            // estão em chunk manual (react, react-dom) ou não existem: uma
+            // dependência solta seria arrastada para este chunk e, se a vitrine
+            // a usa, o painel-ui passaria a contar no teto do cliente.
             if (
               /\/src\/components\/admin\/(AdminPageHeader|AdminHelpModal)\.tsx$/.test(
                 normalizedId,
@@ -238,7 +258,16 @@ export default defineConfig(async (context): Promise<UserConfig> => {
               /\/src\/components\/ui\/(select|tabs|badge|card|dropdown-menu)\.tsx$/.test(
                 normalizedId,
               ) ||
-              normalizedId.endsWith("/src/hooks/useScrollRestoration.ts")
+              // Módulos exclusivos do painel; WhatsApp já é arrastado pelo CRM.
+              // Fixá-lo explicita a fronteira: importá-lo na vitrine levaria
+              // TODO o painel-ui para o orçamento da loja.
+              /\/src\/lib\/(financeiro|crm|whatsapp-do-cliente)\.ts$/.test(
+                normalizedId,
+              ) ||
+              normalizedId.endsWith("/src/hooks/useScrollRestoration.ts") ||
+              /\/src\/(components\/layouts\/AcaoDaBarra\.tsx|lib\/erro-do-painel\.ts|utils\/variante-composta\.ts)$/.test(
+                normalizedId,
+              )
             ) {
               return "painel-ui";
             }

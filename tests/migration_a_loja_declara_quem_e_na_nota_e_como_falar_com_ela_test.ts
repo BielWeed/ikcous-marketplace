@@ -568,12 +568,12 @@ Deno.test("8e e 9a: o corpo novo da upsert_store_config e' a sucessora na 8e (o 
     sql8e.includes(`('upsert_store_config', '${H_NOVO}', '20261239000000')`),
     "8e: a sucessora",
   );
-  // A 9a prova o corpo MAIS NOVO da função: depois da 20261244000000 (a loja escolhe como entrega na cidade) é o dela.
+  // A 9a prova o corpo MAIS NOVO da função: depois da 20261310000000 (estilo do card de frete) é o dela.
   assert.ok(
     sql9a.includes(
-      "('upsert_store_config', '391e8e1064400df5aea579f3472b203c')",
+      "('upsert_store_config', 'aa4ed730ac6ad3d3c2644b4285ff39a9')",
     ),
-    "9a: o corpo final e o da sucessora (20261244000000)",
+    "9a: o corpo final e o da sucessora (20261310000000)",
   );
   assert.ok(
     !sql9a.includes(H_NOVO),

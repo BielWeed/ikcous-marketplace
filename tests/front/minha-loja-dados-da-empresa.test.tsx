@@ -356,8 +356,11 @@ describe("Minha loja › Dados da empresa", () => {
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
     await digitar(razao(), "Loja da Ana");
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
-    expect(
-      hospedeiro.querySelector("[data-empresa-pendente]")?.textContent,
-    ).toContain("Os dados da empresa ainda não foram salvos");
+    const bloco = [...hospedeiro.querySelectorAll("section")].find(
+      (s) =>
+        s.querySelector("h2")?.textContent === "Dados da empresa (opcional)",
+    );
+    expect(bloco?.textContent).toContain("Alterado");
+    expect(hospedeiro.textContent).toContain("1 alteração para salvar");
   });
 });

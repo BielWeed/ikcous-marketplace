@@ -78,6 +78,7 @@ import {
   retiradaLivreParaQualquerCep,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   formasDePagamentoParaTotalZero,
@@ -112,7 +113,7 @@ import {
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
-import { arredondarParaCentavos, cn } from "@/lib/utils";
+import { arredondarParaCentavos, cn, formatCurrency } from "@/lib/utils";
 import type {
   Address,
   CartItem,
@@ -133,6 +134,7 @@ import {
   Clock,
   CreditCard,
   FileText,
+  Info,
   Loader2,
   Lock,
   MapPin,
@@ -293,6 +295,15 @@ const ORDEM_CAMPOS_FOCO = [
  * o teste já está montado.
  */
 const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
+  if (
+    (error as { code?: string } | null)?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL"
+  ) {
+    return {
+      acao: "conferir_antes",
+      mensagem:
+        "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.",
+    };
+  }
   if ((error as { code?: string } | null)?.code === "PEDIDO_SEM_RESPOSTA") {
     return {
       acao: "conferir_antes",
@@ -1698,11 +1709,11 @@ export function CheckoutViewDaConta({
     cancelamentoBloqueadoPelaGuardaDoCartao,
     setCancelamentoBloqueadoPelaGuardaDoCartao,
   ] = useState(false);
-  // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
-  // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
-  // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
-  // valor que não bate com o total já gravado no pedido.
+  // Valor relido do pedido gravado: limpar o carrinho não altera o total que
+  // o cabeçalho mostra e que o Brick recebe.
   const [valorDoPedido, setValorDoPedido] = useState(0);
+  const [valorFinalDiferenteDoCarrinho, setValorFinalDiferenteDoCarrinho] =
+    useState(false);
   // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
   // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
@@ -2017,7 +2028,9 @@ export function CheckoutViewDaConta({
       setAvisoDaRetomada(
         verificacao === "recusado"
           ? "O pagamento com cartão não foi concluído."
-          : null,
+          : erroPagamento
+            ? "O pagamento com cartão não passou desta vez. Nenhum valor foi cobrado. Tente de novo em alguns instantes ou pague com PIX."
+            : null,
       );
       setRetomadaBloqueadaPorSentinela(false);
       setCobrancaEmDuvida(null);
@@ -2025,7 +2038,7 @@ export function CheckoutViewDaConta({
       setErroCancelamento(null);
       setRetomadaEscolhendoForma(true);
     },
-    [],
+    [erroPagamento],
   );
   // C6 (P2, 02/10/2026): "Pagar com PIX" da verificação com o 3DS de order
   // CONFIRMADA (`paymentId` do GET) — a mesma troca da tela do cartão da
@@ -3351,13 +3364,6 @@ export function CheckoutViewDaConta({
   // pagamento (a decisão do total zero precisa deles, e os efeitos rodam antes
   // do retorno antecipado de `authLoading`).
 
-  // ECONOMIA total exibida na barra de baixo (pedido do Gabriel,
-  // 12/09/2026): cupom + o que o frete grátis deixou de cobrar. NÃO muda o
-  // Total — a economia do frete já está embutida nele (frete grátis já
-  // entra como 0 em `shipping`/`total`); somar aqui de novo dobraria o
-  // desconto. Isto é só o NÚMERO da pílula.
-  const economiaTotal = discount + economiaDoFrete;
-
   const isValid = form.formState.isValid;
 
   // REGRA DO CONVIDADO (decisão do Gabriel, 30/08/2026 — laudo caça-bugs
@@ -3477,6 +3483,7 @@ export function CheckoutViewDaConta({
   // exatamente isso que acabou de acontecer aqui. Com um nome só, a próxima
   // exigência entra num lugar, não em dois.
   const botaoFinalizarDesabilitado =
+    cart.length === 0 ||
     leituraDaRetomadaPendente ||
     !isValid ||
     isSubmitting ||
@@ -3640,6 +3647,8 @@ export function CheckoutViewDaConta({
   };
 
   const handleSubmitEvent = async () => {
+    // Este handler cria uma compra nova; retomada paga o pedido já existente.
+    if (cart.length === 0) return;
     const contaEsperada = user?.id ?? null;
     // Pedido retomado com a primeira leitura em voo: o pedido JÁ existe, e
     // este envio criaria um segundo. Antes da trava de envio de propósito —
@@ -4029,6 +4038,45 @@ export function CheckoutViewDaConta({
       ...item,
       product: { ...item.product },
     }));
+    // Também vale quando a RPC confirmou o pedido, mas a leitura do total
+    // falhou: a compra saiu do carrinho, sem autorizar pagamento.
+    const limparCompraCriada = () => {
+      gerenteDaChaveRef.current?.esquecer();
+      pedidoCongeladoRef.current = null;
+      limparRascunhoDoCheckout(globalThis.sessionStorage);
+      // Cancelar devolve só o que realmente saiu do carrinho.
+      itensDoPedidoParaRestaurarRef.current = [];
+      const carrinhoAtual = carrinhoAtualRef.current;
+      if (
+        assinaturaDosItensDoCarrinho(carrinhoAtual) ===
+        assinaturaDosItensDoCarrinho(itensEnviados)
+      ) {
+        onClearCart();
+        itensDoPedidoParaRestaurarRef.current = itensEnviados;
+      } else if (removeFromCart) {
+        // Mudanças feitas durante o envio ficam; só sai a linha intacta.
+        for (const item of itensEnviados) {
+          if (
+            carrinhoAtual.some(
+              (atual) =>
+                atual.product.id === item.product.id &&
+                (atual.variantId || "") === (item.variantId || "") &&
+                atual.quantity === item.quantity,
+            )
+          ) {
+            removeFromCart(item.product.id, item.variantId);
+            itensDoPedidoParaRestaurarRef.current.push(item);
+          }
+        }
+      }
+      // Achado 4 da revisão (17/08/2026): sem isto `isSummaryPanelOpen`
+      // continuava `true` na tela seguinte (sucesso ou aguardando
+      // pagamento) — o painel deixa de fazer sentido aqui, junto com o
+      // carrinho que acabou de ser limpo, e o primeiro "voltar" naquela
+      // tela fechava um painel invisível em vez de agir pelo ramo de
+      // `showSuccess || aguardandoPagamento`.
+      setIsSummaryPanelOpen(false);
+    };
     try {
       const order = await aguardarComPrazo(
         createOrder(orderData, { comPagamentoOnline: ehOnline }),
@@ -4040,15 +4088,8 @@ export function CheckoutViewDaConta({
       );
       // A resposta pertence à tela que enviou, não a uma compra aberta depois.
       if (!montadoRef.current) return;
-      // O pedido entrou. A chave cumpriu seu papel: a PRÓXIMA compra — mesmo
-      // com carrinho idêntico — tem de nascer com chave nova, não herdar a
-      // resposta desta.
-      gerenteDaChaveRef.current?.esquecer();
-      pedidoCongeladoRef.current = null;
-      // O rascunho morre junto (laudo 3108, N7): compra fechada não tem
-      // rascunho — vale para sucesso E para aguardando pagamento (o pedido
-      // nasceu nos dois; o que segue é pagamento, não digitação).
-      limparRascunhoDoCheckout(globalThis.sessionStorage);
+      // Pedido confirmado: a próxima compra terá outra chave e outro rascunho.
+      limparCompraCriada();
 
       // O CPF MORA NA CONTA (23/09/2026): pedido JÁ criado com sucesso —
       // isto é conveniência para a PRÓXIMA compra, nunca condição deste
@@ -4077,43 +4118,14 @@ export function CheckoutViewDaConta({
         );
       }
       setOrderId(order.id);
-      setValorDoPedido(pedido.valor);
-      // CHECKOUT-070 (#197): cancelar devolve só o que saiu do carrinho.
-      // Linha preservada por ter mudado não pode ser somada de novo depois.
-      itensDoPedidoParaRestaurarRef.current = [];
-
-      const carrinhoAtual = carrinhoAtualRef.current;
-      if (
-        assinaturaDosItensDoCarrinho(carrinhoAtual) ===
-        assinaturaDosItensDoCarrinho(itensEnviados)
-      ) {
-        onClearCart();
-        itensDoPedidoParaRestaurarRef.current = itensEnviados;
-      } else if (removeFromCart) {
-        // A compra mudou durante o envio: só sai a linha comprada que ainda
-        // está intacta. Quantidade ou variação alterada fica no carrinho.
-        for (const item of itensEnviados) {
-          if (
-            carrinhoAtual.some(
-              (atual) =>
-                atual.product.id === item.product.id &&
-                (atual.variantId || "") === (item.variantId || "") &&
-                atual.quantity === item.quantity,
-            )
-          ) {
-            removeFromCart(item.product.id, item.variantId);
-            itensDoPedidoParaRestaurarRef.current.push(item);
-          }
-        }
-      }
-      // Achado 4 da revisão (17/08/2026): sem isto `isSummaryPanelOpen`
-      // continuava `true` na tela seguinte (sucesso ou aguardando
-      // pagamento) — o painel deixa de fazer sentido aqui, junto com o
-      // carrinho que acabou de ser limpo, e o primeiro "voltar" naquela
-      // tela fechava um painel invisível em vez de agir pelo ramo de
-      // `showSuccess || aguardandoPagamento`.
-      setIsSummaryPanelOpen(false);
-
+      setValorDoPedido(order.totalAmount);
+      setValorFinalDiferenteDoCarrinho(
+        ehOnline &&
+          Math.abs(
+            Math.round(order.totalAmount * 100) -
+              Math.round(pedido.valor * 100),
+          ) > 0,
+      );
       if (ehOnline) {
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
         // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
@@ -4135,6 +4147,15 @@ export function CheckoutViewDaConta({
     } catch (error: any) {
       if (!montadoRef.current) return;
       console.error("Error creating order:", error);
+      if (
+        error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" &&
+        typeof error.pedidoId === "string" &&
+        error.pedidoId !== ""
+      ) {
+        // O ID veio da RPC bem-sucedida, não de uma tentativa sem resposta.
+        // Não ligar aguardandoPagamento: falta o total autoritativo.
+        limparCompraCriada();
+      }
       // EMENDA R3-4 (CONTRATO-1.5.7.md §9): a config pode ter mudado numa
       // corrida rara ENTRE a checagem acima e o clique chegar ao banco — a
       // RPC recusa com o marcador FRETE_COTACAO_DESATUALIZADA. Mesma saída
@@ -4192,6 +4213,7 @@ export function CheckoutViewDaConta({
         `Falha no Pedido: ${
           ehFalhaDeRedeAntesDoEnvio(error) ||
           error?.code === "PEDIDO_SEM_RESPOSTA" ||
+          error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" ||
           saida.acao === "reenviar_mesma_compra"
             ? saida.mensagem
             : mensagemAmigavelErroPedido(error)
@@ -4460,7 +4482,7 @@ export function CheckoutViewDaConta({
     retomarPedidoId
   ) {
     return (
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Retomar o pagamento do pedido
         </h1>
@@ -4516,7 +4538,7 @@ export function CheckoutViewDaConta({
 
   if (retomadaSemPagamentoPendente) {
     return (
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Este pedido não está aguardando pagamento
         </h1>
@@ -4537,7 +4559,7 @@ export function CheckoutViewDaConta({
 
   if (retomadaEscolhendoForma) {
     return (
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Como você quer pagar este pedido?
         </h1>
@@ -4667,15 +4689,30 @@ export function CheckoutViewDaConta({
       // Mesma coluna do formulário (`mx-auto max-w-md`): sem ela, o cliente
       // saía de uma tela de 448px de largura e caía numa que esticava o texto
       // "Seu pedido está reservado…" de ponta a ponta em tela larga.
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Finalize o pagamento
         </h1>
-        <p className="text-xs text-zinc-500">
-          {metodoDoPedido === "cartao"
-            ? "Reservamos seus itens enquanto o pagamento é concluído. Se o banco não confirmar a tempo, o pedido é cancelado e os itens voltam para a loja."
-            : "Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os itens voltam para o estoque e o pedido é cancelado."}
-        </p>
+        {valorFinalDiferenteDoCarrinho && (
+          <p className="text-sm font-medium text-zinc-900">
+            Valor final do pedido:{" "}
+            {formatCurrency(arredondarParaCentavos(valorDoPedido))}
+          </p>
+        )}
+        {metodoDoPedido === "cartao" ? (
+          <p className="flex items-start gap-2 rounded-xl border border-blue-200 px-3 py-2 text-xs leading-snug text-zinc-600">
+            <Info
+              aria-hidden="true"
+              className="size-4 shrink-0 text-blue-600"
+            />
+            <span>Reservamos seus itens enquanto você paga.</span>
+          </p>
+        ) : (
+          <p className="text-xs text-zinc-500">
+            Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
+            itens voltam para o estoque e o pedido é cancelado.
+          </p>
+        )}
         {erroPagamento?.cartaoEmAnalise ? (
           // B3 da revisão de risco pré-publicação (26/09/2026, reforçado na
           // rodada 2): NUNCA "Cancelar pedido" nem "Pagar com PIX" aqui — o
@@ -6301,54 +6338,7 @@ export function CheckoutViewDaConta({
         )}
       </div>
 
-      {/* Spacer to prevent overlap by the sticky footer and bottom nav.
-          REMEDIDO em 02/09/2026, depois do redesenho da barra (mesmo método
-          do navegador de 17/08/2026: fim do último card menos `top` da barra
-          fixa, no scroll máximo — nunca somar número por adivinhação).
-          Medição REAL desta vez: Chrome via puppeteer, viewport 375×667,
-          dev server local, carrinho injetado no localStorage.
-
-          O que mudou na barra: a coluna do total tinha 4 linhas e, com
-          cupom, o selo "(-R$ X OFF)" quebrava para uma 5ª (~87px sem cupom,
-          ~100px com). Agora são 3 linhas com o selo INLINE truncado — a
-          barra tem altura fixa de 73px (24px de padding + 48px do botão
-          "Finalizar Pedido" + 1px de borda; medido com e sem itens: igual,
-          a coluna nova mede 45,5px e a linha "itens · entrega" fica em UMA
-          linha truncada de 12,5px). O maior consumidor de altura da barra
-          passou a ser o aviso de frete: 1–2 linhas (33px medido em 2 linhas
-          no ambiente de medida) → barra 112px no pior caso medido.
-
-          Mobile (375px), medido no scroll máximo: com espaçador de 168px o
-          GAP foi +31,5px no caso comum (barra 73px) e −7,5px no pior caso
-          (aviso de frete em 2 linhas, barra 112px). Necessário = 168 + 7,5
-          ≈ 175,5px → 196px adotado (fecha o pior caso e mantém ~20px de
-          folga; o buraco no caso comum, ~123px, é da mesma ordem do valor
-          antigo, que com barra mínima de 87px sobrava ~113px).
-
-          Desktop (1280px): mesma barra de 3 linhas cai de ~92px para 73px;
-          necessário antigo era 215,9px → 215,9 − 19 ≈ 197 → 200px mantidos.
-
-          Se a barra crescer de novo (nova linha, mais um selo, aviso novo),
-          remedir do mesmo jeito antes de só somar um número por adivinhação.
-
-          14/10/2026: a barra ganhou a frase "Ao finalizar você concorda com os
-          Termos de uso e a Política de Privacidade" (`FraseDeAceite`): 6px de
-          margem + 1ª linha de 11px (~15px) + 2ª linha só com os dois links, cuja
-          caixa tem 44px de verdade (alvo de toque sem invadir o botão
-          Finalizar) = ~65px. Reserva somada por CONTA, não por medida no
-          navegador: 196→264px no celular, 200→268px no computador. Falta
-          REMEDIR no aparelho (fim do último card menos o `top` da barra, no
-          scroll máximo) — se sobrar folga grande, aperte. */}
-      <div
-        className="hidden md:block"
-        style={{ height: "268px" }}
-        aria-hidden="true"
-      />
-      <div
-        className="block md:hidden"
-        style={{ height: "calc(264px + var(--safe-area-bottom, 0px))" }}
-        aria-hidden="true"
-      />
+      {/* A reserva inferior vem de pb-customer-summary e da barra medida. */}
 
       {/* Order Summary - Fixed Bottom Bar (+ painel do resumo, ancorado
           LOGO ABAIXO DA BARRA SUPERIOR — D1 refinado, 12/09/2026) */}
@@ -6597,7 +6587,10 @@ export function CheckoutViewDaConta({
                 // meio). A classe foi removida de `src/index.css` junto com este
                 // uso, para ninguém reabrir a fresta escolhendo o nome que soa
                 // mais seguro.
-                <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
+                <div
+                  ref={medirRodapeCliente}
+                  className="bottom-docked-navigation fixed inset-x-0 z-[110] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2"
+                >
                   {/* O PAINEL DE RESUMO SAIU DAQUI (D1 refinado, 12/09/2026):
                       ele subia ACIMA desta barra; agora mora num container
                       próprio, ancorado logo abaixo da barra SUPERIOR (ver o
@@ -6613,60 +6606,64 @@ export function CheckoutViewDaConta({
                   >
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
-                    <div className="mx-auto flex max-w-md items-center justify-between gap-2">
-                      {/* Pedido do Gabriel (12/09/2026, D1 refinado): a
-                          barra de baixo perde "1x maleta..." e "Inclui R$ X
-                          de entrega" (foram para o painel/gatilho de cima) e
-                          fica só com SUBTOTAL (produtos) e TOTAL (produtos +
-                          frete − desconto), claros e sem disputar espaço com
-                          o botão. Não é mais um botão — o "ver mais" que
-                          abria o resumo agora mora no gatilho do topo
-                          (`GatilhoDoResumoDoPedido`, portado para o Header). */}
-                      <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                          <span>Subtotal</span>
-                          <span>
-                            R$ {subtotal.toFixed(2).replace(".", ",")}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 text-sm font-black text-zinc-900">
-                          {/* AJUSTE da re-revisão (Opus, medido a 320/360/375px
-                              com o CSS real): quem cede espaço é a PALAVRA
-                              "Total" (`min-w-0 truncate`), nunca um número.
-                              Truncar a pílula mostrava dinheiro pela metade
-                              ("-R$ 12,…") a 320px mesmo com valores comuns;
-                              a pílula e o valor do total ficam inteiros
-                              (`shrink-0 whitespace-nowrap`). A 375px nada
-                              muda: "Total" aparece inteiro. */}
-                          <span className="flex min-w-0 items-center gap-1">
-                            <span className="min-w-0 truncate whitespace-nowrap">
-                              Total
+                    <div className="mx-auto flex max-w-md flex-col gap-3">
+                      <div
+                        role="group"
+                        aria-label="Valores do pedido"
+                        className="checkout-values"
+                      >
+                        <div>
+                          <div>
+                            <span>Subtotal</span>
+                            <span>
+                              R$ {subtotal.toFixed(2).replace(".", ",")}
                             </span>
-                            {/* Pedido do Gabriel (12/09/2026): pílula
-                                compacta com a ECONOMIA (cupom + o que o
-                                frete grátis deixou de cobrar) — nunca a
-                                porcentagem nem o código do cupom, só o
-                                valor. Some quando não há economia nenhuma;
-                                não altera `totalExibido` (o desconto já
-                                está embutido nele). */}
-                            {economiaTotal > 0 && (
+                          </div>
+                          <div>
+                            <span>Entrega</span>
+                            <span>
+                              {semFreteSelecionado ? (
+                                "a calcular"
+                              ) : (
+                                <>
+                                  {economiaDoFrete > 0 && (
+                                    <>
+                                      <span className="sr-only">de </span>
+                                      <span className="mr-1 text-zinc-500 line-through">
+                                        R${" "}
+                                        {(shipping + economiaDoFrete)
+                                          .toFixed(2)
+                                          .replace(".", ",")}
+                                      </span>
+                                      <span className="sr-only">por </span>
+                                    </>
+                                  )}
+                                  {shipping > 0
+                                    ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                                    : "Grátis"}
+                                </>
+                              )}
+                            </span>
+                          </div>
+                          {discount > 0 && (
+                            <div>
+                              <span>Desconto</span>
                               <span
-                                className="shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
-                                aria-label={`Desconto de R$ ${economiaTotal.toFixed(2).replace(".", ",")}`}
+                                className="text-emerald-700"
+                                aria-label={`Desconto de R$ ${discount.toFixed(2).replace(".", ",")}`}
                               >
-                                -R$ {economiaTotal.toFixed(2).replace(".", ",")}
+                                -R$ {discount.toFixed(2).replace(".", ",")}
                               </span>
-                            )}
-                          </span>
-                          <span className="shrink-0 whitespace-nowrap">
-                            {/* Achado 1 do bloqueante (12/09/2026): mesmo
-                                valor do painel (`totalExibido`) — sem
-                                cotação válida a barra de baixo não pode
-                                fechar um total que ainda vai mudar. */}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p>Total</p>
+                          <p>
                             {totalExibido === null
                               ? "a calcular"
                               : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
-                          </span>
+                          </p>
                         </div>
                       </div>
 
@@ -6689,28 +6686,14 @@ export function CheckoutViewDaConta({
                           });
                         }}
                         disabled={botaoFinalizarDesabilitado}
-                        // Texto visível compacto ("Finalizar", não "Finalizar
-                        // Pedido") pedido pelo Gabriel (12/09/2026) — o nome
-                        // completo ocupava espaço demais ao lado do bloco de
-                        // totais. `aria-label` mantém o nome completo para
-                        // quem usa leitor de tela; o `sr-only` " Pedido"
-                        // completa o `textContent` do botão (compatível com
-                        // toda suíte que já procurava "Finalizar Pedido" por
-                        // texto) sem ocupar um pixel a mais na tela.
                         aria-label="Finalizar pedido"
-                        className={cn(
-                          "h-12 px-3 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-1.5 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                          botaoFinalizarDesabilitado
-                            ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                            : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-black/10",
-                        )}
+                        className="checkout-finalizar w-full"
                       >
                         {isSubmitting ? (
                           <div className="size-4 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
                         ) : (
                           <>
-                            <span>Finalizar</span>
-                            <span className="sr-only"> Pedido</span>
+                            <span>Finalizar Pedido</span>
                             <ArrowLeft className="size-4 rotate-180" />
                           </>
                         )}
@@ -6724,7 +6707,8 @@ export function CheckoutViewDaConta({
                         como estavam (sair daqui apagaria o formulário). */}
                     <FraseDeAceite
                       acao="finalizar"
-                      className="mx-auto mt-1.5 max-w-md text-center"
+                      emLinha
+                      className="mx-auto mt-2 max-w-md pb-1 text-center"
                     />
                     {!semFreteSelecionado &&
                       !isOffline &&

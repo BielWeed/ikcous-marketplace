@@ -1,0 +1,187 @@
+/*
+ * Temas do painel: Escuro (o padrão, tokens em src/index.css), Claro e Confortável.
+ *
+ * Como funciona: o AdminLayout põe `data-admin-tema="claro|confortavel"` na <html>
+ * junto de `admin-mode` (atributo ausente = Escuro). Tudo aqui vale só com
+ * `html.admin-mode[data-admin-tema=…]`: a vitrine nunca tem `admin-mode`, então
+ * não recebe nem sofre tema algum, e os portais do painel (folhas, diálogos,
+ * avisos) herdam porque a raiz é a <html>, não o contêiner.
+ *
+ * Aqui moram os TOKENS de cada tema e os poucos ajustes que não são "uma classe
+ * solta". As classes soltas (`text-white`, `bg-white/5`, `text-red-300`…) são
+ * trocadas por temas-do-painel-cores.css (GERADO; ver tests/front/temas-do-painel-gerador.ts).
+ *
+ * Paleta aprovada pelo dono (mockup FigCraft), canais HSL:
+ *   Claro        fundo #F2F2F5 · cartão #FFFFFF · elevado #E9E9EE · barra #FFFFFF
+ *                borda #D6D6DE · borda forte #B9B9C4 · texto #121217 · suave #5B5B68
+ *                destaque #8A5A00  (texto 18,7:1 e suave 6,7:1 sobre o cartão)
+ *   Confortável  fundo #24211C · cartão #2F2B25 · elevado #3A352E · barra #332F28
+ *                borda #463F36 · borda forte #5C5348 · texto #EADFC8 · suave #B3A68F
+ *                destaque #D9A441  (texto 10,6:1 e suave 5,9:1 sobre o cartão)
+ */
+html.admin-mode[data-admin-tema="claro"] {
+  color-scheme: light;
+  --admin-bg: 240 13% 95.5%;
+  --admin-surface: 0 0% 100%;
+  --admin-card: var(--admin-surface);
+  --admin-raised: 240 12.8% 92.4%;
+  --admin-hover: 240 11.9% 88.4%;
+  --admin-nav: 0 0% 100%;
+  --admin-border: 240 10.8% 85.5%;
+  --admin-border-strong: 240 8.5% 74.7%;
+  --admin-text: 240 12.2% 8%;
+  --admin-text-2: 240 8.7% 24.9%;
+  --admin-text-soft: 240 6.7% 38.2%;
+  --admin-gold: 39.1 100% 27.1%;
+  --admin-gold-fill: 47 95% 50%;
+  --admin-accent: 161 94% 30%;
+  --admin-pill: 0 0% 100%;
+
+  /* Cores soltas dos CSS do painel (ajustes, produtos, balcão, métricas): cada
+     `var(--lit-t|b-HEX, #HEX)` vale o próprio HEX no Escuro e o valor daqui nos
+     temas claros. t = texto/ícone/contorno; b = fundo/borda. */
+  --lit-t-3ddc97: #065f46;
+  --lit-t-69c8ff: #075985;
+  --lit-t-7edbd4: #115e59;
+  --lit-t-8bb4ff: #4338ca;
+  --lit-t-a1a1ad: #5b5b68;
+  --lit-t-a5b5ff: #4338ca;
+  --lit-t-a5d7e9: #4338ca;
+  --lit-t-a8a3b1: #5b5b68;
+  --lit-t-b2b2bd: #5b5b68;
+  --lit-t-b5b1bd: #5b5b68;
+  --lit-t-b6a0f7: #4338ca;
+  --lit-t-b6b6c2: #5b5b68;
+  --lit-t-c4a7ff: #6d28d9;
+  --lit-t-cbc3dd: #5b5b68;
+  --lit-t-d4d4dc: #121217;
+  --lit-t-f4c43f: #8a5a00;
+  --lit-t-fbbf24: #92400e;
+  --lit-t-f4f4f5: #121217;
+  --lit-t-f5f5f7: #121217;
+  --lit-t-fafafa: #121217;
+  --lit-t-fda4af: #be123c;
+  --lit-t-ff8b92: #be123c;
+  --lit-t-ff9999: #be123c;
+  --lit-t-ffa4cc: #be185d;
+  --lit-t-ffb077: #9a3412;
+  --lit-t-ffb0b0: #9f1239;
+  --lit-b-25171a: #fff1f2;
+  --lit-b-292931: #e9e9ee;
+  --lit-b-303038: #c9c9d3;
+  --lit-b-363640: #c9c9d3;
+  --lit-b-3f3f46: #c9c9d3;
+  --lit-b-454550: #d6d6de;
+  --lit-b-52525b: #9a9aa8;
+  --lit-b-555560: #9a9aa8;
+  --lit-b-71717a: #9a9aa8;
+  --lit-b-795055: #fda4af;
+  --lit-b-a1a1ad: #ffffff;
+  --lit-b-b6b6c2: #b9b9c4;
+  --lit-b-d4d4dc: #121217;
+  --lit-b-f4c43f: #8a5a00;
+  --lit-b-ffffff05: #1212170a;
+  --lit-b-ffffff0a: #12121712;
+}
+
+html.admin-mode[data-admin-tema="confortavel"] {
+  color-scheme: dark;
+  --admin-bg: 37.5 12.5% 12.5%;
+  --admin-surface: 36 11.9% 16.5%;
+  --admin-card: var(--admin-surface);
+  --admin-raised: 35 11.5% 20.4%;
+  --admin-hover: 34.3 11.3% 24.3%;
+  --admin-nav: 38.2 12.1% 17.8%;
+  --admin-border: 33.8 12.9% 24.3%;
+  --admin-border-strong: 33 12.2% 32.2%;
+  --admin-text: 40.6 44.7% 85.1%;
+  --admin-text-2: 40 26.8% 75.9%;
+  --admin-text-soft: 38.3 19.1% 63.1%;
+  --admin-gold: 39.1 66.7% 55.3%;
+  --admin-gold-fill: 39.1 66.7% 55.3%;
+  --admin-pill: 40.6 44.7% 85.1%;
+
+  --lit-t-a1a1ad: #b3a68f;
+  --lit-t-a8a3b1: #b3a68f;
+  --lit-t-b2b2bd: #b3a68f;
+  --lit-t-b5b1bd: #b3a68f;
+  --lit-t-b6b6c2: #b3a68f;
+  --lit-t-cbc3dd: #b3a68f;
+  --lit-t-d4d4dc: #eadfc8;
+  --lit-t-f4c43f: #d9a441;
+  --lit-t-f4f4f5: #eadfc8;
+  --lit-t-f5f5f7: #eadfc8;
+  --lit-t-fafafa: #eadfc8;
+  --lit-b-292931: #38332c;
+  --lit-b-303038: #4a443a;
+  --lit-b-363640: #4a443a;
+  --lit-b-3f3f46: #4a443a;
+  --lit-b-454550: #4a443a;
+  --lit-b-52525b: #6b6254;
+  --lit-b-555560: #6b6254;
+  --lit-b-71717a: #6b6254;
+  --lit-b-a1a1ad: #b3a68f;
+  --lit-b-b6b6c2: #b3a68f;
+  --lit-b-d4d4dc: #eadfc8;
+}
+
+/* Vermelho de estado: AA também sobre a superfície elevada do Confortável.
+   Escuro e Claro continuam usando seus tons originais. */
+:where(html.admin-mode[data-admin-tema="confortavel"])
+  .text-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *)) {
+  color: #fca5a5;
+}
+
+/* Componentes compartilhados (botão, diálogo, seletor, aviso do sonner) leem os
+   tokens da vitrine; no painel, nos temas claros, eles seguem a paleta do tema. */
+html.admin-mode[data-admin-tema] {
+  --background: var(--admin-bg);
+  --foreground: var(--admin-text);
+  --card: var(--admin-surface);
+  --card-foreground: var(--admin-text);
+  --popover: var(--admin-surface);
+  --popover-foreground: var(--admin-text);
+  --primary: var(--admin-text);
+  --primary-foreground: var(--admin-surface);
+  --secondary: var(--admin-raised);
+  --secondary-foreground: var(--admin-text);
+  --muted: var(--admin-raised);
+  --muted-foreground: var(--admin-text-soft);
+  --accent: var(--admin-raised);
+  --accent-foreground: var(--admin-text);
+  --border: var(--admin-border);
+  --input: var(--admin-border-strong);
+  --ring: var(--admin-text-soft);
+}
+
+/* Telas com tema próprio (simulador do celular da cliente, recibo impresso):
+   voltam aos tokens do Escuro, para a borda/fundo de token delas não mudar. */
+html.admin-mode[data-admin-tema] [data-tema-fixo] {
+  color-scheme: dark;
+  --admin-bg: 240 10% 3.9%;
+  --admin-surface: 240 7% 12.8%;
+  --admin-card: var(--admin-surface);
+  --admin-raised: 240 6% 18%;
+  --admin-hover: 240 6% 22.5%;
+  --admin-nav: 240 6% 16%;
+  --admin-border: 240 5% 21.5%;
+  --admin-border-strong: 240 5% 29%;
+  --admin-text: 240 10% 96.1%;
+  --admin-text-2: 240 4.9% 83.9%;
+  --admin-text-soft: 240 6.8% 65.5%;
+  --admin-gold: 47 95% 50%;
+  --admin-gold-fill: 47 95% 50%;
+  --admin-accent: 142 71% 45%;
+  --admin-pill: 0 0% 100%;
+}
+
+/* Gráficos: a grade e os números dos eixos vêm com cor fixa (branco a 5%, cinza
+   médio) no atributo do SVG; aqui seguem o tema. O número do eixo usa !important
+   porque o Recharts o grava em style="". */
+html.admin-mode[data-admin-tema] .recharts-cartesian-grid line {
+  stroke: hsl(var(--admin-border));
+}
+
+html.admin-mode[data-admin-tema] .recharts-cartesian-axis-tick-value {
+  fill: hsl(var(--admin-text-soft)) !important;
+}

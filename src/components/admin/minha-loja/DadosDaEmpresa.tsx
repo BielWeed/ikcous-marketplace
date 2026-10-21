@@ -6,19 +6,21 @@ import {
   formatarDocumento,
   identidadeLegalParaGravar,
 } from "@/lib/identidade-legal-da-loja";
+import type { EditorDeMinhaLoja } from "@/views/admin/AdminAboutStoreView";
 import { RefreshCw, Save } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // Bloco "Dados da empresa" de Minha loja (opcional): razão social (ou nome de
 // quem é o titular), CNPJ ou CPF e e-mail de atendimento. A cliente lê isto nos
 // Termos, na Política de Privacidade, no contato e no rodapé da vitrine — só o
-// que a lojista preencher. Salvar PRÓPRIO (como o contato): grava SÓ estes três
-// campos. Em branco é válido e grava "não informado"; valor errado NÃO grava e o
+// que a lojista preencher. O coordenador de Minha loja chama este salvar,
+// que grava SÓ estes três campos. Em branco é válido e grava "não informado"; valor errado NÃO grava e o
 // aviso diz o que corrigir. O dígito verificador do CNPJ/CPF é conferido pelo
 // app (`identidade-legal-da-loja`); o banco só garante a forma.
 
 interface DadosDaEmpresaProps {
+  readonly onRegistrarSalvamento?: (editor: EditorDeMinhaLoja) => void;
   /** Avisa a tela quando há alteração não salva (guarda de navegação). */
   readonly onDirtyChange?: (pendente: boolean) => void;
 }
@@ -37,6 +39,7 @@ const CLASSE_DO_CAMPO =
 
 export const DadosDaEmpresa = memo(function DadosDaEmpresa({
   onDirtyChange,
+  onRegistrarSalvamento,
 }: DadosDaEmpresaProps) {
   const { config, isLoaded, updateConfig } = useStore();
   const offline = useOnlineStatus();
@@ -99,14 +102,18 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
     return () => onDirtyChange?.(false);
   }, [onDirtyChange]);
 
-  async function salvar() {
+  useLayoutEffect(() => {
+    onRegistrarSalvamento?.({ alterado, salvar });
+  });
+
+  async function salvar(): Promise<boolean> {
     if (offline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para salvar os dados.",
       });
-      return;
+      return false;
     }
-    if (salvando) return;
+    if (salvando) return false;
 
     const conferido = identidadeLegalParaGravar({
       razaoSocial: razao,
@@ -120,7 +127,7 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
       if (conferido.erros.razaoSocial) campoRazao.current?.focus();
       else if (conferido.erros.documento) campoDocumento.current?.focus();
       else campoEmail.current?.focus();
-      return;
+      return false;
     }
     setErros({});
 
@@ -132,14 +139,16 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
       const salvou = await updateConfig(conferido.valores, {
         silentSuccess: true,
       });
-      if (!salvou) return;
+      if (!salvou) return false;
       // Mostra o que ficou gravado (documento com máscara, espaços aparados).
       setRazao(conferido.valores.storeLegalName ?? "");
       setDocumento(formatarDocumento(conferido.valores.storeLegalDocument));
       setEmail(conferido.valores.storeSupportEmail ?? "");
       toast.success("Dados da empresa salvos");
+      return true;
     } catch (erro) {
       toast.error(mensagemDeErroDoPainel(erro, "salvar"));
+      return false;
     } finally {
       setSalvando(false);
     }
@@ -173,7 +182,7 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
           aria-describedby={
             erros.razaoSocial ? "empresa-razao-social-erro" : undefined
           }
-          className={`${CLASSE_DO_CAMPO} ${erros.razaoSocial ? "border-red-500/60" : "border-white/10"}`}
+          className={`${CLASSE_DO_CAMPO} ${erros.razaoSocial ? "border-red-500/60" : "border-admin-border"}`}
         />
         {erros.razaoSocial && (
           <p
@@ -215,7 +224,7 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
           aria-describedby={
             erros.documento ? "empresa-documento-erro" : undefined
           }
-          className={`${CLASSE_DO_CAMPO} ${erros.documento ? "border-red-500/60" : "border-white/10"}`}
+          className={`${CLASSE_DO_CAMPO} ${erros.documento ? "border-red-500/60" : "border-admin-border"}`}
         />
         {erros.documento && (
           <p
@@ -252,7 +261,7 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
           placeholder="atendimento@sualoja.com.br"
           aria-invalid={erros.email ? true : undefined}
           aria-describedby={erros.email ? "empresa-email-erro" : undefined}
-          className={`${CLASSE_DO_CAMPO} ${erros.email ? "border-red-500/60" : "border-white/10"}`}
+          className={`${CLASSE_DO_CAMPO} ${erros.email ? "border-red-500/60" : "border-admin-border"}`}
         />
         {erros.email && (
           <p
@@ -271,27 +280,29 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
         app. Deixe em branco o que não quiser mostrar.
       </p>
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => void salvar()}
-          disabled={!isLoaded || offline || salvando || !alterado}
-          title="Salva a razão social, o CNPJ ou CPF e o e-mail de atendimento"
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-admin-gold px-5 text-xs font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:w-auto"
-        >
-          {salvando ? (
-            <>
-              <RefreshCw aria-hidden="true" className="size-4 animate-spin" />
-              <span>Salvando...</span>
-            </>
-          ) : (
-            <>
-              <Save aria-hidden="true" className="size-4" />
-              <span>Salvar dados da empresa</span>
-            </>
-          )}
-        </button>
-      </div>
+      {!onRegistrarSalvamento && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => void salvar()}
+            disabled={!isLoaded || offline || salvando || !alterado}
+            title="Salva a razão social, o CNPJ ou CPF e o e-mail de atendimento"
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-admin-gold px-5 text-xs font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:w-auto"
+          >
+            {salvando ? (
+              <>
+                <RefreshCw aria-hidden="true" className="size-4 animate-spin" />
+                <span>Salvando...</span>
+              </>
+            ) : (
+              <>
+                <Save aria-hidden="true" className="size-4" />
+                <span>Salvar dados da empresa</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 });

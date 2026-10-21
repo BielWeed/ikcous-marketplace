@@ -17,7 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ConfigDoCartao } from "@/lib/config-do-cartao";
 
-const createOrder = vi.fn().mockResolvedValue({ id: "ped-777" });
+const createOrder = vi
+  .fn()
+  .mockResolvedValue({ id: "ped-777", totalAmount: 120 });
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const propsDoPagamento: Array<Record<string, unknown>> = [];
@@ -178,6 +180,20 @@ function botaoPorTexto(
   ) as HTMLButtonElement | undefined;
 }
 
+// Mesmo padrão de checkout-compra-zerada-fecha-na-retirada.test.tsx:
+// chama o handler real sem depender da proteção do disabled no DOM.
+function capturarOnClickFinalizar(botao: HTMLButtonElement): () => void {
+  const chaveProps = Object.keys(botao).find((k) =>
+    k.startsWith("__reactProps$"),
+  );
+  expect(chaveProps, "botão sem props do React").toBeDefined();
+  const props = (botao as unknown as Record<string, unknown>)[chaveProps!] as
+    | { onClick?: () => void }
+    | undefined;
+  expect(typeof props?.onClick).toBe("function");
+  return props!.onClick!;
+}
+
 function digitar(id: string, valor: string) {
   const el = document.getElementById(id) as HTMLInputElement;
   const setter = Object.getOwnPropertyDescriptor(
@@ -231,8 +247,9 @@ async function finalizar() {
 
 describe("CheckoutView — cartão pelo app", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     createOrder.mockReset();
-    createOrder.mockResolvedValue({ id: "ped-777" });
+    createOrder.mockResolvedValue({ id: "ped-777", totalAmount: 120 });
     onNavigate.mockClear();
     propsDoPagamento.length = 0;
     mockUser = { id: "user-1", email: "cliente@exemplo.com" };
@@ -331,6 +348,157 @@ describe("CheckoutView — cartão pelo app", () => {
     });
     expect(ultimas.emailDoPagador).toBe("cliente@exemplo.com");
     expect(ultimas.orderId).toBe("ped-777");
+    expect(hospedeiro.querySelector(".pb-customer")).not.toBeNull();
+  });
+
+  it("cartão mostra reserva curta com informação discreta e mantém o espaço inferior", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+    await finalizar();
+
+    const aviso = [...hospedeiro.querySelectorAll("p")].find(
+      (p) => p.textContent === "Reservamos seus itens enquanto você paga.",
+    )!;
+    expect(aviso).toBeDefined();
+    expect(aviso.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(aviso.className).toContain("border");
+    expect(aviso.className).not.toMatch(/bg-blue|bg-sky/);
+    expect(hospedeiro.textContent).not.toContain(
+      "Se o banco não confirmar a tempo",
+    );
+    expect(hospedeiro.querySelector(".pb-customer")).not.toBeNull();
+  });
+
+  it.each([120.03, 119.97, 1234.56])(
+    "o pagamento usa o total gravado (%s), avisa a diferença e não o troca pelo carrinho limpo",
+    async (totalAmount) => {
+      createOrder.mockResolvedValueOnce({ id: "ped-777", totalAmount });
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await montar(CheckoutView);
+      await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+      await finalizar();
+      expect(propsDoPagamento.at(-1)!.valor).toBe(totalAmount);
+      const texto = hospedeiro.textContent?.replace(/\s/g, " ");
+      // Mesmo formato do valor mostrado no cartão (formatCurrency): com
+      // separador de milhar a partir de R$ 1.000.
+      const esperado = new Map([
+        [120.03, "R$ 120,03"],
+        [119.97, "R$ 119,97"],
+        [1234.56, "R$ 1.234,56"],
+      ]).get(totalAmount);
+      expect(texto).toContain(`Valor final do pedido: ${esperado}`);
+      await act(async () => {
+        (propsDoPagamento.at(-1)!.onTrocarParaPix as (vivo: boolean) => void)(
+          false,
+        );
+      });
+      expect(propsDoPagamento.at(-1)!.valor).toBe(totalAmount);
+    },
+  );
+
+  it("falha ao ler o total limpa a compra já criada sem abrir pagamento nem permitir finalizar de novo", async () => {
+    createOrder.mockRejectedValueOnce(
+      Object.assign(
+        new Error("Não foi possível conferir o valor final do pedido."),
+        {
+          code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+          pedidoId: "ped-777",
+        },
+      ),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+    await finalizar();
+    expect(mockCart).toEqual([]);
+    expect(sessionStorage.getItem("ikcous-rascunho-do-checkout-v1")).toBeNull();
+    expect(sessionStorage.getItem("ikcous-chave-do-pedido")).toBeNull();
+    expect(propsDoPagamento).toHaveLength(0);
+    expect(document.body.textContent).toContain(
+      "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.",
+    );
+    expect(botaoPorTexto(document.body, "Finalizar Pedido")!.disabled).toBe(
+      true,
+    );
+    await clicar(botaoPorTexto(document.body, "Ver meus pedidos")!);
+    expect(onNavigate).toHaveBeenCalledWith("orders");
+  });
+
+  it.each(["botao", "handler"])(
+    "depois de fechar o aviso do total, carrinho vazio não cria outro pedido pelo %s",
+    async (via) => {
+      createOrder.mockRejectedValueOnce({
+        code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+        pedidoId: "ped-777",
+        message: "Não foi possível conferir o valor final do pedido.",
+      });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await montar(CheckoutView);
+      await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+      await finalizar();
+      expect(mockCart).toEqual([]);
+      expect(createOrder).toHaveBeenCalledTimes(1);
+
+      const fechar = document.body.querySelector<HTMLButtonElement>(
+        '[aria-label="Fechar o aviso"]',
+      );
+      expect(fechar).not.toBeNull();
+      await clicar(fechar!);
+      expect(
+        document.body.querySelector('[aria-label="Fechar o aviso"]'),
+      ).toBeNull();
+
+      const botao = botaoPorTexto(document.body, "Finalizar Pedido")!;
+      if (via === "botao") {
+        expect(botao.disabled).toBe(true);
+        await clicar(botao);
+      } else {
+        const onClick = capturarOnClickFinalizar(botao);
+        await act(async () => {
+          onClick();
+          await esperarMicrotarefas();
+          await esperarMicrotarefas();
+        });
+      }
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(propsDoPagamento).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    { code: "TOTAL_DO_PEDIDO_INDISPONIVEL" },
+    { code: "TOTAL_DO_PEDIDO_INDISPONIVEL", pedidoId: "" },
+    { code: "23505", pedidoId: "ped-777", message: "Pedido recusado" },
+  ])(
+    "sem confirmação de pedido criado, mantém carrinho e rascunho: %j",
+    async (erro) => {
+      createOrder.mockRejectedValueOnce(erro);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await montar(CheckoutView);
+      await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+      await finalizar();
+
+      expect(mockCart).toHaveLength(1);
+      expect(
+        sessionStorage.getItem("ikcous-rascunho-do-checkout-v1"),
+      ).not.toBeNull();
+      expect(sessionStorage.getItem("ikcous-chave-do-pedido")).not.toBeNull();
+      expect(propsDoPagamento).toHaveLength(0);
+    },
+  );
+
+  it("total gravado igual ao carrinho não mostra aviso de diferença", async () => {
+    createOrder.mockResolvedValueOnce({ id: "ped-777", totalAmount: 120 });
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+    await finalizar();
+    expect(propsDoPagamento.at(-1)!.valor).toBe(120);
+    expect(hospedeiro.textContent).not.toContain("Valor final do pedido:");
   });
 
   it("a chave de idempotência não distingue PIX de cartão (mesmo eixo 'online', mesma RPC): retentativa pelo PIX repete a chave", async () => {

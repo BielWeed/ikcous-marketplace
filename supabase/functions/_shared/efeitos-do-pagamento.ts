@@ -213,14 +213,11 @@ export async function dispararPushAoLojistaReal(args: { supabase: Supabase; avis
  * `reivindicar_email_de_confirmacao`, um UPDATE condicional atômico em que só
  * a primeira chamada ganha — repetição não precisa de trava aqui.
  *
- * SÓ PARA 'pago' (achado de revisão de contexto limpo, 25/08/2026):
- * `enviarComprovantePedido` só sabe ler o literal 'pago' (`aguardandoPagamento`
- * compara `payment_status !== 'pago'`, e 'pago_apos_expirar' cai nesse
- * `true`). Para 'pago_apos_expirar' o comprovante mentiria DUAS vezes — diria
- * "aguardando confirmação" (já foi confirmado) e "entra na fila de separação"
- * (o pedido segue `cancelled`, estoque já devolvido) — e, como a reserva é
- * única e definitiva, o e-mail certo nunca poderia ser mandado depois. Esse
- * retorno recebe `dispararAvisoDePagamentoAtrasadoReal`, abaixo.
+ * SÓ PARA 'pago': `enviarComprovantePedido` recusa online em qualquer outro
+ * estado ANTES de reservar o e-mail. 'pago_apos_expirar' precisa do aviso
+ * próprio, não do comprovante comum: o pedido segue `cancelled`, com estoque
+ * já devolvido. Esse retorno recebe `dispararAvisoDePagamentoAtrasadoReal`,
+ * abaixo, usando a mesma reserva única.
  *
  * Nunca lança: nem a exceção inesperada, nem o `{ ok: false, motivo }` que
  * `enviarComprovantePedido` devolve sem lançar (SMTP não configurado, pedido

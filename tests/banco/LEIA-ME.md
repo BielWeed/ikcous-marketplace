@@ -10,6 +10,14 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 
 - **Lucro bruto do estoque (`lucro-do-estoque-viva.cjs`, via `rodar-isolado.cjs`)**: migration 20261251, depois da 250. Receita com custo usa o mesmo preco efetivo por variante de totalRevenue; totalCost igual. `inventory.revenueWithoutCost`, `productsWithoutCost` e `productsWithCost` separam cobertura do ESTOQUE (nao o contador da raiz, de vendas). Custo0 conhecido, NULL ausente; override0 valido, NULL herda; variantes inativas fora; estoque efetivo0 nao conta produto. Prova prejuizo, zero conhecido misturado a semcusto, receita total = comcusto + semcusto, historico/ACL/OID/dono/dados iguais, pre/pos-voos fail-closed, reaplicacao/rollback idempotentes e CRLF. Consultas oficiais 54a/54b e ancestrais no corpo novo E no rollback250; portao real APLICAR/NADA/PARAR, rol parcial/duplicado invalido; nove controles negativos. So clone descartavel no CI, nunca lojas reais. As provas ancestrais desfazem a 251 antes da 250 pelo helper `lucro-do-estoque-posterior.cjs`.
 
+- **Total conferido do balcão (`pdv-total-conferido-viva.cjs`, via `rodar-isolado.cjs`)**:
+  migration 20261280, parâmetro opcional `p_total_esperado`; diferença acima de R$0,01
+  recusa com `PDV01` e preços da mesma conferência, antes de gravar venda/estoque/históricos/nota.
+  A chave recusada continua usável; uma venda já gravada devolve `ja_existia` mesmo com outro
+  total e estoque esgotado. Variante, desconto, tolerância dos dois lados, legado sem parâmetro,
+  ACL fechada, chamadas por nome e só com dois obrigatórios, reaplicação, rollback para a 249
+  e controle negativo sem a guarda. Só clone efêmero; não prova loja nem PostgREST.
+
 ## As provas (`invariantes-dinheiro.cjs`)
 
 - **(a) cupom**: `usage_limit` nunca fica negativo; a vaga do cupom não volta
@@ -708,6 +716,11 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   (DEPOIS, 9 linhas) e `47b-antes-a-loja-escolhe-como-entrega-base-vigente` (ANTES, 9 linhas) do lote `20261244000000`; rol exato nos estados
   DEPOIS, ANTES (rollback comum) e ANTES (comum + destrutivo), 25 negativos da 47a e 15 da 47b, sete mutantes do texto, e as antecessoras 8e, 9a, 31a, 37a
   e 40a aceitando o corpo novo como sucessor. **Não prova** a IKCOUS nem a Savy.
+- **as provas que DESFAZEM corpos redefinidos pela `20261270000000`** (`reemissao-do-reembolso`, com seu portão,
+  a prova MIGRATION de `reembolso-em-duvida` e seu portão) a desfazem ANTES da 241, na transação do clone,
+  por `pagamento-adiantado-posterior.cjs` (só se no ar). A 270 redefine `concluir_estorno`: os pré-voos da 226/241
+  e as consultas históricas 29b/43b exigem o corpo anterior. O helper afirma o hash restaurado; as demais provas
+  de comportamento da 241 continuam medindo o corpo de produção.
 - **as provas que DESFAZEM corpos redefinidos pela `20261244000000`** (`endereco-no-pedido`, `a-compra-que-da-zero-reais...`, `loja-declara-quem-e` e
   `portao-8e-aceita-sucessoras`, mais a cadeia das sucessoras da 99) a desfazem ANTES por `a-loja-escolhe-como-entrega-posterior.cjs`.
 - **as provas que DESFAZEM corpos redefinidos pela `20261243000000`** (`pagamentos-rpc` e `admin-atual`: o rollback da 95 e da

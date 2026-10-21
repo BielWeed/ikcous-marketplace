@@ -12,7 +12,7 @@
 //   e. chip de atributo e "+ Atributo" do modal de variante com `min-h-11`;
 //   f. os botões editar/ligar/excluir da lista de variações (`VariantItem`) com
 //      `size-11` e os `aria-label`/`title` que o teste de ligar/desligar lê;
-//   g. "Visualizar App" (botão flutuante) em 11px.
+//   g. "Ver no app" (botão flutuante) em 11px.
 //
 // Estático: o jsdom não aplica CSS; a medida real é do render (ver relatório).
 /* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection, security/detect-unsafe-regex --
@@ -178,8 +178,8 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     );
   });
 
-  it("g. 'Visualizar App' junto da ação principal com 56px e letra de 14px", () => {
-    const posicao = FONTE.indexOf("Visualizar App");
+  it("g. 'Ver no app' junto da ação principal com 56px e letra de 14px", () => {
+    const posicao = FONTE.indexOf("Ver no app");
     expect(posicao).toBeGreaterThan(-1);
     const botao = tagAPartirDe(FONTE.lastIndexOf("<button", posicao));
     expect(botao).toContain("min-h-14");

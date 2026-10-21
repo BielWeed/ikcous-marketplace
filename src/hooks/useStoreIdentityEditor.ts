@@ -52,6 +52,7 @@ interface EditorState {
   intent?: StoreIdentityIntent;
   current?: StoreIdentitySnapshot;
   message?: string;
+  saveStatus?: "confirmed" | "rejected";
   progress?: { uploadedBytes: number; totalBytes: number };
 }
 export type IdentityUploadTarget =
@@ -199,6 +200,7 @@ export function useStoreIdentityEditor(active = true) {
     publish({
       ...model.current,
       phase: kind,
+      saveStatus: undefined,
       message: undefined,
       progress: undefined,
     });
@@ -218,6 +220,7 @@ export function useStoreIdentityEditor(active = true) {
       scope: model.current.scope,
       phase: "editing",
       draft,
+      saveStatus: "confirmed",
       message: readback
         ? `Esta identidade está salva no cadastro. ${savedMessage.split(". ").slice(1).join(". ")}`
         : savedMessage,
@@ -303,7 +306,15 @@ export function useStoreIdentityEditor(active = true) {
       finish({ ...before, phase: "editing", message: undefined });
     }
   }
+  const estavaAtivo = useRef(active);
   useEffect(() => {
+    const voltou = active && !estavaAtivo.current;
+    estavaAtivo.current = active;
+    // As telas secundárias remontam ao navegar (AdminArea, key=currentView).
+    // Se o consumidor só alternar active sem desmontar, reler concilia a
+    // fotografia nova sem apagar a escolha local, como já ocorre com cidade/UF.
+    if (voltou && allowed && origin && model.current.phase === "editing")
+      void syncExternalLocation();
     if (active && allowed && origin && model.current.phase === "idle")
       void read();
     // The operation reads the latest committed session, not a captured access token.
@@ -325,6 +336,7 @@ export function useStoreIdentityEditor(active = true) {
     try {
       publish({
         ...model.current,
+        saveStatus: undefined,
         draft: changeIdentityEditorDraft(
           model.current.draft!,
           change,
@@ -353,7 +365,8 @@ export function useStoreIdentityEditor(active = true) {
     if (target.kind === "app-icons" && !iconColor) {
       publish({
         ...before,
-        message: "Defina a cor principal antes de enviar o ícone.",
+        message:
+          "Escolha a cor do app (Ajustes → Aparência do app → Cor do app) antes de enviar o ícone.",
       });
       return;
     }
@@ -503,8 +516,8 @@ export function useStoreIdentityEditor(active = true) {
       message: "Envio cancelado. A imagem anterior permanece no rascunho.",
     });
   }
-  async function save() {
-    if (!editable()) return;
+  async function save(onlyPrimaryColor = false): Promise<boolean> {
+    if (!editable()) return false;
     const before = model.current;
     const color = validaCorDaLoja(before.draft!.fields.primaryColor);
     if (!color.ok) {
@@ -512,32 +525,40 @@ export function useStoreIdentityEditor(active = true) {
         ...before,
         message:
           color.motivo === "preto"
-            ? "Preto não pode ser a cor da loja. Escolha outro tom para a cor principal."
-            : "Use o formato #RRGGBB nas cores.",
+            ? "Preto puro não funciona bem como cor do app. Escolha outro tom em Ajustes → Aparência do app → Cor do app."
+            : "Confira a cor em Ajustes → Aparência do app → Cor do app. Use o formato #RRGGBB.",
       });
-      return;
+      return false;
     }
     let intent: StoreIdentityIntent;
     try {
       intent = buildIdentityEditorIntent(before.draft!, latest.current.origin);
+      if (onlyPrimaryColor) {
+        // A tela de cor não edita nome, endereço ou imagens. Reenvia as oito
+        // chaves EXATAS da fotografia; nem a normalização do codec pode tocá-las.
+        intent = {
+          expected: intent.expected,
+          desired: { ...intent.expected.identity, primary_color: color.cor },
+        };
+      }
     } catch {
       publish({
         ...before,
         message:
           "Confira nome, cidade, estado e cores no formato #RRGGBB antes de salvar.",
       });
-      return;
+      return false;
     }
     const op = start("saving");
-    if (!op) return;
+    if (!op) return false;
     publish({ ...model.current, intent });
     try {
       const result = await saveAdminStoreIdentity(intent, op.options);
-      if (!op.isCurrent()) return;
+      if (!op.isCurrent()) return false;
       switch (result.status) {
         case "confirmed":
           confirmed(result.snapshot, result.source === "readback", op.origin);
-          break;
+          return true;
         case "pending":
           finish({
             ...before,
@@ -559,16 +580,18 @@ export function useStoreIdentityEditor(active = true) {
           finish({
             ...before,
             phase: "editing",
+            saveStatus: "rejected",
             message:
               "A identidade não foi gravada. Confira os dados e o acesso de administrador antes de tentar novamente.",
           });
           break;
       }
     } catch {
-      if (!op.isCurrent()) return;
+      if (!op.isCurrent()) return false;
       // Unexpected failures are conservative: only a fresh read can disambiguate.
       finish({ ...before, intent, phase: "pending", message: pendingMessage });
     }
+    return false;
   }
   function resolveConflict(keepDraft: boolean) {
     const before = model.current;
@@ -671,7 +694,8 @@ export function useStoreIdentityEditor(active = true) {
     setField,
     upload,
     cancelUpload,
-    save,
+    save: () => save(),
+    savePrimaryColor: () => save(true),
     resolveConflict,
     discard,
     keepSource,

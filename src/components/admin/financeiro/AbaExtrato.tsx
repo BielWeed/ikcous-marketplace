@@ -10,6 +10,7 @@ import {
   rotuloDaOrigem,
   sentidoDoLancamento,
 } from "@/lib/financeiro";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type {
   ContaFinanceira,
@@ -75,7 +76,7 @@ function LinhaDoExtratoItem({
         type="button"
         onClick={() => aoAbrir(linha)}
         className={cn(
-          "group relative flex min-h-14 w-full flex-col items-stretch gap-3 rounded-3xl border border-white/10 bg-[#101013] p-4 text-left transition-colors hover:bg-[#17171C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center lg:gap-4",
+          "group relative flex min-h-14 w-full flex-col items-stretch gap-3 rounded-3xl border border-admin-border bg-admin-surface p-4 text-left transition-colors hover:bg-admin-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center lg:gap-4",
         )}
       >
         <span className="flex min-w-0 flex-1 items-center gap-3">
@@ -126,11 +127,11 @@ function LinhaDoExtratoItem({
                 : sentido === 0
                   ? "text-violet-300"
                   : corDoValor(sentido),
-              previsto && "text-orange-300",
+              previsto && classeDoTexto("atencao"),
             )}
           />
           {previsto ? <Etiqueta tom="aviso">Previsto</Etiqueta> : null}
-          {cancelado ? <Etiqueta>Cancelado</Etiqueta> : null}
+          {cancelado ? <Etiqueta tom="perigo">Cancelado</Etiqueta> : null}
         </span>
         <ChevronRight
           aria-hidden="true"
@@ -350,7 +351,7 @@ export function AbaExtrato({
           ) : null}
           <div
             aria-hidden="true"
-            className="hidden border-b border-white/5 px-3 pb-2 text-xs font-black uppercase tracking-[0.2em] text-zinc-400 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:gap-4"
+            className="hidden border-b border-admin-border px-3 pb-2 text-xs font-black uppercase tracking-[0.2em] text-zinc-400 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:gap-4"
           >
             <span>Descrição</span>
             <span>Categoria</span>

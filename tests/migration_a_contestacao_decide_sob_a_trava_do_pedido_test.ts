@@ -360,6 +360,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/provisionar.cjs",
     "tests/banco/rodar-isolado.cjs",
     "tests/banco/efemero.cjs",
+    // Gera artefato derivado; suas guardas são cobradas por ci_tipos_efemeros_test.ts.
+    "tests/banco/gerar-tipos-efemeros.cjs",
   ];
   const scriptsDeProva = (p) =>
     [
@@ -377,6 +379,14 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    // 20261300000000: icones de categoria, CHECK, ACL/RLS e rollback sem perda.
+    "tests/banco/categorias-icones-viva.cjs",
+    // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.
+    "tests/banco/mototaxi-viva.cjs",
+    // 20261252: sessao explicita, chave idempotente, corridas e mutantes do caixa.
+    "tests/banco/caixa-intencao-viva.cjs",
+    // 20261260000000: o cartao guarda o motivo da recusa (portao 56a/56b decide certo; so o Postgres efemero).
+    "tests/banco/motivo-da-recusa-portao-viva.cjs",
     // 20261251: lucro por variante e cobertura do custo do estoque.
     "tests/banco/lucro-do-estoque-viva.cjs",
     // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.
@@ -505,6 +515,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261244000000: a loja escolhe como entrega na cidade e em quantos dias (v23, v24 e upsert_store_config; matriz das duas compras, trigger, rollbacks nos dois degraus e mutantes; e o portao 47a/47b).
     "tests/banco/a-loja-escolhe-como-entrega-viva.cjs",
     "tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs",
+    // 20261310000000: o estilo do card de frete preserva a escolha no upsert e na view; comportamento, rollback e mutantes.
+    "tests/banco/estilo-card-frete-viva.cjs",
     // 20261246000000: o lancamento repetido nao duplica (chave de tentativa em fin_lancamento_salvar; corrida real, atomicidade, mutantes e o portao 49a/49b).
     "tests/banco/lancamento-idempotente-viva.cjs",
     // 20261247000000: a anotacao interna do pedido nao chega a cliente (tabela so do admin de agora; papeis reais, pre-voo, rollbacks, mutantes e o portao 50a/50b).
@@ -513,6 +525,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/notes-do-pedido-fechada-viva.cjs",
     // 20261249000000: o motivo do desconto fica na nota privada, preservando trava e idempotencia.
     "tests/banco/pdv-motivo-privado-viva.cjs",
+    // 20261280000000: total conferido do balcão pelo servidor, com a assinatura nova e a anterior.
+    "tests/banco/pdv-total-conferido-viva.cjs",
     // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",
@@ -568,8 +582,32 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
       `sem o if: ${passo.split("\n")[0]}`,
     );
   }
+  // Artefatos derivados têm condições próprias, sem mexer nas provas nem no preparo.
+  const geracao = passos.find((p) =>
+    p.startsWith("name: Gera tipos do schema public efêmero\n"),
+  );
+  const upload = passos.find((p) =>
+    p.startsWith("name: Guarda tipos do schema public efêmero\n"),
+  );
+  assert(geracao && upload, "os dois passos do artefato devem existir");
+  assertStringIncludes(geracao, "\n        id: tipos\n");
+  assertStringIncludes(
+    geracao,
+    "\n        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}\n",
+  );
+  assertStringIncludes(
+    geracao,
+    "run: node tests/banco/gerar-tipos-efemeros.cjs",
+  );
+  assertStringIncludes(upload, "uses: actions/upload-artifact@v7");
+  assertStringIncludes(
+    upload,
+    "\n        if: ${{ !cancelled() && steps.tipos.outcome == 'success' }}\n",
+  );
   // Os passos de preparo NÃO levam o if (o padrão: parar no 1o erro).
-  for (const passo of passos.filter((p) => !provas.includes(p))) {
+  for (const passo of passos.filter(
+    (p) => !provas.includes(p) && p !== geracao && p !== upload,
+  )) {
     assert(
       !/^\s+if:/m.test(passo),
       `passo de preparo com if: ${passo.split("\n")[0]}`,

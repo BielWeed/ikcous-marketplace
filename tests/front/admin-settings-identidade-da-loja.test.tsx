@@ -214,14 +214,16 @@ afterEach(() => {
 });
 
 describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
-  it("salvar identidade não limpa horário pendente", async () => {
+  it("salvar identidade não limpa horário que falhou; nova tentativa grava só o horário", async () => {
     await render();
     await type("store-name", "Novo nome");
     await type("store-business-hours", "Novo horário");
-    await click("Salvar identidade");
+    h.update.mockResolvedValueOnce(false);
+    await click("Salvar alterações");
     expect(h.dirty).toHaveBeenLastCalledWith(true);
-    h.update.mockResolvedValue(true);
-    await click("Salvar horário");
+    expect(h.save).toHaveBeenCalledTimes(1);
+    h.update.mockClear().mockResolvedValue(true);
+    await click("Salvar alterações");
     expect(h.update).toHaveBeenCalledExactlyOnceWith(
       { businessHours: "Novo horário" },
       { isCurrent: expect.any(Function), silent: true },
@@ -251,7 +253,7 @@ describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
     );
     await render();
     await type("store-business-hours", "Antigo usuário");
-    await click("Salvar horário");
+    await click("Salvar alterações");
     h.auth = {
       ...h.auth,
       user: { id: "admin-b" },
@@ -270,23 +272,22 @@ describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
     expect(document.querySelector("#store-city")).toBeNull();
     expect(document.querySelector("#store-state")).toBeNull();
   });
-  it("preserva nome e cor digitados ao atualizar apenas config de horário/frete", async () => {
+  it("preserva nome digitado ao atualizar apenas config de horário/frete", async () => {
     await render();
     await type("store-name", "Meu rascunho");
-    await type("store-color-hex", "#0");
     await act(async () => {
       h.config = { businessHours: "Outro", shippingFee: 99 };
       h.version++;
       for (const callback of h.listeners) callback();
     });
     expect(input("store-name").value).toBe("Meu rascunho");
-    expect(input("store-color-hex").value).toBe("#0");
+    expect(host.querySelector("#store-color-hex")).toBeNull();
     expect(h.update).not.toHaveBeenCalled();
   });
   it("grava pacote único com nome e a cidade/UF que a loja já tem, sem updateConfig e sem inventar nome vazio", async () => {
     await render();
     await type("store-name", "Minha Loja");
-    await click("Salvar identidade");
+    await click("Salvar alterações");
     expect(h.save).toHaveBeenCalledTimes(1);
     // cidade e UF seguem no pacote (a RPC recusa pacote incompleto), com o
     // valor da fotografia: quem os muda é o Endereço, não a marca
@@ -297,14 +298,14 @@ describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
     });
     expect(h.update).not.toHaveBeenCalled();
     await type("store-name", " ");
-    await click("Salvar identidade");
+    await click("Salvar alterações");
     expect(h.save).toHaveBeenCalledTimes(1);
   });
   it("falha mantém rascunho, guarda e não diz salvo", async () => {
     h.save.mockResolvedValue({ status: "rejected", code: "permission" });
     await render();
     await type("store-name", "Meu nome");
-    await click("Salvar identidade");
+    await click("Salvar alterações");
     expect(h.refresh).not.toHaveBeenCalled();
     expect(input("store-name").value).toBe("Meu nome");
     expect(h.dirty).toHaveBeenLastCalledWith(true);

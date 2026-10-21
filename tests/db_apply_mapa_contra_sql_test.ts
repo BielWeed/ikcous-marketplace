@@ -103,7 +103,10 @@ function lerMigration(arquivo) {
  * chamador — aqui não se escolhe uma calada.
  */
 function corposDeFuncao(sql) {
-  const texto = sql.replace(/\r\n/g, "\n");
+  // Rollback EMBUTIDO como comentário não é uma definição ativa (280).
+  const texto = sql
+    .replace(/\r\n/g, "\n")
+    .replace(/^-- INICIO DO ROLLBACK\n[\s\S]*?^-- FIM DO ROLLBACK/gm, "");
   const corpos = new Map();
   // Literais dentro da função de propósito: `new RegExp` acorda o
   // security/detect-non-literal-regexp, e um literal reavaliado a cada chamada
@@ -155,6 +158,16 @@ function corposDeFuncao(sql) {
  * cabeçalho hoje — a diferença é latente, não ativa, e é por isso que ela
  * precisa estar fechada agora e não quando aparecer.
  */
+Deno.test("o extrator ignora CREATE FUNCTION no rollback comentado da 280 e mantém comentários do corpo ativo", () => {
+  const sql = lerMigration(
+    "20261280000000_o_balcao_registra_so_o_total_conferido.sql",
+  );
+  const corpos = corposDeFuncao(sql).get("registrar_venda_presencial") ?? [];
+  assertEquals(corpos.length, 1, "rollback comentado não é sobrecarga ativa");
+  assertStringIncludes(corpos[0], "p_total_esperado numeric DEFAULT NULL");
+  assertStringIncludes(corpos[0], "-- (1) O GATE VEM ANTES");
+});
+
 function corpoDaMigration(arquivo, funcao) {
   const corpos = corposDeFuncao(lerMigration(arquivo));
   const definicoes = corpos.get(funcao) ?? [];

@@ -7,7 +7,7 @@ type Variante = "primaria" | "secundaria" | "perigo";
 const VARIANTES: Record<Variante, string> = {
   primaria: "bg-admin-gold text-black hover:bg-admin-gold/90",
   secundaria:
-    "border border-white/10 bg-white/[0.04] text-zinc-100 hover:bg-white/[0.08]",
+    "border border-admin-border-strong bg-admin-raised text-zinc-100 hover:bg-admin-hover",
   perigo:
     "border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20",
 };

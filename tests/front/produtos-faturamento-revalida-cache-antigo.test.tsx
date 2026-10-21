@@ -89,7 +89,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
   async function abrirValores() {
     if (document.querySelector('[role="dialog"]')) return;
     const botao = [...caixa.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Calcular líquido",
+      (b) => b.getAttribute("aria-label") === "Entender valores",
     );
     expect(botao).toBeDefined();
     await act(async () => botao!.click());
@@ -259,7 +259,11 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       error: null,
     });
     await act(async () => raiz.render(tela()));
-    expect(metrica("Venda prevista (com custo)")).toContain("160,00");
+    expect(metrica("Venda prevista (com custo)")).toBe("");
+    const rodape = caixa.querySelector(".metricas-painel-secundarias")!;
+    expect(rodape.textContent).toContain("Lucro sobre o custo");
+    expect(rodape.textContent).toContain("60,0%");
+    expect(rodape.textContent).toContain("Produtos no Catálogo");
     expect(metrica("Custo conhecido em estoque")).toContain("100,00");
     expect(metrica("Lucro bruto potencial")).toContain("60,00");
     expect(caixa.textContent).toContain("1 produto sem custo");
@@ -268,7 +272,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(caixa.textContent).not.toContain("Estimativa de venda do estoque");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     const entender = [...caixa.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Calcular líquido",
+      (b) => b.getAttribute("aria-label") === "Entender valores",
     );
     expect(entender).toBeDefined();
     await act(async () => entender!.click());
@@ -277,6 +281,11 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(dialogo?.textContent).toContain("460,00");
     expect(dialogo?.textContent).toContain("300,00");
     expect(dialogo?.textContent).toContain("160,00");
+    const expandir = caixa.querySelector<HTMLButtonElement>(
+      'button[aria-expanded="false"]',
+    )!;
+    await act(async () => expandir.click());
+    expect(metrica("Venda prevista (com custo)")).toContain("160,00");
     expect(dialogo?.textContent).toContain("taxas");
     const fechar = dialogo!.querySelector<HTMLButtonElement>(
       'button[aria-label="Fechar"]',
@@ -428,6 +437,11 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(metrica("Custo conhecido em estoque")).toContain("100,00");
     expect(metrica("Lucro bruto potencial")).toContain("60,00");
     expect(metrica("Lucro bruto potencial")).toContain("Parcial");
+    expect(
+      caixa.querySelector(
+        'article[aria-label="Lucro bruto potencial"] > p:not(.sr-only)',
+      )?.textContent,
+    ).toContain("(parcial)");
     expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
     expect(metrica("Lucro líquido potencial")).not.toContain("360,00");
     expect(caixa.textContent).not.toContain("300,00");
@@ -494,6 +508,11 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     });
     expect(metrica("Lucro bruto potencial")).toContain("0,00");
     expect(metrica("Lucro bruto potencial")).toContain("Parcial");
+    expect(
+      caixa.querySelector(
+        'article[aria-label="Lucro bruto potencial"] > p:not(.sr-only)',
+      )?.textContent,
+    ).toContain("(parcial)");
     expect(caixa.textContent).not.toContain("Nenhum custo cadastrado");
   });
 
@@ -507,7 +526,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       productsWithCost: 1,
     });
     const guia = caixa.querySelector<HTMLButtonElement>(
-      'button[title="Guia Completo de Métricas e Ajuda"]',
+      'button[aria-label="Guia e simulador"]',
     );
     expect(guia).not.toBeNull();
     await act(async () => guia!.click());

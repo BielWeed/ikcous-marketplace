@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   ArrowDownToLine,
@@ -9,8 +11,10 @@ import {
   Store,
 } from "lucide-react";
 
+import { useAuth } from "@/hooks/useAuth";
 import { useCaixaAtual, useHistoricoDoCaixa } from "@/hooks/useFinanceiro";
 import { diferencaDoFechamento, formatarDataHora } from "@/lib/financeiro";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { CaixaAtual, SessaoDeCaixa } from "@/types/financeiro";
 import type { AbrirFolha } from "./navegacao";
@@ -26,6 +30,7 @@ import {
   Etiqueta,
   SeloFinanceiro,
 } from "./partes";
+import { esquecerTentativasDeSessoesFechadas } from "./tentativasDoCaixa";
 
 function LinhaDaConta({
   rotulo,
@@ -42,7 +47,7 @@ function LinhaDaConta({
     <div
       className={cn(
         "flex items-baseline justify-between gap-3 py-2 text-sm",
-        total && "mt-1 border-t border-white/10 pt-3",
+        total && "mt-1 border-t border-admin-border pt-3",
       )}
     >
       <dt className={total ? "font-black text-white" : "text-zinc-400"}>
@@ -89,7 +94,7 @@ function CaixaAberto({
               className="text-4xl font-black tracking-tighter text-white"
             />
             <p className="text-xs font-medium text-zinc-400">
-              Inclui as vendas em dinheiro registradas nesta sessão.
+              Inclui vendas em dinheiro desta sessão.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
@@ -97,12 +102,16 @@ function CaixaAberto({
                 onClick={() =>
                   abrirFolha({
                     tipo: "caixa-movimentar",
+                    sessaoId: caixa.id,
                     movimento: "sangria",
                     esperado: caixa.esperado,
                     contaDoCaixa: caixa.contaId,
                   })
                 }
-                className={cn(CLASSE_BOTAO_SECUNDARIO, "text-orange-300")}
+                className={cn(
+                  CLASSE_BOTAO_SECUNDARIO,
+                  classeDoTexto("atencao"),
+                )}
               >
                 <ArrowUpFromLine aria-hidden="true" className="size-4" />
                 Sangria
@@ -112,6 +121,7 @@ function CaixaAberto({
                 onClick={() =>
                   abrirFolha({
                     tipo: "caixa-movimentar",
+                    sessaoId: caixa.id,
                     movimento: "suprimento",
                     esperado: caixa.esperado,
                     contaDoCaixa: caixa.contaId,
@@ -200,11 +210,11 @@ function CaixaAberto({
       <CartaoSecao titulo="Movimentos desta sessão">
         {caixa.movimentos.length === 0 ? (
           <p className="text-xs text-zinc-400">
-            Nenhuma sangria ou suprimento ainda. As vendas em dinheiro entram no
-            esperado sozinhas.
+            Nenhuma sangria ou suprimento. As vendas em dinheiro somam no
+            esperado.
           </p>
         ) : (
-          <ul className="flex flex-col divide-y divide-white/5">
+          <ul className="flex flex-col divide-y divide-admin-border">
             {caixa.movimentos.map((movimento) => (
               <li
                 key={movimento.id}
@@ -257,15 +267,14 @@ function CaixaFechado({ abrirFolha }: { readonly abrirFolha: AbrirFolha }) {
   return (
     <CartaoSecao>
       <div className="flex flex-col items-center gap-4 py-6 text-center">
-        <div className="flex size-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+        <div className="flex size-14 items-center justify-center rounded-2xl border border-admin-border bg-white/5">
           <Store aria-hidden="true" className="size-6 text-zinc-300" />
         </div>
         <div>
           <p className="text-lg font-black text-white">Caixa fechado</p>
           <p className="mx-auto mt-1 max-w-md text-xs text-zinc-400">
-            Abra o caixa no começo do dia contando o troco da gaveta. Durante o
-            dia as vendas em dinheiro somam no esperado; no fim, você conta de
-            novo e o app mostra se sobrou ou faltou.
+            Abra contando o troco. As vendas em dinheiro somam no esperado. No
+            fim do dia, conte de novo: o app mostra se sobrou ou faltou.
           </p>
         </div>
         <button
@@ -330,9 +339,9 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
           <dd
             className={cn(
               "font-bold",
-              situacao === "quebra" && "text-red-300",
-              situacao === "sobra" && "text-orange-300",
-              situacao === "bateu" && "text-emerald-300",
+              situacao === "quebra" && classeDoTexto("negativo"),
+              situacao === "sobra" && classeDoTexto("atencao"),
+              situacao === "bateu" && classeDoTexto("neutro"),
             )}
           >
             {sessao.diferenca === null ? (
@@ -354,12 +363,14 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
  * esperado × contado × diferença; embaixo, o histórico das sessões.
  */
 export function AbaCaixa({
+  aoSessaoAtual,
   ativo,
   versao,
   abrirFolha,
   aoNovoLancamento,
   mostrarAcaoFixa = false,
 }: {
+  readonly aoSessaoAtual?: (id: string | null) => void;
   readonly ativo: boolean;
   readonly versao: number;
   readonly abrirFolha: AbrirFolha;
@@ -368,6 +379,25 @@ export function AbaCaixa({
 }) {
   const atual = useCaixaAtual(ativo, versao);
   const historico = useHistoricoDoCaixa(ativo, versao);
+  const { user } = useAuth();
+  const historicoLido = useRef<SessaoDeCaixa[] | null>(null);
+  useEffect(() => {
+    if (
+      ativo &&
+      historico.dados &&
+      !historico.carregando &&
+      !historico.erro &&
+      historicoLido.current !== historico.dados
+    ) {
+      historicoLido.current = historico.dados;
+      esquecerTentativasDeSessoesFechadas(user?.id ?? null, historico.dados);
+    }
+  }, [ativo, historico.dados, historico.carregando, historico.erro, user?.id]);
+  useEffect(() => {
+    if (ativo && atual.dados && !atual.carregando && !atual.erro) {
+      aoSessaoAtual?.(atual.dados.sessao?.id ?? null);
+    }
+  }, [ativo, atual.dados, atual.carregando, atual.erro, aoSessaoAtual]);
 
   return (
     <div className="flex flex-col gap-7">

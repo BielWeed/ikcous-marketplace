@@ -138,7 +138,7 @@ async function type(value: string) {
 }
 async function start() {
   await type("Escolha de A");
-  await click("Salvar horário");
+  await click("Salvar alterações");
 }
 async function confirm() {
   await act(async () =>
@@ -219,14 +219,14 @@ describe("horário com editor e StoreProvider reais", () => {
     await render(false);
     await render(true);
     expect(field().value).toBe("Escolha de A");
-    expect(button("Salvar horário").disabled).toBe(false);
+    expect(button("Salvar alterações").disabled).toBe(false);
     await confirm();
     noDelivery();
     expect(h.dirty).toHaveBeenLastCalledWith(true);
     const next = deferred<{ data: unknown; error: unknown }>();
     h.rpc.mockReturnValue(next.promise);
     await type("Escolha nova");
-    await click("Salvar horário");
+    await click("Salvar alterações");
     await act(async () =>
       next.resolve({ data: { business_hours: "Escolha nova" }, error: null }),
     );
@@ -240,9 +240,9 @@ describe("horário com editor e StoreProvider reais", () => {
     const next = deferred<{ data: unknown; error: unknown }>();
     h.rpc.mockReturnValue(next.promise);
     await type("Nova tentativa");
-    await click("Salvar horário");
+    await click("Salvar alterações");
     await confirm();
-    expect(button("Salvando…").disabled).toBe(true);
+    expect(button("Salvando…").getAttribute("aria-disabled")).toBe("true");
     expect(field().value).toBe("Nova tentativa");
     expect(store.config.businessHours).toBe("Antigo");
     expect(toast.success).not.toHaveBeenCalled();
@@ -255,7 +255,7 @@ describe("horário com editor e StoreProvider reais", () => {
   });
   it("horário vazio envia null e confirma ausência sem perder o contrato", async () => {
     await type("   ");
-    await click("Salvar horário");
+    await click("Salvar alterações");
     await act(async () =>
       pending.resolve({ data: { business_hours: null }, error: null }),
     );

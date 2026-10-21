@@ -550,6 +550,22 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "53b-antes-faturamento-potencial-base-vigente",
   "54a-conferir-lucro-do-estoque-aplicado",
   "54b-antes-lucro-do-estoque-base-vigente",
+  "55a-conferir-intencao-do-caixa-aplicado",
+  "55b-antes-intencao-do-caixa-base-vigente",
+  "56a-conferir-motivo-da-recusa-do-cartao-aplicado",
+  "56b-antes-motivo-da-recusa-do-cartao-base-vigente",
+  "57a-conferir-pagamento-adiantado-e-estorno-aplicado",
+  "57b-antes-pagamento-adiantado-e-estorno-base-vigente",
+  "58a-conferir-total-do-balcao-aplicado",
+  "58b-antes-total-do-balcao-base-vigente",
+  "59a-conferir-online-sem-forma-aplicado",
+  "59b-antes-online-sem-forma-base-vigente",
+  "60a-conferir-estilo-card-frete-aplicado",
+  "60b-antes-estilo-card-frete-base-vigente",
+  "61a-conferir-icones-das-categorias-aplicado",
+  "61b-antes-icones-das-categorias",
+  "62a-conferir-mototaxi-aplicado",
+  "62b-antes-mototaxi-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

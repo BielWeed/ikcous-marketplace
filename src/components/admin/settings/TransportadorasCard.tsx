@@ -1,4 +1,6 @@
+import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
 import { GuiaDaChaveDoProvedor } from "@/components/admin/settings/GuiaDaChaveDoProvedor";
+import { Chave } from "@/components/admin/shipping/primitivas-direcao-d";
 import { LogoDaTransportadora } from "@/components/shipping/MarcaDoFrete";
 import { Switch } from "@/components/ui/switch";
 import { logoDoAgregador, marcaDoFrete } from "@/lib/marca-do-frete";
@@ -10,7 +12,6 @@ import {
   CheckCircle2,
   ChevronDown,
   KeyRound,
-  Lock,
   Mail,
   RefreshCw,
   Save,
@@ -23,6 +24,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { toast } from "sonner";
@@ -227,36 +229,6 @@ const PROVEDORES_COM_EMAIL_EM_CONSULTA: ReadonlySet<ProvedorFrete> = new Set([
 // chave sem e-mail e só recusa LIGAR sem ele (`save_active_providers`).
 export const PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR: ReadonlySet<ProvedorFrete> =
   new Set(["superfrete"]);
-/**
- * Cartão expansível (pedido do dono, 23/09/2026 — os cartões ficaram longos
- * demais no celular): fechado mostra só nome + estado em palavras; clique
- * no cabeçalho revela chave, e-mail, modo de teste, serviços e botões.
- *
- * Estado inicial de cada cartão: ABERTO quando há pendência (sem chave,
- * `precisa_salvar_de_novo`, ou — só a SuperFrete exige isso para GRAVAR —
- * chave salva sem e-mail de contato válido); FECHADO quando o provedor já
- * está configurado e nada precisa da atenção da lojista agora. Calculado
- * uma vez, ao montar o cartão (a seção só monta os cartões depois que
- * `ler_configuracao_frete` respondeu — nunca com dado velho) — depois disso
- * quem manda é o clique da lojista, nunca mais um recálculo automático:
- * salvar não pode fechar um cartão que ela decidiu deixar aberto, nem
- * reabrir um que ela fechou.
- */
-function temPendencia(
-  provider: ProvedorFrete,
-  salvo: ConfigDoProvedor | undefined,
-): boolean {
-  if (salvo?.precisa_salvar_de_novo) return true;
-  if (!(salvo?.tem_chave ?? false)) return true;
-  if (
-    PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(provider) &&
-    !emailDeContatoValido(salvo?.contato_email)
-  ) {
-    return true;
-  }
-  return false;
-}
-
 /** Resumo do estado do cartão FECHADO, em palavras — nunca o segredo. */
 function resumoDoCartao(
   provider: ProvedorFrete,
@@ -400,7 +372,17 @@ function rascunhoVazio(): RascunhoDoProvedor {
   };
 }
 
+export interface SalvamentoDasTransportadoras {
+  readonly mudou: boolean;
+  readonly salvar: () => Promise<boolean>;
+}
 interface TransportadorasSectionProps {
+  readonly onSalvarMudou?: (acao: SalvamentoDasTransportadoras) => void;
+  readonly onEscolhaMudou?: (ligados: readonly ProvedorFrete[]) => void;
+  readonly onErroMudou?: (erro: boolean) => void;
+  readonly active?: boolean;
+  readonly desabilitado?: boolean;
+
   /** Avisa o pai (a tela de Frete, desde o painel simples — H5) quando há
    * alteração não salva: entra na guarda de navegação da tela, para o token
    * digitado não sumir em silêncio. */
@@ -423,10 +405,14 @@ interface TransportadorasSectionProps {
 export const TransportadorasSection = memo(function TransportadorasSection({
   onDirtyMudou,
   onLigadosMudou,
+  onSalvarMudou,
+  onEscolhaMudou,
+  onErroMudou,
+  desabilitado = false,
+  active,
 }: TransportadorasSectionProps) {
   const [carregado, setCarregado] = useState(false);
   const [erroCarga, setErroCarga] = useState(false);
-  const [modo, setModo] = useState<"legado" | "multi">("legado");
   const [provedoresSalvos, setProvedoresSalvos] = useState<
     ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
   >(() => new Map());
@@ -436,7 +422,9 @@ export const TransportadorasSection = memo(function TransportadorasSection({
   const [ligadosEscolhidos, setLigadosEscolhidos] = useState<
     ReadonlySet<ProvedorFrete>
   >(() => new Set());
-  const [salvandoLigados, setSalvandoLigados] = useState(false);
+  const salvandoLigadosRef = useRef(false);
+  const ligadosSalvosRef = useRef<ReadonlySet<ProvedorFrete>>(new Set());
+  const iniciouLeituraRef = useRef(false);
   // PR #637: a recusa do "Salvar provedores" fica ESCRITA no bloco até a
   // escolha mudar — só o toast some no celular antes de ser lido.
   const [erroLigados, setErroLigados] = useState<{
@@ -498,10 +486,18 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         return;
       }
       const { config } = resultado;
-      setModo(config.modo);
       setProvedoresSalvos(config.provedores);
-      setLigadosSalvos(new Set(config.ligados));
-      setLigadosEscolhidos(new Set(config.ligados));
+      const anteriores = ligadosSalvosRef.current;
+      const confirmados = new Set(config.ligados);
+      ligadosSalvosRef.current = confirmados;
+      setLigadosSalvos(confirmados);
+      setLigadosEscolhidos((atual) =>
+        resetarRascunhoDe === "tudo" ||
+        (atual.size === anteriores.size &&
+          [...atual].every((p) => anteriores.has(p)))
+          ? confirmados
+          : atual,
+      );
       // A escolha pendente acabou de voltar à do servidor — a recusa que
       // falava dela sai junto (revisão Opus, PR #637).
       setErroLigados(null);
@@ -556,9 +552,15 @@ export const TransportadorasSection = memo(function TransportadorasSection({
   );
 
   useEffect(() => {
-    carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (active === false) return;
+    const resetar = iniciouLeituraRef.current ? "nenhum" : "tudo";
+    iniciouLeituraRef.current = true;
+    carregar(resetar);
+  }, [active, carregar]);
+
+  useEffect(() => {
+    onErroMudou?.(erroCarga);
+  }, [erroCarga, onErroMudou]);
 
   const sandboxAtual = useCallback(
     (provider: ProvedorFrete): boolean => {
@@ -593,12 +595,8 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         return true;
       if (r.servicosMexeu) return true;
     }
-    if (ligadosEscolhidos.size !== ligadosSalvos.size) return true;
-    for (const p of ligadosEscolhidos) {
-      if (!ligadosSalvos.has(p)) return true;
-    }
     return false;
-  }, [rascunhos, provedoresSalvos, ligadosEscolhidos, ligadosSalvos]);
+  }, [rascunhos, provedoresSalvos]);
 
   useEffect(() => {
     onDirtyMudou?.(isDirty);
@@ -989,8 +987,10 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     haptic.light();
   }, []);
 
-  const salvarLigados = useCallback(async () => {
-    setSalvandoLigados(true);
+  const salvarLigados = useCallback(async (): Promise<boolean> => {
+    if (desabilitado || salvandoLigadosRef.current) return false;
+    salvandoLigadosRef.current = true;
+    const enviados = new Set(ligadosEscolhidos);
     setErroLigados(null);
     haptic.medium();
     try {
@@ -1015,10 +1015,16 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         } else {
           toast.error(mensagemErro);
         }
-        return;
+        return false;
       }
-      setLigadosSalvos(new Set(data.ligados ?? []));
-      setLigadosEscolhidos(new Set(data.ligados ?? []));
+      const confirmados = new Set<ProvedorFrete>(data.ligados ?? []);
+      ligadosSalvosRef.current = confirmados;
+      setLigadosSalvos(confirmados);
+      setLigadosEscolhidos((atual) =>
+        atual.size === enviados.size && [...atual].every((p) => enviados.has(p))
+          ? confirmados
+          : atual,
+      );
 
       try {
         const { descartarCacheDeFreteDoNavegador } = await import(
@@ -1047,7 +1053,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       });
       // Ligar/desligar NUNCA mexe em credencial nenhuma (ANOTADO, ver
       // `carregar`) — nenhum rascunho é tocado aqui.
-      await carregar("nenhum");
+      return true;
     } catch (err) {
       console.error(
         "[TransportadorasCard] Erro ao salvar provedores ligados:",
@@ -1065,16 +1071,29 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       toast.error("Erro ao salvar os provedores ligados.", {
         description: descricao,
       });
+      return false;
     } finally {
-      setSalvandoLigados(false);
+      salvandoLigadosRef.current = false;
     }
-  }, [ligadosEscolhidos, carregar]);
+  }, [ligadosEscolhidos, desabilitado]);
 
   const ligadosMudou = useMemo(() => {
     if (ligadosEscolhidos.size !== ligadosSalvos.size) return true;
     for (const p of ligadosEscolhidos) if (!ligadosSalvos.has(p)) return true;
     return false;
   }, [ligadosEscolhidos, ligadosSalvos]);
+
+  useEffect(() => {
+    onSalvarMudou?.({ mudou: ligadosMudou, salvar: salvarLigados });
+    if (carregado) onEscolhaMudou?.([...ligadosEscolhidos]);
+  }, [
+    ligadosMudou,
+    salvarLigados,
+    onSalvarMudou,
+    carregado,
+    ligadosEscolhidos,
+    onEscolhaMudou,
+  ]);
 
   if (!carregado && !erroCarga) {
     return (
@@ -1088,21 +1107,20 @@ export const TransportadorasSection = memo(function TransportadorasSection({
 
   if (erroCarga) {
     return (
-      <div className="flex flex-col gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+      <div
+        role="alert"
+        className="flex flex-col gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3"
+      >
         <div className="flex items-start gap-2">
           <AlertCircle className="mt-px size-3.5 shrink-0 text-red-400" />
           <p className="text-[11px] font-semibold leading-snug text-red-300">
-            Não foi possível carregar as chaves de frete.
-            <span className="mt-0.5 block font-normal text-red-300/70">
-              Nada é gravado por cima do que já está salvo até a leitura
-              funcionar.
-            </span>
+            Não deu para confirmar as transportadoras agora. Nada foi apagado.
           </p>
         </div>
         <button
           type="button"
           onClick={() => carregar()}
-          className="min-h-11 self-start rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
+          className="min-h-11 self-start rounded-lg border border-admin-border bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
         >
           Tentar de novo
         </button>
@@ -1112,21 +1130,22 @@ export const TransportadorasSection = memo(function TransportadorasSection({
 
   return (
     <div className="flex flex-col gap-4 text-zinc-200">
-      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-        Como sua loja envia
+      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[hsl(var(--admin-text-soft))]">
+        Transportadoras
       </p>
-      <p className="text-xs leading-relaxed text-zinc-400">
-        Configure a chave de cada transportadora e escolha, no bloco abaixo,
-        quais estão LIGADAS na sua loja. Salvar uma chave nunca liga a
-        transportadora sozinha.
+      <p className="text-[12.5px] text-zinc-400">
+        Ligue as que vão cotar o frete. Toque no nome para a chave e os
+        serviços.
       </p>
-
       {ORDEM_DOS_PROVEDORES.map((provider) => (
         <CartaoDoProvedor
           key={provider}
           provider={provider}
           salvo={provedoresSalvos.get(provider)}
           ligado={ligadosSalvos.has(provider)}
+          escolhido={ligadosEscolhidos.has(provider)}
+          onAlternarLigado={() => alternarLigado(provider)}
+          desabilitado={desabilitado}
           rascunho={rascunhoDoProvider(provider)}
           sandboxAtual={sandboxAtual(provider)}
           onTokenMudou={(v) =>
@@ -1148,123 +1167,11 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         />
       ))}
 
-      {/* Bloco separado (R2-1): liga/desliga não mexe em nenhuma credencial. */}
-      <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-3.5">
-        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-          <Truck aria-hidden="true" className="size-3.5 text-admin-gold" />
-          <span>Provedores ligados na loja</span>
-        </div>
-        <p className="text-[11px] leading-snug text-zinc-400">
-          Marque quem cota frete de verdade para as suas clientes. Só é possível
-          ligar um provedor com chave salva, fora do modo de teste.
+      {erroLigados && (
+        <p role="alert" className="text-[12.5px] text-red-300">
+          {erroLigados.mensagem} {erroLigados.resumo}
         </p>
-        <div className="space-y-1.5">
-          {ORDEM_DOS_PROVEDORES.map((provider) => {
-            const salvo = provedoresSalvos.get(provider);
-            const temChave = salvo?.tem_chave ?? false;
-            const emModoDeTeste = sandboxAtual(provider);
-            const podeLigar = temChave && !emModoDeTeste;
-            const marcado = ligadosEscolhidos.has(provider);
-            // Revisão Opus (achado 1): a caixa SEMPRE deixa DESMARCAR —
-            // um provedor que perdeu a chave ou caiu em sandbox depois de
-            // já estar ligado não pode ficar preso ligado só porque a
-            // lojista não consegue mais destravar a caixa.
-            const desabilitada = !podeLigar && !marcado;
-            // Revisão Opus (achado 2, regressão 1.5.5): a chave não basta
-            // para a SuperFrete cotar de verdade — sem e-mail de contato
-            // válido a edge nunca manda a cotação embora a linha exista
-            // (dado pode ter sido salvo direto no banco, ou de antes da
-            // 1.5.5). Mesma régua de `PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR`.
-            const semEmailQueEssePedeParaSalvar =
-              temChave &&
-              PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(provider) &&
-              !emailDeContatoValido(salvo?.contato_email);
-            // Revisão Opus (achado 3): o rótulo era o RASCUNHO
-            // (`ligadosEscolhidos`/`marcado`) travestido de estado salvo —
-            // marcar a caixa sem clicar em "Salvar provedores" já dizia
-            // "ligado", uma mentira. Agora o rótulo compara o SALVO
-            // (`ligadosSalvos`, a verdade) com o rascunho, no idioma do
-            // 1.5.6 ("Ativo agora" × "Selecionado (falta salvar)").
-            const estaSalvo = ligadosSalvos.has(provider);
-            const rotulo = !temChave
-              ? "sem chave salva"
-              : semEmailQueEssePedeParaSalvar
-                ? "sem e-mail de contato"
-                : emModoDeTeste
-                  ? "em modo de teste — não pode ligar"
-                  : estaSalvo && marcado
-                    ? "ligado"
-                    : estaSalvo && !marcado
-                      ? "será desligado (falta salvar)"
-                      : !estaSalvo && marcado
-                        ? "selecionado (falta salvar)"
-                        : "chave salva";
-            return (
-              <label
-                key={provider}
-                className={`flex min-h-11 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${
-                  podeLigar
-                    ? "border-white/5 bg-zinc-900/40"
-                    : "border-white/5 bg-zinc-900/20 opacity-50"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={marcado}
-                    disabled={desabilitada}
-                    onChange={() => alternarLigado(provider)}
-                    className="size-5 accent-admin-gold"
-                  />
-                  <span className="font-bold text-zinc-200">
-                    {nomeDoProvedor(provider)}
-                  </span>
-                </span>
-                <span className="text-[11px] text-zinc-500">{rotulo}</span>
-              </label>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          disabled={
-            salvandoLigados ||
-            (!ligadosMudou &&
-              (modo === "multi" || ligadosEscolhidos.size === 0))
-          }
-          onClick={salvarLigados}
-          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-        >
-          {salvandoLigados ? (
-            <RefreshCw className="size-3 animate-spin" />
-          ) : (
-            <Save className="size-3" />
-          )}
-          <span>{salvandoLigados ? "Salvando…" : "Salvar provedores"}</span>
-        </button>
-        {erroLigados && (
-          <div
-            role="alert"
-            className="flex items-start gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-red-300"
-          >
-            <AlertCircle className="mt-px size-3.5 shrink-0" />
-            <span>
-              {erroLigados.mensagem}
-              {erroLigados.resumo && (
-                <span className="mt-0.5 block font-normal text-red-300/80">
-                  {erroLigados.resumo}
-                </span>
-              )}
-            </span>
-          </div>
-        )}
-        {modo === "legado" && (
-          <p className="text-[11px] leading-snug text-zinc-500">
-            Sua loja ainda está no modo antigo (um provedor só). Salvar aqui
-            liga o modo novo, com vários provedores ao mesmo tempo.
-          </p>
-        )}
-      </div>
+      )}
     </div>
   );
 });
@@ -1273,6 +1180,9 @@ function CartaoDoProvedor({
   provider,
   salvo,
   ligado,
+  escolhido,
+  onAlternarLigado,
+  desabilitado,
   rascunho,
   sandboxAtual,
   logo,
@@ -1291,6 +1201,9 @@ function CartaoDoProvedor({
    * chave de sandbox nasce desabilitada aqui para não deixar a lojista
    * tentar algo que o servidor vai recusar de qualquer jeito. */
   readonly ligado: boolean;
+  readonly escolhido: boolean;
+  readonly onAlternarLigado: () => void;
+  readonly desabilitado: boolean;
   readonly rascunho: RascunhoDoProvedor;
   readonly sandboxAtual: boolean;
   /** Slot do logo do provedor — outra frente vai plugar aqui depois
@@ -1316,8 +1229,8 @@ function CartaoDoProvedor({
   // inicializador preguiçoso roda uma vez só, no primeiro render deste
   // cartão (a seção só monta os cartões depois que a leitura inicial
   // terminou, então `salvo` aqui já é o dado real, nunca placeholder).
-  const [aberto, setAberto] = useState(() => temPendencia(provider, salvo));
-  const idCorpo = useId();
+  const [aberto, setAberto] = useState(false);
+  const abridorRef = useRef<HTMLButtonElement>(null);
   const idModoDeTeste = useId();
   const quantidadeServicos =
     rascunho.servicosSelecionados?.size ?? salvo?.servicos?.length ?? 0;
@@ -1329,352 +1242,397 @@ function CartaoDoProvedor({
     quantidadeServicos,
   );
 
+  const podeLigar =
+    temChave &&
+    !sandboxAtual &&
+    (!PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) ||
+      !!emailDeContatoValido(salvo?.contato_email));
+  const estado = rascunho.tokenDigitado.trim()
+    ? "Chave digitada — falta salvar"
+    : escolhido !== ligado
+      ? escolhido
+        ? "Selecionada — falta salvar"
+        : "Será desligada — falta salvar"
+      : !temChave
+        ? "Sem chave — toque para conectar"
+        : !podeLigar
+          ? sandboxAtual
+            ? "Modo de teste"
+            : "Falta o e-mail de contato"
+          : ligado
+            ? `Ligada · ${quantidadeServicos} serviços`
+            : "Chave salva · desligada";
   return (
-    <div className="rounded-2xl border border-white/5 bg-zinc-950/60">
-      <button
-        type="button"
-        aria-expanded={aberto}
-        aria-controls={idCorpo}
-        onClick={() => setAberto((v) => !v)}
-        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl p-3.5 text-left transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-admin-gold"
-      >
-        <span className="flex min-w-0 items-center gap-2.5">
+    <div>
+      <div className="flex min-h-11 items-center gap-2">
+        <button
+          type="button"
+          ref={abridorRef}
+          aria-expanded={aberto}
+          aria-label={nomeDoProvedor(provider)}
+          onClick={() => setAberto(true)}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold"
+        >
           {logo ?? <LogoDoProvedor provider={provider} />}
-          <span className="flex min-w-0 flex-col items-start gap-0.5">
-            <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              <Lock className="size-3.5 text-admin-gold" />
-              <span>Chave de acesso — {nomeDoProvedor(provider)}</span>
+          <span className="min-w-0 flex-1 break-words">
+            <span className="block text-sm font-bold text-zinc-100">
+              {nomeDoProvedor(provider)}
             </span>
-            <span className="truncate text-[11px] text-zinc-400">
-              {resumo.estado}
-              {resumo.servicos ? ` · ${resumo.servicos}` : ""}
-            </span>
+            <span className="block text-xs text-zinc-400">{estado}</span>
           </span>
-        </span>
-        <ChevronDown
-          aria-hidden="true"
-          className={`size-4 shrink-0 text-zinc-500 transition-transform ${aberto ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      <div id={idCorpo} hidden={!aberto} className="space-y-3 px-3.5 pb-3.5">
-        {PROVEDORES_COM_SANDBOX.has(provider) && (
-          // Tocar no texto também liga/desliga: o <label> envolve o Switch
-          // (só muda o rascunho `sandboxEscolhido`; grava no Salvar).
-          <label
-            htmlFor={idModoDeTeste}
-            className="flex min-h-11 cursor-pointer items-center justify-between gap-2"
-          >
-            <span className="text-xs text-zinc-400">Modo de teste</span>
-            <Switch
-              id={idModoDeTeste}
-              checked={sandboxAtual}
-              // Revisão Opus (achado 1, R3-8): a trava é só para LIGAR o
-              // sandbox — nunca para DESLIGAR. `ligado && sandboxAtual` (a
-              // loja está presa em sandbox porque a credencial já entrou
-              // assim, ou a regra mudou depois) precisa continuar clicável,
-              // senão a lojista fica presa: não dá para desligar o
-              // sandbox, e não dá para desligar a transportadora com o
-              // sandbox ligado (a edge também recusaria — acoes.ts §R3-8).
-              disabled={ligado && !sandboxAtual}
-              aria-label={`Modo de teste — ${nomeDoProvedor(provider)}`}
-              onCheckedChange={(checked) => onModoDeTesteMudou(checked)}
-              className="scale-75 data-[state=checked]:bg-admin-gold"
-            />
-          </label>
-        )}
-
-        {ligado && !sandboxAtual && PROVEDORES_COM_SANDBOX.has(provider) && (
-          <p className="text-[11px] leading-snug text-zinc-500">
-            Desligue esta transportadora antes de usar o modo de teste.
-          </p>
-        )}
-
-        {salvo?.precisa_salvar_de_novo && (
-          <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
-            <AlertCircle className="mt-px size-3.5 shrink-0" />
-            <span>
-              A configuração deste provedor precisa ser salva de novo — outro
-              aparelho pode ter gravado uma versão mais antiga.
-            </span>
-          </p>
-        )}
-
-        {temChave && (
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
-            <KeyRound className="size-3.5 shrink-0" />
-            <span>
-              Chave salva. Por segurança ela não aparece aqui — para trocar,
-              cole a nova e salve.
-            </span>
-          </p>
-        )}
-
-        <GuiaDaChaveDoProvedor provider={provider} />
-
-        <div className="flex gap-2">
-          <input
-            type="password"
-            autoComplete="off"
-            value={rascunho.tokenDigitado}
-            disabled={rascunho.testando || rascunho.salvando}
-            onChange={(e) => onTokenMudou(e.target.value)}
-            placeholder={
-              temChave
-                ? "Cole uma chave nova só se quiser trocar a salva..."
-                : "Cole aqui a chave de acesso da sua conta..."
-            }
-            className="h-11 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none"
+          <ChevronDown
+            aria-hidden="true"
+            className="size-4 shrink-0 -rotate-90 text-[hsl(var(--admin-text-soft))]"
           />
-          <button
-            type="button"
-            disabled={
-              rascunho.testando ||
-              rascunho.carregandoServicos ||
-              (!rascunho.tokenDigitado.trim() && !temChave)
-            }
-            onClick={onTestar}
-            className="flex min-h-11 items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
-          >
-            {rascunho.testando ? (
-              <RefreshCw className="size-3 animate-spin" />
-            ) : (
-              <RefreshCw aria-hidden="true" className="size-3" />
-            )}
-            <span>Testar</span>
-          </button>
-        </div>
-
-        {PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) && (
-          <div className="space-y-1.5">
+        </button>
+        <Chave
+          rotulo={`Ligar ${nomeDoProvedor(provider)}`}
+          ligada={escolhido}
+          desabilitado={desabilitado || (!podeLigar && !escolhido)}
+          onToggle={onAlternarLigado}
+        />
+      </div>
+      <FolhaDoPainel
+        aberta={aberto}
+        onFechar={() => {
+          setAberto(false);
+          setTimeout(() => abridorRef.current?.focus(), 0);
+        }}
+        titulo={nomeDoProvedor(provider)}
+        icone={Truck}
+      >
+        <fieldset
+          disabled={desabilitado}
+          className="min-w-0 space-y-3 disabled:opacity-50"
+        >
+          <p className="text-xs text-zinc-400">{resumo.estado}</p>
+          {PROVEDORES_COM_SANDBOX.has(provider) && (
+            // Tocar no texto também liga/desliga: o <label> envolve o Switch
+            // (só muda o rascunho `sandboxEscolhido`; grava no Salvar).
             <label
-              htmlFor={`email-contato-${provider}`}
-              className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
+              htmlFor={idModoDeTeste}
+              className="flex min-h-11 cursor-pointer items-center justify-between gap-2"
             >
-              <Mail className="size-3.5 text-admin-gold" />
-              <span>E-mail de contato</span>
+              <span className="text-xs text-zinc-400">Modo de teste</span>
+              <Switch
+                id={idModoDeTeste}
+                checked={sandboxAtual}
+                // Revisão Opus (achado 1, R3-8): a trava é só para LIGAR o
+                // sandbox — nunca para DESLIGAR. `ligado && sandboxAtual` (a
+                // loja está presa em sandbox porque a credencial já entrou
+                // assim, ou a regra mudou depois) precisa continuar clicável,
+                // senão a lojista fica presa: não dá para desligar o
+                // sandbox, e não dá para desligar a transportadora com o
+                // sandbox ligado (a edge também recusaria — acoes.ts §R3-8).
+                disabled={ligado && !sandboxAtual}
+                aria-label={`Modo de teste — ${nomeDoProvedor(provider)}`}
+                onCheckedChange={(checked) => onModoDeTesteMudou(checked)}
+                className="scale-75 data-[state=checked]:bg-admin-gold"
+              />
             </label>
-            <p className="text-[11px] leading-snug text-zinc-400">
-              {provider === "melhor_envio"
-                ? "O Melhor Envio exige um e-mail de contato em cada consulta."
-                : "A SuperFrete exige um e-mail para falar com quem cuida desta integração se algo der errado nas cotações."}{" "}
-              Use um e-mail seu que você lê. Ele não aparece para as clientes.
-            </p>
-            <input
-              id={`email-contato-${provider}`}
-              type="email"
-              autoComplete="email"
-              inputMode="email"
-              maxLength={254}
-              value={rascunho.emailDigitado}
-              aria-invalid={emailComAviso}
-              onChange={(e) => onEmailMudou(e.target.value)}
-              placeholder="voce@sualoja.com.br"
-              className={`h-11 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:outline-none ${
-                emailComAviso
-                  ? "border-red-500/50 focus:border-red-400"
-                  : "border-white/5 focus:border-admin-gold"
-              }`}
-            />
-            {emailComAviso && (
-              <p className="flex items-start gap-1.5 text-[11px] font-semibold leading-snug text-red-300">
-                <AlertCircle className="mt-px size-3.5 shrink-0" />
-                <span>{MENSAGEM_EMAIL_INVALIDO}</span>
-              </p>
-            )}
-            {provider === "melhor_envio" && !emailComAviso && (
-              <p className="text-[11px] leading-snug text-zinc-500">
-                Deixe em branco para manter o e-mail já salvo — ele só é
-                obrigatório para LIGAR o Melhor Envio na loja.
-              </p>
-            )}
-            <p className="text-[11px] leading-snug text-zinc-400">
-              O teste faz uma cotação de verdade n
-              {provider === "melhor_envio" ? "o" : "a"}{" "}
-              {nomeDoProvedor(provider)} (nada é comprado) e só passa com uma
-              chave válida do ambiente escolhido.
-            </p>
-          </div>
-        )}
+          )}
 
-        {/* Ajuste do dono (rodada 4, 23/09/2026): "zerar a declaração NÃO
-         * foi autorizado" — o controle "Sem seguro" saiu da interface por
-         * inteiro. Nenhum caminho da tela seleciona nem envia
-         * seguro:"sem_seguro" (ver salvarProvedor, corpo.seguro sempre
-         * "valor_dos_produtos"). O único resquício possível de
-         * "sem_seguro" é uma gravação feita POR FORA do painel — aqui só
-         * avisamos, sem deixar a lojista presa nisso. */}
-        {provider === "melhor_envio" && salvo?.seguro === "sem_seguro" && (
-          <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
-            <AlertCircle className="mt-px size-3.5 shrink-0" />
-            <span>
-              Seguro desligado por fora do painel — ao salvar, volta para Com
-              seguro.
-            </span>
-          </p>
-        )}
+          {ligado && !sandboxAtual && PROVEDORES_COM_SANDBOX.has(provider) && (
+            <p className="text-[11px] leading-snug text-[hsl(var(--admin-text-soft))]">
+              Desligue esta transportadora antes de usar o modo de teste.
+            </p>
+          )}
 
-        {rascunho.resultadoTeste && (
-          <div
-            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs ${
-              rascunho.resultadoTeste.sucesso
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                : "border-red-500/30 bg-red-500/10 text-red-300"
-            }`}
+          {salvo?.precisa_salvar_de_novo && (
+            <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
+              <AlertCircle className="mt-px size-3.5 shrink-0" />
+              <span>
+                A configuração deste provedor precisa ser salva de novo — outro
+                aparelho pode ter gravado uma versão mais antiga.
+              </span>
+            </p>
+          )}
+
+          {temChave && (
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
+              <KeyRound className="size-3.5 shrink-0" />
+              <span>
+                Chave salva. Por segurança ela não aparece aqui — para trocar,
+                cole a nova e salve.
+              </span>
+            </p>
+          )}
+
+          <label
+            htmlFor={`chave-${provider}`}
+            className="block text-xs font-bold text-zinc-300"
           >
-            <div className="flex items-center gap-2">
-              {rascunho.resultadoTeste.sucesso ? (
-                <CheckCircle2 className="size-4 shrink-0" />
-              ) : (
-                <AlertCircle className="size-4 shrink-0" />
-              )}
-              <span>{rascunho.resultadoTeste.mensagem}</span>
-            </div>
-            {rascunho.resultadoTeste.servicosTestados &&
-              rascunho.resultadoTeste.servicosTestados.length > 0 && (
-                <ul className="ml-6 list-disc space-y-0.5 text-[11px] text-zinc-300">
-                  {rascunho.resultadoTeste.servicosTestados.map((s) => {
-                    // Painel simples (G6): a lojista lê o NOME do serviço
-                    // ("PAC"), que vem de `list_services` (a API; sem tabela
-                    // fixa aqui). Sem a lista carregada fica "Serviço 1" —
-                    // nada de nome inventado. O código vai para o `title`.
-                    const servicoDaLista = rascunho.servicosCarregados?.find(
-                      (sc) => sc.codigo === s.codigo,
-                    );
-                    return (
-                      <li key={s.codigo} title={`Código ${s.codigo}`}>
-                        {servicoDaLista
-                          ? nomeCompletoDoServico(servicoDaLista)
-                          : `Serviço ${s.codigo}`}
-                        :{" "}
-                        {s.ok
-                          ? "cotou certo"
-                          : s.motivo === "erro_do_servico"
-                            ? `não cotou (${s.detalhe ?? "erro do serviço"})`
-                            : "não retornou"}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-          </div>
-        )}
+            Chave de acesso
+          </label>
+          <GuiaDaChaveDoProvedor provider={provider} />
 
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between">
-            <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Serviços da conta
-            </span>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              autoComplete="off"
+              value={rascunho.tokenDigitado}
+              disabled={rascunho.testando || rascunho.salvando}
+              onChange={(e) => onTokenMudou(e.target.value)}
+              placeholder={
+                temChave ? "Cole só se for trocar" : "Cole a chave de acesso"
+              }
+              id={`chave-${provider}`}
+              aria-label="Chave de acesso"
+              className="h-12 min-w-0 flex-1 rounded-lg border border-admin-border bg-zinc-950 px-3 font-mono text-xs text-white placeholder-[hsl(var(--admin-text-soft))] focus:border-admin-gold focus:outline-none"
+            />
             <button
               type="button"
-              onClick={onCarregarServicos}
               disabled={
-                rascunho.carregandoServicos ||
                 rascunho.testando ||
-                (!temChave && !rascunho.tokenDigitado.trim())
+                rascunho.carregandoServicos ||
+                (!rascunho.tokenDigitado.trim() && !temChave)
               }
-              className="flex min-h-11 items-center gap-1 px-2 text-[11px] font-bold text-admin-gold hover:underline disabled:opacity-40"
+              onClick={onTestar}
+              className="flex min-h-11 items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
             >
-              <RefreshCw
-                className={`size-3 ${rascunho.carregandoServicos ? "animate-spin" : ""}`}
-              />
-              <span>
-                {rascunho.servicosCarregados
-                  ? "Atualizar lista"
-                  : "Ver serviços da conta"}
-              </span>
+              {rascunho.testando ? (
+                <RefreshCw className="size-3 animate-spin" />
+              ) : (
+                <RefreshCw aria-hidden="true" className="size-3" />
+              )}
+              <span>Testar</span>
             </button>
           </div>
 
-          {/* 23/09/2026, pedido do dono: a lista "Salvos nesta loja" (códigos
-           * crus antes de "Ver serviços da conta") saiu da tela. A seleção
-           * continua salva no servidor e aparece marcada ao abrir a lista. */}
+          {PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) && (
+            <div className="space-y-1.5">
+              <label
+                htmlFor={`email-contato-${provider}`}
+                className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
+              >
+                <Mail className="size-3.5 text-admin-gold" />
+                <span>E-mail de contato</span>
+              </label>
+              <p className="text-[11px] leading-snug text-zinc-400">
+                {provider === "melhor_envio"
+                  ? "O Melhor Envio exige um e-mail de contato em cada consulta."
+                  : "A SuperFrete exige um e-mail para falar com quem cuida desta integração se algo der errado nas cotações."}{" "}
+                Use um e-mail seu que você lê. Ele não aparece para as clientes.
+              </p>
+              <input
+                id={`email-contato-${provider}`}
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                maxLength={254}
+                value={rascunho.emailDigitado}
+                aria-invalid={emailComAviso}
+                onChange={(e) => onEmailMudou(e.target.value)}
+                placeholder="voce@sualoja.com.br"
+                className={`h-11 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-[hsl(var(--admin-text-soft))] focus:outline-none ${
+                  emailComAviso
+                    ? "border-red-500/50 focus:border-red-400"
+                    : "border-admin-border focus:border-admin-gold"
+                }`}
+              />
+              {emailComAviso && (
+                <p className="flex items-start gap-1.5 text-[11px] font-semibold leading-snug text-red-300">
+                  <AlertCircle className="mt-px size-3.5 shrink-0" />
+                  <span>{MENSAGEM_EMAIL_INVALIDO}</span>
+                </p>
+              )}
+              {provider === "melhor_envio" && !emailComAviso && (
+                <p className="text-[11px] leading-snug text-[hsl(var(--admin-text-soft))]">
+                  Deixe em branco para manter o e-mail já salvo — ele só é
+                  obrigatório para LIGAR o Melhor Envio na loja.
+                </p>
+              )}
+              <p className="text-[11px] leading-snug text-zinc-400">
+                O teste faz uma cotação de verdade n
+                {provider === "melhor_envio" ? "o" : "a"}{" "}
+                {nomeDoProvedor(provider)} (nada é comprado) e só passa com uma
+                chave válida do ambiente escolhido.
+              </p>
+            </div>
+          )}
 
-          {rascunho.erroServicos && (
-            <p className="text-[11px] text-red-300">
-              Não foi possível carregar os serviços agora. As caixas continuam
-              com a última seleção salva — nada foi apagado.
+          {/* Ajuste do dono (rodada 4, 23/09/2026): "zerar a declaração NÃO
+           * foi autorizado" — o controle "Sem seguro" saiu da interface por
+           * inteiro. Nenhum caminho da tela seleciona nem envia
+           * seguro:"sem_seguro" (ver salvarProvedor, corpo.seguro sempre
+           * "valor_dos_produtos"). O único resquício possível de
+           * "sem_seguro" é uma gravação feita POR FORA do painel — aqui só
+           * avisamos, sem deixar a lojista presa nisso. */}
+          {provider === "melhor_envio" && salvo?.seguro === "sem_seguro" && (
+            <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
+              <AlertCircle className="mt-px size-3.5 shrink-0" />
+              <span>
+                Seguro desligado por fora do painel — ao salvar, volta para Com
+                seguro.
+              </span>
             </p>
           )}
 
-          {rascunho.servicosDoCatalogo && (
-            <p className="text-[11px] leading-snug text-zinc-500">
-              Lista de serviços da SuperFrete. O teste confirma quais cotam na
-              sua conta.
-            </p>
+          {rascunho.resultadoTeste && (
+            <div
+              className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs ${
+                rascunho.resultadoTeste.sucesso
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                  : "border-red-500/30 bg-red-500/10 text-red-300"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {rascunho.resultadoTeste.sucesso ? (
+                  <CheckCircle2 className="size-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="size-4 shrink-0" />
+                )}
+                <span>{rascunho.resultadoTeste.mensagem}</span>
+              </div>
+              {rascunho.resultadoTeste.servicosTestados &&
+                rascunho.resultadoTeste.servicosTestados.length > 0 && (
+                  <ul className="ml-6 list-disc space-y-0.5 text-[11px] text-zinc-300">
+                    {rascunho.resultadoTeste.servicosTestados.map((s) => {
+                      // Painel simples (G6): a lojista lê o NOME do serviço
+                      // ("PAC"), que vem de `list_services` (a API; sem tabela
+                      // fixa aqui). Sem a lista carregada fica "Serviço 1" —
+                      // nada de nome inventado. O código vai para o `title`.
+                      const servicoDaLista = rascunho.servicosCarregados?.find(
+                        (sc) => sc.codigo === s.codigo,
+                      );
+                      return (
+                        <li key={s.codigo} title={`Código ${s.codigo}`}>
+                          {servicoDaLista
+                            ? nomeCompletoDoServico(servicoDaLista)
+                            : `Serviço ${s.codigo}`}
+                          :{" "}
+                          {s.ok
+                            ? "cotou certo"
+                            : s.motivo === "erro_do_servico"
+                              ? `não cotou (${s.detalhe ?? "erro do serviço"})`
+                              : "não retornou"}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+            </div>
           )}
 
-          {rascunho.servicosCarregados &&
-            rascunho.servicosCarregados.length === 0 && (
-              <p className="text-[11px] italic text-zinc-500">
-                Nenhum serviço encontrado nesta conta.
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between">
+              <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-[hsl(var(--admin-text-soft))]">
+                Serviços que você oferece
+              </span>
+              <button
+                type="button"
+                onClick={onCarregarServicos}
+                disabled={
+                  rascunho.carregandoServicos ||
+                  rascunho.testando ||
+                  (!temChave && !rascunho.tokenDigitado.trim())
+                }
+                className="flex min-h-11 items-center gap-1 px-2 text-[11px] font-bold text-admin-gold hover:underline disabled:opacity-40"
+              >
+                <RefreshCw
+                  className={`size-3 ${rascunho.carregandoServicos ? "animate-spin" : ""}`}
+                />
+                <span>
+                  {rascunho.servicosCarregados
+                    ? "Atualizar lista"
+                    : "Ver serviços da conta"}
+                </span>
+              </button>
+            </div>
+
+            {/* 23/09/2026, pedido do dono: a lista "Salvos nesta loja" (códigos
+             * crus antes de "Ver serviços da conta") saiu da tela. A seleção
+             * continua salva no servidor e aparece marcada ao abrir a lista. */}
+
+            {rascunho.erroServicos && (
+              <p className="text-[11px] text-red-300">
+                Não foi possível carregar os serviços agora. As caixas continuam
+                com a última seleção salva — nada foi apagado.
               </p>
             )}
 
-          {rascunho.servicosCarregados &&
-            rascunho.servicosCarregados.length > 0 && (
-              <div className="space-y-1">
-                {rascunho.servicosCarregados.map((servico) => {
-                  const marcado =
-                    rascunho.servicosSelecionados?.has(servico.codigo) ?? false;
-                  const exigeAgencia =
-                    provider === "melhor_envio" &&
-                    IDS_ME_QUE_EXIGEM_AGENCIA.has(servico.codigo);
-                  return (
-                    <label
-                      key={servico.codigo}
-                      className="flex min-h-11 flex-col justify-center gap-0.5 rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-xs"
-                    >
-                      <span className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={marcado}
-                          disabled={rascunho.testando || rascunho.salvando}
-                          onChange={() => onAlternarServico(servico.codigo)}
-                          className="size-5 accent-admin-gold"
-                        />
-                        <RotuloDoServico
-                          transportadora={servico.transportadora}
-                          servico={servico.servico}
-                        />
-                      </span>
-                      {servico.ausenteDaListaDaApi && (
-                        <span className="ml-7 text-[11px] font-semibold text-amber-300">
-                          A Frenet não listou este serviço para esta chave.
-                          Aparecer no app de etiquetas não garante a cotação no
-                          checkout: marque J&T, toque em Testar e só salve se
-                          aparecer como cotou certo.
-                        </span>
-                      )}
-                      {exigeAgencia && (
-                        <span className="ml-7 flex items-start gap-1 text-[11px] font-semibold text-amber-300">
-                          <AlertCircle className="mt-px size-3 shrink-0" />
-                          {AVISO_ID_EXIGE_AGENCIA}
-                        </span>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
+            {rascunho.servicosDoCatalogo && (
+              <p className="text-[11px] leading-snug text-[hsl(var(--admin-text-soft))]">
+                Lista de serviços da SuperFrete. O teste confirma quais cotam na
+                sua conta.
+              </p>
             )}
-        </div>
 
-        <div className="flex justify-end border-t border-white/5 pt-3">
-          <button
-            type="button"
-            disabled={rascunho.salvando || rascunho.testando}
-            onClick={onSalvar}
-            className="flex min-h-11 shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-          >
-            {rascunho.salvando ? (
-              <RefreshCw className="size-3 animate-spin text-admin-gold" />
-            ) : (
-              <Save className="size-3 text-admin-gold" />
-            )}
-            <span>{rascunho.salvando ? "Salvando..." : "Salvar"}</span>
-          </button>
-        </div>
-      </div>
+            {rascunho.servicosCarregados &&
+              rascunho.servicosCarregados.length === 0 && (
+                <p className="text-[11px] italic text-[hsl(var(--admin-text-soft))]">
+                  Nenhum serviço encontrado nesta conta.
+                </p>
+              )}
+
+            {rascunho.servicosCarregados &&
+              rascunho.servicosCarregados.length > 0 && (
+                <div className="space-y-1">
+                  {rascunho.servicosCarregados.map((servico) => {
+                    const marcado =
+                      rascunho.servicosSelecionados?.has(servico.codigo) ??
+                      false;
+                    const exigeAgencia =
+                      provider === "melhor_envio" &&
+                      IDS_ME_QUE_EXIGEM_AGENCIA.has(servico.codigo);
+                    return (
+                      <label
+                        key={servico.codigo}
+                        className="flex min-h-11 flex-col justify-center gap-0.5 rounded-lg border border-admin-border bg-zinc-900/40 px-2.5 py-1.5 text-xs"
+                      >
+                        <span className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={marcado}
+                            disabled={rascunho.testando || rascunho.salvando}
+                            onChange={() => onAlternarServico(servico.codigo)}
+                            className="size-5 accent-admin-gold"
+                          />
+                          <RotuloDoServico
+                            transportadora={servico.transportadora}
+                            servico={servico.servico}
+                          />
+                        </span>
+                        {servico.ausenteDaListaDaApi && (
+                          <span className="ml-7 text-[11px] font-semibold text-amber-300">
+                            A Frenet não listou este serviço para esta chave.
+                            Aparecer no app de etiquetas não garante a cotação
+                            no checkout: marque J&T, toque em Testar e só salve
+                            se aparecer como cotou certo.
+                          </span>
+                        )}
+                        {exigeAgencia && (
+                          <span className="ml-7 flex items-start gap-1 text-[11px] font-semibold text-amber-300">
+                            <AlertCircle className="mt-px size-3 shrink-0" />
+                            {AVISO_ID_EXIGE_AGENCIA}
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+          </div>
+
+          <div className="flex justify-end border-t border-admin-border pt-3">
+            <button
+              type="button"
+              disabled={rascunho.salvando || rascunho.testando}
+              onClick={onSalvar}
+              className="flex min-h-[50px] w-full justify-center shrink-0 select-none items-center gap-1.5 rounded-lg border border-admin-border bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            >
+              {rascunho.salvando ? (
+                <RefreshCw className="size-3 animate-spin text-admin-gold" />
+              ) : (
+                <Save className="size-3 text-admin-gold" />
+              )}
+              <span>
+                {rascunho.salvando ? "Salvando…" : "Salvar transportadora"}
+              </span>
+            </button>
+          </div>
+        </fieldset>
+      </FolhaDoPainel>
     </div>
   );
 }
@@ -1698,7 +1656,7 @@ function LogoDoProvedor({ provider }: { readonly provider: ProvedorFrete }) {
       <span
         data-slot="logo-provedor"
         aria-hidden="true"
-        className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[11px] font-black uppercase text-zinc-500"
+        className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[11px] font-black uppercase text-[hsl(var(--admin-text-soft))]"
       >
         {nomeDoProvedor(provider).slice(0, 2)}
       </span>

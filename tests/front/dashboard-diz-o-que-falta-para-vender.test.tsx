@@ -113,6 +113,17 @@ function linhasDaLista(): HTMLLIElement[] {
 }
 
 describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () => {
+  it("cadastrar nome e logo é secundário: só Preparar pedidos pode ser branco", async () => {
+    await montar({
+      somenteBoasVindas: true,
+      config: { ...CONFIG_PRONTA, storeName: "", logoUrl: "" },
+    });
+    const botao = botaoComTexto("Cadastrar nome e logo da loja");
+    expect(botao).toBeDefined();
+    expect(botao?.classList.contains("bg-white")).toBe(false);
+    expect(botao?.className).toContain("border-admin-border");
+  });
+
   beforeEach(() => {
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -359,9 +370,8 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     expect(hospedeiro.textContent).toContain("Cadastro completo");
     expect(hospedeiro.textContent).toContain("6 de 6 passos concluídos");
     expect(hospedeiro.textContent).not.toContain("Próximo passo");
-    expect(hospedeiro.textContent).toContain(
-      "Sua loja está pronta para vender?",
-    );
+    // O título da linha no cartão "Sua loja" é "Loja pronta" (mockup aprovado).
+    expect(hospedeiro.textContent).toContain("Loja pronta");
     expect(botaoDaLista()?.getAttribute("aria-expanded")).toBe("false");
     expect(linhasDaLista()).toHaveLength(0);
     // O card de estoque continua ao lado.

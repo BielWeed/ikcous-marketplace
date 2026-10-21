@@ -81,7 +81,7 @@ export function ConexaoDoPainel({
         onKeyDown={aoPressionar}
         className={cn(
           "flex min-h-11 w-full min-w-11 items-center gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
-          !nome && "border border-white/10 bg-[#17171C] px-3",
+          !nome && "border border-admin-border bg-admin-raised px-3",
         )}
       >
         <span className="min-w-0 flex-1">
@@ -127,7 +127,7 @@ export function ConexaoDoPainel({
         <div
           id={id}
           className={cn(
-            "absolute top-full z-[110] mt-2 flex items-center gap-3 rounded-2xl border border-white/15 bg-[#1E1E24] p-3 shadow-xl",
+            "absolute top-full z-[110] mt-2 flex items-center gap-3 rounded-2xl border border-admin-border-strong bg-admin-raised p-3 shadow-xl",
             nome ? "inset-x-5" : "inset-x-0",
           )}
         >
@@ -154,7 +154,7 @@ export function ConexaoDoPainel({
             aria-label="Fechar detalhes da conexão"
             onClick={fechar}
             onKeyDown={aoPressionar}
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-[#26262E] text-[#A1A1AD] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border-strong bg-admin-hover text-[#A1A1AD] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
           >
             <X aria-hidden="true" className="size-5" />
           </button>

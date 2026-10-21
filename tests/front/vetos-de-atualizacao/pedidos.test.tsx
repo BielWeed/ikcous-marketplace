@@ -31,7 +31,7 @@ vi.mock("@/lib/supabase", () => ({
           order: () => ({
             abortSignal: () => Promise.resolve({ data: [], error: null }),
           }),
-          single: () => Promise.resolve({ data: null, error: null }),
+          single: () => Promise.resolve({ data: { total: 100 }, error: null }),
         }),
       }),
     }),

@@ -880,6 +880,30 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     );
   });
 
+  it("abaixo do formulário mostra segurança com escudo sem substituir o botão do SDK", async () => {
+    const { create } = instalarSdkFalso();
+    await renderCartao();
+    await act(async () => ultimaConfig(create).callbacks.onReady());
+    const confianca = [...hospedeiro.querySelectorAll("p")].find(
+      (p) =>
+        p.textContent ===
+        "Pagamento processado pelo Mercado Pago. Seus dados do cartão não passam pela loja.",
+    )!;
+    expect(confianca).toBeDefined();
+    expect(confianca.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(confianca.querySelector("svg")?.classList.contains("shrink-0")).toBe(
+      true,
+    );
+    expect(confianca.className).toContain("text-xs");
+    expect(confianca.className).not.toMatch(/bg-blue|bg-sky/);
+    expect(document.getElementById(create.mock.calls[0][1])).not.toBeNull();
+    expect(
+      [...hospedeiro.querySelectorAll("button")].some((b) =>
+        /^Pagar(?: R\$|$)/.test(b.textContent ?? ""),
+      ),
+    ).toBe(false);
+  });
+
   it("aprovado: mostra 'Pagamento aprovado! Confirmando seu pedido…' e desmonta o Brick", async () => {
     const { create, unmounts } = instalarSdkFalso();
     criarPagamento.mockResolvedValue({

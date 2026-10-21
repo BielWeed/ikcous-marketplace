@@ -11,6 +11,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { abrirMaisOpcoes } from "./helpers/editor-de-banner";
 
 const lista = vi.hoisted(() => ({ banners: [] as unknown[] }));
 vi.mock("@/hooks/useAuth", () => ({
@@ -133,7 +134,7 @@ describe("AdminBannersView — destino sugerido e gravado existe na loja", () =>
     await clicar(
       document.body.querySelector<HTMLElement>('button[title="Editar"]'),
     );
-    await clicar(botao("3Destino"));
+    await abrirMaisOpcoes();
     await act(async () => {
       await new Promise<void>((r) => setTimeout(r, 600));
     });
@@ -145,7 +146,7 @@ describe("AdminBannersView — destino sugerido e gravado existe na loja", () =>
     const inicio = botao("Início (/)");
     // "hover:border-purple-400/30" também existe em todo atalho: só vale a
     // classe solta, que marca o atalho escolhido.
-    expect(inicio?.classList.contains("border-purple-400")).toBe(true);
+    expect(inicio?.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("a lista de páginas não oferece o endereço morto /produtos", async () => {

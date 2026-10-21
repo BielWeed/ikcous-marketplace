@@ -36,6 +36,8 @@ export const NOMES_DO_PAINEL = {
   "admin-whatsapp-config": "Minha loja",
   "admin-banners": "Banners",
   "admin-carousels": "Vitrines",
+  "admin-app-color": "Cor do app",
+  "admin-free-shipping-card": "Card de frete grátis",
   "admin-shipping": "Entrega e frete",
   "admin-shipping-national": "Entrega e frete",
   "admin-notifications": "Notificações",
@@ -74,6 +76,8 @@ export const PORTAS_DO_PAINEL = {
     "admin-about-store",
     "admin-banners",
     "admin-carousels",
+    "admin-app-color",
+    "admin-free-shipping-card",
     "admin-shipping",
   ],
 } as const satisfies Record<Aba, readonly TelaDoPainel[]>;

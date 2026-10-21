@@ -16,7 +16,7 @@ export function EsqueletoDaLista({
           key={i}
           aria-hidden="true"
           data-linha-do-esqueleto=""
-          className="h-16 animate-pulse rounded-2xl bg-zinc-900/60"
+          className="h-16 animate-pulse rounded-2xl bg-admin-surface"
         />
       ))}
     </div>
