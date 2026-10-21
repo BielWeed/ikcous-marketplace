@@ -75,7 +75,8 @@ export function AjudaDoCrm({
             <li>
               <strong className="text-white">Performance Operacional:</strong>{" "}
               Histórico de pedidos e faturamento ao longo do tempo em gráficos
-              interativos.
+              interativos. O lucro dos gráficos é antes de devoluções e
+              reembolsos; a DRE do Financeiro já desconta esses valores.
             </li>
             <li>
               <strong className="text-white">

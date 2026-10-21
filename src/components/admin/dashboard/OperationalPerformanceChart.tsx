@@ -321,6 +321,13 @@ export const OperationalPerformanceChart = memo(
           </div>
         )}
 
+        {!loading && stats && chartMode === "roi" && (
+          <p className="relative z-10 px-2 text-[11px] leading-relaxed text-zinc-400 sm:px-0">
+            Lucro das vendas, antes de devoluções e reembolsos (a DRE do
+            Financeiro já desconta)
+          </p>
+        )}
+
         {/* O lucro só soma produto COM custo cadastrado (migration 20261234):
             quem ficou de fora é dito aqui, perto do "Lucro Acumulado". */}
         {!loading && stats && chartMode === "roi" && semCusto > 0 && (
