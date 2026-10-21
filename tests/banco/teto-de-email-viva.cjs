@@ -37,6 +37,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+// A 20261341 e a 20261342 redefinem a v2 depois da 20261217: o pre-voo da 1217 so aceita o corpo DELA na v2, entao as
+// provas que reaplicam ou desfazem a 1217 desfazem antes as duas (rollbacks-manuais, byte a byte, na transacao).
+const {
+  desfazerRastreioDoConvidadoNaTransacao,
+} = require("./rastreio-do-convidado-posterior.cjs");
 
 const REPO = path.resolve(__dirname, "..", "..");
 const MIGRATIONS = path.join(REPO, "supabase", "migrations");
@@ -837,6 +842,7 @@ prova(
   () =>
     emTransacao(async () => {
       exigirArquivos();
+      await desfazerRastreioDoConvidadoNaTransacao(C);
       const antes = new Map();
       for (const a of [...Object.keys(CORPOS_DE_ANTES), ...NOVAS])
         antes.set(a, await md5DoCorpo(a));
@@ -859,6 +865,7 @@ prova(
   () =>
     emTransacao(async () => {
       exigirArquivos();
+      await desfazerRastreioDoConvidadoNaTransacao(C);
       await C.query(`CREATE OR REPLACE FUNCTION public.reivindicar_email_de_confirmacao(p_order_id uuid)
       RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path TO 'public'
       AS $x$ SELECT false $x$`);
@@ -875,6 +882,7 @@ prova(
   () =>
     emTransacao(async () => {
       exigirArquivos();
+      await desfazerRastreioDoConvidadoNaTransacao(C);
       await C.query(ROLLBACK);
       for (const [assinatura, h] of Object.entries(CORPOS_DE_ANTES))
         assert.equal(await md5DoCorpo(assinatura), h, assinatura);

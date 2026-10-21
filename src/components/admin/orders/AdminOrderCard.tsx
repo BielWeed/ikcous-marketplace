@@ -8,6 +8,7 @@ import {
 } from "@/components/admin/orders/OrderStatusBadge";
 import { podeRegistrarPagamento } from "@/components/admin/orders/podeRegistrarPagamento";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
   Dialog,
   DialogContent,
@@ -35,7 +36,6 @@ import {
   ChevronRight,
   CircleDollarSign,
   LockKeyhole,
-  MessageCircle,
   MoreHorizontal,
   Package,
   Store,
@@ -424,7 +424,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           onClick={() => onWhatsApp(order)}
           className={`${SECUNDARIO} min-h-14 w-11 shrink-0 border-emerald-300/15 bg-emerald-400/10 p-0 text-emerald-300`}
         >
-          <MessageCircle aria-hidden="true" className="size-5" />
+          <IconeWhatsapp aria-hidden="true" className="size-5" />
         </button>
         {acaoPrincipal ? (
           <button
@@ -532,7 +532,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                     : isOffline
                       ? "Indisponível: sem conexão."
                       : "Chamar o cliente no WhatsApp.",
-                  Icone: MessageCircle,
+                  Icone: IconeWhatsapp,
                   cor: "text-emerald-300",
                   clicar: () => onWhatsApp(order),
                   disabled: !linkWhatsapp || isOffline,

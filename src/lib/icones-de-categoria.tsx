@@ -1,5 +1,7 @@
 // Chaves persistidas em categorias.icone (CHECK da migration 20261300000000).
 // Paths de linha 24×24, compartilhados pela vitrine e pelo seletor do painel.
+// A categoria também pode guardar a FORMA do ícone escolhido no catálogo do painel
+// (categorias.icone_forma, migration 20261351000000): ela ganha das chaves abaixo.
 const ICONES = {
   todas: ["Todas", "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"],
   cuidado: [
@@ -32,6 +34,18 @@ const ICONES = {
   joias: ["Joias", "m3 8 4-5h10l4 5-9 13Zm0 0h18M7 3l5 18 5-18"],
 } as const;
 export type ChaveDeIcone = keyof typeof ICONES;
+
+// Forma = UM path SVG (atributo d). MESMO alfabeto e limite da CHECK do banco: segunda barreira,
+// o cliente nunca desenha texto que o banco recusaria. Só entra em <path d>, nunca vira HTML.
+export const FORMA_DE_ICONE = /^[Mm][MmLlHhVvCcSsQqTtAaZz0-9 .,-]*$/;
+export const TAMANHO_MAXIMO_DA_FORMA = 400;
+export function formaDeIconeValida(forma: unknown): forma is string {
+  return (
+    typeof forma === "string" &&
+    forma.length <= TAMANHO_MAXIMO_DA_FORMA &&
+    FORMA_DE_ICONE.test(forma)
+  );
+}
 export const CHAVES_DE_ICONES = Object.keys(ICONES) as ChaveDeIcone[];
 export const nomeDoIcone = (chave: ChaveDeIcone) => ICONES[chave][0];
 
@@ -51,12 +65,21 @@ const REGRAS: ReadonlyArray<readonly [ChaveDeIcone, RegExp]> = [
   ["joias", /joia|bijuteria|relogio/],
 ];
 
+// A chave que a lojista escolheu (uma das 14), sem deduzir pelo nome; `null` se não escolheu.
+export function iconeEscolhido(categoria: {
+  icone?: string | null;
+}): ChaveDeIcone | null {
+  return categoria.icone && Object.hasOwn(ICONES, categoria.icone)
+    ? (categoria.icone as ChaveDeIcone)
+    : null;
+}
+
 export function iconeDaCategoria(categoria: {
   name: string;
   icone?: string | null;
 }): ChaveDeIcone | "etiqueta" {
-  if (categoria.icone && Object.hasOwn(ICONES, categoria.icone))
-    return categoria.icone as ChaveDeIcone;
+  const escolhido = iconeEscolhido(categoria);
+  if (escolhido) return escolhido;
   const nome = categoria.name
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
@@ -66,15 +89,19 @@ export function iconeDaCategoria(categoria: {
 
 export function IconeDaCategoria({
   icone,
+  forma,
   className,
 }: {
   icone: ChaveDeIcone | "etiqueta";
+  /** `categorias.icone_forma`: se vier e for válida, desenha ela no lugar da chave. */
+  forma?: string | null;
   className?: string;
 }) {
+  const propria = formaDeIconeValida(forma) ? forma : null;
   return (
     <svg
       aria-hidden="true"
-      data-icone={icone}
+      data-icone={propria ? "forma" : icone}
       className={className}
       viewBox="0 0 24 24"
       fill="none"
@@ -85,9 +112,10 @@ export function IconeDaCategoria({
     >
       <path
         d={
-          icone === "etiqueta"
+          propria ??
+          (icone === "etiqueta"
             ? "M3 3h8l10 10-8 8L3 11Zm4 4h.01"
-            : ICONES[icone][1]
+            : ICONES[icone][1])
         }
       />
     </svg>

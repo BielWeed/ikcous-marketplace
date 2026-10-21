@@ -1,3 +1,4 @@
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
 import {
@@ -19,7 +20,6 @@ import {
   ChevronRight,
   CircleDashed,
   MapPin,
-  MessageCircle,
   Package,
   Store,
   Truck,
@@ -80,10 +80,13 @@ interface LojaProntaEEstoqueBaixoProps {
 }
 
 /** Ícone de cada passo — a função pura não conhece React. */
-const ICONE_DO_PASSO: Record<ChaveDosSeisPassos, typeof Wallet> = {
+const ICONE_DO_PASSO: Record<
+  ChaveDosSeisPassos,
+  typeof Wallet | typeof IconeWhatsapp
+> = {
   marca: Store,
   endereco: MapPin,
-  whatsapp: MessageCircle,
+  whatsapp: IconeWhatsapp,
   recebe: Wallet,
   entrega: Truck,
   produto: Package,

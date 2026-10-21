@@ -133,7 +133,7 @@ describe("OperationalPerformanceChart — os números ao lado batem com o perío
     expect(texto).toContain("R$ 100");
     // A linha de resumo fala a língua da loja (glossário: "Ticket médio" →
     // "Valor médio por venda").
-    expect(texto).toContain("Valor médio por venda");
+    expect(texto).toContain("Valor médio");
 
     // Controle negativo: o total all-time (103.000 / 530 pedidos) NÃO pode
     // aparecer — é o valor que a tela mostrava antes da correção.

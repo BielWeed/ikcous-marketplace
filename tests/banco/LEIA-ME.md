@@ -35,7 +35,42 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 - **pagamentos (`pagamentos-rpc-viva.cjs`, via `rodar-isolado.cjs`)**:
   `confirmar_pagamento` e `registrar_pagamento_recebido` — transições,
   estoque devolvido uma vez, expiração, permissão por papel e corridas com
-  duas conexões reais (a 2a espera o `FOR UPDATE`).
+  duas conexões reais (a 2a espera o `FOR UPDATE`). A fila `pagamentos_a_reconciliar`
+  (A3/A3b/A3c) alcança o pedido adiantado pelo lojista em `processing`, `shipping` e
+  `delivered` (esta última desde a 20261349000000) sem expirá-lo.
+- **fila de reconciliação do pedido entregue (`reconciliacao-do-entregue-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261349000000` (só o corpo de `pagamentos_a_reconciliar`: o pedido `delivered` ainda `aguardando` o PIX
+  entra na fila). O diff do corpo contra o da `20261270000000` tem só as duas linhas de código do desenho; a borda
+  (fora das 24 h, sem cobrança, já pago, cobrança terminal, cancelado, `pending`, `new`) comparada entre o corpo da 270 e
+  o novo; o pedido que já estava preso entra SEM ser reescrito (o md5 da tabela é o mesmo); ordem e rodízio dos 100;
+  só o servidor executa (anon e authenticated recebem `permission denied`), atributos e ACL iguais; reaplicar 2x e CRLF;
+  rollback com o `prosrc` idêntico ao da 270 (md5 e sha256) e repetido recusado; pré-voo que recusa sem escrever
+  (corpo desconhecido, corpo anterior à 270, `SECURITY INVOKER`, `search_path`, ACL aberta, serviço sem EXECUTE,
+  sobrecarga, função ausente); pós-voo que desfaz tudo; consultas `80a`/`80b` (rol de 4 linhas, positivas no estado
+  certo, cada desvio no item certo) e a `57a` aceitando o corpo novo como sucessor. **Não prova** a IKCOUS nem a Savy.
+- **compra online: preço travado e mesma chave espera (`compra-online-travas-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261350000000` (só `create_marketplace_order_v23` e `v24`, com três edições sobre os corpos da `20261244000000`:
+  a leitura do passo 3 tranca a variação **e o produto**, um advisory lock `pedido_online:<chave>` abre o passo 0 e, antes do
+  laço do passo 3, o carrinho tranca as variações e depois os produtos **numa ordem global por id**). Usa
+  **conexões reais em paralelo** e mede a espera em `pg_locks`/`pg_stat_activity` (nunca por dormir). Cada defeito é medido nos
+  DOIS corpos: com o da 244 (rollback) o defeito aparece, com o novo some. **D3** (reenvio simultâneo com a mesma chave):
+  na última unidade do estoque e com o cupom no limite, na v23 e na v24, a segunda chamada espera e devolve o MESMO pedido
+  (uma venda, um item, estoque e cupom gastos uma vez); com o corpo da 244 ela recebe "estoque insuficiente" / "limite de usos"
+  de um pedido que já existe; a primeira desistir (ROLLBACK) deixa a segunda criar o pedido uma vez; chave diferente e chave nula
+  (convidado) não esperam. **D2** (preço-base salvo no meio da gravação, com variação sem `price_override`, segurada por um
+  gatilho de prova no INSERT do cabeçalho): o painel espera o pedido e cabeçalho e item gravam o MESMO preço; com o corpo da 244
+  o item sai com o preço novo e o cabeçalho com o antigo; outro produto não espera e o produto sem variação segue travando.
+  **D4** (deadlock entre compras simultâneas): carrinho misto (A = camiseta M + caneca, B = caneca + camiseta G) e duas
+  variações em ordem oposta, na v23 e na v24, numa coreografia de duas conexões reais seguradas por sessões de prova (a
+  espera de cada passo é medida): as duas concluem; com o corpo da 244 (variações) ou com o corpo desta migration sem o bloco da
+  ordem global (carrinho misto) uma recebe "deadlock detected"; mais 20 rodadas de corrida livre, o painel que salva uma variação
+  (a trigger tranca o produto depois da variação) sem cruzar com a compra, e a recusa de payload malformado igual à da 244. O
+  diff de linhas do corpo contra o da 244 tem só as três edições; o pedido que já existia não muda (md5 das tabelas) e o
+  reenvio da chave dele devolve o mesmo pedido; atributos e ACL iguais antes e depois; rollback com o `prosrc` idêntico ao
+  da 244 (md5 e sha256) e repetido recusado; reaplicar 2x e CRLF; pré-voo que recusa sem escrever (12 sabotagens); pós-voo
+  que desfaz tudo; trocar o corpo com uma compra aberta não trava; consultas `81a`/`81b` (rol de 7 linhas) e a `31a`, `37a`
+  e `47a` aceitando o corpo novo como sucessor. Com `PROVA_ARQUIVO_MUTADO=1` o arquivo da migration pode ser sabotado (sem
+  uma das edições, hashes regenerados): a prova de comportamento reprova no defeito certo. **Não prova** a IKCOUS nem a Savy.
 - **admin atual (`admin-atual-viva.cjs`, via `rodar-isolado.cjs`)**: a
   migration 20261197000000 — admin rebaixado com JWT de admin ainda válido
   (só no `profiles`, só no `auth.users`, nos dois) é recusado nas seis RPCs
@@ -720,9 +755,30 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   a prova MIGRATION de `reembolso-em-duvida` e seu portão) a desfazem ANTES da 241, na transação do clone,
   por `pagamento-adiantado-posterior.cjs` (só se no ar). A 270 redefine `concluir_estorno`: os pré-voos da 226/241
   e as consultas históricas 29b/43b exigem o corpo anterior. O helper afirma o hash restaurado; as demais provas
-  de comportamento da 241 continuam medindo o corpo de produção.
+  de comportamento da 241 continuam medindo o corpo de produção. O helper desfaz ANTES a SUCESSORA da 270, a
+  `20261349000000` (que redefine `pagamentos_a_reconciliar` em cima do corpo da 270), por
+  `reconciliacao-do-entregue-posterior.cjs`: o pré-voo do rollback da 270 recusa com o corpo novo da fila no ar.
 - **as provas que DESFAZEM corpos redefinidos pela `20261244000000`** (`endereco-no-pedido`, `a-compra-que-da-zero-reais...`, `loja-declara-quem-e` e
   `portao-8e-aceita-sucessoras`, mais a cadeia das sucessoras da 99) a desfazem ANTES por `a-loja-escolhe-como-entrega-posterior.cjs`.
+  Esse helper desfaz ANTES a SUCESSORA dos corpos de `v23`/`v24`, a `20261350000000` (trava o preço e espera a mesma chave), por
+  `a-compra-online-trava-posterior.cjs`: o pré-voo do rollback da 244 recusa com os corpos novos no ar. As duas provas da
+  própria 244 (`a-loja-escolhe-como-entrega-viva` e `-portao-viva`) a desfazem no começo.
+- **as politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete exigem o admin de agora
+  (`admin-atual-perfis-viva.cjs`, via `rodar-isolado.cjs`)**: a migration `20261340000000` (13 `ALTER POLICY` trocando `is_admin()` por
+  `rls_admin_atual()`; o ramo da dona e o recado para todas ficam). Para cada politica: o ex-admin (rebaixado so no `profiles`, so no
+  `auth.users`, com JWT velho) le 0 linhas e nao escreve; CONTROLE na politica antiga le e escreve; admin atual como antes; a cliente
+  o proprio e uma terceira nada. Leitura de perfil e login SEM recursao, e o MUTANTE (dono das funcoes sujeito a RLS = nenhum admin
+  reconhecido, por isso o pre-voo recusa FORCE e dono diferente). Rollback byte a byte, 2o rollback recusa, pre-voo recusa sem escrever,
+  e as consultas `64a`/`64b` (rol de 4 linhas, 8 negativos). As provas que desfazem a 97 (`admin-atual` e `pagamentos-rpc`) desfazem
+  esta ANTES por `admin-atual-perfis-posterior.cjs`. **Nao prova** a IKCOUS nem a Savy.
+- **o rastreio do convidado (`rastreio-do-convidado-viva.cjs`, via `rodar-isolado.cjs`)**: as migrations `20261341000000` (a leitura do
+  codigo ganha `FOR UPDATE OF v`) e `20261342000000` (a chave `notes` sai do retorno). **Conexoes reais**: 30 chamadas com o codigo
+  errado avaliam no maximo 5 vezes e deixam `attempts = 5` (com e sem pausa na janela); 10 com o codigo certo deixam entrar UMA; a
+  trava e so da linha do codigo. CONTROLE: o corpo da 1217 com a mesma pausa avalia as 30 e deixa as 10 entrarem. Fluxo legitimo,
+  codigo que ja tinha tentativas, a nota e o texto dela fora do JSON (CPF segue fora), cadeia 1217-1341-1342 e volta byte a byte,
+  pre-voos, e as consultas `65a/65b/66a/66b`. As provas antigas que reaplicam ou desfazem a 1217 (`teto-de-email`, `consulta-antiga-de-pedido`
+  e seus portoes) desfazem estas duas ANTES por `rastreio-do-convidado-posterior.cjs`; as consultas `21a` e `23a` aceitam o corpo
+  delas como sucessor. **Nao prova** a IKCOUS nem a Savy.
 - **as provas que DESFAZEM corpos redefinidos pela `20261243000000`** (`pagamentos-rpc` e `admin-atual`: o rollback da 95 e da
   97 e a reaplicação da 97 partem do corpo de `registrar_pagamento_recebido` que a 97 deixa) a desfazem ANTES, na transação,
   por `desfazer-recebimento-posterior.cjs` (só se no ar): o pré-voo de cada rollback mais velho a recusa.
@@ -953,3 +1009,25 @@ aplicação.
   corpos, a 9a exige o final 249. `venda-balcao-mesma-chave-portao-viva.cjs` também prova a 36a com a 249,
   desfaz só a sucessora antes dos casos históricos da 235 e a repõe ao terminar a transação (ROLLBACK),
   além de ensaiar rollback 249 → rollback 235 → apply 235 → apply 249. A 36b continua negativa com a trava.
+
+- **`codigo-de-barras-entre-tabelas-viva.cjs`** (20261347000000): execute pelo
+  `node tests/banco/rodar-isolado.cjs tests/banco/codigo-de-barras-entre-tabelas-viva.cjs`.
+  Dois gatilhos novos (`BEFORE INSERT OR UPDATE OF codigo_barras`, em `produtos` e em `product_variants`) barram o
+  MESMO código de barras nas duas tabelas (23505, "Este código de barras já está em uso por outro produto ou
+  variação."), com `pg_advisory_xact_lock` por código. Parte 1 (uma transação): as duas direções, igualdade exata,
+  NULL/vazio/só-branco repetidos, variação desligada, produto apagado, o admin pela view `vw_produtos_admin`,
+  cliente e visitante, ACL das funções, o pré-voo contra seis adulterações e o gatilho desligado como controle.
+  Dado antigo: uma duplicata já existente entre as tabelas continua como está, não trava a edição de outro campo
+  nem o UPDATE que regrava o mesmo código (o painel regrava a linha inteira), e sair dela é livre; voltar a ela,
+  não. Rollback e reaplicação não mudam linha, índice, ACL nem policy (retrato antes/depois). Parte 2 (conexões
+  reais com COMMIT, no clone descartável): a corrida de dois cadastros do mesmo código, um em cada tabela, nas duas
+  ordens (o segundo tem de ESPERAR na trava e então levar 23505), códigos diferentes sem espera, e o controle com
+  os gatilhos desligados, em que a duplicata entra. Portão: `74a-conferir-codigo-de-barras-entre-tabelas-aplicado`
+  (5 linhas) e `74b-antes-codigo-de-barras-entre-tabelas-ausente` (3 linhas), só catálogo, sem ler código algum.
+  Ordem: banco antes ou depois do front dá no mesmo; sem backfill. Rodar antes, em cada loja, a contagem de códigos
+  nas duas tabelas do cabeçalho da migration (informativa).
+  Limite conhecido: o upsert IDÊNTICO (a mesma linha regravada com o mesmo código) a guarda deixa passar de propósito,
+  porque não é gravação nova; só código que passa a coincidir com o da outra tabela é barrado.
+  Regra para o futuro: migration que mude o TIPO de `codigo_barras` (em `produtos` ou `product_variants`) tem de tirar
+  e recriar os DOIS gatilhos (`tr_produto_codigo_barras_livre_de_variacao` e `tr_variacao_codigo_barras_livre_de_produto`),
+  senão o Postgres recusa o ALTER (0A000); a sabotagem de TIPO do `lote-60-66-viva.cjs` já tira o gatilho de variações.

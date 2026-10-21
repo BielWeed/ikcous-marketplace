@@ -77,7 +77,16 @@ describe("StrategicIntelligenceBlocks — legenda do total do donut (#104, pós-
     await esperarChartPronto();
     act(() => {});
 
-    expect(hospedeiro.textContent).toMatch(/a receita total da loja/i);
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Entender Vendas por categoria"]',
+        )!
+        .click(),
+    );
+    expect(document.querySelector('[role="dialog"]')?.textContent).toMatch(
+      /a receita total da loja/i,
+    );
     expect(hospedeiro.textContent).not.toMatch(/volume total/i);
   });
 });

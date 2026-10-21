@@ -82,12 +82,20 @@ const NOMES = [
   "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql",
   "20261280000000_o_balcao_registra_so_o_total_conferido.sql",
   "20261310000000_estilo_do_card_de_frete.sql",
+  // A compra online trava o preco e espera a mesma chave (21/10/2026): DUAS funcoes numa migration so (v23 e v24), em cima
+  // dos corpos da 244. Nenhuma e' um dos 42 da 99, mas o rollback da 244 recusa com o corpo novo no ar: ela entra aqui
+  // para cair ANTES dela (a CADEIA 229/236 -> 244 -> 350: o `hashVigente` da 350 e o `hashDesta` da 244).
+  "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
 const PARES_POR_MIGRATION = new Map([
   ["20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql", 2],
   ["20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql", 3],
+  [
+    "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
+    2,
+  ],
 ]);
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

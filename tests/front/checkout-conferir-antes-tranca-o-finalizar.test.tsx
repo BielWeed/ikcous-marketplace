@@ -212,6 +212,7 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    sessionStorage.clear();
     createOrder.mockReset();
     clearCart.mockClear();
     toastError.mockReset();

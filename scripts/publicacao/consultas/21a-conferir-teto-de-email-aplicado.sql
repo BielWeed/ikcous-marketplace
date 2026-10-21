@@ -105,8 +105,14 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'get_orders_by_otp_v2: corpo e o da 20261217000000 (sha256)',
          '36af86dd3249fb2da812afaff1a5edc4d0e8e1e09017f3be0ca4eac9f0c07862',
+         -- Aceita tambem os corpos das SUCESSORAS que so acrescentam a trava de linha e tiram a nota do retorno
+         -- (20261341000000 e 20261342000000, LF e CRLF): o `vivo` mostra o `esperado` da 20261217000000.
          COALESCE((SELECT CASE WHEN f.h IN ('36af86dd3249fb2da812afaff1a5edc4d0e8e1e09017f3be0ca4eac9f0c07862',
-                                            'e7b964ac748f0304d9fa66d14a40211df9549809f4577e04de6bb02623e77034')
+                                            'e7b964ac748f0304d9fa66d14a40211df9549809f4577e04de6bb02623e77034',
+                                            '7d9975446c2d09e51a07bf4d9ba7819b3dbdef85b80506ea5fd980badc27757c',
+                                            'c1e5374e9ab92fa8cc23491bd3e132d018e85ae0b6be64438dc9c63945e41121',
+                                            'a830cf0730526d73ef1c09b0036c9694e58d20edab17cb21ffb59b4b632b2212',
+                                            '196021b99e1f020356e31a72d9832e81ea074065613305833e06bb082dd594e6')
                                THEN '36af86dd3249fb2da812afaff1a5edc4d0e8e1e09017f3be0ca4eac9f0c07862'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_orders_by_otp_v2'), 'AUSENTE')

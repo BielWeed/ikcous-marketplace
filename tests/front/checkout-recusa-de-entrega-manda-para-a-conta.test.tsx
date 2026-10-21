@@ -186,6 +186,7 @@ describe("CheckoutView — a recusa do gate de convidado manda para a conta", ()
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    sessionStorage.clear();
     createOrder.mockReset();
     clearCart.mockClear();
     onNavigate.mockClear();

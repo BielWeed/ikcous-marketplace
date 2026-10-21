@@ -180,6 +180,7 @@ describe("CheckoutView — o comprador para de ler o erro cru do banco ao fechar
   let alertSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    sessionStorage.clear();
     createOrder.mockReset();
     clearCart.mockClear();
     toastError.mockReset();

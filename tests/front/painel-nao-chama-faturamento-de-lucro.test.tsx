@@ -103,7 +103,7 @@ describe("TopProductsList — o título diz 'lucrativos' porque a RPC (202610010
     // Controle negativo: título dizendo "faturaram" faz cair — é ele que
     // prova que a asserção discrimina (e impediu o par incompleto: label
     // de faturamento em cima de dados de lucro).
-    expect(textoDoTitulo.toLowerCase()).toContain("lucrativ");
+    expect(textoDoTitulo.toLowerCase()).toContain("lucro");
     expect(textoDoTitulo.toLowerCase()).not.toContain("fatur");
   });
 });

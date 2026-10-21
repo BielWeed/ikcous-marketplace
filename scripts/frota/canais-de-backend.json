@@ -335,6 +335,61 @@
       "versoes": ["20261330000000"],
       "ausenciaConfirmadaPor": "62b-antes-mototaxi-ausente",
       "_comentario": "Contato privado do mototaxi em tabela propria com RLS admin ATUAL; nenhuma alteracao a store_config/view/upsert. Banco antes do front em cada loja; nao aplicar nesta frente. 62b exige objetos ausentes, 62a confere corpo/ACL/RLS/estrutura sem ler contato. Rollback revoga acesso sem apagar contato; nao e ausencia e nao autoriza reaplicacao automatica."
+    },
+    {
+      "consulta": "64a-conferir-politicas-de-perfil-e-endereco-aplicado",
+      "versoes": ["20261340000000"],
+      "ausenciaConfirmadaPor": "64b-antes-politicas-de-perfil-e-endereco-is-admin",
+      "conferenciasAntesDoApply": ["8b-papeis-contraditorios"],
+      "_comentario": "Migration ADITIVA 20261340 (permissao + dado de cliente): ALTER POLICY em 13 politicas (profiles, user_addresses, push_subscriptions, cart_items, notificacoes, push_notifications_log, analytics_events, store_shipping_credentials) trocando a porta is_admin() (JWT) por rls_admin_atual() (admin nas duas fontes, lido agora); o ramo do proprio dono fica igual; nenhuma linha e lida ou reescrita, nenhum GRANT. ORDEM: depois da 20261197000000/20261202000000 (o pre-voo recusa sem rls_admin_atual). EFEITO ACEITO: quem e admin so no app_metadata ou so no profiles perde a leitura destas tabelas, por isso exigir a 8b (papeis contraditorios) com zero linhas ANTES de aplicar em cada loja; cada linha e decisao do dono. 64b exige as 13 politicas com is_admin() (estado de antes) e 64a as 13 com rls_admin_atual(), mais corpos/dono/EXECUTE das funcoes de porta e RLS ligada sem FORCE nas 8 tabelas; ambas so catalogo, rol fechado de 4 linhas. ROLLBACK: rollback-manual-20261340000000 devolve as 13 expressoes de antes e recusa se o estado vivo nao for o desta migration. Prova com papeis reais em tests/banco/admin-atual-perfis-viva.cjs (Postgres efemero do CI), nao em lojas reais."
+    },
+    {
+      "consulta": "65a-conferir-codigo-do-convidado-trava-a-linha-aplicado",
+      "versoes": ["20261341000000"],
+      "ausenciaConfirmadaPor": "65b-antes-codigo-do-convidado-corpo-da-1217",
+      "_comentario": "Migration ADITIVA 20261341 (autenticacao do convidado): CREATE OR REPLACE de get_orders_by_otp_v2 com FOR UPDATE OF v na leitura da linha do codigo, para que chamadas paralelas com codigo errado nao somem mais que 5 avaliacoes; mesma assinatura, SECURITY DEFINER, search_path e ACL (anon/authenticated/service_role); nenhuma linha de codigo ou pedido e reescrita. ORDEM: depois da 20261217000000 (o pre-voo aceita o corpo da 1217 ou o desta). 65b exige o corpo da 1217; 65a exige o desta migration OU o da sucessora 20261342000000 (que preserva a trava), mais atributos e EXECUTE; ambas so catalogo, rol fechado de 3 linhas. ROLLBACK: rollback-manual-20261341000000 devolve o corpo da 1217 byte a byte e recusa se o corpo vivo nao for o desta. Prova de N chamadas paralelas em tests/banco/rastreio-do-convidado-viva.cjs (Postgres efemero do CI)."
+    },
+    {
+      "consulta": "66a-conferir-rastreio-do-convidado-sem-nota-aplicado",
+      "versoes": ["20261342000000"],
+      "ausenciaConfirmadaPor": "66b-antes-rastreio-do-convidado-corpo-da-1341",
+      "_comentario": "Migration ADITIVA 20261342 (dado de cliente): CREATE OR REPLACE de get_orders_by_otp_v2 sem a chave notes no pedido devolvido ao convidado (a nota interna do pedido nao sai mais pelo rastreio); mesma assinatura, atributos e ACL; NENHUM dado e migrado, limpo ou apagado (a coluna marketplace_orders.notes segue como esta). Nenhum arquivo do front le notes desta resposta. ORDEM: depois da 20261341000000 (o pre-voo aceita o corpo da 1341 ou o desta). 66b exige o corpo da 1341; 66a exige o corpo desta; ambas so catalogo, rol fechado de 3 linhas. ROLLBACK: rollback-manual-20261342000000 devolve o corpo da 1341 byte a byte (a nota volta a sair) e recusa se o corpo vivo nao for o desta."
+    },
+    {
+      "consulta": "67a-conferir-reembolso-manual-reserva-aplicado",
+      "versoes": ["20261343000000"],
+      "ausenciaConfirmadaPor": "67b-antes-reembolso-manual-reserva",
+      "_comentario": "ADITIVA: apenas corpo de admin_devolucao_concluir, mesma assinatura e ACL. Saldo unico inclusive no manual apos 180 dias. Rollback restaura byte a byte a 241 e reabre o defeito; nenhuma aplicacao nesta frente."
+    },
+    {
+      "consulta": "68a-conferir-avanco-status-esperado-aplicado",
+      "versoes": ["20261345000000"],
+      "ausenciaConfirmadaPor": "68b-antes-avanco-status-esperado",
+      "_comentario": "ADITIVA: RPC nova para o avanco atomico com status esperado. Banco antes do front em cada loja; clientes antigos continuam usando a porta existente, sem alterar assinatura. Voltar front antes do rollback que apaga somente a RPC nova. Sem aplicacao nesta frente."
+    },
+    {
+      "consulta": "74a-conferir-codigo-de-barras-entre-tabelas-aplicado",
+      "versoes": ["20261347000000"],
+      "ausenciaConfirmadaPor": "74b-antes-codigo-de-barras-entre-tabelas-ausente",
+      "_comentario": "ADITIVA: 2 funcoes de gatilho e 2 gatilhos novos (BEFORE INSERT OR UPDATE OF codigo_barras em produtos e product_variants) que barram o MESMO codigo de barras em produto e variacao (23505). Nao altera, apaga nem indexa nenhuma linha existente; duplicata antiga entre as tabelas continua como esta e nao trava a edicao (nem o UPDATE nem o UPSERT identico do painel, que regrava a variacao com o mesmo codigo). Sem backfill e sem aplicacao automatica. Antes de aplicar em CADA loja, rodar a contagem de codigos nas duas tabelas do cabecalho da migration (informativa; nao bloqueia). Banco antes ou depois do front da no mesmo (o front ja traduz 23505 de codigo_barras). Provar 74b (base pronta e objetos ausentes) antes e 74a depois; ambas somente catalogo, rol fechado (3 e 5 linhas), nunca leem codigo de barras. ROLLBACK: rollback-manual-20261347000000_o_codigo_de_barras_nao_repete_entre_produto_e_variacao.sql remove so os 4 objetos novos; nenhum dado e tocado."
+    },
+    {
+      "consulta": "63a-conferir-forma-do-icone-aplicado",
+      "versoes": ["20261351000000"],
+      "ausenciaConfirmadaPor": "63b-antes-forma-do-icone-ausente",
+      "_comentario": "ADITIVA: categorias.icone_forma text nulavel (UM path SVG, alfabeto fechado, ate 400 caracteres) com CHECK propria; sem backfill, GRANT, policy ou RPC nova (a escrita segue o UPDATE direto das policies admin). Depende da 20261300000000 (63b exige categorias.icone e a CHECK das 14 chaves). Banco antes do front em cada loja, para permitir salvar a escolha; a vitrine tolera coluna ausente. Exigir 63b positiva antes de aplicar e 63a positiva depois. Rollback: voltar o front e executar rollback-manual-20261351000000_a_categoria_ganha_a_forma_do_icone.sql, que APAGA a coluna icone_forma e a CHECK dela (as formas escolhidas no catalogo novo se perdem; categorias.icone e as 14 chaves ficam). Nenhum banco foi aplicado por esta frente."
+    },
+    {
+      "consulta": "80a-conferir-pedido-entregue-na-reconciliacao-aplicado",
+      "versoes": ["20261349000000"],
+      "ausenciaConfirmadaPor": "80b-antes-pedido-entregue-na-reconciliacao-base-vigente",
+      "_comentario": "UMA migration ADITIVA de APPLY NORMAL, DINHEIRO, sem backfillLedger e sem nuncaAplicar. CREATE OR REPLACE de pagamentos_a_reconciliar (so ela): o pedido ENTREGUE (delivered) ainda aguardando o PIX entra na fila de reconciliacao, que so alcancava pending, processing e shipping; nenhuma linha existente muda e nenhuma edge muda. ORDEM OBRIGATORIA: DEPOIS da 20261270000000 (o pre-voo recusa corpo anterior; a 57a aceita o corpo desta como sucessor). Banco de CADA loja; valem IKCOUS e Savy, lojas de teste ficam fora. 80a/80b: so catalogo, rol fechado de 4 linhas cada; 80a negativa exige 80b positiva e mais nova antes do apply; repetir 80a depois. ROLLBACK: rollback-manual-20261349000000_o_pedido_entregue_antes_da_confirmacao_entra_na_reconciliacao.sql devolve o corpo da 270 byte a byte, com pre-voo por hash que recusa corpo desconhecido; sem mudar ACL ou dado. Provas de comportamento, rollback e consultas em tests/banco/pagamentos-rpc-viva.cjs (A3, A3b, A3c) e tests/banco/reconciliacao-do-entregue-viva.cjs; execucao no Postgres efemero do CI, nao em lojas reais."
+    },
+    {
+      "consulta": "81a-conferir-compra-online-trava-preco-e-chave-aplicado",
+      "versoes": ["20261350000000"],
+      "ausenciaConfirmadaPor": "81b-antes-compra-online-trava-preco-e-chave-base-vigente",
+      "_comentario": "UMA migration ADITIVA de APPLY NORMAL, DINHEIRO (compra online), sem backfillLedger e sem nuncaAplicar. CREATE OR REPLACE de create_marketplace_order_v23 e create_marketplace_order_v24 (so elas), corpo vigente da 20261244000000 inteiro e SO tres edicoes: (D2) a leitura do passo 3 tranca a variacao E o produto (FOR NO KEY UPDATE OF v, p), porque o preco-base muda durante a gravacao; (D3) advisory lock pedido_online:<chave> antes do passo 0, para o reenvio simultaneo com a mesma chave devolver o MESMO pedido em vez de falso estoque insuficiente; (D4) antes do laco do passo 3 o carrinho tranca as variacoes (por id) e depois os produtos (por id) numa ordem global fixa, para duas compras simultaneas de carrinho misto ou com variacoes em ordem oposta nao se derrubarem por deadlock (40P01). Nenhuma linha existente muda e nenhuma edge nem o front mudam. ORDEM OBRIGATORIA: DEPOIS da 20261244000000 (o pre-voo recusa corpo anterior; 31a, 37a e 47a aceitam o corpo desta como sucessor). Banco de CADA loja; valem IKCOUS e Savy, lojas de teste ficam fora. 81a/81b: so catalogo, rol fechado de 7 linhas cada; 81a negativa exige 81b positiva e mais nova antes do apply; repetir 81a depois. ROLLBACK: rollback-manual-20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql devolve os dois corpos da 244 byte a byte, com pre-voo por hash que recusa corpo desconhecido; sem mudar ACL ou dado. Provas de comportamento, rollback e consultas em tests/banco/compra-online-travas-viva.cjs; execucao no Postgres efemero do CI, nao em lojas reais."
     }
   ],
   "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; e, desde 13/10/2026 por decisao do dono, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, SO pelo nome (e, desde 14/10/2026, a credenciais-email, o painel onde a lojista cadastra o Gmail da loja; e, desde 21/10/2026, a auth-send-email, o Send Email Hook autenticado por assinatura Standard Webhooks): antes, uma delas que mudasse na release deixava a loja PARADA; a send-order-whatsapp segue proibida, nenhuma outra loja ganha rota, e a pre-condicao de publicar cada uma e medir o que esta no ar em CADA loja antes, passo 6 de docs/runbooks/producao-unica-fonte.md; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",

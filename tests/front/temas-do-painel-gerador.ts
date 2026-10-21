@@ -4,8 +4,8 @@
 // (`text-white`, `text-zinc-400`, `bg-white/5`, `border-zinc-800`, `text-red-300`…).
 // Em vez de reescrever o JSX (e inflar o pacote do painel, que está no teto), cada
 // classe solta ganha UMA regra de CSS que só vale com `html.admin-mode[data-admin-tema]`
-// e troca a cor por um token do tema. O tema Escuro (atributo ausente) não recebe
-// regra nenhuma: o que já funciona não muda.
+// e troca a cor por um token do tema. No Escuro (atributo ausente), só os textos
+// zinc-400 a 700 recebem o cinza suave: fundos e demais cores não mudam.
 //
 // A especificidade imita a do Tailwind (o prefixo vai dentro de `:where()` e pesa
 // zero): `text-white` (0,1,0) segue perdendo para `hover:text-white` (0,2,0), e uma
@@ -18,7 +18,7 @@
 /* eslint-disable security/detect-object-injection, security/detect-unsafe-regex --
    tabelas constantes e regex constantes deste arquivo (nenhuma entrada de usuário) */
 
-export type Escopo = "ambos" | "claro" | "confortavel";
+export type Escopo = "ambos" | "claro" | "confortavel" | "escuro";
 
 export interface ClasseSolta {
   /** Texto original, com variantes: `hover:bg-white/5`. */
@@ -596,6 +596,21 @@ export function regrasDaClasse(c: ClasseSolta): Regra[] | "variante" | null {
       media: m.media,
     },
   ];
+  // No Escuro, só o texto secundário muda. Alfa reduzido voltaria a falhar AA.
+  // Variantes ancestrais ficam como estão: o alvo já tem sua classe e exclusão.
+  if (
+    c.util === "text" &&
+    /^zinc-(400|500|600|700)$/.test(c.cor) &&
+    !c.variantes.some((v) => v.startsWith("[&"))
+  ) {
+    regras.push({
+      escopo: "escuro",
+      seletor: m.seletor,
+      declaracao: `color:${hsl("text-soft", null)}`,
+      ordem: m.ordem,
+      media: m.media,
+    });
+  }
   if (troca.tambem) {
     regras.push({
       escopo: troca.tambem.escopo,
@@ -665,6 +680,7 @@ export function paresDeTextoBranco(texto: string): Regra[] {
 // ---------------------------------------------------------------------------
 
 const PREFIXO: Record<Escopo, string> = {
+  escuro: ":where(html.admin-mode:not([data-admin-tema]))",
   ambos: ":where(html.admin-mode[data-admin-tema])",
   claro: ':where(html.admin-mode[data-admin-tema="claro"])',
   confortavel: ':where(html.admin-mode[data-admin-tema="confortavel"])',
@@ -673,7 +689,7 @@ const PREFIXO: Record<Escopo, string> = {
 export const CABECALHO_DO_CSS_GERADO = `/* GERADO por tests/front/temas-do-painel-gerador.ts — NAO edite a mao.
  * Regenere: GERAR_TEMAS=1 npx vitest run tests/front/temas-do-painel-cobertura.test.ts
  * Cada regra troca UMA classe solta do painel (feita para fundo escuro) por um
- * token do tema Claro/Confortavel. Tema Escuro = nenhuma regra. O prefixo pesa
+ * token do tema. No Escuro, so texto zinc-400 a 700 muda. O prefixo pesa
  * zero (:where) de proposito: a cascata fica igual a do Tailwind. */
 `;
 

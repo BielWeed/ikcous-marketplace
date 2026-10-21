@@ -82,6 +82,11 @@ import {
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { avisarJurosSemParcelaConferida, conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import {
+  devolucaoParcialProvaPagamento,
+  devolucoesConcluidasDaOrder,
+  registrarDevolucoesConcluidasDaOrder,
+} from "../_shared/devolucao-parcial.ts";
 import { registrarDiagnosticoDoCartao } from "../_shared/diagnostico-do-cartao.ts";
 import { comTempoLimite, readKey } from "../_shared/webpush.ts";
 import {
@@ -439,6 +444,40 @@ async function adotarCartaoCapturadoDoSentinela(args: {
 }
 
 /**
+ * Avisa o lojista (uma vez por pedido e devolução) quando o Mercado Pago
+ * registrou uma devolução que passa do que o pedido ainda podia devolver e o
+ * ledger a recusou (`registrar_estorno_externo_do_mp` → `nao_cabe`). A
+ * MESMA chave e o MESMO texto do webhook: as duas portas não avisam em dobro.
+ * Nunca lança além do que `avisarAdminUmaVez` já engole — o aviso é
+ * secundário ao dinheiro (P1/P2, 21/10/2026).
+ */
+async function avisarDevolucoesQueNaoCabem(args: {
+  deps: { enviarPushContado?: typeof dispararPushContadoReal };
+  supabase: ReturnType<typeof createClient>;
+  orderId: string;
+  naoCabem: Array<{ id: string; valor: number }>;
+}): Promise<void> {
+  for (const devolucao of args.naoCabem) {
+    console.error(
+      "reconciliar-pagamentos: devolução do MP não cabe no que o pedido ainda pode devolver — não registrada, admin avisado",
+      { orderId: args.orderId, refundId: devolucao.id, valor: devolucao.valor },
+    );
+    await comTempoLimite(avisarAdminUmaVez({
+      supabase: args.supabase,
+      enviarPushContado: args.deps.enviarPushContado ??
+        ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+      chave: `estorno_externo_nao_cabe:${args.orderId}:${devolucao.id}`,
+      aviso: {
+        title: "Devolução do Mercado Pago para conferir",
+        body: `${numeroDoPedido(args.orderId)} · o Mercado Pago registrou uma devolução que passa do que este pedido ainda podia devolver — o app não registrou essa devolução; confira no painel do Mercado Pago`,
+        url: "/admin-orders",
+      },
+      rotulo: "reconciliar-pagamentos",
+    }), TETO_DO_PUSH_MS);
+  }
+}
+
+/**
  * Orçamento de tempo do laço de CONSULTA ao MP, por ciclo (EST-EDGE-DIN-2,
  * 16/10/2026). A RPC entrega até 100 cobranças e o laço consulta uma por vez,
  * cada uma com até 15 s de teto: todas expirando seria 1.500 s, muito acima
@@ -789,6 +828,87 @@ async function handler(
         continue;
       }
 
+      // P1 (21/10/2026): DEVOLUÇÃO PARCIAL ANTES DA CONFIRMAÇÃO. O PIX foi pago,
+      // o webhook falhou e o lojista devolveu parte do valor no painel do MP:
+      // a order vira `processed:partially_refunded` — `null` no mapa, DE
+      // PROPÓSITO (a parcial não pode apagar a venda inteira dos relatórios; o
+      // mapa NÃO muda) — e este laço a ignorava como "status desconhecido"
+      // até o pedido expirar com a venda paga. Só se devolve dinheiro de
+      // pagamento APROVADO: a devolução parcial concluída, de uma cobrança que
+      // é a GRAVADA no pedido, com o valor original igual ao total, sobre um
+      // pedido que ainda espera (aguardando/expirado, sem `paid_at`), prova a
+      // aprovação (`_shared/devolucao-parcial.ts`). Prova aceita: registra o
+      // dinheiro devolvido no ledger ANTES de confirmar — falha de banco
+      // lança, o candidato fica na fila (paid_at ainda nulo) e a repetição é
+      // segura (a RPC é idempotente pelo id da devolução) — e segue o caminho
+      // de 'pago' abaixo (conferência de valor, RPC sob FOR UPDATE, efeitos).
+      // Sem prova, o comportamento de antes: ignorado, nada escrito.
+      if (
+        statusMapeado === null && orderParaConferir &&
+        String(orderParaConferir.status_detail ?? "") === "partially_refunded"
+      ) {
+        const { data: linhaDaParcial, error: erroLeituraDaParcial } = await supabase
+          .from("marketplace_orders")
+          .select("id, total, total_amount, gateway_payment_id, payment_status, paid_at, status")
+          .eq("id", candidato.order_id)
+          .maybeSingle();
+        if (erroLeituraDaParcial) throw erroLeituraDaParcial;
+        const provaDaParcial = devolucaoParcialProvaPagamento({
+          order: orderParaConferir,
+          pedido: linhaDaParcial ? { ...(linhaDaParcial as Record<string, unknown>), id: candidato.order_id } : null,
+        });
+        if (provaDaParcial.provado) {
+          const resumoDaParcial = await registrarDevolucoesConcluidasDaOrder({
+            supabase,
+            orderId: candidato.order_id,
+            order: orderParaConferir,
+            devolucoes: provaDaParcial.devolucoes,
+          });
+          await avisarDevolucoesQueNaoCabem({
+            deps,
+            supabase,
+            orderId: candidato.order_id,
+            naoCabem: resumoDaParcial.naoCabem,
+          });
+          console.warn(
+            "reconciliar-pagamentos: devolução parcial concluída ANTES da confirmação prova o pagamento — confirmando o pedido",
+            {
+              order_id: candidato.order_id,
+              gateway_payment_id: candidato.gateway_payment_id,
+              valorOriginal: provaDaParcial.valorOriginal,
+              devolvido: provaDaParcial.devolvido,
+            },
+          );
+          statusMapeado = "pago";
+        } else {
+          // Sem prova: nada muda (segue ignorado, abaixo). Só que o MOTIVO vai ao log — antes caía
+          // no aviso genérico "status desconhecido" — no mesmo formato do webhook.
+          console.warn(
+            "reconciliar-pagamentos: devolução parcial NÃO prova o pagamento — nada confirmado",
+            candidato.order_id,
+            statusBrutoParaLog,
+            provaDaParcial.motivo,
+          );
+          // Devolução concluída que NÃO aparece inteira na lista (soma menos que o valor devolvido
+          // que o pagamento informa) é dinheiro que saiu sem rastro no app: o lojista é avisado UMA
+          // vez por pedido (mesmo mecanismo das demais devoluções para conferir).
+          if (provaDaParcial.motivo === "devolucao_nao_comprovada_por_inteiro") {
+            await comTempoLimite(avisarAdminUmaVez({
+              supabase,
+              enviarPushContado: deps.enviarPushContado ??
+                ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+              chave: `devolucao_parcial_nao_comprovada:${candidato.order_id}`,
+              aviso: {
+                title: "Devolução do Mercado Pago para conferir",
+                body: `${numeroDoPedido(candidato.order_id)} · o Mercado Pago informa um valor devolvido maior do que as devoluções que o app consegue listar — o app não confirmou o pagamento por isso; confira no painel do Mercado Pago`,
+                url: "/admin-orders",
+              },
+              rotulo: "reconciliar-pagamentos",
+            }), TETO_DO_PUSH_MS);
+          }
+        }
+      }
+
       if (statusMapeado === null) {
         console.warn(
           "reconciliar-pagamentos: status desconhecido do MP",
@@ -797,6 +917,65 @@ async function handler(
         );
         ignorados++;
         continue;
+      }
+
+      // P2 (21/10/2026): DEVOLUÇÃO INTEGRAL de um pedido NUNCA PAGO. O mapa dá
+      // 'estornado' a `refunded:refunded` e este laço mandava isso direto a
+      // `confirmar_pagamento`: no pedido aguardando+pending a RPC devolve o
+      // estoque e cancela, mas não grava `paid_at`, não soma o valor devolvido
+      // e não cria a linha de devolução — o dinheiro entrou e saiu sem rastro
+      // (totais brutos e histórico errados; regra A1 de pagamentos-rpc-viva).
+      // Pedido nunca pago não tem linha de devolução do app (solicitar_estorno
+      // exige pagamento), então quem registra é a RPC do ledger: ela trava o
+      // pedido, é idempotente pelo id da devolução e, quando o acumulado cobre
+      // o total, conclui como `concluir_estorno` (grava `paid_at`, soma o
+      // valor, devolve o estoque e cancela, numa transação). MESMA regra A1 do
+      // webhook: sem NENHUMA devolução concluída no GET (a order ainda
+      // 'processing', por exemplo) não cai no `confirmar_pagamento` legado —
+      // ele encerraria a reserva sem a entrada financeira; espera o próximo
+      // ciclo. Só order da Orders API (o candidato clássico legado fica como
+      // antes) e só com `paid_at` nulo na releitura fresca: pedido que já foi
+      // pago segue o caminho de antes. Falha de banco lança e o candidato
+      // volta no próximo ciclo (repetir é seguro). Chargeback já saiu acima.
+      if (statusMapeado === "estornado" && orderParaConferir) {
+        const { data: linhaDoEstorno, error: erroLeituraDoEstorno } = await supabase
+          .from("marketplace_orders")
+          .select("id, payment_status, paid_at, status")
+          .eq("id", candidato.order_id)
+          .maybeSingle();
+        if (erroLeituraDoEstorno) throw erroLeituraDoEstorno;
+        if ((linhaDoEstorno as Record<string, unknown> | null)?.paid_at === null) {
+          const devolucoes = devolucoesConcluidasDaOrder(orderParaConferir);
+          if (devolucoes.length === 0) {
+            console.warn(
+              "reconciliar-pagamentos: order devolvida no MP, mas sem devolução concluída ainda — não cancela nem registra; aguardando o próximo ciclo",
+              candidato.order_id,
+              statusBrutoParaLog,
+            );
+            ignorados++;
+            continue;
+          }
+          const resumoDoEstorno = await registrarDevolucoesConcluidasDaOrder({
+            supabase,
+            orderId: candidato.order_id,
+            order: orderParaConferir,
+            devolucoes,
+          });
+          await avisarDevolucoesQueNaoCabem({
+            deps,
+            supabase,
+            orderId: candidato.order_id,
+            naoCabem: resumoDoEstorno.naoCabem,
+          });
+          console.log(
+            "reconciliar-pagamentos: devolução integral de pedido nunca pago registrada no ledger — confirmar_pagamento('estornado') NÃO é chamada",
+            candidato.order_id,
+            statusBrutoParaLog,
+            resumoDoEstorno,
+          );
+          ignorados++;
+          continue;
+        }
       }
 
       // CARTÃO RECUSADO NÃO MATA O PEDIDO (Fase 3.5) — o webhook que perdeu

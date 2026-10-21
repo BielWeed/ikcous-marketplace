@@ -76,6 +76,7 @@ export function MetricasDoPainel({
   nota = titulo,
   onEntender,
   indicesDoRodape = [2, 3],
+  relatorio,
 }: {
   readonly titulo: string;
   readonly legendasDoResumo: readonly string[];
@@ -84,6 +85,15 @@ export function MetricasDoPainel({
   readonly nota?: ReactNode;
   readonly onEntender?: () => void;
   readonly indicesDoRodape?: readonly [number, number];
+  /** Resumo fixo dos relatórios: a expansão pertence ao carrossel, não a este cartão. */
+  readonly relatorio?: {
+    readonly rodape: ReactNode;
+    readonly tom?: "atencao" | "erro";
+    readonly erro?: boolean;
+    readonly aoTentar?: () => void;
+    readonly barra?: ReactNode;
+    readonly ajuda?: ReactNode;
+  };
 }) {
   const [expandido, setExpandido] = useState(false);
   const esqueleto = (
@@ -103,6 +113,98 @@ export function MetricasDoPainel({
       <Info aria-hidden="true" className="size-4" />
     </button>
   ) : null;
+
+  if (relatorio) {
+    return (
+      <section
+        aria-label={titulo}
+        aria-busy={loading}
+        className="metricas-painel metricas-relatorio h-[148px] min-w-0"
+      >
+        <div className="metricas-painel-resumo h-full">
+          <div
+            className={cn(
+              "metricas-relatorio-nota flex h-7 items-center justify-between gap-1 border-b border-admin-border px-3 text-[11px] leading-[13px] text-admin-text-soft",
+              relatorio.tom === "atencao" && "bg-amber-500/10 text-amber-300",
+              relatorio.tom === "erro" && "bg-rose-500/10 text-rose-300",
+            )}
+          >
+            {nota}
+          </div>
+          {relatorio.erro ? (
+            <div
+              role="alert"
+              className="flex h-[76px] items-center justify-between gap-2 px-3"
+            >
+              <div className="min-w-0">
+                <p className="text-admin-text text-[13px] font-bold">
+                  Não deu para buscar os números
+                </p>
+                <p className="text-admin-text-soft text-[11px]">
+                  Confira a internet e tente de novo.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={relatorio.aoTentar}
+                className="text-admin-text min-h-11 shrink-0 rounded-xl border border-solid border-admin-border bg-admin-raised px-2 text-[11px] font-bold"
+              >
+                Tentar de novo
+              </button>
+            </div>
+          ) : (
+            <div className="metricas-painel-principais relative h-[76px]">
+              {cards.slice(0, 2).map((card, i) => (
+                <div
+                  key={card.label}
+                  role="group"
+                  aria-label={card.label}
+                  className="metricas-painel-destaque min-w-0"
+                >
+                  <div className="flex min-h-7 items-start justify-between gap-1">
+                    <p className="text-admin-text-2 text-xs font-semibold leading-[14px]">
+                      {legendasDoResumo.at(i) ?? card.label}
+                    </p>
+                    {card.content}
+                  </div>
+                  <NumeroAdaptavel
+                    className={cn(
+                      "metricas-painel-valor font-extrabold tabular-nums text-admin-text",
+                      card.accent,
+                    )}
+                  >
+                    {loading ? (
+                      esqueleto
+                    ) : card.compactValue &&
+                      card.compactValue !== card.value ? (
+                      <>
+                        <span className="sm:hidden">{card.compactValue}</span>
+                        <span className="hidden sm:inline">{card.value}</span>
+                      </>
+                    ) : (
+                      card.value
+                    )}
+                  </NumeroAdaptavel>
+                </div>
+              ))}
+              {relatorio.barra}
+            </div>
+          )}
+          <div className="metricas-painel-secundarias flex h-10 items-center justify-between gap-1">
+            <div className="text-admin-text-soft min-w-0 text-[11px] leading-[14px]">
+              {loading ? esqueleto : relatorio.rodape}
+            </div>
+            {relatorio.ajuda ?? entender}
+          </div>
+        </div>
+        {loading && (
+          <p role="status" className="sr-only">
+            Carregando os relatórios
+          </p>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section

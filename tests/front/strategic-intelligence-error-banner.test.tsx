@@ -135,8 +135,10 @@ describe("StrategicIntelligenceBlocks — erro distinto do vazio (#104)", () => 
     });
     await esperarChartPronto();
     act(() => {});
-    const containerErro = hospedeiro.firstElementChild as HTMLElement;
-    expect(containerErro.className).toMatch(/red/);
+    const containerErro = hospedeiro.querySelector(
+      '[role="alert"]',
+    ) as HTMLElement;
+    expect(containerErro.className).toMatch(/rose/);
 
     act(() => {
       raiz.render(

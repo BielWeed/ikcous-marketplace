@@ -23,14 +23,14 @@ const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
   };
 };
 let dom: InstanceType<typeof JSDOM>;
-// Importa os componentes REAIS. O composto adicional exercita Line e Pie,
+// Importa os componentes REAIS. O composto adicional exercita Line,
 // além do monotone e stackOffset="sign" usados pelo FluxoDeCaixaGrafico.
 const CODIGO = `
 import { createElement as h, Fragment } from 'react';
 import { FluxoDeCaixaGrafico } from '@/components/admin/financeiro/FluxoDeCaixaGrafico';
 import { OperationalPerformanceChart } from '@/components/admin/dashboard/OperationalPerformanceChart';
 import { StrategicIntelligenceBlocks } from '@/components/admin/dashboard/StrategicIntelligenceBlocks';
-import { Area, Bar, Cell, ComposedChart, Line, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, Bar, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts';
 const pontos = [
  {dia:'2026-08-29',entradas:120,saidas:80,resultado:40,saldo:null},
  {dia:'2026-08-30',entradas:10,saidas:60,resultado:-50,saldo:-50},
@@ -47,10 +47,7 @@ export function tela() {
    h(XAxis,{dataKey:'dia'}),h(YAxis),h(Tooltip),
    h(Area,{type:'monotone',dataKey:'saldo',isAnimationActive:false,activeDot:{r:5}}),
    h(Bar,{dataKey:'entradas',isAnimationActive:false}),
-   h(Line,{type:'monotone',dataKey:'resultado',isAnimationActive:false,activeDot:{r:6}}))),
-  h('section', {id:'pizza'}, h(PieChart,{width:320,height:300},
-   h(Tooltip),h(Pie,{data:pontos,dataKey:'entradas',nameKey:'dia',innerRadius:40,outerRadius:90,isAnimationActive:false},
-    pontos.map((_,i)=>h(Cell,{key:i,fill:['red','blue','green','gold'][i]})))))
+   h(Line,{type:'monotone',dataKey:'resultado',isAnimationActive:false,activeDot:{r:6}})))
  );
 }
 `;
@@ -58,7 +55,7 @@ export function tela() {
 async function compilar(
   comPlugin: boolean,
   enxuto = false,
-  setorQuebrado = false,
+  retanguloQuebrado = false,
 ) {
   let transformados = 0;
   const plugin = helpersCompartilhadosDoGrafico();
@@ -87,17 +84,17 @@ async function compilar(
       escalasEnxutasDoGrafico(),
       ...(comPlugin ? [plugin] : []),
       ...(enxuto ? [graficoEnxuto()] : []),
-      // Controle negativo: comprova que a captura enxerga perder o Sector real.
-      ...(setorQuebrado
+      // Controle negativo: comprova que a captura enxerga perder o Rectangle real.
+      ...(retanguloQuebrado
         ? [
             {
-              name: "controle-negativo-sector",
+              name: "controle-negativo-rectangle",
               enforce: "pre" as const,
               load(id: string) {
-                return /\/recharts\/es6\/shape\/Sector\.js$/.test(
+                return /\/recharts\/es6\/shape\/Rectangle\.js$/.test(
                   id.replaceAll("\\", "/"),
                 )
-                  ? "export const Sector = () => null;"
+                  ? "export const isInRectangle = () => false; export const Rectangle = () => null;"
                   : null;
               },
             },
@@ -285,7 +282,8 @@ function capturar(tela: () => ReactNode, movel = true) {
       container.querySelectorAll("#operacional .recharts-surface"),
     ).toHaveLength(1);
     expect(
-      container.querySelectorAll(".recharts-bar-rectangle").length,
+      container.querySelectorAll("#operacional .recharts-bar-rectangle path")
+        .length,
     ).toBeGreaterThan(0);
     expect(
       container.querySelectorAll(".recharts-area-area").length,
@@ -293,21 +291,13 @@ function capturar(tela: () => ReactNode, movel = true) {
     expect(
       container.querySelectorAll(".recharts-line-curve").length,
     ).toBeGreaterThan(0);
-    expect(
-      container.querySelectorAll("#pizza .recharts-pie-sector"),
-    ).toHaveLength(4);
-    expect(
-      container.querySelectorAll("#categorias .recharts-pie-sector"),
-    ).toHaveLength(3);
-    expect(
-      container.querySelectorAll("#categorias path.recharts-sector"),
-    ).toHaveLength(3);
-    expect(
-      container.querySelector("#categorias svg.recharts-surface")?.textContent,
-    ).toContain("Total");
-    expect(
-      container.querySelector("#categorias svg.recharts-surface")?.textContent,
-    ).toContain("600,00");
+    expect(container.querySelectorAll("#categorias li")).toHaveLength(3);
+    expect(container.querySelector("#categorias")?.textContent).toContain(
+      "50.0%",
+    );
+    expect(container.querySelector("#categorias")?.textContent).toContain(
+      "300,00",
+    );
     registrar();
     mover("#fluxo .recharts-wrapper:last-child");
     expect(
@@ -323,58 +313,6 @@ function capturar(tela: () => ReactNode, movel = true) {
     ).toBeGreaterThan(0);
     registrar();
     mover("#operacional .recharts-wrapper");
-    registrar();
-    act(() => {
-      container
-        .querySelectorAll(".recharts-pie-sector")[0]
-        .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-    });
-    registrar();
-    const fatia = container.querySelector("#categorias .recharts-pie-sector")!;
-    act(() => {
-      fatia.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-    });
-    expect(
-      container.querySelector("#categorias .recharts-active-shape path"),
-    ).toBeTruthy();
-    expect(
-      container.querySelector("#categorias svg.recharts-surface")?.textContent,
-    ).toContain("Roupas");
-    expect(
-      container.querySelector("#categorias svg.recharts-surface")?.textContent,
-    ).toContain("(50.0%)");
-    registrar();
-    act(() => {
-      fatia.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
-      vi.advanceTimersByTime(200);
-    });
-    expect(
-      container.querySelector("#categorias svg.recharts-surface")?.textContent,
-    ).toContain("Total");
-    registrar();
-    const ocultar = container.querySelector<HTMLButtonElement>(
-      '#categorias button[title="Ocultar do gráfico"]',
-    )!;
-    act(() => ocultar.click());
-    concluirAnimacao();
-    expect(
-      container.querySelectorAll("#categorias path.recharts-sector"),
-    ).toHaveLength(2);
-    expect(
-      container.querySelector("#categorias svg.recharts-surface")?.textContent,
-    ).toContain("300,00");
-    registrar();
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>(
-          '#categorias button[title="Mostrar no gráfico"]',
-        )!
-        .click(),
-    );
-    concluirAnimacao();
-    expect(
-      container.querySelectorAll("#categorias path.recharts-sector"),
-    ).toHaveLength(3);
     registrar();
     const roi = [
       ...container.querySelectorAll<HTMLButtonElement>("#operacional button"),
@@ -403,13 +341,13 @@ function capturar(tela: () => ReactNode, movel = true) {
 }
 
 describe("helpers compartilhados — SVG dos gráficos reais", () => {
-  it("fluxo, CRM, barra/linha/área/pizza e interação têm SVG e tooltip idênticos com e sem o plugin", async () => {
+  it("fluxo, CRM, barra/linha/área e interação têm SVG e tooltip idênticos com e sem o plugin", async () => {
     const original = await compilar(false);
     const compartilhado = await compilar(true);
     expect(capturar(compartilhado)).toEqual(capturar(original));
   }, 120_000);
 
-  it("a economia remove os módulos não usados sem mudar SVG, tooltip, activeShape ou Label central", async () => {
+  it("a economia remove os módulos não usados sem mudar SVG, tooltip e curvas", async () => {
     const original = await compilar(true);
     const enxuto = await compilar(true, true);
     for (const movel of [true, false]) {
@@ -417,7 +355,7 @@ describe("helpers compartilhados — SVG dos gráficos reais", () => {
     }
   }, 120_000);
 
-  it("controle negativo: perder Sector é detectado pela pizza real de categorias", async () => {
+  it("controle negativo: perder Rectangle é detectado pelas barras reais do histórico", async () => {
     const quebrado = await compilar(true, false, true);
     expect(() => capturar(quebrado)).toThrow();
   }, 120_000);

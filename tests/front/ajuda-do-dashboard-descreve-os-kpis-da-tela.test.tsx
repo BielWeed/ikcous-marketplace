@@ -179,9 +179,9 @@ describe("A ajuda do dashboard (hoje no Dashboard CRM) documenta os KPIs que a t
     // O que sobrou do Histórico completo (Divisão de faturamento,
     // Performance, Top 5) continua descrito.
     for (const blocoReal of [
-      "Performance Operacional",
-      "Inteligência Estratégica por Categoria",
-      "Produtos Mais Lucrativos",
+      "Histórico da loja",
+      "Vendas por categoria",
+      "Produtos que mais dão lucro",
     ]) {
       expect(texto).toContain(blocoReal);
     }

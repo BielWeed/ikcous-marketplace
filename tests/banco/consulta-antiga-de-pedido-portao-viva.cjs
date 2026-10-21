@@ -45,6 +45,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+const {
+  desfazerRastreioDoConvidadoNaTransacao,
+  CORPO_1342,
+} = require("./rastreio-do-convidado-posterior.cjs");
 
 const REPO = path.resolve(__dirname, "..", "..");
 const CONSULTAS = path.join(REPO, "scripts", "publicacao", "consultas");
@@ -113,8 +117,28 @@ async function noEstado(montar, consultas, { comoDono = false } = {}) {
   }
 }
 
-const depois = (c) => c.query(MIGRATION);
-const antes = (c) => c.query(ROLLBACK);
+// O ANTES e o DEPOIS da 20261220 sao de um banco que ainda nao tem a 20261341 nem a 20261342 (posteriores, aplicadas
+// depois): a v2 la e' a da 20261217, que e' o que as duas consultas medem. O estado COM as sucessoras no ar (a 23a as
+// aceita; a 23b, que e' o ANTES, nao) tem prova propria mais abaixo (`comSucessoras`).
+const depois = async (c) => {
+  await desfazerRastreioDoConvidadoNaTransacao(c);
+  await c.query(MIGRATION);
+};
+const antes = async (c) => {
+  await c.query(ROLLBACK);
+  await desfazerRastreioDoConvidadoNaTransacao(c);
+};
+const comSucessoras = async (c) => {
+  await c.query(MIGRATION);
+  // guarda: a v2 viva e' mesmo a da 20261342 (sem isso a prova mediria a 1217 e passaria por engano)
+  const h = (
+    await c.query(
+      "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure($1)",
+      [V2],
+    )
+  ).rows[0].h;
+  assert.equal(h, CORPO_1342, "a arvore nao tem a 20261342 no ar");
+};
 
 const reprovadas = (linhas) =>
   linhas
@@ -188,9 +212,26 @@ prova(
   },
 );
 
+prova(
+  "COM AS SUCESSORAS (20261341 e 20261342 no ar sobre a 20261220): a 23a segue POSITIVA e a 23b (que e' o ANTES) reprova a v1 e o corpo da v2",
+  async () => {
+    const s = await noEstado(comSucessoras, [A, B]);
+    assert.deepEqual(reprovadas(s[A]), [], "23a toda ok com as sucessoras");
+    assert.deepEqual(
+      reprovadas(s[B]),
+      [L_V1_EXEC_B, L_V2_CORPO].sort(),
+      "23b reprova v1 aberta e o corpo da v2",
+    );
+    // O `vivo` da 23a mostra o estado de verdade na linha do corpo da v2: o md5 da 20261217 (aceito como sucessora).
+    const v2 = s[A].find((l) => l.item === L_V2_CORPO);
+    assert.equal(v2.vivo, v2.esperado);
+  },
+);
+
 prova("IDEMPOTENCIA, IDA E VOLTA e CRLF: o mesmo veredito", async () => {
   const dobro = await noEstado(
     async (c) => {
+      await desfazerRastreioDoConvidadoNaTransacao(c);
       await c.query(MIGRATION);
       await c.query(MIGRATION);
     },
@@ -218,6 +259,7 @@ prova("IDEMPOTENCIA, IDA E VOLTA e CRLF: o mesmo veredito", async () => {
     async (c) => {
       await c.query(ROLLBACK);
       await c.query(ROLLBACK);
+      await desfazerRastreioDoConvidadoNaTransacao(c);
     },
     [B],
   );

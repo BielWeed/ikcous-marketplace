@@ -87,7 +87,13 @@ PROVAS.push({
     const ini = src.indexOf(
       "IF v_opcao NOT IN ('local-delivery', 'store-pickup') AND v_customer_cpf_digits IS NOT NULL THEN",
     );
-    const fim = src.indexOf("-- 3. Validation Loop", ini);
+    // O bloco de CPF acaba no que vier PRIMEIRO: o bloco das travas em ordem global (20261350000000, que tem FOR
+    // ... IN com variaveis que a funcao de referencia nao declara) ou o laco de validacao do passo 3. Antes da
+    // 1350 so existia o segundo marcador; o trecho do CPF e o mesmo nos dois casos.
+    const fimTravas = src.indexOf("-- >>> ordem global das travas", ini);
+    const fimLaco = src.indexOf("-- 3. Validation Loop", ini);
+    const fimValidos = [fimTravas, fimLaco].filter((i) => i !== -1);
+    const fim = fimValidos.length > 0 ? Math.min(...fimValidos) : -1;
     assert.ok(
       ini !== -1 && fim !== -1 && fim > ini,
       "bloco de validação de CPF não encontrado no prosrc vivo da v24 -- a v24 mudou de forma que esta prova não acompanha; revise o anchor acima",

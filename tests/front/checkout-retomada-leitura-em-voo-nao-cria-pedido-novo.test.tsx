@@ -232,6 +232,7 @@ describe("CheckoutView — retomada com a leitura do pedido em voo", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    sessionStorage.clear();
     lerPedido.mockReset();
     createOrder.mockReset();
     // Se um pedido novo fosse tentado, que ao menos não derrube o teste por

@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+// A geometria do carrossel é verificada à parte; esta suíte verifica dados/navegação.
+vi.mock("embla-carousel-react", () => ({
+  default: () => [vi.fn(), undefined],
+}));
 //
 // Achado do dono (28/09/2026, print do celular em Brave ~390px): o Dashboard
 // CRM ROLAVA PARA O LADO — o conteúdo aparecia deslocado ("SHBOARD CRM",

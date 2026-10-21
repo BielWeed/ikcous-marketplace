@@ -159,7 +159,10 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
    `estorno_manual_registrado_em`** (BEFORE UPDATE OF payment_status, COALESCE — não toca
    status, valor nem estoque): é a data do estorno que o Financeiro usa.
 4. `reconciliar-pagamentos` (pg_cron 10 min, segredo próprio): fila de 24h → MESMA RPC (e a
-   mesma liberação da vaga para cartão recusado).
+   mesma liberação da vaga para cartão recusado). A fila (`pagamentos_a_reconciliar`) alcança
+   também o pedido que o lojista já adiantou para processing, shipping ou delivered antes do PIX
+   confirmar (migration `20261349`); `confirmar_pagamento('pago')` nele grava a entrada sem mexer
+   em status nem estoque.
 5. Finais: pago segue entrega · pago_apos_expirar é dinheiro fora do fluxo (P1) ·
    expirado teve estoque devolvido · recusado (só PIX; cartão recusado não é final) ·
    estornado (o app não estorna; parcial fica deliberadamente não mapeado).

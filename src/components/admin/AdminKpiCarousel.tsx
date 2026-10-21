@@ -10,6 +10,7 @@ export interface KpiCardConfig {
   label: string;
   value: string | number;
   subValue?: string;
+  compactValue?: string;
   parcial?: boolean;
   icon: LucideIcon;
   accent?: string; // Tailwind class for icon color, e.g., 'text-emerald-500'
@@ -26,6 +27,8 @@ interface AdminKpiCarouselProps {
   readonly title?: string;
   readonly autoplayInterval?: number;
   readonly active?: boolean;
+  readonly relatorio?: boolean;
+  readonly renderCard?: (card: KpiCardConfig) => React.ReactNode;
 }
 
 /**
@@ -154,6 +157,8 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
   title = "Métricas Principais",
   autoplayInterval = 0,
   active = true,
+  relatorio = false,
+  renderCard,
 }: AdminKpiCarouselProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -170,7 +175,10 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false, // Disabling loop to prevent slide duplicate key errors in viewport fits
     align: "start",
-    slidesToScroll: 1,
+    slidesToScroll: relatorio ? 2 : 1,
+    ...(relatorio
+      ? { breakpoints: { "(prefers-reduced-motion: reduce)": { duration: 0 } } }
+      : {}),
   });
 
   const onSelect = useCallback(() => {
@@ -275,6 +283,91 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
   const displayCards = useMemo(() => {
     return cards;
   }, [cards]);
+
+  if (relatorio) {
+    const paginas = Math.ceil(cards.length / 2);
+    return (
+      <section
+        aria-label={title}
+        aria-roledescription="carrossel"
+        className="min-w-0"
+      >
+        <h2 className="text-admin-text-soft flex h-6 items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.12em]">
+          <span
+            aria-hidden="true"
+            className="size-1.5 rounded-full bg-admin-gold"
+          />
+          {title}
+        </h2>
+        <div className="flex h-11 items-center justify-end gap-2">
+          {!isExpanded && (
+            <div className="flex">
+              {Array.from({ length: paginas }, (_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`Página ${i + 1} de ${paginas}`}
+                  aria-current={i === activeIndex ? "true" : undefined}
+                  className="flex size-11 items-center justify-center"
+                  onClick={() =>
+                    emblaApi?.scrollTo(
+                      i,
+                      window.matchMedia?.("(prefers-reduced-motion: reduce)")
+                        .matches ?? false,
+                    )
+                  }
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 rounded-full",
+                      i === activeIndex
+                        ? "w-[18px] bg-admin-gold"
+                        : "w-1.5 bg-admin-text-faint",
+                    )}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            aria-expanded={isExpanded}
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-admin-text flex min-h-11 items-center gap-1 rounded-full border border-solid border-admin-border bg-admin-raised px-3 text-xs font-bold"
+          >
+            {isExpanded ? (
+              <Minimize2 className="size-3.5" aria-hidden="true" />
+            ) : (
+              <Maximize2 className="size-3.5" aria-hidden="true" />
+            )}
+            {isExpanded ? "Recolher" : "Expandir"}
+          </button>
+        </div>
+        <div
+          className="mt-2 overflow-hidden"
+          ref={isExpanded ? undefined : emblaRef}
+        >
+          <div
+            className={isExpanded ? "grid grid-cols-2 gap-2" : "-ml-2 flex"}
+            style={{ touchAction: "pan-y" }}
+          >
+            {cards.map((card, i) => (
+              <div
+                key={card.id ?? card.label}
+                role="group"
+                aria-label={`Cartão ${i + 1} de ${cards.length}`}
+                className={
+                  isExpanded ? "min-w-0" : "min-w-0 flex-[0_0_50%] pl-2"
+                }
+              >
+                {renderCard ? renderCard(card) : <KpiCard stat={card} />}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div className="w-full space-y-2.5">
