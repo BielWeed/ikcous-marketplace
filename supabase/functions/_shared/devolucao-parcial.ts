@@ -221,8 +221,11 @@ export function devolucaoParcialProvaPagamento(args: {
   const conferencia = conferirValorDoPagamento(valorOriginal, pedido.total ?? pedido.total_amount, o);
   if (!conferencia.provado) return recusa(conferencia.motivo);
 
-  // Parcial é parcial: devolveu tudo (ou mais) não é esta regra.
-  if (devolvidoEmCentavos >= centavos(conferencia.valor)) return recusa("devolucao_total_ou_maior");
+  // Parcial é parcial: devolveu tudo (ou mais) não é esta regra. O teto é o MENOR entre a cobrança
+  // e o total do pedido: cartão parcelado com juros pode ter cobrança > total do pedido, e uma
+  // devolução acima do total do pedido não cabe no registro (`nao_cabe`) — recusa aqui, antes.
+  const limiteEmCentavos = Math.min(centavos(conferencia.valor), centavos(conferencia.total));
+  if (devolvidoEmCentavos >= limiteEmCentavos) return recusa("devolucao_total_ou_maior");
 
   return {
     provado: true,

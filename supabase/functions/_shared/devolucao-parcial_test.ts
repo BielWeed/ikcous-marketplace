@@ -328,6 +328,44 @@ Deno.test("devolução igual ou maior que o valor original NÃO é parcial -> re
   }
 });
 
+// Cartão parcelado com juros: a cobrança (110) é MAIOR que o total do pedido (100). O teto da "parcial" é o menor
+// dos dois — devolução de 105 passaria na régua da cobrança e depois não caberia no registro (`nao_cabe`).
+function orderComJuros(devolvido: string) {
+  const order = orderParcial({ total_amount: "110.00", total_paid_amount: "110.00" });
+  order.transactions.payments[0] = {
+    ...order.transactions.payments[0],
+    amount: "110.00",
+    paid_amount: "110.00",
+    refunded_amount: devolvido,
+    payment_method: { id: "master", type: "credit_card", installments: 2, installment_amount: "55.00" },
+  };
+  order.transactions.refunds = [{ id: "REF01", amount: devolvido, status: "processed" }];
+  return order;
+}
+
+Deno.test("juros: cobrança 110 / pedido 100 / devolução 105 -> recusa devolucao_total_ou_maior (acima do total do pedido)", () => {
+  assertEquals(devolucaoParcialProvaPagamento({ order: orderComJuros("105.00"), pedido: pedido() }), {
+    provado: false,
+    motivo: "devolucao_total_ou_maior",
+  });
+});
+
+Deno.test("juros: devolução igual ao total do pedido (100 de 110 cobrados) também não é parcial", () => {
+  assertEquals(
+    devolucaoParcialProvaPagamento({ order: orderComJuros("100.00"), pedido: pedido() }).motivo,
+    "devolucao_total_ou_maior",
+  );
+});
+
+Deno.test("juros: cobrança 110 / pedido 100 / devolução 40 prova, com os juros compatíveis aceitos", () => {
+  assertEquals(devolucaoParcialProvaPagamento({ order: orderComJuros("40.00"), pedido: pedido() }), {
+    provado: true,
+    valorOriginal: 110,
+    devolvido: 40,
+    devolucoes: [{ id: "REF01", valor: 40 }],
+  });
+});
+
 // --- a cobrança tem de ser a GRAVADA ---------------------------------------------
 
 Deno.test("order ÓRFÃ (outro id, mesmo external_reference) NÃO prova o pedido", () => {

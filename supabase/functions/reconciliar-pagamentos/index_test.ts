@@ -4568,8 +4568,9 @@ async function reconciliarParcial(args: {
     estornoExternoDoMp: args.estornoExternoDoMp,
   });
   const reais = { log: console.log, warn: console.warn, error: console.error };
+  const warns: unknown[][] = [];
   console.log = () => {};
-  console.warn = () => {};
+  console.warn = (...a: unknown[]) => void warns.push(a);
   console.error = () => {};
   try {
     const resposta = await handler(requisicaoComSegredo(SEGREDO), {
@@ -4583,7 +4584,7 @@ async function reconciliarParcial(args: {
         return 1;
       },
     });
-    return { resposta, corpo: await resposta.json(), registro, efeitos };
+    return { resposta, corpo: await resposta.json(), registro, efeitos, warns };
   } finally {
     console.log = reais.log;
     console.warn = reais.warn;
@@ -4680,6 +4681,34 @@ Deno.test("P1 cron - detalhe parcial SEM devolução concluída (lista vazia, se
     assertEquals(r.corpo.ignorados, 1);
     assertEquals(r.registro.chamadasConfirmar.length, 0);
   }
+});
+
+Deno.test("P1 cron - lista de devoluções MENOR que o refunded_amount -> NÃO confirma, NÃO registra e AVISA o lojista (motivo no log)", async () => {
+  const order = orderParcialDoPainel();
+  (order.transactions as any).payments[0].refunded_amount = "50.00"; // a lista só traz 20
+  const r = await reconciliarParcial({ order, pedido: pedidoDaParcial() });
+  assertEquals(
+    r.warns.some((w) => w.includes("devolucao_nao_comprovada_por_inteiro")),
+    true,
+    "o motivo da recusa vai ao log",
+  );
+  assertEquals(r.corpo.confirmados, 0);
+  assertEquals(r.corpo.ignorados, 1);
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+  assertEquals(r.registro.chamadasExternoDoMp.length, 0);
+  assertEquals(r.efeitos.alertas.length, 1);
+  assertEquals((r.efeitos.alertas[0] as any).title, "Devolução do Mercado Pago para conferir");
+});
+
+Deno.test("P1 cron - lista VAZIA com refunded_amount > 0 -> NÃO confirma e não avisa (só o log com o motivo); decisão igual à de antes", async () => {
+  const order = orderParcialDoPainel();
+  (order.transactions as any).refunds = [];
+  const r = await reconciliarParcial({ order, pedido: pedidoDaParcial() });
+  assertEquals(r.warns.some((w) => w.includes("sem_devolucao_concluida")), true);
+  assertEquals(r.corpo.confirmados, 0);
+  assertEquals(r.corpo.ignorados, 1);
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+  assertEquals(r.efeitos.alertas.length, 0);
 });
 
 Deno.test("P1 cron - o ledger FALHA -> falhas:1, NADA é confirmado (o candidato volta no próximo ciclo)", async () => {

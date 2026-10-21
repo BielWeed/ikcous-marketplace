@@ -880,6 +880,32 @@ async function handler(
             },
           );
           statusMapeado = "pago";
+        } else {
+          // Sem prova: nada muda (segue ignorado, abaixo). Só que o MOTIVO vai ao log — antes caía
+          // no aviso genérico "status desconhecido" — no mesmo formato do webhook.
+          console.warn(
+            "reconciliar-pagamentos: devolução parcial NÃO prova o pagamento — nada confirmado",
+            candidato.order_id,
+            statusBrutoParaLog,
+            provaDaParcial.motivo,
+          );
+          // Devolução concluída que NÃO aparece inteira na lista (soma menos que o valor devolvido
+          // que o pagamento informa) é dinheiro que saiu sem rastro no app: o lojista é avisado UMA
+          // vez por pedido (mesmo mecanismo das demais devoluções para conferir).
+          if (provaDaParcial.motivo === "devolucao_nao_comprovada_por_inteiro") {
+            await comTempoLimite(avisarAdminUmaVez({
+              supabase,
+              enviarPushContado: deps.enviarPushContado ??
+                ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+              chave: `devolucao_parcial_nao_comprovada:${candidato.order_id}`,
+              aviso: {
+                title: "Devolução do Mercado Pago para conferir",
+                body: `${numeroDoPedido(candidato.order_id)} · o Mercado Pago informa um valor devolvido maior do que as devoluções que o app consegue listar — o app não confirmou o pagamento por isso; confira no painel do Mercado Pago`,
+                url: "/admin-orders",
+              },
+              rotulo: "reconciliar-pagamentos",
+            }), TETO_DO_PUSH_MS);
+          }
         }
       }
 
