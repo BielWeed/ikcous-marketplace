@@ -200,24 +200,14 @@ describe("banner do topo: o esqueleto tem a geometria do banner real", () => {
 });
 
 describe("bloco de frete: altura estável da primeira pintura ao config", () => {
-  it("enquanto o config não carrega, um esqueleto de 74px segura o lugar", () => {
+  it("esqueleto e os dois ramos do cartão reservam 172px sem cortar texto", () => {
     const home = fonte(HOME);
-    // A troca esqueleto→real é decidida por configLoaded, e o esqueleto
-    // tem a altura do bloco real (p-3.5 + ícone 44px + borda = 74px).
-    expect(home).toMatch(/const blocoFrete = configLoaded \?/);
-    expect(home).toContain("h-[74px] w-full animate-pulse rounded-[24px]");
-  });
-
-  it("o 74px é assertado CONTRA o bloco real, não solto (laudo da ponte)", () => {
     const frete = fonte(FREE_SHIPPING_BLOCK);
-    // O cálculo do esqueleto (74px) deriva destas três declarações do
-    // bloco real: p-3.5 (28px) + ícone size-11 (44px) + borda (2px).
-    // Se a loja mudar o bloco (p-5, ícone maior), este teste força a
-    // revisão do espelho. Folga conhecida e aceita: o real vira sm:p-4
-    // (78px) em telas >= 640px — 4px de recuo no desktop, fora do alvo
-    // mobile medido.
-    expect(frete).toMatch(/p-3\.5 shadow-md/);
-    expect(frete).toContain("size-11");
+    expect(home).toMatch(/const blocoFrete = configLoaded \?/);
+    expect(home).toContain("h-[172px] w-full animate-pulse rounded-[24px]");
+    expect(frete.match(/min-h-\[172px\]/g)).toHaveLength(2);
+    expect(frete).toContain("size-10");
+    expect(frete).not.toMatch(/truncate|line-clamp|text-overflow/);
   });
 
   it("o bloco real carregado continua vindo pelo InfoBlockCarousel", () => {
