@@ -91,6 +91,7 @@ const produtoDoBanco = {
   costPrice: null,
   originalPrice: null,
   stock: 20,
+  updatedAt: "2026-10-21T13:00:00.123456+00:00",
   estoqueMinimo: null as number | null,
   category: "Geral",
   images: [] as string[],
@@ -217,6 +218,7 @@ describe("Produto — estoque inteiro", () => {
       expect(updateProduct).toHaveBeenCalledWith(
         "prod-1",
         expect.objectContaining({ stock: Number(valor) }),
+        { baseUpdatedAt: produtoDoBanco.updatedAt },
       );
     },
   );
