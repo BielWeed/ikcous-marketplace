@@ -12,13 +12,12 @@ export function EnviarAoMototaxi({
   order,
   loja,
 }: { order: Order; loja: string }) {
-  const { config } = useMototaxi();
+  const { config, erro, recarregar } = useMototaxi();
   const numero = normalizarNumeroMototaxi(config?.whatsapp);
   // Entregue também encerra o despacho: devoluções só existem depois da entrega.
   // A lista positiva recusa inclusive status desconhecido vindo de cache antigo.
   if (
     order.shippingOptionId !== ID_ENTREGA_LOCAL ||
-    !numero ||
     !["pending", "processing", "shipping"].includes(order.status) ||
     order.paymentStatus === "estornado" ||
     (order.paymentMethod === "online" &&
@@ -26,6 +25,22 @@ export function EnviarAoMototaxi({
       order.paymentStatus !== "pago_apos_expirar")
   )
     return null;
+  if (erro)
+    return (
+      <div className="border-t border-admin-border pt-4">
+        <div role="alert" className="text-xs text-amber-300">
+          Não consegui ler o número do mototáxi agora.{" "}
+          <button
+            type="button"
+            onClick={recarregar}
+            className="min-h-11 min-w-11 underline"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      </div>
+    );
+  if (!numero) return null;
   return (
     <div className="space-y-2 border-t border-admin-border pt-4">
       <a
