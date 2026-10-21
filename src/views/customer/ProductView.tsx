@@ -1587,6 +1587,7 @@ export const ProductView = React.memo(function ProductView({
             quantity={quantity}
             maxQuantity={currentStock}
             onChange={setQuantity}
+            size="pill"
           />
           <button
             type="button"

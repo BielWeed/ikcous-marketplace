@@ -52,7 +52,7 @@ export function FileirasDeVariacao({
                     className={cn(
                       "relative flex min-h-11 items-center justify-center rounded-xl border text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
                       bolinhas
-                        ? "w-11 border-transparent bg-transparent"
+                        ? "w-11 border-transparent bg-transparent disabled:opacity-60"
                         : "min-w-[72px] px-3 py-2",
                       !bolinhas &&
                         (ativa
@@ -66,7 +66,7 @@ export function FileirasDeVariacao({
                       <span
                         aria-hidden="true"
                         className={cn(
-                          "size-9 rounded-full border border-foreground/25",
+                          "size-9 rounded-full border border-foreground",
                           ativa &&
                             "ring-2 ring-foreground ring-offset-2 ring-offset-background",
                         )}

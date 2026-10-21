@@ -301,6 +301,23 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     );
   });
 
+  it("os dois botões de quantidade da folha usam alvos de 44px", async () => {
+    await montar(blusa([cor("azul", "Azul", 2)]));
+    await comprarPelaBarra();
+    const folha = document.querySelector('[role="dialog"]')!;
+    expect(folha).not.toBeNull();
+    const botoes = [
+      ...folha.querySelectorAll('button[aria-label$="quantidade"]'),
+    ];
+    expect(botoes).toHaveLength(2);
+    for (const botao of botoes) {
+      expect(
+        botao.classList.contains("size-11"),
+        botao.getAttribute("aria-label") ?? undefined,
+      ).toBe(true);
+    }
+  });
+
   it("trocar para uma cor sem o tamanho escolhido limpa o tamanho, não compra combinação inexistente", async () => {
     await montar(
       blusa([
