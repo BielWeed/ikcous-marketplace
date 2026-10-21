@@ -156,8 +156,8 @@ describe("ProductView — o botão de comprar é legível em loja de cor clara",
     // Âncora: o botão principal existe (o do rodapé fixo pode ou não estar).
     expect(botoes.length).toBeGreaterThanOrEqual(1);
     for (const botao of botoes) {
-      expect(botao.className).toContain("bg-primary");
-      expect(botao.className).toContain("text-primary-foreground");
+      expect(botao.className).toContain("bg-foreground");
+      expect(botao.className).toContain("text-background");
       expect(botao.className).not.toMatch(/(^|\s)text-white(\s|$)/);
     }
 

@@ -147,11 +147,10 @@ describe("item 3 — B2: abas semânticas do carrinho e do produto", () => {
     expect(src).toContain('id="chat-section"');
   });
 
-  it("classes visuais dos botões de aba do produto preservadas byte a byte", () => {
+  it("abas do produto mantêm pílula, toque de 44px e foco visível no redesenho", () => {
     const src = fonte(PRODUCT);
-    expect(src).toMatch(
-      /className=\{cn\(\s*"relative flex-1 rounded-full p-1 text-\[9px\] font-bold uppercase tracking-wider outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-zinc-900\/50"/,
-    );
+    expect(src).toContain("relative min-h-11 min-w-0 flex-1 rounded-full");
+    expect(src).toContain("focus-visible:ring-2 focus-visible:ring-ring");
   });
 });
 

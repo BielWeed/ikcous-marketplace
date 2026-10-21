@@ -3,7 +3,10 @@ import {
   CONTAINER_DO_COMPUTADOR,
   ROTULO_NO_COMPUTADOR,
 } from "@/components/desktop/medidas";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { LinkDeTrocas } from "@/components/politicas/LinksDasPoliticas";
+import { FileirasDeVariacao } from "@/components/ui/custom/FileirasDeVariacao";
+import { FolhaDeOpcoes } from "@/components/ui/custom/FolhaDeOpcoes";
 import { GaleriaDoProduto } from "@/components/ui/custom/GaleriaDoProduto";
 import { MarkdownRenderer } from "@/components/ui/custom/MarkdownRenderer";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
@@ -12,6 +15,7 @@ import { ProductQA } from "@/components/ui/custom/ProductQA";
 import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { ReviewCard } from "@/components/ui/custom/ReviewCard";
 import { StarRating } from "@/components/ui/custom/StarRating";
+import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
@@ -37,14 +41,13 @@ import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
+import { fileirasDeVariacao } from "@/utils/fileiras-de-variacao";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
-  ChevronDown,
   ChevronRight,
   Flame,
   Heart,
-  MessageCircle,
   Share2,
   ShoppingCart,
   Star,
@@ -82,146 +85,6 @@ function painelDaAba(tabId: "description" | "reviews" | "questions"): string {
       return "chat-section";
   }
 }
-
-interface CompactVariantDropdownProps {
-  name: string;
-  values: ProductVariant[];
-  selectedValue: string;
-  onChange: (value: string) => void;
-  isOpen: boolean;
-  onToggle: () => void;
-  product: Product;
-  selectedVariants: Record<string, string>;
-}
-
-const CompactVariantDropdown = React.memo(function CompactVariantDropdown({
-  name,
-  values,
-  selectedValue,
-  onChange,
-  isOpen,
-  onToggle,
-  product,
-  selectedVariants,
-}: CompactVariantDropdownProps) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        onToggle();
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside, {
-      passive: true,
-    });
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen, onToggle]);
-
-  return (
-    <div ref={ref} className="relative flex-shrink-0">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle();
-        }}
-        className={cn(
-          "flex items-center gap-1 bg-zinc-50 rounded-xl px-2.5 py-1.5 border border-zinc-200/50 hover:bg-zinc-100 transition-all duration-300 outline-none select-none",
-          isOpen && "border-zinc-300 bg-zinc-100 shadow-inner",
-        )}
-      >
-        <span className="text-[9px] font-black uppercase tracking-wider text-zinc-800">
-          {selectedValue || name}
-        </span>
-        <ChevronDown
-          className={cn(
-            "w-2.5 h-2.5 text-zinc-500 transition-transform duration-300 ease-out",
-            isOpen && "rotate-180",
-          )}
-        />
-      </button>
-
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute bottom-full left-1/2 z-[60] mb-2 flex min-w-[120px] -translate-x-1/2 flex-col gap-0.5 rounded-2xl border border-zinc-200/80 bg-white p-1 shadow-[0_-8px_30px_rgba(0,0,0,0.15)]"
-          >
-            <div className="mb-0.5 select-none border-b border-zinc-100 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-zinc-400">
-              {name}
-            </div>
-            {values.map((v) => {
-              const isSelected = selectedValue === v.value;
-
-              // Calculate stock for variant v
-              const tentativeSelected = Object.entries(selectedVariants)
-                .map(([gName, val]) => {
-                  if (gName === name) return v;
-                  return product.variants?.find(
-                    (varObj) => varObj.name === gName && varObj.value === val,
-                  );
-                })
-                .filter(Boolean) as ProductVariant[];
-
-              if (!selectedVariants[name]) {
-                tentativeSelected.push(v);
-              }
-
-              const variantStock = Math.min(
-                ...tentativeSelected.map(
-                  (varObj) => varObj.stockIncrement || 0,
-                ),
-              );
-
-              return (
-                <button
-                  key={v.id}
-                  type="button"
-                  // Esgotada não se escolhe (igual aos botões da página).
-                  disabled={variantStock <= 0 && !isSelected}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onChange(v.value);
-                    onToggle();
-                  }}
-                  className={cn(
-                    "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-zinc-700",
-                    "w-full text-left px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-between gap-2 select-none",
-                    isSelected
-                      ? "bg-primary text-primary-foreground font-extrabold shadow-sm"
-                      : "text-zinc-700 hover:bg-zinc-50 hover:text-primary",
-                  )}
-                >
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate">{v.value}</span>
-                    <span
-                      className={cn(
-                        "text-[8px] font-semibold opacity-60",
-                        isSelected
-                          ? "text-primary-foreground/60"
-                          : "text-zinc-400",
-                      )}
-                    >
-                      ({variantStock > 0 ? `${variantStock} un.` : "Esgotado"})
-                    </span>
-                  </div>
-                  {isSelected && (
-                    <Check className="size-2.5 flex-shrink-0 text-primary-foreground duration-200 animate-in zoom-in-50" />
-                  )}
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-});
 
 interface ProductViewProps {
   product: Product;
@@ -268,7 +131,9 @@ export const ProductView = React.memo(function ProductView({
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string>
   >({});
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [folhaAberta, setFolhaAberta] = useState(false);
+  const escolhaDaBarraRef = useRef<HTMLButtonElement>(null);
+  const [editandoPergunta, setEditandoPergunta] = useState(false);
 
   const { config } = useStore();
   const {
@@ -545,26 +410,29 @@ export const ProductView = React.memo(function ProductView({
       ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
       : (product.rating ?? 5);
 
-  // Group variants by name
-  const variantGroups =
-    product.variants?.reduce(
-      (acc, v) => {
-        if (!v.active) return acc;
-        if (!acc[v.name]) acc[v.name] = [];
-        acc[v.name].push(v);
-        return acc;
-      },
-      {} as Record<string, typeof product.variants>,
-    ) || {};
-
-  // Calculate current price and stock
-  const selectedVariantObjects = Object.entries(selectedVariants)
-    .map(([name, value]) =>
-      product.variants?.find(
-        (v) => v.active && v.name === name && v.value === value,
-      ),
-    )
-    .filter(Boolean);
+  const { fileiras, variante } = fileirasDeVariacao(
+    product.variants,
+    selectedVariants,
+  );
+  const variantGroups = Object.fromEntries(
+    fileiras.map((f) => [f.nome, f.valores]),
+  );
+  const legadoIndependente =
+    new Set(product.variants?.filter((v) => v.active).map((v) => v.name)).size >
+    1;
+  const variantesDoLegado = (escolha: Record<string, string>) =>
+    Object.entries(escolha)
+      .map(([name, value]) =>
+        product.variants?.find(
+          (v) => v.active && v.name === name && v.value === value,
+        ),
+      )
+      .filter((v): v is ProductVariant => !!v);
+  const selectedVariantObjects = legadoIndependente
+    ? variantesDoLegado(selectedVariants)
+    : variante
+      ? [variante]
+      : [];
 
   // Laudo 31/08 (menor E): `||` tratava o override ZERO como ausência — o
   // preço exibido de uma variação-brinde era o do produto. `??` só cai no
@@ -577,14 +445,13 @@ export const ProductView = React.memo(function ProductView({
   // Estoque que a cliente pode levar com UMA escolha de variações (o menor
   // entre as escolhidas; sem escolha, o do produto). Separado de `currentStock`
   // para a troca de variação conferir a escolha NOVA antes de renderizar.
-  const variantesDaEscolha = (escolha: Record<string, string>) =>
-    Object.entries(escolha)
-      .map(([name, value]) =>
-        product.variants?.find(
-          (v) => v.active && v.name === name && v.value === value,
-        ),
-      )
-      .filter(Boolean) as ProductVariant[];
+  const variantesDaEscolha = (
+    escolha: Record<string, string>,
+  ): ProductVariant[] => {
+    if (legadoIndependente) return variantesDoLegado(escolha);
+    const escolhida = fileirasDeVariacao(product.variants, escolha).variante;
+    return escolhida ? [escolhida] : [];
+  };
   const estoqueDaEscolha = (escolha: Record<string, string>): number => {
     if (Object.keys(variantGroups).length === 0) return product.stock;
     const escolhidas = variantesDaEscolha(escolha);
@@ -618,20 +485,30 @@ export const ProductView = React.memo(function ProductView({
   // cortar depois. Se a variação tem foto, a galeria anda até ela.
   const escolherVariante = (grupo: string, valor: string) => {
     if (
-      !product.variants?.some(
-        (v) =>
-          v.active &&
-          v.name === grupo &&
-          v.value === valor &&
-          v.stockIncrement > 0,
-      )
+      !fileiras
+        .find((f) => f.nome === grupo)
+        ?.valores.some((v) => v.valor === valor && v.disponivel)
     )
       return;
-    const proxima = { ...selectedVariants, [grupo]: valor };
+    let proxima = { ...selectedVariants, [grupo]: valor };
+    // Trocar a cor não fica preso ao tamanho anterior: apaga somente escolhas
+    // incompatíveis, nunca escolhe outra combinação pela cliente.
+    for (const fileira of fileirasDeVariacao(product.variants, proxima)
+      .fileiras) {
+      if (
+        fileira.nome !== grupo &&
+        proxima[fileira.nome] &&
+        !fileira.valores.some(
+          (v) => v.valor === proxima[fileira.nome] && v.disponivel,
+        )
+      ) {
+        proxima = Object.fromEntries(
+          Object.entries(proxima).filter(([nome]) => nome !== fileira.nome),
+        );
+      }
+    }
     setSelectedVariants(proxima);
-    const fotoDaVariante = product.variants?.find(
-      (v) => v.name === grupo && v.value === valor,
-    )?.imageUrl;
+    const fotoDaVariante = variantesDaEscolha(proxima)[0]?.imageUrl;
     if (fotoDaVariante) {
       const posicao = fotosDaEscolha(proxima).indexOf(fotoDaVariante);
       if (posicao >= 0) setCurrentImageIndex(posicao);
@@ -670,12 +547,16 @@ export const ProductView = React.memo(function ProductView({
   }, [currentStock]);
 
   const isLowStock = currentStock <= 3 && currentStock > 0;
-  const escolhaIndisponivel = Object.entries(selectedVariants).some(
-    ([name, value]) =>
-      !product.variants?.some(
-        (v) => v.active && v.name === name && v.value === value,
-      ),
-  );
+  const escolhaIndisponivel =
+    Object.entries(selectedVariants).some(
+      ([name, value]) =>
+        !fileiras.some(
+          (f) => f.nome === name && f.valores.some((v) => v.valor === value),
+        ),
+    ) ||
+    (fileiras.length > 0 &&
+      fileiras.every((f) => selectedVariants[f.nome]) &&
+      !variante);
   // Grupo com TODAS as opções desligadas não trava a compra: o servidor, o
   // carrinho e o card seguem vendendo pelo produto base. Só trava a opção
   // ESCOLHIDA que deixou de existir.
@@ -725,8 +606,8 @@ export const ProductView = React.memo(function ProductView({
       return;
     }
 
-    const variantNames = Object.entries(selectedVariants)
-      .map(([name, value]) => `${name}: ${value}`)
+    const variantNames = selectedVariantObjects
+      .map((v) => `${v.name}: ${v.value}`)
       .join(", ");
     const imgSrc = variantImage || product.images?.[0] || "";
 
@@ -832,8 +713,8 @@ export const ProductView = React.memo(function ProductView({
       return;
     }
 
-    const variantInfo = Object.entries(selectedVariants)
-      .map(([n, v]) => `${n}: ${v}`)
+    const variantInfo = selectedVariantObjects
+      .map((v) => `${v.name}: ${v.value}`)
       .join(", ");
     const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ""} - ${reais(currentPrice)}`;
     let phone = (config.whatsappNumber || "").replace(/\D/g, "");
@@ -904,7 +785,7 @@ export const ProductView = React.memo(function ProductView({
   return (
     <div
       className={cn(
-        "pb-customer relative min-h-full bg-white",
+        "pb-customer relative min-h-full bg-background text-foreground",
         // lg:pb-0 (revisão F3, 28/09): no desktop o rodapé da loja fecha a
         // página -- o respiro do pb-customer vira vão morto em cima dele.
         // lg:shrink-0 (F3, 29/09): o wrapper da cliente (App.tsx, size-full +
@@ -925,7 +806,7 @@ export const ProductView = React.memo(function ProductView({
         )}
       >
         {/* Image Gallery */}
-        <div className="lg:col-start-1 lg:row-start-1 lg:min-w-0">
+        <div className="mx-4 mt-4 overflow-hidden rounded-[28px] lg:col-start-1 lg:row-start-1 lg:mx-0 lg:mt-0 lg:min-w-0">
           <GaleriaDoProduto
             fotos={fotosDaGaleria}
             nome={product.name}
@@ -946,7 +827,7 @@ export const ProductView = React.memo(function ProductView({
                       ? "Remover dos favoritos"
                       : "Adicionar aos favoritos"
                   }
-                  className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
+                  className="flex size-11 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm backdrop-blur-md transition-all active:scale-95"
                 >
                   <Heart
                     className={cn(
@@ -960,7 +841,7 @@ export const ProductView = React.memo(function ProductView({
                 <button
                   onClick={handleShare}
                   aria-label="Compartilhar"
-                  className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
+                  className="flex size-11 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm backdrop-blur-md transition-all active:scale-95"
                 >
                   <Share2 className="size-4.5 text-zinc-600" />
                 </button>
@@ -1035,35 +916,6 @@ export const ProductView = React.memo(function ProductView({
                     </span>
                   </div>
                 )}
-
-                {/* Inline Stock Alert with blinking led */}
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold">
-                  <span
-                    className={cn(
-                      "w-1.5 h-1.5 rounded-full animate-pulse",
-                      isOutOfStock
-                        ? "bg-zinc-400"
-                        : isLowStock
-                          ? "bg-rose-500 animate-bounce"
-                          : "bg-emerald-500",
-                    )}
-                  />
-                  <span
-                    className={
-                      isOutOfStock
-                        ? "text-zinc-500"
-                        : isLowStock
-                          ? "text-rose-600"
-                          : "text-emerald-700"
-                    }
-                  >
-                    {isOutOfStock
-                      ? "Esgotado"
-                      : isLowStock
-                        ? textoEstoqueBaixo(currentStock)
-                        : `Em estoque: ${currentStock}`}
-                  </span>
-                </div>
               </div>
             </div>
 
@@ -1076,7 +928,7 @@ export const ProductView = React.memo(function ProductView({
                 // na baseline do preço grande e os selos apertavam à direita.
                 // No desktop o bloco empilha: preço (com riscado na mesma
                 // baseline) e, abaixo, a fileira de selos.
-                "lg:mb-6 lg:flex-col lg:items-start lg:gap-3",
+                "lg:mb-6 lg:gap-3",
               )}
             >
               {product.originalPrice && product.originalPrice > currentPrice ? (
@@ -1088,7 +940,7 @@ export const ProductView = React.memo(function ProductView({
                 >
                   <span
                     className={cn(
-                      "text-2xl font-black tracking-tight",
+                      "text-[30px] font-bold tracking-tight",
                       CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
                       "lg:text-4xl",
                     )}
@@ -1107,7 +959,7 @@ export const ProductView = React.memo(function ProductView({
               ) : (
                 <span
                   className={cn(
-                    "text-2xl font-black tracking-tight text-zinc-900",
+                    "text-[30px] font-bold tracking-tight text-foreground",
                     "lg:text-4xl",
                   )}
                 >
@@ -1115,7 +967,31 @@ export const ProductView = React.memo(function ProductView({
                 </span>
               )}
 
-              <div className={cn("flex items-center gap-1.5", "lg:gap-2")}>
+              <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-[11px] font-semibold">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    isOutOfStock ? "bg-zinc-400" : "bg-emerald-500",
+                  )}
+                />
+                <span
+                  className={
+                    isOutOfStock
+                      ? "text-zinc-500"
+                      : isLowStock
+                        ? "text-rose-600"
+                        : "text-emerald-700"
+                  }
+                >
+                  {isOutOfStock
+                    ? "Esgotado"
+                    : isLowStock
+                      ? textoEstoqueBaixo(currentStock)
+                      : `Em estoque: ${currentStock}`}
+                </span>
+              </div>
+              <div className="flex basis-full flex-wrap items-center gap-1.5">
                 {discount > 0 && (
                   <span
                     className={cn(
@@ -1141,126 +1017,16 @@ export const ProductView = React.memo(function ProductView({
               </div>
             </div>
 
-            {/* Variant Selectors - Jewelry Style */}
-            {Object.entries(variantGroups).length > 0 && (
-              <div className="mb-5 space-y-4">
-                {Object.entries(variantGroups).map(
-                  ([name, values], index, arr) => {
-                    const isLastGroup = index === arr.length - 1;
-                    return (
-                      <div key={name}>
-                        <span
-                          className={cn(
-                            "mb-2 ml-1 block text-[10px] font-bold uppercase tracking-widest text-zinc-400",
-                            "lg:text-[11px] lg:text-zinc-500",
-                          )}
-                        >
-                          Selecione {name}
-                        </span>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {values?.map((v) => {
-                            const isSelected =
-                              selectedVariants[name] === v.value;
-
-                            // Calculate stock for variant v
-                            const tentativeSelected = Object.entries(
-                              selectedVariants,
-                            )
-                              .map(([gName, val]) => {
-                                if (gName === name) return v;
-                                return product.variants?.find(
-                                  (varObj) =>
-                                    varObj.name === gName &&
-                                    varObj.value === val,
-                                );
-                              })
-                              .filter(Boolean) as ProductVariant[];
-
-                            if (!selectedVariants[name]) {
-                              tentativeSelected.push(v);
-                            }
-
-                            const variantStock = Math.min(
-                              ...tentativeSelected.map(
-                                (varObj) => varObj.stockIncrement || 0,
-                              ),
-                            );
-
-                            return (
-                              <button
-                                key={v.id}
-                                type="button"
-                                // Laudo de acessibilidade 03/09, achado 3: a
-                                // variante escolhida só se distinguia pela cor da
-                                // borda — `aria-pressed` anuncia o estado (padrão do
-                                // CategoryFilter).
-                                aria-pressed={isSelected}
-                                // Esgotada não se escolhe (o card da vitrine já
-                                // faz igual). A já escolhida continua tocável:
-                                // é por ela que se desmarca.
-                                disabled={variantStock <= 0 && !isSelected}
-                                onClick={() => alternarVariante(name, v.value)}
-                                className={cn(
-                                  "px-3 py-1.5 text-xs font-bold rounded-xl border transition-all duration-300 active:scale-95 flex items-center gap-1.5 select-none",
-                                  isSelected
-                                    ? "border-primary bg-primary text-primary-foreground shadow-md shadow-black/10"
-                                    : "border-zinc-200 bg-zinc-50/50 text-zinc-500 hover:border-zinc-300 hover:text-primary hover:bg-zinc-50",
-                                  "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-zinc-200 disabled:hover:bg-zinc-50/50 disabled:hover:text-zinc-500 disabled:active:scale-100",
-                                )}
-                              >
-                                {v.imageUrl && (
-                                  <img
-                                    // Miniatura de 20px: baixar o original aqui era o
-                                    // desperdício mais extremo da tela.
-                                    src={imagemRedimensionada(v.imageUrl, {
-                                      width: 80,
-                                      quality: 70,
-                                    })}
-                                    alt=""
-                                    onError={(event) =>
-                                      usarImagemOriginal(
-                                        event.currentTarget,
-                                        v.imageUrl,
-                                      )
-                                    }
-                                    loading="lazy"
-                                    decoding="async"
-                                    className="size-5 rounded-md bg-white object-cover shadow-sm"
-                                  />
-                                )}
-                                <span>{v.value}</span>
-                                <span
-                                  className={cn(
-                                    "text-[9px] font-medium ml-1.5 transition-colors",
-                                    isSelected
-                                      ? "text-zinc-300"
-                                      : "text-zinc-400",
-                                  )}
-                                >
-                                  (
-                                  {variantStock > 0
-                                    ? `${variantStock} un.`
-                                    : "Esgotado"}
-                                  )
-                                </span>
-                              </button>
-                            );
-                          })}
-                          {isLastGroup && !isOutOfStock && (
-                            <div className="ml-auto flex-shrink-0">
-                              <QuantitySelector
-                                quantity={quantity}
-                                maxQuantity={currentStock}
-                                onChange={setQuantity}
-                                size="md"
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  },
-                )}
+            {fileiras.length > 0 && (
+              <div className="mb-5 rounded-3xl border border-border bg-muted/40 p-4">
+                <h2 className="mb-4 text-base font-bold text-foreground">
+                  Opções
+                </h2>
+                <FileirasDeVariacao
+                  fileiras={fileiras}
+                  escolha={selectedVariants}
+                  onEscolher={alternarVariante}
+                />
               </div>
             )}
 
@@ -1283,13 +1049,13 @@ export const ProductView = React.memo(function ProductView({
                 "lg:mb-6 lg:flex-wrap lg:gap-3",
               )}
             >
-              {!isOutOfStock && Object.entries(variantGroups).length === 0 && (
+              {!isOutOfStock && (
                 <div className="flex-shrink-0">
                   <QuantitySelector
                     quantity={quantity}
                     maxQuantity={currentStock}
                     onChange={setQuantity}
-                    size="md"
+                    size="pill"
                   />
                 </div>
               )}
@@ -1302,13 +1068,13 @@ export const ProductView = React.memo(function ProductView({
                   onClick={handleWhatsApp}
                   title="Dúvidas no WhatsApp"
                   className={cn(
-                    "flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95",
+                    "order-3 flex size-[52px] shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white transition-opacity hover:opacity-90",
                     // Altura do CTA no desktop: os dois botões da linha de
                     // cima ficam alinhados (48px) em vez de 44 vs 48.
                     "lg:size-12",
                   )}
                 >
-                  <MessageCircle className="size-5" />
+                  <IconeWhatsapp className="size-6" />
                 </button>
               )}
 
@@ -1324,14 +1090,14 @@ export const ProductView = React.memo(function ProductView({
                   !isOutOfStock && cartStatus !== "idle" ? true : undefined
                 }
                 className={cn(
-                  "flex-1 h-11 text-primary-foreground text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
+                  "flex min-h-[52px] min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-foreground px-3 py-2 text-center text-sm font-bold leading-tight text-background transition-colors",
                   // lg:basis-full: no desktop o CTA não divide a linha com
                   // nada -- largura inteira do cartão, rótulo nunca cortado
                   // (a jornada C12 a 1280 exige "Adicionar ao Carrinho" visível).
                   "lg:h-12 lg:basis-full lg:text-xs lg:tracking-wider",
                   cartStatus === "idle"
-                    ? "bg-primary hover:bg-primary/90 shadow-lg shadow-black/10 active:scale-[0.98]"
-                    : "bg-primary/80 shadow-none",
+                    ? "bg-foreground hover:opacity-90 active:scale-[0.98]"
+                    : "bg-foreground/80",
                   // "Adicionado" pinta de verde (não é a cor da loja): o texto
                   // sobre o verde é branco, não o da cor da loja.
                   cartStatus === "success" &&
@@ -1364,12 +1130,8 @@ export const ProductView = React.memo(function ProductView({
                   </>
                 ) : (
                   <>
-                    <ShoppingCart className="size-4 flex-shrink-0 xs:size-4.5" />
-                    <span className="hidden whitespace-nowrap min-[380px]:inline">
+                    <span className="min-w-0 break-words">
                       Adicionar ao Carrinho
-                    </span>
-                    <span className="inline whitespace-nowrap min-[380px]:hidden">
-                      Adicionar
                     </span>
                   </>
                 )}
@@ -1430,7 +1192,7 @@ export const ProductView = React.memo(function ProductView({
                   // parecia um controle perdido dentro da coluna de 732px.
                   // Abas de site: linha inteira, separador embaixo e a seção
                   // ativa marcada por traço preto (o pill vira o traço abaixo).
-                  "lg:mx-0 lg:max-w-none lg:gap-8 lg:rounded-none lg:border-x-0 lg:border-t-0 lg:bg-transparent lg:p-0",
+                  "lg:mx-0 lg:max-w-none",
                 )}
               >
                 {[
@@ -1456,7 +1218,7 @@ export const ProductView = React.memo(function ProductView({
                       // Laudo 05/09, M3: `outline-none` apagava o anel de foco
                       // sem repor — padrão do BottomNav (onda 1 do laudo 03/09).
                       className={cn(
-                        "relative flex-1 rounded-full p-1 text-[9px] font-bold uppercase tracking-wider outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-zinc-900/50",
+                        "relative min-h-11 min-w-0 flex-1 rounded-full px-2 py-2 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                         // Respiro vertical maior no desktop: o rótulo não gruda
                         // no traço de underline que o pill desenha embaixo.
                         "lg:px-2 lg:pb-3 lg:pt-2 lg:text-[11px]",
@@ -1470,7 +1232,7 @@ export const ProductView = React.memo(function ProductView({
                             // Desktop: o pill branco vira um TRAÇO preto
                             // rente ao separador -- indicador clássico de aba
                             // de site, na largura do rótulo ativo.
-                            "lg:inset-x-0 lg:top-auto lg:bottom-[-1px] lg:h-[2.5px] lg:rounded-none lg:border-0 lg:bg-zinc-950 lg:shadow-none",
+                            "lg:rounded-full",
                           )}
                           transition={{
                             type: "spring",
@@ -1609,28 +1371,24 @@ export const ProductView = React.memo(function ProductView({
                       </button>
                     </div>
                   ) : reviews.length === 0 ? (
-                    <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
-                      {/* Breathing Concentric Circle Stars */}
-                      <div className="relative mb-4 flex size-16 items-center justify-center">
-                        <div className="absolute inset-0 animate-ping rounded-full bg-amber-500/5 opacity-75 duration-1000" />
-                        <div className="flex size-12 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10">
-                          <Star className="size-6 fill-amber-500/20 text-amber-500" />
-                        </div>
-                      </div>
-
-                      <p className="text-sm font-bold tracking-tight text-zinc-900">
-                        Este produto ainda não foi avaliado
-                      </p>
-                      <p
-                        className={cn(
-                          "mt-1.5 max-w-[280px] text-xs leading-relaxed text-zinc-500",
-                          "lg:max-w-md lg:text-sm",
-                        )}
+                    <div className="flex items-center gap-3 rounded-2xl border border-border bg-muted/30 px-4 py-3">
+                      <div
+                        aria-hidden="true"
+                        className="flex shrink-0 text-[#E4A11B]"
                       >
-                        As avaliações podem ser enviadas por compradores
-                        confirmados a partir da tela de detalhes do pedido após
-                        a entrega.
-                      </p>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star key={n} className="size-4 fill-none" />
+                        ))}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-foreground">
+                          Ainda sem avaliações
+                        </p>
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Quem comprou e recebeu pode avaliar nos detalhes do
+                          pedido.
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -1718,6 +1476,17 @@ export const ProductView = React.memo(function ProductView({
             <div
               id="chat-section"
               ref={chatSectionRef}
+              onFocusCapture={(e) => {
+                if (
+                  e.target instanceof HTMLInputElement ||
+                  e.target instanceof HTMLTextAreaElement
+                )
+                  setEditandoPergunta(true);
+              }}
+              onBlurCapture={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget))
+                  setEditandoPergunta(false);
+              }}
               className="mb-6 scroll-mt-[64px] border-t border-zinc-100 pt-8"
             >
               <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
@@ -1786,163 +1555,129 @@ export const ProductView = React.memo(function ProductView({
         </div>
       </div>
 
+      <FolhaDeOpcoes
+        aberta={folhaAberta}
+        onMudar={setFolhaAberta}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          escolhaDaBarraRef.current?.focus();
+        }}
+        className="mx-auto max-h-[85dvh] gap-0 rounded-t-3xl sm:max-w-md"
+      >
+        <button
+          type="button"
+          aria-label="Fechar opções"
+          onClick={() => setFolhaAberta(false)}
+          className="flex min-h-11 w-full shrink-0 items-center justify-center"
+        >
+          <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
+        </button>
+        <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain px-5 pb-5">
+          <SheetTitle className="text-lg font-bold">{product.name}</SheetTitle>
+          <SheetDescription>
+            Escolha as opções para adicionar ao carrinho.
+          </SheetDescription>
+          <p className="text-xl font-bold">{reais(currentPrice)}</p>
+          <FileirasDeVariacao
+            fileiras={fileiras}
+            escolha={selectedVariants}
+            onEscolher={escolherVariante}
+          />
+          <QuantitySelector
+            quantity={quantity}
+            maxQuantity={currentStock}
+            onChange={setQuantity}
+          />
+          <button
+            type="button"
+            disabled={isOutOfStock}
+            aria-disabled={cartStatus !== "idle" || undefined}
+            onClick={(e) => {
+              handleAddToCart(e);
+              if (variante) setFolhaAberta(false);
+            }}
+            className="min-h-[52px] w-full rounded-full bg-foreground px-4 py-3 text-sm font-bold text-background disabled:opacity-40"
+          >
+            {isOutOfStock ? "Esgotado" : "Adicionar ao Carrinho"}
+          </button>
+        </div>
+      </FolhaDeOpcoes>
       {typeof window !== "undefined" &&
         createPortal(
           <AnimatePresence>
-            {scrolled && (
+            {scrolled && !editandoPergunta && (
               <motion.div
                 initial={{ y: 100, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
                 className={cn(
-                  "bottom-docked-navigation fixed inset-x-0 z-50 flex items-center justify-between gap-3 border-t border-zinc-200/60 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-xl md:bottom-[88px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-2xl md:border-x md:border-zinc-200/60",
+                  "bottom-docked-navigation fixed inset-x-4 z-50 mb-3 flex flex-wrap items-center gap-2 rounded-[40px] border border-border bg-background p-3 shadow-[0_10px_28px_rgba(11,11,12,0.15)] md:left-1/2 md:right-auto md:w-[calc(100%-32px)] md:max-w-md md:-translate-x-1/2",
                   "lg:hidden",
                 )}
               >
-                {/* Product Image and Details */}
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <img
-                    // Laudo 0109 (C1): src cru baixava a imagem ORIGINAL
-                    // (vários MB) para uma miniatura de 40px. 200 é o menor
-                    // degrau do pipeline e cobre a miniatura até em tela de
-                    // alta densidade; se a transformação falhar, recai para
-                    // a original uma única vez (mesma rede do LazyImage).
-                    src={imagemRedimensionada(
+                <img
+                  src={
+                    imagemRedimensionada(
                       variantImage || product.images?.[0] || "",
                       { width: 200 },
-                    )}
-                    onError={(e) => {
-                      const alvo = e.currentTarget;
-                      const original =
-                        variantImage || product.images?.[0] || "";
-                      // Guarda por URL falha (não por nó): trocar de variante
-                      // precisa poder cair para a original de novo.
-                      if (
-                        original &&
-                        alvo.src !== original &&
-                        alvo.dataset.srcComFalha !== alvo.src
-                      ) {
-                        alvo.dataset.srcComFalha = alvo.src;
-                        alvo.src = original;
-                      }
-                    }}
-                    alt={product.name}
-                    // Laudo 05/09, M6: a classe de borda da thumb NÃO
-                    // existia no Tailwind — nunca aplicava; token real.
-                    className="size-10 flex-shrink-0 rounded-xl border border-zinc-200/50 bg-zinc-50 object-cover"
-                  />
-                  <div className="flex min-w-0 flex-col justify-center">
-                    <p className="max-w-[80px] truncate text-[11px] font-bold leading-tight text-zinc-900 sm:max-w-[110px]">
-                      {product.name}
-                    </p>
-                    <p
-                      className={cn(
-                        "mt-0.5 text-[11px] font-black leading-tight",
-                        // Mesma regra do bloco de preço principal ("Price &
-                        // Promo Badges Row" logo acima): a barra dockada
-                        // usava text-rose-600 SEMPRE, com ou sem promoção.
-                        // Cor de promoção só faz sentido quando há desconto
-                        // de verdade (`originalPrice > currentPrice`) -- sem
-                        // isso, o neutro é o mesmo tom do preço sem desconto
-                        // ali em cima (text-zinc-900). A cor de promoção em
-                        // si é verde (CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
-                        // `src/lib/cor-do-preco-promocional.ts`), não mais
-                        // vermelho -- decisão do dono (27/09/2026): vermelho
-                        // é a mesma cor de "negativo" do resto da loja.
-                        product.originalPrice &&
-                          product.originalPrice > currentPrice
-                          ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
-                          : "text-zinc-900",
-                      )}
-                    >
-                      {reais(currentPrice)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Compact Variant Selectors */}
-                {Object.entries(variantGroups).length > 0 && (
-                  <div className="flex flex-shrink-0 items-center gap-1.5">
-                    {Object.entries(variantGroups).map(([name, values]) => (
-                      <CompactVariantDropdown
-                        key={name}
-                        name={name}
-                        values={values!}
-                        selectedValue={selectedVariants[name] || ""}
-                        onChange={(val) => escolherVariante(name, val)}
-                        isOpen={activeDropdown === name}
-                        onToggle={() =>
-                          setActiveDropdown((prev) =>
-                            prev === name ? null : name,
-                          )
-                        }
-                        product={product}
-                        selectedVariants={selectedVariants}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* Quantity Selector */}
-                {!isOutOfStock && (
-                  <div className="flex-shrink-0 origin-center scale-90 sm:scale-100">
-                    <QuantitySelector
-                      quantity={quantity}
-                      maxQuantity={currentStock}
-                      onChange={setQuantity}
-                      size="sm"
-                    />
-                  </div>
-                )}
-
-                {/* Add to Cart button */}
-                <button
-                  onClick={handleAddToCart}
-                  // Mesma regra do CTA principal: só esgotado é `disabled`.
-                  disabled={isOutOfStock}
-                  aria-disabled={
-                    !isOutOfStock && cartStatus !== "idle" ? true : undefined
+                    ) || undefined
                   }
-                  className={cn(
-                    "h-9 px-3.5 text-primary-foreground text-[9px] font-black uppercase tracking-[0.15em] rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[82px] flex-shrink-0 active:scale-95 aria-disabled:active:scale-100",
-                    cartStatus === "idle"
-                      ? "bg-primary hover:bg-primary/90 shadow-md shadow-black/10"
-                      : "bg-primary/80 shadow-none",
-                    cartStatus === "success" &&
-                      "bg-emerald-600 text-white shadow-emerald-200/30",
-                    isOutOfStock &&
-                      "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
-                  )}
-                >
-                  {isOutOfStock ? (
-                    variacaoIndisponivel ? (
-                      "Indisponível"
-                    ) : (
-                      "Esgotado"
+                  onError={(e) =>
+                    usarImagemOriginal(
+                      e.currentTarget,
+                      variantImage || product.images?.[0],
                     )
-                  ) : cartStatus === "loading" ? (
-                    <>
-                      <span
-                        aria-hidden="true"
-                        className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
-                      />
-                      <span className="sr-only">Adicionando…</span>
-                    </>
-                  ) : cartStatus === "success" ? (
-                    <>
-                      <Check
-                        aria-hidden="true"
-                        className="size-3.5 text-white duration-300 animate-in zoom-in"
-                      />
-                      <span className="sr-only">Adicionado</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShoppingCart className="size-3" />
-                      <span>+</span>
-                    </>
+                  }
+                  alt={product.name}
+                  className="size-[52px] shrink-0 rounded-full border border-border object-cover"
+                />
+                <div className="min-w-[80px] flex-1">
+                  <p
+                    className={cn(
+                      "break-words text-lg font-bold leading-tight",
+                      product.originalPrice &&
+                        product.originalPrice > currentPrice
+                        ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
+                        : "text-foreground",
+                    )}
+                  >
+                    {reais(currentPrice)}
+                  </p>
+                  {fileiras.length > 0 && (
+                    <button
+                      ref={escolhaDaBarraRef}
+                      type="button"
+                      onClick={() => setFolhaAberta(true)}
+                      className="min-h-11 w-full py-1 text-left text-[13px] leading-tight text-muted-foreground [overflow-wrap:anywhere]"
+                    >
+                      {variante
+                        ? fileiras
+                            .map((f) => selectedVariants[f.nome])
+                            .join(" · ")
+                        : `Escolher ${fileiras.map((f) => f.nome.toLowerCase()).join(" e ")}`}{" "}
+                      ›
+                    </button>
                   )}
+                </div>
+                <button
+                  type="button"
+                  disabled={isOutOfStock}
+                  aria-disabled={cartStatus !== "idle" || undefined}
+                  onClick={(e) =>
+                    fileiras.length > 0 && !variante
+                      ? setFolhaAberta(true)
+                      : handleAddToCart(e)
+                  }
+                  className="ml-auto min-h-[52px] max-w-full shrink-0 rounded-full bg-foreground px-4 py-3 text-sm font-bold text-background [overflow-wrap:anywhere] disabled:opacity-40"
+                >
+                  {isOutOfStock
+                    ? "Esgotado"
+                    : cartStatus === "loading"
+                      ? "Adicionando…"
+                      : cartStatus === "success"
+                        ? "Adicionado"
+                        : "Adicionar"}
                 </button>
               </motion.div>
             )}

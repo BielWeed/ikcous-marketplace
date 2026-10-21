@@ -1,10 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import {
@@ -34,6 +29,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { FolhaDeOpcoes } from "./FolhaDeOpcoes";
 import { QuantitySelector } from "./QuantitySelector";
 import { StarRating } from "./StarRating";
 
@@ -858,45 +854,37 @@ export const ProductCard = memo(function ProductCard({
           SheetTrigger o Radix não tem para onde devolver) -- é o
           `onCloseAutoFocus` abaixo (ver comentário no topo). */}
       {hasActiveVariant && onAddToCartWithVariants && (
-        <Sheet open={folhaOpcoesAberta} onOpenChange={setFolhaOpcoesAberta}>
-          {/* stopPropagation OBRIGATÓRIO (prova no teste "Adicionar ... sem
-              navegar"): eventos sintéticos de conteúdo renderizado em portal
-              borbulham pela ÁRVORE REACT, não pela árvore do DOM -- a folha é
-              filho React DESTE componente, e o wrapper raiz tem
-              onClick={abrirProduto}. Sem isto, tocar num chip ou no CTA da
-              folha abriria o produto junto. É a MESMA proteção que o painel
-              antigo carregava no motion.div; o portal do DOM sozinho não
-              protege (o clique nunca sai do body pelo DOM, mas chega aqui
-              pela árvore do React). */}
-          <SheetContent
-            side="bottom"
-            data-testid="product-card-options-sheet"
-            onClick={(e) => e.stopPropagation()}
-            showCloseButton={false}
-            className="mx-auto max-h-[88dvh] gap-0 border-t-0 sm:max-w-md sm:rounded-t-3xl"
-            // Devolve o foco ao botão do card (o Radix só devolve ao Trigger,
-            // e aqui não há: cairia no body). Sem a guarda `isConnected`, o
-            // card que saiu da vitrine com a folha aberta (repaginou, o item
-            // foi removido) tentaria focar um nó que já não existe.
-            onCloseAutoFocus={(evento) => {
-              evento.preventDefault();
-              // A folha TERMINOU de sair (o Radix só avisa depois da animação
-              // de saída, com a folha já fora do DOM): é a hora da bolinha
-              // anotada no "Adicionar". Vale uma vez — o anotado é limpo
-              // antes de qualquer saída, e reabrir/fechar depois não repete.
-              // A bolinha sai ANTES de devolver o foco: `focus()` rola a
-              // página até o botão (no pé do card) e, em grade larga com foto
-              // alta, o centro da foto já teria saído da tela quando
-              // `pontoDeSaidaVisivel` perguntasse (medido no Chromium,
-              // 15/10/2026) — sobrava só o "Salvo!".
-              const imgSrc = vooPendenteRef.current;
-              vooPendenteRef.current = null;
-              soltarVooDoCard(imgSrc, fotoDoCardRef.current, cardRef.current);
-              const botao = botaoDeAcaoRef.current;
-              if (botao?.isConnected) botao.focus();
-            }}
-          >
-            {/* Alça que FECHA (peça 03, 13/09 — pedido do dono ao vivo):
+        <FolhaDeOpcoes
+          aberta={folhaOpcoesAberta}
+          onMudar={setFolhaOpcoesAberta}
+          // O portal ainda borbulha pelo card: nunca navegar ao escolher.
+          data-testid="product-card-options-sheet"
+          onClick={(e) => e.stopPropagation()}
+          showCloseButton={false}
+          className="mx-auto max-h-[88dvh] gap-0 border-t-0 sm:max-w-md sm:rounded-t-3xl"
+          // Devolve o foco ao botão do card (o Radix só devolve ao Trigger,
+          // e aqui não há: cairia no body). Sem a guarda `isConnected`, o
+          // card que saiu da vitrine com a folha aberta (repaginou, o item
+          // foi removido) tentaria focar um nó que já não existe.
+          onCloseAutoFocus={(evento) => {
+            evento.preventDefault();
+            // A folha TERMINOU de sair (o Radix só avisa depois da animação
+            // de saída, com a folha já fora do DOM): é a hora da bolinha
+            // anotada no "Adicionar". Vale uma vez — o anotado é limpo
+            // antes de qualquer saída, e reabrir/fechar depois não repete.
+            // A bolinha sai ANTES de devolver o foco: `focus()` rola a
+            // página até o botão (no pé do card) e, em grade larga com foto
+            // alta, o centro da foto já teria saído da tela quando
+            // `pontoDeSaidaVisivel` perguntasse (medido no Chromium,
+            // 15/10/2026) — sobrava só o "Salvo!".
+            const imgSrc = vooPendenteRef.current;
+            vooPendenteRef.current = null;
+            soltarVooDoCard(imgSrc, fotoDoCardRef.current, cardRef.current);
+            const botao = botaoDeAcaoRef.current;
+            if (botao?.isConnected) botao.focus();
+          }}
+        >
+          {/* Alça que FECHA (peça 03, 13/09 — pedido do dono ao vivo):
                 clicar nela fecha a folha; arrastar para baixo também
                 (handler acima). Peça 09 (14/09): o X embutido do SheetContent
                 saiu (showCloseButton={false}, pedido do dono) — esta alça é o
@@ -905,254 +893,251 @@ export const ProductCard = memo(function ProductCard({
                 baixo"). Botão real com área de toque generosa (h-11 = 44px,
                 alvo de toque WCAG 2.5.5) — o desenho continua sendo o risco
                 fino DENTRO dele. */}
-            <button
-              type="button"
-              data-testid="product-card-options-handle"
-              aria-label="Fechar (arraste para baixo)"
-              onClick={() => {
-                if (arrastoDaAlcaRef.current.movimentou) {
-                  arrastoDaAlcaRef.current.movimentou = false;
-                  return;
-                }
-                setFolhaOpcoesAberta(false);
-              }}
-              onPointerDown={aoPuxarAlcaDaFolha}
-              className="focus:outline-hidden mt-3 flex h-11 w-full shrink-0 cursor-pointer touch-none items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <span
-                aria-hidden="true"
-                className="h-1 w-10 rounded-full bg-zinc-300"
-              />
-            </button>
-            <div
-              data-testid="product-card-options-scroll"
-              className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4 pt-2"
-            >
-              <SheetDescription className="sr-only">
-                Escolha as opções para adicionar ao carrinho.
-              </SheetDescription>
-              {/* Banda de FOTO grande (a promessa da direção B: a foto da
+          <button
+            type="button"
+            data-testid="product-card-options-handle"
+            aria-label="Fechar (arraste para baixo)"
+            onClick={() => {
+              if (arrastoDaAlcaRef.current.movimentou) {
+                arrastoDaAlcaRef.current.movimentou = false;
+                return;
+              }
+              setFolhaOpcoesAberta(false);
+            }}
+            onPointerDown={aoPuxarAlcaDaFolha}
+            className="focus:outline-hidden mt-3 flex h-11 w-full shrink-0 cursor-pointer touch-none items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <span
+              aria-hidden="true"
+              className="h-1 w-10 rounded-full bg-zinc-300"
+            />
+          </button>
+          <div
+            data-testid="product-card-options-scroll"
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4 pt-2"
+          >
+            <SheetDescription className="sr-only">
+              Escolha as opções para adicionar ao carrinho.
+            </SheetDescription>
+            {/* Banda de FOTO grande (a promessa da direção B: a foto da
                   folha era MENOR que a do card atrás no thumbnail antigo e
                   viciava a comparação -- 104x130 vs 165x206, medido 13/09).
                   Reage à variante escolhida via `srcImagem`. (A bolinha do
                   voo NÃO parte daqui: ver `vooPendenteRef`, 14/10.) */}
-              <div data-testid="product-card-options-image">
-                <LazyImage
-                  src={srcImagem}
-                  alt={product.name}
-                  priority
-                  sizes="(min-width: 640px) 448px, 100vw"
-                  className="h-44 w-full rounded-2xl"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  {product.category}
-                </p>
-                <SheetTitle className="text-base font-black tracking-tight text-slate-900">
-                  {product.name}
-                </SheetTitle>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {/* Os MESMOS selos do card -- a folha não inventa
+            <div data-testid="product-card-options-image">
+              <LazyImage
+                src={srcImagem}
+                alt={product.name}
+                priority
+                sizes="(min-width: 640px) 448px, 100vw"
+                className="h-44 w-full rounded-2xl"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                {product.category}
+              </p>
+              <SheetTitle className="text-base font-black tracking-tight text-slate-900">
+                {product.name}
+              </SheetTitle>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {/* Os MESMOS selos do card -- a folha não inventa
                       promessa que o card não faz. */}
-                  {discount > 0 && (
-                    <span
-                      className={cn(
-                        "shrink-0 select-none rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
-                        CLASSE_SELO_DESCONTO,
-                      )}
-                    >
-                      {discount}% OFF
-                    </span>
-                  )}
-                  {product.isBestseller && (
-                    <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700">
-                      <Flame className="size-2.5 shrink-0 fill-orange-500/20 text-orange-500" />
-                      <span>EM ALTA</span>
-                    </span>
-                  )}
-                  {fraseDoSelo && (
-                    <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
-                      <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
-                      <span>{fraseDoSelo}</span>
-                    </span>
-                  )}
-                  {/* Indicador de estoque: os MESMOS literais do card,
-                      agora reagindo à escolha na folha também. */}
+                {discount > 0 && (
                   <span
                     className={cn(
-                      "flex items-center gap-1 font-bold text-[9px]",
-                      estoqueAtual <= 0
-                        ? "text-zinc-500"
-                        : estoqueAtual <= 5
-                          ? "text-rose-600"
-                          : "text-emerald-700",
+                      "shrink-0 select-none rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
+                      CLASSE_SELO_DESCONTO,
                     )}
                   >
-                    <span
-                      className={cn(
-                        "w-1 h-1 rounded-full animate-pulse",
-                        estoqueAtual <= 0
-                          ? "bg-zinc-400"
-                          : estoqueAtual <= 5
-                            ? "bg-rose-500"
-                            : "bg-emerald-500",
-                      )}
-                    />
-                    {estoqueAtual <= 0
-                      ? "Esgotado"
+                    {discount}% OFF
+                  </span>
+                )}
+                {product.isBestseller && (
+                  <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700">
+                    <Flame className="size-2.5 shrink-0 fill-orange-500/20 text-orange-500" />
+                    <span>EM ALTA</span>
+                  </span>
+                )}
+                {fraseDoSelo && (
+                  <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
+                    <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
+                    <span>{fraseDoSelo}</span>
+                  </span>
+                )}
+                {/* Indicador de estoque: os MESMOS literais do card,
+                      agora reagindo à escolha na folha também. */}
+                <span
+                  className={cn(
+                    "flex items-center gap-1 font-bold text-[9px]",
+                    estoqueAtual <= 0
+                      ? "text-zinc-500"
                       : estoqueAtual <= 5
-                        ? textoEstoqueBaixo(estoqueAtual)
-                        : `Estoque: ${estoqueAtual}`}
+                        ? "text-rose-600"
+                        : "text-emerald-700",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "w-1 h-1 rounded-full animate-pulse",
+                      estoqueAtual <= 0
+                        ? "bg-zinc-400"
+                        : estoqueAtual <= 5
+                          ? "bg-rose-500"
+                          : "bg-emerald-500",
+                    )}
+                  />
+                  {estoqueAtual <= 0
+                    ? "Esgotado"
+                    : estoqueAtual <= 5
+                      ? textoEstoqueBaixo(estoqueAtual)
+                      : `Estoque: ${estoqueAtual}`}
+                </span>
+              </div>
+              {/* Preço De/Por DINÂMICO na folha (mesma semântica do
+                    card: `??` preserva override zero). */}
+              {product.originalPrice && product.originalPrice > precoAtual ? (
+                <div className="flex flex-wrap items-baseline gap-2 pt-1">
+                  <span
+                    className={cn(
+                      "text-[15px] font-black leading-none tracking-tight",
+                      CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                    )}
+                  >
+                    Por: {formatCurrency(precoAtual)}
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    De:{" "}
+                    <span className="line-through">
+                      {formatCurrency(product.originalPrice)}
+                    </span>
                   </span>
                 </div>
-                {/* Preço De/Por DINÂMICO na folha (mesma semântica do
-                    card: `??` preserva override zero). */}
-                {product.originalPrice && product.originalPrice > precoAtual ? (
-                  <div className="flex flex-wrap items-baseline gap-2 pt-1">
-                    <span
-                      className={cn(
-                        "text-[15px] font-black leading-none tracking-tight",
-                        CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
-                      )}
-                    >
-                      Por: {formatCurrency(precoAtual)}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      De:{" "}
-                      <span className="line-through">
-                        {formatCurrency(product.originalPrice)}
-                      </span>
-                    </span>
-                  </div>
-                ) : (
-                  <div className="pt-1">
-                    <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
-                      {formatCurrency(precoAtual)}
-                    </span>
-                  </div>
-                )}
-              </div>
+              ) : (
+                <div className="pt-1">
+                  <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
+                    {formatCurrency(precoAtual)}
+                  </span>
+                </div>
+              )}
+            </div>
 
-              {/* Grupos de opção: MESMA semântica do painel antigo (chips
+            {/* Grupos de opção: MESMA semântica do painel antigo (chips
                   com aria-pressed, disabled + title quando sem estoque,
                   line-through/opacidade), com folga maior de toque porque
                   a folha tem largura de tela inteira. */}
-              {nenhumaOpcaoDisponivel ? (
-                <p className="py-4 text-center text-[11px] font-bold uppercase tracking-wide text-zinc-400">
-                  Sem opções disponíveis no momento.
-                </p>
-              ) : (
-                Array.from(variantGroups).map(([nome, valores]) => (
-                  <div key={nome} className="space-y-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                      {nome}
-                    </span>
-                    <div className="flex flex-wrap gap-2">
-                      {valores.map((v) => {
-                        const semEstoque = (v.stockIncrement ?? 0) <= 0;
-                        const ativa = selecionadas.get(nome) === v.value;
-                        return (
-                          <button
-                            key={v.id}
-                            type="button"
-                            disabled={semEstoque}
-                            // Laudo de acessibilidade 03/09, achado 3: a
-                            // opção marcada só se distinguia pela cor —
-                            // `aria-pressed` anuncia o estado (padrão do
-                            // CategoryFilter).
-                            aria-pressed={ativa}
-                            onClick={() => alternarOpcao(nome, v.value)}
-                            title={
-                              semEstoque
-                                ? `${v.value} — sem estoque`
-                                : undefined
-                            }
-                            className={cn(
-                              "min-h-[40px] rounded-xl border px-3 py-1.5 text-[11px] font-black uppercase tracking-wide transition-all active:scale-95",
-                              ativa
-                                ? "border-zinc-900 bg-zinc-900 text-white shadow-sm"
-                                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400 hover:text-zinc-900",
-                              semEstoque &&
-                                "cursor-not-allowed line-through opacity-40 hover:border-zinc-200 hover:text-zinc-600",
-                            )}
-                          >
-                            {v.value}
-                          </button>
-                        );
-                      })}
-                    </div>
+            {nenhumaOpcaoDisponivel ? (
+              <p className="py-4 text-center text-[11px] font-bold uppercase tracking-wide text-zinc-400">
+                Sem opções disponíveis no momento.
+              </p>
+            ) : (
+              Array.from(variantGroups).map(([nome, valores]) => (
+                <div key={nome} className="space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                    {nome}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {valores.map((v) => {
+                      const semEstoque = (v.stockIncrement ?? 0) <= 0;
+                      const ativa = selecionadas.get(nome) === v.value;
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          disabled={semEstoque}
+                          // Laudo de acessibilidade 03/09, achado 3: a
+                          // opção marcada só se distinguia pela cor —
+                          // `aria-pressed` anuncia o estado (padrão do
+                          // CategoryFilter).
+                          aria-pressed={ativa}
+                          onClick={() => alternarOpcao(nome, v.value)}
+                          title={
+                            semEstoque ? `${v.value} — sem estoque` : undefined
+                          }
+                          className={cn(
+                            "min-h-[40px] rounded-xl border px-3 py-1.5 text-[11px] font-black uppercase tracking-wide transition-all active:scale-95",
+                            ativa
+                              ? "border-zinc-900 bg-zinc-900 text-white shadow-sm"
+                              : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400 hover:text-zinc-900",
+                            semEstoque &&
+                              "cursor-not-allowed line-through opacity-40 hover:border-zinc-200 hover:text-zinc-600",
+                          )}
+                        >
+                          {v.value}
+                        </button>
+                      );
+                    })}
                   </div>
-                ))
-              )}
+                </div>
+              ))
+            )}
 
-              {/* ── QUANTIDADE (peça 18, 14/09 — pedido do dono) ──────────
+            {/* ── QUANTIDADE (peça 18, 14/09 — pedido do dono) ──────────
                   Seletor da casa (o mesmo da página do produto): mínimo 1,
                   teto = estoque do item escolhido (o número que os selos
                   desta folha já anunciam). "+"/"−" desabilitam nas bordas.
                   Some só quando não há nada em estoque para escolher. */}
-              {estoqueAtual > 0 && (
-                <div className="space-y-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                    Quantidade
-                  </span>
-                  <div>
-                    <QuantitySelector
-                      quantity={quantidade}
-                      maxQuantity={Math.max(estoqueAtual, 1)}
-                      onChange={setQuantidade}
-                    />
-                  </div>
+            {estoqueAtual > 0 && (
+              <div className="space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                  Quantidade
+                </span>
+                <div>
+                  <QuantitySelector
+                    quantity={quantidade}
+                    maxQuantity={Math.max(estoqueAtual, 1)}
+                    onChange={setQuantidade}
+                  />
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
 
-            {/* Rodapé FIXO: o CTA nunca rola para fora da folha. Padding
+          {/* Rodapé FIXO: o CTA nunca rola para fora da folha. Padding
                 inferior soma a área segura do aparelho (mesma variável
                 --safe-area-bottom que os rodapés da casa usam). */}
-            <div className="shrink-0 border-t border-zinc-100 bg-background px-5 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-3">
-              <button
-                type="button"
-                data-testid="product-card-options-add"
-                onClick={handleAdicionarComOpcoes}
-                // `aria-disabled` e não `disabled`: com `disabled` o botão saía
-                // da ordem de foco no "Salvando..." e o leitor de tela ficava
-                // mudo. O bloqueio do clique duplo é a guarda de `cartStatus`
-                // em `handleAdicionarComOpcoes`.
-                aria-disabled={cartStatus !== "idle" ? true : undefined}
-                className={cn(
-                  "flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-150 active:scale-[0.98] aria-disabled:active:scale-100 shadow-[0_4px_10px_rgba(24,24,27,0.1)]",
-                  cartStatus === "success"
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    : "bg-primary hover:opacity-90 text-primary-foreground",
-                  cartStatus === "loading" && "opacity-80",
-                )}
-              >
-                {cartStatus === "loading" && (
-                  <Loader2 className="size-4 shrink-0 animate-spin" />
-                )}
-                {cartStatus === "success" && (
-                  <Check className="size-4 shrink-0" />
-                )}
-                <span className="truncate">
-                  {cartStatus === "loading"
-                    ? "Salvando..."
-                    : cartStatus === "success"
-                      ? "Salvo!"
-                      : escolhaCompleta
-                        ? `Adicionar · ${formatCurrency(precoAtual)}`
-                        : "Adicionar"}
-                </span>
-              </button>
-              {/* Aviso falado DENTRO da folha: ela é modal e o Radix esconde o
+          <div className="shrink-0 border-t border-zinc-100 bg-background px-5 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-3">
+            <button
+              type="button"
+              data-testid="product-card-options-add"
+              onClick={handleAdicionarComOpcoes}
+              // `aria-disabled` e não `disabled`: com `disabled` o botão saía
+              // da ordem de foco no "Salvando..." e o leitor de tela ficava
+              // mudo. O bloqueio do clique duplo é a guarda de `cartStatus`
+              // em `handleAdicionarComOpcoes`.
+              aria-disabled={cartStatus !== "idle" ? true : undefined}
+              className={cn(
+                "flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-150 active:scale-[0.98] aria-disabled:active:scale-100 shadow-[0_4px_10px_rgba(24,24,27,0.1)]",
+                cartStatus === "success"
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  : "bg-primary hover:opacity-90 text-primary-foreground",
+                cartStatus === "loading" && "opacity-80",
+              )}
+            >
+              {cartStatus === "loading" && (
+                <Loader2 className="size-4 shrink-0 animate-spin" />
+              )}
+              {cartStatus === "success" && (
+                <Check className="size-4 shrink-0" />
+              )}
+              <span className="truncate">
+                {cartStatus === "loading"
+                  ? "Salvando..."
+                  : cartStatus === "success"
+                    ? "Salvo!"
+                    : escolhaCompleta
+                      ? `Adicionar · ${formatCurrency(precoAtual)}`
+                      : "Adicionar"}
+              </span>
+            </button>
+            {/* Aviso falado DENTRO da folha: ela é modal e o Radix esconde o
                   card do leitor de tela enquanto está aberta -- a região do
                   card não seria ouvida. Sempre montada, invisível, nasce vazia. */}
-              <span role="status" aria-live="polite" className="sr-only">
-                {avisoDeAdicionado}
-              </span>
-            </div>
-          </SheetContent>
-        </Sheet>
+            <span role="status" aria-live="polite" className="sr-only">
+              {avisoDeAdicionado}
+            </span>
+          </div>
+        </FolhaDeOpcoes>
       )}
     </div>
   );
