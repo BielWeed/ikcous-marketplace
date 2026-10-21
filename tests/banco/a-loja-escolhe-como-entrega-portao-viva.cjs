@@ -775,6 +775,10 @@ async function main() {
   C = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await C.connect();
   await C.query("BEGIN");
+  // A 20261350000000 (sucessora dos corpos de v23/v24) cai ANTES: ver a-compra-online-trava-posterior.cjs.
+  await require("./a-compra-online-trava-posterior.cjs").desfazerCompraOnlineTravaNaTransacao(
+    C,
+  );
   await require("./estilo-card-frete-posterior.cjs").desfazerEstiloCardFreteNaTransacao(
     C,
   );

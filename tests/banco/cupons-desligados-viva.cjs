@@ -903,8 +903,16 @@ PROVAS.push({
   nome: "(i) MUTANTES da corrida: sem o curto-circuito (h) fica vermelha (B é recusada e o cliente giraria a chave); depois de restaurar, passa de novo",
   corpo: async (c, url) => {
     // DDL COMMITADA (a corrida usa 3 conexões); o `finally` reaplica a migration.
-    try {
-      await c.query(`CREATE OR REPLACE FUNCTION public.pedido_com_cupom_exige_a_chave_ligada()
+    // A 20261350000000 (a mesma chave espera a primeira: advisory lock no passo 0) fecha ESTA corrida antes do gatilho: B
+    // espera o commit de A e devolve o pedido de A no passo 0, sem chegar ao INSERT. Para o mutante continuar medindo o
+    // curto-circuito DO GATILHO, a corrida roda com os corpos da 244 (sem a trava da chave); depois, com a 350 de volta, o
+    // MESMO mutante já não derruba a corrida (defesa em profundidade: a trava da chave protege sozinha).
+    const trava = require("./a-compra-online-trava-posterior.cjs");
+    const SQL_350 = fs.readFileSync(
+      path.join(PASTA, trava.COMPRA_ONLINE_TRAVA.nome),
+      "utf8",
+    );
+    const MUTANTE_DO_GATILHO = `CREATE OR REPLACE FUNCTION public.pedido_com_cupom_exige_a_chave_ligada()
         RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $m$
         BEGIN
           IF NEW.coupon_id IS NOT NULL
@@ -912,7 +920,10 @@ PROVAS.push({
             RAISE EXCEPTION '${MENSAGEM}';
           END IF;
           RETURN NEW;
-        END; $m$`);
+        END; $m$`;
+    try {
+      await trava.desfazerCompraOnlineTravaNaTransacao(c);
+      await c.query(MUTANTE_DO_GATILHO);
       const r = await corridaGemea(url);
       assert.ok(
         !r.rb.ok && r.rb.message === MENSAGEM,
@@ -921,8 +932,16 @@ PROVAS.push({
       console.log(
         `    mutante "sem o curto-circuito" MORTO: B recusada (${r.rb.code}: ${r.rb.message}); pedidos com a chave: ${r.n}`,
       );
+      // Com a trava da chave (350) de volta e o MESMO mutante no gatilho, B recebe o pedido de A no passo 0.
+      await c.query(SQL_350);
+      const r2 = await corridaGemea(url);
+      assert.ok(
+        r2.rb.ok && r2.rb.id === r2.idA && r2.n === 1,
+        `com a trava da chave a corrida fecha antes do gatilho: ${JSON.stringify(r2)}`,
+      );
     } finally {
       await c.query(SQL_MIGRATION);
+      await c.query(SQL_350);
     }
     await exigirCorridaCerta(url);
   },

@@ -1838,7 +1838,14 @@ PROVAS.push({
   nome: "(11) MUTANTE da corrida: sem o atalho de retentativa a retentativa B é recusada (o defeito que daria pedido em dobro); depois de reaplicar a migration, passa de novo",
   corpo: async (c, url) => {
     // DDL COMMITADA (a corrida usa 3 conexões); o `finally` reaplica a migration.
+    // A 20261350000000 (a mesma chave espera a primeira: advisory lock no passo 0) fecha ESTA corrida antes do gatilho: B
+    // espera o commit de A e devolve o pedido de A no passo 0, sem chegar ao INSERT. Para o mutante continuar medindo o
+    // atalho DO GATILHO, a corrida roda com os corpos da 244 (sem a trava da chave); depois, com a 350 de volta, o MESMO
+    // mutante já não derruba a corrida (defesa em profundidade: a trava da chave protege sozinha).
+    const trava = require("./a-compra-online-trava-posterior.cjs");
+    const SQL_350 = lerLF(trava.COMPRA_ONLINE_TRAVA.nome);
     try {
+      await trava.desfazerCompraOnlineTravaNaTransacao(c);
       await c.query(`CREATE OR REPLACE FUNCTION public.pedido_com_cupom_so_nasce_para_a_lista()
         RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $m$
         DECLARE v_alcance text;
@@ -1860,8 +1867,16 @@ PROVAS.push({
       console.log(
         `    mutante "sem o atalho" MORTO: B recusada (${r.rb.code}: ${r.rb.message}); pedidos com a chave: ${r.n}`,
       );
+      // Com a trava da chave (350) de volta e o MESMO mutante no gatilho, B recebe o pedido de A no passo 0.
+      await c.query(SQL_350);
+      const r2 = await corridaGemea(url);
+      assert.ok(
+        r2.rb.ok && r2.rb.id === r2.idA && r2.n === 1,
+        `com a trava da chave a corrida fecha antes do gatilho: ${JSON.stringify(r2)}`,
+      );
     } finally {
       await c.query(SQL_MIGRATION);
+      await c.query(SQL_350);
     }
     await exigirCorridaCerta(url);
   },

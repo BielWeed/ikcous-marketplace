@@ -63,19 +63,21 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'create_marketplace_order_v23: corpo e o da 20261229000000, com a copia do endereco (md5)',
          '6cb5a00cfa290f00dc9de053fee40759',
-         -- 2 hashes aceitos: o corpo da 20261229000000 OU o da SUCESSORA dele, a 20261244000000 (a loja escolhe como
-         -- entrega na cidade: o mesmo corpo mais o So retiro). O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN f.m IN ('6cb5a00cfa290f00dc9de053fee40759', '79445d64a87843be2d42bf601c7090ec')
+         -- 3 hashes aceitos: o corpo da 20261229000000 OU o da SUCESSORA dele, a 20261244000000 (a loja escolhe como
+         -- entrega na cidade: o mesmo corpo mais o So retiro) OU o da sucessora desta, a 20261350000000 (a compra online
+         -- trava o preco e espera a mesma chave). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN f.m IN ('6cb5a00cfa290f00dc9de053fee40759', '79445d64a87843be2d42bf601c7090ec', '415eae034b8e995c2bd2db0bbbc49391')
                                THEN '6cb5a00cfa290f00dc9de053fee40759'
                                ELSE f.m END
                      FROM fn f WHERE f.nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo e o da 20261229000000, com a copia do endereco (md5)',
          'b1ee9337105f442511c13a75977911b7',
-         -- 3 hashes aceitos: o corpo da 20261229000000 OU o da SUCESSORA dele, a 20261236000000 (a compra que da
+         -- 4 hashes aceitos: o corpo da 20261229000000 OU o da SUCESSORA dele, a 20261236000000 (a compra que da
          -- R$ 0,00 nao se paga pelo app: o mesmo corpo mais o bloco 6-ter) OU o da sucessora desta, a 20261244000000
-         -- (a loja escolhe como entrega na cidade). O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN f.m IN ('b1ee9337105f442511c13a75977911b7', '6002fc8db6c1d402bc704f018a0c2621', '85c37af4baa2f5ce1375bdd9e943c746')
+         -- (a loja escolhe como entrega na cidade) OU o da sucessora dela, a 20261350000000 (a compra online trava o
+         -- preco e espera a mesma chave). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN f.m IN ('b1ee9337105f442511c13a75977911b7', '6002fc8db6c1d402bc704f018a0c2621', '85c37af4baa2f5ce1375bdd9e943c746', 'e847583c98401789449275cac51ef85c')
                                THEN 'b1ee9337105f442511c13a75977911b7'
                                ELSE f.m END
                      FROM fn f WHERE f.nome = 'create_marketplace_order_v24'), 'AUSENTE')

@@ -72,6 +72,33 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        // D2: a leitura do passo 3 tranca a variacao E o produto. Uma vez, e CODIGO (o comentario da edicao nao repete
+        // a frase inteira com o ponto e virgula).
+        { texto: "FOR NO KEY UPDATE OF v, p;", vezes: 1 },
+        // D3: a mesma chave de idempotencia espera a primeira terminar. Uma vez, no passo 0.
+        {
+          texto:
+            "pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('pedido_online:' || p_idempotency_key::text, 0));",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        { texto: "FOR NO KEY UPDATE OF v, p;", vezes: 1 },
+        {
+          texto:
+            "pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('pedido_online:' || p_idempotency_key::text, 0));",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261349000000_o_pedido_entregue_antes_da_confirmacao_entra_na_reconciliacao.sql":
     {
       funcao: "pagamentos_a_reconciliar",

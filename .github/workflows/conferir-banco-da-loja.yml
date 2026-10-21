@@ -221,6 +221,8 @@ on:
           - 62b-antes-mototaxi-ausente
           - 80a-conferir-pedido-entregue-na-reconciliacao-aplicado
           - 80b-antes-pedido-entregue-na-reconciliacao-base-vigente
+          - 81a-conferir-compra-online-trava-preco-e-chave-aplicado
+          - 81b-antes-compra-online-trava-preco-e-chave-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:
