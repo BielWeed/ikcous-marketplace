@@ -562,6 +562,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "59b-antes-online-sem-forma-base-vigente",
   "60a-conferir-estilo-card-frete-aplicado",
   "60b-antes-estilo-card-frete-base-vigente",
+  "61a-conferir-icones-das-categorias-aplicado",
+  "61b-antes-icones-das-categorias",
   "62a-conferir-mototaxi-aplicado",
   "62b-antes-mototaxi-ausente",
 ]);

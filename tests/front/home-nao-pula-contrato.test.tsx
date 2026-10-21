@@ -371,23 +371,17 @@ describe("catálogo: o esqueleto do card reserva a mesma proporção do real", (
 });
 
 describe("barra de categorias: altura estável sem dados", () => {
-  it("o esqueleto dos pills espelha o wrapper e a altura dos botões reais", () => {
+  it("o esqueleto dos blocos espelha a altura dos botões reais", () => {
     const src = fonte(CATEGORY_FILTER);
     // Wrapper do esqueleto = wrapper real (flex w-full items-center).
     expect(src).toMatch(
       /<div\s+role="status"\s+className="flex w-full items-center"/,
     );
-    // A faixa de pills do esqueleto usa a MESMA classe da faixa real
-    // (px-1 py-0.5), com pills h-8 (32px ≥ botão real py-2 text-[10px]
-    // ≈ 31px) — sem dados a barra já tem a altura de carregada.
-    expect(src).toContain(
-      '"scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5"',
-    );
-    expect(src).toContain("h-8 w-24");
-    // A altura do botão REAL também é parte do contrato (laudo da ponte,
-    // buraco 2): sem ela, um py-3 no botão real envelhece o pill h-8 do
-    // esqueleto em silêncio.
-    expect(src).toMatch(/rounded-full px-5 py-2 text-\[10px\]/);
+    // Faixa compartilhada e blocos de 108px nos dois estados.
+    expect(src.split("className={FAIXA}").length - 1).toBe(2);
+    expect(src.split("h-[108px] w-20").length - 1).toBe(2);
+    expect(src).toContain("size-16");
+    expect(src).toContain("overscroll-x-contain");
   });
 });
 

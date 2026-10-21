@@ -385,6 +385,7 @@ export type Database = {
       };
       categorias: {
         Row: {
+          icone: string | null;
           ativo: boolean | null;
           created_at: string;
           descricao: string | null;
@@ -393,6 +394,7 @@ export type Database = {
           slug: string | null;
         };
         Insert: {
+          icone?: string | null;
           ativo?: boolean | null;
           created_at?: string;
           descricao?: string | null;
@@ -401,6 +403,7 @@ export type Database = {
           slug?: string | null;
         };
         Update: {
+          icone?: string | null;
           ativo?: boolean | null;
           created_at?: string;
           descricao?: string | null;

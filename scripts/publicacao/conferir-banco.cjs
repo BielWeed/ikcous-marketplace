@@ -2400,7 +2400,20 @@ const ROL_DA_60 = [
   "store_config: estilo restrito e com padrao completo",
   "v_store_config: colunas na ordem e leitura publica preservada",
 ];
+const ROL_DA_61A = [
+  "categorias: RLS ativa e quatro policies originais",
+  "categorias: leitura publica e UPDATE authenticated por grant de tabela",
+  "categorias.icone: text nulavel sem default",
+  "categorias_icone_check: 14 chaves exatas e validada",
+];
+const ROL_DA_61B = [
+  ...ROL_DA_61A.slice(0, 2),
+  "categorias.icone: ausente ou text nulavel preservada",
+  "categorias_icone_check: ausente",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
+  "61b-antes-icones-das-categorias": ROL_DA_61B,
   "62a-conferir-mototaxi-aplicado": [
     "controle: catalogo publico visivel",
     "config_mototaxi: colunas e restricoes",

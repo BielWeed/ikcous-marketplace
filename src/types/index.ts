@@ -67,6 +67,7 @@ export interface ProductVariant {
 }
 
 export interface Category {
+  icone?: string | null;
   id: string;
   name: string;
   slug: string;
