@@ -2263,8 +2263,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             ? normalizarCodigoBarras(v.codigoBarras)
             : undefined,
         }));
+        // O mesmo critério do `updateProduct` (que só enfileira com `!navigator.onLine`): a sonda de rede
+        // (`isOffline`) pode dizer "fora" por até 15 s com o navegador online, e aí o caminho antigo gravaria
+        // produto e grade em requisições separadas — a janela que esta RPC fecha.
         const salvarEmTransacao =
-          !isOffline &&
           navigator.onLine &&
           (formData.variants.length > 0 || deletedVariantIds.length > 0);
         const updates = {
