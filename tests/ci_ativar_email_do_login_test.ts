@@ -212,15 +212,25 @@ const DIGEST =
 // HMAC obtido separadamente com a chave REF e o texto SECRET completo.
 const AUTH_HASH =
   "f7df797e81d028ecefe8d472aceffdea2f720f849daf3a0654bb4bb19d085017";
-for (const [nome, valor, presente] of [
-  ["HMAC presente", AUTH_HASH, true],
-  ["só formato conhecido", "0".repeat(64), true],
-  ["ausente", null, false],
-  ["vazio", "", false],
-  ["texto puro", SECRET, false],
-  ["maiúsculas", AUTH_HASH.toUpperCase(), false],
-  ["curto", AUTH_HASH.slice(1), false],
-  ["não hexadecimal", "z".repeat(64), false],
+for (const [nome, valor, presente, rotulo] of [
+  ["HMAC presente", AUTH_HASH, true, "hash presente"],
+  ["só formato conhecido", "0".repeat(64), true, "hash presente"],
+  ["ausente", null, false, "ausente"],
+  ["vazio", "", false, "ausente"],
+  ["texto puro", SECRET, false, "presente, mas fora do formato de hash"],
+  [
+    "maiúsculas",
+    AUTH_HASH.toUpperCase(),
+    false,
+    "presente, mas fora do formato de hash",
+  ],
+  ["curto", AUTH_HASH.slice(1), false, "presente, mas fora do formato de hash"],
+  [
+    "não hexadecimal",
+    "z".repeat(64),
+    false,
+    "presente, mas fora do formato de hash",
+  ],
 ])
   Deno.test(`medir: relata presença, nunca igualdade dos segredos — ${nome}`, async () => {
     const c = cenario({
@@ -229,10 +239,7 @@ for (const [nome, valor, presente] of [
     });
     assertEquals(await c.rodar("medir"), 0);
     assertEquals(escritas(c), []);
-    assertStringIncludes(
-      c.tudo(),
-      `campo do Auth: ${presente ? "hash presente" : "ausente"}`,
-    );
+    assertStringIncludes(c.tudo(), `campo do Auth: ${rotulo}`);
     assertStringIncludes(
       c.tudo(),
       `hook preparado: ${presente ? "sim" : "não"}`,
@@ -422,6 +429,28 @@ Deno.test("preparar: já preparado e ligado não desliga nem rotaciona", async (
 });
 
 for (const [nome, op] of [
+  [
+    "hook ligado sem segredos e URI vazia",
+    {
+      config: {
+        hook_send_email_enabled: true,
+        hook_send_email_uri: "",
+        hook_send_email_secrets: null,
+      },
+      secrets: [],
+    },
+  ],
+  [
+    "hook ligado sem segredos e nossa URI",
+    {
+      config: {
+        hook_send_email_enabled: true,
+        hook_send_email_uri: URI,
+        hook_send_email_secrets: null,
+      },
+      secrets: [],
+    },
+  ],
   ["segredo só na função", { config: { hook_send_email_secrets: "" } }],
   ["segredo só no Auth", { secrets: [] }],
   [

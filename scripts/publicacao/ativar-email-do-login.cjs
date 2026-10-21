@@ -122,7 +122,7 @@ function relatar({
     `hook ativado: ${simNao(config.hook_send_email_enabled === true)}`,
     `URI do hook: ${config.hook_send_email_uri === uri ? uri : vazio(config.hook_send_email_uri) ? "ausente" : "diferente da esperada"}`,
     `hook preparado: ${segredo === undefined ? "não medido" : simNao(hookPreparado(config, uri, segredo))}`,
-    `campo do Auth: ${formatoHash(config.hook_send_email_secrets) ? "hash presente" : "ausente"}`,
+    `campo do Auth: ${formatoHash(config.hook_send_email_secrets) ? "hash presente" : vazio(config.hook_send_email_secrets) ? "ausente" : "presente, mas fora do formato de hash"}`,
     `função ativa: ${funcao === undefined ? "não medido" : simNao(funcao)}`,
     `verify_jwt da função: ${typeof verifyJwt === "boolean" ? String(verifyJwt) : "desconhecido"}`,
     `igualdade entre Auth e função: ${segredoConferido ? "confirmada nesta preparação" : "não verificada (texto puro indisponível)"}`,
