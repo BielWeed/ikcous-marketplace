@@ -302,11 +302,16 @@ describe("AdminProductsView — a lista não mente quando há busca ou filtro", 
         return { products: produtosMock, total: 3 };
       });
       await montarEEsperarPrimeiraBusca();
-      await act(async () =>
+      expect(
         hospedeiro
-          .querySelector<HTMLButtonElement>("button[aria-expanded]")!
-          .click(),
-      );
+          .querySelector('section[aria-label="Métricas de Produtos"]')
+          ?.getAttribute("data-expandido"),
+      ).toBe("false");
+      expect(
+        hospedeiro.querySelector(
+          '.metricas-painel-secundarias [aria-label="Produtos no Catálogo"]',
+        ),
+      ).not.toBeNull();
     }
 
     it("sem busca nem filtro: 'Catálogo Geral'", async () => {

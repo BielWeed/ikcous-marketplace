@@ -6,6 +6,7 @@ import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
+import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   AlertDialog,
@@ -499,6 +500,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "lucro-potencial",
         label: "Lucro bruto potencial",
+        parcial: financialStats.parcial,
         value:
           financialStats.potential !== null
             ? `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
@@ -849,27 +851,45 @@ export const AdminProductsView = memo(function AdminProductsView({
           <LocalErrorBoundary>
             <MetricasDoPainel
               titulo="Métricas de Produtos"
+              indicesDoRodape={[4, 5]}
               onEntender={() => toggleHelp("financial-values")}
               nota={
-                isOffline ? (
-                  <span role="status">
-                    Sem conexão · ações indisponíveis até a internet voltar
-                  </span>
-                ) : !financialStats.coberturaConferida ? (
-                  <span role="status">Conferindo custos…</span>
-                ) : financialStats.parcial ? (
-                  <span role="status" className="text-amber-200">
-                    {financialStats.produtosSemCusto}{" "}
-                    {financialStats.produtosSemCusto === 1
-                      ? "produto sem custo"
-                      : "produtos sem custo"}{" "}
-                    · lucro parcial
-                  </span>
-                ) : (
-                  <span className="text-emerald-300">
-                    Todos os produtos em estoque têm custo cadastrado.
-                  </span>
-                )
+                <span
+                  role={
+                    isOffline ||
+                    !financialStats.coberturaConferida ||
+                    financialStats.parcial
+                      ? "status"
+                      : undefined
+                  }
+                >
+                  {isOffline && (
+                    <>
+                      Sem conexão ·{" "}
+                      <span className="sr-only">
+                        ações indisponíveis até a internet voltar ·{" "}
+                      </span>
+                    </>
+                  )}
+                  {!financialStats.coberturaConferida ? (
+                    "Conferindo custos…"
+                  ) : financialStats.parcial ? (
+                    <SeloDeStatus
+                      tom="atencao"
+                      className="max-w-full py-0 align-middle text-[11px] leading-5 text-amber-400"
+                    >
+                      {financialStats.produtosSemCusto}{" "}
+                      {financialStats.produtosSemCusto === 1
+                        ? "produto sem custo"
+                        : "produtos sem custo"}{" "}
+                      · lucro parcial
+                    </SeloDeStatus>
+                  ) : (
+                    <span className="text-emerald-300">
+                      Todos os produtos em estoque têm custo cadastrado.
+                    </span>
+                  )}
+                </span>
               }
               legendasDoResumo={[
                 "Custo conhecido",

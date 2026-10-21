@@ -89,7 +89,7 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
   it("a. o acesso único ao guia e simulador mantém uma área de toque de 44px", () => {
     const botao = tagAntesDe(FONTE, "button", 'toggleHelp("global-guide")}');
     const metricas = readFileSync(
-      "src/components/admin/MetricasDoPainel.tsx",
+      join(__dirname, "..", "..", "src/components/admin/MetricasDoPainel.tsx"),
       "utf8",
     );
     const valores = tagAntesDe(

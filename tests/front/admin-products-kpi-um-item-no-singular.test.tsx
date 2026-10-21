@@ -216,14 +216,15 @@ describe("AdminProductsView — 'Produtos no Catálogo' concorda com o número",
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 450));
     });
-    await act(async () =>
+    expect(
       hospedeiro
-        .querySelector<HTMLButtonElement>("button[aria-expanded]")!
-        .click(),
-    );
+        .querySelector('section[aria-label="Métricas de Produtos"]')
+        ?.getAttribute("data-expandido"),
+    ).toBe("false");
     return (
-      hospedeiro.querySelector('article[aria-label="Produtos no Catálogo"]')
-        ?.textContent ?? ""
+      hospedeiro.querySelector(
+        '.metricas-painel-secundarias [aria-label="Produtos no Catálogo"]',
+      )?.textContent ?? ""
     );
   }
 

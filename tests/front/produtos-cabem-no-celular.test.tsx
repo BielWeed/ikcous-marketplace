@@ -243,11 +243,14 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       montarProduto({});
       await montar();
 
-      await act(async () =>
+      const rodape = hospedeiro.querySelector(".metricas-painel-secundarias")!;
+      expect(rodape.textContent).toContain("Produtos no Catálogo");
+      expect(rodape.textContent).toContain("130,2%");
+      expect(
         hospedeiro
-          .querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!
-          .click(),
-      );
+          .querySelector('section[aria-label="Métricas de Produtos"]')!
+          .getAttribute("data-expandido"),
+      ).toBe("false");
       const tela = hospedeiro.textContent ?? "";
       expect(tela).toContain("Lucro sobre o custo");
       expect(tela).toContain("130,2%");
@@ -278,6 +281,17 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       montarProduto({ price: 15, stock: 2, costPrice: null });
       await montar();
       expect(
+        hospedeiro.querySelector(".metricas-painel-secundarias")!.textContent,
+      ).toContain("130,2%");
+      expect(
+        hospedeiro.querySelector('[aria-label="Venda prevista (com custo)"]'),
+      ).toBeNull();
+      await act(async () =>
+        hospedeiro
+          .querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!
+          .click(),
+      );
+      expect(
         hospedeiro.querySelector('[aria-label="Venda prevista (com custo)"]')
           ?.textContent,
       ).toContain("R$ 690,50");
@@ -287,11 +301,6 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         hospedeiro.querySelector('[aria-label="Lucro bruto potencial"]')
           ?.textContent,
       ).toContain("390,50");
-      await act(async () =>
-        hospedeiro
-          .querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!
-          .click(),
-      );
       expect(hospedeiro.textContent).toContain("130,2%");
     });
 
@@ -606,6 +615,12 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         expect(hospedeiro.textContent).toContain("Sem conexão com o servidor");
         expect(hospedeiro.textContent).toContain(
           "ações indisponíveis até a internet voltar",
+        );
+        const nota = hospedeiro.querySelector(".metricas-painel-nota")!;
+        expect(nota.textContent).toContain("1 produto sem custo");
+        expect(nota.querySelector(".text-amber-400 svg")).not.toBeNull();
+        expect(nota.querySelector(".text-amber-400")!.className).toContain(
+          "leading-5",
         );
         for (const nome of ["Ações de", "Editar", "Pausar"]) {
           const botao = item.querySelector<HTMLButtonElement>(

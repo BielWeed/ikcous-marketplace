@@ -18,6 +18,7 @@ import {
   rotuloDoStatus,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
+import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
@@ -1689,10 +1690,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     <span
                       role="status"
                       data-aviso="pagamento-a-conferir"
-                      className="text-amber-200"
                       title={avisoPagamentoAConferir}
                     >
-                      {avisoPagamentoAConferir}
+                      <SeloDeStatus
+                        tom="atencao"
+                        className="max-w-full py-0 align-middle text-[11px] leading-5 text-amber-400"
+                      >
+                        {avisoPagamentoAConferir}
+                      </SeloDeStatus>
                     </span>
                   ) : (
                     "Para preparar: só pedidos com pagamento liberado."

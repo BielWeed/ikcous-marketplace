@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
+/* eslint-disable security/detect-non-literal-fs-filename --
+   Lê apenas fontes locais fixas do repositório, resolvidas a partir deste teste. */
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { BarraDeBusca } from "@/components/admin/BarraDeBusca";
 import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { Package } from "lucide-react";
@@ -11,6 +14,7 @@ const cards = Array.from({ length: 6 }, (_, i) => ({
   label: `Métrica ${i}`,
   value: `R$ ${i},00`,
   icon: Package,
+  parcial: i === 1,
 }));
 let host: HTMLDivElement;
 let root: Root;
@@ -73,6 +77,32 @@ it("reserva 148 px, nota 28, principais 76 e rodapé 40 sem terceira linha", asy
   ).not.toBeNull();
 });
 
+it("cada tela escolhe as duas métricas do rodapé sem mudar os valores", async () => {
+  await act(async () =>
+    root.render(
+      <MetricasDoPainel
+        titulo="Produtos"
+        cards={cards}
+        legendasDoResumo={cards.map((c) => c.label)}
+        indicesDoRodape={[4, 5]}
+      />,
+    ),
+  );
+  const rodape = host.querySelector(".metricas-painel-secundarias")!;
+  expect(
+    [...rodape.querySelectorAll('[role="group"]')].map((c) =>
+      c.getAttribute("aria-label"),
+    ),
+  ).toEqual(["Métrica 4", "Métrica 5"]);
+  expect([...rodape.querySelectorAll("h3")].map((c) => c.textContent)).toEqual([
+    "R$ 4,00",
+    "R$ 5,00",
+  ]);
+  expect(host.querySelector("section")!.getAttribute("data-expandido")).toBe(
+    "false",
+  );
+});
+
 it("busca reserva 117 px e chips 44 px mesmo sem categorias", async () => {
   await act(async () =>
     root.render(
@@ -104,7 +134,7 @@ it.each(["1 produto sem custo · lucro parcial", "Conferindo custos…"])(
         <MetricasDoPainel
           titulo="Produtos"
           cards={cards}
-          legendasDoResumo={["Custo", "Lucro bruto (parcial)"]}
+          legendasDoResumo={["Custo", "Lucro bruto"]}
           nota={nota}
         />,
       ),
@@ -118,7 +148,12 @@ it.each(["1 produto sem custo · lucro parcial", "Conferindo custos…"])(
     expect(faixa.className).not.toMatch(/sr-only|truncate/);
     expect(faixa.className).toContain("h-7");
     const css = readFileSync(
-      "src/components/admin/metricas-do-painel.css",
+      join(
+        __dirname,
+        "..",
+        "..",
+        "src/components/admin/metricas-do-painel.css",
+      ),
       "utf8",
     );
     expect(css).toContain("padding: 11px 12px;");
@@ -144,15 +179,14 @@ it("mantém os tokens dos três temas ao integrar a geometria fixa", () => {
     "src/components/admin/MetricasDoPainel.tsx",
     "src/views/admin/AdminProductsView.tsx",
   ]) {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Caminho vem da lista fechada acima.
-    const fonte = readFileSync(arquivo, "utf8");
+    const fonte = readFileSync(join(__dirname, "..", "..", arquivo), "utf8");
     expect(fonte).not.toMatch(/admin-(?:card|accent)\b/);
     expect(fonte).toContain(
       arquivo.includes("Metricas") ? "bg-admin-surface" : "bg-admin-raised",
     );
   }
   const css = readFileSync(
-    "src/components/admin/metricas-do-painel.css",
+    join(__dirname, "..", "..", "src/components/admin/metricas-do-painel.css"),
     "utf8",
   );
   expect(css).toContain("hsl(var(--admin-raised))");
@@ -162,9 +196,27 @@ it("mantém os tokens dos três temas ao integrar a geometria fixa", () => {
 
 // jsdom não mede y. Estas guardas travam a estrutura; Chromium deve medir os pixels.
 const fontes = new Map([
-  ["Products", readFileSync("src/views/admin/AdminProductsView.tsx", "utf8")],
-  ["Orders", readFileSync("src/views/admin/AdminOrdersView.tsx", "utf8")],
-  ["Customers", readFileSync("src/views/admin/AdminCustomersView.tsx", "utf8")],
+  [
+    "Products",
+    readFileSync(
+      join(__dirname, "..", "..", "src/views/admin/AdminProductsView.tsx"),
+      "utf8",
+    ),
+  ],
+  [
+    "Orders",
+    readFileSync(
+      join(__dirname, "..", "..", "src/views/admin/AdminOrdersView.tsx"),
+      "utf8",
+    ),
+  ],
+  [
+    "Customers",
+    readFileSync(
+      join(__dirname, "..", "..", "src/views/admin/AdminCustomersView.tsx"),
+      "utf8",
+    ),
+  ],
 ]);
 it.each(["Products", "Orders", "Customers"])(
   "%s: cabeçalho fixo e lista separados da carga",

@@ -10,6 +10,7 @@ export interface KpiCardConfig {
   label: string;
   value: string | number;
   subValue?: string;
+  parcial?: boolean;
   icon: LucideIcon;
   accent?: string; // Tailwind class for icon color, e.g., 'text-emerald-500'
   iconClass?: string; // Override icon class

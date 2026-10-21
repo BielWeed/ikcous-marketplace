@@ -72,6 +72,7 @@ export function MetricasDoPainel({
   loading = false,
   nota = titulo,
   onEntender,
+  indicesDoRodape = [2, 3],
 }: {
   readonly titulo: string;
   readonly legendasDoResumo: readonly string[];
@@ -79,6 +80,7 @@ export function MetricasDoPainel({
   readonly loading?: boolean;
   readonly nota?: ReactNode;
   readonly onEntender?: () => void;
+  readonly indicesDoRodape?: readonly [number, number];
 }) {
   const [expandido, setExpandido] = useState(false);
   const esqueleto = (
@@ -87,6 +89,17 @@ export function MetricasDoPainel({
       className="inline-block h-5 w-12 max-w-full animate-pulse rounded bg-white/5"
     />
   );
+  const entender = onEntender ? (
+    <button
+      type="button"
+      aria-label="Entender valores"
+      aria-haspopup="dialog"
+      onClick={onEntender}
+      className={cn(BOTAO_METRICAS, "size-11 shrink-0 justify-center")}
+    >
+      <Info aria-hidden="true" className="size-4" />
+    </button>
+  ) : null;
 
   return (
     <section
@@ -156,17 +169,7 @@ export function MetricasDoPainel({
               </div>
             ))
           )}
-          {expandido && onEntender && (
-            <button
-              type="button"
-              aria-label="Entender valores"
-              aria-haspopup="dialog"
-              onClick={onEntender}
-              className={cn(BOTAO_METRICAS, "size-11 shrink-0 justify-center")}
-            >
-              <Info aria-hidden="true" className="size-4" />
-            </button>
-          )}
+          {expandido && entender}
           <button
             type="button"
             onClick={() => setExpandido(!expandido)}
@@ -194,7 +197,7 @@ export function MetricasDoPainel({
         </div>
         {expandido ? (
           <div className="metricas-painel-grade grid grid-cols-2 gap-2.5">
-            {cards.map((card, i) => (
+            {cards.map((card) => (
               <article
                 key={card.label}
                 aria-label={card.label}
@@ -213,8 +216,7 @@ export function MetricasDoPainel({
                 </NumeroAdaptavel>
                 <p className="mt-2 break-words text-xs font-semibold text-zinc-100">
                   {card.label}
-                  {legendasDoResumo.at(i)?.includes("(parcial)") &&
-                    " (parcial)"}
+                  {card.parcial && " (parcial)"}
                 </p>
                 <p className="sr-only">{card.subValue}</p>
               </article>
@@ -222,49 +224,40 @@ export function MetricasDoPainel({
           </div>
         ) : (
           <div className="metricas-painel-secundarias flex h-10 w-full items-center gap-3 text-xs text-zinc-400">
-            {cards.slice(2, 4).map((card, i) => (
-              <div
-                key={card.label}
-                role="group"
-                aria-label={card.label}
-                className="metricas-painel-detalhe flex min-w-0 max-w-full items-center gap-1"
-              >
-                <card.icon
-                  aria-hidden="true"
-                  className={cn(
-                    "size-4 shrink-0 rounded bg-white/5",
-                    card.accent,
-                  )}
-                />
-                <div className="flex min-w-0 items-baseline gap-1">
-                  <p className="sr-only">{card.label}</p>
-                  <span
+            {indicesDoRodape.map((indice) => {
+              const card = cards.at(indice);
+              if (!card) return null;
+              return (
+                <div
+                  key={card.label}
+                  role="group"
+                  aria-label={card.label}
+                  className="metricas-painel-detalhe flex min-w-0 max-w-full items-center gap-1"
+                >
+                  <card.icon
                     aria-hidden="true"
-                    className="min-w-0 max-w-full break-words"
-                  >
-                    {legendasDoResumo.at(i + 2) ?? card.label}
-                  </span>
-                  <NumeroAdaptavel className="min-w-0 max-w-full break-words text-xs font-bold tabular-nums text-white">
-                    {loading ? esqueleto : card.value}
-                  </NumeroAdaptavel>
-                  <p className="sr-only">{card.subValue}</p>
+                    className={cn(
+                      "size-4 shrink-0 rounded bg-white/5",
+                      card.accent,
+                    )}
+                  />
+                  <div className="flex min-w-0 items-baseline gap-1">
+                    <p className="sr-only">{card.label}</p>
+                    <span
+                      aria-hidden="true"
+                      className="min-w-0 max-w-full break-words"
+                    >
+                      {legendasDoResumo.at(indice) ?? card.label}
+                    </span>
+                    <NumeroAdaptavel className="min-w-0 max-w-full break-words text-xs font-bold tabular-nums text-white">
+                      {loading ? esqueleto : card.value}
+                    </NumeroAdaptavel>
+                    <p className="sr-only">{card.subValue}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-            {onEntender && (
-              <button
-                type="button"
-                aria-label="Entender valores"
-                aria-haspopup="dialog"
-                onClick={onEntender}
-                className={cn(
-                  BOTAO_METRICAS,
-                  "size-11 shrink-0 justify-center",
-                )}
-              >
-                <Info aria-hidden="true" className="size-4" />
-              </button>
-            )}
+              );
+            })}
+            {entender}
           </div>
         )}
       </div>
