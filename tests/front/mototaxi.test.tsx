@@ -241,6 +241,49 @@ it.each([
     expect(host.querySelector('a[aria-label="Enviar ao mototáxi"]')).toBeNull();
   },
 );
+it.each(["aguardando", "recusado", "expirado", null, undefined] as const)(
+  "não despacha online com pagamento %s",
+  async (paymentStatus) => {
+    for (const status of ["pending", "processing"] as const) {
+      await abrir({
+        ...pedido,
+        status,
+        paymentMethod: "online",
+        paymentStatus,
+      });
+      expect(
+        host.querySelector('a[aria-label="Enviar ao mototáxi"]'),
+        `pedido: ${status}`,
+      ).toBeNull();
+    }
+  },
+);
+it.each(["pago", "pago_apos_expirar"] as const)(
+  "despacha online confirmado em %s sem cobrar novamente",
+  async (paymentStatus) => {
+    await abrir({ ...pedido, paymentMethod: "online", paymentStatus });
+    const a = host.querySelector<HTMLAnchorElement>(
+      'a[aria-label="Enviar ao mototáxi"]',
+    );
+    expect(a).not.toBeNull();
+    const mensagem = new URL(a!.href).searchParams.get("text");
+    expect(mensagem).toContain("Já pago — não cobrar");
+    expect(mensagem).not.toContain("Cobrar na entrega");
+  },
+);
+it.each(["cash", "pix", "card"] as const)(
+  "mantém despacho com cobrança na entrega em %s",
+  async (paymentMethod) => {
+    await abrir({ ...pedido, paymentMethod, paymentStatus: null });
+    const a = host.querySelector<HTMLAnchorElement>(
+      'a[aria-label="Enviar ao mototáxi"]',
+    );
+    expect(a).not.toBeNull();
+    expect(new URL(a!.href).searchParams.get("text")).toContain(
+      "Cobrar na entrega",
+    );
+  },
+);
 it.each(["store-pickup", "sedex", undefined, "LOCAL-DELIVERY"])(
   "não mostra para %s",
   async (id) => {

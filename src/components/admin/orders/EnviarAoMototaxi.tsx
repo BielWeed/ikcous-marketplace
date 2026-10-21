@@ -19,7 +19,10 @@ export function EnviarAoMototaxi({
     order.shippingOptionId !== ID_ENTREGA_LOCAL ||
     !numero ||
     !["pending", "processing", "shipping"].includes(order.status) ||
-    order.paymentStatus === "estornado"
+    order.paymentStatus === "estornado" ||
+    (order.paymentMethod === "online" &&
+      order.paymentStatus !== "pago" &&
+      order.paymentStatus !== "pago_apos_expirar")
   )
     return null;
   return (
