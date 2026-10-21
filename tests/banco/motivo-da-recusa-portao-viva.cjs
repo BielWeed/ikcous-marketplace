@@ -118,10 +118,7 @@ async function montarBase() {
       fs.copyFileSync(path.join(MIGRATIONS, n), path.join(dir, n));
     }
     rodarScriptNode([path.join(__dirname, "provisionar.cjs")], db);
-    rodarScriptNode(
-      [path.join(__dirname, "aplicar-migrations.cjs"), dir],
-      db,
-    );
+    rodarScriptNode([path.join(__dirname, "aplicar-migrations.cjs"), dir], db);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -191,10 +188,7 @@ async function consulta(c, nome, reprovadas = []) {
       ["item", "esperado", "vivo", "ok"],
     );
     assert.equal(
-      CONF.estruturaDoRolFechado(
-        r.rows,
-        CONF.ROL_FECHADO_POR_CONSULTA[nome],
-      ),
+      CONF.estruturaDoRolFechado(r.rows, CONF.ROL_FECHADO_POR_CONSULTA[nome]),
       null,
       nome,
     );
@@ -213,11 +207,7 @@ async function consulta(c, nome, reprovadas = []) {
       nome,
     );
     const e = await evidencia(nome, r.rows);
-    assert.equal(
-      e.estado,
-      reprovadas.length ? "NEGATIVA" : "POSITIVA",
-      nome,
-    );
+    assert.equal(e.estado, reprovadas.length ? "NEGATIVA" : "POSITIVA", nome);
     return r.rows;
   });
 }
@@ -260,11 +250,8 @@ async function provarRollback(db) {
           assert.rejects(c.query(ROLLBACK), /HISTORICO_EXISTENTE/),
         );
         assert.deepEqual(
-          (
-            await c.query(
-              "SELECT * FROM public.tentativas_cartao_diagnostico",
-            )
-          ).rows,
+          (await c.query("SELECT * FROM public.tentativas_cartao_diagnostico"))
+            .rows,
           historico,
           "rollback recusado nao pode apagar o historico",
         );
