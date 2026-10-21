@@ -403,6 +403,14 @@ describe("tema do painel — contraste medido", () => {
       el.className = classe;
       document.body.appendChild(el);
       try {
+        // Classe que o app deixou de usar nao tem regra no CSS gerado (o gerador so emite o que o codigo usa).
+        // Se alguem voltar a usa-la sem regra, quem reprova e o temas-do-painel-cobertura.
+        let temRegra = false;
+        cores.walkRules((regra) => {
+          if (regra.parent?.type === "root" && el.matches(regra.selector))
+            temRegra = true;
+        });
+        if (!temRegra) continue;
         let tinta = hexParaRgb(antiga);
         let alfa = classe.endsWith("/50") ? 0.5 : 1;
         cores.walkRules((regra) => {
