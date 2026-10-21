@@ -216,11 +216,18 @@ Deno.test("347: registros de publicacao completos e os rois recusam linhas falta
   assertEquals(lote.length, 1);
   assertEquals(lote[0].consulta, A);
   assertEquals(lote[0].ausenciaConfirmadaPor, B);
-  assertEquals(
-    canais.provasDeObjetos[canais.provasDeObjetos.length - 1].consulta,
-    A,
-    "entrada nova vai no FIM da lista",
+  // entrada nova vai no FIM da lista: so entram depois dela provas de migration MAIOR (ordem crescente).
+  const posicao = canais.provasDeObjetos.findIndex(
+    (p: { consulta: string }) => p.consulta === A,
   );
+  assert(posicao >= 0, "a prova da 1347 precisa estar na lista");
+  for (const depois of canais.provasDeObjetos.slice(posicao + 1)) {
+    for (const v of depois.versoes ?? [])
+      assert(
+        v > "20261347000000",
+        `${depois.consulta} deveria vir antes da 1347`,
+      );
+  }
   const workflowConferir = ler(".github/workflows/conferir-banco-da-loja.yml");
   const rpc = ler(".github/workflows/rpc-ci.yml");
   for (const consulta of [A, B]) {
