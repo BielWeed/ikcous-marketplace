@@ -1,5 +1,6 @@
 /* eslint-disable security/detect-non-literal-fs-filename -- Lê somente o Recharts instalado no repositório. */
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import { rollup } from "rollup";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -322,10 +323,7 @@ export function testar() {
 
 function helpersDaLine() {
   const codigo = fs.readFileSync(
-    new URL(
-      "../../node_modules/recharts/es6/cartesian/Line.js",
-      import.meta.url,
-    ),
+    createRequire(import.meta.url).resolve("recharts/es6/cartesian/Line.js"),
     "utf8",
   );
   const arquivo = ts.createSourceFile(

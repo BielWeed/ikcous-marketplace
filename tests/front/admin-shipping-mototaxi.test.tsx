@@ -71,6 +71,7 @@ beforeEach(() => {
   s.erroLeitura = false;
   s.update.mockResolvedValue(true);
   s.config.localDeliveryFee = 10;
+  s.config.nationalShippingStrategy = "desligado";
   s.config.localDeliveryEnabled = true;
   s.config.originCep = "01000-000";
   s.config.storeAddress = "Rua Fictícia, 1";
@@ -201,9 +202,7 @@ it("contato salvo não é regravado quando o frete falha depois", async () => {
   expect(toast.success).not.toHaveBeenCalledWith("Contato do mototáxi salvo");
 });
 it("as travas do frete continuam quando contato e frete mudaram juntos", async () => {
-  s.config.localDeliveryEnabled = false;
-  s.config.enabledShippingMethods = ["store-pickup"];
-  s.config.originCep = "";
+  s.config.nationalShippingStrategy = "acima_de_valor";
   await abrir();
   await digitar("#mototaxi-whatsapp", "11987654321");
   await digitar("#local-delivery-fee", "18");

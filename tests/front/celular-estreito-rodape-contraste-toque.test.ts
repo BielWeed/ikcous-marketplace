@@ -123,13 +123,20 @@ describe("checkout: texto pequeno sem zinc-400 / red-500", () => {
     });
   }
 
-  it("linha do Subtotal usa zinc-500", () => {
-    // 2a ocorrencia: a barra do botao Pagar (a 1a e o resumo do carrinho, ja zinc-500).
+  it("linha do Subtotal usa zinc-600 pelo CSS do resumo", () => {
     const i = CHECKOUT.lastIndexOf("<span>Subtotal</span>");
     expect(i).toBeGreaterThan(-1);
-    const linha = CHECKOUT.slice(CHECKOUT.lastIndexOf("<div", i), i);
+    const grupo = CHECKOUT.lastIndexOf('className="checkout-values"', i);
+    expect(grupo).toBeGreaterThan(-1);
+    const linha = CHECKOUT.slice(grupo, i);
     expect(linha).not.toMatch(/text-zinc-400/);
-    expect(linha).toMatch(/text-zinc-500/);
+    const regra = CSS.match(
+      /\.checkout-values > div:first-child\s*\{([^}]+)\}/,
+    )?.[1];
+    expect(regra).toBeDefined();
+    expect(regra).toMatch(/text-zinc-600/);
+    expect(regra).not.toMatch(/text-zinc-400/);
+    expect(contraste("zinc-600", "white")).toBeGreaterThanOrEqual(4.5);
   });
 
   it("os 5 avisos role=alert de 11px usam red-700, nenhum red-500", () => {

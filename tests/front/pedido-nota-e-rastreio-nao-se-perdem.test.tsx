@@ -22,7 +22,13 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => ({
       select: (colunas: string) => ({
         eq: (coluna: string, id: string) => ({
-          maybeSingle: () => ler(tabela, colunas, coluna, id),
+          maybeSingle: () =>
+            tabela === "config_mototaxi"
+              ? Promise.resolve({
+                  data: { whatsapp: null, nome: null },
+                  error: null,
+                })
+              : ler(tabela, colunas, coluna, id),
         }),
       }),
       upsert: (

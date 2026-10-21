@@ -65,14 +65,12 @@
 :where(html.admin-mode[data-admin-tema]) .border-white\/\[0\.14\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.14)}
 :where(html.admin-mode[data-admin-tema]) .border-white\/\[0\.17\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.17)}
 :where(html.admin-mode[data-admin-tema]) .border-white\/10:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.1)}
+:where(html.admin-mode[data-admin-tema]) .border-zinc-50:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text))}
 :where(html.admin-mode[data-admin-tema]) .border-zinc-600:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-border-strong))}
 :where(html.admin-mode[data-admin-tema]) .border-zinc-700:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-border-strong))}
-:where(html.admin-mode[data-admin-tema]) .border-zinc-700\/50:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-border-strong) / 0.5)}
 :where(html.admin-mode[data-admin-tema]) .border-zinc-800\/30:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-border) / 0.3)}
-:where(html.admin-mode[data-admin-tema]) .border-zinc-800\/40:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-border) / 0.4)}
 :where(html.admin-mode[data-admin-tema]) .divide-white\/\[0\.06\]:where(:not([data-tema-fixo], [data-tema-fixo] *)) > :not([hidden]) ~ :not([hidden]){border-color:hsl(var(--admin-text) / 0.06)}
 :where(html.admin-mode[data-admin-tema]) .divide-zinc-800\/30:where(:not([data-tema-fixo], [data-tema-fixo] *)) > :not([hidden]) ~ :not([hidden]){border-color:hsl(var(--admin-border))}
-:where(html.admin-mode[data-admin-tema]) .divide-zinc-900\/40:where(:not([data-tema-fixo], [data-tema-fixo] *)) > :not([hidden]) ~ :not([hidden]){border-color:hsl(var(--admin-border))}
 :where(html.admin-mode[data-admin-tema="claro"]) .fill-emerald-400\/20:where(:not([data-tema-fixo], [data-tema-fixo] *)){fill:#065f46}
 :where(html.admin-mode[data-admin-tema]) .fill-white:where(:not([data-tema-fixo], [data-tema-fixo] *)){fill:hsl(var(--admin-text))}
 :where(html.admin-mode[data-admin-tema]) .fill-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){fill:hsl(var(--admin-text-soft))}
@@ -83,12 +81,12 @@
 :where(html.admin-mode[data-admin-tema]) .from-white\/\[0\.05\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-text) / 0.05) var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema]) .from-white\/\[0\.06\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-text) / 0.06) var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema]) .from-zinc-800:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-raised)) var(--tw-gradient-from-position)}
-:where(html.admin-mode[data-admin-tema]) .from-zinc-800\/60:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-raised) / 0.6) var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema]) .from-zinc-900:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-bg)) var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema]) .from-zinc-900\/40:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-bg) / 0.4) var(--tw-gradient-from-position)}
 :where(html.admin-mode[data-admin-tema]) .placeholder-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .placeholder-zinc-600:where(:not([data-tema-fixo], [data-tema-fixo] *))::placeholder{color:hsl(var(--admin-text-soft))}
-:where(html.admin-mode[data-admin-tema]) .ring-zinc-800:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:hsl(var(--admin-border))}
+:where(html.admin-mode[data-admin-tema="claro"]) .text-\[\#25d366\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#166534}
+:where(html.admin-mode[data-admin-tema="claro"]) .text-\[\#25D366\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#166534}
 :where(html.admin-mode[data-admin-tema="claro"]) .text-\[\#6DE0CF\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#115e59}
 :where(html.admin-mode[data-admin-tema="claro"]) .text-\[\#75DBFF\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#075985}
 :where(html.admin-mode[data-admin-tema="claro"]) .text-\[\#91ABFF\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#1d4ed8}
@@ -117,7 +115,6 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .text-emerald-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}
 :where(html.admin-mode[data-admin-tema="claro"]) .text-emerald-500\/50:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}
 :where(html.admin-mode[data-admin-tema="claro"]) .text-emerald-500\/70:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}
-:where(html.admin-mode[data-admin-tema="claro"]) .text-green-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#166534}
 :where(html.admin-mode[data-admin-tema="claro"]) .text-green-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#166534}
 :where(html.admin-mode[data-admin-tema="claro"]) .text-indigo-300:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#4338ca}
 :where(html.admin-mode[data-admin-tema="claro"]) .text-orange-200:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#9a3412}
@@ -178,6 +175,8 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>input\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>input{border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>select\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>select{border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>textarea\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>textarea{border-color:#dc2626}
+:where(html.admin-mode[data-admin-tema]) .aria-pressed\:bg-zinc-800[aria-pressed="true"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-raised))}
+:where(html.admin-mode[data-admin-tema]) .aria-pressed\:border-zinc-400[aria-pressed="true"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .before\:bg-zinc-700:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{background-color:hsl(var(--admin-hover))}
 :where(html.admin-mode[data-admin-tema]) .before\:text-zinc-300:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{color:hsl(var(--admin-text-2))}
 :where(html.admin-mode[data-admin-tema]) .dark\:data-\[state\=active\]\:bg-admin-gold\/10[data-state="active"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
@@ -196,6 +195,7 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .selection\:text-emerald-200:where(:not([data-tema-fixo], [data-tema-fixo] *))::selection{color:#065f46}
 :where(html.admin-mode[data-admin-tema]) .selection\:text-white:where(:not([data-tema-fixo], [data-tema-fixo] *))::selection{color:hsl(var(--admin-text))}
 :where(html.admin-mode[data-admin-tema]) .focus-within\:border-white\/\[0\.35\]:focus-within:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.35)}
+:where(html.admin-mode[data-admin-tema]) .focus-within\:ring-zinc-400:focus-within:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-admin-gold\/10:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-admin-gold\/15:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.15)}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-admin-gold\/20:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.2)}
@@ -214,7 +214,6 @@
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-zinc-900\/20:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-bg) / 0.2)}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-zinc-900\/40:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-bg) / 0.4)}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-zinc-900\/50:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-bg) / 0.5)}
-:where(html.admin-mode[data-admin-tema]) .hover\:bg-zinc-950\/60:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-bg) / 0.6)}
 :where(html.admin-mode[data-admin-tema]) .hover\:border-white\/\[0\.12\]:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.12)}
 :where(html.admin-mode[data-admin-tema]) .hover\:border-white\/20:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.2)}
 :where(html.admin-mode[data-admin-tema]) .hover\:border-white\/25:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.25)}
@@ -247,13 +246,11 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .focus-visible\:ring-red-300:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .focus-visible\:ring-sky-300:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:#0284c7}
 :where(html.admin-mode[data-admin-tema="claro"]) .focus-visible\:ring-violet-300:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:#7c3aed}
+:where(html.admin-mode[data-admin-tema]) .focus-visible\:ring-zinc-400:focus-visible:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .enabled\:hover\:border-white\/25:enabled:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text) / 0.25)}
 :where(html.admin-mode[data-admin-tema]) .disabled\:bg-zinc-900:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-bg))}
-:where(html.admin-mode[data-admin-tema]) .disabled\:from-zinc-800:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-from:hsl(var(--admin-raised)) var(--tw-gradient-from-position)}
-:where(html.admin-mode[data-admin-tema]) .disabled\:text-zinc-300:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-2))}
 :where(html.admin-mode[data-admin-tema]) .disabled\:text-zinc-400:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .disabled\:text-zinc-600:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
-:where(html.admin-mode[data-admin-tema]) .disabled\:to-zinc-800:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-gradient-to:hsl(var(--admin-raised)) var(--tw-gradient-to-position)}
 :where(html.admin-mode[data-admin-tema]) .group:hover .group-hover\:bg-admin-gold\/10:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
 :where(html.admin-mode[data-admin-tema="claro"]) .group:hover .group-hover\:text-emerald-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}
 :where(html.admin-mode[data-admin-tema="claro"]) .group:hover .group-hover\:text-emerald-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}

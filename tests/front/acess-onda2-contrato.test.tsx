@@ -85,7 +85,7 @@ describe("achado 9 — recusas anunciadas: cupom e frete pendente", () => {
     // campo) trocou só o tamanho do texto: text-sm virou text-base md:text-sm
     // (16px no celular, 14px no desktop); o anel de foco segue intacto.
     expect(src).toContain(
-      'className="flex-1 rounded-md bg-transparent text-base outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 md:text-sm"',
+      'className="min-w-0 flex-1 rounded-md bg-transparent text-base outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 md:text-sm"',
     );
     expect(src).toContain(
       'className="flex items-center gap-1 text-xs text-red-700"',

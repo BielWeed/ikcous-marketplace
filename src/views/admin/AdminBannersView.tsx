@@ -2131,7 +2131,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                   title="Como usar os Banners"
                   onClick={() => setShowHelpModal(true)}
                 >
-                  <HelpCircle className="size-5" />
+                  <span aria-hidden="true">
+                    <HelpCircle className="size-5" />
+                  </span>
                 </Button>
               </div>
               <p className="text-sm">
@@ -2314,9 +2316,10 @@ export const AdminBannersView = memo(function AdminBannersView({
               >
                 <ArrowLeft className="size-5" />
               </Button>
-              <h1 className="text-lg font-semibold text-white">
-                {editingBanner ? "Editar Banner" : "Novo Banner"}
-              </h1>
+              <AdminPageHeader
+                titulo={editingBanner ? "Editar Banner" : "Novo Banner"}
+                tituloEncolhe
+              />
             </header>
             {draftToRecover && (
               <aside className="space-y-3 rounded-2xl border border-admin-border bg-admin-surface p-4">

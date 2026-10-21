@@ -911,7 +911,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                     titulo="Falta o endereço da retirada"
                     detalhe="O cliente precisa saber onde buscar. Cadastre o endereço da loja."
                     botao="Abrir Minha loja"
-                    onClick={                      onNavigate
+                    onClick={
+                      onNavigate
                         ? () => onNavigate("admin-about-store")
                         : undefined
                     }
@@ -1063,7 +1064,9 @@ export const AdminShippingView = memo(function AdminShippingView({
                     autoComplete="off"
                     value={contatoMototaxi.whatsapp}
                     aria-invalid={erroMototaxi}
-                    aria-describedby={erroMototaxi ? "mototaxi-erro" : undefined}
+                    aria-describedby={
+                      erroMototaxi ? "mototaxi-erro" : undefined
+                    }
                     onChange={(e) => {
                       setFalhaAoSalvar(false);
                       setContatoMototaxi((c) => ({
@@ -1108,8 +1111,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                   />
                 </div>
                 <p className="text-xs text-zinc-500">
-                  No pedido de entrega local aparece “Enviar ao mototáxi”, com
-                  a mensagem pronta.
+                  No pedido de entrega local aparece “Enviar ao mototáxi”, com a
+                  mensagem pronta.
                 </p>
               </fieldset>
               {mototaxi.erro && (

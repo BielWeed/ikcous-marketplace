@@ -219,7 +219,7 @@ describe("a tela de Ajustes", () => {
     // Descrição: text-xs e contraste mínimo zinc-400 (nada de 11px/zinc-500).
     const descricao = cartao.querySelector("[data-grupo-subtitulo]")!;
     expect(descricao.className).toContain("text-xs");
-    expect(descricao.className).toContain("text-orange-300");
+    expect(descricao.className).toContain("text-amber-400");
     expect(descricao.textContent).toBe("Falta: CEP da loja");
     expect(descricao.className).not.toContain("text-[11px]");
     // Selo laranja da entrega e seta ChevronRight, conforme o desenho aprovado.
