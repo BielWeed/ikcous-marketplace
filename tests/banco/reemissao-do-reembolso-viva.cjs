@@ -36,14 +36,18 @@ const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
 const {
   desfazerReembolsoEmDuvidaNaTransacao,
 } = require("./reembolso-em-duvida-posterior.cjs");
+const {
+  desfazerPagamentoAdiantadoNaTransacao,
+} = require("./pagamento-adiantado-posterior.cjs");
 
 /**
- * Abre a transacao no cliente principal e, se a SUCESSORA 20261241000000 (o reembolso em duvida prende o saldo)
- * estiver no ar, desfaz ela primeiro: ela reescreve corpos desta migration, e o pre-voo daqui (e do rollback daqui)
- * recusa o corpo dela. Assim cada caso mede ESTA migration isolada, como antes da sucessora existir.
+ * Abre a transacao e desfaz as sucessoras no ar, da mais nova para a mais velha: 270 antes da 241.
+ * Elas reescrevem corpos que o pre-voo daqui (e do rollback daqui) recusa.
+ * Assim cada caso mede ESTA migration isolada, como antes das sucessoras existirem.
  */
 async function comecarSem1241() {
   await C.query("BEGIN");
+  await desfazerPagamentoAdiantadoNaTransacao(C);
   await desfazerReembolsoEmDuvidaNaTransacao(C);
 }
 

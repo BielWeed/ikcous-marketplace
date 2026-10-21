@@ -716,6 +716,11 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   (DEPOIS, 9 linhas) e `47b-antes-a-loja-escolhe-como-entrega-base-vigente` (ANTES, 9 linhas) do lote `20261244000000`; rol exato nos estados
   DEPOIS, ANTES (rollback comum) e ANTES (comum + destrutivo), 25 negativos da 47a e 15 da 47b, sete mutantes do texto, e as antecessoras 8e, 9a, 31a, 37a
   e 40a aceitando o corpo novo como sucessor. **Não prova** a IKCOUS nem a Savy.
+- **as provas que DESFAZEM corpos redefinidos pela `20261270000000`** (`reemissao-do-reembolso`, com seu portão,
+  a prova MIGRATION de `reembolso-em-duvida` e seu portão) a desfazem ANTES da 241, na transação do clone,
+  por `pagamento-adiantado-posterior.cjs` (só se no ar). A 270 redefine `concluir_estorno`: os pré-voos da 226/241
+  e as consultas históricas 29b/43b exigem o corpo anterior. O helper afirma o hash restaurado; as demais provas
+  de comportamento da 241 continuam medindo o corpo de produção.
 - **as provas que DESFAZEM corpos redefinidos pela `20261244000000`** (`endereco-no-pedido`, `a-compra-que-da-zero-reais...`, `loja-declara-quem-e` e
   `portao-8e-aceita-sucessoras`, mais a cadeia das sucessoras da 99) a desfazem ANTES por `a-loja-escolhe-como-entrega-posterior.cjs`.
 - **as provas que DESFAZEM corpos redefinidos pela `20261243000000`** (`pagamentos-rpc` e `admin-atual`: o rollback da 95 e da
