@@ -3957,6 +3957,7 @@ export function useOrders(
               new Error("Não foi possível conferir o valor final do pedido."),
               {
                 code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+                pedidoId: data,
                 cause: causa?.cause ?? causa,
               },
             );

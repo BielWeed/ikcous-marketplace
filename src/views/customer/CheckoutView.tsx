@@ -4040,6 +4040,39 @@ export function CheckoutViewDaConta({
       ...item,
       product: { ...item.product },
     }));
+    // Também vale quando a RPC confirmou o pedido, mas a leitura do total
+    // falhou: a compra saiu do carrinho, sem autorizar pagamento.
+    const limparCompraCriada = () => {
+      gerenteDaChaveRef.current?.esquecer();
+      pedidoCongeladoRef.current = null;
+      limparRascunhoDoCheckout(globalThis.sessionStorage);
+      // Cancelar devolve só o que realmente saiu do carrinho.
+      itensDoPedidoParaRestaurarRef.current = [];
+      const carrinhoAtual = carrinhoAtualRef.current;
+      if (
+        assinaturaDosItensDoCarrinho(carrinhoAtual) ===
+        assinaturaDosItensDoCarrinho(itensEnviados)
+      ) {
+        onClearCart();
+        itensDoPedidoParaRestaurarRef.current = itensEnviados;
+      } else if (removeFromCart) {
+        // Mudanças feitas durante o envio ficam; só sai a linha intacta.
+        for (const item of itensEnviados) {
+          if (
+            carrinhoAtual.some(
+              (atual) =>
+                atual.product.id === item.product.id &&
+                (atual.variantId || "") === (item.variantId || "") &&
+                atual.quantity === item.quantity,
+            )
+          ) {
+            removeFromCart(item.product.id, item.variantId);
+            itensDoPedidoParaRestaurarRef.current.push(item);
+          }
+        }
+      }
+      setIsSummaryPanelOpen(false);
+    };
     try {
       const order = await aguardarComPrazo(
         createOrder(orderData, { comPagamentoOnline: ehOnline }),
@@ -4051,15 +4084,8 @@ export function CheckoutViewDaConta({
       );
       // A resposta pertence à tela que enviou, não a uma compra aberta depois.
       if (!montadoRef.current) return;
-      // O pedido entrou. A chave cumpriu seu papel: a PRÓXIMA compra — mesmo
-      // com carrinho idêntico — tem de nascer com chave nova, não herdar a
-      // resposta desta.
-      gerenteDaChaveRef.current?.esquecer();
-      pedidoCongeladoRef.current = null;
-      // O rascunho morre junto (laudo 3108, N7): compra fechada não tem
-      // rascunho — vale para sucesso E para aguardando pagamento (o pedido
-      // nasceu nos dois; o que segue é pagamento, não digitação).
-      limparRascunhoDoCheckout(globalThis.sessionStorage);
+      // Pedido confirmado: a próxima compra terá outra chave e outro rascunho.
+      limparCompraCriada();
 
       // O CPF MORA NA CONTA (23/09/2026): pedido JÁ criado com sucesso —
       // isto é conveniência para a PRÓXIMA compra, nunca condição deste
@@ -4096,42 +4122,6 @@ export function CheckoutViewDaConta({
               Math.round(pedido.valor * 100),
           ) > 0,
       );
-      // CHECKOUT-070 (#197): cancelar devolve só o que saiu do carrinho.
-      // Linha preservada por ter mudado não pode ser somada de novo depois.
-      itensDoPedidoParaRestaurarRef.current = [];
-
-      const carrinhoAtual = carrinhoAtualRef.current;
-      if (
-        assinaturaDosItensDoCarrinho(carrinhoAtual) ===
-        assinaturaDosItensDoCarrinho(itensEnviados)
-      ) {
-        onClearCart();
-        itensDoPedidoParaRestaurarRef.current = itensEnviados;
-      } else if (removeFromCart) {
-        // A compra mudou durante o envio: só sai a linha comprada que ainda
-        // está intacta. Quantidade ou variação alterada fica no carrinho.
-        for (const item of itensEnviados) {
-          if (
-            carrinhoAtual.some(
-              (atual) =>
-                atual.product.id === item.product.id &&
-                (atual.variantId || "") === (item.variantId || "") &&
-                atual.quantity === item.quantity,
-            )
-          ) {
-            removeFromCart(item.product.id, item.variantId);
-            itensDoPedidoParaRestaurarRef.current.push(item);
-          }
-        }
-      }
-      // Achado 4 da revisão (17/08/2026): sem isto `isSummaryPanelOpen`
-      // continuava `true` na tela seguinte (sucesso ou aguardando
-      // pagamento) — o painel deixa de fazer sentido aqui, junto com o
-      // carrinho que acabou de ser limpo, e o primeiro "voltar" naquela
-      // tela fechava um painel invisível em vez de agir pelo ramo de
-      // `showSuccess || aguardandoPagamento`.
-      setIsSummaryPanelOpen(false);
-
       if (ehOnline) {
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
         // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
@@ -4153,6 +4143,15 @@ export function CheckoutViewDaConta({
     } catch (error: any) {
       if (!montadoRef.current) return;
       console.error("Error creating order:", error);
+      if (
+        error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" &&
+        typeof error.pedidoId === "string" &&
+        error.pedidoId !== ""
+      ) {
+        // O ID veio da RPC bem-sucedida, não de uma tentativa sem resposta.
+        // Não ligar aguardandoPagamento: falta o total autoritativo.
+        limparCompraCriada();
+      }
       // EMENDA R3-4 (CONTRATO-1.5.7.md §9): a config pode ter mudado numa
       // corrida rara ENTRE a checagem acima e o clique chegar ao banco — a
       // RPC recusa com o marcador FRETE_COTACAO_DESATUALIZADA. Mesma saída

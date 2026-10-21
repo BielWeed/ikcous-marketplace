@@ -233,6 +233,7 @@ async function finalizar() {
 
 describe("CheckoutView — cartão pelo app", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     createOrder.mockReset();
     createOrder.mockResolvedValue({ id: "ped-777", totalAmount: 120 });
     onNavigate.mockClear();
@@ -362,12 +363,13 @@ describe("CheckoutView — cartão pelo app", () => {
     },
   );
 
-  it("falha ao ler o total de um pedido já criado não abre pagamento nem permite finalizar de novo", async () => {
+  it("falha ao ler o total limpa a compra já criada sem abrir pagamento nem permitir finalizar de novo", async () => {
     createOrder.mockRejectedValueOnce(
       Object.assign(
         new Error("Não foi possível conferir o valor final do pedido."),
         {
           code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+          pedidoId: "ped-777",
         },
       ),
     );
@@ -376,6 +378,9 @@ describe("CheckoutView — cartão pelo app", () => {
     await montar(CheckoutView);
     await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
     await finalizar();
+    expect(mockCart).toEqual([]);
+    expect(sessionStorage.getItem("ikcous-rascunho-do-checkout-v1")).toBeNull();
+    expect(sessionStorage.getItem("ikcous-chave-do-pedido")).toBeNull();
     expect(propsDoPagamento).toHaveLength(0);
     expect(document.body.textContent).toContain(
       "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.",
@@ -386,6 +391,29 @@ describe("CheckoutView — cartão pelo app", () => {
     await clicar(botaoPorTexto(document.body, "Ver meus pedidos")!);
     expect(onNavigate).toHaveBeenCalledWith("orders");
   });
+
+  it.each([
+    { code: "TOTAL_DO_PEDIDO_INDISPONIVEL" },
+    { code: "TOTAL_DO_PEDIDO_INDISPONIVEL", pedidoId: "" },
+    { code: "23505", pedidoId: "ped-777", message: "Pedido recusado" },
+  ])(
+    "sem confirmação de pedido criado, mantém carrinho e rascunho: %j",
+    async (erro) => {
+      createOrder.mockRejectedValueOnce(erro);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await montar(CheckoutView);
+      await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+      await finalizar();
+
+      expect(mockCart).toHaveLength(1);
+      expect(
+        sessionStorage.getItem("ikcous-rascunho-do-checkout-v1"),
+      ).not.toBeNull();
+      expect(sessionStorage.getItem("ikcous-chave-do-pedido")).not.toBeNull();
+      expect(propsDoPagamento).toHaveLength(0);
+    },
+  );
 
   it("total gravado igual ao carrinho não mostra aviso de diferença", async () => {
     createOrder.mockResolvedValueOnce({ id: "ped-777", totalAmount: 120 });

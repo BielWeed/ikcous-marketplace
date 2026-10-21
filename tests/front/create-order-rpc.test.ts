@@ -159,6 +159,7 @@ describe("total do pagamento vem do pedido gravado", () => {
       createOrder(DADOS_MINIMOS, { comPagamentoOnline: true }),
     ).rejects.toMatchObject({
       code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+      pedidoId: "ped-1",
     });
   });
 
@@ -173,6 +174,7 @@ describe("total do pagamento vem do pedido gravado", () => {
       createOrder(DADOS_MINIMOS, { comPagamentoOnline: true }),
     ).rejects.toMatchObject({
       code: "TOTAL_DO_PEDIDO_INDISPONIVEL",
+      pedidoId: "ped-1",
     });
     expect(supabase.rpc).toHaveBeenCalledTimes(1);
   });
