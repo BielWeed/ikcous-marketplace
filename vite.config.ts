@@ -7,6 +7,7 @@ import type { UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
 import { escalasEnxutasDoGrafico } from "./scripts/escalasEnxutasDoGrafico";
+import { graficoEnxuto } from "./scripts/graficoEnxuto";
 import { helpersCompartilhadosDoGrafico } from "./scripts/helpersCompartilhadosDoGrafico";
 import { portaoDividido } from "./scripts/portaoDividido";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
@@ -139,6 +140,9 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       // do painel só usam 3 escalas (~6 kB brotli). Detalhes e a trava que
       // protege o caso `scale="time"` em scripts/escalasEnxutasDoGrafico.ts.
       escalasEnxutasDoGrafico(),
+      // Caminhos não usados do Recharts e interpolação só numérica. Guardas e
+      // prova SVG dos três gráficos em tests/front/grafico-enxuto* e helpers*.
+      graficoEnxuto(),
       // Helpers Babel com AST e bindings aprovados passam a uma definição
       // compartilhada, só dentro do Recharts, antes da minificação.
       helpersCompartilhadosDoGrafico(),
@@ -246,6 +250,10 @@ export default defineConfig(async (context): Promise<UserConfig> => {
               /\/src\/components\/ui\/(select|tabs|badge|card|dropdown-menu)\.tsx$/.test(
                 normalizedId,
               ) ||
+              // Só estes dois módulos foram medidos como exclusivos do painel.
+              // Não ampliar para hooks/componentes vizinhos: uma dependência da
+              // vitrine arrastaria TODO o painel-ui para o orçamento da loja.
+              /\/src\/lib\/(financeiro|crm)\.ts$/.test(normalizedId) ||
               normalizedId.endsWith("/src/hooks/useScrollRestoration.ts") ||
               /\/src\/(components\/layouts\/AcaoDaBarra\.tsx|lib\/erro-do-painel\.ts|utils\/variante-composta\.ts)$/.test(
                 normalizedId,
