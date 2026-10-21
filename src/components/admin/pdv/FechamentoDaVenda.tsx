@@ -263,6 +263,15 @@ export function FechamentoDaVenda({
             </span>
             <strong className="text-sm">R$ {reais(subtotal)}</strong>
           </div>
+          <p className="pdv-summary-names">
+            <span>
+              {estado.itens
+                .slice(0, 2)
+                .map((item) => item.nome)
+                .join(", ")}
+            </span>
+            {estado.itens.length > 2 && <span>+{estado.itens.length - 2}</span>}
+          </p>
           {estado.cliente.tipo !== "sem_cliente" && (
             <p className="pdv-muted">Cliente: {estado.cliente.nome}</p>
           )}

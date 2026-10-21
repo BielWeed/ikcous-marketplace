@@ -398,6 +398,26 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+.pdv-summary-names {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: hsl(var(--admin-text-soft));
+}
+.pdv-summary-names > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pdv-summary-names > span:last-child {
+  flex-shrink: 0;
+}
+.pdv-summary-names > span:only-child {
+  flex-shrink: 1;
+}
 .pdv-resumo-qtd {
   display: none;
 }

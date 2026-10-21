@@ -174,6 +174,46 @@ it("o resumo aparece uma só vez no fechamento e Cancelar fica fora da rolagem",
   expect(host.querySelector(".pdv-cancel")).not.toBeNull();
 });
 
+it.each([1, 4])(
+  "o resumo condensa %i nomes em uma linha sem duplicar a leitura",
+  async (quantidade) => {
+    const itens = Array.from({ length: quantidade }, (_, indice) => ({
+      ...item,
+      chave: `p${indice}`,
+      productId: `p${indice}`,
+      nome: `Produto ${indice + 1}`,
+    }));
+    await act(async () =>
+      raiz.render(
+        <FechamentoDaVenda
+          estado={{ ...inicial, etapa: "fechamento", itens }}
+          despachar={vi.fn()}
+          aoRegistrarVenda={vi.fn()}
+          limparCupom={vi.fn()}
+        />,
+      ),
+    );
+    const nomes = host.querySelector(".pdv-checkout-body .pdv-summary-names");
+    expect(nomes).not.toBeNull();
+    expect(host.querySelectorAll(".pdv-summary-names")).toHaveLength(1);
+    expect(nomes?.firstElementChild?.textContent).toBe(
+      quantidade === 1 ? "Produto 1" : "Produto 1, Produto 2",
+    );
+    if (quantidade > 2) {
+      expect(nomes?.lastElementChild?.textContent).toBe("+2");
+      expect(nomes?.textContent).not.toContain("Produto 3");
+    }
+    const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8");
+    expect(css).toMatch(/\.pdv-summary-names\s*\{[^}]*white-space:\s*nowrap/);
+    expect(css).toMatch(
+      /\.pdv-summary-names > span:first-child\s*\{[^}]*text-overflow:\s*ellipsis/,
+    );
+    expect(css).toMatch(
+      /\.pdv-footer > \.pdv-checkout-breakdown\s*\{[^}]*display:\s*none/,
+    );
+  },
+);
+
 it("a escolha de variação mantém o título principal acessível", () => {
   const view = readFileSync("src/views/admin/AdminPdvView.tsx", "utf8");
   const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8");
