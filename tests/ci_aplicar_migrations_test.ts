@@ -37,6 +37,33 @@ const WORKFLOW = fromFileUrl(
   new URL("../.github/workflows/aplicar-migrations.yml", import.meta.url),
 );
 
+Deno.test("verificação final do apply: a assinatura do PDV é a última criada, não a apagada pela migration", async () => {
+  const dir = new URL("../supabase/migrations/", import.meta.url);
+  const nomes = [...Deno.readDirSync(dir)]
+    .map((e) => e.name)
+    .filter((n) => /^\d{14}_.*\.sql$/.test(n))
+    .sort();
+  const definicoes = [];
+  for (const nome of nomes) {
+    const sql = await Deno.readTextFile(new URL(nome, dir));
+    const m = sql.match(
+      /^CREATE OR REPLACE FUNCTION public\.registrar_venda_presencial\(([^\n]+)\)/m,
+    );
+    if (m) definicoes.push(m[1]);
+  }
+  assert(definicoes.length > 0, "o extrator tem de encontrar a RPC");
+  const tipos = definicoes
+    .at(-1)
+    .split(",")
+    .map((p) => p.trim().split(/\s+/)[1]);
+  const assinatura = `public.registrar_venda_presencial(${tipos.join(",")})`;
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  assertStringIncludes(
+    yaml,
+    `has_function_privilege('authenticated', '${assinatura}', 'EXECUTE') as venda`,
+  );
+});
+
 /** Tira o trecho JS de resolução do ref, exatamente como está no arquivo,
  * entre os marcadores — sem os próprios marcadores. */
 function extrairTrechoDeResolucaoDoRef(yaml: string): string {

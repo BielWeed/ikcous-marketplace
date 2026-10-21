@@ -26,7 +26,7 @@ WITH ord AS (
            AND q.proname = 'registrar_venda_presencial') AS sobrecargas,
          l.lanname = 'plpgsql' AND p.prosecdef AND p.provolatile = 'v'
            AND NOT p.proisstrict AND NOT p.proretset
-           AND (p.pronargs = 8 OR (p.pronargs = 9 AND md5(replace(p.prosrc, chr(13), '')) = 'd1da704579d91c278dd46747b4d08b43'))
+           AND (p.pronargs = 8 OR (p.pronargs = 9 AND md5(replace(p.prosrc, chr(13), '')) = '79b779b98a5d6f6205a31309d5593eb9'))
            AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]
            AND pg_get_function_result(p.oid) = 'jsonb'
            AND p.proowner = (SELECT dono FROM ord) AS atributos
@@ -42,7 +42,7 @@ WITH ord AS (
          COALESCE((SELECT sobrecargas::text FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'registrar_venda_presencial: corpo da 20261249000000 (motivo privado, md5)', '796e0aaeb00b6f5133a54ce12f2df396',
-         COALESCE((SELECT CASE WHEN m = 'd1da704579d91c278dd46747b4d08b43'
+         COALESCE((SELECT CASE WHEN m = '79b779b98a5d6f6205a31309d5593eb9'
                        THEN '796e0aaeb00b6f5133a54ce12f2df396' ELSE m END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)', 'sim',

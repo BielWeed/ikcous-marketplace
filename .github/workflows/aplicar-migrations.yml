@@ -472,7 +472,7 @@ jobs:
                     has_function_privilege('authenticated', 'public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)', 'EXECUTE') as paged8,
                     has_function_privilege('authenticated', 'public.get_admin_orders_cancelados_recentes(integer,integer,integer)', 'EXECUTE') as cancelados,
                     has_function_privilege('authenticated', 'public.buscar_por_codigo_barras(text)', 'EXECUTE') as codigo,
-                    has_function_privilege('authenticated', 'public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)', 'EXECUTE') as venda,
+                    has_function_privilege('authenticated', 'public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)', 'EXECUTE') as venda,
                     exists (select 1 from information_schema.columns where table_name='marketplace_orders' and column_name='canal') as col_canal,
                     exists (select 1 from information_schema.columns where table_name='produtos' and column_name='codigo_barras') as col_codigo\`);
                 console.log('VERIFICAÇÃO:', verificacao);

@@ -3066,6 +3066,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     A54,
     A55,
     A56,
+    "57a-conferir-total-do-balcao-aplicado",
   ]);
 });
 

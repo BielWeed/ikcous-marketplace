@@ -10,7 +10,7 @@ async function desfazerTotalConferidoNaTransacao(c) {
     await c.query(`SELECT COALESCE((SELECT md5(replace(prosrc, chr(13), ''))
     FROM pg_proc WHERE oid=to_regprocedure(
       'public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)'))
-    = 'd1da704579d91c278dd46747b4d08b43',false) AS sim`);
+    = '79b779b98a5d6f6205a31309d5593eb9',false) AS sim`);
   if (r.rows[0]?.sim !== true) return false;
   await c.query(
     fs.readFileSync(

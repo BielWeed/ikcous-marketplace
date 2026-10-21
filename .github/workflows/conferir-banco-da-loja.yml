@@ -207,6 +207,8 @@ on:
           - 55b-antes-intencao-do-caixa-base-vigente
           - 56a-conferir-motivo-da-recusa-do-cartao-aplicado
           - 56b-antes-motivo-da-recusa-do-cartao-base-vigente
+          - 57a-conferir-total-do-balcao-aplicado
+          - 57b-antes-total-do-balcao-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

@@ -8,11 +8,18 @@
 -- ser enviados JUNTOS, no mesmo arquivo/transação. Nunca executar linha a linha.
 -- Não inclui controle de transação próprio (invalidaria db-prove-rollback.cjs).
 -- Dono é preservado; REVOKE/GRANT repetem exatamente a permissão anterior.
+-- Risco conhecido, sem mudança nesta migration: price_override é numeric sem
+-- escala; o front arredonda por unidade e o servidor multiplica o valor bruto.
+-- Preços com mais de duas casas podem provocar PDV01 por arredondamento.
+-- ROLLBACK: publicar de volta o FRONT anterior (sem p_total_esperado) ANTES
+-- de desfazer o banco; o front novo contra a assinatura antiga falha PGRST202.
 -- Última definição anterior: 20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql:184-540.
 -- ROLLBACK abaixo é o arquivo rollback-manual correspondente, como comentário.
 -- INICIO DO ROLLBACK
 -- -- Rollback da 20261280: restaura assinatura e corpo da 20261249000000 byte a byte.
 -- -- Aplicar como um arquivo inteiro na transação do aplicador; não apaga vendas.
+-- -- Publicar de volta o FRONT anterior (sem p_total_esperado) ANTES do rollback
+-- -- do banco; o front novo contra a assinatura antiga falha PGRST202.
 -- DO $preflight_20261280$
 -- DECLARE
 --     v_antiga oid := to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)');
@@ -27,7 +34,7 @@
 --     v_oid := COALESCE(v_antiga, v_nova);
 --     SELECT md5(replace(prosrc, chr(13), '')) INTO v_hash FROM pg_proc WHERE oid=v_oid;
 --     IF (v_antiga IS NOT NULL AND v_hash IS DISTINCT FROM '796e0aaeb00b6f5133a54ce12f2df396')
---        OR (v_nova IS NOT NULL AND v_hash IS DISTINCT FROM 'd1da704579d91c278dd46747b4d08b43') THEN
+--        OR (v_nova IS NOT NULL AND v_hash IS DISTINCT FROM '79b779b98a5d6f6205a31309d5593eb9') THEN
 --         RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo da venda do balcão não é o da 249 nem o da 280.';
 --     END IF;
 --     IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
@@ -449,7 +456,7 @@ BEGIN
     SELECT CASE WHEN v_antiga IS NOT NULL THEN e.hash_vigente ELSE e.hash_desta END
       INTO v_esperado
       FROM (VALUES
-        ('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)', '796e0aaeb00b6f5133a54ce12f2df396', 'd1da704579d91c278dd46747b4d08b43')
+        ('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)', '796e0aaeb00b6f5133a54ce12f2df396', '79b779b98a5d6f6205a31309d5593eb9')
       ) AS e(assinatura, hash_vigente, hash_desta);
     SELECT md5(replace(prosrc, chr(13), '')) INTO v_hash FROM pg_proc WHERE oid=v_oid;
     IF v_hash IS DISTINCT FROM v_esperado THEN
@@ -503,6 +510,7 @@ DECLARE
     v_desconto numeric := 0;
     v_total numeric := 0;
     v_itens_conferidos jsonb := '[]'::jsonb;
+    v_indice_item integer := 0;
     v_customer_name text;
     v_motivo text;
 BEGIN
@@ -631,9 +639,9 @@ BEGIN
                   JOIN public.product_variants v ON v.product_id = p.id
                  WHERE v.id = v_variant_id AND p.id = v_product_id
                    AND v.active = true AND p.ativo = true AND p.deleted_at IS NULL
-                   -- O pai também fornece preço (override NULL) e precisa
-                   -- ficar estável até o snapshot dos itens ser gravado.
-                   FOR NO KEY UPDATE OF v, p;
+                   -- Mesma ordem da 249/v24: só a variação. Travar também o
+                   -- pai aqui cria impasse com o gatilho da baixa online.
+                   FOR NO KEY UPDATE OF v;
             ELSE
                 -- A TRAVA DE LINHA VEM PRIMEIRO, e a guarda de variação
                 -- obrigatória vem DEPOIS — é a ordem que a v23 tem desde
@@ -780,11 +788,8 @@ BEGIN
                     RAISE EXCEPTION USING ERRCODE='22023', MESSAGE=format('Estoque insuficiente para o produto %s', v_item_name);
                 END IF;
 
-                -- Releitura do preço DEPOIS da baixa, como a v23 faz
-                -- (20261081000000:530-534 e :546): o snapshot do item é o
-                -- preço que valia no instante em que a peça saiu da prateleira.
-                SELECT COALESCE(v.price_override, p.preco_venda), p.nome
-                  INTO v_db_price, v_item_name
+                SELECT p.nome
+                  INTO v_item_name
                   FROM public.produtos p
                   JOIN public.product_variants v ON v.product_id = p.id
                  WHERE v.id = v_variant_id;
@@ -799,11 +804,16 @@ BEGIN
                     RAISE EXCEPTION USING ERRCODE='22023', MESSAGE=format('Estoque insuficiente para o produto %s', v_item_name);
                 END IF;
 
-                SELECT p.preco_venda, p.nome
-                  INTO v_db_price, v_item_name
+                SELECT p.nome
+                  INTO v_item_name
                   FROM public.produtos p
                  WHERE p.id = v_product_id;
             END IF;
+
+            -- Preço da mesma posição conferida no primeiro laço, inclusive
+            -- item repetido: nunca reler preço depois de aprovar o total.
+            v_db_price := (v_itens_conferidos->v_indice_item->>'price')::numeric;
+            v_indice_item := v_indice_item + 1;
 
             -- As MESMAS 6 colunas da v23 (20261081000000:549-553).
             -- `image_url` fica FORA: o mapper do front já cai na imagem do

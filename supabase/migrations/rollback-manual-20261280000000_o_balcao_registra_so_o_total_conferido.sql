@@ -1,5 +1,7 @@
 -- Rollback da 20261280: restaura assinatura e corpo da 20261249000000 byte a byte.
 -- Aplicar como um arquivo inteiro na transação do aplicador; não apaga vendas.
+-- Publicar de volta o FRONT anterior (sem p_total_esperado) ANTES do rollback
+-- do banco; o front novo contra a assinatura antiga falha PGRST202.
 DO $preflight_20261280$
 DECLARE
     v_antiga oid := to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)');
@@ -14,7 +16,7 @@ BEGIN
     v_oid := COALESCE(v_antiga, v_nova);
     SELECT md5(replace(prosrc, chr(13), '')) INTO v_hash FROM pg_proc WHERE oid=v_oid;
     IF (v_antiga IS NOT NULL AND v_hash IS DISTINCT FROM '796e0aaeb00b6f5133a54ce12f2df396')
-       OR (v_nova IS NOT NULL AND v_hash IS DISTINCT FROM 'd1da704579d91c278dd46747b4d08b43') THEN
+       OR (v_nova IS NOT NULL AND v_hash IS DISTINCT FROM '79b779b98a5d6f6205a31309d5593eb9') THEN
         RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo da venda do balcão não é o da 249 nem o da 280.';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang

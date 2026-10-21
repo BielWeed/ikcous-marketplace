@@ -154,14 +154,20 @@ async function main() {
       );
       assert.notEqual(mutada, definicao, "controle não alterou a guarda");
       await c.query(mutada);
-      await assert.rejects(
-        async () => {
-          const r = await vender(c, itens, 100, randomUUID(), 10);
-          assert.equal(r.ok, false, "a guarda ausente deixou a venda passar");
-          assert.equal(r.code, "PDV01");
-        },
-        { name: "AssertionError" },
-      );
+      // Exigir venda GRAVADA com total divergente prova a ausência da guarda.
+      // Um erro qualquer (SQL, permissão ou estoque) não é controle válido.
+      const k = randomUUID();
+      const r = await vender(c, itens, 100, k, 10);
+      assert.equal(r.ok, true, r.message);
+      assert.equal(r.r.order.total, 290);
+      const gravada = (
+        await c.query(
+          "SELECT total::text FROM public.marketplace_orders WHERE idempotency_key=$1",
+          [k],
+        )
+      ).rows;
+      assert.equal(gravada.length, 1);
+      assert.equal(Number(gravada[0].total), 290);
     } finally {
       await c.query("ROLLBACK TO SAVEPOINT controle");
       await c.query("RELEASE SAVEPOINT controle");

@@ -54,7 +54,7 @@ WITH alvo(assinatura) AS (
               THEN 'sim' ELSE 'nao' END AS marcador,
          CASE WHEN p.prosecdef AND l.lanname = 'plpgsql' AND p.provolatile = 'v'
                    AND NOT p.proisstrict AND NOT p.proretset
-                   AND (p.pronargs = 8 OR (p.pronargs = 9 AND md5(replace(p.prosrc, chr(13), '')) = 'd1da704579d91c278dd46747b4d08b43'))
+                   AND (p.pronargs = 8 OR (p.pronargs = 9 AND md5(replace(p.prosrc, chr(13), '')) = '79b779b98a5d6f6205a31309d5593eb9'))
                    AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]
                    AND p.prorettype = 'jsonb'::regtype
               THEN 'SECURITY DEFINER plpgsql VOLATILE search_path=pg_catalog, pg_temp -> jsonb'
@@ -82,7 +82,7 @@ WITH alvo(assinatura) AS (
   SELECT 'registrar_venda_presencial: corpo e o da 20261235000000, com a trava pela chave (md5)',
          '996caf02505ac16a8bded73bcf8900aa',
          COALESCE((SELECT CASE WHEN f.m = '796e0aaeb00b6f5133a54ce12f2df396'
-                                    OR f.m = 'd1da704579d91c278dd46747b4d08b43'
+                                    OR f.m = '79b779b98a5d6f6205a31309d5593eb9'
                                THEN '996caf02505ac16a8bded73bcf8900aa' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'registrar_venda_presencial: o corpo toma a trava consultiva pela chave de idempotencia',

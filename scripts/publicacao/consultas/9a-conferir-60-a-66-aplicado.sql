@@ -116,7 +116,7 @@ WITH corpos AS (
     ('get_admin_orders_paged', '5861dbbe0e9c007a4196f5308c17d763'),
     ('get_product_recommendations', '3de5b27cc17c31301249861b7921a6fe'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
-    ('registrar_venda_presencial', 'd1da704579d91c278dd46747b4d08b43'),
+    ('registrar_venda_presencial', '79b779b98a5d6f6205a31309d5593eb9'),
     ('upsert_store_config', '391e8e1064400df5aea579f3472b203c')
 ), acls(fn, esperado) AS (VALUES
     ('buscar_por_codigo_barras', 'anon=false authenticated=true service_role=true public=nao'),

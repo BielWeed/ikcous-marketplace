@@ -2360,6 +2360,18 @@ const ROL_DA_56B = [
   "dependencias: marketplace_orders (id uuid) existe",
   "dependencias: os papeis anon, authenticated e service_role existem",
 ];
+// Lote 57: a 280 troca a assinatura, sem sobrecarga. ANTES exige só a 249;
+// DEPOIS exige só a 280. A nota privada continua operacional nos dois lados.
+const ROL_DA_57A = [
+  ...ROL_DA_52A.slice(0, 2),
+  "registrar_venda_presencial: corpo da 20261280000000 (total conferido, md5)",
+  ...ROL_DA_52A.slice(3),
+];
+const ROL_DA_57B = [
+  ...ROL_DA_52A.slice(0, 2),
+  "registrar_venda_presencial: corpo da 20261249000000 (base anterior, md5)",
+  ...ROL_DA_52A.slice(3),
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
@@ -2451,6 +2463,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "55b-antes-intencao-do-caixa-base-vigente": ROL_DA_55B,
   "56a-conferir-motivo-da-recusa-do-cartao-aplicado": ROL_DA_56A,
   "56b-antes-motivo-da-recusa-do-cartao-base-vigente": ROL_DA_56B,
+  "57a-conferir-total-do-balcao-aplicado": ROL_DA_57A,
+  "57b-antes-total-do-balcao-base-vigente": ROL_DA_57B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
