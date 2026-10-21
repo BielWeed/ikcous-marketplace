@@ -7861,6 +7861,57 @@ for (const principal of ["37.27", "40.86"]) {
   }
 }
 
+Deno.test("REV1 webhook: estorno da order financiada já paga passa pela mesma conferência; Pix e à vista não", async () => {
+  for (const [tipo, parcelas, estado, esperado] of [
+    ["credit_card", 2, "pago", true],
+    ["credit_card", 2, "pago_apos_expirar", true],
+    ["credit_card", 2, "aguardando", false],
+    ["credit_card", 1, "pago", false],
+    ["bank_transfer", 2, "pago", false],
+  ]) {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasAviso: [] };
+    const supabase = clienteFalso({ rpcResultado: "estornado", registro,
+      pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP, payment_status: estado } });
+    const o = orderParceladaComJuros(parcelas, "40.86");
+    o.total_amount = "40.86";
+    o.status = "refunded";
+    o.status_detail = "refunded";
+    o.transactions.payments[0].amount = "40.86";
+    o.transactions.payments[0].status = "refunded";
+    o.transactions.payments[0].status_detail = "refunded";
+    o.transactions.payments[0].payment_method.type = tipo;
+    const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
+    });
+    assertEquals(r.status, 200);
+    assertEquals(registro.chamadasRpc.map((c) => c.args.p_status), esperado ? ["estornado"] : [], `${tipo}/${parcelas}/${estado}`);
+  }
+});
+
+Deno.test("REV2 webhook: aguardando 3DS com total financiado não envia push nem reserva aviso", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasAviso: [] };
+  const supabase = clienteFalso({ registro,
+    pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP } });
+  const o = orderParceladaComJuros(2, "40.86");
+  o.total_amount = "40.86";
+  o.status = "action_required";
+  o.status_detail = "pending_challenge";
+  o.transactions.payments[0].status = "action_required";
+  o.transactions.payments[0].status_detail = "pending_challenge";
+  o.transactions.payments[0].amount = "40.86";
+  const alertas = [];
+  const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+    supabase, fetchImpl: fetchConsulta(200, o),
+    enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+  });
+  assertEquals(r.status, 200);
+  assertEquals(alertas, []);
+  assertEquals(registro.chamadasAviso, []);
+  assertEquals(registro.chamadasRpc, []);
+});
+
 Deno.test("R1 webhook: divergência avisa o admin uma vez, sem confirmar", async () => {
   ambienteDoWebhook();
   const registro = { chamadasRpc: [], chamadasAviso: [] };

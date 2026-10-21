@@ -137,11 +137,43 @@ Deno.test("20261260 publicacao: 56a e 56b exigem o rol exato e estao nos dois ga
     }
   }
 });
+Deno.test("REV4 publicacao: 56a exige CHECKs completos com operandos exatos, não trechos permissivos", () => {
+  const sql = lerRel(`scripts/publicacao/consultas/${A56}.sql`);
+  // O teste é estático: não executa SQL nem presume uma prova de catálogo vivo.
+  // As seis expressões são comparadas inteiras, sem retirar texto dos literais.
+  for (const [nome, expressao] of [
+    ["mp_order_id", "CHECKmp_order_id~'^[A-Za-z0-9_-]{1,100}$'"],
+    ["mp_payment_id", "CHECKmp_payment_id~'^[A-Za-z0-9_-]{1,100}$'"],
+    [
+      "status",
+      "CHECKstatus=ANYARRAY['failed','rejected','processing','in_process','pending','action_required']",
+    ],
+    ["status_detail", "CHECKstatus_detail~'^[a-z][a-z0-9_]{0,119}$'"],
+    ["parcelas", "CHECKparcelas>=1ANDparcelas<=12"],
+    ["valor", "CHECKvalor>0"],
+  ]) {
+    const literalSql = expressao.replace(/'/g, "''");
+    assertStringIncludes(
+      sql,
+      `('tentativas_cartao_diagnostico_${nome}_check', '${literalSql}')`,
+    );
+  }
+  assertStringIncludes(sql, "k.definicao = esperado_check.definicao");
+  assertStringIncludes(sql, "pg_get_constraintdef(k.oid)");
+  assertStringIncludes(sql, "WITH ORDINALITY");
+  assertStringIncludes(sql, "THEN pedaco[1]");
+  assertStringIncludes(sql, "'::(text|numeric|integer|smallint)(\\[\\])?'");
+  assertStringIncludes(sql, "'[[:space:]()]'");
+  assert(!sql.includes("position(esperado_check.trecho"));
+});
+
 Deno.test("20261260 publicacao: as consultas 56a e 56b so leem catalogo, nunca a tabela de tentativas", () => {
   for (const consulta of [A56, B56]) {
     const sql = lerRel(`scripts/publicacao/consultas/${consulta}.sql`);
     // sem comentarios e sem literais ('INSERT' dentro de aspas e dado, nao comando)
-    const codigo = sql.replace(/^--.*$/gm, "").replace(/'(?:[^']|'')*'/g, "''");
+    const codigo = sql
+      .replace(/^\s*--.*$/gm, "")
+      .replace(/'(?:[^']|'')*'/g, "''");
     assert(
       !/\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE)\b/i.test(
         codigo,

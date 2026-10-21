@@ -4,6 +4,18 @@ WITH ord AS (
   SELECT c.oid, c.relowner AS dono FROM pg_class c WHERE c.oid = to_regclass('public.marketplace_orders')
 ), tb AS (
   SELECT c.oid FROM pg_class c WHERE c.oid = to_regclass('public.tentativas_cartao_diagnostico')
+), checks AS (
+  -- Canoniza so a apresentacao do catalogo; literais ficam INTACTOS (inclusive espacos e parenteses).
+  SELECT k.conname, (
+    SELECT string_agg(
+      CASE WHEN left(pedaco[1], 1) = '''' THEN pedaco[1]
+        ELSE regexp_replace(regexp_replace(pedaco[1],
+          '::(text|numeric|integer|smallint)(\[\])?', '', 'g'), '[[:space:]()]', '', 'g')
+      END, '' ORDER BY ordem)
+    FROM regexp_matches(pg_get_constraintdef(k.oid), '(''([^'']|'''')*''|[^'']+)', 'g')
+      WITH ORDINALITY AS partes(pedaco, ordem)
+  ) AS definicao
+  FROM pg_constraint k WHERE k.conrelid = (SELECT oid FROM tb) AND k.contype = 'c'
 ), itens(item, esperado, vivo) AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim', CASE WHEN COALESCE(((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace)), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
@@ -23,23 +35,16 @@ WITH ord AS (
     AND NOT EXISTS (
       SELECT 1
       FROM (VALUES
-        ('tentativas_cartao_diagnostico_mp_order_id_check', 'mp_order_id ~ ''^[A-Za-z0-9_-]{1,100}'),
-        ('tentativas_cartao_diagnostico_mp_payment_id_check', 'mp_payment_id ~ ''^[A-Za-z0-9_-]{1,100}'),
-        ('tentativas_cartao_diagnostico_status_check', '''failed'''),
-        ('tentativas_cartao_diagnostico_status_check', '''rejected'''),
-        ('tentativas_cartao_diagnostico_status_check', '''processing'''),
-        ('tentativas_cartao_diagnostico_status_check', '''in_process'''),
-        ('tentativas_cartao_diagnostico_status_check', '''pending'''),
-        ('tentativas_cartao_diagnostico_status_check', '''action_required'''),
-        ('tentativas_cartao_diagnostico_status_detail_check', 'status_detail ~ ''^[a-z][a-z0-9_]{0,119}'),
-        ('tentativas_cartao_diagnostico_parcelas_check', 'parcelas >= 1'),
-        ('tentativas_cartao_diagnostico_parcelas_check', 'parcelas <= 12'),
-        ('tentativas_cartao_diagnostico_valor_check', 'valor > ')
-      ) AS esperado_check(nome, trecho)
+        ('tentativas_cartao_diagnostico_mp_order_id_check', 'CHECKmp_order_id~''^[A-Za-z0-9_-]{1,100}$'''),
+        ('tentativas_cartao_diagnostico_mp_payment_id_check', 'CHECKmp_payment_id~''^[A-Za-z0-9_-]{1,100}$'''),
+        ('tentativas_cartao_diagnostico_status_check', 'CHECKstatus=ANYARRAY[''failed'',''rejected'',''processing'',''in_process'',''pending'',''action_required'']'),
+        ('tentativas_cartao_diagnostico_status_detail_check', 'CHECKstatus_detail~''^[a-z][a-z0-9_]{0,119}$'''),
+        ('tentativas_cartao_diagnostico_parcelas_check', 'CHECKparcelas>=1ANDparcelas<=12'),
+        ('tentativas_cartao_diagnostico_valor_check', 'CHECKvalor>0')
+      ) AS esperado_check(nome, definicao)
       WHERE NOT EXISTS (
-        SELECT 1 FROM pg_constraint k
-        WHERE k.conrelid = (SELECT oid FROM tb) AND k.contype = 'c' AND k.conname = esperado_check.nome
-          AND position(esperado_check.trecho IN pg_get_constraintdef(k.oid)) > 0))
+        SELECT 1 FROM checks k
+        WHERE k.conname = esperado_check.nome AND k.definicao = esperado_check.definicao))
     AND (SELECT count(*) FROM pg_attrdef WHERE adrelid = (SELECT oid FROM tb)) = 1
     AND EXISTS (SELECT 1 FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
                  WHERE d.adrelid = (SELECT oid FROM tb) AND a.attname = 'registrado_em' AND pg_get_expr(d.adbin, d.adrelid) = 'now()')

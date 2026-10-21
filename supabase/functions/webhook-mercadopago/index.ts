@@ -1901,7 +1901,7 @@ async function handler(
   // conferências verem linhas DIFERENTES num intervalo de reescrita.
   const { data: linhaDoPedido, error: erroLeituraPedido } = await supabase
     .from("marketplace_orders")
-    .select("total, total_amount, gateway_payment_id")
+    .select("total, total_amount, gateway_payment_id, payment_status")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -1940,15 +1940,20 @@ async function handler(
 
   // A mesma regra base da prova imediata e do cron. Aprovação sem valor ou
   // total válido nunca alcança adoção/RPC; o pedido segue elegível no cron.
-  // Divergência mantém o 200 de antes. Recusas/estornos mantêm seu fluxo:
-  // só uma divergência numérica que já era barrada aqui os interrompe.
+  // Estorno de order já confirmada usa a mesma prova dos juros da aprovação.
+  // Contestação já foi tratada pelo ledger acima, nunca por confirmar_pagamento.
+  // Fora de aprovação, divergência mantém o 200 silencioso de antes.
   const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
     (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
   const aprovado = statusMapeado === "pago" || statusMapeado === "pago_apos_expirar";
+  const estadoDoPedido = (linhaDoPedido as Record<string, unknown> | null)?.payment_status;
+  const estornoDePedidoConfirmado = statusMapeado === "estornado" &&
+    (estadoDoPedido === "pago" || estadoDoPedido === "pago_apos_expirar" || estadoDoPedido === "estornado");
   const conferencia = conferirValorDoPagamento(
-    valorPagoMp, brutoTotal, aprovado && rota === "order" ? corpoConsultado ?? undefined : undefined,
+    valorPagoMp, brutoTotal, (aprovado || estornoDePedidoConfirmado) && rota === "order" ? corpoConsultado ?? undefined : undefined,
   );
   if (!conferencia.provado && (aprovado || (linhaDoPedido && conferencia.motivo === "valor_divergente"))) {
+    if (!aprovado) return json({ ok: true, ignorado: "valor divergente" }, 200);
     if (conferencia.motivo === "valor_divergente") {
       console.error(
         "webhook-mercadopago: VALOR pago diverge do total do pedido — pedido NÃO confirmado; conferir no painel do MP",

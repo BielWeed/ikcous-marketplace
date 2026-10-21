@@ -82,6 +82,7 @@ import {
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { avisarJurosSemParcelaConferida, conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import { registrarDiagnosticoDoCartao } from "../_shared/diagnostico-do-cartao.ts";
 import { comTempoLimite, readKey } from "../_shared/webpush.ts";
 import {
   avisarAdminUmaVez,
@@ -387,22 +388,23 @@ async function adotarCartaoCapturadoDoSentinela(args: {
   const brutoTotal = linha?.total ?? linha?.total_amount;
   const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
   const valorAprovado = extrairValorDaOrder(orderReconsultada);
-  if (
-    typeof valorAprovado === "number" &&
-    !conferirValorDoPagamento(valorAprovado, brutoTotal, orderReconsultada).provado
-  ) {
+  const conferencia = conferirValorDoPagamento(valorAprovado, brutoTotal, orderReconsultada);
+  if (typeof valorAprovado === "number" && !conferencia.provado) {
+    const totalInvalido = conferencia.motivo === "total_do_pedido";
     console.error(
-      "reconciliar-pagamentos: cartão capturado atrás do sentinela com VALOR divergente — não adotado; conferir no painel do MP",
-      { orderId: args.pedidoId, idOrder, valorAprovado, totalDoPedido },
+      totalInvalido
+        ? "reconciliar-pagamentos: total do pedido inválido atrás do sentinela — não adotado; conferir o pedido"
+        : "reconciliar-pagamentos: cartão capturado atrás do sentinela com VALOR divergente — não adotado; conferir no painel do MP",
+      { orderId: args.pedidoId, idOrder, valorAprovado, totalDoPedido, motivo: conferencia.motivo },
     );
     await comTempoLimite(avisarAdminUmaVez({
       supabase: args.supabase,
       enviarPushContado: args.enviarPushContado ??
         ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
-      chave: `valor_divergente:${args.pedidoId}:${idOrder}`,
+      chave: `${totalInvalido ? "total_do_pedido_invalido" : "valor_divergente"}:${args.pedidoId}:${idOrder}`,
       aviso: {
         title: "Pagamento precisa de conferência",
-        body: `${numeroDoPedido(args.pedidoId)} · valor divergente; confira no painel do Mercado Pago`,
+        body: `${numeroDoPedido(args.pedidoId)} · ${totalInvalido ? "total do pedido inválido; confira o pedido no painel da loja" : "valor divergente; confira no painel do Mercado Pago"}`,
         url: "/admin-orders",
       },
       rotulo: "reconciliar-pagamentos",
@@ -754,6 +756,10 @@ async function handler(
         valorAprovado = extrairValorDaOrder(order);
         orderParaConferir = order;
         liberarAVaga = recusaLiberaAVaga(order, statusMapeado);
+        await registrarDiagnosticoDoCartao({
+          supabase, pedidoId: candidato.order_id, order,
+          cartaoConhecido: liberarAVaga && statusRaiz === "failed",
+        });
       }
 
       // Usa o status que o MP DEVOLVEU, nunca inventa um. Status

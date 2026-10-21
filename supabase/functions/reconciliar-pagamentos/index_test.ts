@@ -3884,6 +3884,80 @@ for (const principal of ["37.27", "40.86"]) {
   }
 }
 
+Deno.test("REV3 cron: recusa final recuperada guarda só diagnóstico sanitizado; falha de gravação não muda a liberação", async () => {
+  for (const falha of [null, "retorno", "excecao"]) {
+    const id = "ORDTST01CARTAORECUSADO";
+    const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+    const base = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], registro });
+    const linhas = [];
+    const supabase = { ...base, from: (tabela) => tabela === "tentativas_cartao_diagnostico" ? {
+      upsert: async (linha, opcoes) => {
+        linhas.push({ linha, opcoes });
+        if (falha === "excecao") throw new Error("dado-privado-nao-logar");
+        return { error: falha === "retorno" ? { message: "dado-privado-nao-logar" } : null };
+      },
+    } : base.from(tabela) };
+    const o = orderDoCandidato(id, "failed", "high_risk", "credit_card");
+    o.transactions.payments[0].amount = "37.27";
+    o.transactions.payments[0].payment_method.installments = 2;
+    o.payer = { email: "nao-logar@example.invalid", identification: { number: "00000000000" } };
+    o.transactions.payments[0].payment_method.token = "dado-privado-nao-logar";
+    const logs = [];
+    const warn = console.warn;
+    console.warn = (...args) => logs.push(args);
+    let r;
+    try {
+      r = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, o) });
+    } finally { console.warn = warn; }
+    assertEquals(r.status, 200);
+    const corpo = await r.json();
+    assertEquals(corpo.falhas, 0);
+    assertEquals(corpo.cobrancasLiberadas, 1);
+    assertEquals(registro.chamadasLiberar, [{ args: { p_order_id: UUID_PEDIDO_1, p_gateway_payment_id: id } }]);
+    assertEquals(registro.chamadasConfirmar, []);
+    assertEquals(linhas.length, 1);
+    const { registrado_em, ...linha } = linhas[0].linha;
+    assertEquals(Number.isFinite(Date.parse(registrado_em)), true);
+    assertEquals(linha, {
+      pedido_id: UUID_PEDIDO_1, mp_order_id: id, mp_payment_id: "PAY1",
+      status: "failed", status_detail: "high_risk", parcelas: 2, valor: 37.27,
+    });
+    assertEquals(linhas[0].opcoes, { onConflict: "mp_order_id,mp_payment_id", ignoreDuplicates: false });
+    assertEquals(logs.some((l) => String(l[0]).startsWith("diagnostico-do-cartao:")), falha !== null);
+    assertEquals(JSON.stringify(logs).includes("dado-privado-nao-logar"), false);
+    assertEquals(JSON.stringify(logs).includes("nao-logar@example.invalid"), false);
+    assertEquals(JSON.stringify(logs).includes("00000000000"), false);
+  }
+});
+
+Deno.test("REV5 sentinela: total do pedido inválido não é rotulado como valor pago divergente", async () => {
+  const id = "ORDTST01CARTAOCAPTURADO";
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [], chamadasAviso: [] };
+  const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }],
+    pedidoTotal: "ilegivel", registro });
+  const o = orderParceladaComJuros(id, 2, "40.86");
+  const alertas = [];
+  const logs = [];
+  const error = console.error;
+  console.error = (...args) => logs.push(args);
+  let r;
+  try {
+    r = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase, fetchImpl: fetchSentinela({ status: 200, corpo: { results: [o] } }, o, []),
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+    });
+  } finally { console.error = error; }
+  assertEquals(r.status, 200);
+  assertEquals(registro.adocoesPedido, []);
+  assertEquals(registro.chamadasConfirmar, []);
+  assertEquals(alertas.length, 1);
+  assertStringIncludes(alertas[0].body, "total do pedido inválido");
+  assertEquals(alertas[0].body.includes("valor divergente"), false);
+  assertStringIncludes(String(logs[0][0]), "total do pedido inválido");
+  assertEquals(logs[0][1].motivo, "total_do_pedido");
+  assertEquals(registro.chamadasAviso[0].args.p_chave, `total_do_pedido_invalido:${UUID_PEDIDO_1}:${id}`);
+});
+
 Deno.test("R1 cron: divergência avisa o admin uma vez, sem confirmar", async () => {
   const id = "ORDTST01PARCELADOCOMJUROS";
   const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };

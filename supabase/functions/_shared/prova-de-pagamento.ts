@@ -50,7 +50,9 @@
  *       chargeback `in_process` ao lado de uma raiz `processed:accredited`;
  *   (h) à vista e PIX preservam a tolerância de centavos; excedente não é
  *       automaticamente juros. O exemplo 1x de 50 com 200 pagos da doc é
- *       ambíguo e permanece recusado, não vira autorização de sobrepreço.
+ *       ambíguo: passa a ser recusado deliberadamente. Antes, captura acima
+ *       do pedido+0,05 passava em 1x/débito ou crédito sem installments;
+ *       agora a conferência é mais estrita, sem autorizar sobrepreço.
  *
  * O QUE ESTA FUNÇÃO NÃO DECIDE: se o pedido ainda está 'aguardando' (quem
  * chama relê o banco antes) e o desfecho no banco — quem decide 'pago',

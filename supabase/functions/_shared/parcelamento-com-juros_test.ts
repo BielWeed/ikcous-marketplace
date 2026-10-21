@@ -72,6 +72,14 @@ Deno.test("D7: parcelado menor que o pedido nunca confirma, mesmo um centavo", (
   assertEquals(prova(order("37.27", "37.26", 2, "18.63")).provado, false);
   assertEquals(conferirValorDoPagamento(37.26, 37.27, order("37.26", "37.26", 2, "18.63")).provado, false);
 });
+Deno.test("REV6: principal parcelado 37,23 sem captura não prova pedido de 37,27, mesmo dentro da folga", () => {
+  const o = order("37.23");
+  delete o.total_paid_amount;
+  delete o.transactions.payments[0].paid_amount;
+  assertEquals(conferirValorDoPagamento(37.23, 37.27, o), { provado: false, motivo: "valor_divergente" });
+  assertEquals(prova(o), { provado: false, motivo: "valor_divergente" });
+});
+
 Deno.test("D7: captura excessiva à vista não passa nem com principal exato; Pix mantém o contrato anterior", () => {
   for (const tipo of ["credit_card", "debit_card"]) {
     assertEquals(conferirValorDoPagamento(37.27, 37.27, order("37.27", "40.86", 1, "40.86", tipo)).provado, false);
