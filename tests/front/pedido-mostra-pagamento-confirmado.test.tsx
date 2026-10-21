@@ -672,7 +672,7 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     );
   }
 
-  it("pill de status 'processing': usa text-amber-700 (contraste AA), não mais text-amber-600", async () => {
+  it("status 'processing': título neutro em zinc-950 sem perder o contraste AA", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const order: Order = {
       ...pedidoComPagamento("aguardando"),
@@ -683,7 +683,14 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
       raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
     });
 
-    expect(elementoForaDoSelo(".text-amber-700")).not.toBeNull();
+    const painel = hospedeiro.querySelector(
+      '[data-testid="order-status-panel"]',
+    );
+    const titulo = Array.from(painel?.querySelectorAll("span") ?? []).find(
+      (el) => el.textContent === "Preparando seu envio",
+    );
+    expect(titulo?.classList.contains("text-zinc-950")).toBe(true);
+    expect(painel?.classList.contains("bg-zinc-50")).toBe(true);
     // Guarda contra um portador NOVO de "-600" fora do selo (hoje: zero).
     // Se cair por regressão do pill, é a asserção acima que estoura antes;
     // se cair por um ÍCONE (3:1, não 4,5:1), estreite o seletor, não apague.
@@ -744,11 +751,9 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     expect(elementoForaDoSelo(".text-rose-600")).toBeNull();
   });
 
-  // Redesenho do card (25/09/2026): o `desc` saiu do rodapé cinza e virou a
-  // frase da faixa de status, na cor do status sobre o `*-50` cheio. A
-  // propriedade que este teste guarda continua a mesma — o texto não pode
-  // cair num tom que reprova AA (zinc-400, ou o blue-500 da bolinha).
-  it("frase do status (status.desc) fica na faixa, no tom AA do status (blue-600), nunca zinc-400", async () => {
+  // O redesenho neutro preserva a guarda de contraste do título:
+  // zinc-950 sobre zinc-50, sem depender de cor para identificar a etapa.
+  it("frase do status (status.desc) fica no bloco neutro em zinc-950, nunca zinc-400", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const order: Order = { ...pedidoComPagamento(null), status: "pending" };
 
@@ -761,14 +766,14 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
       (el) => el.textContent === "A loja já recebeu seu pedido",
     );
     expect(frase).not.toBeUndefined();
-    const portadorDaCor = frase?.closest(".text-blue-600");
+    const portadorDaCor = frase?.closest(".text-zinc-950");
     expect(portadorDaCor).not.toBeNull();
     expect(frase?.closest(".text-zinc-400")).toBeNull();
     expect(frase?.closest(".text-blue-500")).toBeNull();
     expect(
       frase
         ?.closest('[data-testid="order-status-panel"]')
-        ?.classList.contains("bg-blue-50"),
+        ?.classList.contains("bg-zinc-50"),
     ).toBe(true);
   });
 });

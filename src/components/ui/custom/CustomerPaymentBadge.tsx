@@ -1,6 +1,13 @@
 import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
 import { cn } from "@/lib/utils";
 import type { OrderStatus, PaymentStatus } from "@/types";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  MinusCircle,
+  XCircle,
+} from "lucide-react";
 import { memo } from "react";
 
 type Tone =
@@ -251,6 +258,7 @@ interface CustomerPaymentBadgeProps {
   // idêntico ao de antes desta correção.
   orderStatus?: OrderStatus | null;
   className?: string;
+  variant?: "lista";
 }
 
 /**
@@ -262,25 +270,46 @@ export const CustomerPaymentBadge = memo(function CustomerPaymentBadge({
   paymentStatus,
   orderStatus,
   className,
+  variant,
 }: Readonly<CustomerPaymentBadgeProps>) {
   const entry = customerPaymentStatusEntry(paymentStatus, orderStatus);
   if (!entry) return null;
   const styles = toneStyles[entry.tone];
+  const Icon =
+    entry.tone === "confirmado"
+      ? CheckCircle2
+      : entry.tone === "atencao"
+        ? AlertTriangle
+        : entry.tone === "recusado"
+          ? XCircle
+          : entry.tone === "neutro"
+            ? MinusCircle
+            : Clock;
 
   return (
     <div
       data-testid="customer-payment-badge"
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5",
+        variant === "lista" ? "h-6" : "py-1",
         styles.bgColor,
         styles.borderColor,
         className,
       )}
     >
-      <div className={cn("size-1 rounded-full", styles.dot)} />
+      {variant === "lista" ? (
+        <Icon
+          aria-hidden="true"
+          className={cn("size-3 shrink-0", styles.color)}
+        />
+      ) : (
+        <div className={cn("size-1 rounded-full", styles.dot)} />
+      )}
       <span
         className={cn(
-          "text-[9px] font-black uppercase tracking-widest",
+          variant === "lista"
+            ? "text-[11px] font-semibold"
+            : "text-[9px] font-black uppercase tracking-widest",
           styles.color,
         )}
       >
