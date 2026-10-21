@@ -6,11 +6,13 @@ import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
+import { precoVendido } from "@/lib/preco-vendido";
+import "./FavoritesView.css";
 import type { Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AnimatePresence, motion, usePresence } from "framer-motion";
-import { ArrowRight, Heart, ShoppingBag, Sparkles } from "lucide-react";
-import React, { useCallback, useMemo } from "react";
+import { ArrowDownUp, ArrowRight, Heart, Sparkles } from "lucide-react";
+import React, { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface FavoritesViewProps {
@@ -54,6 +56,43 @@ export const FavoritesView = React.memo(function FavoritesView({
   const { erro: favoritosErro, refresh: favoritosRefresh } = useFavorites();
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(380);
+  const [categoria, setCategoria] = useState("");
+  const [comDesconto, setComDesconto] = useState(false);
+  const [ordem, setOrdem] = useState("original");
+  const { categorias, descontos, visiveis } = useMemo(() => {
+    const categorias = new Map<string, number>();
+    const promocionais = new Set<string>();
+    for (const produto of favorites) {
+      if (produto.category) {
+        categorias.set(
+          produto.category,
+          (categorias.get(produto.category) ?? 0) + 1,
+        );
+      }
+      if (
+        produto.originalPrice != null &&
+        produto.originalPrice > precoVendido(produto, undefined)
+      ) {
+        promocionais.add(produto.id);
+      }
+    }
+    const visiveis = favorites.filter(
+      (produto) =>
+        (!categoria || produto.category === categoria) &&
+        (!comDesconto || promocionais.has(produto.id)),
+    );
+    // A ordem recebida já é a da lista salva. Nunca ordenar a prop no lugar.
+    if (ordem === "nome") {
+      visiveis.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    } else if (ordem !== "original") {
+      visiveis.sort(
+        (a, b) =>
+          (precoVendido(a, undefined) - precoVendido(b, undefined)) *
+          (ordem === "maior" ? -1 : 1),
+      );
+    }
+    return { categorias, descontos: promocionais.size, visiveis };
+  }, [favorites, categoria, comDesconto, ordem]);
 
   const handleToggleFavorite = useCallback(
     (product: Product) => {
@@ -300,31 +339,99 @@ export const FavoritesView = React.memo(function FavoritesView({
   }
 
   return (
-    <div className="pb-customer-summary min-h-full overflow-x-hidden bg-zinc-50/30">
-      {/* Header Premium - Minimalist & Compact */}
-      <div className="sticky top-[-2px] z-40 flex items-center justify-between border-b border-zinc-100 bg-white/80 p-4 backdrop-blur-md transition-all duration-300 xs:px-6">
-        <div className="flex items-center gap-2.5">
-          <Heart className="size-4 fill-zinc-950/10 text-zinc-950" />
-          <h1 className="pt-0.5 text-[13px] font-black uppercase tracking-[0.25em] text-zinc-950">
-            Favoritos
-          </h1>
+    <div className="pb-customer-summary min-h-full min-w-0 overflow-x-hidden bg-background text-foreground">
+      <header className="flex items-center justify-between gap-3 px-4 pb-4 pt-5">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {favorites.length} {favorites.length === 1 ? "produto" : "produtos"}{" "}
+            que você salvou
+          </p>
         </div>
-        <div className="flex items-center">
-          <span className="rounded-full border border-zinc-200/20 bg-zinc-100/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-400">
-            {favorites.length} {favorites.length === 1 ? "item" : "itens"}
-          </span>
-        </div>
+        <label className="relative flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-semibold text-card-foreground">
+          <ArrowDownUp aria-hidden="true" className="size-4" />
+          Ordem
+          <select
+            aria-label="Ordem dos favoritos"
+            className="absolute inset-0 size-full cursor-pointer opacity-0"
+            value={ordem}
+            onChange={(event) => setOrdem(event.target.value)}
+          >
+            <option value="original">Ordem original</option>
+            <option value="menor">Menor preço</option>
+            <option value="maior">Maior preço</option>
+            <option value="nome">A–Z</option>
+          </select>
+        </label>
+      </header>
+
+      <div
+        role="group"
+        aria-label="Filtrar favoritos"
+        className="favorites-filters mx-4 mb-4 flex min-w-0 gap-2 overflow-x-auto pb-1"
+      >
+        <button
+          type="button"
+          aria-pressed={!categoria}
+          onClick={() => setCategoria("")}
+        >
+          Todas {favorites.length}
+        </button>
+        {categorias.size > 1 &&
+          Array.from(categorias, ([nome, quantidade]) => (
+            <button
+              key={nome}
+              type="button"
+              aria-pressed={categoria === nome}
+              onClick={() => setCategoria(nome)}
+            >
+              {nome} {quantidade}
+            </button>
+          ))}
+        {descontos > 0 && (
+          <button
+            type="button"
+            aria-pressed={comDesconto}
+            onClick={() => setComDesconto(!comDesconto)}
+          >
+            <span
+              aria-hidden="true"
+              className="size-2 rounded-full bg-emerald-600"
+            />
+            Com desconto {descontos}
+          </button>
+        )}
       </div>
 
-      {/* Products Grid with AnimatePresence */}
-      <div className="px-4 py-2">
+      <p role="status" className="sr-only">
+        {visiveis.length}{" "}
+        {visiveis.length === 1 ? "produto encontrado" : "produtos encontrados"}
+      </p>
+      {visiveis.length === 0 && (
+        <div className="px-4 py-10 text-center text-sm">
+          <p className="text-muted-foreground">
+            Nenhum favorito com esses filtros.
+          </p>
+          <button
+            type="button"
+            className="mt-3 min-h-11 rounded-full border border-border bg-card px-5 font-semibold text-card-foreground"
+            onClick={() => {
+              setCategoria("");
+              setComDesconto(false);
+            }}
+          >
+            Limpar filtros
+          </button>
+        </div>
+      )}
+      <div className="px-4 pb-4">
         <AnimatePresence mode="popLayout" initial={false}>
-          <div className="grid grid-cols-2 gap-4 sm:gap-6">
-            {favorites.map((product, index) => (
+          <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4">
+            {visiveis.map((product, index) => (
               <motion.div
                 key={product.id}
                 layout
-                className="flex h-full flex-col"
+                className="flex h-full min-w-0 flex-col"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9 }}
@@ -337,6 +444,7 @@ export const FavoritesView = React.memo(function FavoritesView({
                 }}
               >
                 <ProductCard
+                  className="favorites-product-card"
                   product={product}
                   isFavorite={true}
                   onToggleFavorite={handleToggleFavorite}
@@ -365,7 +473,7 @@ export const FavoritesView = React.memo(function FavoritesView({
             {isActive && isPresent && isReady && (
               <div
                 ref={medirRodapeCliente}
-                className="bottom-docked-navigation pointer-events-none fixed inset-x-0 z-[90] px-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2"
+                className="bottom-docked-navigation pointer-events-none fixed inset-x-0 z-[90] px-4 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2"
               >
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -379,21 +487,15 @@ export const FavoritesView = React.memo(function FavoritesView({
                       haptic.medium();
                       onNavigate("home");
                     }}
-                    className="group pointer-events-auto relative flex h-16 w-full items-center justify-center gap-4 overflow-hidden rounded-[2rem] border border-zinc-200 bg-white/95 text-slate-800 shadow-[0_20px_50px_-10px_rgba(24,24,27,0.15)] backdrop-blur-2xl transition-all hover:bg-zinc-50 active:scale-95"
+                    type="button"
+                    aria-label="Descobrir mais produtos"
+                    className="group pointer-events-auto flex min-h-[52px] w-full items-center justify-center gap-6 rounded-full border border-border bg-card px-4 text-sm font-semibold text-card-foreground transition-colors hover:bg-muted active:scale-95"
                   >
-                    <div className="relative z-10 flex items-center gap-3">
-                      <ShoppingBag className="size-5 text-primary" />
-                      <span className="pt-0.5 text-[11px] font-black uppercase tracking-[0.3em] text-slate-800">
-                        Descobrir Mais
-                      </span>
-                    </div>
-
-                    {/* Animated Glow Effect */}
-                    <div className="absolute inset-0 opacity-0 transition-opacity duration-700 group-hover:opacity-100">
-                      <div className="animate-shimmer absolute left-1/4 top-0 h-full w-1/2 skew-x-[-20deg] bg-gradient-to-r from-transparent via-secondary/10 to-transparent" />
-                    </div>
-
-                    <ArrowRight className="size-4 text-primary transition-all group-hover:translate-x-1.5" />
+                    Ver mais produtos
+                    <ArrowRight
+                      aria-hidden="true"
+                      className="size-4 transition-transform group-hover:translate-x-1"
+                    />
                   </button>
                 </motion.div>
               </div>
