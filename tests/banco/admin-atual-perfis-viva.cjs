@@ -1,5 +1,5 @@
 "use strict";
-/* eslint-disable security/detect-object-injection, security/detect-non-literal-regexp --
+/* eslint-disable security/detect-object-injection --
  * Toda chave indexada aqui vem de constante do próprio teste (QUEM, CASOS, nomes de política) ou do
  * catálogo do Postgres efêmero; nunca de entrada de rede nem de payload de terceiro. */
 

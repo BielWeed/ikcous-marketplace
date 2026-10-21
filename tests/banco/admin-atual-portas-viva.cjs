@@ -594,6 +594,7 @@ PROVAS.push({
     );
     // CONTROLE completo (como era ANTES da 20261340000000): gatilhos antigos E as políticas antigas de profiles
     // (SELECT e UPDATE com is_admin() do JWT, devolvidas pelo rollback-manual da 1340).
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
     const rb1340 = fs.readFileSync(
       path.join(
         __dirname,
@@ -621,8 +622,7 @@ PROVAS.push({
     assert.deepEqual(
       r.papeis[U_ALVO],
       ["admin", "admin"],
-      "CONTROLE FALHOU: com as proteções antigas e as políticas antigas o cúmplice não foi promovido — a prova não mede a guarda " +
-        JSON.stringify(r.resultados),
+      `CONTROLE FALHOU: com as proteções antigas e as políticas antigas o cúmplice não foi promovido — a prova não mede a guarda ${JSON.stringify(r.resultados)}`,
     );
   },
 });

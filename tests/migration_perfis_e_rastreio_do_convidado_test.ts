@@ -215,6 +215,7 @@ Deno.test("1340-1342: registros de publicacao completos (lotes, consultas, rois,
     for (const consulta of [a, b]) {
       const caminho = `scripts/publicacao/consultas/${consulta}.sql`;
       const sql = ler(caminho);
+      // eslint-disable-next-line security/detect-object-injection -- `consulta` vem só do par [a, b] da tabela literal `lotes` deste teste, nunca de entrada externa.
       const rol = rois[consulta];
       assertEquals(contarStatements(sql), 1, consulta);
       assertEquals(rol.length, n, consulta);
