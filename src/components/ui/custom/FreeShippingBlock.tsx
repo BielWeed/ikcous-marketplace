@@ -77,16 +77,17 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
             height="52"
             fill="none"
             strokeWidth="4"
-            transform="rotate(-90)"
           >
-            <circle {...anel} stroke="#27272A" />
-            <circle
-              {...anel}
-              stroke="#10B981"
-              strokeLinecap="round"
-              strokeDasharray={100}
-              strokeDashoffset={100 - progresso}
-            />
+            <g transform="rotate(-90)">
+              <circle {...anel} stroke="#27272A" />
+              <circle
+                {...anel}
+                stroke="#10B981"
+                strokeLinecap="round"
+                strokeDasharray={100}
+                strokeDashoffset={100 - progresso}
+              />
+            </g>
           </svg>
           <Icone
             aria-hidden="true"
