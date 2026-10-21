@@ -31,13 +31,14 @@ import {
   assert,
   assertEquals,
   assertStringIncludes,
+  assertThrows,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const WORKFLOW = fromFileUrl(
   new URL("../.github/workflows/aplicar-migrations.yml", import.meta.url),
 );
 
-Deno.test("verificação final do apply: a assinatura do PDV é a última criada, não a apagada pela migration", async () => {
+Deno.test("verificação final do apply: OID tolera assinatura vigente e a da 249, mas não aceita assinatura errada", async () => {
   const dir = new URL("../supabase/migrations/", import.meta.url);
   const nomes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
@@ -52,16 +53,38 @@ Deno.test("verificação final do apply: a assinatura do PDV é a última criada
     if (m) definicoes.push(m[1]);
   }
   assert(definicoes.length > 0, "o extrator tem de encontrar a RPC");
-  const tipos = definicoes
-    .at(-1)
-    .split(",")
-    .map((p) => p.trim().split(/\s+/)[1]);
-  const assinatura = `public.registrar_venda_presencial(${tipos.join(",")})`;
-  const yaml = await Deno.readTextFile(WORKFLOW);
-  assertStringIncludes(
-    yaml,
-    `has_function_privilege('authenticated', '${assinatura}', 'EXECUTE') as venda`,
+  const assinaturaDe = (parametros: string) =>
+    `public.registrar_venda_presencial(${parametros
+      .split(",")
+      .map((p) => p.trim().split(/\s+/)[1])
+      .join(",")})`;
+  const vigente = assinaturaDe(definicoes.at(-1));
+  const sql249 = await Deno.readTextFile(
+    new URL(
+      "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql",
+      dir,
+    ),
   );
+  const anterior = assinaturaDe(
+    sql249.match(
+      /^CREATE OR REPLACE FUNCTION public\.registrar_venda_presencial\(([^\n]+)\)/m,
+    )![1],
+  );
+  assert(vigente !== anterior);
+  const conferir = (yaml: string) =>
+    assertStringIncludes(
+      yaml.replace(/\s+/g, " "),
+      `has_function_privilege('authenticated', coalesce(to_regprocedure('${vigente}'), to_regprocedure('${anterior}')), 'EXECUTE') as venda`,
+    );
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  conferir(yaml);
+  for (const assinatura of [vigente, anterior]) {
+    assertThrows(() =>
+      conferir(
+        yaml.replace(assinatura, assinatura.replace("jsonb", "integer")),
+      ),
+    );
+  }
 });
 
 /** Tira o trecho JS de resolução do ref, exatamente como está no arquivo,
@@ -379,7 +402,7 @@ function respostaSaudavel(q: string): Resposta {
   if (q.includes("query_to_xml"))
     return { corpo: '[{"tabela":"marketplace_orders","linhas_agora":3}]' };
   if (q.includes("has_function_privilege"))
-    return { corpo: '[{"paged8":true}]' };
+    return { corpo: '[{"paged8":true,"venda":true}]' };
   throw new Error(`consulta inesperada no stub: ${q.slice(0, 80)}`);
 }
 
@@ -462,6 +485,38 @@ const SEM_SANITIZAR = { sanitizeOps: false, sanitizeResources: false };
 const M201 = "20261201000000_linha_nova_nasce_sob_autorizacao.sql";
 const RB201 =
   "rollback-manual-20261201000000_linha_nova_nasce_sob_autorizacao.sql";
+
+Deno.test({
+  name: "verificação final: EXECUTE true segue; false, função ausente ou resposta incompleta falham",
+  ...SEM_SANITIZAR,
+  fn: async () => {
+    for (const migracao of [
+      M201,
+      "rollback-manual-20261280000000_o_balcao_registra_so_o_total_conferido.sql",
+    ]) {
+      for (const [corpo, mensagem] of [
+        ['[{"venda":true}]', null],
+        ['[{"venda":false}]', "sem EXECUTE para authenticated"],
+        ['[{"venda":null}]', "função de venda presencial ausente"],
+        ["[]", "função de venda presencial ausente"],
+        ["[{}]", "função de venda presencial ausente"],
+      ] as const) {
+        const r = await rodarWorkflow(migracao, (q) =>
+          q.includes("has_function_privilege")
+            ? { corpo }
+            : respostaSaudavel(q),
+        );
+        if (mensagem === null) {
+          assertEquals(r.fim, true, r.texto);
+        } else {
+          assertEquals(r.exit, 1, r.texto);
+          assertStringIncludes(r.texto, mensagem);
+          assert(!r.texto.includes("FIM:"), r.texto);
+        }
+      }
+    }
+  },
+});
 
 Deno.test({
   name: "workflow: migracoes vazio roda o gate de transporte (só leitura) e o fingerprint, e NENHUM apply",
