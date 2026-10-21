@@ -81,6 +81,13 @@ const VERIFICACOES = {
       "-- 20261341: a linha do codigo fica TRAVADA",
     ],
   },
+  "20261342000000_o_rastreio_do_convidado_nao_devolve_a_nota_do_pedido.sql": {
+    funcao: "get_orders_by_otp_v2",
+    esperado: [
+      "FOR UPDATE OF v",
+      "-- 20261342: a coluna notes NAO sai mais daqui",
+    ],
+  },
   "20261330000000_mototaxi_privado.sql": {
     funcao: "salvar_config_mototaxi",
     esperado: [

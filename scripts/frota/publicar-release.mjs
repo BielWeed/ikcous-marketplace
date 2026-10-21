@@ -570,6 +570,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "64b-antes-politicas-de-perfil-e-endereco-is-admin",
   "65a-conferir-codigo-do-convidado-trava-a-linha-aplicado",
   "65b-antes-codigo-do-convidado-corpo-da-1217",
+  "66a-conferir-rastreio-do-convidado-sem-nota-aplicado",
+  "66b-antes-rastreio-do-convidado-corpo-da-1341",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

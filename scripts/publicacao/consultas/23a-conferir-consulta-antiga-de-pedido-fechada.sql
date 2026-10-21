@@ -57,7 +57,14 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'get_orders_by_otp_v2: corpo e o da 20261217000000 (md5)',
          '53b5e632657b82206daa6aa992a50c0d',
-         COALESCE((SELECT f.m FROM fn f WHERE f.nome = 'get_orders_by_otp_v2'), 'AUSENTE')
+         -- Aceita tambem os corpos das SUCESSORAS 20261341000000 (trava de linha) e 20261342000000 (sem a nota do
+         -- retorno): a 23a e' o DEPOIS da 20261220000000 e continua certa depois delas; o `vivo` mostra o `esperado`.
+         COALESCE((SELECT CASE WHEN f.m IN ('53b5e632657b82206daa6aa992a50c0d',
+                                            '34199947ecded0fd9400b5fd0276ea47',
+                                            '02208ac9d2abe2e8b03790349d491ecb')
+                               THEN '53b5e632657b82206daa6aa992a50c0d'
+                               ELSE f.m END
+                     FROM fn f WHERE f.nome = 'get_orders_by_otp_v2'), 'AUSENTE')
   UNION ALL
   SELECT 'get_orders_by_otp_v2: EXECUTE aberto para anon e authenticated',
          'PUBLIC=nao anon=sim authenticated=sim service_role=sim',

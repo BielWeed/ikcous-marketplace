@@ -9813,7 +9813,30 @@ async function hashesDoLote21() {
       antes: f.antes ? tres(corpoDe(await ler(f.antes), f.nome)) : null,
       rollback: f.antes ? tres(corpoDe(rb, f.nome)) : null,
     });
-  return { porFuncao, mig, rb };
+  // As SUCESSORAS que redefinem a v2 (20261341: trava de linha; 20261342: sem a nota do pedido): a 21a aceita o corpo
+  // delas tambem (LF e CRLF), calculado dos ARQUIVOS, nunca digitado.
+  const sucessorasDaV2 = [];
+  for (const arq of [
+    "20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql",
+    "20261342000000_o_rastreio_do_convidado_nao_devolve_a_nota_do_pedido.sql",
+  ])
+    sucessorasDaV2.push(
+      tres(
+        corpoDe(
+          await ler(
+            MIGRACAO_217.slice(
+              0,
+              Math.max(
+                MIGRACAO_217.lastIndexOf("/"),
+                MIGRACAO_217.lastIndexOf("\\"),
+              ) + 1,
+            ) + arq,
+          ),
+          "get_orders_by_otp_v2",
+        ),
+      ),
+    );
+  return { porFuncao, mig, rb, sucessorasDaV2 };
 }
 
 for (const [nome, nItens] of [
@@ -9890,7 +9913,7 @@ for (const [nome, nItens] of [
 }
 
 Deno.test("21a/21b — os hashes são EXATAMENTE os dos corpos que os arquivos definem; o pré-voo cita (vigente, desta); o rollback devolve o corpo de ANTES byte a byte", async (t) => {
-  const { porFuncao, mig, rb } = await hashesDoLote21();
+  const { porFuncao, mig, rb, sucessorasDaV2 } = await hashesDoLote21();
   const sqlA = sqlSemComentarios(
     await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_21A}.sql`),
   );
@@ -9901,14 +9924,25 @@ Deno.test("21a/21b — os hashes são EXATAMENTE os dos corpos que os arquivos d
     ...new Set([...sql.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1])),
   ];
   await t.step(
-    "21a: só os 12 sha256 do DEPOIS (LF e CRLF), cada linha [LF, LF, CRLF, LF]",
+    "21a: só os 12 sha256 do DEPOIS (LF e CRLF) mais os 4 das sucessoras da v2 (1341 e 1342), cada linha [LF, LF, CRLF, LF] (a da v2 [LF, LF, CRLF, 1341 LF, 1341 CRLF, 1342 LF, 1342 CRLF, LF])",
     () => {
+      assertEquals(
+        sucessorasDaV2.map((x: { md5: string }) => x.md5),
+        [
+          "34199947ecded0fd9400b5fd0276ea47",
+          "02208ac9d2abe2e8b03790349d491ecb",
+        ],
+      );
+      const suc = sucessorasDaV2.flatMap((x: { lf: string; crlf: string }) => [
+        x.lf,
+        x.crlf,
+      ]);
       const todos = FUNCOES_21.flatMap((f) => {
         const x = porFuncao.get(f.nome).depois;
         return [x.lf, x.crlf];
       });
       assertEquals(new Set(todos).size, 12);
-      assertEquals(hex64(sqlA).sort(), [...todos].sort());
+      assertEquals(hex64(sqlA).sort(), [...todos, ...suc].sort());
       for (const f of FUNCOES_21) {
         const x = porFuncao.get(f.nome).depois;
         const linha = linhaDoItem(
@@ -9917,7 +9951,9 @@ Deno.test("21a/21b — os hashes são EXATAMENTE os dos corpos que os arquivos d
         );
         assertEquals(
           [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
-          [x.lf, x.lf, x.crlf, x.lf],
+          f.nome === "get_orders_by_otp_v2"
+            ? [x.lf, x.lf, x.crlf, ...suc, x.lf]
+            : [x.lf, x.lf, x.crlf, x.lf],
         );
         assertStringIncludes(
           linha,

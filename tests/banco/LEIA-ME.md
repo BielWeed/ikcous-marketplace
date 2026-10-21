@@ -731,6 +731,14 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   reconhecido, por isso o pre-voo recusa FORCE e dono diferente). Rollback byte a byte, 2o rollback recusa, pre-voo recusa sem escrever,
   e as consultas `64a`/`64b` (rol de 4 linhas, 8 negativos). As provas que desfazem a 97 (`admin-atual` e `pagamentos-rpc`) desfazem
   esta ANTES por `admin-atual-perfis-posterior.cjs`. **Nao prova** a IKCOUS nem a Savy.
+- **o rastreio do convidado (`rastreio-do-convidado-viva.cjs`, via `rodar-isolado.cjs`)**: as migrations `20261341000000` (a leitura do
+  codigo ganha `FOR UPDATE OF v`) e `20261342000000` (a chave `notes` sai do retorno). **Conexoes reais**: 30 chamadas com o codigo
+  errado avaliam no maximo 5 vezes e deixam `attempts = 5` (com e sem pausa na janela); 10 com o codigo certo deixam entrar UMA; a
+  trava e so da linha do codigo. CONTROLE: o corpo da 1217 com a mesma pausa avalia as 30 e deixa as 10 entrarem. Fluxo legitimo,
+  codigo que ja tinha tentativas, a nota e o texto dela fora do JSON (CPF segue fora), cadeia 1217-1341-1342 e volta byte a byte,
+  pre-voos, e as consultas `65a/65b/66a/66b`. As provas antigas que reaplicam ou desfazem a 1217 (`teto-de-email`, `consulta-antiga-de-pedido`
+  e seus portoes) desfazem estas duas ANTES por `rastreio-do-convidado-posterior.cjs`; as consultas `21a` e `23a` aceitam o corpo
+  delas como sucessor. **Nao prova** a IKCOUS nem a Savy.
 - **as provas que DESFAZEM corpos redefinidos pela `20261243000000`** (`pagamentos-rpc` e `admin-atual`: o rollback da 95 e da
   97 e a reaplicação da 97 partem do corpo de `registrar_pagamento_recebido` que a 97 deixa) a desfazem ANTES, na transação,
   por `desfazer-recebimento-posterior.cjs` (só se no ar): o pré-voo de cada rollback mais velho a recusa.
