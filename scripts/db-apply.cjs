@@ -72,6 +72,16 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  "20261360000000_ex_admin_perde_o_acesso_na_hora_nas_demais_tabelas.sql": [
+    {
+      funcao: "answer_question_atomic",
+      esperado: [{ texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 }],
+    },
+    {
+      funcao: "reply_review_atomic",
+      esperado: [{ texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 }],
+    },
+  ],
   // 20261341: a linha do codigo e travada na leitura (FOR UPDATE OF v). A 20261340 so troca expressoes de
   // politica (ALTER POLICY), sem funcao: fica de fora do mapa, como a 20261197 e a 20261202.
   "20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql": {

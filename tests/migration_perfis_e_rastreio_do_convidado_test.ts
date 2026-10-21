@@ -286,11 +286,11 @@ Deno.test("1340-1342: registros de publicacao completos (lotes, consultas, rois,
   // as provas antigas desfazem as posteriores
   assertStringIncludes(
     ler("tests/banco/admin-atual-viva.cjs"),
-    "PERFIS_ADMIN_ATUAL,\n];",
+    "EX_ADMIN_DEMAIS_TABELAS,\n];",
   );
   assertStringIncludes(
     ler("tests/banco/pagamentos-rpc-viva.cjs"),
-    "PERFIS_ADMIN_ATUAL,\n];",
+    "EX_ADMIN_DEMAIS_TABELAS,\n];",
   );
 });
 
