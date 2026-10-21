@@ -18,7 +18,11 @@
   box-sizing: border-box;
   height: 100%;
   max-height: 100dvh;
-  overflow: hidden;
+  /* Rola quando o mínimo das regiões abaixo não cabe (celular deitado):
+     cortar escondia a lista de itens. `clip` no x: `hidden` viraria rolagem. */
+  overflow-x: clip;
+  overflow-y: auto;
+  scrollbar-width: thin;
   padding-bottom: calc(var(--admin-tab-pb, 6.25rem) + 8px);
 }
 .pdv-viewport > :not(.pdv-cupom, #busca-do-balcao, .pdv-layer, .pdv-receipt) {
@@ -106,7 +110,9 @@
 }
 .pdv-layer:not(.pdv-checkout),
 .pdv-receipt {
-  min-height: 0;
+  /* Piso: sem ele a camada vai a altura zero quando a reserva da barra
+     consome a tela; o `.pdv-viewport` rola. */
+  min-height: 11rem;
   overflow-y: auto;
   scrollbar-width: thin;
 }
@@ -288,6 +294,11 @@
   padding: 0;
   background: transparent;
   border: 0;
+}
+/* Piso da lista de itens (~2 itens): em tela baixa é ela a única que encolhe
+   e ia a altura zero. Em tela alta o piso nem entra em ação. */
+.pdv-cupom[data-resumo="false"] {
+  min-height: 11rem;
 }
 .pdv-cupom ul {
   display: flex;
@@ -804,12 +815,13 @@
 }
 #busca-do-balcao:not([hidden]) {
   flex: 1 1 0;
-  min-height: 0;
+  min-height: 11rem;
   overflow-y: auto;
   scrollbar-width: thin;
 }
 .pdv[data-modo="buscar"] .pdv-cupom[data-resumo="false"] {
   flex: 0 1 30%;
+  min-height: 8rem;
 }
 .pdv-flow > .pdv-notice {
   position: absolute;
@@ -888,7 +900,6 @@
     padding-top: 8px;
   }
   .pdv[data-etapa="fechamento"] .pdv-layer-heading .pdv-muted,
-  .pdv[data-etapa="fechamento"] .pdv-cupom > ul,
   .pdv[data-etapa="fechamento"] .pdv-cupom .pdv-heading > svg,
   .pdv-payment small,
   .pdv-discount .pdv-card:has(#motivo-do-desconto) > p {
@@ -978,9 +989,6 @@
   }
 }
 @media (min-height: 681px) and (max-height: 900px) {
-  .pdv[data-etapa="fechamento"] .pdv-cupom > ul {
-    display: flex;
-  }
   .pdv-payment {
     min-height: 56px;
   }

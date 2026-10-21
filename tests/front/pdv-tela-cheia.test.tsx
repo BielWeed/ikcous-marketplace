@@ -46,7 +46,7 @@ function botao(texto: string) {
 it("reserva a barra medida sem impedir a rolagem do conteúdo em telas baixas", () => {
   const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8");
   expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*height: 100%/);
-  expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*overflow: hidden/);
+  expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*overflow-y: auto/);
   expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*--admin-tab-pb/);
   expect(css).toMatch(
     /\.pdv-cupom\[data-resumo="false"\] > ul\s*\{[^}]*min-height: 0/,
@@ -57,6 +57,51 @@ it("reserva a barra medida sem impedir a rolagem do conteúdo em telas baixas", 
     expect(bloco, classe).toMatch(/overflow-y:\s*(auto|scroll)/);
     expect(bloco, classe).toMatch(/overscroll-behavior:\s*contain/);
   }
+});
+
+// ATENÇÃO: o jsdom não calcula layout. Este teste só trava a FORMA do CSS que
+// corrige o defeito; a prova de verdade é a medida em navegador real (Chrome
+// headless) nas telas 375x548, 800x360, 667x336 e 568x320. Sem piso de altura
+// a lista de itens (e a busca, e a escolha de cliente) ia a ZERO em celular
+// deitado, e sem rolagem no `.pdv-viewport` a balconista não alcançava nada.
+it("em tela baixa nenhuma região vai a altura zero e a tela rola em vez de cortar", () => {
+  const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+  const corpoDa = (seletor: string): string => {
+    const achados: string[] = [];
+    for (const m of css.matchAll(/(?:^|\n)([^{}@\n][^{}]*)\{([^}]*)\}/g)) {
+      if ((m[1] ?? "").replace(/\s+/g, " ").trim() === seletor)
+        achados.push(m[2] ?? "");
+    }
+    expect(achados.length, seletor).toBeGreaterThan(0);
+    return achados.join("\n");
+  };
+  const pisoEmRem = (corpo: string): number =>
+    Number(/min-height:\s*([\d.]+)rem/.exec(corpo)?.[1] ?? 0);
+
+  const viewport = corpoDa(".pdv-viewport");
+  expect(viewport).toMatch(/overflow-y:\s*auto/);
+  expect(viewport).not.toMatch(/overflow(-x|-y)?:\s*hidden/);
+  expect(viewport).toMatch(/overflow-x:\s*clip/);
+
+  // Regiões que dividem a altura que sobra (flex-shrink 1): piso em rem para
+  // acompanhar o zoom do sistema. Em tela alta o piso nem entra em ação.
+  const regioes: Record<string, string> = {
+    "lista de itens (bipar/digitar)": '.pdv-cupom[data-resumo="false"]',
+    "resultados da busca": "#busca-do-balcao:not([hidden])",
+    "cliente e recibo": ".pdv-layer:not(.pdv-checkout), .pdv-receipt",
+  };
+  for (const [nome, seletor] of Object.entries(regioes)) {
+    expect(pisoEmRem(corpoDa(seletor)), nome).toBeGreaterThanOrEqual(10);
+  }
+  // Na busca o cupom divide a tela com os resultados: piso menor, ainda > 0.
+  expect(
+    pisoEmRem(
+      corpoDa('.pdv[data-modo="buscar"] .pdv-cupom[data-resumo="false"]'),
+    ),
+  ).toBeGreaterThanOrEqual(7);
 });
 
 it("fechamento e variações montam os corpos roláveis sem levar a barra de ações junto", async () => {
