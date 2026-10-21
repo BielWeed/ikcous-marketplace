@@ -285,6 +285,42 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
     expect(salvar().disabled).toBe(true);
     expect(updateConfig).not.toHaveBeenCalled();
   });
+  it.each(["local", "nacional"] as const)(
+    "sinaliza erro na aba %s mesmo quando a outra está visível",
+    async (aba) => {
+      await montar();
+      await clicar("Frete grátis", host.querySelector("#painel-frete-gratis")!);
+      if (aba === "nacional")
+        await clicar("Fora da região", host.querySelector('[role="tablist"]')!);
+      await escolher(
+        aba === "local"
+          ? "#bloco-frete-local-estrategias"
+          : "#bloco-estrategia-nacional",
+        "Grátis acima de um valor",
+      );
+      await digitar(
+        aba === "local" ? "frete-gratis-acima-de" : "frete-nacional-minimo",
+        "",
+      );
+      const outraAba = host.querySelector<HTMLButtonElement>(
+        aba === "local" ? "#aba-gratis-nacional" : "#aba-gratis-local",
+      )!;
+      await act(async () => outraAba.click());
+      const abaComErro = host.querySelector<HTMLButtonElement>(
+        `#aba-gratis-${aba}`,
+      )!;
+      const painel = host.querySelector<HTMLDivElement>(`#gratis-${aba}`)!;
+      expect(painel.hidden).toBe(true);
+      expect(abaComErro.getAttribute("aria-selected")).toBe("false");
+      expect(abaComErro.textContent).toContain("Corrija o valor");
+      expect(salvar().disabled).toBe(true);
+      await act(async () => abaComErro.click());
+      expect(painel.hidden).toBe(false);
+      expect(abaComErro.getAttribute("aria-selected")).toBe("true");
+      expect(updateConfig).not.toHaveBeenCalled();
+    },
+  );
+
   it("salva só transportadoras sem regravar nem anunciar regras salvas", async () => {
     await montar();
     const chave = host.querySelector<HTMLButtonElement>(

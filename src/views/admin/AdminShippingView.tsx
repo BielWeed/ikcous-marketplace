@@ -1046,6 +1046,11 @@ export const AdminShippingView = memo(function AdminShippingView({
                     className={`min-h-11 min-w-0 flex-1 rounded-full px-2 text-xs font-bold ${abaGratis === aba ? "bg-[hsl(var(--admin-gold-fill))] text-black" : "text-zinc-300"}`}
                   >
                     {aba === "local" ? "Na sua região" : "Fora da região"}
+                    {(aba === "local" ? erroLocal : erroNacional) && (
+                      <span className="block text-red-300">
+                        Corrija o valor
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
