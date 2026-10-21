@@ -2521,6 +2521,223 @@ PROVAS.push({
 
 // ---------------------------------------------------------------------------
 
+// A3: só o cron consulta o MP. A expiração não pode desfazer pedido adiantado.
+PROVAS.push({
+  nome: "(A3) reconciliação alcança processing/shipping e mantém o rodízio sem expirar o pedido adiantado",
+  corpo: async (c) => {
+    for (const status of ["processing", "shipping"]) {
+      const p = await novoPedido(c, { status, vencidoHaMin: 60 });
+      await expirar(c);
+      const antes = await foto(c, p);
+      assert.equal(antes.linha.payment_status, "aguardando");
+      esperaDevolvido(antes, p, false, status);
+      const fila = await c.query(
+        "SELECT * FROM public.pagamentos_a_reconciliar()",
+      );
+      assert.ok(
+        fila.rows.some((r) => r.order_id === p.id),
+        `${status} precisa de reconsulta`,
+      );
+      assert.equal(await confirmar(c, p.id, p.gateway, "pago"), "pago");
+      const depois = await foto(c, p);
+      assert.equal(depois.linha.status, status);
+      assert.ok(depois.linha.paid_at);
+      esperaDevolvido(depois, p, false, `${status} pago não devolve estoque`);
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(A1) refund integral antes da confirmação cancela pending, registra entrada e devolve produto/variante uma vez",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      itens: [{ qtd: 2 }, { qtd: 1, variante: true }],
+    });
+    const antes = await foto(c, p);
+    assert.equal(antes.linha.paid_at, null);
+    const registrarRefund = () =>
+      comPapel(
+        c,
+        "service_role",
+        "SELECT public.registrar_estorno_externo_do_mp($1, 'A1-integral', $2, 'refunded', 'refunded') AS r",
+        [p.id, antes.linha.total],
+        { commit: true },
+      );
+    const r = await registrarRefund();
+    if (!r.ok) throw r.erro;
+    const f = await foto(c, p);
+    assert.equal(f.linha.payment_status, "estornado");
+    assert.equal(f.linha.status, "cancelled");
+    assert.ok(
+      f.linha.paid_at,
+      "Financeiro precisa da entrada, mesmo com refund chegando primeiro",
+    );
+    const movimentos = await c.query(
+      "SELECT tipo, valor FROM public.fin__movimentos(NULL, NULL) WHERE pedido_id = $1 AND status = 'realizado' ORDER BY tipo",
+      [p.id],
+    );
+    assert.deepEqual(
+      movimentos.rows.map((r) => ({ tipo: r.tipo, valor: Number(r.valor) })),
+      [
+        { tipo: "entrada", valor: 75 },
+        { tipo: "saida", valor: 75 },
+      ],
+    );
+    esperaDevolvido(f, p, true, "refund integral antes da confirmação");
+    assert.equal(
+      await confirmar(c, p.id, p.gateway, "estornado"),
+      "ja_estornado",
+    );
+    const replay = await registrarRefund();
+    if (!replay.ok) throw replay.erro;
+    assert.deepEqual(
+      await foto(c, p),
+      f,
+      "reentrega não muda carimbos nem duplica estoque",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(A3b) LIMIT 100 distribui 105 cobranças vivas entre dois ciclos",
+  corpo: async (c) => {
+    // Suprime somente fixtures anteriores deste clone. Nenhum banco real.
+    await c.query(`INSERT INTO public.reconciliacao_visitas (order_id, visitado_em, cobranca_terminal)
+      SELECT id, now(), gateway_payment_id FROM public.marketplace_orders WHERE gateway_payment_id IS NOT NULL
+      ON CONFLICT (order_id) DO UPDATE SET cobranca_terminal = EXCLUDED.cobranca_terminal`);
+    const ids = new Set();
+    for (let i = 0; i < 105; i++) {
+      const p = await novoPedido(c, {
+        status: ["pending", "processing", "shipping"][i % 3],
+      });
+      ids.add(p.id);
+    }
+    const primeiro = (
+      await c.query("SELECT * FROM public.pagamentos_a_reconciliar()")
+    ).rows;
+    assert.equal(primeiro.length, 100);
+    await c.query(
+      "SELECT public.marcar_visitas_da_reconciliacao($1::uuid[], '{}'::uuid[], '{}'::text[])",
+      [primeiro.map((r) => r.order_id)],
+    );
+    const segundo = (
+      await c.query("SELECT * FROM public.pagamentos_a_reconciliar()")
+    ).rows;
+    assert.equal(segundo.length, 100);
+    const visitados = new Set([...primeiro, ...segundo].map((r) => r.order_id));
+    assert.deepEqual(
+      visitados,
+      ids,
+      "um pedido adiantado não pode ficar atrás dos mesmos 100 para sempre",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(A1b) parcial e pedido entregue/pago não cancelam nem reestocam",
+  corpo: async (c) => {
+    for (const status of ["pending", "delivered"]) {
+      const p = await novoPedido(c, { status });
+      assert.equal(await confirmar(c, p.id, p.gateway, "pago"), "pago");
+      const antes = await foto(c, p);
+      const parcial = await comPapel(
+        c,
+        "service_role",
+        "SELECT public.registrar_estorno_externo_do_mp($1, $2, 25, 'processed', 'partially_refunded') AS r",
+        [p.id, `A1-parcial-${status}`],
+        { commit: true },
+      );
+      if (!parcial.ok) throw parcial.erro;
+      let f = await foto(c, p);
+      assert.equal(f.linha.payment_status, "pago");
+      assert.equal(f.linha.paid_at, antes.linha.paid_at);
+      assert.equal(f.linha.status, status);
+      esperaDevolvido(f, p, false, `${status} parcial`);
+      const integral = await comPapel(
+        c,
+        "service_role",
+        "SELECT public.registrar_estorno_externo_do_mp($1, $2, 50, 'refunded', 'refunded') AS r",
+        [p.id, `A1-restante-${status}`],
+        { commit: true },
+      );
+      if (!integral.ok) throw integral.erro;
+      f = await foto(c, p);
+      assert.equal(f.linha.payment_status, "estornado");
+      assert.equal(f.linha.status, status);
+      assert.equal(f.linha.paid_at, antes.linha.paid_at);
+      esperaDevolvido(f, p, false, `${status} integral já confirmado`);
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(A1c) concluir_estorno repetido em paralelo fecha a reserva UMA vez",
+  corpo: async (c) => {
+    const p = await novoPedido(c);
+    const r = await c.query(
+      `INSERT INTO public.order_refunds
+      (order_id, amount, solicitado_por, status, motivo)
+      VALUES ($1, 75, 'sistema', 'concluido', 'fixture A1') RETURNING id`,
+      [p.id],
+    );
+    const id = r.rows[0].id;
+    const resultado = await corrida(c, URL_BANCO, {
+      sqlA: "SELECT public.concluir_estorno($1, 'A1-corrida', 'refunded', 'refunded') AS r",
+      paramsA: [id],
+      sqlB: "SELECT public.concluir_estorno($1, 'A1-corrida', 'refunded', 'refunded') AS r",
+      paramsB: [id],
+      papelB: "service_role",
+    });
+    assert.ok(resultado.esperou);
+    assert.equal(resultado.resultadoA.ja_concluida, false);
+    assert.ok(resultado.resultadoB.ok);
+    assert.equal(resultado.resultadoB.valor.ja_concluida, true);
+    const f = await foto(c, p);
+    assert.equal(f.linha.payment_status, "estornado");
+    assert.equal(f.linha.status, "cancelled");
+    assert.ok(f.linha.paid_at);
+    esperaDevolvido(f, p, true, "concorrência do refund");
+  },
+});
+
+PROVAS.push({
+  nome: "(A1d) carimbo de estoque e memória de envio impedem devolução duplicada",
+  corpo: async (c) => {
+    const p = await novoPedido(c);
+    await c.query("SELECT public.devolver_estoque($1)", [p.id]);
+    const antes = await foto(c, p);
+    const r = await comPapel(
+      c,
+      "service_role",
+      "SELECT public.registrar_estorno_externo_do_mp($1, 'A1-carimbo', 75, 'refunded', 'refunded') AS r",
+      [p.id],
+      { commit: true },
+    );
+    if (!r.ok) throw r.erro;
+    const f = await foto(c, p);
+    assert.equal(f.linha.status, "cancelled");
+    assert.equal(f.linha.stock_returned_at, antes.linha.stock_returned_at);
+    esperaDevolvido(f, p, true, "reserva já devolvida");
+
+    const enviado = await novoPedido(c);
+    await c.query(
+      "UPDATE public.marketplace_orders SET cancelled_after_shipping = true WHERE id = $1",
+      [enviado.id],
+    );
+    const retorno = await comPapel(
+      c,
+      "service_role",
+      "SELECT public.registrar_estorno_externo_do_mp($1, 'A1-envio', 75, 'refunded', 'refunded') AS r",
+      [enviado.id],
+      { commit: true },
+    );
+    if (!retorno.ok) throw retorno.erro;
+    const fotoEnviado = await foto(c, enviado);
+    assert.equal(fotoEnviado.linha.status, "pending");
+    esperaDevolvido(fotoEnviado, enviado, false, "mercadoria já saiu antes");
+  },
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   URL_BANCO = url;

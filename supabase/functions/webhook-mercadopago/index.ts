@@ -1901,7 +1901,7 @@ async function handler(
   // conferências verem linhas DIFERENTES num intervalo de reescrita.
   const { data: linhaDoPedido, error: erroLeituraPedido } = await supabase
     .from("marketplace_orders")
-    .select("total, total_amount, gateway_payment_id, payment_status")
+    .select("total, total_amount, gateway_payment_id, payment_status, paid_at, status")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -1912,6 +1912,15 @@ async function handler(
       erroLeituraPedido,
     );
     return json({ error: "Erro ao consultar o pedido." }, 500);
+  }
+
+  // A1: concluir_estorno fecha atomicamente a reserva nunca confirmada
+  // (paid_at + cancelamento + estoque). Se o ledger não conseguiu concluir
+  // nenhum refund, NÃO cair no confirmar_pagamento legado: ele encerraria a
+  // reserva sem a entrada financeira. 500 conserva o evento para reconsulta.
+  if (statusMapeado === "estornado" && linhaDoPedido &&
+    linhaDoPedido.paid_at === null && linhaDoPedido.status === "pending") {
+    return json({ error: "Estorno ainda não confirmado no ledger." }, 500);
   }
 
   // RECUSA PELA ROTA `payment` DE UMA COBRANÇA DA ORDERS API (Fase 3.5): o

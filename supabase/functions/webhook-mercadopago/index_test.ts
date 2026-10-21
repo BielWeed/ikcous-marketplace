@@ -3036,6 +3036,74 @@ Deno.test("comprovante chama DIRETO a reserva no supabase do webhook — não de
 // Pedido base reaproveita UUID_PEDIDO/ID_ORDER_TESTE já definidos acima.
 // =============================================================================
 
+// A1: sem um refund concluído no ledger, o caminho legado não pode encerrar
+// um pedido nunca confirmado. O banco é quem fecha reserva e entrada juntos.
+for (const rota of ["payment", "order"] as const) {
+  Deno.test(`A1 - ${rota}: refunded sem refund terminal não encerra pending nunca confirmado`, async () => {
+    const registro = { chamadasRpc: [] as any[] };
+    const id = rota === "payment" ? "999" : ID_ORDER_TESTE;
+    const pedido = {
+      id: UUID_PEDIDO, gateway_payment_id: id, total: 100,
+      valor_estornado: 0, payment_status: "aguardando", paid_at: null, status: "pending",
+    };
+    const supabase = clienteFalso({ pedido, registro });
+    const req = await requisicaoAssinada(id, { corpoExtra: { type: rota } });
+    const fetchImpl = fetchConsulta(200, {
+      id, external_reference: UUID_PEDIDO, status: "refunded", status_detail: "refunded",
+      total_amount: "100.00", transaction_amount: 100,
+      transactions: { payments: [{ id: "PAY-A1", amount: "100.00", status: "refunded" }], refunds: [] },
+      refunds: [],
+    });
+    const resposta = await handler(req, { supabase, fetchImpl });
+    assertEquals(resposta.status, 500);
+    assertEquals(registro.chamadasRpc.length, 0);
+    assertEquals(pedido.payment_status, "aguardando");
+    assertEquals(pedido.paid_at, null);
+  });
+}
+
+for (const fechouReserva of [false, true]) {
+  Deno.test(`A1 - refund integral como primeiro evento: RPC ${fechouReserva ? "atômica permite replay" : "antiga sem paid_at não encerra evento"}`, async () => {
+    const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[] };
+    const pedido = {
+      id: UUID_PEDIDO, gateway_payment_id: ID_ORDER_TESTE, total: 100,
+      valor_estornado: 0, payment_status: "aguardando", paid_at: null as string | null, status: "pending",
+    };
+    const supabase = clienteFalso({
+      pedido, registro,
+      // Costura de RPC, NÃO simulação de estoque: o efeito real é provado
+      // por A1/A1b/A1c em pagamentos-rpc-viva.cjs no Postgres efêmero.
+      estornoExternoDoMp: () => {
+        pedido.payment_status = "estornado";
+        pedido.valor_estornado = 100;
+        if (fechouReserva) {
+          pedido.paid_at = "2026-10-21T00:00:00Z";
+          pedido.status = "cancelled";
+        }
+        return { data: { resultado: "inserido", valor_estornado: 100 }, error: null };
+      },
+    });
+    const fetchImpl = fetchConsulta(200, {
+      id: ID_ORDER_TESTE, external_reference: UUID_PEDIDO,
+      status: "refunded", status_detail: "refunded", total_amount: "100.00",
+      transactions: {
+        payments: [{ id: "PAY-A1", status: "refunded", amount: "100.00" }],
+        refunds: [{ id: "REF-A1", amount: "100.00", status: "processed" }],
+      },
+    });
+    const entregar = async () => handler(
+      await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }),
+      { supabase, fetchImpl },
+    );
+    const resposta = await entregar();
+    assertEquals(resposta.status, fechouReserva ? 200 : 500);
+    assertEquals(registro.chamadasExternoDoMp.length, 1);
+    assertEquals(registro.chamadasExternoDoMp[0].args.p_valor, 100);
+    if (!fechouReserva) assertEquals(registro.chamadasRpc.length, 0);
+    else assertEquals((await entregar()).status, 200);
+  });
+}
+
 Deno.test("W1 - payment 'refunded' com linha em_processamento de 100 -> concluir_estorno UMA vez (p_refund_id da linha, p_mp_refund_id 'r1'); nenhuma inserção", async () => {
   const registro = {
     chamadasRpc: [] as any[],
