@@ -88,6 +88,27 @@ async function pedido(cliente, id, o) {
 const PROVAS = [];
 const estado = {};
 
+// A 370 impede NOVAS gavetas personalizadas. Estas duas provas A1 medem o
+// classificador HISTORICO da abertura (inclusive contas que ja existiam).
+// Mantemos as assercoes originais no corpo da 99; a recusa atual e preservacao
+// dos caixas legados ficam na prova caixa-conta-da-loja-viva.cjs do mesmo CI.
+function aberturaAntesDa370(provar) {
+  return async (cliente) => {
+    const atual = (await cliente.query(
+      "SELECT pg_get_functiondef('public.fin_caixa_abrir(numeric,uuid)'::regprocedure) AS d",
+    )).rows[0].d;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Caminho fixo do rollback versionado, sem entrada externa.
+    const sql = readFileSync(
+      path.join(__dirname, "../../supabase/migrations/rollback-manual-20261370000000_o_caixa_abre_so_na_conta_da_loja.sql"),
+      "utf8",
+    );
+    const anterior = sql.match(/CREATE OR REPLACE FUNCTION public\.fin_caixa_abrir\([\s\S]*?\n\$\$;/)[0];
+    await cliente.query(anterior);
+    try { await provar(cliente); }
+    finally { await cliente.query(atual); }
+  };
+}
+
 PROVAS.push({
   nome: "(a)(b) porta de admin; o extrato lê as fontes e põe cada venda na conta da forma",
   corpo: async (cliente) => {
@@ -1173,8 +1194,8 @@ PROVAS.push({
 // fechamento" é por conta, não global). Cada cenário abre uma conta caixa
 // NOVA porque a Caixa da loja, nas provas acima, já fechou várias vezes.
 PROVAS.push({
-  nome: "(A1-09) 1ª abertura de uma conta caixa nova: falta vira fora_dre (007), nunca Quebra de caixa",
-  corpo: async (cliente) => {
+  nome: "(A1-09) 1ª abertura de uma conta caixa nova: falta vira fora_dre (007), nunca Quebra de caixa (corpo historico da 99)",
+  corpo: aberturaAntesDa370(async (cliente) => {
     await logar(cliente, U_ADMIN);
     const resFinanceiro = async () =>
       num(
@@ -1220,12 +1241,12 @@ PROVAS.push({
       "SELECT public.fin_caixa_fechar($1, 'sem diferença') AS r",
       [30],
     );
-  },
+  }),
 });
 
 PROVAS.push({
-  nome: "(A1-13) 1ª abertura de uma SEGUNDA conta caixa (a Caixa da loja acabou de fechar): falta continua fora_dre — o último fechamento é por conta",
-  corpo: async (cliente) => {
+  nome: "(A1-13) 1ª abertura de uma SEGUNDA conta caixa (a Caixa da loja acabou de fechar): falta continua fora_dre — o último fechamento é por conta (corpo historico da 99)",
+  corpo: aberturaAntesDa370(async (cliente) => {
     await logar(cliente, U_ADMIN);
     const resFinanceiro = async () =>
       num(
@@ -1285,7 +1306,7 @@ PROVAS.push({
       "SELECT public.fin_caixa_fechar($1, 'sem diferença') AS r",
       [30],
     );
-  },
+  }),
 });
 
 // 20261194 ("Já estornei" só em pedido pago): a RPC é a fronteira. Pedido

@@ -176,6 +176,8 @@ on:
       - "scripts/publicacao/consultas/81b-antes-compra-online-trava-preco-e-chave-base-vigente.sql"
       - "scripts/publicacao/consultas/82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas.sql"
       - "scripts/publicacao/consultas/82b-antes-ex-admin-nas-demais-tabelas.sql"
+      - "scripts/publicacao/consultas/83a-conferir-caixa-so-na-conta-da-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/83b-antes-caixa-so-na-conta-da-loja-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -321,6 +323,8 @@ on:
       - "scripts/publicacao/consultas/81b-antes-compra-online-trava-preco-e-chave-base-vigente.sql"
       - "scripts/publicacao/consultas/82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas.sql"
       - "scripts/publicacao/consultas/82b-antes-ex-admin-nas-demais-tabelas.sql"
+      - "scripts/publicacao/consultas/83a-conferir-caixa-so-na-conta-da-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/83b-antes-caixa-so-na-conta-da-loja-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -476,6 +480,9 @@ jobs:
       - name: Prova viva do estilo do card de frete
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estilo-card-frete-viva.cjs
+      - name: Prova viva do caixa somente na conta da loja (20261370)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-conta-da-loja-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

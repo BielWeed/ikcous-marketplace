@@ -898,7 +898,16 @@ async function corridas(c, url) {
   }
   // A mesma chave em duas sessões ao mesmo tempo: a PK global faz B esperar A.
   const s = await abrir(c, 300);
-  const s2 = await abrir(c, 0, conta2);
+  // A 370 impede abrir contas personalizadas. Esta sessao representa um
+  // caixa LEGADO ja aberto, preservado pela migration; a chave e global
+  // entre sessoes independentemente de como cada uma foi aberta.
+  const s2 = (
+    await c.query(
+      `INSERT INTO public.fin_caixa_sessoes (conta_id, valor_abertura, aberto_por)
+       VALUES ($1, 0, $2) RETURNING id`,
+      [conta2, U_ADMIN],
+    )
+  ).rows[0].id;
   try {
     const k = randomUUID();
     const { rB } = await corrida(
