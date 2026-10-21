@@ -10,6 +10,7 @@ import {
   rotuloDaOrigem,
   sentidoDoLancamento,
 } from "@/lib/financeiro";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type {
   ContaFinanceira,
@@ -126,7 +127,7 @@ function LinhaDoExtratoItem({
                 : sentido === 0
                   ? "text-violet-300"
                   : corDoValor(sentido),
-              previsto && "text-orange-300",
+              previsto && classeDoTexto("atencao"),
             )}
           />
           {previsto ? <Etiqueta tom="aviso">Previsto</Etiqueta> : null}

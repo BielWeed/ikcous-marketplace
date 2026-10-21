@@ -8,7 +8,7 @@ import { type ReactNode, createContext, useContext, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatarBRL, formatarBRLComSinal } from "@/lib/financeiro";
-import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
+import { classeDoPonto, classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -566,19 +566,28 @@ export function Etiqueta({
   readonly children: ReactNode;
   readonly tom?: "neutro" | "aviso" | "perigo" | "sucesso" | "ouro";
 }) {
+  const estado =
+    tom === "aviso"
+      ? "atencao"
+      : tom === "perigo"
+        ? "negativo"
+        : tom === "sucesso"
+          ? "positivo"
+          : "neutro";
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center rounded-lg border px-2 py-1 text-xs font-medium",
-        tom === "neutro" && "border-admin-border bg-white/5 text-zinc-400",
-        tom === "aviso" &&
-          "border-orange-400/30 bg-orange-400/10 text-orange-300",
-        tom === "perigo" && "border-red-500/30 bg-red-500/10 text-red-300",
-        tom === "sucesso" &&
-          "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-        tom === "ouro" && "border-admin-border bg-white/5 text-zinc-300",
+        "inline-flex max-w-full items-center gap-1.5 text-xs font-medium",
+        classeDoTexto(estado),
       )}
     >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-[7px] shrink-0 rounded-full",
+          classeDoPonto(estado),
+        )}
+      />
       {children}
     </span>
   );
