@@ -213,6 +213,8 @@ on:
           - 58b-antes-total-do-balcao-base-vigente
           - 59a-conferir-online-sem-forma-aplicado
           - 59b-antes-online-sem-forma-base-vigente
+          - 60a-conferir-estilo-card-frete-aplicado
+          - 60b-antes-estilo-card-frete-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

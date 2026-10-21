@@ -150,6 +150,8 @@ on:
       - "scripts/publicacao/consultas/58b-antes-total-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/59a-conferir-online-sem-forma-aplicado.sql"
       - "scripts/publicacao/consultas/59b-antes-online-sem-forma-base-vigente.sql"
+      - "scripts/publicacao/consultas/60a-conferir-estilo-card-frete-aplicado.sql"
+      - "scripts/publicacao/consultas/60b-antes-estilo-card-frete-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -269,6 +271,8 @@ on:
       - "scripts/publicacao/consultas/58b-antes-total-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/59a-conferir-online-sem-forma-aplicado.sql"
       - "scripts/publicacao/consultas/59b-antes-online-sem-forma-base-vigente.sql"
+      - "scripts/publicacao/consultas/60a-conferir-estilo-card-frete-aplicado.sql"
+      - "scripts/publicacao/consultas/60b-antes-estilo-card-frete-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -385,6 +389,9 @@ jobs:
       - name: Prova viva do cartão online
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cartao-online-viva.cjs
+      - name: Prova viva do estilo do card de frete
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estilo-card-frete-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

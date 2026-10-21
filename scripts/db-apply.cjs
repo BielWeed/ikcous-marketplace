@@ -72,6 +72,23 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  "20261310000000_estilo_do_card_de_frete.sql": [
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        {
+          texto:
+            "COALESCE(config_json->>'free_shipping_card_style', 'completo')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "free_shipping_card_style = CASE WHEN config_json ? 'free_shipping_card_style'",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // ⚠️ Corpo HISTÓRICO — não reaponte esta entrada. A
   // 20260729000002_shipping_quote_validation_v23.sql, logo abaixo, reescreveu
   // a v22 como FACHADA PURA ("RETURN public.create_marketplace_order_v23(...)"

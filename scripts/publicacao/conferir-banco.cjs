@@ -2393,7 +2393,16 @@ const ROL_DA_59B = [
   "fin__forma_do_pedido: corpo da 20261177000000 (base anterior, md5)",
   ...ROL_DA_59A.slice(2),
 ];
+const ROL_DA_60 = [
+  "controle: funcoes de public visiveis a este papel",
+  "upsert_store_config: corpo exato (md5)",
+  "upsert_store_config: assinatura, atributos e ACL preservados",
+  "store_config: estilo restrito e com padrao completo",
+  "v_store_config: colunas na ordem e leitura publica preservada",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "60a-conferir-estilo-card-frete-aplicado": ROL_DA_60,
+  "60b-antes-estilo-card-frete-base-vigente": ROL_DA_60,
   "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,
   "57b-antes-pagamento-adiantado-e-estorno-base-vigente": ROL_DA_57,
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
