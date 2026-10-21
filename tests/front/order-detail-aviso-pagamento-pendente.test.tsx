@@ -254,7 +254,79 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       await esperarMicrotarefas();
     });
 
-    expect(onStatusChange).toHaveBeenCalledWith("ped-teste", "processing");
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "ped-teste",
+      "processing",
+      "pending",
+    );
+  });
+
+  it("O1: fechar a confirmação se o cliente cancelar enquanto ela está aberta", async () => {
+    const { OrderDetail } = await import(
+      "@/components/admin/orders/OrderDetail"
+    );
+    const { toast } = await import("sonner");
+    const aviso = vi.spyOn(toast, "warning");
+    const order = pedidoFake("aguardando");
+    const onStatusChange = vi.fn();
+    await act(async () =>
+      raiz.render(
+        <OrderDetail order={order} onStatusChange={onStatusChange} />,
+      ),
+    );
+    await act(async () =>
+      localizarBotaoPorTexto(hospedeiro, "Avançar →")!.click(),
+    );
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim"),
+    ).toBeDefined();
+    await act(async () =>
+      raiz.render(
+        <OrderDetail
+          order={{ ...order, status: "cancelled" }}
+          onStatusChange={onStatusChange}
+        />,
+      ),
+    );
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim"),
+    ).toBeUndefined();
+    expect(aviso).toHaveBeenCalledWith(
+      "O pedido mudou de situação. Confira antes de avançar.",
+    );
+    expect(onStatusChange).not.toHaveBeenCalled();
+  });
+
+  it("O1: confirmação envia a situação de origem mesmo depois de outro render", async () => {
+    const { OrderDetail } = await import(
+      "@/components/admin/orders/OrderDetail"
+    );
+    const order = pedidoFake("aguardando");
+    const onStatusChange = vi.fn();
+    await act(async () =>
+      raiz.render(
+        <OrderDetail order={order} onStatusChange={onStatusChange} />,
+      ),
+    );
+    await act(async () =>
+      localizarBotaoPorTexto(hospedeiro, "Avançar →")!.click(),
+    );
+    await act(async () =>
+      raiz.render(
+        <OrderDetail
+          order={{ ...order, total: 90 }}
+          onStatusChange={onStatusChange}
+        />,
+      ),
+    );
+    await act(async () =>
+      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim")!.click(),
+    );
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "ped-teste",
+      "processing",
+      "pending",
+    );
   });
 
   it("paymentStatus nulo: clicar em Avançar muda o status direto, sem aviso", async () => {
@@ -282,7 +354,11 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(hospedeiro.textContent).not.toContain(
       "Este pedido não está com o pagamento confirmado",
     );
-    expect(onStatusChange).toHaveBeenCalledWith("ped-teste", "processing");
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "ped-teste",
+      "processing",
+      "pending",
+    );
   });
 
   it("paymentStatus 'pago': clicar em Avançar muda o status direto, sem aviso", async () => {
@@ -310,7 +386,11 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(hospedeiro.textContent).not.toContain(
       "Este pedido não está com o pagamento confirmado",
     );
-    expect(onStatusChange).toHaveBeenCalledWith("ped-teste", "processing");
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "ped-teste",
+      "processing",
+      "pending",
+    );
   });
 
   it("'recusado': clicar em Avançar abre a confirmação e NÃO muda o status ainda", async () => {
@@ -411,7 +491,11 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       // do aviso ao cliente — e termina em pergunta
       expect(texto).toContain("O estoque volta");
       expect(texto.endsWith("?")).toBe(true);
-      expect(onStatusChange).toHaveBeenCalledWith("ped-teste", "cancelled");
+      expect(onStatusChange).toHaveBeenCalledWith(
+        "ped-teste",
+        "cancelled",
+        "pending",
+      );
     } finally {
       globalThis.confirm = confirmOriginal;
     }
