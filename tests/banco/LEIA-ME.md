@@ -49,8 +49,9 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   sobrecarga, função ausente); pós-voo que desfaz tudo; consultas `80a`/`80b` (rol de 4 linhas, positivas no estado
   certo, cada desvio no item certo) e a `57a` aceitando o corpo novo como sucessor. **Não prova** a IKCOUS nem a Savy.
 - **compra online: preço travado e mesma chave espera (`compra-online-travas-viva.cjs`, via `rodar-isolado.cjs`)**: a
-  migration `20261350000000` (só `create_marketplace_order_v23` e `v24`, com duas edições sobre os corpos da `20261244000000`:
-  a leitura do passo 3 tranca a variação **e o produto**, e um advisory lock `pedido_online:<chave>` abre o passo 0). Usa
+  migration `20261350000000` (só `create_marketplace_order_v23` e `v24`, com três edições sobre os corpos da `20261244000000`:
+  a leitura do passo 3 tranca a variação **e o produto**, um advisory lock `pedido_online:<chave>` abre o passo 0 e, antes do
+  laço do passo 3, o carrinho tranca as variações e depois os produtos **numa ordem global por id**). Usa
   **conexões reais em paralelo** e mede a espera em `pg_locks`/`pg_stat_activity` (nunca por dormir). Cada defeito é medido nos
   DOIS corpos: com o da 244 (rollback) o defeito aparece, com o novo some. **D3** (reenvio simultâneo com a mesma chave):
   na última unidade do estoque e com o cupom no limite, na v23 e na v24, a segunda chamada espera e devolve o MESMO pedido
@@ -58,8 +59,13 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   de um pedido que já existe; a primeira desistir (ROLLBACK) deixa a segunda criar o pedido uma vez; chave diferente e chave nula
   (convidado) não esperam. **D2** (preço-base salvo no meio da gravação, com variação sem `price_override`, segurada por um
   gatilho de prova no INSERT do cabeçalho): o painel espera o pedido e cabeçalho e item gravam o MESMO preço; com o corpo da 244
-  o item sai com o preço novo e o cabeçalho com o antigo; outro produto não espera e o produto sem variação segue travando. O
-  diff de linhas do corpo contra o da 244 tem só as duas edições; o pedido que já existia não muda (md5 das tabelas) e o
+  o item sai com o preço novo e o cabeçalho com o antigo; outro produto não espera e o produto sem variação segue travando.
+  **D4** (deadlock entre compras simultâneas): carrinho misto (A = camiseta M + caneca, B = caneca + camiseta G) e duas
+  variações em ordem oposta, na v23 e na v24, numa coreografia de duas conexões reais seguradas por sessões de prova (a
+  espera de cada passo é medida): as duas concluem; com o corpo da 244 (variações) ou com o corpo desta migration sem o bloco da
+  ordem global (carrinho misto) uma recebe "deadlock detected"; mais 20 rodadas de corrida livre, o painel que salva uma variação
+  (a trigger tranca o produto depois da variação) sem cruzar com a compra, e a recusa de payload malformado igual à da 244. O
+  diff de linhas do corpo contra o da 244 tem só as três edições; o pedido que já existia não muda (md5 das tabelas) e o
   reenvio da chave dele devolve o mesmo pedido; atributos e ACL iguais antes e depois; rollback com o `prosrc` idêntico ao
   da 244 (md5 e sha256) e repetido recusado; reaplicar 2x e CRLF; pré-voo que recusa sem escrever (12 sabotagens); pós-voo
   que desfaz tudo; trocar o corpo com uma compra aberta não trava; consultas `81a`/`81b` (rol de 7 linhas) e a `31a`, `37a`

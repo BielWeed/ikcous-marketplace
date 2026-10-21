@@ -79,6 +79,10 @@ const VERIFICACOES = {
         // D2: a leitura do passo 3 tranca a variacao E o produto. Uma vez, e CODIGO (o comentario da edicao nao repete
         // a frase inteira com o ponto e virgula).
         { texto: "FOR NO KEY UPDATE OF v, p;", vezes: 1 },
+        // D4: as travas do carrinho saem em ordem global, antes do laco do passo 3: as variacoes por id e depois os
+        // produtos por id (uma vez cada, e CODIGO: os comentarios do bloco nao repetem a frase).
+        { texto: "WHERE v.id = ANY(v_trava_variantes)", vezes: 1 },
+        { texto: "WHERE p.id = ANY(v_trava_produtos)", vezes: 1 },
         // D3: a mesma chave de idempotencia espera a primeira terminar. Uma vez, no passo 0.
         {
           texto:
@@ -91,6 +95,8 @@ const VERIFICACOES = {
       funcao: "create_marketplace_order_v24",
       esperado: [
         { texto: "FOR NO KEY UPDATE OF v, p;", vezes: 1 },
+        { texto: "WHERE v.id = ANY(v_trava_variantes)", vezes: 1 },
+        { texto: "WHERE p.id = ANY(v_trava_produtos)", vezes: 1 },
         {
           texto:
             "pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('pedido_online:' || p_idempotency_key::text, 0));",

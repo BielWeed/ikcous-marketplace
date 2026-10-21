@@ -1,7 +1,8 @@
 -- 81b-antes-compra-online-trava-preco-e-chave-base-vigente: ANTES da 20261350000000; SO LEITURA, catalogo, rol fechado de 7 linhas.
 -- Exige a 20261244000000 ANTES da 350: os corpos vigentes de create_marketplace_order_v23 e v24 tem de ser exatamente os dela.
 -- Nao ler pedido nem dado de cliente. Hash = md5(replace(prosrc, chr(13), '')); desconhecido ou ausente recusa.
--- As duas edicoes da 350 contam 0 aqui: nenhum `OF v, p;`, uma `OF v;` sozinha e nenhum advisory lock `pedido_online:`.
+-- As tres edicoes da 350 contam 0 aqui: nenhum `OF v, p;`, uma `OF v;` sozinha, nenhuma trava ordenada por id (ordem global)
+-- e nenhum advisory lock `pedido_online:`.
 WITH alvo(nome, assinatura) AS (
   VALUES ('create_marketplace_order_v23', 'public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)'),
          ('create_marketplace_order_v24', 'public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)')
@@ -9,6 +10,7 @@ WITH alvo(nome, assinatura) AS (
   SELECT t.nome, p.oid, md5(replace(p.prosrc, chr(13), '')) AS m,
          (SELECT count(*) FROM regexp_matches(p.prosrc, 'FOR NO KEY UPDATE OF v, p;', 'g')) AS n_trava_v_p,
          (SELECT count(*) FROM regexp_matches(p.prosrc, 'FOR NO KEY UPDATE OF v;', 'g')) AS n_trava_so_v,
+         (SELECT count(*) FROM regexp_matches(p.prosrc, 'ORDER BY [vp]\.id\s+FOR NO KEY UPDATE;', 'g')) AS n_ordem,
          (SELECT count(*) FROM regexp_matches(p.prosrc, 'pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(''pedido_online:'' \|\| p_idempotency_key::text, 0\)\);', 'g')) AS n_lock,
          COALESCE(p.prosecdef AND l.lanname = 'plpgsql' AND p.provolatile = 'v' AND NOT p.proretset AND NOT p.proisstrict
            AND p.pronargs = 13
@@ -26,16 +28,16 @@ WITH alvo(nome, assinatura) AS (
 ), itens(item, esperado, vivo) AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim', CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'create_marketplace_order_v23: corpo e o vigente da 20261244000000, sem a trava do produto nem a espera da mesma chave (md5)', '79445d64a87843be2d42bf601c7090ec',
+  SELECT 'create_marketplace_order_v23: corpo e o vigente da 20261244000000, sem a ordem global das travas, a trava do produto nem a espera da mesma chave (md5)', '79445d64a87843be2d42bf601c7090ec',
          COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
-  SELECT 'create_marketplace_order_v24: corpo e o vigente da 20261244000000, sem a trava do produto nem a espera da mesma chave (md5)', '85c37af4baa2f5ce1375bdd9e943c746',
+  SELECT 'create_marketplace_order_v24: corpo e o vigente da 20261244000000, sem a ordem global das travas, a trava do produto nem a espera da mesma chave (md5)', '85c37af4baa2f5ce1375bdd9e943c746',
          COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
   UNION ALL
-  SELECT 'as duas compras: a leitura do passo 3 ainda tranca so a variacao (nenhuma OF v, p; uma OF v sozinha)', 'v23=0/1 v24=0/1',
+  SELECT 'as duas compras: as travas ainda saem na ordem do carrinho e a leitura do passo 3 tranca so a variacao (nenhuma ordem global; nenhuma OF v, p; uma OF v sozinha)', 'v23=0/0/1 v24=0/0/1',
          CASE WHEN (SELECT count(*) FROM fn) < 2 THEN 'AUSENTE'
               ELSE (SELECT string_agg(CASE f.nome WHEN 'create_marketplace_order_v23' THEN 'v23' ELSE 'v24' END
-                                      || '=' || f.n_trava_v_p || '/' || f.n_trava_so_v, ' ' ORDER BY f.nome) FROM fn f) END
+                                      || '=' || f.n_ordem || '/' || f.n_trava_v_p || '/' || f.n_trava_so_v, ' ' ORDER BY f.nome) FROM fn f) END
   UNION ALL
   SELECT 'as duas compras: ainda sem o advisory lock da chave de idempotencia pedido_online:', 'v23=0 v24=0',
          CASE WHEN (SELECT count(*) FROM fn) < 2 THEN 'AUSENTE'

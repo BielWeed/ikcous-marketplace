@@ -11,9 +11,17 @@
  * 20261244000000) e o DEPOIS (a migration), para cada defeito ser medido nos DOIS corpos: o controle mostra o defeito
  * com o corpo antigo, e o corpo novo o impede.
  *
- *  CORPOS     os corpos novos são os da 20261244000000 (lidos do ARQUIVO) mais SÓ as edições combinadas: o diff de linhas
- *             tem exatamente a linha `OF v, p` no lugar de `OF v` e o PERFORM do advisory lock; o rollback devolve os dois
- *             corpos BYTE A BYTE (md5 e sha256 do `prosrc` vivo) e a declaração é idêntica.
+ *  CORPOS     os corpos novos são os da 20261244000000 (lidos do ARQUIVO) mais SÓ as três edições combinadas: o diff de
+ *             linhas tem exatamente a linha `OF v, p` no lugar de `OF v`, o PERFORM do advisory lock e o bloco da ordem
+ *             global das travas (duas variáveis e as linhas do golden); o rollback devolve os dois corpos BYTE A BYTE
+ *             (md5 e sha256 do `prosrc` vivo) e a declaração é idêntica.
+ *  D4         ORDEM GLOBAL das travas: duas compras SIMULTÂNEAS de carrinho misto (A = camiseta M + caneca, B = caneca +
+ *             camiseta G) e de duas variações em ordem oposta CONCLUEM, sem deadlock (40P01), na v23 e na v24, numa
+ *             coreografia de duas conexões reais seguradas por sessões de prova (esperas medidas em pg_stat_activity) e
+ *             em 20 rodadas de corrida livre. CONTROLE: o corpo da 244 (variações em ordem oposta) e o corpo desta
+ *             migration SEM o bloco da ordem global (carrinho misto) derrubam uma das duas com "deadlock detected". O
+ *             painel que salva uma variação (a trigger tranca o produto DEPOIS da variação) não cruza com a compra, e a
+ *             recusa de payload malformado, item inexistente e quantidade inválida é a MESMA dos corpos da 244.
  *  D3         reenvio SIMULTÂNEO com a mesma chave: a segunda chamada espera (advisory lock) e devolve o MESMO pedido, na
  *             última unidade do estoque e com o cupom no limite, na v23 e na v24. Controle: com o corpo antigo a segunda
  *             recebe "estoque insuficiente" / "limite de usos do cupom" de um pedido que já existe. A primeira
@@ -91,11 +99,11 @@ const FN = {
 const H = {
   [V23]: {
     antes: "79445d64a87843be2d42bf601c7090ec",
-    depois: "415eae034b8e995c2bd2db0bbbc49391",
+    depois: "6b71cb823967518955407b532904ae91",
   },
   [V24]: {
     antes: "85c37af4baa2f5ce1375bdd9e943c746",
-    depois: "e847583c98401789449275cac51ef85c",
+    depois: "e3c124d25632aaa9bcf1995153bc5a7e",
   },
 };
 const MUTADO = process.env.PROVA_ARQUIVO_MUTADO === "1";
@@ -194,6 +202,70 @@ const soCodigo = (linhas) =>
 const TRAVA_DA_CHAVE =
   "PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('pedido_online:' || p_idempotency_key::text, 0));";
 
+// O bloco "ordem global das travas" (D4) vem entre dois marcadores, iguais nas duas funções.
+const INI_ORDEM = "-- >>> ordem global das travas (20261350000000)";
+const FIM_ORDEM = "-- <<< ordem global das travas (20261350000000)";
+/** As linhas de CÓDIGO do bloco, aparadas (o golden do diff de linhas), na ordem em que aparecem. */
+const LINHAS_DA_ORDEM = [
+  "FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)",
+  "LOOP",
+  "BEGIN",
+  "v_product_id := (v_item->>'product_id')::uuid;",
+  "v_variant_id := (v_item->>'variant_id')::uuid;",
+  "EXCEPTION WHEN invalid_text_representation THEN",
+  "CONTINUE;",
+  "END;",
+  "IF v_product_id IS NOT NULL THEN",
+  "v_trava_produtos := array_append(v_trava_produtos, v_product_id);",
+  "END IF;",
+  "IF v_variant_id IS NOT NULL THEN",
+  "v_trava_variantes := array_append(v_trava_variantes, v_variant_id);",
+  "END IF;",
+  "END LOOP;",
+  "IF cardinality(v_trava_variantes) > 0 THEN",
+  "PERFORM 1",
+  "FROM public.product_variants v",
+  "WHERE v.id = ANY(v_trava_variantes)",
+  "ORDER BY v.id",
+  "FOR NO KEY UPDATE;",
+  "END IF;",
+  "IF cardinality(v_trava_produtos) > 0 THEN",
+  "PERFORM 1",
+  "FROM public.produtos p",
+  "WHERE p.id = ANY(v_trava_produtos)",
+  "ORDER BY p.id",
+  "FOR NO KEY UPDATE;",
+  "END IF;",
+];
+const DECLARES_DA_ORDEM = [
+  "v_trava_variantes uuid[] := ARRAY[]::uuid[];",
+  "v_trava_produtos uuid[] := ARRAY[]::uuid[];",
+];
+/**
+ * O corpo da migration SEM o bloco da ordem global: é o corpo que esta migration tinha ANTES de D4 (`OF v, p` e o advisory
+ * lock, sem a ordem global) — o CONTROLE do deadlock do carrinho misto, que o corpo da 244 não tem.
+ */
+function semOrdemGlobal(corpo) {
+  const i = corpo.indexOf(INI_ORDEM);
+  const f = corpo.indexOf(FIM_ORDEM);
+  assert.ok(i > 0 && f > i, "marcadores do bloco da ordem global não achados");
+  const inicioDaLinha = corpo.lastIndexOf("\n", i) + 1;
+  const fimDaLinha = corpo.indexOf("\n", f) + 1;
+  // some também a linha em branco que o bloco deixa depois do marcador final
+  const depois = corpo[fimDaLinha] === "\n" ? fimDaLinha + 1 : fimDaLinha;
+  return corpo.slice(0, inicioDaLinha) + corpo.slice(depois);
+}
+/** Instala o CONTROLE (corpo sem a ordem global) nas duas funções, COMMITADO. */
+async function instalarControleSemOrdem(c) {
+  for (const fn of [V23, V24])
+    await c.query(decl(NOVA[fn], semOrdemGlobal(NOVA[fn].corpo)));
+  assert.match(
+    await estadoDe(c),
+    /^misto/,
+    "o controle devia ser um corpo à parte",
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Cenário
 // ---------------------------------------------------------------------------
@@ -252,6 +324,11 @@ async function estadoDe(c) {
 }
 /** Põe o clone (COMMITADO) no estado pedido: "antes" = corpos da 244 (rollback), "depois" = a migration. */
 async function noEstado(c, alvo) {
+  if ((await estadoDe(c)) === alvo) return;
+  // Corpo "misto" (um CONTROLE instalado à mão, sem o bloco da ordem global): volta ao corpo da migration direto, sem
+  // passar pelo pré-voo (que só aceita o corpo da 244 ou o da migration).
+  if ((await estadoDe(c)).startsWith("misto"))
+    for (const fn of [V23, V24]) await c.query(decl(NOVA[fn]));
   if ((await estadoDe(c)) === alvo) return;
   await c.query(alvo === "antes" ? ROLLBACK : MIGRATION);
   assert.equal(await estadoDe(c), alvo, `não consegui pôr o clone em ${alvo}`);
@@ -412,7 +489,10 @@ function observar(promessa, tirar = (r) => r.rows[0].id) {
     });
   return e;
 }
-/** A sessão `pid` está PARADA numa espera: "advisory" (pg_locks) ou "linha" (trava de linha/transação). */
+/**
+ * A sessão `pid` está PARADA numa espera: "advisory" (pg_locks), "linha" (trava de linha: esperando a transação dona
+ * da linha OU a fila da linha) ou "fila" (só a FILA da linha: já há outra sessão esperando a mesma linha na frente).
+ */
 async function emEspera(pid, tipo) {
   for (let i = 0; i < 120; i++) {
     const r =
@@ -422,7 +502,8 @@ async function emEspera(pid, tipo) {
             [pid],
           )
         : await ADM.query(
-            "SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock' AND wait_event IN ('transactionid', 'tuple')",
+            `SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock'
+                AND wait_event IN (${tipo === "fila" ? "'tuple'" : "'transactionid', 'tuple'"})`,
             [pid],
           );
     if (r.rowCount) return true;
@@ -440,12 +521,56 @@ async function fechar(...cs) {
   }
 }
 
+// ---- carrinhos com mais de um item e linhas seguradas à mão (D4) ----
+
+async function novaVariacao(c, prod, valor) {
+  seq += 1;
+  const id = uid(7000 + seq);
+  await c.query(
+    "INSERT INTO public.product_variants (id, product_id, name, value, stock_increment, active) VALUES ($1, $2, 'Tamanho', $3, 50, true)",
+    [id, prod.id, valor],
+  );
+  return id;
+}
+/** Carrinho de vários itens (1 unidade de cada, R$ 100 cada, entrega local grátis): itens = [{ prod, varId? }]. */
+function comprarCarrinho(c, { rpc = V24, itens, chave }) {
+  return c.query(SQL_PEDIDO(rpc), [
+    JSON.stringify(
+      itens.map((i) => ({
+        product_id: i.prod.id,
+        variant_id: i.varId ?? null,
+        quantity: 1,
+      })),
+    ),
+    100 * itens.length,
+    0,
+    rpc === V24 ? "online" : "cash",
+    null,
+    null,
+    CEP_LOCAL,
+    "local-delivery",
+    chave,
+  ]);
+}
+/** Uma sessão que SEGURA (transação aberta) as linhas pedidas: [["produtos" | "product_variants", id], ...]. */
+async function segurar(linhas) {
+  const g = await sessao(null);
+  await g.query("BEGIN");
+  for (const [tabela, id] of linhas) {
+    assert.ok(["produtos", "product_variants"].includes(tabela), tabela);
+    await g.query(`SELECT 1 FROM public.${tabela} WHERE id = $1 FOR UPDATE`, [
+      id,
+    ]);
+  }
+  return g;
+}
+
 // ---------------------------------------------------------------------------
 // CORPOS
 // ---------------------------------------------------------------------------
 
 prova(
-  "CORPOS: o corpo novo é o da 244 mais SÓ as duas edições (diff de linhas), igual nas duas funções; o rollback é a 244 byte a byte",
+  "CORPOS: o corpo novo é o da 244 mais SÓ as três edições (diff de linhas: OF v, p; a trava da chave; as duas variáveis e o bloco da ordem global), igual nas duas funções; o rollback é a 244 byte a byte",
   async () => {
     for (const fn of [V23, V24]) {
       const d = diffDeLinhas(ANTIGA[fn].corpo, NOVA[fn].corpo);
@@ -456,8 +581,42 @@ prova(
       );
       assert.deepEqual(
         soCodigo(d.adicionadas),
-        ["FOR NO KEY UPDATE OF v, p;", TRAVA_DA_CHAVE].sort(),
+        [
+          "FOR NO KEY UPDATE OF v, p;",
+          TRAVA_DA_CHAVE,
+          ...DECLARES_DA_ORDEM,
+          ...LINHAS_DA_ORDEM,
+        ].sort(),
         `${fn}: linhas de código adicionadas`,
+      );
+      // O bloco da ordem global: um só, entre os marcadores, logo antes do laço do passo 3 e depois de todo o resto
+      // do preâmbulo; as variações são trancadas ANTES dos produtos (a ordem da trigger sync_produto_ultima_atualizacao).
+      const c = NOVA[fn].corpo;
+      assert.equal(c.split(INI_ORDEM).length - 1, 1, `${fn}: um bloco`);
+      assert.equal(c.split(FIM_ORDEM).length - 1, 1, `${fn}: um fim de bloco`);
+      const iIni = c.indexOf(INI_ORDEM);
+      const iFim = c.indexOf(FIM_ORDEM);
+      const iPasso3 = c.indexOf("-- 3. Validation Loop");
+      assert.ok(iIni < iFim && iFim < iPasso3, `${fn}: bloco antes do passo 3`);
+      assert.ok(
+        c.slice(iFim, iPasso3).split("\n").length <= 4,
+        `${fn}: nada entre o bloco e o passo 3`,
+      );
+      const bloco = c.slice(iIni, iFim);
+      assert.ok(
+        bloco.indexOf("public.product_variants v") <
+          bloco.indexOf("public.produtos p"),
+        `${fn}: variações antes dos produtos`,
+      );
+      assert.equal(
+        bloco.split("ORDER BY").length - 1,
+        2,
+        `${fn}: as duas travas ordenadas por id`,
+      );
+      assert.equal(
+        soCodigo(bloco.split("\n").map((l) => l.trim())).length,
+        LINHAS_DA_ORDEM.length,
+        `${fn}: o bloco não tem código além do golden`,
       );
       assert.equal(
         d.removidas.filter((l) => l !== "").length,
@@ -906,6 +1065,314 @@ prova(
 );
 
 // ---------------------------------------------------------------------------
+// D4: a ordem global das travas — compras simultâneas não se derrubam por deadlock
+// ---------------------------------------------------------------------------
+
+/** A = camiseta M + caneca; B = caneca + camiseta G (carrinho MISTO: um item com variação e um sem). */
+async function cenarioMisto() {
+  const camiseta = await novoProduto(ADM, { variacao: true });
+  const g = await novaVariacao(ADM, camiseta, "G");
+  const caneca = await novoProduto(ADM, {});
+  return {
+    itensA: [{ prod: camiseta, varId: camiseta.varId }, { prod: caneca }],
+    itensB: [{ prod: caneca }, { prod: camiseta, varId: g }],
+    // A coreografia: A espera o produto da camiseta e B espera a caneca; solta-se a caneca primeiro.
+    primeira: [["produtos", caneca.id]],
+    segunda: [["produtos", camiseta.id]],
+    // Com a caneca solta, B (que passa a segurar a caneca e a variação G) entra na FILA do produto da camiseta.
+    entraNaFila: "B",
+    caneca,
+    camiseta,
+  };
+}
+/** A = variação M + G; B = G + M (as duas variações da mesma camiseta em ordem oposta). */
+async function cenarioVariacoes() {
+  const camiseta = await novoProduto(ADM, { variacao: true });
+  const m = camiseta.varId;
+  const g = await novaVariacao(ADM, camiseta, "G");
+  return {
+    itensA: [
+      { prod: camiseta, varId: m },
+      { prod: camiseta, varId: g },
+    ],
+    itensB: [
+      { prod: camiseta, varId: g },
+      { prod: camiseta, varId: m },
+    ],
+    // A espera a variação M e B espera a G; solta-se a M primeiro: A passa a segurar M e entra na FILA da G.
+    primeira: [["product_variants", m]],
+    segunda: [["product_variants", g]],
+    entraNaFila: "A",
+    camiseta,
+    m,
+    g,
+  };
+}
+const eDeadlock = (r) => Boolean(r.erro) && /deadlock detected/.test(r.erro);
+
+/**
+ * Duas compras SIMULTÂNEAS de carrinhos que pedem as mesmas linhas em ordem cruzada. Duas sessões seguram as linhas
+ * (primeira e segunda); A e B entram e param nelas (cada espera é MEDIDA em pg_stat_activity); solta-se a primeira, e
+ * então a segunda. No corpo sem a ordem global isso leva cada compra a segurar o que a outra espera (deadlock, e o banco
+ * derruba uma delas com 40P01 depois do deadlock_timeout); com a ordem global as duas concluem. `controle` pede a espera
+ * medida pela FILA (só existe no cruzamento); sem ele, só se dá um instante entre as duas solturas.
+ */
+async function coreografia({ rpc, cenario, controle }) {
+  const A = await sessao();
+  const B = await sessao();
+  let g1;
+  let g2;
+  try {
+    const cen = await cenario();
+    const chaves = [crypto.randomUUID(), crypto.randomUUID()];
+    g1 = await segurar(cen.primeira);
+    g2 = await segurar(cen.segunda);
+    const eA = observar(
+      comprarCarrinho(A, { rpc, itens: cen.itensA, chave: chaves[0] }),
+    );
+    assert.ok(await emEspera(A.pid, "linha"), "A devia parar numa trava");
+    const eB = observar(
+      comprarCarrinho(B, { rpc, itens: cen.itensB, chave: chaves[1] }),
+    );
+    assert.ok(await emEspera(B.pid, "linha"), "B devia parar numa trava");
+    await g1.query("COMMIT");
+    if (controle)
+      assert.ok(
+        await emEspera((cen.entraNaFila === "A" ? A : B).pid, "fila"),
+        `${cen.entraNaFila} devia entrar na fila da linha que a outra compra espera`,
+      );
+    else await dormir(200);
+    await g2.query("COMMIT");
+    const [rA, rB] = await Promise.all([eA.p, eB.p]);
+    const pedidos = (
+      await ADM.query(
+        "SELECT count(*)::int AS n FROM public.marketplace_orders WHERE idempotency_key = ANY($1::uuid[])",
+        [chaves],
+      )
+    ).rows[0].n;
+    return { rA, rB, pedidos };
+  } finally {
+    await fechar(g1, g2, A, B);
+  }
+}
+
+for (const [rotuloCenario, cenario, controleSemOrdem] of [
+  [
+    "carrinho MISTO (A = camiseta M + caneca, B = caneca + camiseta G)",
+    cenarioMisto,
+    true,
+  ],
+  [
+    "duas VARIAÇÕES em ordem oposta (A = M + G, B = G + M)",
+    cenarioVariacoes,
+    false,
+  ],
+]) {
+  for (const rpc of [V24, V23]) {
+    prova(
+      `D4 (${rpc}): ${rotuloCenario} ao mesmo tempo — as duas compras CONCLUEM sem deadlock; CONTROLE: ${controleSemOrdem ? "o corpo sem a ordem global (o desta migration antes de D4)" : "o corpo da 244"} derruba uma delas com 40P01`,
+      async () => {
+        try {
+          if (controleSemOrdem) await instalarControleSemOrdem(ADM);
+          else await noEstado(ADM, "antes");
+          const antes = await coreografia({ rpc, cenario, controle: true });
+          assert.equal(
+            [antes.rA, antes.rB].filter(eDeadlock).length,
+            1,
+            `CONTROLE: exatamente uma compra devia cair em deadlock: ${JSON.stringify([antes.rA, antes.rB])}`,
+          );
+          assert.equal(
+            [antes.rA, antes.rB].filter((r) => r.ok).length,
+            1,
+            "CONTROLE: a outra compra conclui",
+          );
+          assert.equal(antes.pedidos, 1, "CONTROLE: um pedido só nasceu");
+        } finally {
+          await noEstado(ADM, "depois");
+        }
+        const depois = await coreografia({ rpc, cenario, controle: false });
+        assert.ok(
+          depois.rA.ok && depois.rB.ok,
+          `as duas compras deviam concluir: ${JSON.stringify([depois.rA, depois.rB])}`,
+        );
+        assert.notEqual(depois.rA.ok, depois.rB.ok, "dois pedidos distintos");
+        assert.equal(depois.pedidos, 2, "cada compra gravou o seu pedido");
+      },
+    );
+  }
+}
+
+prova(
+  "D4: a compra tranca a VARIAÇÃO antes do PRODUTO — o painel que salva uma variação (a trigger atualiza a variação e só então tranca o produto) entra na fila e as duas terminam, sem deadlock",
+  async () => {
+    await noEstado(ADM, "depois");
+    const trigger = await ADM.query(
+      "SELECT 1 FROM pg_trigger WHERE tgname = 'sync_produto_ultima_atualizacao' AND NOT tgisinternal",
+    );
+    assert.equal(
+      trigger.rowCount,
+      1,
+      "a trigger que tranca o produto depois da variação devia existir",
+    );
+    const cen = await cenarioVariacoes();
+    const gate = await segurar([["product_variants", cen.m]]);
+    const X = await sessao(null); // o painel
+    const A = await sessao();
+    try {
+      // 1) o painel entra primeiro na fila da variação M (segurada pela sessão de prova)
+      const eX = observar(
+        X.query(
+          "UPDATE public.product_variants SET stock_increment = stock_increment + 1 WHERE id = $1 RETURNING id",
+          [cen.m],
+        ),
+        (r) => r.rowCount,
+      );
+      assert.ok(await emEspera(X.pid, "linha"), "o painel devia esperar a M");
+      // 2) a compra da mesma variação chega depois: entra atrás do painel
+      const eA = observar(
+        comprarCarrinho(A, {
+          itens: [{ prod: cen.camiseta, varId: cen.m }],
+          chave: crypto.randomUUID(),
+        }),
+      );
+      assert.ok(
+        await emEspera(A.pid, "fila"),
+        "a compra devia entrar na fila atrás do painel",
+      );
+      // 3) solta: o painel pega a M, a trigger pede o PRODUTO; a compra, que ainda não segura o produto, espera a M
+      await gate.query("COMMIT");
+      const [rX, rA] = await Promise.all([eX.p, eA.p]);
+      assert.equal(rX.ok, 1, `o painel devia concluir: ${JSON.stringify(rX)}`);
+      assert.ok(rA.ok, `a compra devia concluir: ${JSON.stringify(rA)}`);
+    } finally {
+      await fechar(gate, X, A);
+    }
+  },
+);
+
+for (const rpc of [V24, V23]) {
+  for (const [rotulo, cenario] of [
+    ["carrinho misto", cenarioMisto],
+    ["variações em ordem oposta", cenarioVariacoes],
+  ]) {
+    prova(
+      `D4 (${rpc}): ${rotulo} em CORRIDA LIVRE, 20 rodadas com produtos novos — nenhuma compra cai em deadlock`,
+      async () => {
+        await noEstado(ADM, "depois");
+        const A = await sessao();
+        const B = await sessao();
+        try {
+          for (let i = 0; i < 20; i++) {
+            const cen = await cenario();
+            const eA = observar(
+              comprarCarrinho(A, {
+                rpc,
+                itens: cen.itensA,
+                chave: crypto.randomUUID(),
+              }),
+            );
+            const eB = observar(
+              comprarCarrinho(B, {
+                rpc,
+                itens: cen.itensB,
+                chave: crypto.randomUUID(),
+              }),
+            );
+            const [rA, rB] = await Promise.all([eA.p, eB.p]);
+            assert.ok(
+              rA.ok && rB.ok,
+              `rodada ${i}: ${JSON.stringify([rA, rB])}`,
+            );
+          }
+        } finally {
+          await fechar(A, B);
+        }
+      },
+    );
+  }
+}
+
+prova(
+  "D4: o bloco da ordem global não muda a recusa — payload malformado, produto ou variação inexistente, variação de outro produto, quantidade inválida, variação faltando e carrinho vazio dão o MESMO resultado que o corpo da 244 (v23 e v24)",
+  async () => {
+    const camiseta = await novoProduto(ADM, { variacao: true });
+    const caneca = await novoProduto(ADM, {});
+    const fantasma = crypto.randomUUID();
+    const bom = { product_id: caneca.id, variant_id: null, quantity: 1 };
+    const casos = [
+      ["product_id malformado", [{ ...bom, product_id: "isto-nao-e-uuid" }]],
+      ["variant_id malformado", [{ ...bom, variant_id: "nao-uuid" }]],
+      ["product_id ausente", [{ variant_id: null, quantity: 1 }]],
+      ["produto inexistente", [{ ...bom, product_id: fantasma }]],
+      ["variação de outro produto", [{ ...bom, variant_id: camiseta.varId }]],
+      [
+        "variação inexistente",
+        [{ product_id: camiseta.id, variant_id: fantasma, quantity: 1 }],
+      ],
+      ["quantidade zero", [{ ...bom, quantity: 0 }]],
+      [
+        "produto com variação sem escolher a variação",
+        [{ product_id: camiseta.id, variant_id: null, quantity: 1 }],
+      ],
+      [
+        "malformado DEPOIS de um item válido",
+        [bom, { ...bom, product_id: "x" }],
+      ],
+      [
+        "quantidade zero ANTES de um id malformado",
+        [
+          { ...bom, quantity: 0 },
+          { ...bom, product_id: "x" },
+        ],
+      ],
+      ["carrinho vazio", []],
+      ["item repetido (mesmo produto duas vezes)", [bom, bom]],
+    ];
+    const A = await sessao();
+    const resultado = async (rpc, itens) => {
+      const r = await observar(
+        A.query(SQL_PEDIDO(rpc), [
+          JSON.stringify(itens),
+          100 * itens.length,
+          0,
+          rpc === V24 ? "online" : "cash",
+          null,
+          null,
+          CEP_LOCAL,
+          "local-delivery",
+          crypto.randomUUID(),
+        ]),
+      ).p;
+      return r.ok ? "ok" : r.erro;
+    };
+    try {
+      for (const rpc of [V23, V24]) {
+        await noEstado(ADM, "antes");
+        const da244 = [];
+        for (const [, itens] of casos) da244.push(await resultado(rpc, itens));
+        await noEstado(ADM, "depois");
+        for (const [i, [rotulo, itens]] of casos.entries())
+          assert.equal(
+            await resultado(rpc, itens),
+            da244[i],
+            `${rpc}: ${rotulo}: o resultado devia ser o da 244`,
+          );
+        // o controle de que os casos recusam de verdade: ao menos os malformados e os inexistentes
+        assert.match(da244[0], /uuid/, "product_id malformado recusado");
+        assert.match(
+          da244[3],
+          /não disponível/,
+          "produto inexistente recusado",
+        );
+      }
+    } finally {
+      await fechar(A);
+      await noEstado(ADM, "depois");
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // DADOS EXISTENTES e PERMISSÃO
 // ---------------------------------------------------------------------------
 
@@ -1227,7 +1694,7 @@ prova(
       ],
       [
         decl(NOVA[V24], `${NOVA[V24].corpo}\n-- sabotagem\n`),
-        "create_marketplace_order_v24: corpo e o da 20261350000000, com a trava do produto e a espera da mesma chave (md5)",
+        "create_marketplace_order_v24: corpo e o da 20261350000000, com a ordem global das travas, a trava do produto e a espera da mesma chave (md5)",
       ],
     ];
     for (const [sabotar, itemQueCai] of casos) {

@@ -1,6 +1,10 @@
 // @ts-nocheck
-// Prova estática da 20261350000000 (a compra online trava o preço-base e a mesma chave de idempotência espera a primeira).
+// Prova estática da 20261350000000 (a compra online trava o preço-base, tranca o carrinho numa ordem global e a mesma
+// chave de idempotência espera a primeira).
 // O comportamento e o rollback de verdade rodam no Postgres efêmero (tests/banco/compra-online-travas-viva.cjs).
+/* eslint-disable security/detect-object-injection --
+ * Os índices vêm de listas fechadas deste arquivo (V23, V24, HASH_244, HASH_NOVO) e de contadores, nunca de entrada de
+ * rede; as migrations e as consultas lidas são do próprio repositório. */
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import {
@@ -22,8 +26,8 @@ const HASH_244 = {
   [V24]: "85c37af4baa2f5ce1375bdd9e943c746",
 };
 const HASH_NOVO = {
-  [V23]: "415eae034b8e995c2bd2db0bbbc49391",
-  [V24]: "e847583c98401789449275cac51ef85c",
+  [V23]: "6b71cb823967518955407b532904ae91",
+  [V24]: "e3c124d25632aaa9bcf1995153bc5a7e",
 };
 function ler(rel: string) {
   try {
@@ -52,8 +56,46 @@ function cabeca(sql: string, fn: string) {
 }
 const TRAVA =
   "PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('pedido_online:' || p_idempotency_key::text, 0));";
+const INI_ORDEM = "-- >>> ordem global das travas (20261350000000)";
+const FIM_ORDEM = "-- <<< ordem global das travas (20261350000000)";
+const DECLARES_DA_ORDEM = [
+  "v_trava_variantes uuid[] := ARRAY[]::uuid[];",
+  "v_trava_produtos uuid[] := ARRAY[]::uuid[];",
+];
+// O código do bloco da ordem global (aparado), na ordem em que aparece: ids do carrinho -> variações por id -> produtos por id.
+const LINHAS_DA_ORDEM = [
+  "FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)",
+  "LOOP",
+  "BEGIN",
+  "v_product_id := (v_item->>'product_id')::uuid;",
+  "v_variant_id := (v_item->>'variant_id')::uuid;",
+  "EXCEPTION WHEN invalid_text_representation THEN",
+  "CONTINUE;",
+  "END;",
+  "IF v_product_id IS NOT NULL THEN",
+  "v_trava_produtos := array_append(v_trava_produtos, v_product_id);",
+  "END IF;",
+  "IF v_variant_id IS NOT NULL THEN",
+  "v_trava_variantes := array_append(v_trava_variantes, v_variant_id);",
+  "END IF;",
+  "END LOOP;",
+  "IF cardinality(v_trava_variantes) > 0 THEN",
+  "PERFORM 1",
+  "FROM public.product_variants v",
+  "WHERE v.id = ANY(v_trava_variantes)",
+  "ORDER BY v.id",
+  "FOR NO KEY UPDATE;",
+  "END IF;",
+  "IF cardinality(v_trava_produtos) > 0 THEN",
+  "PERFORM 1",
+  "FROM public.produtos p",
+  "WHERE p.id = ANY(v_trava_produtos)",
+  "ORDER BY p.id",
+  "FOR NO KEY UPDATE;",
+  "END IF;",
+];
 
-Deno.test("20261350 corpos: são os da 244 com SÓ as duas edições (OF v, p e o advisory lock da chave), iguais nas duas funções; os hashes do arquivo são os dos corpos", () => {
+Deno.test("20261350 corpos: são os da 244 com SÓ as três edições (OF v, p; o advisory lock da chave; as variáveis e o bloco da ordem global), iguais nas duas funções; os hashes do arquivo são os dos corpos", () => {
   const sql = migration();
   assert(sql.length > 0, "migration ausente");
   const m244 = ler(`supabase/migrations/${nome244}`);
@@ -65,17 +107,53 @@ Deno.test("20261350 corpos: são os da 244 com SÓ as duas edições (OF v, p e 
     assertEquals(md5(novo), HASH_NOVO[fn], `${fn}: corpo novo`);
     const a = antigo.split("\n").filter(codigo);
     const b = novo.split("\n").filter(codigo);
-    // Tirando a linha da trava do produto e a do advisory lock, o código é o MESMO, linha a linha.
+    // O bloco da ordem global: um só, entre dois marcadores, com o código EXATO do golden (e nada além).
+    assertEquals(novo.split(INI_ORDEM).length - 1, 1, `${fn}: um bloco`);
+    assertEquals(novo.split(FIM_ORDEM).length - 1, 1, `${fn}: um fim de bloco`);
+    const iIni = novo.indexOf(INI_ORDEM);
+    const iFim = novo.indexOf(FIM_ORDEM);
+    assert(
+      iIni < iFim && iFim < novo.indexOf("-- 3. Validation Loop"),
+      `${fn}: o bloco vem antes do laço do passo 3`,
+    );
+    const bloco = novo.slice(iIni, iFim);
     assertEquals(
-      b.filter((l) => l.trim() !== TRAVA),
+      bloco
+        .split("\n")
+        .filter(codigo)
+        .map((l) => l.trim()),
+      LINHAS_DA_ORDEM,
+      `${fn}: o código do bloco é o golden`,
+    );
+    // As variações são trancadas ANTES dos produtos (a ordem que a trigger sync_produto_ultima_atualizacao já impõe ao
+    // painel), cada grupo num único SELECT ordenado por id.
+    assert(
+      bloco.indexOf("public.product_variants v") <
+        bloco.indexOf("public.produtos p"),
+      `${fn}: variações antes dos produtos`,
+    );
+    // Sem o bloco e sem a trava da chave nem as variáveis, o código é o MESMO da 244, linha a linha.
+    const semBloco = novo.slice(0, iIni) + novo.slice(iFim);
+    const semAdicoes = semBloco
+      .split("\n")
+      .filter(codigo)
+      .filter(
+        (l) => l.trim() !== TRAVA && !DECLARES_DA_ORDEM.includes(l.trim()),
+      );
+    assertEquals(
+      semAdicoes,
       a.map((l) =>
         l.trim() === "FOR NO KEY UPDATE OF v;"
           ? l.replace("OF v;", "OF v, p;")
           : l,
       ),
-      `${fn}: só as duas edições`,
+      `${fn}: só as três edições`,
     );
-    assertEquals(b.length - a.length, 1, `${fn}: uma linha de código a mais`);
+    assertEquals(
+      b.length - a.length,
+      1 + DECLARES_DA_ORDEM.length + LINHAS_DA_ORDEM.length,
+      `${fn}: as linhas de código a mais`,
+    );
     assertEquals(novo.split(TRAVA).length - 1, 1, `${fn}: um advisory lock`);
     assertEquals(novo.split("OF v, p;").length - 1, 1, `${fn}: um OF v, p`);
     assertEquals(novo.split("OF v;").length - 1, 0, `${fn}: nenhum OF v`);
@@ -228,8 +306,8 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
 
 Deno.test("20261350 publicacao: as consultas 81a/81b trazem o corpo certo de cada lado; 31a, 37a e 47a aceitam o corpo novo como sucessor e as 'b' não o citam", () => {
   for (const [consulta, hashes, trava, lock] of [
-    [A81, HASH_NOVO, "v23=1/0 v24=1/0", "v23=1 v24=1"],
-    [B81, HASH_244, "v23=0/1 v24=0/1", "v23=0 v24=0"],
+    [A81, HASH_NOVO, "v23=2/1/0 v24=2/1/0", "v23=1 v24=1"],
+    [B81, HASH_244, "v23=0/0/1 v24=0/0/1", "v23=0 v24=0"],
   ]) {
     const sql = ler(`scripts/publicacao/consultas/${consulta}.sql`);
     assert(sql.length > 0, consulta);

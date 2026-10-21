@@ -73,7 +73,7 @@ WITH alvo(assinatura) AS (
          -- 3 hashes aceitos: o corpo da 20261236000000 OU o da SUCESSORA dele, a 20261244000000 (a loja escolhe como
          -- entrega na cidade: o mesmo corpo mais o So retiro, com a recusa do total zero intacta) OU o da sucessora dela, a
          -- 20261350000000 (a compra online trava o preco e espera a mesma chave). O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN f.m IN ('6002fc8db6c1d402bc704f018a0c2621', '85c37af4baa2f5ce1375bdd9e943c746', 'e847583c98401789449275cac51ef85c')
+         COALESCE((SELECT CASE WHEN f.m IN ('6002fc8db6c1d402bc704f018a0c2621', '85c37af4baa2f5ce1375bdd9e943c746', 'e3c124d25632aaa9bcf1995153bc5a7e')
                                THEN '6002fc8db6c1d402bc704f018a0c2621'
                                ELSE f.m END
                      FROM fn f), 'AUSENTE')

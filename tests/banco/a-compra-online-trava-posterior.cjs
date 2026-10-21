@@ -2,8 +2,8 @@
 
 /**
  * A 20261350000000 (a compra online trava o preço e espera a mesma chave) redefine create_marketplace_order_v23 e
- * create_marketplace_order_v24 em cima dos corpos que a 20261244000000 deixou (só duas edições: FOR NO KEY UPDATE OF v, p
- * e o advisory lock da chave de idempotência).
+ * create_marketplace_order_v24 em cima dos corpos que a 20261244000000 deixou (só três edições: FOR NO KEY UPDATE OF v, p;
+ * o advisory lock da chave de idempotência; e as travas do carrinho em ordem global, variações e depois produtos por id).
  *
  * Toda prova viva que mede a 20261244000000 ISOLADA (o hash dos corpos dela, o rollback dela, reaplicá-la) tem de
  * desfazer ANTES esta: ela é a mais nova, e o pré-voo do rollback da 244 recusa (B1_BASELINE_DIVERGENT) com o corpo dela
@@ -23,8 +23,8 @@ const path = require("node:path");
 
 const NOME =
   "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql";
-const HASH_V23_DESTA = "415eae034b8e995c2bd2db0bbbc49391";
-const HASH_V24_DESTA = "e847583c98401789449275cac51ef85c";
+const HASH_V23_DESTA = "6b71cb823967518955407b532904ae91";
+const HASH_V24_DESTA = "e3c124d25632aaa9bcf1995153bc5a7e";
 const HASH_V23_DA_244 = "79445d64a87843be2d42bf601c7090ec";
 const HASH_V24_DA_244 = "85c37af4baa2f5ce1375bdd9e943c746";
 

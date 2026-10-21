@@ -10,9 +10,22 @@
 -- destrancado. Se o painel salvasse preco_venda entre essa leitura e a releitura do passo 8 (que lê o preço de novo, em
 -- consulta nova, para gravar a linha do item), o cabeçalho do pedido saía com o total de uma conta e os itens com o
 -- preço de outra. Agora a leitura tranca a variação E o produto (FOR NO KEY UPDATE OF v, p): o painel espera o pedido
--- terminar, e os dois lados gravam o mesmo preço. A ordem de travas é a de sempre (variação, depois produto — a
--- trigger sync_produto_ultima_atualizacao já trancava o produto ao baixar o estoque da variação, e a venda do balcão
--- tranca igual); só antecipa. Produto sem variação já trancava o produto: não muda.
+-- terminar, e os dois lados gravam o mesmo preço. Produto sem variação já trancava o produto: não muda. ATENÇÃO: trancar
+-- o produto já na leitura do passo 3, na ORDEM DO CARRINHO, abriria o deadlock descrito em D4 (a revisão o reproduziu);
+-- por isso as travas são tomadas por D4, numa ordem global, e o `OF v, p` do laço fica como rede de segurança.
+--
+-- D4 — DEADLOCK ENTRE COMPRAS SIMULTÂNEAS DE CARRINHOS MISTOS OU COM VARIAÇÕES EM ORDEM OPOSTA. O laço do passo 3 tranca
+-- as linhas na ORDEM DO CARRINHO. Carrinho A = camiseta M (com variação) + caneca e carrinho B = caneca + camiseta G,
+-- ao mesmo tempo: A segura a camiseta (produto) e espera a caneca, B segura a caneca e espera a camiseta — o banco
+-- derruba um dos dois com 40P01 (o app trata 40P01 como "desfeito, tente de novo", mas o cliente vê a falha). Dois
+-- carrinhos com as mesmas variações em ordem oposta já faziam o mesmo, antes desta migration. A correção fecha a classe
+-- inteira: antes do laço do passo 3, a função percorre o carrinho, junta os ids e tranca, numa ordem global fixa,
+-- primeiro TODAS as variações (por id) e depois TODOS os produtos (por id), cada grupo num único SELECT ... ORDER BY id
+-- FOR NO KEY UPDATE. A ordem "variações antes de produtos" não é arbitrária: é a que a trigger
+-- sync_produto_ultima_atualizacao já impõe ao painel (salvar uma variação atualiza a variação e só então tranca o
+-- produto), então travar o produto ANTES da variação abriria deadlock com o painel. Preço, total, estoque, cupom e
+-- frete não mudam: só QUANDO as travas são tomadas. Efeito colateral aceito: uma compra com item recusado depois (ex.:
+-- quantidade inválida no 1º item) agora espera as travas dos demais itens antes de ser recusada.
 --
 -- D3 — O REENVIO SIMULTÂNEO COM A MESMA CHAVE RECEBIA "ESTOQUE INSUFICIENTE" DE UM PEDIDO QUE JÁ EXISTE. A busca pela
 -- chave de idempotência (passo 0) acontece antes de qualquer trava. Se o primeiro envio ainda grava, o segundo não acha
@@ -28,10 +41,11 @@
 -- 2. O QUE MUDA NO TEXTO
 --
 -- Cada função é recriada por CREATE OR REPLACE com o corpo VIVO inteiro (v23 e v24 da 20261244000000, byte a byte) e
--- SÓ estas duas edições, iguais nas duas e comentadas no próprio corpo: (a) a linha `FOR NO KEY UPDATE OF v;` do passo 3
+-- SÓ estas três edições, iguais nas duas e comentadas no próprio corpo: (a) a linha `FOR NO KEY UPDATE OF v;` do passo 3
 -- vira `FOR NO KEY UPDATE OF v, p;`; (b) o PERFORM do advisory lock entra no começo do bloco do passo 0, dentro do
--- `IF p_idempotency_key IS NOT NULL`. Assinatura, retorno, SECURITY DEFINER, search_path, VOLATILE e ACL ficam iguais
--- (CREATE OR REPLACE preserva dono e privilégios; nenhum GRANT nem REVOKE aqui).
+-- `IF p_idempotency_key IS NOT NULL`; (c) duas variáveis uuid[] na DECLARE e o bloco "ordem global das travas"
+-- (entre marcadores >>> e <<<) logo antes do passo 3. Assinatura, retorno, SECURITY DEFINER, search_path, VOLATILE e ACL
+-- ficam iguais (CREATE OR REPLACE preserva dono e privilégios; nenhum GRANT nem REVOKE aqui).
 --
 -- 3. DADOS EXISTENTES E REAPLICAÇÃO
 --
@@ -44,7 +58,7 @@
 -- Antes de escrever, recusa (B1_BASELINE_DIVERGENT) se alguma das duas funções não existe, tem sobrecarga, tem corpo
 -- que não seja UM de dois conhecidos (md5 de replace(prosrc, E'\r', '')), ou atributos/ACL diferentes dos de sempre
 -- (PUBLIC não executa; anon, authenticated e service_role sim — o checkout da convidada precisa do anon). Depois da
--- troca confere os dois hashes novos, os atributos, a ACL e a contagem das duas edições; se algo divergir, a exceção
+-- troca confere os dois hashes novos, os atributos, a ACL e a contagem das três edições; se algo divergir, a exceção
 -- desfaz a migration inteira (uma transação por arquivo, aberta pelo aplicador; sem BEGIN/COMMIT aqui). Termina com
 -- NOTIFY pgrst.
 --
@@ -59,7 +73,14 @@
 -- 20261244000000 byte a byte (v23 79445d64a87843be2d42bf601c7090ec, v24 85c37af4baa2f5ce1375bdd9e943c746); recusa corpo ausente ou alterado por migration
 -- posterior. O rollback da 20261244000000 recusa enquanto esta estiver no ar: desfazer ESTA primeiro.
 --
--- Hashes (corpo da 20261244000000 → corpo desta migration): v23 79445d64a87843be2d42bf601c7090ec → 415eae034b8e995c2bd2db0bbbc49391; v24 85c37af4baa2f5ce1375bdd9e943c746 → e847583c98401789449275cac51ef85c.
+-- 7. PENDÊNCIA FORA DESTE ESCOPO
+--
+-- A venda do balcão (registrar_venda_presencial, 20261280000000, laço do passo 3, linha ~644) ainda tranca na ordem do
+-- carrinho e só a variação (o produto, pela trigger, na gravação). Um carrinho misto no balcão contra uma compra
+-- online ainda pode cruzar travas e receber 40P01. Alinhar o balcão à ordem global (variações por id, depois produtos
+-- por id) é migration à parte, com a mesma prova de duas conexões reais.
+--
+-- Hashes (corpo da 20261244000000 → corpo desta migration): v23 79445d64a87843be2d42bf601c7090ec → 6b71cb823967518955407b532904ae91; v24 85c37af4baa2f5ce1375bdd9e943c746 → e3c124d25632aaa9bcf1995153bc5a7e.
 -- ============================================================================
 
 DO $preflight_20261350$
@@ -73,8 +94,8 @@ BEGIN
   FOR r IN
     SELECT *
       FROM (VALUES
-        ('public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', '79445d64a87843be2d42bf601c7090ec', '415eae034b8e995c2bd2db0bbbc49391'),
-        ('public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', '85c37af4baa2f5ce1375bdd9e943c746', 'e847583c98401789449275cac51ef85c')
+        ('public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', '79445d64a87843be2d42bf601c7090ec', '6b71cb823967518955407b532904ae91'),
+        ('public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', '85c37af4baa2f5ce1375bdd9e943c746', 'e3c124d25632aaa9bcf1995153bc5a7e')
       ) AS esperado(assinatura, hash_vigente, hash_desta)
   LOOP
     v_oid := to_regprocedure(r.assinatura);
@@ -128,7 +149,7 @@ BEGIN
   END LOOP;
 END $preflight_20261350$;
 
--- (1) create_marketplace_order_v23: o corpo vivo da 20261244000000 + as duas edições do cabeçalho.
+-- (1) create_marketplace_order_v23: o corpo vivo da 20261244000000 + as três edições do cabeçalho.
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v23(p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb, p_destination_cep text, p_shipping_option_id text, p_idempotency_key uuid DEFAULT NULL)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -144,6 +165,9 @@ DECLARE
     v_quantity integer;
     v_item_name text;
     v_rows_affected integer;
+    -- 20261350000000 (ordem global das travas): ids do carrinho a trancar de uma vez, na ordem fixa.
+    v_trava_variantes uuid[] := ARRAY[]::uuid[];
+    v_trava_produtos uuid[] := ARRAY[]::uuid[];
 
     v_db_price numeric;
     v_db_stock integer;
@@ -495,6 +519,48 @@ BEGIN
             USING DETAIL = format('A RPC do pagamento na entrega (v23) não aceita envio por transportadora; opção recebida: %s.', v_opcao);
     END IF;
 
+    -- >>> ordem global das travas (20261350000000)
+    -- Antes de ler preco e estoque, o pedido tranca as linhas do carrinho numa ORDEM GLOBAL FIXA: primeiro TODAS as
+    -- variacoes do carrinho, por id; depois TODOS os produtos, por id. Duas compras simultaneas pedem as travas na
+    -- mesma ordem, entao uma nunca segura o que a outra espera. Sem isto o laco do passo 3 trancava na ORDEM DO
+    -- CARRINHO (variacao e produto de cada item): o carrinho A = camiseta M (com variacao) + caneca e o carrinho B =
+    -- caneca + camiseta G pediam produto e variacao em ordem cruzada, e o banco derrubava um dos dois com deadlock
+    -- (40P01); duas variacoes em ordem oposta tambem. "Variacoes antes de produtos" e a ordem que a trigger
+    -- sync_produto_ultima_atualizacao ja impoe (atualiza a variacao e so entao tranca o produto), entao o painel que
+    -- salva uma variacao cabe nela. So muda QUANDO as travas sao tomadas, nunca quais nem o que se le depois: o laco do
+    -- passo 3 e o passo 8 seguem como na 20261244000000 e acham as linhas ja trancadas (o `OF v, p` do laco vira rede
+    -- de seguranca). Id malformado: este trecho o ignora e o laco do passo 3 o recusa com o erro de sempre.
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+    LOOP
+        BEGIN
+            v_product_id := (v_item->>'product_id')::uuid;
+            v_variant_id := (v_item->>'variant_id')::uuid;
+        EXCEPTION WHEN invalid_text_representation THEN
+            CONTINUE;
+        END;
+        IF v_product_id IS NOT NULL THEN
+            v_trava_produtos := array_append(v_trava_produtos, v_product_id);
+        END IF;
+        IF v_variant_id IS NOT NULL THEN
+            v_trava_variantes := array_append(v_trava_variantes, v_variant_id);
+        END IF;
+    END LOOP;
+    IF cardinality(v_trava_variantes) > 0 THEN
+        PERFORM 1
+          FROM public.product_variants v
+         WHERE v.id = ANY(v_trava_variantes)
+         ORDER BY v.id
+           FOR NO KEY UPDATE;
+    END IF;
+    IF cardinality(v_trava_produtos) > 0 THEN
+        PERFORM 1
+          FROM public.produtos p
+         WHERE p.id = ANY(v_trava_produtos)
+         ORDER BY p.id
+           FOR NO KEY UPDATE;
+    END IF;
+    -- <<< ordem global das travas (20261350000000)
+
     -- 3. Validation Loop (Price, Stock Lock, Subtotal Calculation)
     FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
     LOOP
@@ -514,8 +580,10 @@ BEGIN
             -- 20261350000000 (D2): trava a variacao E o produto de uma vez (`OF v, p`). O preco sai de
             -- COALESCE(v.price_override, p.preco_venda): com so `OF v`, o painel podia salvar preco_venda
             -- entre esta leitura e a releitura do passo 8, e o pedido gravava o total de uma conta e os
-            -- itens de outra. A ordem e a de sempre (variacao, depois produto: a trigger
-            -- sync_produto_ultima_atualizacao ja trancava o produto ao baixar o estoque); so antecipa.
+            -- itens de outra. As linhas do carrinho ja foram trancadas, na ordem global, antes deste
+            -- laco (bloco "ordem global das travas" acima); aqui o `OF v, p` acha tudo trancado e fica
+            -- como rede de seguranca (variacao, depois produto: a mesma ordem da trigger
+            -- sync_produto_ultima_atualizacao).
             FOR NO KEY UPDATE OF v, p;
         ELSE
             -- A trava de linha vem PRIMEIRO: o SELECT abaixo ja exige
@@ -1129,6 +1197,9 @@ DECLARE
     v_quantity integer;
     v_item_name text;
     v_rows_affected integer;
+    -- 20261350000000 (ordem global das travas): ids do carrinho a trancar de uma vez, na ordem fixa.
+    v_trava_variantes uuid[] := ARRAY[]::uuid[];
+    v_trava_produtos uuid[] := ARRAY[]::uuid[];
 
     v_db_price numeric;
     v_db_stock integer;
@@ -1540,6 +1611,48 @@ BEGIN
         END IF;
     END IF;
 
+    -- >>> ordem global das travas (20261350000000)
+    -- Antes de ler preco e estoque, o pedido tranca as linhas do carrinho numa ORDEM GLOBAL FIXA: primeiro TODAS as
+    -- variacoes do carrinho, por id; depois TODOS os produtos, por id. Duas compras simultaneas pedem as travas na
+    -- mesma ordem, entao uma nunca segura o que a outra espera. Sem isto o laco do passo 3 trancava na ORDEM DO
+    -- CARRINHO (variacao e produto de cada item): o carrinho A = camiseta M (com variacao) + caneca e o carrinho B =
+    -- caneca + camiseta G pediam produto e variacao em ordem cruzada, e o banco derrubava um dos dois com deadlock
+    -- (40P01); duas variacoes em ordem oposta tambem. "Variacoes antes de produtos" e a ordem que a trigger
+    -- sync_produto_ultima_atualizacao ja impoe (atualiza a variacao e so entao tranca o produto), entao o painel que
+    -- salva uma variacao cabe nela. So muda QUANDO as travas sao tomadas, nunca quais nem o que se le depois: o laco do
+    -- passo 3 e o passo 8 seguem como na 20261244000000 e acham as linhas ja trancadas (o `OF v, p` do laco vira rede
+    -- de seguranca). Id malformado: este trecho o ignora e o laco do passo 3 o recusa com o erro de sempre.
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+    LOOP
+        BEGIN
+            v_product_id := (v_item->>'product_id')::uuid;
+            v_variant_id := (v_item->>'variant_id')::uuid;
+        EXCEPTION WHEN invalid_text_representation THEN
+            CONTINUE;
+        END;
+        IF v_product_id IS NOT NULL THEN
+            v_trava_produtos := array_append(v_trava_produtos, v_product_id);
+        END IF;
+        IF v_variant_id IS NOT NULL THEN
+            v_trava_variantes := array_append(v_trava_variantes, v_variant_id);
+        END IF;
+    END LOOP;
+    IF cardinality(v_trava_variantes) > 0 THEN
+        PERFORM 1
+          FROM public.product_variants v
+         WHERE v.id = ANY(v_trava_variantes)
+         ORDER BY v.id
+           FOR NO KEY UPDATE;
+    END IF;
+    IF cardinality(v_trava_produtos) > 0 THEN
+        PERFORM 1
+          FROM public.produtos p
+         WHERE p.id = ANY(v_trava_produtos)
+         ORDER BY p.id
+           FOR NO KEY UPDATE;
+    END IF;
+    -- <<< ordem global das travas (20261350000000)
+
     -- 3. Validation Loop (Price, Stock Lock, Subtotal Calculation)
     FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
     LOOP
@@ -1559,8 +1672,10 @@ BEGIN
             -- 20261350000000 (D2): trava a variacao E o produto de uma vez (`OF v, p`). O preco sai de
             -- COALESCE(v.price_override, p.preco_venda): com so `OF v`, o painel podia salvar preco_venda
             -- entre esta leitura e a releitura do passo 8, e o pedido gravava o total de uma conta e os
-            -- itens de outra. A ordem e a de sempre (variacao, depois produto: a trigger
-            -- sync_produto_ultima_atualizacao ja trancava o produto ao baixar o estoque); so antecipa.
+            -- itens de outra. As linhas do carrinho ja foram trancadas, na ordem global, antes deste
+            -- laco (bloco "ordem global das travas" acima); aqui o `OF v, p` acha tudo trancado e fica
+            -- como rede de seguranca (variacao, depois produto: a mesma ordem da trigger
+            -- sync_produto_ultima_atualizacao).
             FOR NO KEY UPDATE OF v, p;
         ELSE
             -- A trava de linha vem PRIMEIRO: o SELECT abaixo ja exige
@@ -2204,8 +2319,8 @@ BEGIN
   FOR r IN
     SELECT *
       FROM (VALUES
-        ('create_marketplace_order_v23', 'public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', '415eae034b8e995c2bd2db0bbbc49391'),
-        ('create_marketplace_order_v24', 'public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', 'e847583c98401789449275cac51ef85c')
+        ('create_marketplace_order_v23', 'public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', '6b71cb823967518955407b532904ae91'),
+        ('create_marketplace_order_v24', 'public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', 'e3c124d25632aaa9bcf1995153bc5a7e')
       ) AS esperado(nome, assinatura, hash_novo)
   LOOP
     v_oid := to_regprocedure(r.assinatura);
@@ -2213,11 +2328,13 @@ BEGIN
     IF v_hash IS DISTINCT FROM r.hash_novo THEN
       RAISE EXCEPTION 'POSVOO_20261350000000: % não ficou com o corpo desta migration (hash %)', r.nome, COALESCE(v_hash, 'ausente');
     END IF;
-    -- As duas edições, uma vez cada (o hash já as garante; a contagem diz o que cada uma é).
+    -- As três edições, uma vez cada (o hash já as garante; a contagem diz o que cada uma é).
     IF (SELECT count(*) FROM regexp_matches(v_src, 'FOR NO KEY UPDATE OF v, p;', 'g')) <> 1
        OR (SELECT count(*) FROM regexp_matches(v_src, 'FOR NO KEY UPDATE OF v;', 'g')) <> 0
-       OR (SELECT count(*) FROM regexp_matches(v_src, 'pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(''pedido_online:'' \|\| p_idempotency_key::text, 0\)\);', 'g')) <> 1 THEN
-      RAISE EXCEPTION 'POSVOO_20261350000000: % não tem as duas edições (OF v, p e o advisory lock da chave), uma vez cada', r.nome;
+       OR (SELECT count(*) FROM regexp_matches(v_src, 'pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(''pedido_online:'' \|\| p_idempotency_key::text, 0\)\);', 'g')) <> 1
+       OR (SELECT count(*) FROM regexp_matches(v_src, 'ORDER BY v\.id\s+FOR NO KEY UPDATE;', 'g')) <> 1
+       OR (SELECT count(*) FROM regexp_matches(v_src, 'ORDER BY p\.id\s+FOR NO KEY UPDATE;', 'g')) <> 1 THEN
+      RAISE EXCEPTION 'POSVOO_20261350000000: % não tem as três edições (OF v, p; o advisory lock da chave; as travas das variações e dos produtos em ordem de id), uma vez cada', r.nome;
     END IF;
   END LOOP;
 

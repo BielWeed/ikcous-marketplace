@@ -432,11 +432,13 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/reconciliacao-do-entregue-viva.cjs
       # Migration 20261350000000 (a compra online trava o preço-base e a mesma chave de idempotência espera a primeira):
-      # create_marketplace_order_v23 e v24 só ganham duas edições (OF v, p e o advisory lock pedido_online:); o preço do
-      # cabeçalho e o dos itens são o MESMO sob um preço salvo no meio da gravação (duas conexões reais); duas chamadas
-      # simultâneas com a mesma chave devolvem o MESMO pedido (inclusive na última unidade e no cupom no limite); chaves
-      # diferentes e chave nula não esperam; rollback byte a byte, pré-voo que recusa sem escrever, pós-voo que desfaz
-      # tudo e consultas 81a/81b. CLONE próprio.
+      # create_marketplace_order_v23 e v24 só ganham três edições (OF v, p; o advisory lock pedido_online:; e as travas
+      # do carrinho em ordem global, variações e depois produtos por id); o preço do cabeçalho e o dos itens são o MESMO
+      # sob um preço salvo no meio da gravação (duas conexões reais); duas chamadas simultâneas com a mesma chave
+      # devolvem o MESMO pedido (inclusive na última unidade e no cupom no limite); chaves diferentes e chave nula não
+      # esperam; carrinho misto e variações em ordem oposta ao mesmo tempo não caem em deadlock (controle: caem); painel
+      # que salva variação não cruza com a compra; rollback byte a byte, pré-voo que recusa sem escrever, pós-voo que
+      # desfaz tudo e consultas 81a/81b. CLONE próprio.
       - name: Prova viva da compra online que trava o preço e espera a mesma chave (migration 20261350000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/compra-online-travas-viva.cjs

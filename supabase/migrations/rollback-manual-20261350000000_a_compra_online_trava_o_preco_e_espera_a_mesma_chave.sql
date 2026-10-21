@@ -2,7 +2,8 @@
 -- 20261244000000 byte a byte (v23 79445d64a87843be2d42bf601c7090ec, v24 85c37af4baa2f5ce1375bdd9e943c746). Aplicar SOMENTE pelo aplicar-migrations.yml (o
 -- envelope abre a transacao e retira a versao do ledger). Sem transacao propria, sem mudar dados, assinatura ou ACL
 -- (CREATE OR REPLACE preserva dono e privilegios; nenhum GRANT nem REVOKE aqui). Depois dele o preco-base volta a poder
--- mudar no meio da gravacao e o reenvio simultaneo com a mesma chave volta a poder receber falso "estoque insuficiente".
+-- mudar no meio da gravacao, o reenvio simultaneo com a mesma chave volta a poder receber falso "estoque insuficiente" e
+-- carrinhos mistos ou com variacoes em ordem oposta voltam a poder cruzar travas (deadlock 40P01).
 -- Recusa corpo ausente, ja desfeito ou alterado por migration posterior (B1_BASELINE_DIVERGENT), como a 20261270.
 -- O rollback da 20261244000000 recusa enquanto a 20261350000000 estiver no ar: desfazer ESTE primeiro.
 
@@ -14,8 +15,8 @@ BEGIN
   FOR r IN
     SELECT *
       FROM (VALUES
-        ('public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', '415eae034b8e995c2bd2db0bbbc49391'),
-        ('public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', 'e847583c98401789449275cac51ef85c')
+        ('public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', '6b71cb823967518955407b532904ae91'),
+        ('public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', 'e3c124d25632aaa9bcf1995153bc5a7e')
       ) AS esperado(assinatura, hash_desta)
   LOOP
     IF to_regprocedure(r.assinatura) IS NULL THEN
