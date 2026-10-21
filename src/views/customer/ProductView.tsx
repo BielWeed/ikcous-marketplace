@@ -3,6 +3,7 @@ import {
   CONTAINER_DO_COMPUTADOR,
   ROTULO_NO_COMPUTADOR,
 } from "@/components/desktop/medidas";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { LinkDeTrocas } from "@/components/politicas/LinksDasPoliticas";
 import { GaleriaDoProduto } from "@/components/ui/custom/GaleriaDoProduto";
 import { MarkdownRenderer } from "@/components/ui/custom/MarkdownRenderer";
@@ -44,7 +45,6 @@ import {
   ChevronRight,
   Flame,
   Heart,
-  MessageCircle,
   Share2,
   ShoppingCart,
   Star,
@@ -1301,14 +1301,15 @@ export const ProductView = React.memo(function ProductView({
                 <button
                   onClick={handleWhatsApp}
                   title="Dúvidas no WhatsApp"
+                  aria-label="Dúvidas no WhatsApp"
                   className={cn(
-                    "flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95",
+                    "flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border bg-muted transition-all duration-300 hover:bg-accent active:scale-95",
                     // Altura do CTA no desktop: os dois botões da linha de
                     // cima ficam alinhados (48px) em vez de 44 vs 48.
                     "lg:size-12",
                   )}
                 >
-                  <MessageCircle className="size-5" />
+                  <IconeWhatsapp className="size-5 text-[#25D366]" />
                 </button>
               )}
 

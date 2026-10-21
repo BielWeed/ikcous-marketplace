@@ -1,6 +1,7 @@
 import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
 import { DevolucaoDoPedidoCard } from "@/components/devolucao/DevolucaoDoPedidoCard";
 import { SolicitarDevolucaoSheet } from "@/components/devolucao/SolicitarDevolucaoSheet";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,7 +62,6 @@ import {
   Loader2,
   Mail,
   MapPin,
-  MessageCircle,
   Package,
   RotateCcw,
   Star,
@@ -1010,9 +1010,9 @@ export function OrderDetailsView({
               // Laudo 05/09, M5: botão só-ícone era "botão" para o leitor
               // de tela — sem nome, pedir ajuda ficava sem significado.
               aria-label="Falar com a loja no WhatsApp"
-              className="flex size-10 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-100/50 bg-emerald-50 text-emerald-600 transition-all active:scale-90"
+              className="flex size-11 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-muted transition-all active:scale-90"
             >
-              <MessageCircle className="size-5" />
+              <IconeWhatsapp className="size-5 text-[#25D366]" />
             </button>
           )}
         </div>
@@ -1617,8 +1617,8 @@ export function OrderDetailsView({
               onClick={handleWhatsAppSupport}
               className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100"
             >
-              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                <MessageCircle className="size-4" />
+              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-muted">
+                <IconeWhatsapp className="size-4 text-[#25D366]" />
               </span>
               Falar com a loja
               <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
