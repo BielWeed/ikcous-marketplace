@@ -1,4 +1,14 @@
 {
+  "1.5.45": {
+    "titulo": "Caixa mais seguro e cartão parcelado sem erro",
+    "novidades": [],
+    "correcoes": [
+      "No Caixa, se a internet cair no meio de um lançamento ou de uma sangria, ao tentar de novo o valor não é lançado duas vezes. Abrir a mesma folha em duas abas também não perde o lançamento que estava pendente.",
+      "Pedido pago no cartão parcelado com juros agora é aceito: o valor cobrado a mais pelo Mercado Pago não gera mais o aviso falso de valor diferente.",
+      "Quando um cartão é recusado, o motivo informado pelo Mercado Pago fica guardado para a loja entender o que aconteceu."
+    ],
+    "melhorias": []
+  },
   "1.5.44": {
     "titulo": "Painel e carrinho mais seguros",
     "novidades": [],
