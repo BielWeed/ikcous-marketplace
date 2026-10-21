@@ -192,6 +192,58 @@ describe("Para fazer", () => {
 });
 
 describe("Este mês e Dinheiro nas contas", () => {
+  it.each([18640, 1234567.89])(
+    "o layout de %s se adapta ao espaço, não a um limite fixo de caracteres",
+    (receita) => {
+      montar(
+        <NumerosDoMes
+          painel={{ ...PAINEL, mes: { ...PAINEL.mes, receita } }}
+          carregando={false}
+        />,
+      );
+      const valor = Array.from(tela.querySelectorAll("p")).find((p) =>
+        texto(p).includes(receita === 18640 ? "18.640,00" : "1.234.567,89"),
+      )!;
+      const grade = valor.parentElement?.parentElement;
+      expect(grade?.style.gridTemplateColumns).toContain("repeat(auto-fit");
+      expect(grade?.style.gridTemplateColumns).toContain("min(100%");
+      expect(valor.className).toContain("whitespace-nowrap");
+    },
+  );
+
+  it("mantém a margem em percentual inteiro, como antes do redesenho", () => {
+    montar(<NumerosDoMes painel={PAINEL} carregando={false} />);
+    expect(texto(tela)).toContain("Margem estimada 23%");
+    expect(texto(tela)).not.toContain("22,6%");
+  });
+
+  it("zero é cinza no dia, canais, mês e saldo; positivo continua principal", () => {
+    const vazio = {
+      ...PAINEL,
+      hoje: { ...PAINEL.hoje, receita: 0, online: 0, presencial: 0 },
+      mes: { ...PAINEL.mes, receita: 0, lucroEstimado: 0 },
+      saldoTotal: 0,
+      aReceber7d: 0,
+      aPagar7d: 0,
+    };
+    montar(
+      <>
+        <HojeNaLoja hoje={vazio.hoje} carregando={false} />
+        <NumerosDoMes painel={vazio} carregando={false} />
+        <DinheiroNasContas
+          painel={vazio}
+          carregando={false}
+          onNavigate={vi.fn()}
+        />
+      </>,
+    );
+    const zeros = Array.from(tela.querySelectorAll("p, dd, strong")).filter(
+      (el) => texto(el) === "R$ 0,00",
+    );
+    expect(zeros).toHaveLength(8);
+    for (const zero of zeros) expect(zero.className).toContain("text-zinc-400");
+  });
+
   it("lucro negativo fica vermelho; positivo, verde", () => {
     montar(<NumerosDoMes painel={PAINEL} carregando={false} />);
     expect(tela.querySelector("p.text-emerald-400")?.textContent).toContain(
@@ -240,7 +292,7 @@ describe("gráfico dos 14 dias", () => {
     dia: new Date(Date.UTC(2026, 9, 8 + i)).toISOString().slice(0, 10),
     receita: 10 + i,
   }));
-  it("barras neutras e só o último dia na cor do resultado", () => {
+  it("barras de vendas nunca ficam vermelhas por causa do lucro mensal", () => {
     montar(<SerieDe14Dias serie={serie} carregando={false} />);
     const barras = tela.querySelectorAll('[data-testid="serie-14d-barra"]');
     expect(barras).toHaveLength(14);
@@ -248,13 +300,15 @@ describe("gráfico dos 14 dias", () => {
     expect(barras[0].className).toContain("bg-zinc-600");
     montar(
       <SerieDe14Dias
-        serie={serie}
+        serie={serie.map((p, i) => (i === 13 ? { ...p, receita: 0 } : p))}
         carregando={false}
-        tomDoUltimoDia="negativo"
       />,
     );
     expect(
-      tela.querySelectorAll('[data-testid="serie-14d-barra"]')[13].className,
-    ).toContain("bg-red-400");
+      tela
+        .querySelectorAll('[data-testid="serie-14d-coluna"]')[13]
+        .querySelector('[data-testid="serie-14d-barra"]'),
+    ).toBeNull();
+    expect(tela.querySelector(".bg-red-400")).toBeNull();
   });
 });

@@ -113,6 +113,17 @@ function linhasDaLista(): HTMLLIElement[] {
 }
 
 describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () => {
+  it("cadastrar nome e logo é secundário: só Preparar pedidos pode ser branco", async () => {
+    await montar({
+      somenteBoasVindas: true,
+      config: { ...CONFIG_PRONTA, storeName: "", logoUrl: "" },
+    });
+    const botao = botaoComTexto("Cadastrar nome e logo da loja");
+    expect(botao).toBeDefined();
+    expect(botao?.classList.contains("bg-white")).toBe(false);
+    expect(botao?.className).toContain("border-admin-border");
+  });
+
   beforeEach(() => {
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);

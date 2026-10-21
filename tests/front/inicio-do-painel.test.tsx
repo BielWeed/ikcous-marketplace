@@ -173,6 +173,26 @@ describe("Início do painel", () => {
     await esperarAte(() => h.rpc.mock.calls.length >= 2);
   }
 
+  it("prejuízo mensal não pinta de vermelho as vendas do último dia", async () => {
+    h.respostas.set("painel_inicio", {
+      data: { ...PAINEL, mes: { ...PAINEL.mes, lucro_estimado: -1250 } },
+      error: null,
+    });
+    await montar();
+    await esperarAte(
+      () =>
+        hospedeiro.querySelectorAll('[data-testid="serie-14d-barra"]').length >
+        0,
+    );
+    const barras = hospedeiro.querySelectorAll(
+      '[data-testid="serie-14d-barra"]',
+    );
+    expect(barras[barras.length - 1].className).toContain("bg-emerald-400");
+    expect(hospedeiro.querySelector("p.text-red-400")?.textContent).toContain(
+      "1.250",
+    );
+  });
+
   it("chama as duas RPCs do contrato e mostra os 4 números do mês", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     await montar();
@@ -409,7 +429,8 @@ describe("Início do painel", () => {
     );
     const proximo = boasVindas?.querySelector("button");
     expect(proximo).not.toBeNull();
-    expect(proximo?.className).toContain("min-h-14");
+    expect(proximo?.className).toContain("min-h-11");
+    expect(proximo?.classList.contains("bg-white")).toBe(false);
     expect(texto(boasVindas)).toContain("Próximo passo");
     act(() => proximo?.click());
     expect(onNavigate).toHaveBeenLastCalledWith("admin-about-store");
