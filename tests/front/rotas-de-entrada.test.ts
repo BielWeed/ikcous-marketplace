@@ -6,9 +6,9 @@ import { TELAS_DE_ENTRADA } from "../../src/config/rotas";
 const appTsx = path.resolve(import.meta.dirname, "../../src/App.tsx");
 
 describe("telas de entrada (declaração única)", () => {
-  it("são 46 nomes únicos, com home e 24 administrativas (C3.3: +admin-pdv; 20/09: +admin-about-store; 23/09: +admin-shipping-national; 26/09: +admin-crm, +admin-financeiro, +admin-devolucoes; 14/10: +terms, +privacy, +returns-policy, as três páginas de política da loja)", () => {
-    expect(TELAS_DE_ENTRADA).toHaveLength(46);
-    expect(new Set(TELAS_DE_ENTRADA).size).toBe(46);
+  it("são 47 nomes únicos, com home e 25 administrativas (C3.3: +admin-pdv; 20/09: +admin-about-store; 23/09: +admin-shipping-national; 26/09: +admin-crm, +admin-financeiro, +admin-devolucoes; 14/10: +terms, +privacy, +returns-policy, as três páginas de política da loja)", () => {
+    expect(TELAS_DE_ENTRADA).toHaveLength(47);
+    expect(new Set(TELAS_DE_ENTRADA).size).toBe(47);
     expect(TELAS_DE_ENTRADA[0]).toBe("home");
     expect(TELAS_DE_ENTRADA).toContain("admin-pdv");
     expect(TELAS_DE_ENTRADA).toContain("admin-shipping-national");
@@ -19,7 +19,7 @@ describe("telas de entrada (declaração única)", () => {
     expect(TELAS_DE_ENTRADA).toContain("privacy");
     expect(TELAS_DE_ENTRADA).toContain("returns-policy");
     expect(TELAS_DE_ENTRADA.filter((t) => t.startsWith("admin-"))).toHaveLength(
-      24,
+      25,
     );
     expect(TELAS_DE_ENTRADA).toContain("admin"); // nominal sem hífen, sem alias
   });

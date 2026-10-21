@@ -94,6 +94,7 @@ describe("a constante dos grupos de Ajustes", () => {
     expect(porGrupo["Aparência do app"]).toEqual([
       "admin-banners",
       "admin-carousels",
+      "admin-app-color",
     ]);
     expect(porGrupo["Entrega e frete"]).toEqual(["admin-shipping"]);
     expect(porGrupo.Pagamentos).toEqual([]);
@@ -195,6 +196,7 @@ describe("a tela de Ajustes", () => {
     expect(idas).not.toContain("admin-push");
     expect(idas).toContain("admin-banners");
     expect(idas).toContain("admin-carousels");
+    expect(idas).toContain("admin-app-color");
     expect(idas).toContain("admin-about-store");
     expect(idas).toContain("admin-shipping");
   });

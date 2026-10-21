@@ -523,6 +523,7 @@ export type View =
   | "admin-coupon-form"
   | "admin-banners"
   | "admin-carousels"
+  | "admin-app-color"
   | "admin-shipping"
   | "admin-shipping-national"
   | "admin-settings"

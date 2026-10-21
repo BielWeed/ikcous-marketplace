@@ -474,7 +474,9 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
 
   it("grupos sem passo próprio usam descrição, e Ferramentas mostra a conexão real", async () => {
     await renderizar();
-    expect(subtituloDoGrupo("Aparência do app")).toBe("Banners e vitrines");
+    expect(subtituloDoGrupo("Aparência do app")).toBe(
+      "Banners, vitrines e cor do app",
+    );
     expect(subtituloDoGrupo("Regras de troca e devolução")).toBe(
       "Prazos, formas de devolver e política",
     );
@@ -927,7 +929,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     await renderizar(undefined, onNavigate);
 
     const portas = [...hospedeiro.querySelectorAll("[data-porta-ajustes]")];
-    expect(portas.length).toBe(4);
+    expect(portas.length).toBe(5);
     await act(async () => {
       for (const porta of portas) {
         porta.dispatchEvent(new MouseEvent("click", { bubbles: true }));

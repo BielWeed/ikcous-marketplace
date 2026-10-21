@@ -106,12 +106,13 @@ describe("AtalhosDaAba", () => {
     expect(onNavigate).toHaveBeenCalledTimes(2);
   });
 
-  it("lê as portas das outras abas (Ajustes tem 4; Pedidos, Devoluções)", () => {
+  it("lê as portas das outras abas (Ajustes tem 5; Pedidos, Devoluções)", () => {
     renderizar(<AtalhosDaAba aba="ajustes" onNavigate={vi.fn()} />);
     expect(botoes().map((b) => b.textContent?.trim())).toEqual([
       "Minha loja",
       "Banners",
       "Vitrines",
+      "Cor do app",
       "Entrega e frete",
     ]);
     renderizar(<AtalhosDaAba aba="pedidos" onNavigate={vi.fn()} />);

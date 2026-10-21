@@ -123,6 +123,7 @@ function BlocoNumerado({
 }
 
 export const AdminAboutStoreView = memo(function AdminAboutStoreView({
+  onNavigate,
   active = true,
   onSetDirty,
   secaoInicial,
@@ -421,7 +422,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         <BlocoNumerado
           numero="1"
           titulo="Marca da loja"
-          descricao="Nome, logo e cores que aparecem no app inteiro — inclusive na página Sobre a Loja."
+          descricao="Nome e logo que aparecem no app inteiro — inclusive na página Sobre a Loja."
           refDoTitulo={guardarTitulo("marca")}
         >
           <Suspense
@@ -432,6 +433,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             <IdentitySettingsSection
               active={active}
               onDirtyChange={setIdentidadePendente}
+              onNavigate={onNavigate}
             />
           </Suspense>
         </BlocoNumerado>

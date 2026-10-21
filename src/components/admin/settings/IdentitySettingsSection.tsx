@@ -8,12 +8,16 @@ import {
 } from "@/hooks/useStoreIdentityEditor";
 import type { IdentityAsset, IdentityAssetRole } from "@/lib/storeIdentity";
 import type { IdentityDraftFields } from "@/lib/storeIdentityDraft";
+import type { View } from "@/types";
+import { ChevronRight, Droplet } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export interface IdentitySettingsSectionProps {
   readonly active?: boolean;
+  readonly onNavigate?: (view: View) => void;
   readonly onDirtyChange?: (dirty: boolean) => void;
 }
+// As cores moram em Cor do app (secundária/destaque só são preservadas).
 // Cidade e UF NÃO são mais campos da marca: moram no Endereço da loja (Minha
 // loja, painel simples §4), que as grava junto com o CEP. O rascunho da marca
 // continua levando as duas no pacote de 8 chaves da `save_store_identity` (a
@@ -24,15 +28,15 @@ const camposEscondidos: readonly [keyof IdentityDraftFields, string, string][] =
   [
     ["storeCity", "Cidade", "store-city"],
     ["storeState", "Estado (UF)", "store-state"],
+    ["primaryColor", "Cor do app", "store-color-hex"],
+    ["secondaryColor", "Cor secundária", "store-secondary-color"],
+    ["accentColor", "Cor de destaque", "store-accent-color"],
   ];
 const fields: readonly [keyof IdentityDraftFields, string, string][] = [
   ["storeName", "Nome da loja", "store-name"],
-  ["primaryColor", "Cor principal", "store-color-hex"],
-  ["secondaryColor", "Cor secundária", "store-secondary-color"],
-  ["accentColor", "Cor de destaque", "store-accent-color"],
 ];
 const camposDoConflito: readonly [keyof IdentityDraftFields, string, string][] =
-  [fields[0], ...camposEscondidos, ...fields.slice(1)];
+  [fields[0], ...camposEscondidos];
 const previews: readonly [IdentityAssetRole, string, string][] = [
   ["header", "Cabeçalho", "PNG, JPEG, WebP ou SVG"],
   ["loader", "Abertura", "PNG, JPEG, WebP ou SVG"],
@@ -56,6 +60,7 @@ function url(origin: string, asset: IdentityAsset) {
 export function IdentitySettingsSection({
   active = true,
   onDirtyChange,
+  onNavigate,
 }: IdentitySettingsSectionProps): React.JSX.Element {
   const editor = useStoreIdentityEditor(active);
   const [alsoOpening, setAlsoOpening] = useState(false);
@@ -148,7 +153,6 @@ export function IdentitySettingsSection({
           // Keys belong exclusively to the closed field list above.
           // eslint-disable-next-line security/detect-object-injection
           const value = draft.fields[key];
-          const color = key.endsWith("Color");
           return (
             <div key={key} className="space-y-1.5">
               <Label
@@ -164,22 +168,24 @@ export function IdentitySettingsSection({
                   value={value}
                   onChange={(e) => editor.setField(key, e.target.value)}
                 />
-                {color && (
-                  <span
-                    aria-label={`Amostra: ${label}`}
-                    className="size-8 shrink-0 rounded-md border border-admin-border-strong"
-                    style={{
-                      backgroundColor: /^#[0-9a-f]{6}$/i.test(value)
-                        ? value
-                        : "transparent",
-                    }}
-                  />
-                )}
               </div>
             </div>
           );
         })}
       </fieldset>
+      <button
+        type="button"
+        className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-admin-border px-3 text-left text-xs text-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold"
+        disabled={!active}
+        onClick={() => onNavigate?.("admin-app-color")}
+      >
+        <Droplet
+          aria-hidden="true"
+          className="size-4 shrink-0 text-admin-gold"
+        />
+        <span className="flex-1">A cor do app fica em Aparência do app</span>
+        <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
+      </button>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {previews.map(([role, label, hint]) => {
           // role comes from the closed preview list.
@@ -233,8 +239,7 @@ export function IdentitySettingsSection({
               )}
               {role === "icon_512" && (
                 <p className="text-xs text-zinc-400">
-                  No Android, o ícone mostra a logo da loja sobre a cor
-                  principal.
+                  No Android, o ícone mostra a logo da loja sobre a cor do app.
                 </p>
               )}
             </section>
@@ -400,6 +405,9 @@ export function IdentitySettingsSection({
               <p className="text-sm">Sua escolha / configuração atual:</p>
               <ul className="space-y-1 text-sm">
                 {camposDoConflito.map(([key, label]) => {
+                  // A Marca não edita a primária; uma semente apresentada sobre
+                  // null não é alteração feita aqui. A tela Cor do app a compara.
+                  if (key === "primaryColor") return null;
                   const rawKey = new Map<keyof IdentityDraftFields, string>([
                     ["storeName", "store_name"],
                     ["storeCity", "store_city"],
@@ -414,7 +422,11 @@ export function IdentitySettingsSection({
                   // key comes exclusively from the closed local field list.
                   // eslint-disable-next-line security/detect-object-injection
                   const mine = draft.fields[key];
-                  return mine !== (current ?? "") ? (
+                  const atual = typeof current === "string" ? current : "";
+                  const diferente = key.endsWith("Color")
+                    ? mine.toLowerCase() !== atual.toLowerCase()
+                    : mine !== atual;
+                  return diferente ? (
                     <li key={key}>
                       {label}: {mine || "Não informado"} /{" "}
                       {typeof current === "string" && current

@@ -9,6 +9,7 @@ import {
 import {
   BarChart3,
   ChevronRight,
+  Droplet,
   GalleryHorizontal,
   ImageIcon,
   Landmark,
@@ -33,6 +34,7 @@ const ICONES_DAS_PORTAS: Partial<Record<TelaDoPainel, LucideIcon>> = {
   "admin-about-store": Store,
   "admin-banners": ImageIcon,
   "admin-carousels": GalleryHorizontal,
+  "admin-app-color": Droplet,
   "admin-shipping": Truck,
 };
 

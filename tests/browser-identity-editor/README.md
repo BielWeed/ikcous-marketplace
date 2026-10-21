@@ -3,7 +3,9 @@
 Executar da raiz, sem argumentos: `node tests/browser-identity-editor/run.mjs`.
 
 A seção, hook, modelo, preparador, TUS, conferidor, SDK administrativo e SQL são reais.
-Somente useAuth e StoreContext são substituídos. O servidor TUS é uma fixture de protocolo,
+Somente useAuth e StoreContext são substituídos. Marca e Cor do app são telas reais,
+com navegação local e caso que compara a identidade inteira antes/depois de salvar a cor.
+A sonda de conexão recebe uma resposta sintética, sem buscar banners. O servidor TUS é uma fixture de protocolo,
 não prova Storage/RLS, login, CDN, implantação ou PWA instalado.
 
 Usa a API revisada de identity-admin-http/environment.mjs. Cria banco e containers próprios

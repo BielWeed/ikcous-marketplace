@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Coins,
+  Droplet,
   GalleryHorizontal,
   HelpCircle,
   ImageIcon,
@@ -500,6 +501,15 @@ const ICONE_DA_PORTA = new Map<TelaDoPainel, React.ReactNode>([
     />,
   ],
   [
+    "admin-app-color",
+    <Droplet
+      key="c"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
+  ],
+  [
     "admin-shipping",
     <Truck
       key="t"
@@ -539,7 +549,7 @@ function PortaDeAjustes({
       className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-admin-border-strong hover:from-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
     >
       <div
-        className={`flex size-10 shrink-0 items-center justify-center rounded-xl border ${porta.tela === "admin-banners" ? "border-pink-400/30 bg-pink-400/15 text-pink-300" : porta.tela === "admin-carousels" ? "border-violet-400/30 bg-violet-400/15 text-violet-300" : porta.tela === "admin-shipping" ? "border-orange-400/30 bg-orange-400/15 text-orange-300" : "border-blue-400/30 bg-blue-400/15 text-blue-300"}`}
+        className={`flex size-10 shrink-0 items-center justify-center rounded-xl border ${porta.tela === "admin-banners" ? "border-pink-400/30 bg-pink-400/15 text-pink-300" : porta.tela === "admin-carousels" ? "border-violet-400/30 bg-violet-400/15 text-violet-300" : porta.tela === "admin-app-color" ? "border-amber-400/30 bg-amber-400/15 text-amber-300" : porta.tela === "admin-shipping" ? "border-orange-400/30 bg-orange-400/15 text-orange-300" : "border-blue-400/30 bg-blue-400/15 text-blue-300"}`}
       >
         {ICONE_DA_PORTA.get(porta.tela)}
       </div>
@@ -608,7 +618,7 @@ function GrupoDeAjustes({
     subtituloExtra ??
     subtitulos.get(chave) ??
     (chave === "aparencia"
-      ? "Banners e vitrines"
+      ? "Banners, vitrines e cor do app"
       : chave === "devolucao"
         ? "Prazos, formas de devolver e política"
         : undefined);

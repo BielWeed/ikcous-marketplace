@@ -1,3 +1,4 @@
+import { branding } from "@/config/branding";
 import type { StoreIdentityIntent } from "@/lib/adminStoreIdentity";
 import type { VerifiedPublicIdentityAsset } from "@/lib/publicStoreIdentity";
 import {
@@ -165,7 +166,16 @@ export function createIdentityEditorDraft(
   const expected = checked(() => parseStoreIdentitySnapshot(snapshot));
   let identity: PublicStoreIdentity;
   try {
-    identity = parseStoreIdentity(expected.identity, origin);
+    // Ausência não é preto nem uma escolha da loja. A semente só apresenta
+    // o rascunho; a fotografia bruta (inclusive null) continua no expected.
+    identity = parseStoreIdentity(
+      {
+        ...expected.identity,
+        primary_color:
+          expected.identity.primary_color ?? branding.theme.primary,
+      },
+      origin,
+    );
   } catch {
     throw new IdentityDraftError("IDENTITY_DRAFT_INCOMPLETE");
   }
@@ -403,13 +413,25 @@ export function buildIdentityEditorIntent(
       origin,
     ),
   );
+  const previous = createIdentityEditorDraft(copy.expected, origin);
   const desired = parseRawStoreIdentity({
     store_name: identity.storeName,
     store_city: identity.city,
     store_state: identity.state,
-    primary_color: identity.theme.primary,
-    secondary_color: identity.theme.secondary,
-    accent_color: identity.theme.accent,
+    // Cores que a tela não editou voltam byte a byte, inclusive a caixa.
+    // A Marca só edita nome/imagens; esconder campos não pode alterar dados.
+    primary_color:
+      copy.fields.primaryColor === previous.fields.primaryColor
+        ? copy.expected.identity.primary_color
+        : identity.theme.primary,
+    secondary_color:
+      copy.fields.secondaryColor === previous.fields.secondaryColor
+        ? copy.expected.identity.secondary_color
+        : identity.theme.secondary,
+    accent_color:
+      copy.fields.accentColor === previous.fields.accentColor
+        ? copy.expected.identity.accent_color
+        : identity.theme.accent,
     logo_url: identity.urls.header,
     branding_assets: identity.assets,
   });
