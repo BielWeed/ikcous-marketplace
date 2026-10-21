@@ -580,6 +580,10 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "74b-antes-codigo-de-barras-entre-tabelas-ausente",
   "63a-conferir-forma-do-icone-aplicado",
   "63b-antes-forma-do-icone-ausente",
+  "80a-conferir-pedido-entregue-na-reconciliacao-aplicado",
+  "80b-antes-pedido-entregue-na-reconciliacao-base-vigente",
+  "81a-conferir-compra-online-trava-preco-e-chave-aplicado",
+  "81b-antes-compra-online-trava-preco-e-chave-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

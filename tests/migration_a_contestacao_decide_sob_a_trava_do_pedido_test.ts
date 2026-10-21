@@ -385,6 +385,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
     // 20261351000000: a forma (path SVG) do icone da categoria, CHECK, ACL/RLS e rollback.
     "tests/banco/forma-do-icone-viva.cjs",
+    // 20261350000000: a compra online trava o preco-base (OF v, p) e a mesma chave espera a primeira (advisory lock): duas conexoes reais, rollback, pre/pos-voo e consultas 81a/81b.
+    "tests/banco/compra-online-travas-viva.cjs",
+    // 20261349000000: o pedido entregue antes da confirmacao do PIX entra na fila de reconciliacao (borda, dados existentes, ACL, rollback, pre/pos-voo e consultas 80a/80b).
+    "tests/banco/reconciliacao-do-entregue-viva.cjs",
     // 20261300000000: icones de categoria, CHECK, ACL/RLS e rollback sem perda.
     "tests/banco/categorias-icones-viva.cjs",
     // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.

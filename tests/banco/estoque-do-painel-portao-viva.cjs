@@ -1240,6 +1240,16 @@ async function main() {
         "20261310000000_estilo_do_card_de_frete.sql",
         "public.upsert_store_config(jsonb)",
       ],
+      // A 20261350 (a compra online trava o preco e a mesma chave espera a primeira): UMA migration, duas funcoes de fora
+      // destas tres (as duas portas de compra, que ela SUCEDE a 44); a 17a nao as le.
+      [
+        "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
+        "public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
+      [
+        "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
+        "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

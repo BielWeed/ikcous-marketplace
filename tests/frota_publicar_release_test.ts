@@ -3083,6 +3083,8 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "68a-conferir-avanco-status-esperado-aplicado",
     "74a-conferir-codigo-de-barras-entre-tabelas-aplicado",
     "63a-conferir-forma-do-icone-aplicado",
+    "80a-conferir-pedido-entregue-na-reconciliacao-aplicado",
+    "81a-conferir-compra-online-trava-preco-e-chave-aplicado",
   ]);
 });
 

@@ -170,6 +170,10 @@ on:
       - "scripts/publicacao/consultas/74b-antes-codigo-de-barras-entre-tabelas-ausente.sql"
       - "scripts/publicacao/consultas/63a-conferir-forma-do-icone-aplicado.sql"
       - "scripts/publicacao/consultas/63b-antes-forma-do-icone-ausente.sql"
+      - "scripts/publicacao/consultas/80a-conferir-pedido-entregue-na-reconciliacao-aplicado.sql"
+      - "scripts/publicacao/consultas/80b-antes-pedido-entregue-na-reconciliacao-base-vigente.sql"
+      - "scripts/publicacao/consultas/81a-conferir-compra-online-trava-preco-e-chave-aplicado.sql"
+      - "scripts/publicacao/consultas/81b-antes-compra-online-trava-preco-e-chave-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -309,6 +313,10 @@ on:
       - "scripts/publicacao/consultas/74b-antes-codigo-de-barras-entre-tabelas-ausente.sql"
       - "scripts/publicacao/consultas/63a-conferir-forma-do-icone-aplicado.sql"
       - "scripts/publicacao/consultas/63b-antes-forma-do-icone-ausente.sql"
+      - "scripts/publicacao/consultas/80a-conferir-pedido-entregue-na-reconciliacao-aplicado.sql"
+      - "scripts/publicacao/consultas/80b-antes-pedido-entregue-na-reconciliacao-base-vigente.sql"
+      - "scripts/publicacao/consultas/81a-conferir-compra-online-trava-preco-e-chave-aplicado.sql"
+      - "scripts/publicacao/consultas/81b-antes-compra-online-trava-preco-e-chave-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -471,6 +479,24 @@ jobs:
       - name: Prova viva dos pagamentos (confirmar_pagamento e registrar_pagamento_recebido)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/pagamentos-rpc-viva.cjs
+      # Migration 20261349000000 (o pedido ENTREGUE antes da confirmação do PIX entra na fila de reconciliação):
+      # pagamentos_a_reconciliar traz 'delivered' + aguardando; a borda (fora das 24 h, sem cobrança, já pago,
+      # cobrança terminal) não muda; o pedido que já estava preso entra sem ser reescrito; só o servidor executa;
+      # rollback byte a byte, pré-voo que recusa sem escrever, pós-voo que desfaz tudo e consultas 80a/80b. CLONE próprio.
+      - name: Prova viva da fila de reconciliação do pedido entregue (migration 20261349000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reconciliacao-do-entregue-viva.cjs
+      # Migration 20261350000000 (a compra online trava o preço-base e a mesma chave de idempotência espera a primeira):
+      # create_marketplace_order_v23 e v24 só ganham três edições (OF v, p; o advisory lock pedido_online:; e as travas
+      # do carrinho em ordem global, variações e depois produtos por id); o preço do cabeçalho e o dos itens são o MESMO
+      # sob um preço salvo no meio da gravação (duas conexões reais); duas chamadas simultâneas com a mesma chave
+      # devolvem o MESMO pedido (inclusive na última unidade e no cupom no limite); chaves diferentes e chave nula não
+      # esperam; carrinho misto e variações em ordem oposta ao mesmo tempo não caem em deadlock (controle: caem); painel
+      # que salva variação não cruza com a compra; rollback byte a byte, pré-voo que recusa sem escrever, pós-voo que
+      # desfaz tudo e consultas 81a/81b. CLONE próprio.
+      - name: Prova viva da compra online que trava o preço e espera a mesma chave (migration 20261350000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/compra-online-travas-viva.cjs
       # Migration 20261197000000 (o dinheiro exige o admin de agora): admin
       # rebaixado com JWT velho — nas duas direções da contradição auth.users
       # × profiles — é recusado nas seis RPCs sem escrever nada e não lê

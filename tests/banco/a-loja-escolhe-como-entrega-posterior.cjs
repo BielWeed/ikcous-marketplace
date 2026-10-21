@@ -37,6 +37,11 @@ const ENTREGA_NA_CIDADE = Object.freeze({
 
 /** Desfaz a 20261244000000 no clone/na transação aberta do cliente, se ela estiver no ar. Devolve true se desfez. */
 async function desfazerEntregaNaCidadeNaTransacao(cliente) {
+  // A sucessora dos corpos de v23/v24 (20261350000000: trava o preço e espera a mesma chave) cai ANTES: o pré-voo do
+  // rollback da 244 recusa com o corpo novo no ar. Ver a-compra-online-trava-posterior.cjs.
+  await require("./a-compra-online-trava-posterior.cjs").desfazerCompraOnlineTravaNaTransacao(
+    cliente,
+  );
   await require("./estilo-card-frete-posterior.cjs").desfazerEstiloCardFreteNaTransacao(
     cliente,
   );

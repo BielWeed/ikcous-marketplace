@@ -2470,6 +2470,36 @@ const ROL_DA_63B = [
   "categorias.icone_forma: ausente",
   "categorias_icone_forma_check: ausente",
 ];
+// Lote 80 (20261349000000, o pedido entregue entra na fila de reconciliacao): os mesmos quatro fatos ANTES/DEPOIS;
+// so o corpo (md5) e a contagem de delivered trocam de valor.
+const ROL_DA_80 = [
+  "controle: funcoes de public visiveis a este papel",
+  "pagamentos_a_reconciliar: corpo exato (md5)",
+  "pagamentos_a_reconciliar: delivered nas duas listas de status",
+  "pagamentos_a_reconciliar: assinatura, atributos e EXECUTE so do servidor",
+];
+// Lote 81 (20261350000000, a compra online trava o preco e espera a mesma chave): os mesmos sete fatos ANTES/DEPOIS
+// (controle, md5 de v23 e de v24, as travas do carrinho em ordem global e a do produto, o advisory lock da chave, atributos
+// e EXECUTE); so os valores trocam.
+const ROL_DA_81 = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo e o da 20261350000000, com a ordem global das travas, a trava do produto e a espera da mesma chave (md5)",
+  "create_marketplace_order_v24: corpo e o da 20261350000000, com a ordem global das travas, a trava do produto e a espera da mesma chave (md5)",
+  "as duas compras: as travas do carrinho saem em ordem global (variacoes por id, depois produtos por id) e a leitura do passo 3 tranca a variacao e o produto (ordem 2 vezes; OF v, p uma vez; nenhuma OF v sozinha)",
+  "as duas compras: a mesma chave de idempotencia espera a primeira (advisory lock pedido_online:, uma vez)",
+  "as duas compras: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "as duas compras: EXECUTE como sempre (PUBLIC nao; anon, authenticated e service_role sim)",
+];
+// A 81b tem rotulos proprios (o estado ANTES descreve o corpo vigente da 244), como a 61a/61b.
+const ROL_DA_81B = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo e o vigente da 20261244000000, sem a ordem global das travas, a trava do produto nem a espera da mesma chave (md5)",
+  "create_marketplace_order_v24: corpo e o vigente da 20261244000000, sem a ordem global das travas, a trava do produto nem a espera da mesma chave (md5)",
+  "as duas compras: as travas ainda saem na ordem do carrinho e a leitura do passo 3 tranca so a variacao (nenhuma ordem global; nenhuma OF v, p; uma OF v sozinha)",
+  "as duas compras: ainda sem o advisory lock da chave de idempotencia pedido_online:",
+  "as duas compras: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "as duas compras: EXECUTE como sempre (PUBLIC nao; anon, authenticated e service_role sim)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "68a-conferir-avanco-status-esperado-aplicado": [
     "avancar_status_do_pedido: unica assinatura conhecida",
@@ -2487,6 +2517,10 @@ const ROL_FECHADO_POR_CONSULTA = {
   "67b-antes-reembolso-manual-reserva": ROL_DA_67,
   "63a-conferir-forma-do-icone-aplicado": ROL_DA_63A,
   "63b-antes-forma-do-icone-ausente": ROL_DA_63B,
+  "81a-conferir-compra-online-trava-preco-e-chave-aplicado": ROL_DA_81,
+  "81b-antes-compra-online-trava-preco-e-chave-base-vigente": ROL_DA_81B,
+  "80a-conferir-pedido-entregue-na-reconciliacao-aplicado": ROL_DA_80,
+  "80b-antes-pedido-entregue-na-reconciliacao-base-vigente": ROL_DA_80,
   "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
   "61b-antes-icones-das-categorias": ROL_DA_61B,
   "62a-conferir-mototaxi-aplicado": [
