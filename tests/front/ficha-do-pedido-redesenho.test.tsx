@@ -441,6 +441,12 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       await act(async () => {
         marcar?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
+      expect(onRegistrar).not.toHaveBeenCalled();
+      const recebi = [...document.body.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Recebi",
+      );
+      expect(recebi).toBeTruthy();
+      await act(async () => recebi!.click());
       expect(onRegistrar).toHaveBeenCalledWith("ped-redesenho-123456", true);
     });
 

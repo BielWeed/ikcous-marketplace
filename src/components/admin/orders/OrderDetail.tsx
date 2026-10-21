@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { ConfirmarRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
@@ -853,7 +854,7 @@ interface OrderFinanceCardProps {
   /** Task 4b — `undefined` só nos testes que montam `<OrderDetail>` direto
    * sem a prop (ver `OrderDetailProps.onRegistrarPagamento`); nesse caso o
    * bloco de recebimento não renderiza (ver guarda no JSX abaixo). */
-  onRegistrarPagamento?: (orderId: string, recebido: boolean) => void;
+  onRegistrarPagamento?: (orderId: string, recebido: boolean) => Promise<void>;
   registrandoPagamento?: boolean;
 }
 
@@ -994,14 +995,12 @@ function OrderFinanceCard({
               />
             </>
           ) : (
-            <button
-              type="button"
-              onClick={() => onRegistrarPagamento(order.id, true)}
+            <ConfirmarRecebimento
+              key={order.id}
+              total={order.total}
               disabled={registrandoPagamento}
-              className="h-11 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-400 transition-colors hover:bg-emerald-500 hover:text-black disabled:opacity-50"
-            >
-              {registrandoPagamento ? "Registrando..." : "Marcar como recebido"}
-            </button>
+              aoConfirmar={() => onRegistrarPagamento(order.id, true)}
+            />
           )}
         </div>
       )}
