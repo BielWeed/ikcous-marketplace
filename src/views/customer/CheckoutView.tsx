@@ -134,6 +134,7 @@ import {
   Clock,
   CreditCard,
   FileText,
+  Info,
   Loader2,
   Lock,
   MapPin,
@@ -3363,13 +3364,6 @@ export function CheckoutViewDaConta({
   // pagamento (a decisão do total zero precisa deles, e os efeitos rodam antes
   // do retorno antecipado de `authLoading`).
 
-  // ECONOMIA total exibida na barra de baixo (pedido do Gabriel,
-  // 12/09/2026): cupom + o que o frete grátis deixou de cobrar. NÃO muda o
-  // Total — a economia do frete já está embutida nele (frete grátis já
-  // entra como 0 em `shipping`/`total`); somar aqui de novo dobraria o
-  // desconto. Isto é só o NÚMERO da pílula.
-  const economiaTotal = discount + economiaDoFrete;
-
   const isValid = form.formState.isValid;
 
   // REGRA DO CONVIDADO (decisão do Gabriel, 30/08/2026 — laudo caça-bugs
@@ -4705,11 +4699,20 @@ export function CheckoutViewDaConta({
             {formatCurrency(arredondarParaCentavos(valorDoPedido))}
           </p>
         )}
-        <p className="text-xs text-zinc-500">
-          {metodoDoPedido === "cartao"
-            ? "Reservamos seus itens enquanto o pagamento é concluído. Se o banco não confirmar a tempo, o pedido é cancelado e os itens voltam para a loja."
-            : "Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os itens voltam para o estoque e o pedido é cancelado."}
-        </p>
+        {metodoDoPedido === "cartao" ? (
+          <p className="flex items-start gap-2 rounded-xl border border-blue-200 px-3 py-2 text-xs leading-snug text-zinc-600">
+            <Info
+              aria-hidden="true"
+              className="size-4 shrink-0 text-blue-600"
+            />
+            <span>Reservamos seus itens enquanto você paga.</span>
+          </p>
+        ) : (
+          <p className="text-xs text-zinc-500">
+            Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
+            itens voltam para o estoque e o pedido é cancelado.
+          </p>
+        )}
         {erroPagamento?.cartaoEmAnalise ? (
           // B3 da revisão de risco pré-publicação (26/09/2026, reforçado na
           // rodada 2): NUNCA "Cancelar pedido" nem "Pagar com PIX" aqui — o
@@ -6619,21 +6622,33 @@ export function CheckoutViewDaConta({
                           <div>
                             <span>Entrega</span>
                             <span>
-                              {semFreteSelecionado
-                                ? "a calcular"
-                                : shipping + economiaDoFrete > 0
-                                  ? `R$ ${(shipping + economiaDoFrete).toFixed(2).replace(".", ",")}`
-                                  : "Grátis"}
+                              {semFreteSelecionado ? (
+                                "a calcular"
+                              ) : (
+                                <>
+                                  {economiaDoFrete > 0 && (
+                                    <span className="mr-1 text-zinc-400 line-through">
+                                      R${" "}
+                                      {(shipping + economiaDoFrete)
+                                        .toFixed(2)
+                                        .replace(".", ",")}
+                                    </span>
+                                  )}
+                                  {shipping > 0
+                                    ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                                    : "Grátis"}
+                                </>
+                              )}
                             </span>
                           </div>
-                          {economiaTotal > 0 && (
+                          {discount > 0 && (
                             <div>
                               <span>Desconto</span>
                               <span
                                 className="text-emerald-700"
-                                aria-label={`Desconto de R$ ${economiaTotal.toFixed(2).replace(".", ",")}`}
+                                aria-label={`Desconto de R$ ${discount.toFixed(2).replace(".", ",")}`}
                               >
-                                -R$ {economiaTotal.toFixed(2).replace(".", ",")}
+                                -R$ {discount.toFixed(2).replace(".", ",")}
                               </span>
                             </div>
                           )}

@@ -351,6 +351,25 @@ describe("CheckoutView — cartão pelo app", () => {
     expect(hospedeiro.querySelector(".pb-customer")).not.toBeNull();
   });
 
+  it("cartão mostra reserva curta com informação discreta e mantém o espaço inferior", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+    await finalizar();
+
+    const aviso = [...hospedeiro.querySelectorAll("p")].find(
+      (p) => p.textContent === "Reservamos seus itens enquanto você paga.",
+    )!;
+    expect(aviso).toBeDefined();
+    expect(aviso.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(aviso.className).toContain("border");
+    expect(aviso.className).not.toMatch(/bg-blue|bg-sky/);
+    expect(hospedeiro.textContent).not.toContain(
+      "Se o banco não confirmar a tempo",
+    );
+    expect(hospedeiro.querySelector(".pb-customer")).not.toBeNull();
+  });
+
   it.each([120.03, 119.97, 1234.56])(
     "o pagamento usa o total gravado (%s), avisa a diferença e não o troca pelo carrinho limpo",
     async (totalAmount) => {
