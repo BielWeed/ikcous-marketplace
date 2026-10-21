@@ -624,7 +624,9 @@ async function main() {
   await C.connect();
   // A prova e da 240: o clone volta antes da sucessora 1360, sem afrouxar preflight algum.
   await C.query("BEGIN");
-  await require("./ex-admin-demais-tabelas-posterior.cjs").desfazerExAdminNaTransacao(C);
+  await require("./ex-admin-demais-tabelas-posterior.cjs").desfazerExAdminNaTransacao(
+    C,
+  );
   await C.query("COMMIT");
   await C.query(`CREATE ROLE ${RO} NOLOGIN BYPASSRLS`);
   try {

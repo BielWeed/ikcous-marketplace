@@ -2584,7 +2584,7 @@ const ROL_FECHADO_POR_CONSULTA = {
     "RPC: public.answer_question_atomic(uuid,text)",
     "RPC: public.answer_question_atomic(uuid,text,uuid)",
     "RPC: public.reply_review_atomic(uuid,text)",
-    "RPC: public.reply_review_atomic(uuid,text,uuid)"
+    "RPC: public.reply_review_atomic(uuid,text,uuid)",
   ],
   "82b-antes-ex-admin-nas-demais-tabelas": [
     "controle: catalogo publico visivel",
@@ -2622,7 +2622,7 @@ const ROL_FECHADO_POR_CONSULTA = {
     "RPC: public.answer_question_atomic(uuid,text)",
     "RPC: public.answer_question_atomic(uuid,text,uuid)",
     "RPC: public.reply_review_atomic(uuid,text)",
-    "RPC: public.reply_review_atomic(uuid,text,uuid)"
+    "RPC: public.reply_review_atomic(uuid,text,uuid)",
   ],
   "64a-conferir-politicas-de-perfil-e-endereco-aplicado": ROL_DA_64A,
   "64b-antes-politicas-de-perfil-e-endereco-is-admin": ROL_DA_64B,

@@ -89,7 +89,9 @@ const {
 } = require("./desfazer-recebimento-posterior.cjs");
 const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
 const { PERFIS_ADMIN_ATUAL } = require("./admin-atual-perfis-posterior.cjs");
-const { EX_ADMIN_DEMAIS_TABELAS } = require("./ex-admin-demais-tabelas-posterior.cjs");
+const {
+  EX_ADMIN_DEMAIS_TABELAS,
+} = require("./ex-admin-demais-tabelas-posterior.cjs");
 const {
   desfazerReconciliacaoDoEntregueNaTransacao,
 } = require("./reconciliacao-do-entregue-posterior.cjs");

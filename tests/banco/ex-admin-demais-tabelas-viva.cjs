@@ -17,8 +17,8 @@ const nome =
 const raiz = path.resolve(__dirname, "../..");
 const ler = (rel) =>
   fs.readFileSync(path.join(raiz, rel), "utf8").replace(/\r/g, "");
-const migration = ler("supabase/migrations/" + nome);
-const rollback = ler("supabase/migrations/rollback-manual-" + nome);
+const migration = ler(`supabase/migrations/${nome}`);
+const rollback = ler(`supabase/migrations/rollback-manual-${nome}`);
 const antes = ler(
   "scripts/publicacao/consultas/82b-antes-ex-admin-nas-demais-tabelas.sql",
 );
@@ -102,12 +102,13 @@ async function aplicar(sql) {
 async function como(quem, sql) {
   await c.query("SAVEPOINT acao");
   try {
-    const role = quem === "anon"
-      ? "anon"
-      : quem === "servico"
-      ? "service_role"
-      : "authenticated";
-    await c.query("SET LOCAL ROLE " + role);
+    const role =
+      quem === "anon"
+        ? "anon"
+        : quem === "servico"
+          ? "service_role"
+          : "authenticated";
+    await c.query(`SET LOCAL ROLE ${role}`);
     const id = U[quem] || "";
     await c.query(
       "SELECT set_config('app.rpc.user_id',$1,true),set_config('request.jwt.claims',$2,true)",
@@ -147,7 +148,7 @@ async function semear() {
       "INSERT INTO auth.users(id,email,raw_app_meta_data) VALUES($1,$2,$3)",
       [
         id,
-        k + "@exemplo.invalid",
+        `${k}@exemplo.invalid`,
         JSON.stringify(
           ["admin", "perfil"].includes(k) ? { role: "admin" } : {},
         ),
@@ -167,14 +168,19 @@ async function semear() {
     'UPDATE auth.users SET raw_app_meta_data=\'{"role":"customer"}\'::jsonb WHERE id=$1',
     [U.auth],
   );
-  const fontes = (await c.query(
-    "SELECT p.id,p.role,u.raw_app_meta_data->>'role' auth_role FROM public.profiles p JOIN auth.users u ON u.id=p.id WHERE p.id IN ($1,$2) ORDER BY p.id",
-    [U.perfil, U.auth],
-  )).rows;
-  assert.deepEqual(fontes.map((f) => [f.role, f.auth_role]), [[
-    "customer",
-    "admin",
-  ], ["admin", "customer"]]);
+  const fontes = (
+    await c.query(
+      "SELECT p.id,p.role,u.raw_app_meta_data->>'role' auth_role FROM public.profiles p JOIN auth.users u ON u.id=p.id WHERE p.id IN ($1,$2) ORDER BY p.id",
+      [U.perfil, U.auth],
+    )
+  ).rows;
+  assert.deepEqual(
+    fontes.map((f) => [f.role, f.auth_role]),
+    [
+      ["customer", "admin"],
+      ["admin", "customer"],
+    ],
+  );
   await c.query(
     "INSERT INTO public.produtos(id,nome,preco_venda,estoque,ativo,custo) VALUES($1,'L2 pausado',10,10,false,2),($2,'L2 ativo',10,10,true,2)",
     [P, PA],
@@ -209,7 +215,7 @@ async function semear() {
   for (const bucket of ["products", "banners", "branding", "devolucoes"]) {
     await c.query("INSERT INTO storage.objects(bucket_id,name) VALUES($1,$2)", [
       bucket,
-      U.cliente + "/foto.png",
+      `${U.cliente}/foto.png`,
     ]);
   }
 }
@@ -277,12 +283,10 @@ const escritas = [
     "view INSERT",
     "INSERT INTO public.vw_produtos_admin(nome,preco_venda,estoque,ativo) VALUES('L2 pela view',10,1,true)",
   ],
-  ...["products", "banners", "branding"].map(
-    (bucket) => [
-      "storage INSERT " + bucket,
-      `INSERT INTO storage.objects(bucket_id,name) VALUES('${bucket}','nova.png')`,
-    ],
-  ),
+  ...["products", "banners", "branding"].map((bucket) => [
+    `storage INSERT ${bucket}`,
+    `INSERT INTO storage.objects(bucket_id,name) VALUES('${bucket}','nova.png')`,
+  ]),
   ["storage UPDATE", "UPDATE storage.objects SET name='atualizada.png'"],
   ["storage DELETE", "DELETE FROM storage.objects"],
 ];
@@ -293,20 +297,24 @@ const rpcs = [
   `SELECT public.reply_review_atomic('${R}','Nova','${U.admin}')`,
 ];
 async function comportamento(novo) {
-  const papelProduto = (await c.query(
-    "SELECT polroles=ARRAY['authenticated'::regrole::oid] auth FROM pg_policy WHERE polrelid='public.produtos'::regclass AND polname='produtos_select_policy'",
-  )).rows[0].auth;
+  const papelProduto = (
+    await c.query(
+      "SELECT polroles=ARRAY['authenticated'::regrole::oid] auth FROM pg_policy WHERE polrelid='public.produtos'::regclass AND polname='produtos_select_policy'",
+    )
+  ).rows[0].auth;
   assert.equal(
     papelProduto,
     novo,
     "somente a politica de leitura direta muda de PUBLIC para authenticated",
   );
-  const qualOTP = (await c.query(
-    "SELECT pg_get_expr(polqual,polrelid) q FROM pg_policy WHERE polrelid='public.otp_verifications'::regclass AND polname='Admins full access on otp_verifications'",
-  )).rows[0].q;
+  const qualOTP = (
+    await c.query(
+      "SELECT pg_get_expr(polqual,polrelid) q FROM pg_policy WHERE polrelid='public.otp_verifications'::regclass AND polname='Admins full access on otp_verifications'",
+    )
+  ).rows[0].q;
   for (const quem of ["perfil", "auth"]) {
     assert.equal(
-      (await como(quem, "SELECT (" + qualOTP + ") ok")).rows[0].ok,
+      (await como(quem, `SELECT (${qualOTP}) ok`)).rows[0].ok,
       !novo,
       "politica OTP endurecida, sem reabrir ACL",
     );
@@ -318,13 +326,14 @@ async function comportamento(novo) {
         assert.equal(r.code, "42501", "OTP ja fechado pelo GRANT anterior");
       } else if (novo) {
         assert(
-          r.n === 0 || r.code === "42501" ||
+          r.n === 0 ||
+            r.code === "42501" ||
             (nome === "view INSERT" && r.code === "44000"),
-          nome + " " + quem + " " + JSON.stringify(r),
+          `${nome} ${quem} ${JSON.stringify(r)}`,
         );
       } else {
         // RPCs antigas de 2 args ja recusavam quem perdeu profiles; as escritas RLS nao recusavam.
-        assert(r.n > 0, nome + " controle " + quem + " " + JSON.stringify(r));
+        assert(r.n > 0, `${nome} controle ${quem} ${JSON.stringify(r)}`);
       }
     }
     for (const sql of rpcs) {
@@ -333,24 +342,22 @@ async function comportamento(novo) {
         assert.match(
           r.message || "",
           /Unauthorized/,
-          sql + " " + quem + " " + JSON.stringify(r),
+          `${sql} ${quem} ${JSON.stringify(r)}`,
         );
       }
     }
-    for (
-      const sql of [
-        "SELECT code FROM public.coupons",
-        `SELECT id FROM public.produtos WHERE id='${P}'`,
-        `SELECT id FROM public.vw_produtos_admin WHERE id='${P}'`,
-        `SELECT id FROM public.reviews WHERE id='${R}'`,
-        "SELECT id FROM storage.objects WHERE bucket_id='devolucoes'",
-      ]
-    ) {
+    for (const sql of [
+      "SELECT code FROM public.coupons",
+      `SELECT id FROM public.produtos WHERE id='${P}'`,
+      `SELECT id FROM public.vw_produtos_admin WHERE id='${P}'`,
+      `SELECT id FROM public.reviews WHERE id='${R}'`,
+      "SELECT id FROM storage.objects WHERE bucket_id='devolucoes'",
+    ]) {
       const r = await como(quem, sql);
       assert.equal(
         r.n,
         novo ? 0 : 1,
-        quem + " leitura " + sql + " " + JSON.stringify(r),
+        `${quem} leitura ${sql} ${JSON.stringify(r)}`,
       );
     }
   }
@@ -358,21 +365,25 @@ async function comportamento(novo) {
     const r = await como("admin", sql);
     if (nome.startsWith("OTP")) {
       assert.equal(r.code, "42501", "OTP permanece fechado inclusive ao admin");
-    } else assert(r.n > 0, nome + " admin " + JSON.stringify(r));
+    } else assert(r.n > 0, `${nome} admin ${JSON.stringify(r)}`);
   }
   for (const sql of rpcs) assert.equal((await como("admin", sql)).n, 1, sql);
   assert.equal(
-    (await como(
-      "cliente",
-      "SELECT id FROM storage.objects WHERE bucket_id='devolucoes'",
-    )).n,
+    (
+      await como(
+        "cliente",
+        "SELECT id FROM storage.objects WHERE bucket_id='devolucoes'",
+      )
+    ).n,
     1,
   );
   assert.equal(
-    (await como(
-      "outra",
-      "SELECT id FROM storage.objects WHERE bucket_id='devolucoes'",
-    )).n,
+    (
+      await como(
+        "outra",
+        "SELECT id FROM storage.objects WHERE bucket_id='devolucoes'",
+      )
+    ).n,
     0,
   );
   assert.equal(
@@ -380,18 +391,22 @@ async function comportamento(novo) {
     1,
   );
   assert.equal(
-    (await como(
-      "anon",
-      `SELECT id FROM public.vw_produtos_public WHERE id='${PA}'`,
-    )).n,
+    (
+      await como(
+        "anon",
+        `SELECT id FROM public.vw_produtos_public WHERE id='${PA}'`,
+      )
+    ).n,
     1,
     "anon le produto ativo pela vitrine sem EXECUTE da porta",
   );
   assert.equal(
-    (await como(
-      "anon",
-      `SELECT id FROM public.vw_produtos_public WHERE id='${P}'`,
-    )).n,
+    (
+      await como(
+        "anon",
+        `SELECT id FROM public.vw_produtos_public WHERE id='${P}'`,
+      )
+    ).n,
     0,
   );
   for (const quem of ["perfil", "auth", "admin", "cliente", "anon"]) {
@@ -421,9 +436,11 @@ async function main() {
     await c.query(
       "GRANT USAGE ON SCHEMA auth TO anon,authenticated,service_role",
     );
-    const esta = (await c.query(
-      "SELECT pg_get_expr(polqual,polrelid) LIKE '%rls_admin_atual%' sim FROM pg_policy WHERE polname='coupons_select_policy'",
-    )).rows[0].sim;
+    const esta = (
+      await c.query(
+        "SELECT pg_get_expr(polqual,polrelid) LIKE '%rls_admin_atual%' sim FROM pg_policy WHERE polname='coupons_select_policy'",
+      )
+    ).rows[0].sim;
     if (esta) await aplicar(rollback);
     const original = await catalogo();
     await consulta(antes, "82b-antes-ex-admin-nas-demais-tabelas", true);

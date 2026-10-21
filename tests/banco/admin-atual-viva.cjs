@@ -62,7 +62,9 @@ const {
 } = require("./desfazer-recebimento-posterior.cjs");
 const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
 const { PERFIS_ADMIN_ATUAL } = require("./admin-atual-perfis-posterior.cjs");
-const { EX_ADMIN_DEMAIS_TABELAS } = require("./ex-admin-demais-tabelas-posterior.cjs");
+const {
+  EX_ADMIN_DEMAIS_TABELAS,
+} = require("./ex-admin-demais-tabelas-posterior.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(

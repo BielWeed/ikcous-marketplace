@@ -94,18 +94,28 @@ const estado = {};
 // dos caixas legados ficam na prova caixa-conta-da-loja-viva.cjs do mesmo CI.
 function aberturaAntesDa370(provar) {
   return async (cliente) => {
-    const atual = (await cliente.query(
-      "SELECT pg_get_functiondef('public.fin_caixa_abrir(numeric,uuid)'::regprocedure) AS d",
-    )).rows[0].d;
+    const atual = (
+      await cliente.query(
+        "SELECT pg_get_functiondef('public.fin_caixa_abrir(numeric,uuid)'::regprocedure) AS d",
+      )
+    ).rows[0].d;
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- Caminho fixo do rollback versionado, sem entrada externa.
     const sql = readFileSync(
-      path.join(__dirname, "../../supabase/migrations/rollback-manual-20261370000000_o_caixa_abre_so_na_conta_da_loja.sql"),
+      path.join(
+        __dirname,
+        "../../supabase/migrations/rollback-manual-20261370000000_o_caixa_abre_so_na_conta_da_loja.sql",
+      ),
       "utf8",
     );
-    const anterior = sql.match(/CREATE OR REPLACE FUNCTION public\.fin_caixa_abrir\([\s\S]*?\n\$\$;/)[0];
+    const anterior = sql.match(
+      /CREATE OR REPLACE FUNCTION public\.fin_caixa_abrir\([\s\S]*?\n\$\$;/,
+    )[0];
     await cliente.query(anterior);
-    try { await provar(cliente); }
-    finally { await cliente.query(atual); }
+    try {
+      await provar(cliente);
+    } finally {
+      await cliente.query(atual);
+    }
   };
 }
 
