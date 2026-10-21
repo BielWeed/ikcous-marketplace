@@ -1,4 +1,5 @@
 import { gerarUuidV4 as gerarChave } from "@/lib/uuid-v4";
+import type { SessaoDeCaixa } from "@/types/financeiro";
 
 // Uma intenção por autor, sessão e tipo, sem prazo. Guarda SOMENTE o UUID.
 // Editar campos, fechar a folha ou recarregar não prova que o servidor recusou.
@@ -53,10 +54,10 @@ export function esquecerTentativaDoCaixa(
   }
 }
 
-/** Só chamar depois de uma leitura confirmada do caixa, nunca em erro/carga. */
-export function esquecerTentativasDeOutrasSessoes(
+/** Só a leitura nova do histórico comprova quais sessões foram fechadas. */
+export function esquecerTentativasDeSessoesFechadas(
   autor: string | null,
-  sessaoAtual: string | null,
+  sessoes: readonly SessaoDeCaixa[],
 ): void {
   if (!autor) return;
   try {
@@ -64,7 +65,16 @@ export function esquecerTentativasDeOutrasSessoes(
       const local = localStorage.key(i);
       if (!local?.startsWith(PREFIXO)) continue;
       const alvo: unknown = JSON.parse(local.slice(PREFIXO.length));
-      if (Array.isArray(alvo) && alvo[0] === autor && alvo[1] !== sessaoAtual) {
+      if (
+        Array.isArray(alvo) &&
+        alvo[0] === autor &&
+        sessoes.some(
+          (sessao) =>
+            sessao.id === alvo[1] &&
+            sessao.status === "fechado" &&
+            sessao.fechadoEm,
+        )
+      ) {
         localStorage.removeItem(local);
       }
     }

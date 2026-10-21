@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
@@ -11,6 +11,7 @@ import {
   Store,
 } from "lucide-react";
 
+import { useAuth } from "@/hooks/useAuth";
 import { useCaixaAtual, useHistoricoDoCaixa } from "@/hooks/useFinanceiro";
 import { diferencaDoFechamento, formatarDataHora } from "@/lib/financeiro";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ import {
   Etiqueta,
   SeloFinanceiro,
 } from "./partes";
+import { esquecerTentativasDeSessoesFechadas } from "./tentativasDoCaixa";
 
 function LinhaDaConta({
   rotulo,
@@ -373,6 +375,20 @@ export function AbaCaixa({
 }) {
   const atual = useCaixaAtual(ativo, versao);
   const historico = useHistoricoDoCaixa(ativo, versao);
+  const { user } = useAuth();
+  const historicoLido = useRef<SessaoDeCaixa[] | null>(null);
+  useEffect(() => {
+    if (
+      ativo &&
+      historico.dados &&
+      !historico.carregando &&
+      !historico.erro &&
+      historicoLido.current !== historico.dados
+    ) {
+      historicoLido.current = historico.dados;
+      esquecerTentativasDeSessoesFechadas(user?.id ?? null, historico.dados);
+    }
+  }, [ativo, historico.dados, historico.carregando, historico.erro, user?.id]);
   useEffect(() => {
     if (ativo && atual.dados && !atual.carregando && !atual.erro) {
       aoSessaoAtual?.(atual.dados.sessao?.id ?? null);

@@ -67,7 +67,6 @@ import {
   ContextoValoresOcultos,
   ReciboFinanceiro,
 } from "@/components/admin/financeiro/partes";
-import { esquecerTentativasDeOutrasSessoes } from "@/components/admin/financeiro/tentativasDoCaixa";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
@@ -223,12 +222,11 @@ export function AdminFinanceiroView({
   const aoSessaoAtual = useCallback(
     (id: string | null) => {
       sessaoAtual.current = id;
-      esquecerTentativasDeOutrasSessoes(user?.id ?? null, id);
       if (folha?.tipo === "caixa-movimentar" && folha.sessaoId !== id) {
         fecharFolha();
       }
     },
-    [user?.id, folha, fecharFolha],
+    [folha, fecharFolha],
   );
   const abrirPedido = useCallback(
     (pedidoId: string) => {

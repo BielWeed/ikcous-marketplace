@@ -28,6 +28,8 @@ const { rpcFalso, servidor } = vi.hoisted(() => ({
     falhasMovimento: [] as unknown[],
     falhasFechamento: [] as unknown[],
     falhasLeituraCaixa: [] as unknown[],
+    historico: [] as Record<string, unknown>[],
+    falhasLeituraHistorico: [] as unknown[],
     statusMovimento: "realizado",
     replay: false,
     autorId: "autor-1" as string | null,
@@ -119,7 +121,10 @@ rpcFalso.mockImplementation(async (nome: string) => {
         error: servidor.falhasLeituraCaixa.shift() ?? null,
       };
     case "fin_caixa_historico":
-      return { data: [], error: null };
+      return {
+        data: servidor.historico,
+        error: servidor.falhasLeituraHistorico.shift() ?? null,
+      };
     case "fin_caixa_abrir":
       servidor.caixa = CAIXA_ABERTO;
       return { data: { id: "sessao-1" }, error: null };
@@ -233,6 +238,8 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     servidor.falhasMovimento = [];
     servidor.falhasFechamento = [];
     servidor.falhasLeituraCaixa = [];
+    servidor.historico = [];
+    servidor.falhasLeituraHistorico = [];
     servidor.statusMovimento = "realizado";
     servidor.replay = false;
     servidor.autorId = "autor-1";
@@ -248,9 +255,9 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     await montar();
   });
 
-  async function montar() {
+  async function montar(raizDaAba = raiz, hospedeiroDaAba = hospedeiro) {
     await act(async () => {
-      raiz.render(
+      raizDaAba.render(
         <AdminFinanceiroView
           onNavigate={vi.fn()}
           active
@@ -260,7 +267,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       );
     });
     await esperar();
-    const aba = [...hospedeiro.querySelectorAll('[role="tab"]')].find(
+    const aba = [...hospedeiroDaAba.querySelectorAll('[role="tab"]')].find(
       (t) => t.textContent === "Caixa",
     ) as HTMLElement;
     await act(async () => {
@@ -639,6 +646,55 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     },
   );
 
+  it("duas abas: abrir folha com leitura velha S1 não apaga a chave pendente de S2", async () => {
+    // A aba B fica com S1 em memória; o mesmo localStorage atende às duas raízes.
+    await abrirSessao();
+    servidor.caixa = { ...CAIXA_ABERTO, id: "sessao-2" };
+    const hospedeiroA = document.createElement("div");
+    document.body.appendChild(hospedeiroA);
+    const raizA = createRoot(hospedeiroA);
+    try {
+      await montar(raizA, hospedeiroA);
+      servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+      await clicar(botaoEm(hospedeiroA, "Sangria"));
+      await digitar("fin-caixa-mov-valor", "5000");
+      await digitar("fin-caixa-mov-descricao", "Guardar no cofre");
+      await escolherConta(CONTA_BANCARIA);
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      const primeira = { ...movimentos()[0] };
+      expect(primeira.p_sessao_id).toBe("sessao-2");
+      const enderecoS2 = [...guardado.keys()].find((nome) =>
+        nome.includes("sessao-2"),
+      ) as string;
+      expect(guardado.get(enderecoS2)).toBe(primeira.p_chave);
+      await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
+      const leituras = rpcFalso.mock.calls.filter(([nome]) =>
+        ["fin_caixa_atual", "fin_caixa_historico"].includes(nome),
+      ).length;
+
+      await clicar(botaoEm(hospedeiro, "Sangria"));
+      expect(
+        rpcFalso.mock.calls.filter(([nome]) =>
+          ["fin_caixa_atual", "fin_caixa_historico"].includes(nome),
+        ),
+      ).toHaveLength(leituras);
+      expect(guardado.get(enderecoS2)).toBe(primeira.p_chave);
+      await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
+
+      // Reabrir A usa a mesma identidade; não libera uma segunda transferência.
+      await clicar(botaoEm(hospedeiroA, "Sangria"));
+      await digitar("fin-caixa-mov-valor", "5000");
+      await digitar("fin-caixa-mov-descricao", "Guardar no cofre");
+      await escolherConta(CONTA_BANCARIA);
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      expect(movimentos()).toHaveLength(2);
+      expect(movimentos()[1]).toEqual(primeira);
+    } finally {
+      await act(async () => raizA.unmount());
+      hospedeiroA.remove();
+    }
+  });
+
   it("não expira identidade pelo relógio", async () => {
     servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
     await prepararMovimento();
@@ -657,7 +713,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
   });
 
   it.each(["sessao-2", null])(
-    "sessão atual muda para %s: elimina a chave da anterior",
+    "leitura nova comprova sessão anterior fechada (atual: %s): elimina a chave",
     async (id) => {
       servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
       await prepararMovimento();
@@ -665,6 +721,13 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       const primeira = { ...movimentos()[0] };
       expect(guardado.size).toBe(1);
       servidor.caixa = id ? { ...CAIXA_ABERTO, id } : null;
+      servidor.historico = [
+        {
+          ...CAIXA_ABERTO,
+          status: "fechado",
+          fechado_em: "2026-09-26T13:00:00Z",
+        },
+      ];
       await remontar();
       expect(guardado.size).toBe(0);
       if (!id) await abrirSessao();
@@ -672,6 +735,30 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
       expect(movimentos()[1].p_chave).not.toBe(primeira.p_chave);
       expect(movimentos()[1].p_sessao_id).toBe(id ?? "sessao-1");
+    },
+  );
+
+  it.each(["ausente", "aberta", "sem data", "erro"])(
+    "leitura nova sem prova de fechamento (%s) conserva a chave de sessão desconhecida",
+    async (caso) => {
+      servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+      await prepararMovimento();
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      const primeira = { ...movimentos()[0] };
+      servidor.caixa = { ...CAIXA_ABERTO, id: "sessao-2" };
+      if (caso !== "ausente") {
+        servidor.historico = [
+          {
+            ...CAIXA_ABERTO,
+            status: caso === "aberta" ? "aberto" : "fechado",
+            fechado_em: caso === "sem data" ? null : "2026-09-26T13:00:00Z",
+          },
+        ];
+      }
+      if (caso === "erro")
+        servidor.falhasLeituraHistorico.push(new TypeError("Failed to fetch"));
+      await remontar();
+      expect([...guardado.values()]).toEqual([primeira.p_chave]);
     },
   );
 
