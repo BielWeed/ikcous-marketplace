@@ -51,7 +51,7 @@ vi.mock("@/lib/supabase", () => ({
           single: () =>
             Promise.resolve(
               sessao.id
-                ? { data: null, error: null }
+                ? { data: { status: "pending" }, error: null }
                 : { data: null, error: { message: "JWT ausente" } },
             ),
         }),

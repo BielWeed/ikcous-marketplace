@@ -12,11 +12,13 @@ export function ChipDeVariacao({
   comparacao,
   sobeEBom = true,
   className,
+  curto = false,
 }: Readonly<{
   pct: number | null;
   comparacao: string;
   sobeEBom?: boolean;
   className?: string;
+  curto?: boolean;
 }>) {
   if (pct == null) {
     return (
@@ -57,6 +59,7 @@ export function ChipDeVariacao({
           "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
         bom === false && "border-rose-500/20 bg-rose-500/10 text-rose-300",
         bom === null && "border-admin-border bg-white/5 text-zinc-300",
+        curto && "gap-0.5 border-0 px-1 py-0 leading-[17px]",
         className,
       )}
     >
@@ -68,7 +71,9 @@ export function ChipDeVariacao({
       </span>
       <span aria-hidden="true">
         {formatarVariacao(arredondado)}{" "}
-        <span className="font-semibold text-zinc-400">{comparacao}</span>
+        {!curto && (
+          <span className="font-semibold text-zinc-400">{comparacao}</span>
+        )}
       </span>
     </span>
   );

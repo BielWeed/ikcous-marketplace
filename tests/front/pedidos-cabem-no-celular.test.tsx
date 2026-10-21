@@ -172,7 +172,7 @@ describe("AdminOrdersView — Pedidos cabe no celular (onda J, J2)", () => {
   });
 
   it("o botão de WhatsApp do cartão tem alvo de 44 por 56px", () => {
-    const icone = hospedeiro.querySelector("button svg.lucide-message-circle");
+    const icone = hospedeiro.querySelector("button[title=WhatsApp] svg");
     const botao = icone?.closest("button");
     expect(botao).toBeTruthy();
     expect(botao?.classList.contains("w-11")).toBe(true);

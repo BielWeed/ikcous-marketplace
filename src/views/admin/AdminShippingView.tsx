@@ -188,7 +188,6 @@ export const AdminShippingView = memo(function AdminShippingView({
   const [abaGratis, setAbaGratis] = useState<"local" | "nacional">("local");
   const [acaoTransportadoras, setAcaoTransportadoras] =
     useState<SalvamentoDasTransportadoras | null>(null);
-  const somenteTransportadorasRef = useRef(false);
   const registrarSalvarTransportadoras = useCallback(
     (acao: SalvamentoDasTransportadoras) => setAcaoTransportadoras(acao),
     [],
@@ -240,7 +239,6 @@ export const AdminShippingView = memo(function AdminShippingView({
   // novo no formulário.
   const atualizarFormData = useCallback(
     (atualizar: (prev: typeof formData) => typeof formData) => {
-      somenteTransportadorasRef.current = false;
       setFalhaAoSalvar(false);
       setFormData(atualizar);
     },
@@ -248,7 +246,6 @@ export const AdminShippingView = memo(function AdminShippingView({
   );
   const atualizarFormDataNacional = useCallback(
     (atualizar: (prev: typeof formDataNacional) => typeof formDataNacional) => {
-      somenteTransportadorasRef.current = false;
       setFalhaAoSalvar(false);
       setFormDataNacional(atualizar);
     },
@@ -691,7 +688,6 @@ export const AdminShippingView = memo(function AdminShippingView({
         );
       }
       if (acaoTransportadoras?.mudou && !(await acaoTransportadoras.salvar())) {
-        somenteTransportadorasRef.current = true;
         setFalhaAoSalvar(true);
         toast.error(
           regrasMudaram
@@ -700,7 +696,6 @@ export const AdminShippingView = memo(function AdminShippingView({
         );
         return;
       }
-      somenteTransportadorasRef.current = false;
       setFalhaAoSalvar(false);
       // A guarda acompanha o dirty check e os tokens pendentes pelo efeito.
       haptic.success();

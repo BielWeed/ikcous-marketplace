@@ -92,6 +92,51 @@ describe("CartContext — hidratação preserva variantNames", () => {
     vi.restoreAllMocks();
   });
 
+  it("descarta produto nulo e abre com carrinho vazio, sem lançar", async () => {
+    localStorage.setItem(
+      "marketplace_cart_v1",
+      '[{"product":null,"quantity":1}]',
+    );
+
+    let cartCapturado: CartItem[] | undefined;
+    await act(async () => {
+      raiz.render(
+        <CartProvider>
+          <CartReader
+            onCart={(cart) => {
+              cartCapturado = cart;
+            }}
+          />
+        </CartProvider>,
+      );
+    });
+
+    expect(cartCapturado).toEqual([]);
+  });
+
+  it("descarta apenas o item corrompido sem perder o produto válido", async () => {
+    const valido = { product: produto(), quantity: 2 };
+    localStorage.setItem(
+      "marketplace_cart_v1",
+      JSON.stringify([{ product: null, quantity: 1 }, valido]),
+    );
+
+    let cartCapturado: CartItem[] = [];
+    await act(async () => {
+      raiz.render(
+        <CartProvider>
+          <CartReader
+            onCart={(cart) => {
+              cartCapturado = cart;
+            }}
+          />
+        </CartProvider>,
+      );
+    });
+
+    expect(cartCapturado).toEqual([valido]);
+  });
+
   it("um item salvo com variantNames sobrevive ao safeParse da hidratação", async () => {
     localStorage.setItem(
       "marketplace_cart_v1",

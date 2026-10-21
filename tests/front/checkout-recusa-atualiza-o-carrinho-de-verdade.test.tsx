@@ -195,6 +195,7 @@ describe("CheckoutView — a recusa de preço/estoque relê o carrinho antes de 
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    sessionStorage.clear();
     createOrder.mockReset();
     clearCart.mockClear();
     renovarCarrinho.mockReset();

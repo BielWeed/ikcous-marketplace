@@ -254,7 +254,7 @@ describe("Painel — o que a cliente RECEBE também diz 'Pronto para retirar' na
   async function whatsappDoCard(pedido: Order): Promise<string> {
     await montar(pedido);
     const botao = hospedeiro
-      .querySelector("button svg.lucide-message-circle")
+      .querySelector("button[title=WhatsApp] svg")
       ?.closest("button");
     expect(botao).toBeTruthy();
     await act(async () => {

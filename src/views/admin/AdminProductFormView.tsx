@@ -2238,12 +2238,31 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       if (productId) {
         // 1. Atualizar produto principal. O estoque só vai se a lojista mexeu
         // nele (ou nas variações que o compõem); senão fica o do banco.
-        await updateProduct(productId, {
-          ...productData,
-          ...(estoqueDoProdutoFoiMexido(formData, initialData)
-            ? { stock: Math.max(0, pStock) }
-            : {}),
-        });
+        const mexeuNoEstoqueDoProduto = estoqueDoProdutoFoiMexido(
+          formData,
+          initialData,
+        );
+        // Uma variação desligada também tem estoque próprio: ela não entra
+        // na soma do produto, mas não pode sobrescrever uma edição mais nova.
+        const mexeuNoEstoque =
+          mexeuNoEstoqueDoProduto ||
+          variacoesSoComEstoqueMexido(
+            formData.variants,
+            initialData.variants,
+          ).some((v) => "stockIncrement" in v);
+        const produtoSalvo = await updateProduct(
+          productId,
+          {
+            ...productData,
+            ...(mexeuNoEstoqueDoProduto ? { stock: Math.max(0, pStock) } : {}),
+          },
+          mexeuNoEstoque
+            ? { baseUpdatedAt: currentProduct?.updatedAt }
+            : undefined,
+        );
+        // O produto já foi gravado mesmo se a grade falhar depois. A próxima
+        // tentativa deve usar a versão devolvida pelo banco, não a da abertura.
+        if (produtoSalvo) setCurrentProduct(produtoSalvo);
 
         // 2. Deletar variantes que foram excluídas localmente — UMA por vez: o
         // banco recusa apagar variação que já está num pedido (23503), e num
@@ -2285,6 +2304,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setFormData(formAposRecusas);
         }
 
+        // A janela entre a conferência e este upsert só fecha com SQL.
         // 3. Salvar variantes restantes em lote. O estoque de cada uma só vai
         // se a lojista mexeu naquele número (as devolvidas acima não entram: o
         // banco continua com elas como estavam).
@@ -2352,6 +2372,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           );
           setIsSubmitting(false);
           return;
+        }
+
+        // Gravar a grade também muda a versão do produto pelo gatilho. Não
+        // guardar a versão anterior à grade como base do próximo salvar.
+        if (formData.variants.length > 0 || deletedVariantIds.length > 0) {
+          try {
+            const relido = await fetchProduct(productId);
+            if (relido) setCurrentProduct(relido);
+            else setCurrentProduct({ ...produtoSalvo, updatedAt: undefined });
+          } catch {
+            setCurrentProduct({ ...produtoSalvo, updatedAt: undefined });
+          }
         }
       } else {
         // Este formulário já criou o produto e a ida para a edição não
@@ -2447,6 +2479,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onNavigate("admin-products", undefined, true);
       }, 1500);
     } catch (error) {
+      const atual = (error as { produtoAtual?: Product })?.produtoAtual;
+      if (atual) {
+        const { stock, variants } = camposDoFormularioDoProduto(atual);
+        setCurrentProduct(atual);
+        setInitialData({ ...initialData, stock, variants });
+        setFormData(
+          formComVariacoes(
+            { ...formData, stock, variants },
+            variacoesDoRascunhoComEstoqueDoBanco(formData.variants, variants),
+          ),
+        );
+      }
       setIsSubmitting(false);
       console.error("Erro ao salvar produto:", error);
       // Laudo 0109 (A12): o toast ficou no hook (useProducts traduz o erro

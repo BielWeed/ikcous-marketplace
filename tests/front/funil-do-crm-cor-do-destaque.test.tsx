@@ -77,7 +77,7 @@ describe("FunilEPedidosDoCrm — a cor do destaque 'Conversão em venda' reage a
     const rotulo = Array.from(hospedeiro.querySelectorAll("p")).find(
       (el) => el.textContent?.trim() === "Conversão em venda",
     );
-    const caixa = rotulo?.closest("div.rounded-xl.border");
+    const caixa = rotulo?.closest('[role="group"]')?.querySelector("h3");
     return Array.from(caixa?.classList ?? []);
   }
 
@@ -97,9 +97,9 @@ describe("FunilEPedidosDoCrm — a cor do destaque 'Conversão em venda' reage a
     });
 
     const classes = classesDaCaixa();
-    expect(classes).toContain("border-rose-500/20");
-    expect(classes).not.toContain("border-emerald-500/20");
-    expect(classes).not.toContain("border-amber-500/20");
+    expect(classes).toContain("text-rose-300");
+    expect(classes).not.toContain("text-emerald-300");
+    expect(classes).not.toContain("text-amber-300");
   });
 
   it("~50%: âmbar (mediana), nem verde nem rosa", async () => {
@@ -118,9 +118,9 @@ describe("FunilEPedidosDoCrm — a cor do destaque 'Conversão em venda' reage a
     });
 
     const classes = classesDaCaixa();
-    expect(classes).toContain("border-amber-500/20");
-    expect(classes).not.toContain("border-emerald-500/20");
-    expect(classes).not.toContain("border-rose-500/20");
+    expect(classes).toContain("text-amber-300");
+    expect(classes).not.toContain("text-emerald-300");
+    expect(classes).not.toContain("text-rose-300");
   });
 
   it(">= 70%: verde (boa) — a única faixa que pode usar emerald", async () => {
@@ -139,8 +139,8 @@ describe("FunilEPedidosDoCrm — a cor do destaque 'Conversão em venda' reage a
     });
 
     const classes = classesDaCaixa();
-    expect(classes).toContain("border-emerald-500/20");
-    expect(classes).not.toContain("border-amber-500/20");
-    expect(classes).not.toContain("border-rose-500/20");
+    expect(classes).toContain("text-emerald-300");
+    expect(classes).not.toContain("text-amber-300");
+    expect(classes).not.toContain("text-rose-300");
   });
 });

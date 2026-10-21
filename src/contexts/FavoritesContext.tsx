@@ -2,6 +2,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useProducts } from "@/hooks/useProducts";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import React, {
@@ -606,10 +607,7 @@ export function FavoritesProvider({
 
   // Realtime Sync for Favorites
   useEffect(() => {
-    const bc =
-      typeof window !== "undefined"
-        ? new BroadcastChannel("ikcous_favorites_sync")
-        : null;
+    const bc = criarCanalDeAbas("ikcous_favorites_sync");
     let channel: any = null;
     let bcListener: ((event: MessageEvent) => void) | null = null;
 

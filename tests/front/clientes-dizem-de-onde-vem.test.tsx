@@ -149,7 +149,14 @@ describe("as duas listas de Clientes dizem de onde vêm", () => {
       );
     });
 
-    const corpo = texto(hospedeiro);
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Entender Clientes da loja"]',
+        )!
+        .click(),
+    );
+    const corpo = texto(document.querySelector('[role="dialog"]')!);
     expect(corpo).toContain(
       "Quem já comprou (app e balcão), quem pediu e não pagou e quem criou conta sem comprar — com WhatsApp e ficha a um toque.",
     );

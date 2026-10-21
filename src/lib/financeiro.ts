@@ -1342,7 +1342,7 @@ export type ChaveDaDre =
 export interface LinhaDaCascata {
   readonly chave: ChaveDaDre;
   readonly rotulo: string;
-  /** Com o sinal de exibição: dedução/custo/despesa sempre negativos. */
+  /** Com o sinal de exibição: custos abatem o resultado; CMV negativo vira crédito. */
   readonly valor: number;
   readonly subtotal: boolean;
   readonly final: boolean;
@@ -1377,7 +1377,7 @@ export function cascataDaDre(dre: DreFinanceira): LinhaDaCascata[] {
     linha("receita_liquida", "(=) Receita líquida", dre.receitaLiquida, {
       subtotal: true,
     }),
-    linha("cmv", "(−) Custo das mercadorias vendidas", negativo(dre.cmv)),
+    linha("cmv", "(−) Custo das mercadorias vendidas", -dre.cmv),
     linha("lucro_bruto", "(=) Lucro bruto", dre.lucroBruto, { subtotal: true }),
     linha(
       "custos_variaveis",

@@ -287,7 +287,7 @@ describe("Painel — o aviso ao cliente usa o número que ele vê (#3884BE)", ()
     await montar();
 
     const botao = hospedeiro
-      .querySelector("button svg.lucide-message-circle")
+      .querySelector("button[title=WhatsApp] svg")
       ?.closest("button");
     expect(botao).toBeTruthy();
     await act(async () => {

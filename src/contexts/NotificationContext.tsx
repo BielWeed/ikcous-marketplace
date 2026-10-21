@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { supabase } from "@/lib/supabase";
 import type { Notification } from "@/types";
 import type React from "react";
@@ -341,10 +342,7 @@ export function NotificationProvider({
   );
 
   useEffect(() => {
-    const bc =
-      typeof window !== "undefined"
-        ? new BroadcastChannel("ikcous_notifications")
-        : null;
+    const bc = criarCanalDeAbas("ikcous_notifications");
 
     if (user) {
       fetchNotifications(true);

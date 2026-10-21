@@ -598,6 +598,14 @@ describe("DRE", () => {
     expect(cascata.at(-1)?.final).toBe(true);
   });
 
+  it.each([
+    { cmv: 60, exibido: -60 },
+    { cmv: -60, exibido: 60 },
+  ])("custo $cmv aparece como $exibido na cascata", ({ cmv, exibido }) => {
+    const custo = cascataDaDre({ ...dre, cmv }).find((l) => l.chave === "cmv");
+    expect(custo?.valor).toBe(exibido);
+  });
+
   it("sublinhas e % da receita líquida", () => {
     expect(sublinhasDaDre(dre, "receita_bruta").map((s) => s.valor)).toEqual([
       6000, 4000,

@@ -82,9 +82,16 @@ const {
 const { SUCESSORAS_DA_99 } = require("./sucessoras-da-99.cjs");
 const { REEMBOLSO_EM_DUVIDA } = require("./reembolso-em-duvida-posterior.cjs");
 const {
+  REEMBOLSO_MANUAL_RESERVA,
+} = require("./reembolso-manual-reserva-posterior.cjs");
+const {
   DESFAZER_RECEBIMENTO,
 } = require("./desfazer-recebimento-posterior.cjs");
 const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
+const { PERFIS_ADMIN_ATUAL } = require("./admin-atual-perfis-posterior.cjs");
+const {
+  desfazerReconciliacaoDoEntregueNaTransacao,
+} = require("./reconciliacao-do-entregue-posterior.cjs");
 
 const U_CLIENTE = "71111111-1111-1111-1111-111111111111";
 const U_OUTRO = "71111111-1111-1111-1111-111111111112";
@@ -1683,6 +1690,7 @@ const POSTERIORES_A_97 = [
   // 20261241000000 (o reembolso em duvida prende o saldo) redefine o reemitir e o por fora da 1226 e mais
   // cinco corpos (tests/banco/reembolso-em-duvida-posterior.cjs): com ela no ar o rollback da 1226 recusa
   // (B1_BASELINE_DIVERGENT). Sai depois da 252, antes das demais abaixo.
+  REEMBOLSO_MANUAL_RESERVA,
   REEMBOLSO_EM_DUVIDA,
   // As sucessoras da 99 (20261212, 20261214 — redefinem corpos dela;
   // tests/banco/sucessoras-da-99.cjs), na ordem inversa da aplicação: com
@@ -1791,6 +1799,15 @@ const POSTERIORES_A_97 = [
   // (B1_BASELINE_DIVERGENT). O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em
   // tests/banco/mototaxi-posterior.cjs. No FIM da lista de proposito.
   MOTOTAXI,
+  {
+    nome: "20261345000000_o_avanco_confere_o_status_esperado.sql",
+    noAr: "SELECT to_regprocedure('public.avancar_status_do_pedido(uuid,text,text,text)') IS NOT NULL AS sim",
+  },
+  // 20261340000000: 13 politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete passam
+  // a citar rls_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "politicas fora da
+  // 20261197000000 ainda usam ..."). O rollback-manual dela so devolve as 13 expressoes a is_admin(). Definicao unica em
+  // tests/banco/admin-atual-perfis-posterior.cjs. No FIM da lista de proposito.
+  PERFIS_ADMIN_ATUAL,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {
@@ -2529,9 +2546,9 @@ PROVAS.push({
 
 // A3: só o cron consulta o MP. A expiração não pode desfazer pedido adiantado.
 PROVAS.push({
-  nome: "(A3) reconciliação alcança processing/shipping e mantém o rodízio sem expirar o pedido adiantado",
+  nome: "(A3) reconciliação alcança processing/shipping/delivered e mantém o rodízio sem expirar o pedido adiantado",
   corpo: async (c) => {
-    for (const status of ["processing", "shipping"]) {
+    for (const status of ["processing", "shipping", "delivered"]) {
       const p = await novoPedido(c, { status, vencidoHaMin: 60 });
       await expirar(c);
       const antes = await foto(c, p);
@@ -2550,6 +2567,86 @@ PROVAS.push({
       assert.ok(depois.linha.paid_at);
       esperaDevolvido(depois, p, false, `${status} pago não devolve estoque`);
     }
+  },
+});
+
+PROVAS.push({
+  nome: "(A3c) pedido ENTREGUE antes do PIX confirmar entra na fila: a borda — fora da janela de 24 h, já pago, sem cobrança ou com cobrança terminal NÃO entra; 'pago' grava a entrada sem mexer em status nem estoque",
+  corpo: async (c) => {
+    // Tira da fila as fixtures das provas anteriores: o LIMIT 100 não pode esconder a medida (só este clone).
+    await c.query(`INSERT INTO public.reconciliacao_visitas (order_id, visitado_em, cobranca_terminal)
+      SELECT id, now(), gateway_payment_id FROM public.marketplace_orders WHERE gateway_payment_id IS NOT NULL
+      ON CONFLICT (order_id) DO UPDATE SET cobranca_terminal = EXCLUDED.cobranca_terminal`);
+    const fila = async () =>
+      new Set(
+        (
+          await c.query("SELECT * FROM public.pagamentos_a_reconciliar()")
+        ).rows.map((r) => r.order_id),
+      );
+    // Entra: entregue + aguardando + cobrança gravada + dentro da janela (vencido há 60 min).
+    const entra = await novoPedido(c, {
+      status: "delivered",
+      vencidoHaMin: 60,
+    });
+    // Não entra: janela de 24 h estourada (o PIX já não é pagável).
+    const velho = await novoPedido(c, {
+      status: "delivered",
+      vencidoHaMin: 25 * 60,
+    });
+    // Não entra: sem cobrança gravada (pagamento na entrega nunca tem gateway).
+    const semCobranca = await novoPedido(c, {
+      status: "delivered",
+      gateway: null,
+      vencidoHaMin: 60,
+    });
+    // Não entra: o dinheiro já foi registrado (paid_at gravado).
+    const jaPago = await novoPedido(c, {
+      status: "delivered",
+      vencidoHaMin: 60,
+    });
+    await c.query(
+      "UPDATE public.marketplace_orders SET payment_status = 'pago', paid_at = now() WHERE id = $1",
+      [jaPago.id],
+    );
+    // Não entra: o MP já deu esta cobrança como terminal.
+    const terminal = await novoPedido(c, {
+      status: "delivered",
+      vencidoHaMin: 60,
+    });
+    await c.query(
+      "INSERT INTO public.reconciliacao_visitas (order_id, visitado_em, cobranca_terminal) VALUES ($1, now(), $2)",
+      [terminal.id, terminal.gateway],
+    );
+    // Controle: o cancelado continua entrando (a lista antiga não muda) e o delivered NÃO se confunde com ele.
+    const cancelado = await novoPedido(c, {
+      status: "cancelled",
+      vencidoHaMin: 60,
+    });
+    const na = await fila();
+    assert.ok(
+      na.has(entra.id),
+      "entregue + aguardando + cobrança na janela entra",
+    );
+    assert.ok(!na.has(velho.id), "fora das 24 h não entra");
+    assert.ok(!na.has(semCobranca.id), "sem cobrança gravada não entra");
+    assert.ok(!na.has(jaPago.id), "já pago não entra");
+    assert.ok(!na.has(terminal.id), "cobrança terminal não entra");
+    assert.ok(
+      na.has(cancelado.id),
+      "o cancelado com cobrança viva segue entrando",
+    );
+
+    // A reconsulta que o cron faz: 'pago' vira entrada no Financeiro SEM mexer no status nem no estoque.
+    assert.equal(await confirmar(c, entra.id, entra.gateway, "pago"), "pago");
+    const depois = await foto(c, entra);
+    assert.equal(depois.linha.status, "delivered");
+    assert.equal(depois.linha.payment_status, "pago");
+    assert.ok(
+      depois.linha.paid_at,
+      "paid_at gravado: a entrada existe no Financeiro",
+    );
+    esperaDevolvido(depois, entra, false, "delivered pago não devolve estoque");
+    assert.ok(!(await fila()).has(entra.id), "pago sai da fila");
   },
 });
 
@@ -2614,7 +2711,7 @@ PROVAS.push({
     const ids = new Set();
     for (let i = 0; i < 105; i++) {
       const p = await novoPedido(c, {
-        status: ["pending", "processing", "shipping"][i % 3],
+        status: ["pending", "processing", "shipping", "delivered"][i % 4],
       });
       ids.add(p.id);
     }
@@ -2853,6 +2950,8 @@ PROVAS.push({
     };
     await c.query("BEGIN");
     try {
+      // A 20261349000000 (o entregue entra na fila) sucede a 270: cai antes, senão o pré-voo do rollback da 270 recusa.
+      await desfazerReconciliacaoDoEntregueNaTransacao(c);
       await positivo(depois);
       await negativo(antes, "concluir_estorno: corpo exato (md5)");
       await c.query(desfazer);

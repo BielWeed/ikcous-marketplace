@@ -575,13 +575,54 @@ PROVAS.push({
       defNoArquivo(ROLLBACK, "ensure_role_protection"),
       defNoArquivo(ROLLBACK, "prevent_role_change"),
     ];
+    // A 20261340000000 fechou TAMBÉM a segunda porta: profiles_update_policy exige o admin de agora, então o rebaixado
+    // só no app_metadata nem alcança a linha do alvo (0 linhas). Defesa em profundidade: só com os gatilhos antigos,
+    // ele AINDA NÃO promove (a política barra antes).
+    const soGatilhosAntigos = await papelDepois(
+      c,
+      "rebaixadoAuth",
+      PROMOVE_ALVO,
+      [U_ALVO],
+      {
+        antes,
+      },
+    );
+    assert.deepEqual(
+      soGatilhosAntigos.papeis[U_ALVO],
+      ["customer", "customer"],
+      "com a política nova e os gatilhos antigos o rebaixado só no app_metadata promoveu",
+    );
+    // CONTROLE completo (como era ANTES da 20261340000000): gatilhos antigos E as políticas antigas de profiles
+    // (SELECT e UPDATE com is_admin() do JWT, devolvidas pelo rollback-manual da 1340).
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
+    const rb1340 = fs.readFileSync(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "rollback-manual-20261340000000_as_politicas_de_perfil_e_endereco_exigem_o_admin_atual.sql",
+      ),
+      "utf8",
+    );
+    const politicaAntiga = (nome) => {
+      const ini = rb1340.indexOf(`ALTER POLICY ${nome} ON `);
+      assert.ok(ini >= 0, `${nome} não está no rollback da 1340`);
+      return rb1340.slice(ini, rb1340.indexOf(";", ini) + 1);
+    };
+    // O UPDATE de linha alheia lê a linha, então passa também pela política de SELECT: as duas voltam.
     const r = await papelDepois(c, "rebaixadoAuth", PROMOVE_ALVO, [U_ALVO], {
-      antes,
+      antes: [
+        ...antes,
+        politicaAntiga("profiles_select_policy"),
+        politicaAntiga("profiles_update_policy"),
+      ],
     });
     assert.deepEqual(
       r.papeis[U_ALVO],
       ["admin", "admin"],
-      "CONTROLE FALHOU: com as proteções antigas o cúmplice não foi promovido — a prova não mede a guarda",
+      `CONTROLE FALHOU: com as proteções antigas e as políticas antigas o cúmplice não foi promovido — a prova não mede a guarda ${JSON.stringify(r.resultados)}`,
     );
   },
 });

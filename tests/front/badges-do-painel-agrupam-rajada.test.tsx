@@ -159,6 +159,34 @@ describe("AdminLayout — rajada de eventos vira UMA conferência de badges", ()
     vi.restoreAllMocks();
   });
 
+  it.each(["ausente", "bloqueado"])(
+    "abre o painel com canal %s sem derrubar a tela",
+    async (situacao) => {
+      vi.stubGlobal("BroadcastChannel", undefined);
+      if (situacao === "ausente") {
+        Reflect.deleteProperty(globalThis, "BroadcastChannel");
+      } else {
+        vi.stubGlobal(
+          "BroadcastChannel",
+          class {
+            constructor() {
+              throw new DOMException("Canal bloqueado", "SecurityError");
+            }
+          },
+        );
+      }
+      const { AdminLayout } = await import("@/components/layouts/AdminLayout");
+      await act(async () => {
+        raiz.render(
+          <AdminLayout currentView="admin-orders" onNavigate={vi.fn()}>
+            <span>Painel aberto</span>
+          </AdminLayout>,
+        );
+      });
+      expect(hospedeiro.textContent).toContain("Painel aberto");
+    },
+  );
+
   it("três eventos em rajada produzem uma única conferência nova", async () => {
     const { AdminLayout } = await import("@/components/layouts/AdminLayout");
 

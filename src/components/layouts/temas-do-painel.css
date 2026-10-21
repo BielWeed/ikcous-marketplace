@@ -2,8 +2,8 @@
  * Temas do painel: Escuro (o padrão, tokens em src/index.css), Claro e Confortável.
  *
  * Como funciona: o AdminLayout põe `data-admin-tema="claro|confortavel"` na <html>
- * junto de `admin-mode` (atributo ausente = Escuro). Tudo aqui vale só com
- * `html.admin-mode[data-admin-tema=…]`: a vitrine nunca tem `admin-mode`, então
+ * junto de `admin-mode` (atributo ausente = Escuro). Tudo aqui exige
+ * `html.admin-mode` e delimita o tema: a vitrine nunca tem `admin-mode`, então
  * não recebe nem sofre tema algum, e os portais do painel (folhas, diálogos,
  * avisos) herdam porque a raiz é a <html>, não o contêiner.
  *
@@ -19,6 +19,13 @@
  *                borda #463F36 · borda forte #5C5348 · texto #EADFC8 · suave #B3A68F
  *                destaque #D9A441  (texto 10,6:1 e suave 5,9:1 sobre o cartão)
  */
+
+/* Escuro não usa data-admin-tema: define só o cinza de apoio, sem mudar fundos.
+   #A1A1AD mantém AA até sobre --admin-hover e continua abaixo dos títulos. */
+:where(html.admin-mode:not([data-admin-tema])) {
+  --admin-text-soft: 240 6.8% 65.5%;
+}
+
 html.admin-mode[data-admin-tema="claro"] {
   color-scheme: light;
   --admin-bg: 240 13% 95.5%;

@@ -1,3 +1,4 @@
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { useStore } from "@/contexts/StoreContext";
 import {
   CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
@@ -16,7 +17,6 @@ import {
   Flame,
   Heart,
   Image as ImageIcon,
-  MessageCircle,
   Share2,
   ShieldCheck,
   ShoppingCart,
@@ -703,7 +703,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                     {/* Purchase Actions Container */}
                     <div className="mt-1 flex w-full shrink-0 gap-2">
                       <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-600">
-                        <MessageCircle className="size-4" />
+                        <IconeWhatsapp className="size-4" />
                       </div>
                       <div className="flex h-9 flex-1 items-center justify-center gap-1 rounded-xl bg-zinc-900 text-[9px] font-black uppercase tracking-wider text-white">
                         <ShoppingCart className="size-3.5" />

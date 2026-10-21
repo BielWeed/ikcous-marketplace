@@ -8,6 +8,7 @@
 
 import { OrderReceipt } from "@/components/admin/orders/OrderReceipt";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Button } from "@/components/ui/button";
 import type { ResultadoDaAnulacao } from "@/hooks/useAnularVendaDoBalcao";
 import type {
@@ -23,7 +24,6 @@ import {
   Banknote,
   CheckCircle2,
   CreditCard,
-  MessageCircle,
   Plus,
   Printer,
   QrCode,
@@ -227,7 +227,7 @@ export function ReciboDaVenda({
               }
               onClick={aoEnviarPorWhatsapp}
             >
-              <MessageCircle aria-hidden="true" className="pdv-green size-5" />
+              <IconeWhatsapp aria-hidden="true" className="pdv-green size-5" />
               Enviar por WhatsApp
             </Button>
             <Button

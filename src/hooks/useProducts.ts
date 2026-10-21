@@ -1236,7 +1236,11 @@ export function useProducts({ autoFetch = true } = {}) {
   );
 
   const updateProduct = useCallback(
-    async (id: string, updates: Partial<Product>) => {
+    async (
+      id: string,
+      updates: Partial<Product>,
+      conferenciaDeEstoque?: { baseUpdatedAt?: string },
+    ) => {
       if (!isAdmin) {
         toast.error("Permissão negada");
         return;
@@ -1367,6 +1371,12 @@ export function useProducts({ autoFetch = true } = {}) {
           oldImages = oldProduct?.images || [];
         }
 
+        if (conferenciaDeEstoque && !conferenciaDeEstoque.baseUpdatedAt) {
+          throw new RecusaDoCadastroDeProduto(
+            "Não consegui conferir a versão do estoque. Recarregue o produto antes de salvar de novo.",
+          );
+        }
+
         const dbUpdates: any = {};
         if (updates.name !== undefined) dbUpdates.nome = updates.name;
         if (updates.description !== undefined)
@@ -1409,20 +1419,35 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.lengthCm !== undefined)
           dbUpdates.comprimento_cm = updates.lengthCm;
 
-        const { data, error } = await (
-          supabase.from("vw_produtos_admin") as any
-        )
+        let gravacao = (supabase.from("vw_produtos_admin") as any)
           .update(dbUpdates)
-          .eq("id", id)
-          .select(
-            `
+          .eq("id", id);
+        // A mesma comparação atômica da fila offline. A versão vem da
+        // abertura do formulário, sem Date/ISO (preserva microssegundos).
+        if (conferenciaDeEstoque) {
+          gravacao = gravacao.eq(
+            "ultima_atualizacao",
+            conferenciaDeEstoque.baseUpdatedAt,
+          );
+        }
+        const retorno = gravacao.select(`
           *,
           product_variants(*)
-        `,
-          )
-          .single();
+        `);
+        const { data, error } = await (conferenciaDeEstoque
+          ? retorno.maybeSingle()
+          : retorno.single());
 
         if (error) throw error;
+        if (conferenciaDeEstoque && !data) {
+          const produtoAtual = await fetchProduct(id).catch(() => null);
+          throw Object.assign(
+            new RecusaDoCadastroDeProduto(
+              `O estoque deste produto mudou enquanto você editava${produtoAtual ? ` (agora está ${produtoAtual.stock})` : ""}. Confira e salve de novo.`,
+            ),
+            { produtoAtual },
+          );
+        }
 
         if (data) {
           const updatedProduct = mapProductFromDB(data);

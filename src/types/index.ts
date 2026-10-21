@@ -68,6 +68,8 @@ export interface ProductVariant {
 
 export interface Category {
   icone?: string | null;
+  /** Path SVG escolhido no catálogo do painel (categorias.icone_forma); ganha de `icone`. */
+  iconeForma?: string | null;
   id: string;
   name: string;
   slug: string;

@@ -70,6 +70,61 @@ describe("realtimeSyncEngine — identidade da loja no mapRecord de store_config
     },
   );
 
+  it("preserva os dados públicos e as formas ligadas ao guardar e reler o cache", async () => {
+    const { RealtimeSyncEngine } = await import("@/lib/realtimeSyncEngine");
+    const registros = new Map<string, unknown>();
+    const vault = {
+      async put(store: string, registro: { id: string }) {
+        registros.set(`${store}:${registro.id}`, structuredClone(registro));
+      },
+      async getById(store: string, id: string) {
+        return structuredClone(registros.get(`${store}:${id}`));
+      },
+      async setLastSync() {},
+    };
+    const tabela = TABLE_CONFIGS.find((c) => c.table === "store_config")!;
+    await RealtimeSyncEngine._applyChangeAndNotify(
+      vault as any,
+      tabela,
+      "UPDATE",
+      {
+        id: 1,
+        store_address: "Rua de Teste, 123",
+        store_description: "Uma loja de testes",
+        store_legal_name: "Loja Exemplo Ltda",
+        store_legal_document: "00000000000000",
+        store_support_email: "suporte@example.com",
+        formas_pagamento_entrega: ["pix", "cash"],
+      },
+      {},
+    );
+    expect(await vault.getById("store_config", "singleton")).toMatchObject({
+      storeAddress: "Rua de Teste, 123",
+      storeDescription: "Uma loja de testes",
+      storeLegalName: "Loja Exemplo Ltda",
+      storeLegalDocument: "00000000000000",
+      storeSupportEmail: "suporte@example.com",
+      formasPagamentoEntrega: ["pix", "cash"],
+    });
+  });
+
+  it.each([undefined, null, "invalido", ["desconhecido"]])(
+    "coluna de pagamento ausente ou inválida preserva o padrão: %s",
+    (formas) => {
+      const mapeado = mapearStoreConfig({
+        formas_pagamento_entrega: formas,
+      });
+      expect(mapeado.formasPagamentoEntrega).toEqual(["pix", "card", "cash"]);
+    },
+  );
+
+  it("preserva também a lista de pagamento deliberadamente vazia", () => {
+    expect(
+      mapearStoreConfig({ formas_pagamento_entrega: [] })
+        .formasPagamentoEntrega,
+    ).toEqual([]);
+  });
+
   it("não inventa identidade quando o payload não traz os campos", () => {
     const mapeado = mapearStoreConfig({});
 

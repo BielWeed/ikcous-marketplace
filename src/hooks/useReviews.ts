@@ -6,6 +6,7 @@ import {
   getReviewsCache,
   updateReviewsCacheSeMesmaGeracao,
 } from "@/lib/cache-de-avaliacoes";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { supabase } from "@/lib/supabase";
 import type { Review } from "@/types";
 import { cachedReviewsData, setCachedReviewsData } from "@/utils/admin_cache";
@@ -20,10 +21,7 @@ export interface AdminReview extends Review {
 
 // O cache de avaliações por produto mora em `@/lib/cache-de-avaliacoes` (o
 // `AuthContext` o esvazia no logout sem importar este hook).
-const bc =
-  typeof window !== "undefined"
-    ? new BroadcastChannel("ikcous_reviews_sync")
-    : null;
+const bc = criarCanalDeAbas("ikcous_reviews_sync");
 
 /**
  * Traduz a recusa crua do Postgres/PostgREST numa mensagem que o comprador

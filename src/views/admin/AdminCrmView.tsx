@@ -1,5 +1,4 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { AjudaDoCrm } from "@/components/admin/crm/AjudaDoCrm";
 import { CanaisDoCrm } from "@/components/admin/crm/CanaisDoCrm";
 import { ClientesDoCrm } from "@/components/admin/crm/ClientesDoCrm";
@@ -10,6 +9,12 @@ import {
 } from "@/components/admin/crm/PecasDoCrm";
 import { VisaoGeralDoCrm } from "@/components/admin/crm/VisaoGeralDoCrm";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useCrmVisao, useDashboardClassico } from "@/hooks/useCrm";
 import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
@@ -24,7 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { PeriodoDoCrm, SegmentoCrm } from "@/types/crm";
-import { AlertCircle, HelpCircle, RefreshCw } from "lucide-react";
+import { ChevronDown, HelpCircle, RefreshCw } from "lucide-react";
 import {
   type KeyboardEvent,
   useCallback,
@@ -178,7 +183,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
               type="button"
               disabled={sincronizando || isOffline}
               onClick={sincronizar}
-              className="group flex min-h-11 items-center gap-3 rounded-2xl border border-solid border-admin-border bg-white/5 px-4 py-2 transition-all hover:bg-white/10 disabled:opacity-50 sm:px-6 sm:py-3"
+              className="group flex min-h-11 min-w-11 items-center justify-center gap-3 rounded-full border border-solid border-admin-border bg-admin-surface p-2 transition-all hover:bg-admin-raised disabled:opacity-50 sm:px-4"
               aria-label="Sincronizar os números do CRM"
             >
               <RefreshCw
@@ -208,9 +213,11 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
               <HelpCircle className="size-4.5" aria-hidden="true" />
             </span>
           </button>
-          <PontoDeOperacao sincronizando={sincronizando} />
         </AdminPageHeader>
       </div>
+      <p className="text-admin-text-soft px-4 text-xs sm:px-6">
+        Vendas pagas · app e balcão
+      </p>
 
       {/* Barra fixa: abas + período. Filha direta do bloco que rola, para o
           sticky andar junto com a tela inteira. Os dois controles vivem num
@@ -228,13 +235,13 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
           período desce para a 2ª linha só nessa faixa estreita; em 1280/1440
           continua tudo numa linha só, idêntico a antes. */}
       <div className="sticky top-0 z-30 mt-2 border-b border-admin-border bg-admin-bg/95 backdrop-blur-md">
-        <div className="flex flex-col gap-1.5 py-1.5 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:gap-2 lg:px-6 lg:py-2">
+        <div className="flex flex-col gap-2 pb-2 pt-1 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:px-6">
           <div
             role="tablist"
             aria-label="Seções do CRM"
             className={cn(
               SUPERFICIE_DO_CRM,
-              "mx-4 grid grid-cols-4 gap-1 p-1 sm:mx-6 lg:mx-0 lg:flex lg:w-auto",
+              "mx-4 grid grid-cols-4 gap-1 rounded-[18px] p-1 sm:mx-6 lg:mx-0 lg:flex lg:w-auto",
             )}
           >
             {ABAS.map((item) => {
@@ -256,10 +263,10 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                   onClick={() => trocarAba(item.id)}
                   onKeyDown={aoTeclarNasAbas}
                   className={cn(
-                    "flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-lg px-1 text-center text-[11px] font-bold transition-colors lg:w-auto lg:shrink-0 lg:px-3.5 lg:text-xs lg:font-black lg:uppercase lg:tracking-wider",
+                    "flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-xl px-1 text-center text-[13px] font-bold transition-colors lg:w-auto lg:shrink-0 lg:px-3.5",
                     FOCO_DO_CRM,
                     selecionada
-                      ? "bg-white text-black shadow"
+                      ? "bg-admin-gold-fill text-admin-gold-ink shadow"
                       : "text-zinc-400 hover:bg-white/5 hover:text-white",
                   )}
                 >
@@ -280,70 +287,81 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
             })}
           </div>
 
-          {/* `lg:ml-auto` empurra o bloco para a direita mesmo quando o
-              `lg:flex-wrap` acima o joga para a 2ª linha sozinho — nessa
-              hora `justify-between` do pai não tem mais um segundo item na
-              mesma linha para "empurrar" contra. */}
-          <div className="flex flex-col gap-1 px-4 sm:px-6 lg:ml-auto lg:items-end lg:px-0">
-            <div
-              role="group"
-              aria-label="Período"
-              className={cn(
-                SUPERFICIE_DO_CRM,
-                "grid grid-cols-6 gap-1 p-1 lg:flex lg:w-auto",
-              )}
-            >
-              {PERIODOS_DO_CRM.map((item) => {
-                const escolhido = item.id === periodo;
-                return (
+          {aba !== "clientes" && (
+            <div className="px-4 sm:px-6 lg:ml-auto lg:px-0">
+              <div
+                role="group"
+                aria-label="Período"
+                className={cn(
+                  SUPERFICIE_DO_CRM,
+                  "grid grid-cols-5 gap-0.5 p-1 lg:flex",
+                )}
+              >
+                {PERIODOS_DO_CRM.filter((item) =>
+                  ["hoje", "7d", "30d", "mes"].includes(item.id),
+                ).map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    aria-pressed={escolhido}
+                    aria-pressed={periodo === item.id}
                     onClick={() => setPeriodo(item.id)}
                     className={cn(
-                      "flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-lg border border-solid px-1 text-center text-[11px] font-bold transition-colors lg:w-auto lg:shrink-0 lg:px-3.5",
+                      "flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl border border-solid px-0 text-xs font-semibold lg:px-3",
                       FOCO_DO_CRM,
-                      escolhido
-                        ? "border-admin-gold/40 bg-admin-gold/15 text-admin-gold"
-                        : "border-transparent text-zinc-400 hover:border-admin-border-strong hover:bg-white/5 hover:text-white",
+                      periodo === item.id
+                        ? "border-admin-gold bg-admin-gold/15 text-admin-gold"
+                        : "border-transparent text-admin-text-2",
                     )}
                   >
                     {item.rotulo}
                   </button>
-                );
-              })}
+                ))}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Mais períodos"
+                      aria-pressed={periodo === "90d" || periodo === "ano"}
+                      className={cn(
+                        "flex min-h-11 items-center justify-center rounded-xl border border-solid text-xs font-semibold lg:px-3",
+                        FOCO_DO_CRM,
+                        periodo === "90d" || periodo === "ano"
+                          ? "border-admin-gold bg-admin-gold/15 text-admin-gold"
+                          : "border-transparent text-admin-text-2",
+                      )}
+                    >
+                      {periodo === "90d"
+                        ? "90 dias"
+                        : periodo === "ano"
+                          ? "Ano"
+                          : "Mais"}
+                      <ChevronDown
+                        className="hidden size-3 min-[360px]:inline"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {PERIODOS_DO_CRM.filter(
+                      (item) => item.id === "90d" || item.id === "ano",
+                    ).map((item) => (
+                      <DropdownMenuItem
+                        key={item.id}
+                        onSelect={() => setPeriodo(item.id)}
+                        className="min-h-11"
+                      >
+                        {item.rotulo}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-            {/* Datas do intervalo escolhido e contra o que ele compara —
-                sem isso, "Mês" ou "90 dias" não dizem quais dias entram. */}
-            <p className="px-1 text-[11px] leading-snug text-zinc-400">
-              <span className="font-semibold tabular-nums text-zinc-300">
-                {formatarIntervaloCurto(intervalo)}
-              </span>{" "}
-              · {comparacao}
-            </p>
-          </div>
+          )}
         </div>
       </div>
 
-      <div className="mt-4 space-y-4 px-4 sm:mt-6 sm:px-6">
-        {erro && !carregando ? (
-          <div
-            role="alert"
-            className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-300"
-          >
-            <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
-            <p className="flex-1 text-xs">{erro}</p>
-            <button
-              type="button"
-              onClick={atualizarVisao}
-              className="flex min-h-11 shrink-0 items-center rounded-xl border border-solid border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider transition-colors hover:bg-red-500/10"
-            >
-              Tentar de novo
-            </button>
-          </div>
-        ) : null}
-
+      <div className="mt-2 space-y-4 px-4 sm:px-6">
         {ABAS.filter((item) => abasMontadas.has(item.id)).map((item) => {
           const visivel = item.id === aba;
           return (
@@ -360,6 +378,10 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                     visao={visao}
                     carregando={carregando}
                     comparacao={comparacao}
+                    intervalo={formatarIntervaloCurto(intervalo)}
+                    erro={erro}
+                    offline={isOffline}
+                    aoTentar={atualizarVisao}
                     classico={classico}
                     active={ativo && visivel}
                     onNavigate={onNavigate}
@@ -367,6 +389,10 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                   />
                 ) : item.id === "clientes" ? (
                   <ClientesDoCrm
+                    erro={erro}
+                    aoTentar={atualizarVisao}
+                    segmentosDisponiveis={visao != null}
+                    offline={isOffline}
                     segmentos={visao?.segmentos ?? []}
                     carregandoSegmentos={carregando}
                     segmento={segmento}
@@ -377,12 +403,18 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                   />
                 ) : item.id === "canais" ? (
                   <CanaisDoCrm
+                    erro={erro}
+                    offline={isOffline}
+                    aoTentar={atualizarVisao}
                     visao={visao}
                     carregando={carregando}
                     onNavigate={onNavigate}
                   />
                 ) : (
                   <FunilEPedidosDoCrm
+                    erro={erro}
+                    offline={isOffline}
+                    aoTentar={atualizarVisao}
                     visao={visao}
                     carregando={carregando}
                     onNavigate={onNavigate}

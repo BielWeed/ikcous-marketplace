@@ -136,6 +136,9 @@ let PORTAO;
 async function noEstado(montar, consultas = [A, B]) {
   await C.query("BEGIN");
   try {
+    await require("./reembolso-manual-reserva-posterior.cjs").desfazerReembolsoManualReservaNaTransacao(
+      C,
+    );
     await desfazerPagamentoAdiantadoNaTransacao(C);
     if (montar) await montar(C);
     await C.query(`SET LOCAL ROLE ${RO}`);

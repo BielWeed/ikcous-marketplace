@@ -379,10 +379,24 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    "tests/banco/avanco-status-esperado-viva.cjs",
+    "tests/banco/reembolso-manual-reserva-viva.cjs",
+    // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
+    "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
+    // 20261351000000: a forma (path SVG) do icone da categoria, CHECK, ACL/RLS e rollback.
+    "tests/banco/forma-do-icone-viva.cjs",
+    // 20261350000000: a compra online trava o preco-base (OF v, p) e a mesma chave espera a primeira (advisory lock): duas conexoes reais, rollback, pre/pos-voo e consultas 81a/81b.
+    "tests/banco/compra-online-travas-viva.cjs",
+    // 20261349000000: o pedido entregue antes da confirmacao do PIX entra na fila de reconciliacao (borda, dados existentes, ACL, rollback, pre/pos-voo e consultas 80a/80b).
+    "tests/banco/reconciliacao-do-entregue-viva.cjs",
     // 20261300000000: icones de categoria, CHECK, ACL/RLS e rollback sem perda.
     "tests/banco/categorias-icones-viva.cjs",
     // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.
     "tests/banco/mototaxi-viva.cjs",
+    // 20261340000000: as politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete exigem o admin de agora (papeis reais, controle, sem recursao, rollback, consultas 64a/64b).
+    "tests/banco/admin-atual-perfis-viva.cjs",
+    // 20261341000000 e 20261342000000: o codigo do convidado trava a linha na tentativa (corridas reais, controle) e o rastreio nao devolve a nota do pedido (rollback, pre-voo, consultas 65a/65b e 66a/66b).
+    "tests/banco/rastreio-do-convidado-viva.cjs",
     // 20261252: sessao explicita, chave idempotente, corridas e mutantes do caixa.
     "tests/banco/caixa-intencao-viva.cjs",
     // 20261260000000: o cartao guarda o motivo da recusa (portao 56a/56b decide certo; so o Postgres efemero).
