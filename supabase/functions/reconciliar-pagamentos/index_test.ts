@@ -123,6 +123,9 @@ function clienteFalso(opts: {
     // 14/10/2026: registrar_diagnostico_do_estorno (o porquê do POST) e a
     // ordem em que ele e o desfecho terminal foram gravados.
     chamadasDiagnostico?: Array<{ args: Record<string, unknown> }>;
+    // 21/10/2026: cada `registrar_estorno_externo_do_mp` e os ids já vistos.
+    chamadasExternoDoMp?: Array<{ args: Record<string, unknown> }>;
+    idsExternosVistos?: Set<string>;
     ordemDeGravacao?: string[];
     atualizacoesOrderRefunds?: Array<
       {
@@ -184,6 +187,8 @@ function clienteFalso(opts: {
   // Simulação de vários ciclos: o diagnóstico COM ESTADO (conta, carimbo e
   // último código acumulados, como a tabela de verdade).
   aoRegistrarDiagnostico?: (args: Record<string, unknown>) => Record<string, unknown>;
+  // 21/10/2026: roteiro de `registrar_estorno_externo_do_mp` (P1/P2).
+  estornoExternoDoMp?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
 }) {
   const avisos = opts.avisos ?? new Map<string, { enviado: boolean }>();
   return {
@@ -243,6 +248,19 @@ function clienteFalso(opts: {
         opts.aoConcluirEstorno?.(args ?? {});
         if (opts.erroConcluirEstorno) return { data: null, error: opts.erroConcluirEstorno };
         return { data: { payment_status: "pago" }, error: null };
+      }
+      // 21/10/2026 (P1/P2 da revisão adversarial do lote 1.5.47): o registro de
+      // devolução feita FORA do app. O dublê guarda as chamadas e devolve o que
+      // o teste roteirizar; o default espelha a RPC real para uma devolução
+      // nova ('inserido') e, na repetição do MESMO id, 'ja_registrado'.
+      if (nome === "registrar_estorno_externo_do_mp") {
+        opts.registro.chamadasExternoDoMp?.push({ args: args ?? {} });
+        if (opts.estornoExternoDoMp) return opts.estornoExternoDoMp(args ?? {});
+        const jaVistos = (opts.registro.idsExternosVistos ??= new Set<string>());
+        const id = String(args?.p_mp_refund_id);
+        const resultado = jaVistos.has(id) ? "ja_registrado" : "inserido";
+        jaVistos.add(id);
+        return { data: { resultado, aviso: null }, error: null };
       }
       throw new Error(`rpc inesperada nos testes: ${nome}`);
     },
@@ -4474,4 +4492,233 @@ Deno.test("CICLOS-6 - na linha travada, consulta que FALHA (500) continua em con
   assertEquals(r.historico[4], "em_processamento/t5/r4");
   assertEquals(r.historico[5], "em_processamento/t5/r4");
   assertEquals(r.historico[6].startsWith("falhou"), true);
+});
+
+// =============================================================================
+// P1 (21/10/2026, revisão adversarial do lote 1.5.47) — DEVOLUÇÃO PARCIAL
+// ANTES DA CONFIRMAÇÃO, pela rede de segurança. O PIX de R$ 100 foi pago, o
+// webhook falhou e o lojista devolveu R$ 20 no painel do Mercado Pago: a order
+// passa a `processed:partially_refunded` (par que o mapa traduz para `null`
+// DE PROPÓSITO) e este cron a ignorava como "status desconhecido" — o pedido
+// expirava com a venda paga. Uma devolução parcial concluída prova a
+// aprovação (só se devolve dinheiro de pagamento aprovado) quando a cobrança é
+// a GRAVADA, o valor ORIGINAL bate o total e o pedido ainda espera.
+// =============================================================================
+const ORDER_DA_PARCIAL = "ORDTST01KZZ4D94WC79335AP1PARCIAL";
+
+function orderParcialDoPainel(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: ORDER_DA_PARCIAL,
+    external_reference: UUID_PEDIDO_1,
+    type: "online",
+    currency: "BRL",
+    status: "processed",
+    status_detail: "partially_refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{
+        id: "PAY01PARCIAL",
+        amount: "100.00",
+        paid_amount: "100.00",
+        refunded_amount: "20.00",
+        status: "processed",
+        payment_method: { id: "pix", type: "bank_transfer" },
+      }],
+      refunds: [{ id: "REF-PAINEL-20", amount: "20.00", status: "processed" }],
+    },
+    ...extra,
+  };
+}
+
+function pedidoDaParcial(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: UUID_PEDIDO_1,
+    gateway_payment_id: ORDER_DA_PARCIAL,
+    total: 100,
+    total_amount: null,
+    valor_estornado: 0,
+    payment_status: "aguardando",
+    paid_at: null,
+    status: "pending",
+    ...extra,
+  };
+}
+
+async function reconciliarParcial(args: {
+  order: Record<string, unknown>;
+  pedido: Record<string, unknown>;
+  rpcConfirmarResultado?: string;
+  rpcConfirmarError?: unknown;
+  estornoExternoDoMp?: (a: Record<string, unknown>) => { data: unknown; error: unknown };
+  registro?: Record<string, unknown>;
+}) {
+  const registro = (args.registro ?? {
+    chamadasConfirmar: [],
+    chamouCandidatos: false,
+    chamadasExternoDoMp: [],
+    chamadasAviso: [],
+  }) as any;
+  const efeitos = { pushes: [] as unknown[], comprovantes: [] as unknown[], avisosAtrasados: [] as unknown[], alertas: [] as unknown[] };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: ORDER_DA_PARCIAL }],
+    registro,
+    rpcConfirmarResultado: args.rpcConfirmarResultado ?? "pago",
+    rpcConfirmarError: args.rpcConfirmarError,
+    resolverPedidoFresco: () => args.pedido,
+    estornoExternoDoMp: args.estornoExternoDoMp,
+  });
+  const reais = { log: console.log, warn: console.warn, error: console.error };
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  try {
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase,
+      fetchImpl: fetchConsulta(200, args.order),
+      enviarPush: async (a: unknown) => void efeitos.pushes.push(a),
+      enviarComprovante: async (a: unknown) => void efeitos.comprovantes.push(a),
+      enviarAvisoAtrasado: async (a: unknown) => void efeitos.avisosAtrasados.push(a),
+      enviarPushContado: async ({ aviso }: any) => {
+        efeitos.alertas.push(aviso);
+        return 1;
+      },
+    });
+    return { resposta, corpo: await resposta.json(), registro, efeitos };
+  } finally {
+    console.log = reais.log;
+    console.warn = reais.warn;
+    console.error = reais.error;
+  }
+}
+
+Deno.test("P1 cron - PIX aguardando, parcial de 20 no painel, valor original = total -> registra a devolução ANTES e confirma 'pago' com o id da vaga", async () => {
+  const ordem: string[] = [];
+  const r = await reconciliarParcial({
+    order: orderParcialDoPainel(),
+    pedido: pedidoDaParcial(),
+    estornoExternoDoMp: () => {
+      ordem.push("ledger");
+      return { data: { resultado: "inserido", aviso: null }, error: null };
+    },
+  });
+  ordem.push(...r.registro.chamadasConfirmar.map(() => "confirmar"));
+
+  assertEquals(r.resposta.status, 200);
+  assertEquals(r.corpo.confirmados, 1);
+  assertEquals(r.corpo.ignorados, 0);
+  assertEquals(r.corpo.falhas, 0);
+  assertEquals(ordem, ["ledger", "confirmar"]);
+  assertEquals(r.registro.chamadasExternoDoMp.length, 1);
+  assertEquals(r.registro.chamadasExternoDoMp[0].args, {
+    p_order_id: UUID_PEDIDO_1,
+    p_mp_refund_id: "REF-PAINEL-20",
+    p_valor: 20,
+    p_mp_status: "processed",
+    p_mp_status_detail: "partially_refunded",
+  });
+  assertEquals(r.registro.chamadasConfirmar[0].args, {
+    p_order_id: UUID_PEDIDO_1,
+    p_payment_id: ORDER_DA_PARCIAL,
+    p_status: "pago",
+  });
+  assertEquals(r.efeitos.comprovantes.length, 1, "o cliente recebe o comprovante da venda que estava para ser cancelada");
+});
+
+Deno.test("P1 cron - pedido já EXPIRADO (cancelado) -> confirma 'pago'; a RPC devolve pago_apos_expirar e o aviso honesto de atraso sai", async () => {
+  const r = await reconciliarParcial({
+    order: orderParcialDoPainel(),
+    pedido: pedidoDaParcial({ payment_status: "expirado", status: "cancelled" }),
+    rpcConfirmarResultado: "pago_apos_expirar",
+  });
+
+  assertEquals(r.corpo.confirmados, 1);
+  assertEquals(r.registro.chamadasConfirmar[0].args.p_status, "pago");
+  assertEquals(r.efeitos.avisosAtrasados.length, 1);
+  assertEquals(r.efeitos.comprovantes.length, 0, "atrasado não recebe o texto do comprovante padrão");
+});
+
+Deno.test("P1 cron - valor ORIGINAL diferente do total do pedido -> NÃO confirma e NÃO registra nada (mantém ignorados:1)", async () => {
+  const r = await reconciliarParcial({ order: orderParcialDoPainel(), pedido: pedidoDaParcial({ total: 150 }) });
+
+  assertEquals(r.corpo.confirmados, 0);
+  assertEquals(r.corpo.ignorados, 1);
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+  assertEquals(r.registro.chamadasExternoDoMp.length, 0);
+});
+
+Deno.test("P1 cron - pedido que já foi pago no meio do caminho (releitura fresca diz 'pago') -> nada a fazer", async () => {
+  const r = await reconciliarParcial({
+    order: orderParcialDoPainel(),
+    pedido: pedidoDaParcial({ payment_status: "pago", paid_at: "2026-10-21T10:00:00Z" }),
+  });
+
+  assertEquals(r.corpo.ignorados, 1);
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+  assertEquals(r.registro.chamadasExternoDoMp.length, 0);
+});
+
+Deno.test("P1 cron - a vaga do pedido mudou para OUTRA cobrança (a parcial é da órfã) -> NÃO confirma", async () => {
+  const r = await reconciliarParcial({
+    order: orderParcialDoPainel(),
+    pedido: pedidoDaParcial({ gateway_payment_id: "ORDTST01KZZ4D94WC79335AOUTRA000" }),
+  });
+
+  assertEquals(r.corpo.ignorados, 1);
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+  assertEquals(r.registro.chamadasExternoDoMp.length, 0);
+});
+
+Deno.test("P1 cron - detalhe parcial SEM devolução concluída (lista vazia, sem valor devolvido; ou 'processing') -> NÃO confirma", async () => {
+  const vazia = orderParcialDoPainel();
+  (vazia.transactions as any).refunds = [];
+  delete (vazia.transactions as any).payments[0].refunded_amount;
+  const emAndamento = orderParcialDoPainel();
+  (emAndamento.transactions as any).refunds = [{ id: "REF-1", amount: "20.00", status: "processing" }];
+  delete (emAndamento.transactions as any).payments[0].refunded_amount;
+  for (const order of [vazia, emAndamento]) {
+    const r = await reconciliarParcial({ order, pedido: pedidoDaParcial() });
+    assertEquals(r.corpo.ignorados, 1);
+    assertEquals(r.registro.chamadasConfirmar.length, 0);
+  }
+});
+
+Deno.test("P1 cron - o ledger FALHA -> falhas:1, NADA é confirmado (o candidato volta no próximo ciclo)", async () => {
+  const r = await reconciliarParcial({
+    order: orderParcialDoPainel(),
+    pedido: pedidoDaParcial(),
+    estornoExternoDoMp: () => ({ data: null, error: { message: "statement timeout" } }),
+  });
+
+  assertEquals(r.corpo.falhas, 1);
+  assertEquals(r.corpo.confirmados, 0);
+  assertEquals(r.registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("P1 cron - a RPC de pagamento falha depois do ledger: falhas:1; o ciclo seguinte repete, a devolução vem como ja_registrado e a confirmação roda", async () => {
+  const registro = { chamadasConfirmar: [] as any[], chamouCandidatos: false, chamadasExternoDoMp: [] as any[], chamadasAviso: [] as any[] };
+  const primeira = await reconciliarParcial({
+    order: orderParcialDoPainel(),
+    pedido: pedidoDaParcial(),
+    rpcConfirmarError: { message: "deadlock detected" },
+    registro,
+  });
+  assertEquals(primeira.corpo.falhas, 1);
+  assertEquals(registro.chamadasExternoDoMp.length, 1);
+
+  const segunda = await reconciliarParcial({ order: orderParcialDoPainel(), pedido: pedidoDaParcial(), registro });
+  assertEquals(segunda.corpo.confirmados, 1);
+  assertEquals(registro.chamadasExternoDoMp.length, 2, "o ledger é chamado de novo — idempotente, devolve ja_registrado");
+  assertEquals(registro.chamadasConfirmar.length, 2);
+});
+
+Deno.test("P1 cron - devolução que não cabe no saldo do ledger NÃO impede confirmar o pagamento, mas avisa o lojista", async () => {
+  const r = await reconciliarParcial({
+    order: orderParcialDoPainel(),
+    pedido: pedidoDaParcial(),
+    estornoExternoDoMp: () => ({ data: { resultado: "nao_cabe", aviso: "saldo" }, error: null }),
+  });
+
+  assertEquals(r.corpo.confirmados, 1);
+  assertEquals(r.efeitos.alertas.length, 1);
+  assertEquals((r.efeitos.alertas[0] as any).title, "Devolução do Mercado Pago para conferir");
 });

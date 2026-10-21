@@ -8352,3 +8352,267 @@ Deno.test("EST-EDGE-DIN-3 - o reenvio que LANÇA não derruba o webhook: 200 e o
     console.error = erro;
   }
 });
+
+// =============================================================================
+// P1 (21/10/2026, revisão adversarial do lote 1.5.47) — DEVOLUÇÃO PARCIAL
+// ANTES DA CONFIRMAÇÃO. Cliente paga o PIX de R$ 100, a notificação de
+// aprovação falha, o lojista devolve R$ 20 no painel do Mercado Pago. Toda
+// consulta passa a dizer `processed:partially_refunded`, par que o mapa traduz
+// para `null` DE PROPÓSITO: o webhook registrava a devolução e parava, e em 30
+// min a expiração cancelava uma venda PAGA. A devolução parcial concluída é a
+// prova de que o pagamento foi aprovado (só se devolve dinheiro de pagamento
+// aprovado) — desde que a cobrança seja a GRAVADA, o valor ORIGINAL bata o
+// total do pedido e o pedido ainda esteja esperando.
+// =============================================================================
+function orderParcialDoPainel(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    type: "online",
+    currency: "BRL",
+    status: "processed",
+    status_detail: "partially_refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{
+        id: "PAY01XYZ",
+        amount: "100.00",
+        paid_amount: "100.00",
+        refunded_amount: "20.00",
+        status: "processed",
+        payment_method: { id: "pix", type: "bank_transfer" },
+      }],
+      refunds: [{ id: "REF-PAINEL-20", amount: "20.00", status: "processed" }],
+    },
+    ...extra,
+  };
+}
+
+function pedidoEsperandoPagamento(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    total_amount: null,
+    valor_estornado: 0,
+    payment_status: "aguardando",
+    paid_at: null,
+    status: "pending",
+    customer_name: "Maria",
+    ...extra,
+  };
+}
+
+async function entregarParcial(args: {
+  supabase: ReturnType<typeof clienteFalso>;
+  order: Record<string, unknown>;
+}) {
+  const efeitos = { pushes: [] as unknown[], comprovantes: [] as unknown[], avisosAtrasados: [] as unknown[] };
+  const reais = { log: console.log, warn: console.warn, error: console.error };
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  try {
+    const resposta = await handler(
+      await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }),
+      {
+        supabase: args.supabase,
+        fetchImpl: fetchConsulta(200, args.order),
+        enviarPush: async (a: unknown) => void efeitos.pushes.push(a),
+        enviarComprovante: async (a: unknown) => void efeitos.comprovantes.push(a),
+        enviarAvisoAtrasado: async (a: unknown) => void efeitos.avisosAtrasados.push(a),
+      },
+    );
+    return { resposta, corpo: await resposta.json(), efeitos };
+  } finally {
+    console.log = reais.log;
+    console.warn = reais.warn;
+    console.error = reais.error;
+  }
+}
+
+Deno.test("P1 - PIX aguardando, devolução parcial de 20 no painel, valor original = total -> registra a devolução E confirma 'pago' (venda paga não é cancelada)", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[], chamadasConcluirEstorno: [] as any[] };
+  const pedido = pedidoEsperandoPagamento();
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro, orderRefundsRows: [] });
+
+  const { resposta, corpo, efeitos } = await entregarParcial({ supabase, order: orderParcialDoPainel() });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.resultado, "pago");
+  // O ledger recebeu a devolução de 20 (o dinheiro que saiu fica registrado)…
+  assertEquals(registro.chamadasExternoDoMp.length, 1);
+  assertEquals(registro.chamadasExternoDoMp[0].args.p_mp_refund_id, "REF-PAINEL-20");
+  assertEquals(registro.chamadasExternoDoMp[0].args.p_valor, 20);
+  // …e a entrada de 100 foi confirmada, com o id da ORDER GRAVADA.
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args, {
+    p_order_id: UUID_PEDIDO,
+    p_payment_id: ID_ORDER_TESTE,
+    p_status: "pago",
+  });
+  // O lojista é avisado como em qualquer pedido pago.
+  assertEquals(efeitos.pushes.length, 1);
+});
+
+Deno.test("P1 - pedido JÁ EXPIRADO (cancelado, estoque devolvido) -> confirma 'pago' e a RPC o transforma em pago_apos_expirar; o aviso de atraso sai", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[] };
+  const pedido = pedidoEsperandoPagamento({ payment_status: "expirado", status: "cancelled" });
+  const supabase = clienteFalso({ rpcResultado: "pago_apos_expirar", pedido, registro, orderRefundsRows: [] });
+
+  const { resposta, corpo, efeitos } = await entregarParcial({ supabase, order: orderParcialDoPainel() });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.resultado, "pago_apos_expirar");
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  assertEquals(efeitos.avisosAtrasados.length, 1, "pagamento atrasado avisa o cliente e o lojista");
+});
+
+Deno.test("P1 - valor ORIGINAL da cobrança diferente do total do pedido -> NÃO confirma; a devolução continua registrada e a resposta é a de sempre", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[] };
+  const supabase = clienteFalso({
+    rpcResultado: "pago",
+    pedido: pedidoEsperandoPagamento({ total: 150 }),
+    registro,
+    orderRefundsRows: [],
+  });
+
+  const { resposta, corpo, efeitos } = await entregarParcial({ supabase, order: orderParcialDoPainel() });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.resultado, "estorno_parcial_registrado");
+  assertEquals(registro.chamadasRpc.length, 0, "cobrança de 100 não paga um pedido de 150");
+  assertEquals(registro.chamadasExternoDoMp.length, 1);
+  assertEquals(efeitos.pushes.length, 0);
+});
+
+Deno.test("P1 - pedido que o app JÁ marcou como pago: nada de confirmar de novo (a parcial segue como estorno_parcial_registrado)", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[] };
+  const supabase = clienteFalso({
+    rpcResultado: "ja_pago",
+    pedido: pedidoEsperandoPagamento({ payment_status: "pago", paid_at: "2026-10-21T10:00:00Z" }),
+    registro,
+    orderRefundsRows: [],
+  });
+
+  const { corpo, efeitos } = await entregarParcial({ supabase, order: orderParcialDoPainel() });
+
+  assertEquals(corpo.resultado, "estorno_parcial_registrado");
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(efeitos.pushes.length, 0);
+});
+
+Deno.test("P1 - order ÓRFÃ (outra cobrança do mesmo pedido, devolvida no painel) NÃO prova o pagamento do pedido", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[], insertsOrderRefunds: [] as any[] };
+  const supabase = clienteFalso({
+    rpcResultado: "pago",
+    pedido: pedidoEsperandoPagamento({ gateway_payment_id: "ORDTST01KZZ4D94WC79335AGRAVADA" }),
+    registro,
+    orderRefundsRows: [],
+  });
+
+  const { resposta, corpo } = await entregarParcial({ supabase, order: orderParcialDoPainel() });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.resultado, "estorno_parcial_registrado");
+  assertEquals(registro.chamadasRpc.length, 0, "a devolução é da órfã; o pedido real continua como estava");
+  assertEquals(registro.chamadasExternoDoMp.length, 0, "e o ledger do pedido real não é tocado");
+});
+
+Deno.test("P1 - detalhe 'partially_refunded' mas SEM devolução concluída (nem lista, nem valor devolvido) -> NÃO confirma", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[] };
+  const order = orderParcialDoPainel();
+  (order.transactions as any).refunds = [];
+  delete (order.transactions as any).payments[0].refunded_amount;
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido: pedidoEsperandoPagamento(), registro, orderRefundsRows: [] });
+
+  const { corpo } = await entregarParcial({ supabase, order });
+
+  assertEquals(corpo.resultado, "estorno_parcial_registrado");
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("P1 - devolução ainda 'processing' (dinheiro não saiu) -> NÃO confirma", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[] };
+  const order = orderParcialDoPainel();
+  (order.transactions as any).refunds = [{ id: "REF-1", amount: "20.00", status: "processing" }];
+  delete (order.transactions as any).payments[0].refunded_amount;
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido: pedidoEsperandoPagamento(), registro, orderRefundsRows: [] });
+
+  const { corpo } = await entregarParcial({ supabase, order });
+
+  assertEquals(corpo.resultado, "estorno_parcial_registrado");
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("P1 - o ledger FALHA (banco) -> 500, o MP reenvia, e confirmar_pagamento NÃO roda antes da devolução estar registrada", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[] };
+  const supabase = clienteFalso({
+    rpcResultado: "pago",
+    pedido: pedidoEsperandoPagamento(),
+    registro,
+    orderRefundsRows: [],
+    estornoExternoDoMp: () => ({ data: null, error: { message: "statement timeout" } }),
+  });
+
+  const { resposta } = await entregarParcial({ supabase, order: orderParcialDoPainel() });
+
+  assertEquals(resposta.status, 500);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("P1 - a MESMA notificação duas vezes: a 1ª confirma, a 2ª (pedido já pago) não repete nada nem registra a devolução de novo", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[] };
+  const pedido = pedidoEsperandoPagamento();
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro, orderRefundsRows: [] });
+
+  const primeira = await entregarParcial({ supabase, order: orderParcialDoPainel() });
+  assertEquals(primeira.corpo.resultado, "pago");
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasExternoDoMp.length, 1);
+
+  // O banco de verdade agora diz 'pago' (a RPC gravou); o dublê da RPC não muta o pedido.
+  pedido.payment_status = "pago";
+  pedido.paid_at = "2026-10-21T10:00:00Z";
+  const segunda = await entregarParcial({ supabase, order: orderParcialDoPainel() });
+  assertEquals(segunda.corpo.resultado, "estorno_parcial_registrado");
+  assertEquals(registro.chamadasRpc.length, 1, "nenhuma segunda confirmação");
+  assertEquals(registro.chamadasExternoDoMp.length, 1, "a devolução já estava no ledger: nenhuma chamada nova");
+  assertEquals(segunda.efeitos.pushes.length, 0, "o lojista não é avisado duas vezes");
+});
+
+Deno.test("P1 - se a RPC de pagamento falha depois do ledger: 500 (o MP reenvia) — e a reentrega confirma sem duplicar a devolução", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[] };
+  const pedido = pedidoEsperandoPagamento();
+  const supabase = clienteFalso({ rpcError: { message: "deadlock detected" }, pedido, registro, orderRefundsRows: [] });
+
+  const primeira = await entregarParcial({ supabase, order: orderParcialDoPainel() });
+  assertEquals(primeira.resposta.status, 500);
+  assertEquals(registro.chamadasExternoDoMp.length, 1);
+
+  // Reentrega com o banco já recuperado: o ledger não repete, a confirmação roda.
+  const recuperado = clienteFalso({ rpcResultado: "pago", pedido, registro, orderRefundsRows: [] });
+  const segunda = await entregarParcial({ supabase: recuperado, order: orderParcialDoPainel() });
+  assertEquals(segunda.corpo.resultado, "pago");
+  assertEquals(registro.chamadasRpc.filter((c: any) => c.args.p_status === "pago").length, 2);
+});
+
+Deno.test("P1 - devolução TOTAL ('refunded:refunded') continua no caminho do estorno: NÃO é confirmada como paga", async () => {
+  const registro = { chamadasRpc: [] as any[], chamadasExternoDoMp: [] as any[], chamadasConcluirEstorno: [] as any[] };
+  const order = orderParcialDoPainel({ status: "refunded", status_detail: "refunded" });
+  (order.transactions as any).refunds = [{ id: "REF-100", amount: "100.00", status: "processed" }];
+  const pedido = pedidoEsperandoPagamento();
+  const supabase = clienteFalso({
+    rpcResultado: "estornado",
+    pedido,
+    registro,
+    orderRefundsRows: [],
+    estornoExternoDoMp: () => ({ data: { resultado: "inserido", valor_estornado: 100 }, error: null }),
+  });
+
+  const { resposta } = await entregarParcial({ supabase, order });
+
+  assertEquals(resposta.status, 500, "A1: reserva nunca confirmada sem fechar no ledger espera a reentrega");
+  assertEquals(registro.chamadasRpc.filter((c: any) => c.args.p_status === "pago").length, 0);
+});
