@@ -72,6 +72,15 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261341: a linha do codigo e travada na leitura (FOR UPDATE OF v). A 20261340 so troca expressoes de
+  // politica (ALTER POLICY), sem funcao: fica de fora do mapa, como a 20261197 e a 20261202.
+  "20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql": {
+    funcao: "get_orders_by_otp_v2",
+    esperado: [
+      "FOR UPDATE OF v",
+      "-- 20261341: a linha do codigo fica TRAVADA",
+    ],
+  },
   "20261330000000_mototaxi_privado.sql": {
     funcao: "salvar_config_mototaxi",
     esperado: [
