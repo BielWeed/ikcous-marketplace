@@ -204,7 +204,7 @@ export function CupomDaVenda({
       {estado.aviso?.tipo === "inativo" && (
         <div role="alert" className="pdv-notice">
           <p className="pdv-heading">
-            <AlertTriangle aria-hidden="true" className="pdv-icon pdv-pink" />
+            <AlertTriangle aria-hidden="true" className="pdv-icon pdv-muted" />
             Produto inativo
           </p>
           <p className="pdv-muted">

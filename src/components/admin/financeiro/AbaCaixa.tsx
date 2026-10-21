@@ -14,6 +14,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useCaixaAtual, useHistoricoDoCaixa } from "@/hooks/useFinanceiro";
 import { diferencaDoFechamento, formatarDataHora } from "@/lib/financeiro";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { CaixaAtual, SessaoDeCaixa } from "@/types/financeiro";
 import type { AbrirFolha } from "./navegacao";
@@ -107,7 +108,10 @@ function CaixaAberto({
                     contaDoCaixa: caixa.contaId,
                   })
                 }
-                className={cn(CLASSE_BOTAO_SECUNDARIO, "text-orange-300")}
+                className={cn(
+                  CLASSE_BOTAO_SECUNDARIO,
+                  classeDoTexto("atencao"),
+                )}
               >
                 <ArrowUpFromLine aria-hidden="true" className="size-4" />
                 Sangria
@@ -335,9 +339,9 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
           <dd
             className={cn(
               "font-bold",
-              situacao === "quebra" && "text-red-300",
-              situacao === "sobra" && "text-orange-300",
-              situacao === "bateu" && "text-emerald-300",
+              situacao === "quebra" && classeDoTexto("negativo"),
+              situacao === "sobra" && classeDoTexto("atencao"),
+              situacao === "bateu" && classeDoTexto("neutro"),
             )}
           >
             {sessao.diferenca === null ? (

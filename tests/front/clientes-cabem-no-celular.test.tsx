@@ -321,6 +321,7 @@ describe("Clientes no celular (J4)", () => {
     const valorTotal = rotuloTotal!.nextElementSibling;
     expect(valorTotal?.className).toContain("whitespace-nowrap");
     expect(valorTotal?.className).toContain("text-lg");
+    expect(valorTotal?.className).toContain("text-emerald-400");
     expect(valorTotal?.className).not.toContain("break-words");
     expect(rotuloPedidos!.nextElementSibling?.className).toContain("text-lg");
     expect(cartao?.className).toContain("px-3");

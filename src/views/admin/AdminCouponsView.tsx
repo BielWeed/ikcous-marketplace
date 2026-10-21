@@ -7,6 +7,7 @@ import {
   SECUNDARIO,
   Selo,
 } from "@/components/admin/coupons/apresentacao";
+import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +33,7 @@ import {
   cupomPodeCobrirACompraInteira,
 } from "@/lib/cupom-que-cobre-a-compra";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import { type TomDeEstado, classeDoTexto } from "@/lib/tons-de-estado";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { type RotuloDeCupom, rotuloDoCupom } from "@/utils/status-do-cupom";
@@ -79,11 +81,11 @@ const itemVariants: Variants = {
 
 // Aparência do selo de status por rótulo (achado do lote 1: cupom vencido
 // não pode continuar com a mesma cara de "Ativo").
-const classesDoSeloPorRotulo: Record<RotuloDeCupom, string> = {
-  Ativo: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-  Expirado: "border-orange-400/20 bg-orange-400/10 text-orange-300",
-  Inativo: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
-  Esgotado: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+const tomDoSeloPorRotulo: Record<RotuloDeCupom, TomDeEstado> = {
+  Ativo: "positivo",
+  Expirado: "neutro",
+  Inativo: "neutro",
+  Esgotado: "neutro",
 };
 
 interface AdminCouponsViewProps {
@@ -483,11 +485,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         {isOffline && (
           <div
             role="status"
-            className="flex gap-3 rounded-[20px] border border-orange-300/20 bg-orange-300/5 p-4 text-sm leading-relaxed"
+            className="flex gap-3 rounded-[20px] border border-admin-border p-4 text-sm leading-relaxed"
           >
             <CloudOff
               aria-hidden="true"
-              className="size-5 shrink-0 text-orange-300"
+              className={`size-5 shrink-0 ${classeDoTexto("negativo")}`}
             />
             <div>
               <p className="font-bold text-zinc-50">Você está offline</p>
@@ -511,7 +513,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         {erroDaListagem ? (
           <div
             role="alert"
-            className="flex flex-wrap items-center gap-3 rounded-[20px] border border-red-300/20 bg-red-300/5 p-4 text-red-300"
+            className={`flex flex-wrap items-center gap-3 rounded-[20px] border border-admin-border bg-admin-surface p-4 ${classeDoTexto("negativo")}`}
           >
             <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
             <p className="min-w-0 flex-1 text-sm leading-relaxed">
@@ -658,11 +660,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                             ? `${coupon.value ?? 0}% OFF`
                             : formatCurrency(Number(coupon.value ?? 0))}
                         </p>
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-bold ${classesDoSeloPorRotulo[rotulo]}`}
-                        >
-                          {rotulo}
-                        </span>
+                        <EstadoComPonto
+                          tom={tomDoSeloPorRotulo[rotulo]}
+                          texto={rotulo}
+                          className="px-2.5 py-1 text-xs font-bold"
+                        />
                       </div>
                       <div className="mt-1 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs leading-relaxed text-zinc-400">
                         <span>
@@ -682,7 +684,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         </span>
                       </div>
                       {indisponivel && (
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-orange-300">
+                        <p
+                          className={`mt-1 flex items-center gap-1.5 text-xs ${classeDoTexto("atencao")}`}
+                        >
                           <LockKeyhole
                             aria-hidden="true"
                             className="size-3.5"
@@ -693,7 +697,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         </p>
                       )}
                       {cupomPodeCobrirACompraInteira(coupon) && (
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-orange-300">
+                        <p
+                          className={`mt-1 flex items-center gap-1.5 text-xs ${classeDoTexto("atencao")}`}
+                        >
                           <AlertCircle
                             aria-hidden="true"
                             className="size-3.5 shrink-0"
@@ -803,15 +809,19 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                             {coupon.active ? "Ligada" : "Desligada"}
                           </p>
                           {cupomPodeCobrirACompraInteira(coupon) && (
-                            <p className="text-sm leading-relaxed text-orange-200">
+                            <p
+                              className={`text-sm leading-relaxed ${classeDoTexto("atencao")}`}
+                            >
                               {lojaSoRecebePeloApp
                                 ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
                                 : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
                             </p>
                           )}
                           {indisponivel && (
-                            <div className="rounded-2xl border border-orange-300/20 bg-orange-300/5 p-3">
-                              <p className="font-bold text-orange-300">
+                            <div className="rounded-2xl border border-admin-border p-3">
+                              <p
+                                className={`font-bold ${classeDoTexto("atencao")}`}
+                              >
                                 Cupom indisponível
                               </p>
                               <p className="mt-1 leading-relaxed">

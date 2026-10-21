@@ -189,6 +189,67 @@ describe("Financeiro — DRE", () => {
     expect(cabecalho).toEqual(["Linha", "jul/26", "ago/26", "set/26", "Total"]);
   });
 
+  it("lucros e resultados têm cor de sinal; receita e custos ficam neutros", async () => {
+    await montar({ inicio: "2026-09-01", fim: "2026-09-30" });
+    for (const chave of [
+      "lucro_bruto",
+      "lucro_liquido",
+      "margem_contribuicao",
+      "resultado_operacional",
+    ]) {
+      expect(
+        linha(chave)
+          .querySelector("td span")
+          ?.classList.contains("text-emerald-400"),
+      ).toBe(true);
+    }
+    expect(
+      linha("resultado_financeiro")
+        .querySelector("td span")
+        ?.classList.contains("text-red-400"),
+    ).toBe(true);
+    for (const chave of ["cmv", "despesas_fixas", "receita_bruta"]) {
+      expect(
+        linha(chave).querySelector("td span")?.classList.contains("text-white"),
+      ).toBe(true);
+    }
+    for (const rotulo of [
+      "Lucro líquido",
+      "Lucro bruto",
+      "Sobra depois dos custos da venda",
+    ]) {
+      const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
+        (el) => el.textContent === rotulo,
+      )!;
+      expect(etiqueta).toBeDefined();
+      expect(
+        etiqueta.nextElementSibling?.querySelector(".text-emerald-400"),
+      ).not.toBeNull();
+    }
+  });
+
+  it("mês negativo e total usam a mesma regra dos resultados", async () => {
+    rpcFalso.mockResolvedValue({
+      data: { ...DRE, lucro_bruto: -100 },
+      error: null,
+    });
+    await montar({ inicio: "2026-07-01", fim: "2026-09-30" });
+    const mensal = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Mês a mês",
+    )!;
+    await act(async () => mensal.click());
+    await esperar();
+    const linhas = [...hospedeiro.querySelectorAll("tbody tr")];
+    const lucro = linhas.find((el) =>
+      el.querySelector("th")?.textContent?.includes("Lucro bruto"),
+    )!;
+    expect(lucro.querySelectorAll("td .text-red-400")).toHaveLength(4);
+    const custo = linhas.find((el) =>
+      el.querySelector("th")?.textContent?.includes("Custo das mercadorias"),
+    )!;
+    expect(custo.querySelectorAll("td .text-red-400")).toHaveLength(0);
+  });
+
   it("instalação ausente vira orientação técnica, sem erro interno nem repetição inútil", async () => {
     rpcFalso.mockResolvedValue({
       data: null,

@@ -352,6 +352,12 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
     // 100 + 50. Nem 999 (cancelado pago), nem 30 (aguardando), nem 40 (nulo),
     // nem 90 (devolvido) entram.
     expect(valorDoCard("Total já comprado")).toBe("R$ 150,00");
+    const rotulo = [...hospedeiro.querySelectorAll("span")].find(
+      (el) => el.textContent === "Total já comprado",
+    );
+    expect(
+      rotulo?.nextElementSibling?.classList.contains("text-emerald-400"),
+    ).toBe(true);
   });
 
   it("Ticket Médio é o dinheiro dividido pelos pedidos pagos", async () => {

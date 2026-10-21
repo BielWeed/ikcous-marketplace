@@ -76,6 +76,17 @@ describe("AdminOrderCard — forma de pagamento na lista (D4)", () => {
     expect(site).not.toContain("Crédito Seguro");
   });
 
+  it("Balcão identifica o canal com ponto azul e texto, sem recipiente pintado", () => {
+    textoDoCard({ canal: "presencial" });
+    const selo = hospedeiro.querySelector('[data-testid="selo-canal"]')!;
+    expect(selo.textContent?.trim()).toBe("Balcão");
+    expect(selo.className).not.toMatch(/(?:bg-|border(?:-|$))/);
+    expect(selo.classList.contains("text-sky-400")).toBe(true);
+    expect(
+      selo.querySelector('[aria-hidden="true"].bg-current'),
+    ).not.toBeNull();
+  });
+
   it("pago pelo app deixa de aparecer como 'Outro'", () => {
     const texto = textoDoCard({ paymentMethod: "online" });
     expect(texto).toContain("Pagamento pelo site");

@@ -126,7 +126,7 @@ export function GuiaDoPagamentoQueNaoFechou() {
 
   return (
     <div className="space-y-3">
-      <h4 className="border-l-2 border-orange-300 pl-2 text-sm font-bold text-zinc-100">
+      <h4 className="border-l-2 border-amber-400 pl-2 text-sm font-bold text-zinc-100">
         Pagamento que não fechou sozinho
       </h4>
 
