@@ -1233,6 +1233,13 @@ async function main() {
         "20261280000000_o_balcao_registra_so_o_total_conferido.sql",
         "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)",
       ],
+      // A 20261310 (o estilo do card de frete gratis): recria upsert_store_config sobre o corpo da 44 (cadeia 99 -> 39 ->
+      // 44 -> 1310; so acrescenta a chave free_shipping_card_style). Funcao de fora destas tres, que a 17a nao le: o
+      // mesmo caso da 39 e da 44 acima. O rollback dela devolve o corpo da 44 (a conferencia do molde, abaixo, mede).
+      [
+        "20261310000000_estilo_do_card_de_frete.sql",
+        "public.upsert_store_config(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
