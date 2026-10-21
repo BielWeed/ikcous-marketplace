@@ -322,7 +322,6 @@
   @media (max-width: 359.98px) {
     .checkout-values .checkout-delivery {
       flex-wrap: wrap;
-      column-gap: 4px;
     }
 
     .checkout-values .checkout-delivery > span:last-child {

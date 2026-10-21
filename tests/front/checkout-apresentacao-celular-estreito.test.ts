@@ -33,7 +33,6 @@ describe("finalizar em celular estreito — apresentação", () => {
       });
     });
     expect(regras).toContain("flex-wrap: wrap");
-    expect(regras).toContain("column-gap: 4px");
     // O preço riscado e o preço final continuam juntos e alinhados à direita.
     const valores: string[] = [];
     css.walkRules(
