@@ -418,7 +418,8 @@ export type DesfechoComprovante =
         | "envio_falhou"
         | "sem_pedido"
         | "sem_destinatario"
-        | "ja_enviado";
+        | "ja_enviado"
+        | "pagamento_nao_confirmado";
     };
 
 /**
@@ -502,6 +503,12 @@ export async function enviarComprovantePedido(args: {
   // "sem_pedido" e nao um erro: para quem chama isto e "nao ha o que enviar",
   // nao um caso que mereca retentativa.
   if (!pedido) return { ok: false, motivo: "sem_pedido" };
+
+  // A reserva é única para sempre. O online só recebe este comprovante em
+  // "pago"; o pago após expirar tem seu próprio aviso nos efeitos do pagamento.
+  if (pedido.payment_method === "online" && pedido.payment_status !== "pago") {
+    return { ok: false, motivo: "pagamento_nao_confirmado" };
+  }
 
   // O e-mail da conta so' e' consultado quando o pedido nao traz um. Uma
   // chamada de admin a menos no caminho do convidado, que e a maioria.
