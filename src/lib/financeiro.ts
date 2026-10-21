@@ -954,9 +954,11 @@ function movimentoDoCaixa(valor: unknown): MovimentoDoCaixa | null {
   const origem = textoOuNulo(o.origem);
   const valorBruto = numero(o.valor);
   const saida =
-    o.tipo === "saida" ||
-    origem === "sangria" ||
-    (o.tipo !== "entrada" && valorBruto < 0);
+    typeof o.entra === "boolean"
+      ? !o.entra
+      : o.tipo === "saida" ||
+        origem === "sangria" ||
+        (o.tipo !== "entrada" && valorBruto < 0);
   return {
     id: texto(o.id) || `${texto(o.created_at)}-${valorBruto}`,
     tipo: saida ? "saida" : "entrada",
@@ -987,6 +989,7 @@ export function parseCaixaAtual(json: unknown): CaixaAtual | null {
     valorAbertura: numero(o.valor_abertura),
     vendasDinheiro: Math.abs(numero(o.vendas_dinheiro)),
     devolucoesDinheiro: Math.abs(numero(o.devolucoes_dinheiro)),
+    estornosExternosDinheiro: Math.abs(numero(o.estornos_externos_dinheiro)),
     entradasManuais: Math.abs(numero(o.entradas_manuais)),
     saidasManuais: Math.abs(numero(o.saidas_manuais)),
     esperado: numero(o.esperado),
@@ -1430,12 +1433,6 @@ export function sublinhasDaDre(
   const cascata = cascataDaDre(dre).find((l) => l.chave === chave);
   if (!cascata) return [];
   const sublinhas: SublinhaDaDre[] = [];
-  if (chave === "receita_bruta") {
-    sublinhas.push(
-      { rotulo: "App (vendas online)", valor: dre.receitaOnline },
-      { rotulo: "Loja física (balcão e entrega)", valor: dre.receitaBalcao },
-    );
-  }
   if (cascata.grupo) {
     for (const l of dre.linhas) {
       if (l.grupo !== cascata.grupo) continue;

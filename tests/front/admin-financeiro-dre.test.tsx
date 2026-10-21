@@ -34,6 +34,12 @@ const DRE = {
   resultado_financeiro: -95,
   lucro_liquido: 1805,
   linhas: [
+    { grupo: "receita", categoria: "App (vendas online)", valor: 6000 },
+    {
+      grupo: "receita",
+      categoria: "Loja física (balcão e entrega)",
+      valor: 4000,
+    },
     { grupo: "despesa_fixa", categoria: "Aluguel", valor: 2000 },
     { grupo: "despesa_fixa", categoria: "Internet", valor: 850 },
     { grupo: "deducao", categoria: "Devoluções", valor: 500 },

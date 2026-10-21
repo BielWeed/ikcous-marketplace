@@ -56,6 +56,42 @@ it("forma online desconhecida não é rotulada como PIX nem modifica as conhecid
   expect(rotuloDaForma("debito")).toBe("Cartão de débito");
 });
 
+it("receita da DRE usa só as linhas do banco, incluindo receita manual", () => {
+  const dre = parseDre({
+    receita_bruta: 1100,
+    receita_online: 600,
+    receita_balcao: 400,
+    lucro_liquido: 800,
+    linhas: [
+      { grupo: "receita", categoria: "App", valor: 600 },
+      { grupo: "receita", categoria: "Balcão", valor: 400 },
+      { grupo: "receita", categoria: "Receita manual", valor: 100 },
+    ],
+  });
+  expect(sublinhasDaDre(dre, "receita_bruta")).toEqual([
+    { rotulo: "App", valor: 600 },
+    { rotulo: "Balcão", valor: 400 },
+    { rotulo: "Receita manual", valor: 100 },
+  ]);
+  expect(dre.receitaBruta).toBe(1100);
+  expect(dre.lucroLiquido).toBe(800);
+});
+
+it("caixa transporta estorno externo sem recalcular esperado e assume zero se ausente", () => {
+  const dados = {
+    id: "sessao-1",
+    esperado: 100,
+    estornos_externos_dinheiro: "200",
+  };
+  expect(parseCaixaAtual(dados)).toMatchObject({
+    estornosExternosDinheiro: 200,
+    esperado: 100,
+  });
+  expect(parseCaixaAtual({ id: "sessao-1" })).toMatchObject({
+    estornosExternosDinheiro: 0,
+  });
+});
+
 describe("dinheiro em pt-BR", () => {
   it.each([
     ["1.234,56", 1234.56],
@@ -575,6 +611,8 @@ describe("DRE", () => {
     resultado_financeiro: -95,
     lucro_liquido: 1805,
     linhas: [
+      { grupo: "receita", categoria: "App", valor: 6000 },
+      { grupo: "receita", categoria: "Balcão", valor: 4000 },
       { grupo: "despesa_fixa", categoria: "Aluguel", valor: 2000 },
       { grupo: "financeiro", categoria: "Tarifa", valor: -95 },
     ],

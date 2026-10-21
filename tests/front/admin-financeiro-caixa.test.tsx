@@ -294,6 +294,55 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     vi.restoreAllMocks();
   });
 
+  it("explica o estorno externo em dinheiro sem descontar novamente do esperado", async () => {
+    servidor.caixa = {
+      ...CAIXA_ABERTO,
+      valor_abertura: 100,
+      vendas_dinheiro: 200,
+      estornos_externos_dinheiro: 200,
+      esperado: 100,
+    };
+    await remontar();
+    const composicao = hospedeiro.querySelector("#fin-composicao-do-caixa");
+    expect(normalizar(composicao?.textContent)).toContain(
+      "Estornos em dinheiro−R$ 200,00",
+    );
+    expect(normalizar(composicao?.textContent)).toContain("EsperadoR$ 100,00");
+  });
+
+  it.each([
+    { entra: false, tipo: "entrada", sinal: "−", cor: "text-red-300" },
+    { entra: true, tipo: "saida", sinal: "+", cor: "text-emerald-300" },
+    { entra: undefined, tipo: "saida", sinal: "−", cor: "text-red-300" },
+    { entra: undefined, tipo: "entrada", sinal: "+", cor: "text-emerald-300" },
+  ])(
+    "movimento respeita entra=$entra e mantém fallback tipo=$tipo",
+    async ({ entra, tipo, sinal, cor }) => {
+      servidor.caixa = {
+        ...CAIXA_ABERTO,
+        movimentos: [
+          {
+            id: "transferencia-1",
+            tipo,
+            entra,
+            origem: "manual",
+            descricao: "Transferência entre contas",
+            valor: 100,
+          },
+        ],
+      };
+      await remontar();
+      const movimento = [...hospedeiro.querySelectorAll("li")].find((el) =>
+        el.textContent?.includes("Transferência entre contas"),
+      );
+      expect(normalizar(movimento?.textContent)).toContain(`${sinal}R$ 100,00`);
+      expect(movimento?.querySelector(`span.${cor}`)).not.toBeNull();
+      expect(
+        movimento?.querySelector("svg")?.parentElement?.classList.contains(cor),
+      ).toBe(true);
+    },
+  );
+
   it("abre com o contado na conta Caixa da loja e fecha mostrando a quebra", async () => {
     expect(normalizar(hospedeiro.textContent)).toContain("Caixa fechado");
 
