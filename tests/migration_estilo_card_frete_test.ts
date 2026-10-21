@@ -42,6 +42,9 @@ Deno.test("20261310: coluna restrita, default completo e view pública com campo
     "local_delivery_days,\n    free_shipping_card_style\n   FROM store_config",
   );
 });
+Deno.test("20261310: recarrega o schema do PostgREST depois de criar o campo", () => {
+  assert(ler(nome).trimEnd().endsWith("NOTIFY pgrst, 'reload schema';"));
+});
 Deno.test("20261310: só acrescenta o campo aos três lugares do upsert vigente", () => {
   const sql = definicao(ler(nome));
   const anterior = definicao(

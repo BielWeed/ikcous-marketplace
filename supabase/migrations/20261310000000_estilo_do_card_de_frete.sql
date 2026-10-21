@@ -366,3 +366,5 @@ BEGIN
   RETURN result;
 END;
 $$;
+
+NOTIFY pgrst, 'reload schema';
