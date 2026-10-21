@@ -5,7 +5,7 @@ import {
   formatarPercentual,
   variacaoPercentual,
 } from "@/lib/crm";
-import { tomDoValor } from "@/lib/tons-de-estado";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import type { PainelInicio } from "@/types/painel";
 import { HelpCircle } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
@@ -107,11 +107,15 @@ export function NumerosDoMes({
           </div>
         </div>
         <p className="border-t border-admin-border pt-3 text-sm text-zinc-400">
-          <strong className="font-bold tabular-nums text-white">
+          <strong
+            className={`font-bold tabular-nums ${tomDoValor(mes?.pedidos) === "neutro" ? classeDoTexto("neutro") : "text-white"}`}
+          >
             {formatarInteiro(mes?.pedidos)}
           </strong>{" "}
           {mes?.pedidos === 1 ? "venda" : "vendas"} · valor médio por venda{" "}
-          <strong className="font-bold tabular-nums text-white">
+          <strong
+            className={`font-bold tabular-nums ${tomDoValor(mes?.ticketMedio) === "neutro" ? classeDoTexto("neutro") : "text-white"}`}
+          >
             {formatarMoeda(mes?.ticketMedio)}
           </strong>
         </p>

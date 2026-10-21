@@ -1,10 +1,16 @@
 import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { completarSerieDe14Dias, formatarData, formatarMoeda } from "@/lib/crm";
+import { tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { PontoDaSerieDiaria } from "@/types/painel";
 import { Check, ChevronLeft, ChevronRight, List } from "lucide-react";
 import { type PointerEvent, useId, useState } from "react";
-import { BOTAO_INICIO, FalhaDoInicio, VALOR_INICIO } from "./visualDoInicio";
+import {
+  BOTAO_INICIO,
+  FalhaDoInicio,
+  VALOR_INICIO,
+  valorNaCor,
+} from "./visualDoInicio";
 
 const DATA_CURTA = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
@@ -117,7 +123,9 @@ export function SerieDe14Dias({
                 {formatarData(pontoMarcado?.dia)}
                 {pontoMarcado?.dia === diaDeHoje ? " · Hoje" : ""}
               </span>
-              <strong className={`mt-1 block text-xl ${VALOR_INICIO}`}>
+              <strong
+                className={`mt-1 block text-xl ${tomDoValor(pontoMarcado?.receita) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
+              >
                 {formatarMoeda(pontoMarcado?.receita)}
               </strong>
             </p>
@@ -300,7 +308,7 @@ export function SerieDe14Dias({
                       )}
                     </td>
                     <td
-                      className={`rounded-r-xl p-2 text-right ${VALOR_INICIO}`}
+                      className={`rounded-r-xl p-2 text-right ${tomDoValor(ponto.receita) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
                     >
                       {formatarMoeda(ponto.receita)}
                     </td>

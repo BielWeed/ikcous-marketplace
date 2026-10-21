@@ -244,6 +244,34 @@ describe("Este mês e Dinheiro nas contas", () => {
     for (const zero of zeros) expect(zero.className).toContain("text-zinc-400");
   });
 
+  it.each([0, 112])(
+    "quantidade e valor médio do mês: %s mantém a cor do estado",
+    (pedidos) => {
+      montar(
+        <NumerosDoMes
+          painel={{
+            ...PAINEL,
+            mes: {
+              ...PAINEL.mes,
+              pedidos,
+              ticketMedio: pedidos === 0 ? 0 : 166.43,
+            },
+          }}
+          carregando={false}
+        />,
+      );
+      const valores = tela.querySelectorAll("strong");
+      expect(valores).toHaveLength(2);
+      expect(texto(valores[0])).toBe(String(pedidos));
+      expect(texto(valores[1])).toBe(pedidos === 0 ? "R$ 0,00" : "R$ 166,43");
+      for (const valor of valores) {
+        expect
+          .soft(valor.className)
+          .toContain(pedidos === 0 ? "text-zinc-400" : "text-white");
+      }
+    },
+  );
+
   it("lucro negativo fica vermelho; positivo, verde", () => {
     montar(<NumerosDoMes painel={PAINEL} carregando={false} />);
     expect(tela.querySelector("p.text-emerald-400")?.textContent).toContain(
@@ -292,6 +320,27 @@ describe("gráfico dos 14 dias", () => {
     dia: new Date(Date.UTC(2026, 9, 8 + i)).toISOString().slice(0, 10),
     receita: 10 + i,
   }));
+  it.each([0, 23])(
+    "dia selecionado e tabela: receita %s fica cinza só quando zero",
+    (receita) => {
+      montar(
+        <SerieDe14Dias
+          serie={serie.map((p, i) => (i === 13 ? { ...p, receita } : p))}
+          carregando={false}
+        />,
+      );
+      const destaque = tela.querySelector('[aria-live="polite"] strong');
+      const linhas = tela.querySelectorAll("tbody tr");
+      expect(linhas).toHaveLength(14);
+      const valorNaTabela = linhas[13].querySelector("td:last-child");
+      const cor = receita === 0 ? "text-zinc-400" : "text-white";
+      expect(texto(destaque)).toBe(receita === 0 ? "R$ 0,00" : "R$ 23,00");
+      expect(texto(valorNaTabela)).toBe(texto(destaque));
+      expect.soft(destaque?.className).toContain(cor);
+      expect.soft(valorNaTabela?.className).toContain(cor);
+    },
+  );
+
   it("barras de vendas nunca ficam vermelhas por causa do lucro mensal", () => {
     montar(<SerieDe14Dias serie={serie} carregando={false} />);
     const barras = tela.querySelectorAll('[data-testid="serie-14d-barra"]');
