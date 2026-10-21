@@ -52,3 +52,5 @@ BEGIN
       CHECK (icone IN ('todas', 'cuidado', 'brinquedo', 'calcados', 'moda', 'casa', 'tecnologia', 'beleza', 'esporte', 'pet', 'alimento', 'papelaria', 'ferramentas', 'joias'));
   END IF;
 END $check_300$;
+
+NOTIFY pgrst, 'reload schema';
