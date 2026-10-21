@@ -552,7 +552,12 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
                   credentialless=""
                   className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
                 />
-                <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">
+                {/* Etiqueta sobre o mapa do cliente: cores fixas (branco/cinza),
+                    senão o tema do painel inverte o fundo e some o contraste. */}
+                <p
+                  data-tema-fixo=""
+                  className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm"
+                >
                   Prévia do que o cliente vê
                 </p>
               </div>
