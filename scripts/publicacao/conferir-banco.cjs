@@ -2411,7 +2411,21 @@ const ROL_DA_61B = [
   "categorias.icone: ausente ou text nulavel preservada",
   "categorias_icone_check: ausente",
 ];
+const ROL_DA_63A = [
+  "categorias: RLS ativa e quatro policies originais",
+  "categorias: leitura publica e UPDATE authenticated por grant de tabela",
+  "categorias.icone e categorias_icone_check: 14 chaves da 20261300000000 intactas",
+  "categorias.icone_forma: text nulavel sem default",
+  "categorias_icone_forma_check: so path SVG ate 400 caracteres e validada",
+];
+const ROL_DA_63B = [
+  ...ROL_DA_63A.slice(0, 3),
+  "categorias.icone_forma: ausente",
+  "categorias_icone_forma_check: ausente",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "63a-conferir-forma-do-icone-aplicado": ROL_DA_63A,
+  "63b-antes-forma-do-icone-ausente": ROL_DA_63B,
   "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
   "61b-antes-icones-das-categorias": ROL_DA_61B,
   "62a-conferir-mototaxi-aplicado": [

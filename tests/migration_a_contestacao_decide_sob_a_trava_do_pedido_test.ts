@@ -379,6 +379,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    // 20261351000000: a forma (path SVG) do icone da categoria, CHECK, ACL/RLS e rollback.
+    "tests/banco/forma-do-icone-viva.cjs",
     // 20261300000000: icones de categoria, CHECK, ACL/RLS e rollback sem perda.
     "tests/banco/categorias-icones-viva.cjs",
     // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.

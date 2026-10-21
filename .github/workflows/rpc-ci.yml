@@ -156,6 +156,8 @@ on:
       - "scripts/publicacao/consultas/61b-antes-icones-das-categorias.sql"
       - "scripts/publicacao/consultas/62a-conferir-mototaxi-aplicado.sql"
       - "scripts/publicacao/consultas/62b-antes-mototaxi-ausente.sql"
+      - "scripts/publicacao/consultas/63a-conferir-forma-do-icone-aplicado.sql"
+      - "scripts/publicacao/consultas/63b-antes-forma-do-icone-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -281,6 +283,8 @@ on:
       - "scripts/publicacao/consultas/61b-antes-icones-das-categorias.sql"
       - "scripts/publicacao/consultas/62a-conferir-mototaxi-aplicado.sql"
       - "scripts/publicacao/consultas/62b-antes-mototaxi-ausente.sql"
+      - "scripts/publicacao/consultas/63a-conferir-forma-do-icone-aplicado.sql"
+      - "scripts/publicacao/consultas/63b-antes-forma-do-icone-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -364,6 +368,9 @@ jobs:
       - name: Prova viva dos icones de categoria e ACL preservada (300)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-icones-viva.cjs
+      - name: Prova viva da forma do icone de categoria e ACL preservada (351)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/forma-do-icone-viva.cjs
       # Intencao do caixa (frente caixa-db, plano 2026-10-20-noturno-onda2-caixa-db, CX1/CX2):
       # CX1 = retry do fechamento de S1 depois que S2 abriu nao pode tocar S2; CX2 = sangria
       # de 50 (saldo 300) repetida com a mesma chave grava UMA transferencia. O seletor

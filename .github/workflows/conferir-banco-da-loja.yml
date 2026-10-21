@@ -219,6 +219,8 @@ on:
           - 61b-antes-icones-das-categorias
           - 62a-conferir-mototaxi-aplicado
           - 62b-antes-mototaxi-ausente
+          - 63a-conferir-forma-do-icone-aplicado
+          - 63b-antes-forma-do-icone-ausente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:
