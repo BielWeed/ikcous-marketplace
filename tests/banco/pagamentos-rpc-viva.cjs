@@ -81,7 +81,9 @@ const {
 } = require("./efemero.cjs");
 const { SUCESSORAS_DA_99 } = require("./sucessoras-da-99.cjs");
 const { REEMBOLSO_EM_DUVIDA } = require("./reembolso-em-duvida-posterior.cjs");
-const { REEMBOLSO_MANUAL_RESERVA } = require("./reembolso-manual-reserva-posterior.cjs");
+const {
+  REEMBOLSO_MANUAL_RESERVA,
+} = require("./reembolso-manual-reserva-posterior.cjs");
 const {
   DESFAZER_RECEBIMENTO,
 } = require("./desfazer-recebimento-posterior.cjs");

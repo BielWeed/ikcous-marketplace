@@ -1182,7 +1182,9 @@ prova(
   () =>
     emTransacao(async () => {
       // Só esta prova reaplica a 241; as demais medem o corpo de produção.
-      await require("./reembolso-manual-reserva-posterior.cjs").desfazerReembolsoManualReservaNaTransacao(C);
+      await require("./reembolso-manual-reserva-posterior.cjs").desfazerReembolsoManualReservaNaTransacao(
+        C,
+      );
       await desfazerPagamentoAdiantadoNaTransacao(C);
       const sigs = Object.values(SIG);
       const antes = {};

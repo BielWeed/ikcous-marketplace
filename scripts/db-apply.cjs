@@ -2061,8 +2061,14 @@ const VERIFICACOES = {
     {
       funcao: "admin_devolucao_concluir",
       esperado: [
-        { texto: "v_disponivel := public.pedido__saldo_a_estornar(v_o.id);", vezes: 1 },
-        { texto: "passa do que ainda pode ser devolvido deste pedido (R$ %).", vezes: 2 },
+        {
+          texto: "v_disponivel := public.pedido__saldo_a_estornar(v_o.id);",
+          vezes: 1,
+        },
+        {
+          texto: "passa do que ainda pode ser devolvido deste pedido (R$ %).",
+          vezes: 2,
+        },
       ],
     },
   ],
