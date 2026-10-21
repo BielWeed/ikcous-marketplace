@@ -20,7 +20,8 @@ const GRUPOS = [
   "Esporte e lazer",
   "Outros",
 ];
-const ALFABETO = /^[MmLlHhVvCcSsQqTtAaZz0-9.,\-+ ]+$/;
+// Igual ao da CHECK categorias_icone_forma_check (migration 20261351000000): sem "+" nem expoente.
+const ALFABETO = /^[MmLlHhVvCcSsQqTtAaZz0-9.,\- ]+$/;
 const CHAVE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const MAX_D = 360;
 const MIN_ICONES = 90;
@@ -49,7 +50,8 @@ for (const [i, ic] of lista.entries()) {
   else if (vistas.has(ic.chave)) erro(id, "chave duplicada");
   else vistas.add(ic.chave);
   if (typeof ic?.nome !== "string" || !ic.nome.trim()) erro(id, "nome vazio");
-  if (!GRUPOS.includes(ic?.grupo)) erro(id, `grupo ausente ou desconhecido: ${ic?.grupo}`);
+  if (!GRUPOS.includes(ic?.grupo))
+    erro(id, `grupo ausente ou desconhecido: ${ic?.grupo}`);
   else porGrupo.set(ic.grupo, (porGrupo.get(ic.grupo) ?? 0) + 1);
   if (
     !Array.isArray(ic?.palavras) ||
@@ -60,20 +62,24 @@ for (const [i, ic] of lista.entries()) {
   const d = ic?.d;
   if (typeof d !== "string" || !d.trim()) erro(id, "d vazio");
   else {
-    if (d.length > MAX_D) erro(id, `d com ${d.length} caracteres (maximo ${MAX_D})`);
+    if (d.length > MAX_D)
+      erro(id, `d com ${d.length} caracteres (maximo ${MAX_D})`);
     if (!ALFABETO.test(d)) erro(id, "d com caractere fora do alfabeto de path");
     if (!/^[Mm]/.test(d.trim())) erro(id, "d precisa comecar com M");
     if (/\d\.\d{2,}/.test(d)) erro(id, "numero com mais de 1 casa decimal");
   }
 }
 for (const g of GRUPOS) if (!porGrupo.get(g)) erro(g, "grupo sem nenhum icone");
-if (lista.length < MIN_ICONES) erro("catalogo", `${lista.length} icones (minimo ${MIN_ICONES})`);
+if (lista.length < MIN_ICONES)
+  erro("catalogo", `${lista.length} icones (minimo ${MIN_ICONES})`);
 
 if (erros.length) {
   console.error(`REPROVADO: ${erros.length} problema(s)`);
-  for (const e of erros) console.error(" - " + e);
+  for (const e of erros) console.error(` - ${e}`);
   process.exit(1);
 }
 const maior = Math.max(...lista.map((x) => x.d.length));
-console.log(`OK: ${lista.length} icones, ${porGrupo.size} grupos, maior d = ${maior} caracteres`);
+console.log(
+  `OK: ${lista.length} icones, ${porGrupo.size} grupos, maior d = ${maior} caracteres`,
+);
 for (const g of GRUPOS) console.log(`  ${g}: ${porGrupo.get(g)}`);

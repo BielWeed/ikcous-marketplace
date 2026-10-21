@@ -175,8 +175,6 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>input\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>input{border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>select\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>select{border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>textarea\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>textarea{border-color:#dc2626}
-:where(html.admin-mode[data-admin-tema]) .aria-pressed\:bg-zinc-800[aria-pressed="true"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-raised))}
-:where(html.admin-mode[data-admin-tema]) .aria-pressed\:border-zinc-400[aria-pressed="true"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .before\:bg-zinc-700:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{background-color:hsl(var(--admin-hover))}
 :where(html.admin-mode[data-admin-tema]) .before\:text-zinc-300:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{color:hsl(var(--admin-text-2))}
 :where(html.admin-mode[data-admin-tema]) .dark\:data-\[state\=active\]\:bg-admin-gold\/10[data-state="active"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}

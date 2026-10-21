@@ -7,6 +7,8 @@
 // habilita "Apagar" quando a conta é zero e mostra o motivo se o banco recusar.
 //
 // Sem `@testing-library/react`: `createRoot` + `act`, padrão da casa.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +45,7 @@ vi.mock("@/hooks/useCategories", () => ({
 vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
 
 import { GerenciarCategorias } from "@/components/admin/categorias/GerenciarCategorias";
+import { esquecerOCatalogoCarregado } from "@/lib/catalogo-de-icones";
 import { ErroDeCategoria } from "@/lib/gestao-de-categorias";
 
 const USOS = [
@@ -102,12 +105,37 @@ function digitar(rotulo: string, texto: string) {
 
 const espera = () => new Promise<void>((r) => setTimeout(r, 0));
 
+// O catálogo que o painel serve (public/icons/categorias.json): a tela o busca por fetch ao abrir o seletor.
+const CATALOGO: { chave: string; d: string }[] = JSON.parse(
+  readFileSync(
+    join(__dirname, "..", "..", "public", "icons", "categorias.json"),
+    "utf8",
+  ),
+);
+const fetchMock = vi.fn();
+
+async function abrirSeletor(dentro: ParentNode = document) {
+  const gatilho = [...dentro.querySelectorAll("button")].find(
+    (b) => b.textContent?.trim() === "Escolher ícone",
+  ) as HTMLButtonElement;
+  await act(async () => {
+    gatilho.click();
+  });
+  await act(async () => {
+    await espera();
+  });
+}
+
 describe("Gerenciar categorias", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    esquecerOCatalogoCarregado();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue({ ok: true, json: async () => CATALOGO });
+    vi.stubGlobal("fetch", fetchMock);
     rpcMock.mockResolvedValue({ data: USOS, error: null });
     renameCategory.mockResolvedValue({
       id: "c-brinq",
@@ -144,22 +172,26 @@ describe("Gerenciar categorias", () => {
     });
   }
 
-  it("oferece ícones e Automático, mostra a prévia e salva a escolha", async () => {
+  it("oferece os clássicos e o catálogo, mostra a prévia e salva a escolha nas duas colunas de uma vez", async () => {
     await abrir();
     const linha = [...document.querySelectorAll("li")].find((li) =>
       li.textContent?.includes("Brinquedos"),
-    );
+    ) as HTMLElement;
     expect(
-      linha?.querySelector("svg[data-icone]")?.getAttribute("data-icone"),
+      linha.querySelector("svg[data-icone]")?.getAttribute("data-icone"),
     ).toBe("casa");
-    const campo = linha?.querySelector("fieldset");
-    expect(campo?.querySelectorAll("button")).toHaveLength(15);
+    // O catálogo só é pedido quando o seletor abre.
+    expect(fetchMock).not.toHaveBeenCalled();
+    await abrirSeletor(linha);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const classicos = linha.querySelector('section[aria-label="Clássicos"]');
+    expect(classicos?.querySelectorAll("button")).toHaveLength(15);
     await act(async () => {
       botao("Ícone Moda para Brinquedos").click();
     });
     expect(updateCategory).toHaveBeenCalledWith(
       "c-brinq",
-      { icone: "moda" },
+      { icone: "moda", iconeForma: null },
       true,
     );
     await act(async () => {
@@ -167,7 +199,17 @@ describe("Gerenciar categorias", () => {
     });
     expect(updateCategory).toHaveBeenCalledWith(
       "c-brinq",
-      { icone: null },
+      { icone: null, iconeForma: null },
+      true,
+    );
+    // Escolha do catálogo: guarda a FORMA e esvazia a chave antiga, no mesmo pedido.
+    await act(async () => {
+      botao("Ícone Blusa para Brinquedos").click();
+    });
+    const blusa = CATALOGO.find((i) => i.chave === "blusa");
+    expect(updateCategory).toHaveBeenLastCalledWith(
+      "c-brinq",
+      { icone: null, iconeForma: blusa?.d },
       true,
     );
   });
@@ -175,11 +217,30 @@ describe("Gerenciar categorias", () => {
   it("falha ao salvar o ícone fica na linha e não anuncia sucesso", async () => {
     updateCategory.mockRejectedValueOnce(new Error("Sem conexão"));
     await abrir();
+    await abrirSeletor();
     await act(async () => {
       botao("Ícone Moda para Brinquedos").click();
     });
     expect(document.querySelector('[role="alert"]')).not.toBeNull();
     expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("catálogo que não chega: os clássicos continuam e o aviso deixa tentar de novo", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await abrir();
+    await abrirSeletor();
+    expect(document.body.textContent).toMatch(
+      /Não deu para carregar os ícones novos agora/,
+    );
+    expect(botao("Ícone Moda para Brinquedos")).toBeTruthy();
+    await act(async () => {
+      botao("Tentar de novo").click();
+    });
+    await act(async () => {
+      await espera();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(botao("Ícone Blusa para Brinquedos")).toBeTruthy();
   });
 
   it("fechada, não pede nada ao servidor", async () => {
