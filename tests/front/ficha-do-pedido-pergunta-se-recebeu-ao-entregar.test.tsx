@@ -463,7 +463,11 @@ describe("OrderDetail (ficha do pedido) — pergunta se recebeu ao avançar para
     // Âncora positiva: a página desenhou de verdade.
     expect(hospedeiro.textContent).toContain("Pedido");
     expect(hospedeiro.textContent).not.toMatch(/Recebeu/i);
-    expect(onStatusChangeMock).toHaveBeenCalledWith("ped-5", "delivered");
+    expect(onStatusChangeMock).toHaveBeenCalledWith(
+      "ped-5",
+      "delivered",
+      "shipping",
+    );
     expect(onRegistrarPagamentoMock).not.toHaveBeenCalled();
   });
 

@@ -1456,14 +1456,12 @@ export const OrderDetail = memo(function OrderDetail({
   const handleStatusChange = async (
     orderId: string,
     nextStatus: OrderStatus,
-    statusEsperado?: OrderStatus,
+    statusEsperado = order.status,
   ) => {
     if (isUpdatingStatus) return;
     setIsUpdatingStatus(true);
     try {
-      if (statusEsperado === undefined)
-        await onStatusChange(orderId, nextStatus);
-      else await onStatusChange(orderId, nextStatus, statusEsperado);
+      await onStatusChange(orderId, nextStatus, statusEsperado);
     } catch {
       // parent component handles error
     } finally {

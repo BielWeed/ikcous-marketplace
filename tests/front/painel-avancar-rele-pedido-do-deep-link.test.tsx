@@ -405,4 +405,33 @@ describe("AdminOrdersView — a ficha aberta por DEEP LINK reflete o status VERD
     expect(botaoConfirmarAvancoMesmoAssim()).toBeUndefined();
     expect(updateOrderStatus).not.toHaveBeenCalled();
   });
+
+  it("sem origem explícita, nunca usa a situação da ficha selecionada para OUTRO id", async () => {
+    vi.resetModules();
+    vi.doMock("@/components/admin/orders/OrderDetail", () => ({
+      OrderDetail: ({
+        onStatusChange,
+      }: {
+        onStatusChange: (id: string, status: Order["status"]) => Promise<void>;
+      }) => (
+        <button
+          type="button"
+          onClick={() => void onStatusChange(PEDIDO_ID_OUTRO, "shipping")}
+        >
+          Avançar outro sem origem
+        </button>
+      ),
+    }));
+    try {
+      updateOrderStatus.mockResolvedValue(undefined);
+      await renderizarComDeepLink();
+      await act(async () => botaoAvancar()!.click());
+      expect(updateOrderStatus).toHaveBeenCalledTimes(1);
+      expect(updateOrderStatus.mock.calls[0][0]).toBe(PEDIDO_ID_OUTRO);
+      expect(updateOrderStatus.mock.calls[0][4]).toBeUndefined();
+    } finally {
+      vi.doUnmock("@/components/admin/orders/OrderDetail");
+      vi.resetModules();
+    }
+  });
 });

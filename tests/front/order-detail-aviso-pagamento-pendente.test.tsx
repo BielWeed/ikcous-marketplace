@@ -354,7 +354,11 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(hospedeiro.textContent).not.toContain(
       "Este pedido não está com o pagamento confirmado",
     );
-    expect(onStatusChange).toHaveBeenCalledWith("ped-teste", "processing");
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "ped-teste",
+      "processing",
+      "pending",
+    );
   });
 
   it("paymentStatus 'pago': clicar em Avançar muda o status direto, sem aviso", async () => {
@@ -382,7 +386,11 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(hospedeiro.textContent).not.toContain(
       "Este pedido não está com o pagamento confirmado",
     );
-    expect(onStatusChange).toHaveBeenCalledWith("ped-teste", "processing");
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "ped-teste",
+      "processing",
+      "pending",
+    );
   });
 
   it("'recusado': clicar em Avançar abre a confirmação e NÃO muda o status ainda", async () => {
@@ -483,7 +491,11 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       // do aviso ao cliente — e termina em pergunta
       expect(texto).toContain("O estoque volta");
       expect(texto.endsWith("?")).toBe(true);
-      expect(onStatusChange).toHaveBeenCalledWith("ped-teste", "cancelled");
+      expect(onStatusChange).toHaveBeenCalledWith(
+        "ped-teste",
+        "cancelled",
+        "pending",
+      );
     } finally {
       globalThis.confirm = confirmOriginal;
     }
