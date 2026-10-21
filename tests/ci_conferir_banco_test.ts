@@ -3931,7 +3931,13 @@ Deno.test("9a — a lista de colunas das vistas é a do SELECT da migration 2026
       `${vista}: colunas diferentes da 60`,
     );
     for (const [arq, texto] of Object.entries(textos)) {
-      if (arq.slice(0, 14) > "20261160000000")
+      if (arq === "20261360000000_ex_admin_perde_o_acesso_na_hora_nas_demais_tabelas.sql" && vista === "vw_produtos_admin") {
+        // A 1360 muda SOMENTE a porta: a lista conferida pela 9a continua identica a da 60.
+        const recriada = texto.match(re);
+        assert(recriada, "1360: projecao da view ausente");
+        assertEquals(recriada[1].split(",").map((c) => c.trim()).join(","), colunas);
+        assertStringIncludes(texto, "WHERE public.rls_admin_atual()\n  WITH CASCADED CHECK OPTION;");
+      } else if (arq.slice(0, 14) > "20261160000000")
         assert(
           // eslint-disable-next-line security/detect-non-literal-regexp -- padrão montado de constantes do próprio teste
           !new RegExp(
@@ -13625,7 +13631,7 @@ Deno.test("41a/41b — os md5 da 41a sao os dos DOIS corpos NOVOS que o arquivo 
   const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_41A}.sql`);
   const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_41B}.sql`);
   for (const h of novos) {
-    assertEquals(a.split(`'${h}'`).length - 1, 1, "41a: md5 de corpo novo");
+    assertEquals(a.split(`'${h}'`).length - 1, 2, "41a: esperado e normalizacao da sucessora 1360");
     assert(!b.includes(h), "41b nao cita corpo novo");
     assertEquals(
       mig.split(`'${h}'`).length - 1,

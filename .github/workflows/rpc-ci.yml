@@ -174,6 +174,8 @@ on:
       - "scripts/publicacao/consultas/80b-antes-pedido-entregue-na-reconciliacao-base-vigente.sql"
       - "scripts/publicacao/consultas/81a-conferir-compra-online-trava-preco-e-chave-aplicado.sql"
       - "scripts/publicacao/consultas/81b-antes-compra-online-trava-preco-e-chave-base-vigente.sql"
+      - "scripts/publicacao/consultas/82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas.sql"
+      - "scripts/publicacao/consultas/82b-antes-ex-admin-nas-demais-tabelas.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -317,6 +319,8 @@ on:
       - "scripts/publicacao/consultas/80b-antes-pedido-entregue-na-reconciliacao-base-vigente.sql"
       - "scripts/publicacao/consultas/81a-conferir-compra-online-trava-preco-e-chave-aplicado.sql"
       - "scripts/publicacao/consultas/81b-antes-compra-online-trava-preco-e-chave-base-vigente.sql"
+      - "scripts/publicacao/consultas/82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas.sql"
+      - "scripts/publicacao/consultas/82b-antes-ex-admin-nas-demais-tabelas.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -453,6 +457,9 @@ jobs:
       # escreve (CONTROLE: na politica antiga le e escreve); admin atual como antes; a cliente comum o proprio e um
       # terceiro nada; leitura de perfil sem recursao (e, com o dono da funcao sujeito a RLS, nenhum admin
       # reconhecido); rollback byte a byte; pre-voo recusando sem escrever. CLONE proprio.
+      - name: Prova viva do ex-admin nas demais tabelas (migration 20261360000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/ex-admin-demais-tabelas-viva.cjs
       - name: Prova viva do admin atual nas politicas de perfil e endereco (migration 20261340000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-perfis-viva.cjs

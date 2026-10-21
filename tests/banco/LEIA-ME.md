@@ -18,6 +18,8 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   ACL fechada, chamadas por nome e só com dois obrigatórios, reaplicação, rollback para a 249
   e controle negativo sem a guarda. Só clone efêmero; não prova loja nem PostgREST.
 
+- **Ex-admin nas demais tabelas (`ex-admin-demais-tabelas-viva.cjs`)**: migration 20261360; 28 politicas, view gravavel com CHECK OPTION e quatro RPCs. JWT antigo nas duas fontes do papel, controle antigo, admin atual, cliente e vitrine anonima. OTP permanece sem GRANT direto; a emulacao de service_role nao prova o BYPASSRLS do Supabase. Consultas 82a/82b (36 itens), OID/ACL, reaplicacao LF/CRLF, onze sabotagens de preflight e rollback exato. So clone efemero. Provas da 97 e da 240 desfazem antes esta sucessora pelo modulo `ex-admin-demais-tabelas-posterior.cjs`.
+
 ## As provas (`invariantes-dinheiro.cjs`)
 
 - **(a) cupom**: `usage_limit` nunca fica negativo; a vaga do cupom não volta
