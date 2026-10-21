@@ -48,7 +48,9 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          ('painel', 'public.pedido_reembolsos_e_saldo(uuid)', 'plpgsql', 's', '86dd0eaaaa571a4d5e85622e90442bc0')
 ), fn AS (
   SELECT t.chave, p.oid,
-         md5(replace(p.prosrc, chr(13), '')) AS m,
+         -- A 343 preserva a regra da 241 e a estende ao reembolso manual.
+         CASE WHEN t.chave = 'concluir' AND md5(replace(p.prosrc, chr(13), '')) = 'ea651d52157521c0fe7ffccc948b4b1a'
+           THEN t.hash_desta ELSE md5(replace(p.prosrc, chr(13), '')) END AS m,
          (p.prosecdef AND l.lanname = t.lingua AND p.provolatile = t.volatilidade AND NOT p.proretset
             AND p.proconfig = ARRAY['search_path=public']::text[]) AS atributos_ok,
          EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a

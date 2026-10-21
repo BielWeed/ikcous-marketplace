@@ -2044,6 +2044,34 @@ const VERIFICACOES = {
   // respeitando a substituída, cada chamador trocado para a função de saldo ou para a regra, a recusa do POST da linha
   // liberada por fora, o texto novo do aviso ao cliente e, nas duas saídas de 7 dias, a frase de confirmação, a espera
   // e o risco_de_dobro. O resto (tabela, EXECUTE, atributos) o DO de conferência da migration aborta o apply se divergir.
+  "20261345000000_o_avanco_confere_o_status_esperado.sql": [
+    {
+      funcao: "avancar_status_do_pedido",
+      esperado: [
+        "IF auth.uid() IS NULL OR NOT public.is_admin_atual() THEN",
+        "WHERE id = p_order_id FOR UPDATE;",
+        "IF v_status IS DISTINCT FROM p_status_esperado THEN",
+        "RETURN public.pedido__mudar_status(",
+      ],
+    },
+  ],
+  // A 343 e a 241 contam UMA chamada ao saldo. A entrada da 175 abaixo
+  // continua medindo o corpo historico da propria migration, nao o topo vivo.
+  "20261343000000_o_reembolso_manual_respeita_a_reserva.sql": [
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        {
+          texto: "v_disponivel := public.pedido__saldo_a_estornar(v_o.id);",
+          vezes: 1,
+        },
+        {
+          texto: "passa do que ainda pode ser devolvido deste pedido (R$ %).",
+          vezes: 2,
+        },
+      ],
+    },
+  ],
   "20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql": [
     {
       funcao: "order_refund__pode_ter_saido",

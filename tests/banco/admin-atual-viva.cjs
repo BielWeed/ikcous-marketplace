@@ -83,6 +83,8 @@ const CAMINHO_ROLLBACK = path.join(
 // md5(replace(prosrc, E'\r', '')) dos corpos ANTES desta migration (medidos
 // no banco nascido das migrations até a 20261194000000) — o rollback tem de
 // voltar exatamente a eles.
+// Estes hashes sao os ANTERIORES a 97, nao o topo atual. A 343 sai antes da 241
+// pelo helper reembolso-em-duvida-posterior.cjs; nao substituir a prova historica.
 const HASH_ANTERIOR = {
   "public.solicitar_estorno(uuid,numeric,text)":
     "ee9fe85d9b18b0e38e23cf48dd3b1111",
@@ -365,6 +367,10 @@ const POSTERIORES_A_97 = [
   // O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em tests/banco/mototaxi-posterior.cjs.
   // No FIM da lista de proposito (as provas enderecam 202/200/99/98 por indice).
   MOTOTAXI,
+  {
+    nome: "20261345000000_o_avanco_confere_o_status_esperado.sql",
+    noAr: "SELECT to_regprocedure('public.avancar_status_do_pedido(uuid,text,text,text)') IS NOT NULL AS sim",
+  },
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar

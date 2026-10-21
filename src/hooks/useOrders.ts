@@ -339,6 +339,7 @@ export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
   if (!("message" in err) || typeof err.message !== "string") return false;
   const mensagem = err.message.toLowerCase();
   return (
+    mensagem.includes("pedido_status_mudou") ||
     mensagem.includes("apenas pedidos pendentes") ||
     mensagem.includes("não pode mais ser cancelado") ||
     mensagem.includes("não pode ser cancelado") ||
@@ -367,6 +368,7 @@ type ItemDaFila = {
   status: string;
   notes?: string | null;
   silent?: boolean;
+  statusEsperado?: string;
   timestamp?: number;
 };
 
@@ -463,6 +465,7 @@ async function processarFilaOfflineDePedidos(
     let syncedAny = false;
     let falhasTransitorias = 0;
     let descartesTerminais = 0;
+    let conflitosDeStatus = 0;
     let interrompida = false;
     toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
@@ -470,6 +473,7 @@ async function processarFilaOfflineDePedidos(
 
     for (const [indice, item] of queue.entries()) {
       const { orderId, status, notes, silent } = item;
+      let esperado = item.statusEsperado;
       // Itens antigos sem timestamp saem ao concluir; qualquer versão datada
       // que entrar durante a RPC continua sendo mais nova.
       const timestamp =
@@ -510,7 +514,13 @@ async function processarFilaOfflineDePedidos(
           if (erroReleitura) throw erroReleitura;
 
           const statusAtual = linhaAtual?.status as OrderStatus | undefined;
-          if (statusAtual === "cancelled" || statusAtual === "delivered") {
+          if (statusAtual === undefined)
+            throw new ErroStatusEsperadoDesconhecido();
+          if (
+            statusAtual === "cancelled" ||
+            statusAtual === "delivered" ||
+            (esperado !== undefined && statusAtual !== esperado)
+          ) {
             // Pedido morreu (cancelado) ou já foi concluído (entregue)
             // enquanto o avanço esperava na fila: aplicar agora reativaria
             // um pedido morto, ou reabriria um já concluído. Mesmo balde —
@@ -520,6 +530,8 @@ async function processarFilaOfflineDePedidos(
             processados.set(orderId, timestamp);
             continue;
           }
+          // Fila legada: ainda rele o banco, mas a gravacao tambem confere esta foto.
+          esperado ??= statusAtual;
         } catch (err) {
           // "Não sei" nunca vira "pode avançar" (mesma regra do L-9 em
           // `updateOrderStatus`): sem confirmar o status atual, o item
@@ -550,21 +562,35 @@ async function processarFilaOfflineDePedidos(
       }
 
       try {
-        const { error } = await (supabase.rpc as any)(
-          "update_order_status_atomic",
-          {
-            p_order_id: orderId,
-            p_new_status: status,
-            p_notes: notes || null,
-            p_silent: silent || false,
-          },
-        );
+        const { error } =
+          status !== "cancelled"
+            ? await supabase.rpc("avancar_status_do_pedido", {
+                p_order_id: orderId,
+                p_status_esperado: esperado as string,
+                p_new_status: status,
+                p_notes: notes || null,
+              })
+            : await (supabase.rpc as any)("update_order_status_atomic", {
+                p_order_id: orderId,
+                p_new_status: status,
+                p_notes: notes || null,
+                p_silent: silent || false,
+              });
 
         if (error) throw error;
         syncedAny = true;
         processados.set(orderId, timestamp);
       } catch (err) {
         if (erroDeSincronizacaoEhTerminal(err)) {
+          if (
+            typeof err === "object" &&
+            err !== null &&
+            "message" in err &&
+            typeof err.message === "string" &&
+            err.message.includes("pedido_status_mudou")
+          ) {
+            conflitosDeStatus++;
+          }
           descartesTerminais++;
           processados.set(orderId, timestamp);
           continue;
@@ -616,7 +642,9 @@ async function processarFilaOfflineDePedidos(
       );
     } else if (descartesTerminais > 0) {
       toast.info(
-        "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.",
+        conflitosDeStatus > 0
+          ? "O pedido mudou de situação enquanto você olhava. Atualize e tente de novo."
+          : "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.",
         { id: toastId },
       );
     } else if (final.length === 0) {
@@ -1130,6 +1158,9 @@ export const mensagemAmigavelErroAtualizacaoStatus = (
     return textoOriginal;
   }
 
+  if (textoOriginal.includes("pedido_status_mudou")) {
+    return "O pedido mudou de situação enquanto você olhava. Atualize e tente de novo.";
+  }
   if (codigo === "P0001" && textoOriginal) {
     return textoOriginal;
   }
@@ -3424,6 +3455,14 @@ export function useOrders(
           );
           const queueStr = localStorage.getItem(chaveDaFila) || "[]";
           const queue = JSON.parse(queueStr);
+          const itemOriginal = queue.find(
+            (item: ItemDaFila) => item.orderId === orderId,
+          );
+          // Avancos offline seguintes mudam so o destino, nao a ultima origem
+          // confirmada. Sem esse campo no legado, mantem a releitura ao reconectar.
+          const statusEsperadoNaFila = itemOriginal
+            ? itemOriginal.statusEsperado
+            : esperado;
           const cleanQueue = queue.filter(
             (item: any) => item.orderId !== orderId,
           );
@@ -3432,6 +3471,7 @@ export function useOrders(
             status,
             notes,
             silent,
+            statusEsperado: statusEsperadoNaFila,
             timestamp: Date.now(),
           });
           localStorage.setItem(chaveDaFila, JSON.stringify(cleanQueue));
@@ -3445,15 +3485,20 @@ export function useOrders(
           return;
         }
 
-        const { error } = await (supabase.rpc as any)(
-          "update_order_status_atomic",
-          {
-            p_order_id: orderId,
-            p_new_status: status,
-            p_notes: notes || null,
-            p_silent: silent,
-          },
-        );
+        const { error } =
+          isAdmin && status !== "cancelled"
+            ? await supabase.rpc("avancar_status_do_pedido", {
+                p_order_id: orderId,
+                p_status_esperado: esperado as string,
+                p_new_status: status,
+                p_notes: notes || null,
+              })
+            : await (supabase.rpc as any)("update_order_status_atomic", {
+                p_order_id: orderId,
+                p_new_status: status,
+                p_notes: notes || null,
+                p_silent: silent,
+              });
 
         if (error) throw error;
 

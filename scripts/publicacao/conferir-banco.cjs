@@ -2411,7 +2411,27 @@ const ROL_DA_61B = [
   "categorias.icone: ausente ou text nulavel preservada",
   "categorias_icone_check: ausente",
 ];
+const ROL_DA_67 = [
+  "admin_devolucao_concluir: unica assinatura conhecida",
+  "admin_devolucao_concluir: corpo exato (md5)",
+  "admin_devolucao_concluir: atributos preservados",
+  "admin_devolucao_concluir: authenticated permitido, PUBLIC e anon sem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "68a-conferir-avanco-status-esperado-aplicado": [
+    "avancar_status_do_pedido: unica assinatura conhecida",
+    "avancar_status_do_pedido: corpo exato (md5)",
+    "avancar_status_do_pedido: atributos conhecidos",
+    "avancar_status_do_pedido: EXECUTE somente authenticated",
+  ],
+  "68b-antes-avanco-status-esperado": [
+    "controle: catalogo de funcoes public visivel",
+    "avancar_status_do_pedido: nenhuma assinatura existente",
+    "marketplace_orders.id: uuid",
+    "dependencias: admin atual e rotina de status presentes",
+  ],
+  "67a-conferir-reembolso-manual-reserva-aplicado": ROL_DA_67,
+  "67b-antes-reembolso-manual-reserva": ROL_DA_67,
   "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
   "61b-antes-icones-das-categorias": ROL_DA_61B,
   "62a-conferir-mototaxi-aplicado": [

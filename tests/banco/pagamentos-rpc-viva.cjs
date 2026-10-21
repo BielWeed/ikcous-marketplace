@@ -82,6 +82,9 @@ const {
 const { SUCESSORAS_DA_99 } = require("./sucessoras-da-99.cjs");
 const { REEMBOLSO_EM_DUVIDA } = require("./reembolso-em-duvida-posterior.cjs");
 const {
+  REEMBOLSO_MANUAL_RESERVA,
+} = require("./reembolso-manual-reserva-posterior.cjs");
+const {
   DESFAZER_RECEBIMENTO,
 } = require("./desfazer-recebimento-posterior.cjs");
 const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
@@ -1683,6 +1686,7 @@ const POSTERIORES_A_97 = [
   // 20261241000000 (o reembolso em duvida prende o saldo) redefine o reemitir e o por fora da 1226 e mais
   // cinco corpos (tests/banco/reembolso-em-duvida-posterior.cjs): com ela no ar o rollback da 1226 recusa
   // (B1_BASELINE_DIVERGENT). Sai depois da 252, antes das demais abaixo.
+  REEMBOLSO_MANUAL_RESERVA,
   REEMBOLSO_EM_DUVIDA,
   // As sucessoras da 99 (20261212, 20261214 — redefinem corpos dela;
   // tests/banco/sucessoras-da-99.cjs), na ordem inversa da aplicação: com
@@ -1791,6 +1795,10 @@ const POSTERIORES_A_97 = [
   // (B1_BASELINE_DIVERGENT). O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em
   // tests/banco/mototaxi-posterior.cjs. No FIM da lista de proposito.
   MOTOTAXI,
+  {
+    nome: "20261345000000_o_avanco_confere_o_status_esperado.sql",
+    noAr: "SELECT to_regprocedure('public.avancar_status_do_pedido(uuid,text,text,text)') IS NOT NULL AS sim",
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

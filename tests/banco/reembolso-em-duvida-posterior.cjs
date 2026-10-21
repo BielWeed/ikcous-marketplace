@@ -30,6 +30,9 @@ const REEMBOLSO_EM_DUVIDA = Object.freeze({
 
 /** Desfaz a 20261241000000 na transação aberta do cliente, se ela estiver no ar. Devolve true se desfez. */
 async function desfazerReembolsoEmDuvidaNaTransacao(cliente) {
+  await require("./reembolso-manual-reserva-posterior.cjs").desfazerReembolsoManualReservaNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(REEMBOLSO_EM_DUVIDA.noAr);
   if (!r.rows[0] || r.rows[0].sim !== true) return false;
   const sql = fs.readFileSync(
