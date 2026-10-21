@@ -2380,6 +2380,19 @@ const ROL_DA_58B = [
   "registrar_venda_presencial: corpo da 20261249000000 (base anterior, md5)",
   ...ROL_DA_52A.slice(3),
 ];
+// Lote 59: a 290 so troca o corpo de fin__forma_do_pedido. ANTES exige o corpo
+// da 177; DEPOIS exige o da 290. Assinatura, atributos e ACL iguais nos dois lados.
+const ROL_DA_59A = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin__forma_do_pedido: corpo da 20261290000000 (online sem forma, md5)",
+  "fin__forma_do_pedido: assinatura e atributos (sql, IMMUTABLE, search_path=public, sem SECURITY DEFINER nem sobrecarga)",
+  "fin__forma_do_pedido: sem EXECUTE para PUBLIC, anon e authenticated",
+];
+const ROL_DA_59B = [
+  ROL_DA_59A[0],
+  "fin__forma_do_pedido: corpo da 20261177000000 (base anterior, md5)",
+  ...ROL_DA_59A.slice(2),
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,
   "57b-antes-pagamento-adiantado-e-estorno-base-vigente": ROL_DA_57,
@@ -2475,6 +2488,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "56b-antes-motivo-da-recusa-do-cartao-base-vigente": ROL_DA_56B,
   "58a-conferir-total-do-balcao-aplicado": ROL_DA_58A,
   "58b-antes-total-do-balcao-base-vigente": ROL_DA_58B,
+  "59a-conferir-online-sem-forma-aplicado": ROL_DA_59A,
+  "59b-antes-online-sem-forma-base-vigente": ROL_DA_59B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 

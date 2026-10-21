@@ -211,6 +211,8 @@ on:
           - 57b-antes-pagamento-adiantado-e-estorno-base-vigente
           - 58a-conferir-total-do-balcao-aplicado
           - 58b-antes-total-do-balcao-base-vigente
+          - 59a-conferir-online-sem-forma-aplicado
+          - 59b-antes-online-sem-forma-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

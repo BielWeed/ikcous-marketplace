@@ -1549,6 +1549,68 @@ PROVAS.push({
   },
 });
 
+PROVAS.push({
+  nome: "(forma desconhecida) consultas 59a/59b: depois da 290 só a 59a passa; depois do rollback só a 59b; corpo alheio e EXECUTE aberto reprovam as duas",
+  corpo: async (cliente) => {
+    const lerSql = (pasta, arquivo) =>
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- Somente literais desta prova, nunca entrada externa.
+      readFileSync(path.join(__dirname, "..", "..", pasta, arquivo), "utf8");
+    const rollback = lerSql(
+      "supabase/migrations",
+      "rollback-manual-20261290000000_online_sem_forma_nao_e_pix.sql",
+    );
+    const depois = lerSql(
+      "scripts/publicacao/consultas",
+      "59a-conferir-online-sem-forma-aplicado.sql",
+    );
+    const antes = lerSql(
+      "scripts/publicacao/consultas",
+      "59b-antes-online-sem-forma-base-vigente.sql",
+    );
+    const linhas = async (sql) => {
+      const r = (await cliente.query(sql)).rows;
+      assert.equal(r.length, 4);
+      return r;
+    };
+    const positivo = async (sql) => {
+      const r = await linhas(sql);
+      assert.ok(
+        r.every((l) => l.ok === true),
+        JSON.stringify(r),
+      );
+    };
+    const negativo = async (sql, trecho) => {
+      const r = await linhas(sql);
+      const item = r.find((l) => l.item.includes(trecho));
+      assert.ok(item, trecho);
+      assert.equal(item.ok, false, JSON.stringify(r));
+    };
+    await cliente.query("BEGIN");
+    try {
+      await positivo(depois);
+      await negativo(antes, "corpo da 20261177000000");
+      await cliente.query(rollback);
+      await positivo(antes);
+      await negativo(depois, "corpo da 20261290000000");
+
+      await cliente.query("SAVEPOINT acl_aberta");
+      await cliente.query(
+        "GRANT EXECUTE ON FUNCTION public.fin__forma_do_pedido(text,text) TO anon",
+      );
+      await negativo(antes, "sem EXECUTE");
+      await cliente.query("ROLLBACK TO SAVEPOINT acl_aberta");
+
+      await cliente.query(`CREATE OR REPLACE FUNCTION public.fin__forma_do_pedido(p_payment_method text, p_metodo_online text)
+        RETURNS text LANGUAGE sql IMMUTABLE SET search_path = public
+        AS $$ SELECT 'posterior'::text $$;`);
+      await negativo(antes, "corpo da 20261177000000");
+      await negativo(depois, "corpo da 20261290000000");
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const cliente = new Client({ connectionString: url });
