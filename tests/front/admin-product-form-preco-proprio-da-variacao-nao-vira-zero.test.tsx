@@ -22,6 +22,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   fetchProduct: vi.fn(),
   updateProduct: vi.fn(),
+  salvarProdutoComGrade: vi
+    .fn()
+    .mockResolvedValue({ produto: undefined, recusadas: [] }),
   upsertVariants: vi.fn(),
 }));
 
@@ -29,6 +32,7 @@ vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct: vi.fn(),
     updateProduct: mocks.updateProduct,
+    salvarProdutoComGrade: mocks.salvarProdutoComGrade,
     upsertVariants: mocks.upsertVariants,
     deleteVariants: vi.fn().mockResolvedValue(undefined),
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -138,6 +142,8 @@ describe("AdminProductFormView — preço próprio da variação nunca vira zero
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     mocks.updateProduct.mockResolvedValue(undefined);
     mocks.upsertVariants.mockResolvedValue(undefined);
     vi.stubGlobal("localStorage", {
@@ -322,8 +328,10 @@ describe("AdminProductFormView — preço próprio da variação nunca vira zero
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    expect(mocks.upsertVariants).toHaveBeenCalledTimes(1);
-    const enviadas = mocks.upsertVariants.mock.calls[0]?.[1] as Array<{
+    expect(mocks.salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+    expect(mocks.upsertVariants).not.toHaveBeenCalled();
+    const enviadas = mocks.salvarProdutoComGrade.mock.calls[0]?.[2]
+      .variantes as Array<{
       value: string;
       priceOverride?: number;
     }>;

@@ -22,12 +22,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fetchProduct = vi.fn();
 const upsertVariants = vi.fn().mockResolvedValue(undefined);
 const updateProduct = vi.fn().mockResolvedValue(undefined);
+const salvarProdutoComGrade = vi
+  .fn()
+  .mockResolvedValue({ produto: undefined, recusadas: [] });
 const deleteVariants = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct: vi.fn(),
     updateProduct,
+    salvarProdutoComGrade,
     upsertVariants,
     deleteVariants,
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -218,6 +222,8 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     upsertVariants.mockResolvedValue(undefined);
     deleteVariants.mockResolvedValue(undefined);
     armazem = new Map();
@@ -304,8 +310,9 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
       clicarObrigatorio("Salvar");
     });
     expect(toastError).not.toHaveBeenCalled();
-    expect(upsertVariants).toHaveBeenCalledTimes(1);
-    const lote = upsertVariants.mock.calls[0][1] as Array<
+    expect(upsertVariants).not.toHaveBeenCalled();
+    expect(salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+    const lote = salvarProdutoComGrade.mock.calls[0][2].variantes as Array<
       Record<string, unknown>
     >;
     expect(lote).toHaveLength(3);

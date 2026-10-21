@@ -491,6 +491,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const {
     addProduct,
     updateProduct,
+    salvarProdutoComGrade,
     upsertVariants,
     deleteVariants,
     uploadProductImages,
@@ -2250,16 +2251,46 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             formData.variants,
             initialData.variants,
           ).some((v) => "stockIncrement" in v);
-        const produtoSalvo = await updateProduct(
-          productId,
-          {
-            ...productData,
-            ...(mexeuNoEstoqueDoProduto ? { stock: Math.max(0, pStock) } : {}),
-          },
-          mexeuNoEstoque
-            ? { baseUpdatedAt: currentProduct?.updatedAt }
+        const variantsWithSanitizedSku = variacoesSoComEstoqueMexido(
+          formData.variants,
+          initialData.variants,
+        ).map((v) => ({
+          ...v,
+          sku: v.sku
+            ? v.sku.trim().toUpperCase().replace(/\s+/g, "-")
             : undefined,
-        );
+          codigoBarras: v.codigoBarras
+            ? normalizarCodigoBarras(v.codigoBarras)
+            : undefined,
+        }));
+        const salvarEmTransacao =
+          !isOffline &&
+          navigator.onLine &&
+          (formData.variants.length > 0 || deletedVariantIds.length > 0);
+        const updates = {
+          ...productData,
+          ...(mexeuNoEstoqueDoProduto ? { stock: Math.max(0, pStock) } : {}),
+        };
+        const conferencia = mexeuNoEstoque
+          ? { baseUpdatedAt: currentProduct?.updatedAt }
+          : undefined;
+        let naoApagadas: string[] = [];
+        let produtoSalvo: Product | undefined | null;
+        if (salvarEmTransacao) {
+          const retorno = await salvarProdutoComGrade(productId, updates, {
+            ...conferencia,
+            variantes: variantsWithSanitizedSku,
+            apagar: deletedVariantIds,
+          });
+          if (!retorno) {
+            setIsSubmitting(false);
+            return;
+          }
+          produtoSalvo = retorno.produto;
+          naoApagadas = retorno.recusadas;
+        } else {
+          produtoSalvo = await updateProduct(productId, updates, conferencia);
+        }
         // O produto já foi gravado mesmo se a grade falhar depois. A próxima
         // tentativa deve usar a versão devolvida pelo banco, não a da abertura.
         if (produtoSalvo) setCurrentProduct(produtoSalvo);
@@ -2269,8 +2300,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // lote só a vendida seguraria as que podiam sair. A recusa não pode
         // impedir o passo 3: o produto já foi gravado e perder aqui o estoque e
         // o preço das outras variações era o salvar pela metade.
-        let naoApagadas: string[] = [];
-        if (deletedVariantIds.length > 0) {
+        if (!salvarEmTransacao && deletedVariantIds.length > 0) {
           try {
             await deleteVariants(deletedVariantIds);
           } catch (erroAoApagar) {
@@ -2304,23 +2334,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setFormData(formAposRecusas);
         }
 
-        // A janela entre a conferência e este upsert só fecha com SQL.
-        // 3. Salvar variantes restantes em lote. O estoque de cada uma só vai
-        // se a lojista mexeu naquele número (as devolvidas acima não entram: o
-        // banco continua com elas como estavam).
-        if (formData.variants.length > 0) {
-          const variantsWithSanitizedSku = variacoesSoComEstoqueMexido(
-            formData.variants,
-            initialData.variants,
-          ).map((v) => ({
-            ...v,
-            sku: v.sku
-              ? v.sku.trim().toUpperCase().replace(/\s+/g, "-")
-              : undefined,
-            codigoBarras: v.codigoBarras
-              ? normalizarCodigoBarras(v.codigoBarras)
-              : undefined,
-          }));
+        // Só o caminho antigo (offline) grava a grade separadamente.
+        // Online, produto, exclusões e grade já foram gravados pela RPC.
+        if (!salvarEmTransacao && formData.variants.length > 0) {
           await upsertVariants(productId, variantsWithSanitizedSku);
         }
 
@@ -2376,7 +2392,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
         // Gravar a grade também muda a versão do produto pelo gatilho. Não
         // guardar a versão anterior à grade como base do próximo salvar.
-        if (formData.variants.length > 0 || deletedVariantIds.length > 0) {
+        if (
+          !salvarEmTransacao &&
+          (formData.variants.length > 0 || deletedVariantIds.length > 0)
+        ) {
           try {
             const relido = await fetchProduct(productId);
             if (relido) setCurrentProduct(relido);
@@ -2479,6 +2498,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onNavigate("admin-products", undefined, true);
       }, 1500);
     } catch (error) {
+      if ((error as { gradeGravada?: boolean })?.gradeGravada) {
+        setPrecisaRecarregar(true);
+        const chaveDoRascunho = chaveDoRascunhoDoProduto(userId, productId);
+        if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
+      }
       const atual = (error as { produtoAtual?: Product })?.produtoAtual;
       if (atual) {
         const { stock, variants } = camposDoFormularioDoProduto(atual);

@@ -27,12 +27,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchProduct = vi.fn();
 const updateProduct = vi.fn();
+const salvarProdutoComGrade = vi.fn();
 const upsertVariants = vi.fn();
 const deleteVariants = vi.fn();
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct: vi.fn(),
     updateProduct,
+    salvarProdutoComGrade,
     upsertVariants,
     deleteVariants,
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -136,6 +138,12 @@ describe("AdminProductFormView — salvar não devolve o estoque que a tela leu 
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    salvarProdutoComGrade.mockResolvedValue({
+      produto: undefined,
+      recusadas: [],
+    });
     updateProduct.mockResolvedValue(undefined);
     upsertVariants.mockResolvedValue(undefined);
     deleteVariants.mockResolvedValue(undefined);
@@ -204,10 +212,11 @@ describe("AdminProductFormView — salvar não devolve o estoque que a tela leu 
   }
 
   const remendoEnviado = () =>
-    updateProduct.mock.calls[0]?.[1] as Record<string, unknown>;
+    (salvarProdutoComGrade.mock.calls[0]?.[1] ??
+      updateProduct.mock.calls[0]?.[1]) as Record<string, unknown>;
 
   const variacoesEnviadas = () =>
-    (upsertVariants.mock.calls[0]?.[1] ?? []) as Array<
+    (salvarProdutoComGrade.mock.calls[0]?.[2].variantes ?? []) as Array<
       Record<string, unknown> & { id: string }
     >;
 

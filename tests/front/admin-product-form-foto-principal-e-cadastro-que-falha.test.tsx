@@ -24,6 +24,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   addProduct: vi.fn(),
   updateProduct: vi.fn(),
+  salvarProdutoComGrade: vi
+    .fn()
+    .mockResolvedValue({ produto: undefined, recusadas: [] }),
   upsertVariants: vi.fn(),
   fetchProduct: vi.fn(),
   rpc: vi.fn(),
@@ -34,6 +37,7 @@ vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct: mocks.addProduct,
     updateProduct: mocks.updateProduct,
+    salvarProdutoComGrade: mocks.salvarProdutoComGrade,
     upsertVariants: mocks.upsertVariants,
     deleteVariants: vi.fn().mockResolvedValue(undefined),
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -174,6 +178,8 @@ describe("AdminProductFormView — foto principal na edição e cadastro que nã
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     vi.stubGlobal(
       "IntersectionObserver",
       class {
@@ -288,11 +294,12 @@ describe("AdminProductFormView — foto principal na edição e cadastro que nã
         botaoPorTexto("Salvar")?.click();
       });
       await esperarAte(() => {
-        expect(mocks.upsertVariants).toHaveBeenCalledTimes(1);
+        expect(mocks.salvarProdutoComGrade).toHaveBeenCalledTimes(1);
       });
 
-      expect(mocks.updateProduct).toHaveBeenCalledTimes(1);
-      expect(mocks.updateProduct.mock.calls[0][1].images).toEqual([
+      expect(mocks.updateProduct).not.toHaveBeenCalled();
+      expect(mocks.upsertVariants).not.toHaveBeenCalled();
+      expect(mocks.salvarProdutoComGrade.mock.calls[0][1].images).toEqual([
         FOTO_C,
         FOTO_A,
         FOTO_B,
@@ -300,7 +307,7 @@ describe("AdminProductFormView — foto principal na edição e cadastro que nã
       // A variação "Rosa" era da foto B e segue sendo da foto B — mesmo que a
       // foto B tenha passado da posição 2 para a 3.
       const variacoesGravadas: { imageUrl?: string }[] =
-        mocks.upsertVariants.mock.calls[0][1];
+        mocks.salvarProdutoComGrade.mock.calls[0][2].variantes;
       expect(variacoesGravadas.map((v) => v.imageUrl)).toEqual([FOTO_B]);
     });
   });
