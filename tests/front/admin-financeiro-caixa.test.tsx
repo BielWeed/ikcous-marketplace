@@ -369,7 +369,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
 
   it.each([
     { valor: "49050", rotulo: "Sobra", cor: "text-amber-400" },
-    { valor: "48050", rotulo: "Bateu", cor: "text-emerald-400" },
+    { valor: "48050", rotulo: "Bateu", cor: "text-zinc-400" },
   ])("prévia $rotulo usa $cor", async ({ valor, rotulo, cor }) => {
     await abrirSessao();
     await clicar(botaoEm(hospedeiro, "Fechar caixa"));

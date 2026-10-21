@@ -40,7 +40,7 @@ import { papel } from "@/lib/papeis-aria-da-tabela";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { precoVendido } from "@/lib/preco-vendido";
 import { supabase } from "@/lib/supabase";
-import { classeDoTexto } from "@/lib/tons-de-estado";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { formatCurrency } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Address, CartItem, Order, View } from "@/types";
@@ -837,7 +837,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     Total já comprado
                   </span>
                   <span
-                    className={`text-xl font-black tracking-tight sm:text-2xl ${classeDoTexto("positivo")}`}
+                    className={`text-xl font-black tracking-tight sm:text-2xl ${classeDoTexto(tomDoValor(resumo.totalGasto))}`}
                   >
                     {formatCurrency(resumo.totalGasto)}
                   </span>

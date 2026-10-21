@@ -341,7 +341,7 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
               "font-bold",
               situacao === "quebra" && classeDoTexto("negativo"),
               situacao === "sobra" && classeDoTexto("atencao"),
-              situacao === "bateu" && classeDoTexto("positivo"),
+              situacao === "bateu" && classeDoTexto("neutro"),
             )}
           >
             {sessao.diferenca === null ? (

@@ -66,6 +66,50 @@ it("a receber e a pagar seguem entrada e saída no resumo, com saldo positivo ve
     .toBe(true);
 });
 
+it("totais zerados da visão geral são cinza, não entrada e saída", async () => {
+  rpc.mockResolvedValue({
+    data: { saldo_total: 0, a_pagar: { total: 0 }, a_receber: { total: 0 } },
+    error: null,
+  });
+  await montar(
+    <AbaVisao
+      ativo
+      intervalo={{ inicio: "2026-09-01", fim: "2026-09-30" }}
+      hoje="2026-09-30"
+      versao={0}
+      contas={[]}
+      irParaAba={noop}
+      verPrevistos={noop}
+    />,
+  );
+  expect(valor("A receber").classList.contains("text-zinc-400")).toBe(true);
+  expect(valor("A pagar").classList.contains("text-zinc-400")).toBe(true);
+});
+
+it.each(["entrada", "saida"] as const)(
+  "lista vazia de previstos %s tem total cinza",
+  async (lado) => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    await montar(
+      <AbaPrevistos
+        ativo
+        hoje="2026-09-30"
+        versao={0}
+        lado={lado}
+        aoMudarLado={noop}
+        abrirFolha={noop}
+        aoNovoLancamento={noop}
+        aoAbrirPedido={noop}
+      />,
+    );
+    expect(
+      valor(
+        lado === "entrada" ? "Total a receber" : "Total a pagar",
+      ).classList.contains("text-zinc-400"),
+    ).toBe(true);
+  },
+);
+
 it.each([
   {
     lado: "entrada" as const,
@@ -131,7 +175,7 @@ it.each([
 it.each([
   { contado: 90, cor: "text-red-400" },
   { contado: 110, cor: "text-amber-400" },
-  { contado: 100, cor: "text-emerald-400" },
+  { contado: 100, cor: "text-zinc-400" },
 ])(
   "diferença do histórico: contado $contado usa $cor",
   async ({ contado, cor }) => {

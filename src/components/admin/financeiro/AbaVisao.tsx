@@ -23,7 +23,7 @@ import {
   serieDoFluxoDeCaixa,
   ultimos30Dias,
 } from "@/lib/financeiro";
-import { classeDoTexto } from "@/lib/tons-de-estado";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type {
   ContaFinanceira,
@@ -89,7 +89,9 @@ function CartaoDePrevistos({
             sentido={lado === "entrada" ? 1 : -1}
             className={cn(
               "text-sm font-bold",
-              classeDoTexto(lado === "entrada" ? "positivo" : "negativo"),
+              classeDoTexto(
+                tomDoValor(totais.total, { invertido: lado === "saida" }),
+              ),
             )}
           />
           <ChevronRight aria-hidden="true" className="size-4 text-zinc-400" />

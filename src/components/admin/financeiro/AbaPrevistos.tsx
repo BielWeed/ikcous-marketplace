@@ -21,7 +21,7 @@ import {
   totaisDosPrevistos,
 } from "@/lib/financeiro";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
-import { classeDoTexto } from "@/lib/tons-de-estado";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { DataIso, LancamentoPrevisto } from "@/types/financeiro";
 import type { AbrirFolha, LadoDosPrevistos } from "./navegacao";
@@ -282,7 +282,9 @@ export function AbaPrevistos({
               sentido={aReceber ? 1 : -1}
               className={cn(
                 "mt-4 block text-3xl font-bold",
-                classeDoTexto(aReceber ? "positivo" : "negativo"),
+                classeDoTexto(
+                  tomDoValor(totais.total, { invertido: !aReceber }),
+                ),
               )}
             />
             <dl className="mt-6 flex flex-col gap-4 text-sm">

@@ -699,7 +699,7 @@ function ComparativoDoFechamento({
             "text-2xl font-bold",
             situacao === "quebra" && classeDoTexto("negativo"),
             situacao === "sobra" && classeDoTexto("atencao"),
-            situacao === "bateu" && classeDoTexto("positivo"),
+            situacao === "bateu" && classeDoTexto("neutro"),
           )}
         >
           {diferenca === null ? "—" : <Dinheiro valor={diferenca} comSinal />}

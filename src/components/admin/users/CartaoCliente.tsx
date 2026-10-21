@@ -2,7 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { formatarInteiro } from "@/lib/crm";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
-import { classeDoTexto } from "@/lib/tons-de-estado";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { Customer } from "@/utils/admin_cache";
@@ -190,7 +190,7 @@ export const CartaoCliente = memo(function CartaoCliente({
           <span
             className={cn(
               "whitespace-nowrap text-lg font-bold leading-tight tabular-nums",
-              classeDoTexto("positivo"),
+              classeDoTexto(tomDoValor(Number(customer.total_spent || 0))),
               detalhado && "text-xl",
             )}
           >

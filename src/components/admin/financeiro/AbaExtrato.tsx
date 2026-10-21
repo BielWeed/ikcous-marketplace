@@ -131,7 +131,7 @@ function LinhaDoExtratoItem({
             )}
           />
           {previsto ? <Etiqueta tom="aviso">Previsto</Etiqueta> : null}
-          {cancelado ? <Etiqueta>Cancelado</Etiqueta> : null}
+          {cancelado ? <Etiqueta tom="perigo">Cancelado</Etiqueta> : null}
         </span>
         <ChevronRight
           aria-hidden="true"
