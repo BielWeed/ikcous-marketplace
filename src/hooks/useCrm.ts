@@ -1,6 +1,7 @@
 import { type DashboardStats, useAnalytics } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
   lerClientesDoCrm,
   lerVisaoDoCrm,
@@ -316,7 +317,7 @@ export function useDashboardClassico(
   useEffect(() => {
     if (!session || !active) return;
 
-    const bc = new BroadcastChannel("ikcous_admin_dashboard_realtime");
+    const bc = criarCanalDeAbas("ikcous_admin_dashboard_realtime");
     let ordersChannel: ReturnType<typeof supabase.channel> | null = null;
     let productsChannel: ReturnType<typeof supabase.channel> | null = null;
     let reviewsChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -325,7 +326,7 @@ export function useDashboardClassico(
     if (isLeader) {
       const handleDbChange = () => {
         triggerRealtimeRefresh();
-        bc.postMessage({ type: "dashboard_refresh" });
+        bc?.postMessage({ type: "dashboard_refresh" });
       };
 
       ordersChannel = supabase
@@ -368,7 +369,7 @@ export function useDashboardClassico(
           handleDbChange,
         )
         .subscribe();
-    } else {
+    } else if (bc) {
       bc.onmessage = (event) => {
         if (event.data?.type === "dashboard_refresh") {
           triggerRealtimeRefresh();
@@ -377,7 +378,7 @@ export function useDashboardClassico(
     }
 
     return () => {
-      bc.close();
+      bc?.close();
       if (ordersChannel) supabase.removeChannel(ordersChannel);
       if (productsChannel) supabase.removeChannel(productsChannel);
       if (reviewsChannel) supabase.removeChannel(reviewsChannel);

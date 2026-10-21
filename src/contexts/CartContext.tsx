@@ -2,6 +2,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import type { OrigemDaEscolhaDoFrete } from "@/lib/auto-selecao-de-frete";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
   type CatalogoLido,
   aplicarCatalogoAoCarrinho,
@@ -34,7 +35,7 @@ import { z } from "zod";
 const MAX_ITEM_QUANTITY = 500; // Nuclear deterrent against inflation
 
 const cartItemSchema = z.object({
-  product: z.any(),
+  product: z.custom<Product>((v) => typeof v === "object" && v !== null),
   quantity: z.number().int().positive().max(MAX_ITEM_QUANTITY),
   variantId: z.string().optional().nullable(),
   // Achado da revisão (17/08/2026): sem esta chave o Zod descarta
@@ -744,10 +745,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Realtime subscription for cart updates
   useEffect(() => {
-    const cartBc =
-      typeof window !== "undefined"
-        ? new BroadcastChannel("ikcous_cart_sync")
-        : null;
+    const cartBc = criarCanalDeAbas("ikcous_cart_sync");
 
     if (userId) {
       let channel: any = null;

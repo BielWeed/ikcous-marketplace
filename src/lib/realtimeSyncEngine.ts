@@ -16,8 +16,10 @@
  * @module realtimeSyncEngine
  */
 
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { cupomDoBanco } from "@/lib/cupom-do-banco";
 import { DataVault, type StoreName } from "@/lib/dataVault";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
@@ -198,6 +200,14 @@ export const TABLE_CONFIGS: TableConfig[] = [
       storeName: raw.store_name,
       storeCity: raw.store_city,
       storeState: raw.store_state,
+      storeAddress: raw.store_address,
+      storeDescription: raw.store_description,
+      storeLegalName: raw.store_legal_name,
+      storeLegalDocument: raw.store_legal_document,
+      storeSupportEmail: raw.store_support_email,
+      formasPagamentoEntrega: formasPagamentoNaEntregaValidas(
+        raw.formas_pagamento_entrega,
+      ),
     }),
   },
   {
@@ -233,10 +243,7 @@ const JANELA_MINIMA_ENTRE_GATILHOS_MS = 60_000;
 let _ultimoGatilhoDeRodada = 0;
 let _connectivityListeners: (() => void) | null = null;
 const _listeners = new Set<SyncCallback>();
-const bc =
-  typeof window !== "undefined"
-    ? new BroadcastChannel("ikcous_realtime_db_sync")
-    : null;
+const bc = criarCanalDeAbas("ikcous_realtime_db_sync");
 
 // ─── Engine ──────────────────────────────────────────────────────────────────
 
