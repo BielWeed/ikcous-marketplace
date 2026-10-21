@@ -43,7 +43,9 @@ describe("a tela do PDV funciona deitada sem cortar conteúdo", () => {
 
   it("altura externa travada só é aceita com rolagem dos dois corpos", () => {
     const css = ler("src/components/admin/pdv/pdv.css");
-    expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*overflow:\s*hidden/);
+    // A altura externa é travada, então o próprio viewport rola quando o
+    // mínimo das regiões não cabe (`hidden` cortava a lista em tela deitada).
+    expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*overflow-y:\s*auto/);
     for (const classe of ["pdv-checkout-body", "pdv-variation-options"]) {
       const bloco = css.match(new RegExp(`\\.${classe}\\s*\\{([^}]+)\\}`))?.[1];
       expect(bloco, classe).toMatch(/min-height:\s*0/);
