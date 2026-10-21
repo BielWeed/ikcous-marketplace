@@ -18,8 +18,8 @@
  *   — copiado campo a campo, inclusive o que parece estranho e é a razão de
  *   estar aqui: `total_paid_amount: "200.00"` com `total_amount: "50.00"`, e
  *   `paid_amount: "47.28"` no pagamento. A doc publica esses números assim;
- *   comparar `paid_amount`/`total_paid_amount` por IGUALDADE recusaria o
- *   exemplo oficial de um cartão aprovado (regra (g) da prova).
+ *   são números contraditórios num cartão de uma parcela, não prova de juros.
+ *   D7 recusa o exemplo literal e deriva uma base coerente nos testes.
  * - PIX: "Pix Payment Response Structure" de
  *   https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/pix
  *   — a doc só publica o PIX recém-criado (`action_required:waiting_transfer`);

@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   ArrowDownToLine,
@@ -9,6 +11,7 @@ import {
   Store,
 } from "lucide-react";
 
+import { useAuth } from "@/hooks/useAuth";
 import { useCaixaAtual, useHistoricoDoCaixa } from "@/hooks/useFinanceiro";
 import { diferencaDoFechamento, formatarDataHora } from "@/lib/financeiro";
 import { cn } from "@/lib/utils";
@@ -26,6 +29,7 @@ import {
   Etiqueta,
   SeloFinanceiro,
 } from "./partes";
+import { esquecerTentativasDeSessoesFechadas } from "./tentativasDoCaixa";
 
 function LinhaDaConta({
   rotulo,
@@ -89,7 +93,7 @@ function CaixaAberto({
               className="text-4xl font-black tracking-tighter text-white"
             />
             <p className="text-xs font-medium text-zinc-400">
-              Inclui as vendas em dinheiro registradas nesta sessão.
+              Inclui vendas em dinheiro desta sessão.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
@@ -97,6 +101,7 @@ function CaixaAberto({
                 onClick={() =>
                   abrirFolha({
                     tipo: "caixa-movimentar",
+                    sessaoId: caixa.id,
                     movimento: "sangria",
                     esperado: caixa.esperado,
                     contaDoCaixa: caixa.contaId,
@@ -112,6 +117,7 @@ function CaixaAberto({
                 onClick={() =>
                   abrirFolha({
                     tipo: "caixa-movimentar",
+                    sessaoId: caixa.id,
                     movimento: "suprimento",
                     esperado: caixa.esperado,
                     contaDoCaixa: caixa.contaId,
@@ -200,8 +206,8 @@ function CaixaAberto({
       <CartaoSecao titulo="Movimentos desta sessão">
         {caixa.movimentos.length === 0 ? (
           <p className="text-xs text-zinc-400">
-            Nenhuma sangria ou suprimento ainda. As vendas em dinheiro entram no
-            esperado sozinhas.
+            Nenhuma sangria ou suprimento. As vendas em dinheiro somam no
+            esperado.
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-admin-border">
@@ -263,9 +269,8 @@ function CaixaFechado({ abrirFolha }: { readonly abrirFolha: AbrirFolha }) {
         <div>
           <p className="text-lg font-black text-white">Caixa fechado</p>
           <p className="mx-auto mt-1 max-w-md text-xs text-zinc-400">
-            Abra o caixa no começo do dia contando o troco da gaveta. Durante o
-            dia as vendas em dinheiro somam no esperado; no fim, você conta de
-            novo e o app mostra se sobrou ou faltou.
+            Abra contando o troco. As vendas em dinheiro somam no esperado. No
+            fim do dia, conte de novo: o app mostra se sobrou ou faltou.
           </p>
         </div>
         <button
@@ -354,12 +359,14 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
  * esperado × contado × diferença; embaixo, o histórico das sessões.
  */
 export function AbaCaixa({
+  aoSessaoAtual,
   ativo,
   versao,
   abrirFolha,
   aoNovoLancamento,
   mostrarAcaoFixa = false,
 }: {
+  readonly aoSessaoAtual?: (id: string | null) => void;
   readonly ativo: boolean;
   readonly versao: number;
   readonly abrirFolha: AbrirFolha;
@@ -368,6 +375,25 @@ export function AbaCaixa({
 }) {
   const atual = useCaixaAtual(ativo, versao);
   const historico = useHistoricoDoCaixa(ativo, versao);
+  const { user } = useAuth();
+  const historicoLido = useRef<SessaoDeCaixa[] | null>(null);
+  useEffect(() => {
+    if (
+      ativo &&
+      historico.dados &&
+      !historico.carregando &&
+      !historico.erro &&
+      historicoLido.current !== historico.dados
+    ) {
+      historicoLido.current = historico.dados;
+      esquecerTentativasDeSessoesFechadas(user?.id ?? null, historico.dados);
+    }
+  }, [ativo, historico.dados, historico.carregando, historico.erro, user?.id]);
+  useEffect(() => {
+    if (ativo && atual.dados && !atual.carregando && !atual.erro) {
+      aoSessaoAtual?.(atual.dados.sessao?.id ?? null);
+    }
+  }, [ativo, atual.dados, atual.carregando, atual.erro, aoSessaoAtual]);
 
   return (
     <div className="flex flex-col gap-7">

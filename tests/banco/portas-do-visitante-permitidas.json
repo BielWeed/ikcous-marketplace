@@ -291,6 +291,14 @@
       "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
     },
     {
+      "funcao": "public.fin_caixa_fechar_sessao(p_sessao_id uuid, p_valor_contado numeric, p_observacao text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "RPC aditiva do caixa por sessao (20261252): exige is_admin e is_admin_atual antes de fechar ou repetir o resultado; authenticated alcanca o gate, o visitante nao executa."
+    },
+    {
       "funcao": "public.fin_caixa_historico(p_limite integer)",
       "executa": ["authenticated"],
       "tipo": "leitura",
@@ -305,6 +313,14 @@
       "secdef": true,
       "situacao": "logado",
       "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_caixa_movimentar_com_chave(p_sessao_id uuid, p_chave uuid, p_tipo text, p_valor numeric, p_descricao text, p_conta_contrapartida uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "RPC aditiva de movimento por sessao e chave (20261252): exige is_admin e is_admin_atual inclusive no replay; authenticated alcanca o gate, o visitante nao executa."
     },
     {
       "funcao": "public.fin_categoria_salvar(p jsonb)",

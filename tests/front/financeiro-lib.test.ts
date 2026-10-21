@@ -24,6 +24,7 @@ import {
   parseContas,
   parseDre,
   parseExtrato,
+  parseFechamento,
   parsePrevistos,
   parseResumo,
   parseValorBR,
@@ -737,6 +738,46 @@ describe("formulários", () => {
 });
 
 describe("caixa e erros", () => {
+  it("aceita replay extra no resultado do fechamento", () => {
+    expect(
+      parseFechamento({
+        id: "sessao-1",
+        esperado: 100,
+        contado: 90,
+        diferenca: -10,
+        replay: true,
+      }),
+    ).toEqual({
+      id: "sessao-1",
+      esperado: 100,
+      contado: 90,
+      diferenca: -10,
+    });
+  });
+
+  it.each(["fechamento_divergente", "tentativa_divergente"])(
+    "traduz DETAIL %s como conflito, não conexão",
+    (details) => {
+      expect(
+        mensagemDeErroFinanceiro({
+          code: "22023",
+          details,
+          message: "mensagem técnica",
+        }),
+      ).toBe(
+        "Esta operação já foi registrada com valores diferentes. Confira o histórico antes de tentar de novo.",
+      );
+    },
+  );
+
+  it("reconhece função ausente pela mensagem mesmo sem código", () => {
+    expect(
+      mensagemDeErroFinanceiro({
+        message: "Could not find the function public.fin_caixa_fechar_sessao",
+      }),
+    ).toBe("O Financeiro ainda não foi instalado no banco desta loja.");
+  });
+
   it("diferença do fechamento", () => {
     expect(diferencaDoFechamento(480.5, 470)).toEqual({
       diferenca: -10.5,

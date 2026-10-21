@@ -37,6 +37,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/banco/**"
+      - "tests/banco/gerar-tipos-efemeros.cjs"
+      - "tests/ci_tipos_efemeros_test.ts"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
       # O ensaio da anonimizacao le o SQL direto deste roteiro: mudar o roteiro dispara a prova.
@@ -138,6 +140,10 @@ on:
       - "scripts/publicacao/consultas/53b-antes-faturamento-potencial-base-vigente.sql"
       - "scripts/publicacao/consultas/54a-conferir-lucro-do-estoque-aplicado.sql"
       - "scripts/publicacao/consultas/54b-antes-lucro-do-estoque-base-vigente.sql"
+      - "scripts/publicacao/consultas/55a-conferir-intencao-do-caixa-aplicado.sql"
+      - "scripts/publicacao/consultas/55b-antes-intencao-do-caixa-base-vigente.sql"
+      - "scripts/publicacao/consultas/56a-conferir-motivo-da-recusa-do-cartao-aplicado.sql"
+      - "scripts/publicacao/consultas/56b-antes-motivo-da-recusa-do-cartao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -147,6 +153,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/banco/**"
+      - "tests/banco/gerar-tipos-efemeros.cjs"
+      - "tests/ci_tipos_efemeros_test.ts"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
       - "docs/runbooks/atender-pedido-de-privacidade.md"
@@ -245,6 +253,10 @@ on:
       - "scripts/publicacao/consultas/53b-antes-faturamento-potencial-base-vigente.sql"
       - "scripts/publicacao/consultas/54a-conferir-lucro-do-estoque-aplicado.sql"
       - "scripts/publicacao/consultas/54b-antes-lucro-do-estoque-base-vigente.sql"
+      - "scripts/publicacao/consultas/55a-conferir-intencao-do-caixa-aplicado.sql"
+      - "scripts/publicacao/consultas/55b-antes-intencao-do-caixa-base-vigente.sql"
+      - "scripts/publicacao/consultas/56a-conferir-motivo-da-recusa-do-cartao-aplicado.sql"
+      - "scripts/publicacao/consultas/56b-antes-motivo-da-recusa-do-cartao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -305,6 +317,18 @@ jobs:
       - name: Aplica as migrations do zero
         id: aplica
         run: node tests/banco/aplicar-migrations.cjs supabase/migrations
+      - name: Gera tipos do schema public efêmero
+        id: tipos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/gerar-tipos-efemeros.cjs
+      - name: Guarda tipos do schema public efêmero
+        if: ${{ !cancelled() && steps.tipos.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tipos-public-${{ github.sha }}
+          path: ${{ runner.temp }}/tipos-efemeros
+          if-no-files-found: error
+          retention-days: 1
       # TODAS as provas abaixo rodam mesmo depois de uma vermelha (R2 da
       # revisão Opus de 14d77a5b): sem isto, a 1a prova que falha esconde as
       # seguintes (o "pulado" do Actions), e um vermelho conhecido numa prova
@@ -313,6 +337,23 @@ jobs:
       # `!cancelled()` só troca o "pare no primeiro erro" por "rode todas e
       # reprove no fim". Sem as migrations aplicadas, nenhuma prova roda (o
       # passo `aplica` já reprovou o job).
+      # Intencao do caixa (frente caixa-db, plano 2026-10-20-noturno-onda2-caixa-db, CX1/CX2):
+      # CX1 = retry do fechamento de S1 depois que S2 abriu nao pode tocar S2; CX2 = sangria
+      # de 50 (saldo 300) repetida com a mesma chave grava UMA transferencia. O seletor
+      # CAIXA_INTENCAO_ALVO e' do INSTRUMENTO (qual RPC a prova chama), nao do banco nem da
+      # guarda. ETAPA A (RED observado no run 39418487244, SHA 4a909274): alvo `legado` caiu
+      # em [DANO] em CX1 e CX2. ETAPA B: alvo `chave` (migration 20261252000000) -> CX1/CX2
+      # passam e o legado segue como CONTROLE explicito dentro da prova. CLONE proprio.
+      - name: Prova viva da intencao do caixa (CX1/CX2, alvo chave)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        env:
+          CAIXA_INTENCAO_ALVO: chave
+        run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-intencao-viva.cjs
+      # Portao 56: base anterior do zero, apply real, CHECK afrouxada e rollback em banco novo.
+      # BLOQUEANTE; so o Postgres efemero do job, com os mesmos gatilhos das consultas 56a/56b.
+      - name: Prova viva do portao do motivo da recusa do cartao (consultas 56a e 56b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/motivo-da-recusa-portao-viva.cjs
       # Receita com custo usa preco efetivo por variante (251): cobertura, zero legitimo,
       # prejuizo, contrato historico, portoes oficiais, rollback e mutantes. CLONE proprio.
       - name: Prova viva do lucro do estoque (migration 20261251)

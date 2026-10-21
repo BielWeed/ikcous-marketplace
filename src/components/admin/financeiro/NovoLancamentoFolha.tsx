@@ -1,3 +1,5 @@
+import { gerarUuidV4 as gerarChaveDaTentativa } from "@/lib/uuid-v4";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -44,20 +46,6 @@ import {
 } from "./tentativasEmAberto";
 
 const ID_FORM = "fin-novo-lancamento";
-
-/** Em HTTP local, randomUUID pode faltar; getRandomValues ainda gera UUID v4. */
-function gerarChaveDaTentativa(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
 
 const PARCELAS = Array.from({ length: MAXIMO_DE_PARCELAS }, (_, i) => i + 1);
 

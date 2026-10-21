@@ -1084,7 +1084,7 @@ for (const rota of ["payment", "order"] as const) {
   });
 }
 
-Deno.test("rota payment: MP aprovou R$ 100 de um pedido de R$ 149,90 -> NÃO confirma, sem push, 200 'valor divergente'", async () => {
+Deno.test("rota payment: MP aprovou R$ 100 de um pedido de R$ 149,90 -> NÃO confirma, avisa divergência (não pedido pago), 200", async () => {
   const registro = { chamadasRpc: [], chamadasFrom: [] };
   const pedido = {
     id: UUID_PEDIDO,
@@ -1105,8 +1105,13 @@ Deno.test("rota payment: MP aprovou R$ 100 de um pedido de R$ 149,90 -> NÃO con
   const enviarPush = async (args: unknown) => {
     chamadasPush.push(args);
   };
-
-  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  const avisosAdmin = [];
+  const resposta = await handler(req, {
+    supabase, fetchImpl, enviarPush,
+    enviarPushContado: async ({ aviso }) => { avisosAdmin.push(aviso); return 1; },
+  });
+  assertEquals(avisosAdmin.length, 1);
+  assertEquals(avisosAdmin[0].body.includes("valor divergente"), true);
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
@@ -6354,6 +6359,32 @@ function orderDoMp(status: string, statusDetail: string, tipo: string): Record<s
   };
 }
 
+for (const status of ["failed", "processing"]) {
+  Deno.test(`D4 webhook: ${status} guarda detalhe do pagamento reconsultado, não o corpo forjável`, async () => {
+    ambienteDoWebhook();
+    const supabase = clienteFalso({ rpcResultado: "recusado", pedido: { id: UUID_PEDIDO, total: 149.9 },
+      registro: { chamadasRpc: [], chamadasLiberar: [], chamadasFrom: [] } });
+    const original = supabase.from.bind(supabase);
+    const linhas = [];
+    supabase.from = (tabela) => tabela === "tentativas_cartao_diagnostico" ? {
+      upsert: async (linha) => { linhas.push(linha); return { error: null }; },
+    } : original(tabela);
+    const o = orderDoMp(status, status, "credit_card");
+    o.transactions.payments[0].amount = "149.90";
+    o.transactions.payments[0].payment_method.installments = 2;
+    o.transactions.payments[0].status_detail = status === "failed" ? "cc_rejected_high_risk" : "pending_review_manual";
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, {
+      corpoExtra: { type: "order", status_detail: "texto_forjado" },
+    });
+    const r = await handler(req, { supabase, fetchImpl: fetchConsulta(200, o), enviarPush: async () => {} });
+    assertEquals(r.status, 200);
+    assertEquals(linhas.length, 1);
+    assertEquals(linhas[0].pedido_id, UUID_PEDIDO);
+    assertEquals(linhas[0].mp_order_id, ID_ORDER_CARTAO_MP);
+    assertEquals(linhas[0].status_detail, o.transactions.payments[0].status_detail);
+  });
+}
+
 function ambienteDoWebhook() {
   Deno.env.set("MP_WEBHOOK_SECRET", SEGREDO);
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
@@ -7794,12 +7825,185 @@ Deno.test("rota payment — pagamento RECUSADO com id CLÁSSICO gravado (PIX leg
 // `total_amount`); se alguém trocar a leitura pelo valor PAGO, o 2x e o 3x
 // deixam de confirmar e o dinheiro do cliente fica parado sem pedido pago.
 // Os valores pagos (164,35 / 168,49) são FIXTURES SINTÉTICAS, não taxas
-// medidas no MP. Premissa declarada, NÃO provada por esta suíte: o MP mantém
-// o `total_amount` sem juros. Aprovação de um 2x/3x em sandbox é compatível
-// com ela, mas não a prova sozinha (nem prova que houve juros): só a leitura
-// dos campos da order (`total_amount`/`amount` contra
-// `total_paid_amount`/`paid_amount`) e dos valores por parcela do gateway
-// comprova.
+// medidas no MP. D7 aceita também raiz financiada, mas só com crédito
+// parcelado, valor por parcela coerente com a captura e teto de 50%.
+// Não dependemos de a raiz continuar sem juros; campos ausentes não
+// autorizam aceitar excedente.
+for (const principal of ["37.27", "40.86"]) {
+  for (const parcela of [null, "18.64", "20.43"]) {
+    Deno.test(`R1 webhook: principal ${principal}, captura 40,86, parcela ${parcela ?? "ausente"}`, async () => {
+      ambienteDoWebhook();
+      const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+      const supabase = clienteFalso({ rpcResultado: "pago", registro,
+        pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP } });
+      const o = orderParceladaComJuros(2, "40.86");
+      o.total_amount = principal;
+      o.transactions.payments[0].amount = principal;
+      if (parcela === null) delete o.transactions.payments[0].payment_method.installment_amount;
+      else o.transactions.payments[0].payment_method.installment_amount = parcela;
+      const logs = [];
+      const warn = console.warn;
+      console.warn = (...args) => logs.push(args);
+      let r;
+      try {
+        r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+          supabase, fetchImpl: fetchConsulta(200, o), enviarPush: async () => {}, enviarComprovante: async () => {},
+          enviarPushContado: async () => 1,
+        });
+      } finally { console.warn = warn; }
+      const esperado = principal === "37.27" || parcela === "20.43";
+      assertEquals(r.status, 200);
+      assertEquals(registro.chamadasRpc.length, esperado ? 1 : 0);
+      const avisos = logs.filter((l) => l[0] === "pagamento: juros_sem_parcela_conferida");
+      assertEquals(avisos.length, principal === "37.27" && parcela !== "20.43" ? 1 : 0);
+      if (avisos.length) assertEquals(avisos[0][1], { pedido: UUID_PEDIDO, total: 37.27, capturado: 40.86, parcelas: 2 });
+    });
+  }
+}
+
+Deno.test("REV1 webhook: estorno da order financiada já paga passa pela mesma conferência; Pix e à vista não", async () => {
+  for (const [tipo, parcelas, estado, esperado] of [
+    ["credit_card", 2, "pago", true],
+    ["credit_card", 2, "pago_apos_expirar", true],
+    ["credit_card", 2, "aguardando", false],
+    ["credit_card", 1, "pago", false],
+    ["bank_transfer", 2, "pago", false],
+  ]) {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasAviso: [] };
+    const supabase = clienteFalso({ rpcResultado: "estornado", registro,
+      pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP, payment_status: estado } });
+    const o = orderParceladaComJuros(parcelas, "40.86");
+    o.total_amount = "40.86";
+    o.status = "refunded";
+    o.status_detail = "refunded";
+    o.transactions.payments[0].amount = "40.86";
+    o.transactions.payments[0].status = "refunded";
+    o.transactions.payments[0].status_detail = "refunded";
+    o.transactions.payments[0].payment_method.type = tipo;
+    const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
+    });
+    assertEquals(r.status, 200);
+    assertEquals(registro.chamadasRpc.map((c) => c.args.p_status), esperado ? ["estornado"] : [], `${tipo}/${parcelas}/${estado}`);
+  }
+});
+
+Deno.test("REV1 webhook: pedido já estornado aceita o refund financiado e alcança a RPC de estorno", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasAviso: [] };
+  const supabase = clienteFalso({ rpcResultado: "estornado", registro,
+    pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP, payment_status: "estornado" } });
+  const o = orderParceladaComJuros(2, "40.86");
+  o.total_amount = "40.86";
+  o.status = "refunded";
+  o.status_detail = "refunded";
+  o.transactions.payments[0].amount = "40.86";
+  o.transactions.payments[0].status = "refunded";
+  o.transactions.payments[0].status_detail = "refunded";
+  const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+    supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
+  });
+  assertEquals(r.status, 200);
+  assertEquals(registro.chamadasRpc.map((c) => ({
+    pedido: c.args.p_order_id, pagamento: c.args.p_payment_id, status: c.args.p_status,
+  })), [{ pedido: UUID_PEDIDO, pagamento: ID_ORDER_CARTAO_MP, status: "estornado" }]);
+});
+
+for (const [rotulo, campo] of [
+  ["nulo", { payment_status: null }],
+  ["ausente", {}],
+  ["desconhecido", { payment_status: "estado_desconhecido" }],
+]) {
+  Deno.test(`REV1 webhook: payment_status ${rotulo} não recebe prova de juros no refund financiado`, async () => {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasAviso: [] };
+    const supabase = clienteFalso({ rpcResultado: "estornado", registro,
+      pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP, ...campo } });
+    const o = orderParceladaComJuros(2, "40.86");
+    o.total_amount = "40.86";
+    o.status = "refunded";
+    o.status_detail = "refunded";
+    o.transactions.payments[0].amount = "40.86";
+    o.transactions.payments[0].status = "refunded";
+    o.transactions.payments[0].status_detail = "refunded";
+    const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
+    });
+    assertEquals(r.status, 200);
+    assertEquals(registro.chamadasRpc, []);
+    assertEquals((await r.json()).ignorado, "valor divergente");
+  });
+}
+
+Deno.test("REV2 webhook: aguardando 3DS com total financiado não envia push nem reserva aviso", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasAviso: [] };
+  const supabase = clienteFalso({ registro,
+    pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP } });
+  const o = orderParceladaComJuros(2, "40.86");
+  o.total_amount = "40.86";
+  o.status = "action_required";
+  o.status_detail = "pending_challenge";
+  o.transactions.payments[0].status = "action_required";
+  o.transactions.payments[0].status_detail = "pending_challenge";
+  o.transactions.payments[0].amount = "40.86";
+  const alertas = [];
+  const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+    supabase, fetchImpl: fetchConsulta(200, o),
+    enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+  });
+  assertEquals(r.status, 200);
+  assertEquals(alertas, []);
+  assertEquals(registro.chamadasAviso, []);
+  assertEquals(registro.chamadasRpc, []);
+});
+
+Deno.test("R1 webhook: divergência avisa o admin uma vez, sem confirmar", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasAviso: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro,
+    pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP } });
+  const o = orderParceladaComJuros(2, "55.91");
+  o.total_amount = "37.27";
+  o.transactions.payments[0].amount = "37.27";
+  delete o.transactions.payments[0].payment_method.installment_amount;
+  const alertas = [];
+  for (let vez = 0; vez < 2; vez++) {
+    const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase, fetchImpl: fetchConsulta(200, o),
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+    });
+    assertEquals((await r.json()).ignorado, "valor divergente");
+  }
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(alertas.length, 1);
+  assertEquals(alertas[0].title, "Pagamento precisa de conferência");
+  assertEquals(alertas[0].body.includes("valor divergente"), true);
+});
+
+Deno.test("D7 webhook: raiz financiada confirma; acima do teto ou captura menor segue em revisão", async () => {
+  for (const [total, pago, parcela, esperado] of [
+    ["164.35", "164.35", "82.18", true],
+    ["240.00", "240.00", "120.00", false],
+    ["149.90", "149.89", "74.95", false],
+  ]) {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+    const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: ID_ORDER_CARTAO_MP };
+    const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+    const o = orderParceladaComJuros(2, pago);
+    o.total_amount = total;
+    o.transactions.payments[0].amount = total;
+    o.transactions.payments[0].payment_method.installment_amount = parcela;
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const r = await handler(req, { supabase, fetchImpl: fetchConsulta(200, o), enviarPush: async () => {}, enviarComprovante: async () => {} });
+    assertEquals(r.status, 200);
+    assertEquals(registro.chamadasRpc.length, esperado ? 1 : 0);
+    if (!esperado) assertEquals((await r.json()).ignorado, "valor divergente");
+  }
+});
+
 const PARCELADOS_COM_JUROS = [
   { parcelas: 1, pago: "149.90" },
   { parcelas: 2, pago: "164.35" },
@@ -7821,7 +8025,7 @@ function orderParceladaComJuros(parcelas: number, pago: string): Record<string, 
         paid_amount: pago,
         status: "processed",
         status_detail: "accredited",
-        payment_method: { id: "master", type: "credit_card", installments: parcelas },
+        payment_method: { id: "master", type: "credit_card", installments: parcelas, installment_amount: (Number(pago) / parcelas).toFixed(2) },
       }],
     },
   };

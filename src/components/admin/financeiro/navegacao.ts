@@ -52,6 +52,7 @@ export type FolhaDoFinanceiro =
   | { readonly tipo: "caixa-abrir" }
   | {
       readonly tipo: "caixa-movimentar";
+      readonly sessaoId: string;
       readonly movimento: "sangria" | "suprimento";
       readonly esperado: number;
       readonly contaDoCaixa: string;

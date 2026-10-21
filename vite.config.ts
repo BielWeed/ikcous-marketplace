@@ -228,6 +228,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
             // Brotli. Lista fechada: não absorver telas ou dependências novas
             // por uma regra genérica de diretório. O nome sem Admin* mantém
             // esta dependência estática do PDV no precache existente.
+            // 20/10/2026: AcaoDaBarra, erro-do-painel e variante-composta eram
+            // chunks de ~0,5 kB cada, citados pelo hash por 2 a 9 chunks e nas
+            // listas de pré-carga: o hash não comprime. Juntos no painel-ui,
+            // o painel caiu 544 B brotli no fixture (471,74 -> 471,20 kB) e o
+            // cliente subiu 13 B. Só entra aqui módulo cujas dependências já
+            // estão em chunk manual (react, react-dom) ou não existem: uma
+            // dependência solta seria arrastada para este chunk e, se a vitrine
+            // a usa, o painel-ui passaria a contar no teto do cliente.
             if (
               /\/src\/components\/admin\/(AdminPageHeader|AdminHelpModal)\.tsx$/.test(
                 normalizedId,
@@ -238,7 +246,10 @@ export default defineConfig(async (context): Promise<UserConfig> => {
               /\/src\/components\/ui\/(select|tabs|badge|card|dropdown-menu)\.tsx$/.test(
                 normalizedId,
               ) ||
-              normalizedId.endsWith("/src/hooks/useScrollRestoration.ts")
+              normalizedId.endsWith("/src/hooks/useScrollRestoration.ts") ||
+              /\/src\/(components\/layouts\/AcaoDaBarra\.tsx|lib\/erro-do-painel\.ts|utils\/variante-composta\.ts)$/.test(
+                normalizedId,
+              )
             ) {
               return "painel-ui";
             }
