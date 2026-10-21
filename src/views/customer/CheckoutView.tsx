@@ -1,8 +1,8 @@
 import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
 import type { CartaoEmCurso } from "@/components/checkout/PagamentoComCartao";
 import {
+  AvisoDePixEncerrado,
   type CategoriaErroPagamento,
-  type MetodoOnline,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
 import {
@@ -66,6 +66,7 @@ import {
   resumoDoEndereco,
 } from "@/lib/endereco-de-entrega";
 import { pagamentoOnlineLigado } from "@/lib/flags";
+import type { MetodoOnline } from "@/lib/forma-de-pagamento";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
   conferirFreteEscolhidoComACotacao,
@@ -89,6 +90,12 @@ import {
   esquecerPedidoPendenteDoCheckout,
   guardarPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
+import {
+  type PedidoCongelado,
+  guardarPedidoSemResposta,
+  lerPedidoSemResposta,
+  limparPedidoSemResposta,
+} from "@/lib/pedido-sem-resposta";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -341,7 +348,7 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
  * tem como fazer.
  */
 const MENSAGEM_DE_REENVIO_SEM_CONTA =
-  "Não deu para confirmar se o seu pedido chegou à loja. Toque em “Tentar de novo”: reenviamos exatamente a mesma compra e, se ela já tiver chegado, o pedido não sai em dobro.";
+  "O pedido não foi confirmado. Toque em “Tentar de novo”: reenviamos exatamente a mesma compra e, se ela já tiver chegado à loja, o pedido não sai em dobro.";
 
 /**
  * `conferir_antes` + quem compra SEM CONTA. A saída antiga ("Ver meus
@@ -360,7 +367,11 @@ export const decidirSaidaDoCheckout = (
   opcoes: { semConta?: boolean } = {},
 ): RecusaDoPedido => {
   const saida = decidirSaidaDaTela(error);
-  if (!opcoes.semConta || saida.acao !== "conferir_antes") return saida;
+  if (
+    !opcoes.semConta ||
+    (saida.acao !== "conferir_antes" && !ehFalhaDeRedeAntesDoEnvio(error))
+  )
+    return saida;
   const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
   const bancoRespondeu =
     detalhes.code === "P0001" &&
@@ -372,28 +383,6 @@ export const decidirSaidaDoCheckout = (
     mensagem: MENSAGEM_DE_REENVIO_SEM_CONTA,
   };
 };
-
-/**
- * A compra que ficou SEM RESPOSTA, congelada no instante do envio: o payload
- * exato que foi ao servidor (com a chave de idempotência dentro) e o que a
- * tela precisa para fechar a compra se o reenvio der certo. O reenvio usa ESTE
- * objeto — nunca remonta nada a partir do formulário ou do carrinho, porque
- * qualquer mudança neles gira outra chave e abre a porta para um SEGUNDO
- * pedido.
- */
-interface PedidoCongelado {
-  readonly orderData: Record<string, unknown>;
-  readonly ehOnline: boolean;
-  readonly metodoOnline: MetodoOnline;
-  /** Os itens que vão ao pedido (e voltam ao carrinho se o pagamento falhar). */
-  readonly itens: CartItem[];
-  readonly valor: number;
-  readonly cpfParaRpc: string | undefined;
-  /** Conta do início da compra: o reenvio não herda quem entrou depois. */
-  readonly contaEsperada: string | null;
-  /** O pedido nasceu SEM sessão: só um reenvio sem sessão devolve o mesmo pedido. */
-  readonly semConta: boolean;
-}
 
 /**
  * Prova de que a falha é de REDE — o fetch nunca chegou a existir ou o
@@ -879,6 +868,11 @@ export function CheckoutViewDaConta({
         setStatusPagamentoPix("confirmado");
       } else if (pedidoAtualizado.payment_status === "pago_apos_expirar") {
         setStatusPagamentoPix("fora-do-prazo");
+      } else if (
+        pedidoAtualizado.payment_status === "recusado" ||
+        pedidoAtualizado.payment_status === "estornado"
+      ) {
+        setStatusPagamentoPix("nao-concluido");
       } else if (
         pedidoAtualizado.gateway_payment_id === null &&
         (cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id ||
@@ -1456,8 +1450,16 @@ export function CheckoutViewDaConta({
   // A recusa que o banco deu no último clique, quando deu. `null` é o estado
   // normal — o painel só existe depois de uma recusa e some assim que a pessoa
   // age ou fecha.
+  const [pedidoRestaurado] = useState(lerPedidoSemResposta);
   const [recusaDoUltimoClique, setRecusaDoUltimoClique] =
-    useState<RecusaDoPedido | null>(null);
+    useState<RecusaDoPedido | null>(() =>
+      pedidoRestaurado
+        ? {
+            acao: "reenviar_mesma_compra",
+            mensagem: MENSAGEM_DE_REENVIO_SEM_CONTA,
+          }
+        : null,
+    );
   /** Ver `criarTravaDeEnvio`: fecha o botao no tique do clique (#27). */
   const travaDeEnvioRef = useRef(criarTravaDeEnvio());
   // A CHAVE DA COMPRA (laudo 31/08, A1 — metade cliente da idempotência do
@@ -1470,20 +1472,19 @@ export function CheckoutViewDaConta({
   const gerenteDaChaveRef = useRef<ReturnType<
     typeof criarGerenciadorDeChave
   > | null>(null);
-  // A compra da convidada que ficou sem resposta (ver `PedidoCongelado`): só
-  // existe enquanto o painel "Tentar de novo" está na tela.
-  const pedidoCongeladoRef = useRef<PedidoCongelado | null>(null);
+  // Sobrevive à recarga: o catálogo pode ter reduzido o carrinho nesse meio-tempo.
+  const pedidoCongeladoRef = useRef<PedidoCongelado | null>(pedidoRestaurado);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState("");
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
   // function, dentro do PagamentoOnline (ver comentário lá).
   const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
-  // CHECKOUT-090: estado de três valores, não dois booleanos independentes
+  // CHECKOUT-090: estado exclusivo, não booleanos independentes
   // — dois booleanos podem divergir (os dois `true` ao mesmo tempo, ou os
   // dois `false` quando um dos dois status chegou), e essa divergência é
   // exatamente o defeito que esta tarefa existe para impedir. `null` é o
-  // QR ainda valendo; os outros dois são finais, sem caminho de volta a
-  // `null` nem um para o outro.
+  // QR ainda valendo; os outros são finais, sem caminho de volta a `null`.
+  // 'nao-concluido' é a recusa ou o estorno confirmado pelo servidor.
   //
   // 'confirmado' é o `payment_status === 'pago'` de sempre.
   //
@@ -1509,7 +1510,7 @@ export function CheckoutViewDaConta({
   // rede de segurança contra WebSocket caído) — e nenhum dos dois estados
   // finais tem caminho de volta a `null`.
   const [statusPagamentoPix, setStatusPagamentoPix] = useState<
-    "confirmado" | "fora-do-prazo" | null
+    "confirmado" | "fora-do-prazo" | "nao-concluido" | null
   >(null);
   // F1 (04/10/2026): o SERVIDOR já gravou este pedido como morto
   // (`expirado`, ou `aguardando` + `cancelled`) — a tela do PIX deixa de
@@ -3255,14 +3256,12 @@ export function CheckoutViewDaConta({
         );
       }
 
-      // Os outros dois status terminais não têm tela própria aqui — só
-      // param de consultar (a constraint do banco não modela caminho de
-      // volta a partir deles, ver
-      // `supabase/migrations/20260807000000_reserva_com_expiracao.sql:17`).
+      // Recusa e estorno encerram este código: não há confirmação a esperar.
       if (
         data.payment_status === "recusado" ||
         data.payment_status === "estornado"
       ) {
+        setStatusPagamentoPix("nao-concluido");
         parado = true;
         clearInterval(intervalId);
         return;
@@ -3534,6 +3533,7 @@ export function CheckoutViewDaConta({
       return;
     }
     setRecusaDoUltimoClique(null);
+    limparPedidoSemResposta();
     haptic.light();
 
     switch (DESTINO_POR_ACAO.get(acao)) {
@@ -4041,8 +4041,12 @@ export function CheckoutViewDaConta({
     // Também vale quando a RPC confirmou o pedido, mas a leitura do total
     // falhou: a compra saiu do carrinho, sem autorizar pagamento.
     const limparCompraCriada = () => {
-      gerenteDaChaveRef.current?.esquecer();
+      gerenteDaChaveRef.current ??= criarGerenciadorDeChave(
+        globalThis.sessionStorage,
+      );
+      gerenteDaChaveRef.current.esquecer();
       pedidoCongeladoRef.current = null;
+      limparPedidoSemResposta();
       limparRascunhoDoCheckout(globalThis.sessionStorage);
       // Cancelar devolve só o que realmente saiu do carrinho.
       itensDoPedidoParaRestaurarRef.current = [];
@@ -4054,18 +4058,21 @@ export function CheckoutViewDaConta({
         onClearCart();
         itensDoPedidoParaRestaurarRef.current = itensEnviados;
       } else if (removeFromCart) {
-        // Mudanças feitas durante o envio ficam; só sai a linha intacta.
+        // Na recarga, o catálogo pode ter reduzido uma linha já comprada.
+        // Fora dela, alterações de quantidade durante o envio ficam.
         for (const item of itensEnviados) {
+          const atual = carrinhoAtual.find(
+            (linha) =>
+              linha.product.id === item.product.id &&
+              (linha.variantId || "") === (item.variantId || ""),
+          );
           if (
-            carrinhoAtual.some(
-              (atual) =>
-                atual.product.id === item.product.id &&
-                (atual.variantId || "") === (item.variantId || "") &&
-                atual.quantity === item.quantity,
-            )
+            atual &&
+            (atual.quantity === item.quantity ||
+              (pedido === pedidoRestaurado && atual.quantity <= item.quantity))
           ) {
             removeFromCart(item.product.id, item.variantId);
-            itensDoPedidoParaRestaurarRef.current.push(item);
+            itensDoPedidoParaRestaurarRef.current.push(atual);
           }
         }
       }
@@ -4147,6 +4154,13 @@ export function CheckoutViewDaConta({
     } catch (error: any) {
       if (!montadoRef.current) return;
       console.error("Error creating order:", error);
+      const saida = decidirSaidaDoCheckout(error, {
+        semConta: pedido.semConta,
+      });
+      pedidoCongeladoRef.current =
+        saida.acao === "reenviar_mesma_compra" ? pedido : null;
+      if (pedidoCongeladoRef.current) guardarPedidoSemResposta(pedido);
+      else limparPedidoSemResposta();
       if (
         error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" &&
         typeof error.pedidoId === "string" &&
@@ -4206,9 +4220,6 @@ export function CheckoutViewDaConta({
       // tem de dizer a mesma coisa que o painel — "confira se ele já apareceu"
       // num e "tente de novo" no outro, para a mesma falha, é a divergência que
       // recusa-e-toast-nao-divergem.test.ts proíbe entre as regras do banco.
-      const saida = decidirSaidaDoCheckout(error, {
-        semConta: pedido.semConta,
-      });
       toast.error(
         `Falha no Pedido: ${
           ehFalhaDeRedeAntesDoEnvio(error) ||
@@ -4219,10 +4230,6 @@ export function CheckoutViewDaConta({
             : mensagemAmigavelErroPedido(error)
         }`,
       );
-      // Só a compra SEM resposta fica guardada para o reenvio; qualquer outro
-      // desfecho solta o que havia (a recusa nova é a verdade de agora).
-      pedidoCongeladoRef.current =
-        saida.acao === "reenviar_mesma_compra" ? pedido : null;
       // O toast é o AVISO — ele alcança quem não está olhando esta parte da
       // tela. O painel abaixo é a AÇÃO. Os dois convivem de propósito: até
       // 28/08/2026 só existia o toast, ele sumia sozinho e não levava a lugar
@@ -4255,6 +4262,7 @@ export function CheckoutViewDaConta({
     // painel sai e o "Finalizar" volta, já como cliente com conta.
     if (user) {
       pedidoCongeladoRef.current = null;
+      limparPedidoSemResposta();
       setRecusaDoUltimoClique(null);
       return;
     }
@@ -4268,6 +4276,15 @@ export function CheckoutViewDaConta({
     setRecusaDoUltimoClique(null);
     setIsSubmitting(true);
     await enviarPedido(pedido);
+  };
+
+  const voltarAoCarrinhoComItensDoPedido = () => {
+    const itens = itensDoPedidoParaRestaurarRef.current;
+    itensDoPedidoParaRestaurarRef.current = [];
+    for (const item of itens) {
+      addToCart(item.product, item.quantity, item.variantId, item.variantNames);
+    }
+    onNavigate("cart");
   };
 
   // CHECKOUT-070 (#197): saída para quem teve o pagamento online recusado —
@@ -4392,15 +4409,7 @@ export function CheckoutViewDaConta({
         return;
       }
 
-      for (const item of itensDoPedidoParaRestaurarRef.current) {
-        addToCart(
-          item.product,
-          item.quantity,
-          item.variantId,
-          item.variantNames,
-        );
-      }
-      onNavigate("cart");
+      voltarAoCarrinhoComItensDoPedido();
     } finally {
       isCancelandoPedidoRef.current = false;
       setIsCancelandoPedido(false);
@@ -4636,6 +4645,21 @@ export function CheckoutViewDaConta({
           orderId={orderId}
           valor={valorDoPedido}
           onNavigate={onNavigate}
+        />
+      );
+    }
+
+    if (statusPagamentoPix === "nao-concluido") {
+      return (
+        <AvisoDePixEncerrado
+          orderId={orderId}
+          pagamentoNaoConcluido
+          onVerMeusPedidos={() => onNavigate("orders")}
+          onVoltarAoCarrinho={
+            itensDoPedidoParaRestaurarRef.current.length > 0
+              ? voltarAoCarrinhoComItensDoPedido
+              : undefined
+          }
         />
       );
     }
@@ -6970,7 +6994,11 @@ export function CheckoutViewDaConta({
                         <SaidaDaRecusa
                           recusa={recusaDoUltimoClique}
                           onAgir={agirNaRecusa}
-                          onFechar={() => setRecusaDoUltimoClique(null)}
+                          onFechar={() => {
+                            pedidoCongeladoRef.current = null;
+                            limparPedidoSemResposta();
+                            setRecusaDoUltimoClique(null);
+                          }}
                           onFalarComALoja={
                             recusaDoUltimoClique.acao ===
                               "reenviar_mesma_compra" &&

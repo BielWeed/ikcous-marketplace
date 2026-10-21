@@ -102,6 +102,21 @@ describe("useCoupons.validateCoupon — aplicar com rede pendurada", () => {
     return estado;
   }
 
+  it("aplicar envia R$ 59,70 exatos para três itens de R$ 19,90", async () => {
+    rpc.mockResolvedValue({
+      data: { is_valid: true, discount_value: 10, error_message: null },
+      error: null,
+    });
+    const validar = await montar();
+    await act(async () => {
+      await validar("MINIMO", 19.9 * 3);
+    });
+    expect(rpc).toHaveBeenCalledWith("validate_coupon_secure_v2", {
+      p_code: "MINIMO",
+      p_subtotal: 59.7,
+    });
+  });
+
   it("a âncora: antes do prazo continua esperando, sem resposta", async () => {
     rpc.mockImplementation(() => new Promise(() => {}));
     const validar = await montar();
@@ -173,11 +188,11 @@ describe("useCuponsDoCheckout — lista de cupons com rede pendurada", () => {
   >;
   let ultimo: Retorno | null = null;
 
-  async function montar() {
+  async function montar(subtotal = 100) {
     const { useCuponsDoCheckout } = await import("@/hooks/useCuponsDoCheckout");
     function Sonda() {
       const valor = useCuponsDoCheckout({
-        subtotal: 100,
+        subtotal,
         userId: null,
         ligado: true,
       });
@@ -205,6 +220,15 @@ describe("useCuponsDoCheckout — lista de cupons com rede pendurada", () => {
 
   beforeEach(() => {
     ultimo = null;
+  });
+
+  it("a lista envia R$ 59,70 exatos para três itens de R$ 19,90", async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    await montar(19.9 * 3);
+    await passar(PAUSA_DO_SUBTOTAL_MS);
+    expect(rpc).toHaveBeenCalledWith("cupons_do_checkout", {
+      p_subtotal: 59.7,
+    });
   });
 
   it("a âncora: antes do prazo segue 'carregando', sem erro", async () => {
