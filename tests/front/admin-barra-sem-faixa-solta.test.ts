@@ -9,10 +9,6 @@ const RAIZ = resolve(__dirname, "../..");
 // Exceções contam ocorrências, não liberam arquivos inteiros para novas faixas.
 const EXCECOES = new Map([
   [
-    "src/views/admin/AdminProductFormView.tsx",
-    "Publicar produto: barra preexistente fora desta rodada",
-  ],
-  [
     "src/components/admin/users/FolhaClientes.tsx",
     "Folha modal, não ação de tela",
   ],

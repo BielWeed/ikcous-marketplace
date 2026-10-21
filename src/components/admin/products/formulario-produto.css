@@ -62,16 +62,16 @@
   position: relative;
   min-width: 0;
   padding: 0;
-  border: 1px solid hsl(var(--admin-border-strong));
-  border-radius: 16px;
-  background: hsl(var(--admin-raised));
+  border: 1px solid hsl(var(--admin-border));
+  border-radius: 18px;
+  background: hsl(var(--admin-surface));
 }
 
 .produto-formulario .produto-campo > label {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
+  top: 10px;
+  left: 16px;
+  right: 16px;
   z-index: 1;
   display: block;
   margin: 0;
@@ -82,8 +82,8 @@
 }
 
 .produto-formulario .produto-campo :is(input, textarea, [role="combobox"]) {
-  min-height: 72px;
-  padding: 32px 12px 12px;
+  min-height: 64px;
+  padding: 30px 16px 10px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -93,8 +93,8 @@
 .produto-formulario
   .produto-campo
   :is(input[name="price"], input[name="stock"]) {
-  min-height: 92px;
-  padding-top: 52px;
+  min-height: 64px;
+  padding-top: 30px;
   padding-right: 28px;
 }
 
@@ -103,8 +103,8 @@
 }
 
 .produto-campo:has(input[name="price"]) .absolute.left-0 {
-  top: 52px;
-  left: 12px;
+  top: 30px;
+  left: 16px;
   transform: none;
 }
 
@@ -163,12 +163,22 @@
   opacity: 1;
 }
 
-.produto-secao > section > button {
-  min-height: 76px;
-  padding: 12px 12px 12px 62px;
+.produto-secao {
   border: 1px solid hsl(var(--admin-border));
-  border-radius: 20px;
+  border-radius: 24px;
   background: hsl(var(--admin-surface));
+}
+
+.produto-secao > section > button {
+  min-height: 72px;
+  padding: 12px 16px 12px 68px;
+  border: 0;
+  border-radius: 24px;
+  background: transparent;
+}
+
+.produto-secao > section > div {
+  padding: 8px 16px 16px;
 }
 
 .produto-secao > section > button > span > span:first-child {
@@ -184,12 +194,9 @@
 }
 
 .produto-secao > section > button > svg {
-  width: 44px;
-  height: 44px;
-  padding: 12px;
-  border: 1px solid hsl(var(--admin-border-strong));
-  border-radius: 14px;
-  background: hsl(var(--admin-raised));
+  width: 20px;
+  height: 20px;
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
 }
 
 .produto-secao-aviso > section > button {
@@ -212,6 +219,158 @@
 
 .produto-modal input::-webkit-inner-spin-button {
   appearance: none;
+}
+
+.produto-formulario .produto-campo:has(input[name="costPrice"]) input {
+  padding-left: 44px;
+}
+
+.produto-formulario .produto-campo:has(input[name="costPrice"]) .absolute {
+  top: 30px;
+  left: 16px;
+  transform: none;
+}
+
+.produto-formulario .produto-dados .produto-campo textarea {
+  min-height: 92px;
+}
+
+.produto-formulario .produto-campo:has(input[name="stock"]) .absolute {
+  top: 30px;
+  right: 12px;
+  transform: none;
+}
+
+.produto-formulario .produto-campo:has(input[name="price"]) input {
+  font-weight: 600;
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+/* A barra usa a prateleira do AdminLayout: nenhuma faixa fixa própria. */
+.admin-acoes-da-barra:has(> .produto-acoes) {
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.admin-acao-inline:has(> .produto-acoes) {
+  margin: 16px auto 0;
+  padding: 16px;
+  max-width: 48rem;
+  border: 1px solid hsl(var(--admin-border));
+  border-radius: 24px;
+  background: hsl(var(--admin-surface));
+}
+
+.produto-acoes .produto-salvar:not(:disabled),
+.produto-fotos .produto-fotos-camera {
+  background: hsl(var(--admin-text, 0 0% 98%));
+  color: hsl(var(--admin-bg));
+}
+
+.produto-acoes .produto-prever {
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-acoes button:disabled {
+  background: hsl(var(--admin-raised));
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
+}
+
+.produto-acoes .produto-status {
+  min-height: 20px;
+  line-height: 1.5;
+}
+
+.produto-acoes .produto-status button {
+  min-height: 44px;
+}
+
+.produto-formulario .produto-progresso > span {
+  height: 6px;
+  flex: 1;
+  border-radius: 999px;
+  background: hsl(var(--admin-border));
+}
+
+.produto-formulario .produto-progresso > .produto-etapa-preenchida {
+  background: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-formulario .produto-fotos {
+  padding: 12px;
+  border: 1px dashed hsl(var(--admin-border-strong));
+  border-radius: 26px;
+  background: hsl(var(--admin-surface));
+}
+
+.produto-fotos .produto-fotos-vazio {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 360px;
+  margin: auto;
+}
+
+.produto-fotos .produto-fotos-envio {
+  grid-column: 1 / -1;
+  border: 0;
+  background: transparent;
+}
+
+.produto-fotos-envio .size-14 {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: hsl(var(--admin-raised));
+  box-shadow: none;
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
+}
+
+.produto-fotos-envio p:first-child {
+  font-size: 15px;
+  font-weight: 700;
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-fotos-envio .flex-wrap {
+  display: none;
+}
+
+.produto-fotos .produto-fotos-camera,
+.produto-fotos .produto-fotos-galeria {
+  min-height: 44px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.produto-fotos > div > p {
+  text-align: center;
+}
+
+.produto-dados > div:first-child > div:first-child {
+  display: none;
+}
+
+.produto-dados h3 {
+  font-size: 16px;
+}
+
+.produto-dados h3 > span {
+  font-size: 12px;
+}
+
+.produto-formulario .produto-secao > span {
+  left: 16px;
+  top: 16px;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+}
+
+.produto-formulario .produto-secao .produto-campo {
+  background: hsl(var(--admin-surface));
 }
 
 /* As folhas de ajuda são portais compartilhados. Este escopo só existe

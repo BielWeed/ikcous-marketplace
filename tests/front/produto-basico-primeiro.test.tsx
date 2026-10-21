@@ -13,6 +13,7 @@
 //
 // Montagem real (react-dom/client + jsdom), mesmo molde dos outros testes do
 // formulário (LocalBufferedInput tem debounce de 200 ms).
+import { ContextoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -235,22 +236,36 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    document.querySelector('[data-testid="navegacao-do-teste"]')?.remove();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  async function montar(productId?: string) {
+  async function montar(productId?: string, prateleira?: HTMLDivElement) {
     const { AdminProductFormView } = await import(
       "@/views/admin/AdminProductFormView"
     );
     await act(async () => {
       raiz.render(
-        <AdminProductFormView
-          userId="u-teste"
-          productId={productId}
-          onNavigate={vi.fn()}
-          onSetDirty={vi.fn()}
-        />,
+        <ContextoDaBarra.Provider
+          value={
+            prateleira
+              ? {
+                  destino: prateleira,
+                  receberPrateleira: vi.fn(),
+                  larga: false,
+                  altura: 120,
+                }
+              : null
+          }
+        >
+          <AdminProductFormView
+            userId="u-teste"
+            productId={productId}
+            onNavigate={vi.fn()}
+            onSetDirty={vi.fn()}
+          />
+        </ContextoDaBarra.Provider>,
       );
     });
     if (productId) {
@@ -280,6 +295,55 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
     });
   }
 
+  describe("barra única acoplada à navegação", () => {
+    for (const productId of [undefined, "prod-1"]) {
+      it(`${productId ? "Salvar" : "Publicar"} fica na navegação, neutro, e grava pelo caminho de sempre`, async () => {
+        const nav = document.createElement("nav");
+        const prateleira = document.createElement("div");
+        nav.dataset.testid = "navegacao-do-teste";
+        nav.appendChild(prateleira);
+        document.body.appendChild(nav);
+        await montar(productId, prateleira);
+
+        const barras = document.querySelectorAll(
+          '[aria-label="Ações do produto"]',
+        );
+        expect(barras).toHaveLength(1);
+        expect(prateleira.contains(barras[0])).toBe(true);
+        expect(barras[0].querySelector(".fixed")).toBeNull();
+        expect(barras[0].outerHTML).not.toMatch(
+          /#f8d658|#e3ac16|bg-gradient|admin-barra-principal/i,
+        );
+        expect(
+          document.querySelector(".produto-formulario.pb-admin"),
+        ).not.toBeNull();
+
+        await preencherOBasico();
+        const salvar = [...barras[0].querySelectorAll("button")].find(
+          (b) => b.textContent?.trim() === (productId ? "Salvar" : "Publicar"),
+        ) as HTMLButtonElement;
+        expect(salvar.disabled).toBe(false);
+        await act(async () => {
+          salvar.click();
+          await esperar(50);
+        });
+
+        const gravar = productId ? updateProduct : addProduct;
+        expect(gravar).toHaveBeenCalledTimes(1);
+        expect(productId ? addProduct : updateProduct).not.toHaveBeenCalled();
+        expect(gravar.mock.calls[0][productId ? 1 : 0]).toMatchObject({
+          name: "Produto Teste",
+          price: 10,
+          stock: 5,
+          category: "Geral",
+          isActive: true,
+          freeShipping: false,
+          isBestseller: false,
+        });
+      });
+    }
+  });
+
   describe("a. o que fica à vista e o que fica recolhido", () => {
     it("mantém os cinco obrigatórios em ordem e uma única publicação junto da prévia", async () => {
       await montar();
@@ -308,7 +372,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       expect(document.querySelector("header")?.contains(publicar[0])).toBe(
         false,
       );
-      expect(barra?.textContent).toContain("Visualizar App");
+      expect(barra?.textContent).toContain("Ver no app");
       expect(
         document.querySelector('[data-testid="progresso-do-produto"]')
           ?.textContent,
