@@ -65,7 +65,7 @@ async function caso(dias, reserva, valor = null) {
     `INSERT INTO public.devolucoes
     (id,protocolo,order_id,user_id,tipo,motivo,resolucao_desejada,modalidade,metodo_retorno,
      status,valor_itens,valor_frete_ida,prazo_ate,politica)
-    VALUES ($1,$2,$3,$4,'arrependimento','fixture','reembolso','nacional','envio_proprio',
+    VALUES ($1,$2,$3,$4,'arrependimento','outro','reembolso','nacional','envio_proprio',
      'recebida',100,0,current_date+7,'{}')`,
     [dev, `DEV343-${seq}`, pedido, CLIENTE],
   );
