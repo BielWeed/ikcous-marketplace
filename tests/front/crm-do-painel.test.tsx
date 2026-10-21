@@ -559,6 +559,120 @@ describe("Dashboard CRM", () => {
     expect(retry.className).toContain("border-solid");
   });
 
+  it.each(["grupo", "busca"])(
+    "Clientes: Todos não confunde total filtrado por %s com total geral",
+    async (filtro) => {
+      h.respostas.set("crm_clientes", {
+        data: { ...CLIENTES, total: 23 },
+        error: null,
+      });
+      await montar();
+      const aba = hospedeiro.querySelector(
+        "#crm-aba-clientes",
+      ) as HTMLButtonElement;
+      await act(async () => aba.click());
+      await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+      const painel = hospedeiro.querySelector(
+        "#crm-painel-clientes",
+      ) as HTMLElement;
+      const filtros = painel.querySelector('[aria-label="Filtrar por grupo"]')!;
+      const todos = filtros.querySelector("button")!;
+      expect(texto(todos).trim()).toBe("Todos 23");
+
+      if (filtro === "grupo") {
+        h.respostas.set("crm_clientes", {
+          data: { total: 3, clientes: [CLIENTES.clientes[1]] },
+          error: null,
+        });
+        await act(async () =>
+          botao(filtros as HTMLElement, "Podem não voltar").click(),
+        );
+        await esperarAte(() => !texto(painel).includes("Ana Souza"));
+        expect(texto(todos).trim()).toBe("Todos");
+        expect(texto(painel)).toContain("Na lista filtrada");
+        return;
+      }
+      h.respostas.set("crm_clientes", {
+        data: { total: 1, clientes: [CLIENTES.clientes[0]] },
+        error: null,
+      });
+      const campo = painel.querySelector(
+        "#crm-busca-cliente",
+      ) as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      await act(async () => {
+        setter?.call(campo, "ana");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await esperarAte(() => !texto(painel).includes("Bruno do Balcão"));
+      expect(texto(todos).trim()).toBe("Todos");
+      expect(texto(painel)).toContain("Na lista filtrada");
+    },
+    8000,
+  );
+
+  it("Clientes recebe a falha do resumo e permite buscar os grupos de novo", async () => {
+    h.respostas.set("crm_visao", {
+      data: null,
+      error: { message: "Falha de rede" },
+    });
+    await montar();
+    await act(async () =>
+      (
+        hospedeiro.querySelector("#crm-aba-clientes") as HTMLButtonElement
+      ).click(),
+    );
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    const painel = hospedeiro.querySelector(
+      "#crm-painel-clientes",
+    ) as HTMLElement;
+    expect(texto(painel)).toContain("Não deu para buscar os números");
+    const filtros = painel.querySelector('[aria-label="Filtrar por grupo"]')!;
+    expect(texto(botao(filtros as HTMLElement, "Melhores clientes"))).toContain(
+      "—",
+    );
+    h.respostas.set("crm_visao", { data: VISAO, error: null });
+    await act(async () => botao(painel, "Tentar de novo").click());
+    await esperarAte(() =>
+      texto(botao(filtros as HTMLElement, "Melhores clientes")).includes("4"),
+    );
+    expect(texto(painel)).not.toContain("Não deu para buscar os números");
+  }, 8000);
+
+  it("Clientes avisa quando a atualização dos grupos falha e preserva os dados guardados", async () => {
+    await montar();
+    await act(async () =>
+      (
+        hospedeiro.querySelector("#crm-aba-clientes") as HTMLButtonElement
+      ).click(),
+    );
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    await esperarAte(() => !botao(hospedeiro, "Sincronizar").disabled);
+    h.respostas.set("crm_visao", {
+      data: null,
+      error: { message: "Falha de rede" },
+    });
+    await act(async () => botao(hospedeiro, "Sincronizar").click());
+    const painel = hospedeiro.querySelector(
+      "#crm-painel-clientes",
+    ) as HTMLElement;
+    await esperarAte(() =>
+      texto(painel).includes(
+        "Não deu para atualizar · mostrando a última busca",
+      ),
+    );
+    const aviso = painel.querySelector('[role="alert"]') as HTMLElement;
+    expect(texto(botao(aviso, "Tentar de novo"))).toContain("Tentar de novo");
+    expect(texto(botao(painel, "Melhores clientes"))).toContain("4");
+    h.respostas.set("crm_visao", { data: VISAO, error: null });
+    await act(async () => botao(aviso, "Tentar de novo").click());
+    await esperarAte(() => !botao(hospedeiro, "Sincronizar").disabled);
+    expect(texto(painel)).not.toContain("Não deu para atualizar");
+  }, 8000);
+
   it("Clientes: 'Mostrando: Podem não voltar · N' usa o total filtrado pela busca, não o bruto do segmento", async () => {
     // esperarAte mede o próprio timeout com Date.now(), que este describe
     // deixa CONGELADO (vi.useFakeTimers({ toFake: ["Date"] })) — sem

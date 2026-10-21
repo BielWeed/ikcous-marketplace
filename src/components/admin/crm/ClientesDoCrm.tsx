@@ -568,6 +568,8 @@ export function ClientesDoCrm({
   sinalDeAtualizacao,
   offline = false,
   segmentosDisponiveis = true,
+  erro: erroDosSegmentos,
+  aoTentar,
 }: Readonly<{
   segmentos: readonly ResumoDoSegmento[];
   carregandoSegmentos: boolean;
@@ -579,6 +581,8 @@ export function ClientesDoCrm({
   sinalDeAtualizacao: number;
   offline?: boolean;
   segmentosDisponiveis?: boolean;
+  erro?: string | null;
+  aoTentar?: () => void;
 }>) {
   const { config } = useStore();
   const loja = nomeDaLoja(config);
@@ -617,7 +621,14 @@ export function ClientesDoCrm({
       : null;
   const totalPaginas = Math.max(1, Math.ceil(total / POR_PAGINA));
   const esqueleto = carregando && !lista;
-  const falhaDoResumo = !esqueleto && !lista && (!!erro || offline);
+  const falhaDosSegmentos =
+    !carregandoSegmentos &&
+    !segmentosDisponiveis &&
+    (!!erroDosSegmentos || offline);
+  const falhaDoResumo =
+    falhaDosSegmentos || (!esqueleto && !lista && (!!erro || offline));
+  const listaFiltrada = segmento != null || busca.trim() !== "";
+  const rotuloDaLista = listaFiltrada ? "Na lista filtrada" : "Na sua lista";
   const nomeDoSegmento = segmento ? infoDoSegmento(segmento).rotulo : null;
   // Com busca ativa e a lista já carregada, "Mostrando" usa o total JÁ
   // filtrado (busca + segmento) — o bruto do segmento (crm_visao) ignora a
@@ -628,13 +639,31 @@ export function ClientesDoCrm({
 
   return (
     <div className="min-w-0 space-y-2">
+      {!carregandoSegmentos &&
+        erroDosSegmentos &&
+        segmentosDisponiveis &&
+        !offline && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 text-xs text-amber-300"
+          >
+            <p>Não deu para atualizar · mostrando a última busca</p>
+            <button
+              type="button"
+              onClick={aoTentar}
+              className="min-h-11 shrink-0 px-2 font-bold"
+            >
+              Tentar de novo
+            </button>
+          </div>
+        )}
       <MetricasDoPainel
         titulo="Clientes da loja"
-        legendasDoResumo={["Na sua lista", "Podem não voltar"]}
+        legendasDoResumo={[rotuloDaLista, "Podem não voltar"]}
         loading={esqueleto}
         cards={[
           {
-            label: "Na sua lista",
+            label: rotuloDaLista,
             value: lista ? formatarInteiro(total) : "—",
             icon: Users,
           },
@@ -678,7 +707,7 @@ export function ClientesDoCrm({
         }
         relatorio={{
           erro: falhaDoResumo,
-          aoTentar: atualizar,
+          aoTentar: falhaDosSegmentos ? aoTentar : atualizar,
           tom: falhaDoResumo
             ? "erro"
             : offline
@@ -777,10 +806,10 @@ export function ClientesDoCrm({
             >
               {s ? rotuloCurtoDoSegmento(s) : "Todos"}{" "}
               {s
-                ? formatarInteiro(
-                    segmentos.find((r) => r.segmento === s)?.clientes ?? 0,
-                  )
-                : formatarInteiro(total)}
+                ? formatarInteiro(quantidadeDoGrupo(s))
+                : listaFiltrada
+                  ? null
+                  : formatarInteiro(lista?.total)}
             </button>
           ))}
       </div>

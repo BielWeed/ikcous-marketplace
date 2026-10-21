@@ -389,6 +389,8 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                   />
                 ) : item.id === "clientes" ? (
                   <ClientesDoCrm
+                    erro={erro}
+                    aoTentar={atualizarVisao}
                     segmentosDisponiveis={visao != null}
                     offline={isOffline}
                     segmentos={visao?.segmentos ?? []}

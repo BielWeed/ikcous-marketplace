@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { CanaisDoCrm } from "@/components/admin/crm/CanaisDoCrm";
+import { ClientesDoCrm } from "@/components/admin/crm/ClientesDoCrm";
 import { FunilEPedidosDoCrm } from "@/components/admin/crm/FunilEPedidosDoCrm";
 import { VisaoGeralDoCrm } from "@/components/admin/crm/VisaoGeralDoCrm";
 import { lerVisaoDoCrm } from "@/lib/crm";
@@ -16,6 +17,17 @@ vi.mock("@/components/admin/dashboard/StrategicIntelligenceBlocks", () => ({
 vi.mock("@/components/admin/dashboard/TopProductsList", () => ({
   TopProductsList: () => null,
 }));
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: { storeName: "Loja fictícia" } }),
+}));
+vi.mock("@/hooks/useCrm", () => ({
+  useCrmClientes: () => ({
+    lista: { total: 23, clientes: [] },
+    carregando: false,
+    erro: null,
+    atualizar: vi.fn(),
+  }),
+}));
 vi.mock("embla-carousel-react", () => ({
   default: () => [vi.fn(), undefined],
 }));
@@ -30,6 +42,12 @@ const visao = lerVisaoDoCrm({
   funil: { carrinhos: 6, pedidos_criados: 7, pedidos_pagos: 5 },
   formas: [{ forma: "pix", receita: 170.88, pedidos: 9 }],
   pipeline: [],
+  segmentos: [
+    { segmento: "em_risco", clientes: 3, receita: 170.88 },
+    { segmento: "campeoes", clientes: 4, receita: 200 },
+    { segmento: "novos", clientes: 2, receita: 50 },
+    { segmento: "pediu_nao_pagou", clientes: 1, receita: 70 },
+  ],
 })!;
 const classico = {
   stats: null,
@@ -81,6 +99,31 @@ const abas = [
       <FunilEPedidosDoCrm {...props} carregando={false} onNavigate={vi.fn()} />
     ),
     "5 de 7",
+  ],
+  [
+    "Clientes",
+    ({
+      visao,
+      ...props
+    }: {
+      visao: ReturnType<typeof lerVisaoDoCrm>;
+      erro: string;
+      aoTentar: () => void;
+      offline?: boolean;
+    }) => (
+      <ClientesDoCrm
+        {...props}
+        segmentos={visao?.segmentos ?? []}
+        segmentosDisponiveis={visao != null}
+        carregandoSegmentos={false}
+        segmento={null}
+        aoMudarSegmento={vi.fn()}
+        active
+        onNavigate={vi.fn()}
+        sinalDeAtualizacao={0}
+      />
+    ),
+    "Melhores clientes 4",
   ],
 ] as const;
 
@@ -143,6 +186,22 @@ it.each(abas.slice(1))(
     );
   },
 );
+
+it("Clientes: sem resumo dos grupos, pílulas mostram desconhecido, não zero", async () => {
+  await montar(
+    abas[3][1]({ visao: null, erro: "Falha de rede", aoTentar: vi.fn() }),
+    (host) => {
+      const filtros = host.querySelector('[aria-label="Filtrar por grupo"]')!;
+      for (const nome of ["Melhores clientes", "Podem não voltar", "Novos"]) {
+        const pilula = [...filtros.querySelectorAll("button")].find((b) =>
+          b.textContent?.includes(nome),
+        );
+        expect(pilula?.textContent).toContain("—");
+        expect(pilula?.textContent).not.toMatch(/\b0\b/);
+      }
+    },
+  );
+});
 
 it.each(abas)(
   "%s: offline com cache continua com o aviso de internet",
