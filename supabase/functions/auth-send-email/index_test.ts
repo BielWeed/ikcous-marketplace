@@ -178,7 +178,8 @@ Deno.test("hook válido: envia pelo Gmail cifrado do painel; só responde depois
   assertEquals(s.enviados[0].from, USUARIO_DO_PAINEL);
   assertEquals(s.enviados[0].to, "cliente@example.com");
   assertStringIncludes(s.enviados[0].subject, "Loja da Praça");
-  assertStringIncludes(s.enviados[0].text, "123456");
+  assertStringIncludes(s.enviados[0].text, "type=signup");
+  assertEquals(s.enviados[0].text.includes("123456"), false);
   assertEquals(s.configs[0].auth.pass, SENHA_DO_PAINEL);
   assert(
     s.configs[0].connectionTimeout > 0 &&
@@ -256,6 +257,31 @@ Deno.test("hook tipo desconhecido: recusa antes do cofre/SMTP", async () => {
   assertEquals(s.criou(), 0);
   assertEquals(s.enviados, []);
 });
+
+Deno.test("hook aviso de troca: envia ao endereço antigo, não ao atual", async () => {
+  const s = cenario({ ambiente: { ...AMBIENTE_HOOK, ...AMBIENTE_COMPLETO } });
+  const r = await handler(
+    requisicaoAssinada(payload("email_changed_notification")),
+    s.deps,
+  );
+  assertEquals(r.status, 200);
+  assertEquals(s.enviados.map((e) => e.to), ["antigo@example.com"]);
+});
+
+for (const antigo of [undefined, "", "invalido", "a@example.com,b@example.com"]) {
+  Deno.test(`hook aviso de troca com old_email inválido: ${String(antigo)} dá erro sem cofre/SMTP`, async () => {
+    const corpo = payload("email_changed_notification");
+    if (antigo === undefined) Reflect.deleteProperty(corpo.email_data, "old_email");
+    else corpo.email_data.old_email = antigo;
+    const s = cenario({ ambiente: { ...AMBIENTE_HOOK, ...AMBIENTE_COMPLETO } });
+    const r = await handler(requisicaoAssinada(corpo), s.deps);
+    assertEquals(r.status, 500);
+    assertEquals(await r.json(), FALHA);
+    assertEquals(s.criou(), 0);
+    assertEquals(s.consultas, []);
+    assertEquals(s.enviados, []);
+  });
+}
 
 Deno.test("hook banco pendurado: usa reserva do ambiente com caminho rápido, sem saúde", async () => {
   const s = cenario({

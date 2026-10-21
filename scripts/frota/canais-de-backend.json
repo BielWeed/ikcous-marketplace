@@ -301,7 +301,7 @@
       "_comentario": "Migration ADITIVA 20261260: UMA tabela privada nova (tentativas_cartao_diagnostico) com o motivo de recusa/analise do cartao; so service_role (SELECT, INSERT, UPDATE), RLS ligada e nenhuma politica; nenhuma RPC, politica de cliente nem dado reescrito. Sem backfill e sem aplicacao automatica. ORDEM: banco ANTES das edges (criar-pagamento, webhook-mercadopago e reconciliar-pagamentos gravam nela; falha do diagnostico nao altera a decisao financeira). Provar 56a; se negativa, exigir 56b positiva (tabela ausente, dependencias de pe) e mais nova antes de aplicar, depois repetir 56a. 56a/56b: catalogo, rol fechado proprio de 7 e 4 linhas; nenhuma tentativa e lida. ROLLBACK: rollback-manual-20261260000000_o_cartao_guarda_o_motivo_da_recusa.sql derruba SO a tabela e RECUSA se ja houver historico (apagar dado real exige o dono); reverter as edges antes."
     }
   ],
-  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; e, desde 13/10/2026 por decisao do dono, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, SO pelo nome (e, desde 14/10/2026, a credenciais-email, o painel onde a lojista cadastra o Gmail da loja): antes, uma delas que mudasse na release deixava a loja PARADA; a send-order-whatsapp segue proibida, nenhuma outra loja ganha rota, e a pre-condicao de publicar cada uma e medir o que esta no ar em CADA loja antes, passo 6 de docs/runbooks/producao-unica-fonte.md; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
+  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; e, desde 13/10/2026 por decisao do dono, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, SO pelo nome (e, desde 14/10/2026, a credenciais-email, o painel onde a lojista cadastra o Gmail da loja; e, desde 21/10/2026, a auth-send-email, o Send Email Hook autenticado por assinatura Standard Webhooks): antes, uma delas que mudasse na release deixava a loja PARADA; a send-order-whatsapp segue proibida, nenhuma outra loja ganha rota, e a pre-condicao de publicar cada uma e medir o que esta no ar em CADA loja antes, passo 6 de docs/runbooks/producao-unica-fonte.md; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
   "canais": {
     "cafkrminfnokvgjqtkle": {
       "nome": "IKCOUS",
@@ -320,7 +320,8 @@
         "send-otp-email",
         "melhor-envio-etiqueta",
         "send-push",
-        "credenciais-email"
+        "credenciais-email",
+        "auth-send-email"
       ]
     },
     "gnjsrucsmjkajijrakzr": {
@@ -340,7 +341,8 @@
         "send-otp-email",
         "melhor-envio-etiqueta",
         "send-push",
-        "credenciais-email"
+        "credenciais-email",
+        "auth-send-email"
       ]
     }
   }

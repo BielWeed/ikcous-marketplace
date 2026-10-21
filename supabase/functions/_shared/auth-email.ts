@@ -84,6 +84,8 @@ export function montarEmailsAuth(
         ),
     ),
   });
+  // O Auth já trocou user.email quando emite este aviso; alerta o endereço antigo.
+  if (acao === "email_changed_notification") return [montar(dados.old_email)];
   if (acao.endsWith("_notification")) return [montar(user.email)];
   if (acao === "reauthentication") return [montar(user.email, dados.token)];
   if (acao === "email_change") {

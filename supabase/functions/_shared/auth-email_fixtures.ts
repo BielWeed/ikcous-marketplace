@@ -18,6 +18,7 @@ export function payload(acao = "signup") {
     },
     email_data: {
       email_action_type: acao,
+      old_email: "antigo@example.com",
       token: "123456",
       token_hash: "hash-atual-ficticio",
       token_new: "",

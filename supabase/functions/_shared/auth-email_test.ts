@@ -11,23 +11,30 @@ import { payload } from "./auth-email_fixtures.ts";
 const PROJETO = "https://projeto.exemplo.com";
 
 for (
-  const [acao, assunto, botao] of [
-    ["signup", "Confirme seu cadastro", "Confirmar cadastro"],
-    ["recovery", "Redefina sua senha", "Redefinir senha"],
-    ["magiclink", "Seu acesso", "Entrar na loja"],
-    ["invite", "Seu convite", "Aceitar convite"],
-    ["email", "Seu acesso", "Entrar na loja"],
-  ]
+  const [acao, assunto, botao, mostraCodigo] of [
+    ["signup", "Confirme seu cadastro", "Confirmar cadastro", false],
+    ["recovery", "Redefina sua senha", "Redefinir senha", false],
+    ["magiclink", "Seu acesso", "Entrar na loja", true],
+    ["invite", "Seu convite", "Aceitar convite", true],
+    ["email", "Seu acesso", "Entrar na loja", true],
+  ] as const
 ) {
-  Deno.test(`Auth ${acao}: destinatário, assunto da loja, código e link do próprio projeto`, () => {
+  Deno.test(`Auth ${acao}: destinatário, assunto da loja, código só quando aplicável e link do próprio projeto`, () => {
     const [email] = montarEmailsAuth(payload(acao), PROJETO, "Loja da Praça");
     assertEquals(email?.para, "cliente@example.com");
     assertStringIncludes(email.assunto, assunto);
     assertStringIncludes(email.assunto, "Loja da Praça");
     assertStringIncludes(email.html, botao);
-    assertStringIncludes(email.html, "123456");
+    assertEquals(email.html.includes("123456"), mostraCodigo);
     assertStringIncludes(email.texto, "Loja da Praça");
-    assertStringIncludes(email.texto, "123456");
+    assertEquals(email.texto.includes("123456"), mostraCodigo);
+    if (!mostraCodigo) {
+      assertEquals(email.html.includes("Código:"), false);
+      assertEquals(email.texto.includes("Código:"), false);
+      assertEquals(email.texto.includes("digite o código"), false);
+      assertStringIncludes(email.texto, "Se você não solicitou esta ação");
+      assertStringIncludes(email.html, "Se você não solicitou esta ação");
+    }
     const link = email.texto.match(
       /https:\/\/projeto\.exemplo\.com\/auth\/v1\/verify\?\S+/,
     )?.[0];
@@ -108,7 +115,12 @@ for (
 ) {
   Deno.test(`Auth aviso ${acao}: português, sem códigos ou botões`, () => {
     const [email] = montarEmailsAuth(payload(acao), PROJETO, "Loja da Praça");
-    assertEquals(email?.para, "cliente@example.com");
+    assertEquals(
+      email?.para,
+      acao === "email_changed_notification"
+        ? "antigo@example.com"
+        : "cliente@example.com",
+    );
     assertStringIncludes(email.assunto, "Loja da Praça");
     assertStringIncludes(email.texto, trecho);
     assertEquals(email.html.includes("<a "), false);
@@ -118,8 +130,21 @@ for (
   });
 }
 
+for (const antigo of [undefined, "", "invalido", "a@example.com,b@example.com"]) {
+  Deno.test(`Auth aviso de troca recusa old_email inválido: ${String(antigo)}`, () => {
+    const corpo = payload("email_changed_notification");
+    if (antigo === undefined) Reflect.deleteProperty(corpo.email_data, "old_email");
+    else corpo.email_data.old_email = antigo;
+    assertThrows(
+      () => montarEmailsAuth(corpo, PROJETO, "Loja"),
+      Error,
+      "payload_invalido",
+    );
+  });
+}
+
 Deno.test("Auth HTML: nome, código e link escapados; assunto sem quebra de cabeçalho", () => {
-  const corpo = payload("recovery");
+  const corpo = payload("magiclink");
   corpo.email_data.token = '<img src=x onerror="1">&';
   const [email] = montarEmailsAuth(corpo, PROJETO, 'Loja <b>"&\r\nBcc: outra');
   assertStringIncludes(email.html, "&lt;b&gt;&quot;&amp;");
@@ -130,7 +155,7 @@ Deno.test("Auth HTML: nome, código e link escapados; assunto sem quebra de cabe
   assertEquals(email.html.includes("<img"), false);
   assertEquals(email.html.includes("<b>"), false);
   assertEquals(/[\r\n]/.test(email.assunto), false);
-  assertStringIncludes(email.html, "&amp;type=recovery");
+  assertStringIncludes(email.html, "&amp;type=magiclink");
   assertEquals(email.html.includes('origem="email"'), false);
 });
 

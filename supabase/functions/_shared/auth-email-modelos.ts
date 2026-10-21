@@ -10,7 +10,7 @@ const MODELOS = new Map<string, Conteudo>([
   ["recovery", {
     assunto: "Redefina sua senha",
     mensagem:
-      "Você pediu para redefinir sua senha. Use o link ou digite o código na tela de recuperação.",
+      "Você pediu para redefinir sua senha. Use o link para escolher uma nova senha.",
     botao: "Redefinir senha",
   }],
   ["magiclink", {
@@ -83,6 +83,9 @@ export function renderizarEmailAuth(
   link?: string,
 ): { assunto: string; html: string; texto: string } {
   const modelo = modeloAuth(acao);
+  const codigoVisivel = acao === "signup" || acao === "recovery"
+    ? undefined
+    : codigo;
   const nome = Array.from(
     nomeDaLoja,
     (c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? " " : c,
@@ -96,7 +99,7 @@ export function renderizarEmailAuth(
     texto: [
       nome,
       modelo.mensagem,
-      ...(codigo ? [`Código: ${codigo}`] : []),
+      ...(codigoVisivel ? [`Código: ${codigoVisivel}`] : []),
       ...(link ? [`${modelo.botao}: ${link}`] : []),
       rodape,
     ].join("\n\n"),
@@ -104,7 +107,7 @@ export function renderizarEmailAuth(
 <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;color:#18181b">
 <h1 style="font-size:22px">${escaparHtml(nome)}</h1>
 <p>${escaparHtml(modelo.mensagem)}</p>
-${codigo ? `<p>Código: <strong>${escaparHtml(codigo)}</strong></p>` : ""}
+${codigoVisivel ? `<p>Código: <strong>${escaparHtml(codigoVisivel)}</strong></p>` : ""}
 ${
       link
         ? `<p><a href="${escaparHtml(link)}">${
