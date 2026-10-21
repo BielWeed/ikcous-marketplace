@@ -5,8 +5,8 @@
 // (No iPhone o valor é ignorado; no navegador comum a tela já gira.)
 //
 // "any" deixa o aparelho decidir: gira se a pessoa deixou a rotação
-// automática ligada. Isso só vale porque a tela do PDV é um fluxo vertical
-// rolável, sem altura de tela travada — o segundo teste guarda essa premissa.
+// automática ligada. A página do PDV pode ter altura limitada, desde que
+// fechamento e escolha de variação preservem rolagem interna alcançável.
 // Não mede a tela num aparelho real.
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -32,7 +32,7 @@ describe("o app instalado não trava a orientação", () => {
   });
 });
 
-describe("a tela do PDV funciona deitada: fluxo vertical rolável, sem altura de tela travada", () => {
+describe("a tela do PDV funciona deitada sem cortar conteúdo", () => {
   const pasta = "src/components/admin/pdv";
   const arquivos = [
     "src/views/admin/AdminPdvView.tsx",
@@ -40,6 +40,17 @@ describe("a tela do PDV funciona deitada: fluxo vertical rolável, sem altura de
       .filter((nome) => nome.endsWith(".tsx"))
       .map((nome) => `${pasta}/${nome}`),
   ];
+
+  it("altura externa travada só é aceita com rolagem dos dois corpos", () => {
+    const css = ler("src/components/admin/pdv/pdv.css");
+    expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*overflow:\s*hidden/);
+    for (const classe of ["pdv-checkout-body", "pdv-variation-options"]) {
+      const bloco = css.match(new RegExp(`\\.${classe}\\s*\\{([^}]+)\\}`))?.[1];
+      expect(bloco, classe).toMatch(/min-height:\s*0/);
+      expect(bloco, classe).toMatch(/overflow-y:\s*(auto|scroll)/);
+      expect(bloco, classe).toMatch(/overscroll-behavior:\s*contain/);
+    }
+  });
 
   it("encontrou os arquivos do PDV", () => {
     expect(arquivos.length).toBeGreaterThan(5);

@@ -41,22 +41,17 @@ html.admin-mode[data-admin-tema="claro"] {
      `var(--lit-t|b-HEX, #HEX)` vale o próprio HEX no Escuro e o valor daqui nos
      temas claros. t = texto/ícone/contorno; b = fundo/borda. */
   --lit-t-3ddc97: #065f46;
-  --lit-t-5ee2d0: #115e59;
-  --lit-t-63d5ff: #075985;
   --lit-t-69c8ff: #075985;
   --lit-t-7edbd4: #115e59;
   --lit-t-8bb4ff: #4338ca;
-  --lit-t-91a4ff: #1d4ed8;
   --lit-t-a1a1ad: #5b5b68;
   --lit-t-a5b5ff: #4338ca;
   --lit-t-a5d7e9: #4338ca;
-  --lit-t-a7a7b5: #5b5b68;
   --lit-t-a8a3b1: #5b5b68;
   --lit-t-b2b2bd: #5b5b68;
   --lit-t-b5b1bd: #5b5b68;
   --lit-t-b6a0f7: #4338ca;
   --lit-t-b6b6c2: #5b5b68;
-  --lit-t-c4a3ff: #6d28d9;
   --lit-t-c4a7ff: #6d28d9;
   --lit-t-cbc3dd: #5b5b68;
   --lit-t-d4d4dc: #121217;
@@ -67,21 +62,14 @@ html.admin-mode[data-admin-tema="claro"] {
   --lit-t-fafafa: #121217;
   --lit-t-fda4af: #be123c;
   --lit-t-ff8b92: #be123c;
-  --lit-t-ff94bc: #be185d;
   --lit-t-ff9999: #be123c;
   --lit-t-ffa4cc: #be185d;
-  --lit-t-ffae70: #9a3412;
   --lit-t-ffb077: #9a3412;
   --lit-t-ffb0b0: #9f1239;
-  --lit-b-190f11: #fff1f2;
-  --lit-b-1d0f11: #fff1f2;
-  --lit-b-22222a: #e9e9ee;
   --lit-b-25171a: #fff1f2;
-  --lit-b-291315: #fff1f2;
   --lit-b-292931: #e9e9ee;
   --lit-b-303038: #c9c9d3;
   --lit-b-363640: #c9c9d3;
-  --lit-b-3c191d: #ffe4e6;
   --lit-b-3f3f46: #c9c9d3;
   --lit-b-454550: #d6d6de;
   --lit-b-52525b: #9a9aa8;
@@ -114,7 +102,6 @@ html.admin-mode[data-admin-tema="confortavel"] {
   --admin-pill: 40.6 44.7% 85.1%;
 
   --lit-t-a1a1ad: #b3a68f;
-  --lit-t-a7a7b5: #b3a68f;
   --lit-t-a8a3b1: #b3a68f;
   --lit-t-b2b2bd: #b3a68f;
   --lit-t-b5b1bd: #b3a68f;
@@ -125,7 +112,6 @@ html.admin-mode[data-admin-tema="confortavel"] {
   --lit-t-f4f4f5: #eadfc8;
   --lit-t-f5f5f7: #eadfc8;
   --lit-t-fafafa: #eadfc8;
-  --lit-b-22222a: #3a352e;
   --lit-b-292931: #38332c;
   --lit-b-303038: #4a443a;
   --lit-b-363640: #4a443a;

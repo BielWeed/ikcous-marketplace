@@ -138,45 +138,49 @@ export function CupomDaVenda({
         </Button>
       )}
       {escolha && (
-        <section className="pdv-card pdv-stack" aria-label="Escolher variação">
-          <h3 className="pdv-heading">
-            <PackagePlus aria-hidden="true" className="pdv-icon pdv-pink" />
-            Escolher variação
-          </h3>
-          <p className="font-bold">
-            Qual combinação de "{escolha.produtoNome}"?
-          </p>
-          {escolha.opcoes.map((opcao) => (
-            <button
-              key={opcao.variant_id}
+        <section className="pdv-variation-layer" aria-label="Escolher variação">
+          <div className="pdv-variation-heading">
+            <h3 className="pdv-heading">
+              <PackagePlus aria-hidden="true" className="pdv-icon pdv-pink" />
+              Escolher variação
+            </h3>
+            <Button
               type="button"
-              disabled={opcao.estoque <= 0}
-              onClick={() =>
-                despachar({ tipo: "variacao_escolhida", opcao, em: agora() })
-              }
-              className="pdv-result"
+              variant="outline"
+              className="pdv-secondary pdv-variation-cancel"
+              onClick={() => despachar({ tipo: "variacao_cancelada" })}
             >
-              <span>
-                <strong>
-                  {opcao.nome} {opcao.valor}
-                </strong>
-                <span className="pdv-muted">
-                  {opcao.estoque <= 0
-                    ? "Esgotado"
-                    : `R$ ${reais(opcao.preco)} · ${opcao.estoque} em estoque`}
+              Cancelar
+            </Button>
+          </div>
+          <div className="pdv-card pdv-stack pdv-variation-options">
+            <p className="font-bold">
+              Qual combinação de "{escolha.produtoNome}"?
+            </p>
+            {escolha.opcoes.map((opcao) => (
+              <button
+                key={opcao.variant_id}
+                type="button"
+                disabled={opcao.estoque <= 0}
+                onClick={() =>
+                  despachar({ tipo: "variacao_escolhida", opcao, em: agora() })
+                }
+                className="pdv-result"
+              >
+                <span>
+                  <strong>
+                    {opcao.nome} {opcao.valor}
+                  </strong>
+                  <span className="pdv-muted">
+                    {opcao.estoque <= 0
+                      ? "Esgotado"
+                      : `R$ ${reais(opcao.preco)} · ${opcao.estoque} em estoque`}
+                  </span>
                 </span>
-              </span>
-              <Plus aria-hidden="true" className="pdv-icon pdv-teal" />
-            </button>
-          ))}
-          <Button
-            type="button"
-            variant="outline"
-            className="pdv-secondary"
-            onClick={() => despachar({ tipo: "variacao_cancelada" })}
-          >
-            Cancelar
-          </Button>
+                <Plus aria-hidden="true" className="pdv-icon pdv-teal" />
+              </button>
+            ))}
+          </div>
         </section>
       )}
 

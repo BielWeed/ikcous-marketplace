@@ -43,7 +43,7 @@ function botao(texto: string) {
   )!;
 }
 
-it("reserva a barra medida e limita a rolagem à lista, sem aumentar a página", () => {
+it("reserva a barra medida sem impedir a rolagem do conteúdo em telas baixas", () => {
   const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8");
   expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*height: 100%/);
   expect(css).toMatch(/\.pdv-viewport\s*\{[^}]*overflow: hidden/);
@@ -51,6 +51,109 @@ it("reserva a barra medida e limita a rolagem à lista, sem aumentar a página",
   expect(css).toMatch(
     /\.pdv-cupom\[data-resumo="false"\] > ul\s*\{[^}]*min-height: 0/,
   );
+  for (const classe of ["pdv-checkout-body", "pdv-variation-options"]) {
+    const bloco = css.match(new RegExp(`\\.${classe}\\s*\\{([^}]+)\\}`))?.[1];
+    expect(bloco, classe).toMatch(/min-height:\s*0/);
+    expect(bloco, classe).toMatch(/overflow-y:\s*(auto|scroll)/);
+    expect(bloco, classe).toMatch(/overscroll-behavior:\s*contain/);
+  }
+});
+
+it("fechamento e variações montam os corpos roláveis sem levar a barra de ações junto", async () => {
+  await act(async () =>
+    raiz.render(
+      <FechamentoDaVenda
+        estado={{ ...inicial, erro: "Falha de rede", pagamento: "pix" }}
+        despachar={vi.fn()}
+        aoRegistrarVenda={vi.fn()}
+        limparCupom={vi.fn()}
+      />,
+    ),
+  );
+  const corpo = host.querySelector(".pdv-checkout-body")!;
+  expect(corpo).not.toBeNull();
+  expect(corpo.querySelector(".pdv-payment-grid")).not.toBeNull();
+  expect(corpo.querySelector("#conferi-o-pagamento")).not.toBeNull();
+  expect(corpo.querySelector('[role="alert"]')?.textContent).toContain(
+    "Falha de rede",
+  );
+  expect(corpo.querySelector(".pdv-sale-action")).toBeNull();
+  corpo.scrollTop = 120;
+  await act(async () =>
+    raiz.render(
+      <FechamentoDaVenda
+        estado={{ ...inicial, erro: "Nova falha", pagamento: "pix" }}
+        despachar={vi.fn()}
+        aoRegistrarVenda={vi.fn()}
+        limparCupom={vi.fn()}
+      />,
+    ),
+  );
+  expect(corpo.scrollTop).toBe(0);
+  expect(corpo.querySelector('[role="alert"]')).toBe(corpo.firstElementChild);
+  await act(async () =>
+    raiz.render(
+      <CupomDaVenda
+        estado={{
+          ...inicial,
+          etapa: "escolha_de_variacao",
+          escolhaDeVariacao: {
+            codigo: "123",
+            produtoId: "p",
+            produtoNome: "Caderno",
+            opcoes: [
+              {
+                variant_id: "azul",
+                nome: "Cor",
+                valor: "Azul",
+                preco: 10,
+                estoque: 2,
+                imagem: null,
+                codigo_barras: null,
+              },
+            ],
+          },
+        }}
+        subtotal={10}
+        despachar={vi.fn()}
+        onNavigate={vi.fn()}
+        feedback={null}
+      />,
+    ),
+  );
+  const variacoes = host.querySelector(".pdv-variation-options")!;
+  expect(variacoes).not.toBeNull();
+  expect(variacoes.textContent).toContain("Azul");
+  expect(
+    host.querySelector(".pdv-variation-heading .pdv-variation-cancel"),
+  ).not.toBeNull();
+  expect(variacoes.querySelector(".pdv-variation-cancel")).toBeNull();
+  expect(variacoes.querySelector(".pdv-sale-action")).toBeNull();
+});
+
+it("controles compactos mantêm alvos de toque de pelo menos 40px", () => {
+  const css = readFileSync("src/components/admin/pdv/pdv.css", "utf8");
+  for (const seletor of [
+    ".pdv-touch",
+    ".pdv-modes button",
+    ".pdv-payment",
+    ".pdv .pdv-cancel[data-slot]",
+    ".pdv-conference label",
+  ]) {
+    const blocos = css
+      .split("}")
+      .filter(
+        (bloco) =>
+          bloco.trim().endsWith("{") === false &&
+          bloco.includes(`${seletor} {`),
+      );
+    expect(blocos.length).toBeGreaterThan(0);
+    for (const bloco of blocos) {
+      const altura = /min-height:\s*(\d+)px/.exec(bloco)?.[1];
+      if (altura) expect(Number(altura), seletor).toBeGreaterThanOrEqual(40);
+    }
+  }
+  expect(css).toMatch(/\.pdv-touch\s*\{[^}]*width:\s*40px/);
 });
 
 it("fechar e registrar usam o botão verde, nunca o principal dourado da barra", async () => {
