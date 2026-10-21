@@ -179,6 +179,44 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
     expect(h.save).not.toHaveBeenCalled();
   });
 
+  it("mantém contorno nas três amostras sem mudar o preenchimento da marca", async () => {
+    await render();
+    const rows = host.querySelectorAll("[data-previa-uso]");
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      const amostra = row.firstElementChild as HTMLElement;
+      expect(amostra.classList.contains("border")).toBe(true);
+      expect(amostra.classList.contains("border-admin-border-strong")).toBe(
+        true,
+      );
+      expect(amostra.style.backgroundColor).toBe("rgb(35, 69, 103)");
+    }
+    await type("#18181B");
+    for (const row of rows) {
+      expect((row.firstElementChild as HTMLElement).style.backgroundColor).toBe(
+        "rgb(24, 24, 27)",
+      );
+    }
+  });
+
+  it("separa o aviso do Android e não repete a atualização na prévia", async () => {
+    await render();
+    const preview = host.querySelector(
+      '[aria-labelledby="app-color-preview-title"]',
+    )!;
+    expect(preview.lastElementChild?.textContent).toBe(
+      "O ícone do Android só muda quando você envia o ícone de novo, em Minha loja.",
+    );
+    expect(
+      preview.textContent?.match(/Só muda quando o app atualizar/g),
+    ).toHaveLength(1);
+    expect(
+      preview.querySelector(
+        "[data-previa-uso] p.text-emerald-300 [aria-hidden]",
+      ),
+    ).toBeNull();
+  });
+
   it("salvar muda SOMENTE primary_color: compara as oito chaves e os assets completos", async () => {
     const before = snapshot();
     await render();

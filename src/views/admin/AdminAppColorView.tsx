@@ -33,6 +33,8 @@ const CARTAO = "rounded-[20px] border border-admin-border bg-admin-surface p-4";
 const ACAO = "min-h-11 rounded-xl focus-visible:ring-admin-gold";
 const NOTA =
   "A tela de abertura e o ícone do app acompanham a próxima atualização do aplicativo. O fundo do ícone do Android só muda quando você envia o ícone de novo, em Minha loja.";
+const NOTA_PREVIA =
+  "O ícone do Android só muda quando você envia o ícone de novo, em Minha loja.";
 const EXPLICACAO =
   "Esta é a cor da sua marca no app: ela pinta os botões principais, a barra do navegador no celular e a tela de abertura.";
 
@@ -205,7 +207,7 @@ function EscolhaDaCor({
           <div data-previa-uso className="flex items-center gap-4 py-4">
             <div
               data-previa-cor
-              className="flex min-h-12 w-[52%] max-w-[170px] shrink-0 items-center justify-center rounded-full px-2 text-xs font-semibold"
+              className="flex min-h-12 w-[52%] max-w-[170px] shrink-0 items-center justify-center rounded-full border border-admin-border-strong px-2 text-xs font-semibold"
               style={{ backgroundColor: cor, color: texto }}
             >
               Finalizar compra
@@ -215,10 +217,6 @@ function EscolhaDaCor({
               <p
                 className={`mt-1 flex items-start gap-1.5 text-xs leading-4 ${fraco ? "text-amber-300" : "text-emerald-300"}`}
               >
-                <span
-                  aria-hidden="true"
-                  className="mt-1.5 size-1 shrink-0 rounded-full bg-current"
-                />
                 <span>
                   {branco ? "Texto branco" : "Texto escuro"} ·{" "}
                   {fraco ? "difícil de ler" : "fácil de ler"}
@@ -228,7 +226,7 @@ function EscolhaDaCor({
           </div>
           <div data-previa-uso className="flex items-center gap-4 py-4">
             <div
-              className="flex size-16 shrink-0 items-center justify-center rounded-2xl"
+              className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-admin-border-strong"
               style={{ backgroundColor: cor, color: texto }}
             >
               <span
@@ -248,7 +246,7 @@ function EscolhaDaCor({
           <div data-previa-uso className="flex items-center gap-4 py-4">
             <span
               aria-hidden="true"
-              className="h-3.5 w-16 shrink-0 rounded"
+              className="h-3.5 w-16 shrink-0 rounded border border-admin-border-strong"
               style={{ backgroundColor: cor }}
             />
             <div className="min-w-0">
@@ -259,7 +257,7 @@ function EscolhaDaCor({
             </div>
           </div>
         </div>
-        <p className="mt-3 text-xs leading-4 text-zinc-400">{NOTA}</p>
+        <p className="mt-3 text-xs leading-4 text-zinc-400">{NOTA_PREVIA}</p>
       </section>
 
       {fraco && (
