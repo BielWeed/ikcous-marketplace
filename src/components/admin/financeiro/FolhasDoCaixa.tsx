@@ -191,7 +191,7 @@ export function AbrirCaixaFolha({
       titulo="Abrir caixa"
       icone={Archive}
       matiz="#2DD4BF"
-      descricao="Conte o dinheiro que já está na gaveta antes da primeira venda."
+      descricao="Antes de vender, conte o dinheiro da gaveta."
       aoFechar={aoFechar}
       rodape={
         <RodapeDeAcao
@@ -209,7 +209,7 @@ export function AbrirCaixaFolha({
           id="fin-caixa-abertura"
           rotulo="Dinheiro na gaveta (R$)"
           erro={erroValor}
-          ajuda="Troco inicial: notas e moedas contadas agora. Pode ser 0,00."
+          ajuda="Troco inicial: notas e moedas contadas. Pode ser 0,00."
         >
           <LocalBufferedInput
             id="fin-caixa-abertura"
@@ -381,8 +381,8 @@ export function MovimentarCaixaFolha({
       matiz={sangria ? "#FF9F5A" : "#2DD4BF"}
       descricao={
         sangria
-          ? "Tirar dinheiro da gaveta (levar ao banco, guardar no cofre)."
-          : "Colocar dinheiro na gaveta (troco que chegou)."
+          ? "Tirar dinheiro da gaveta: banco ou cofre."
+          : "Colocar troco na gaveta."
       }
       aoFechar={aoFechar}
       rodape={
@@ -451,7 +451,7 @@ export function MovimentarCaixaFolha({
           rotulo={
             sangria ? "Para onde foi (opcional)" : "De onde veio (opcional)"
           }
-          ajuda="Se o dinheiro foi para (ou veio de) outra conta da loja, escolha-a: o valor sai de uma e entra na outra, sem virar despesa."
+          ajuda="Se saiu para outra conta da loja ou veio dela, escolha-a. O valor muda de conta, sem virar despesa."
         >
           <select
             id="fin-caixa-mov-conta"
@@ -607,8 +607,8 @@ export function FecharCaixaFolha({
           />
         </Campo>
         <p className="text-xs leading-relaxed text-zinc-400">
-          O fechamento usa os valores confirmados pelo servidor. A prévia pode
-          mudar se houver movimento durante a contagem.
+          O servidor confirma os valores ao fechar. A prévia pode mudar durante
+          a contagem.
         </p>
         <ComparativoDoFechamento
           esperado={caixa.esperado}
@@ -619,13 +619,11 @@ export function FecharCaixaFolha({
         <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-xs text-zinc-400">
           <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <span>
-            Se o contado não bater com o esperado, a diferença vira um
-            lançamento automático de{" "}
+            A diferença gera um lançamento automático:{" "}
             <strong className="text-zinc-200">Quebra de caixa</strong> (faltou
             dinheiro) ou{" "}
             <strong className="text-zinc-200">Sobra de caixa</strong> (sobrou).
-            Assim o saldo do caixa fica igual ao dinheiro que está de verdade na
-            gaveta.
+            O saldo passa a ser o contado.
           </span>
         </p>
         <Campo id="fin-caixa-observacao" rotulo="Observação (opcional)">

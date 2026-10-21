@@ -91,7 +91,7 @@ function CaixaAberto({
               className="text-4xl font-black tracking-tighter text-white"
             />
             <p className="text-xs font-medium text-zinc-400">
-              Inclui as vendas em dinheiro registradas nesta sessão.
+              Inclui vendas em dinheiro desta sessão.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
@@ -204,8 +204,8 @@ function CaixaAberto({
       <CartaoSecao titulo="Movimentos desta sessão">
         {caixa.movimentos.length === 0 ? (
           <p className="text-xs text-zinc-400">
-            Nenhuma sangria ou suprimento ainda. As vendas em dinheiro entram no
-            esperado sozinhas.
+            Nenhuma sangria ou suprimento. As vendas em dinheiro somam no
+            esperado.
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-white/5">
@@ -267,9 +267,8 @@ function CaixaFechado({ abrirFolha }: { readonly abrirFolha: AbrirFolha }) {
         <div>
           <p className="text-lg font-black text-white">Caixa fechado</p>
           <p className="mx-auto mt-1 max-w-md text-xs text-zinc-400">
-            Abra o caixa no começo do dia contando o troco da gaveta. Durante o
-            dia as vendas em dinheiro somam no esperado; no fim, você conta de
-            novo e o app mostra se sobrou ou faltou.
+            Abra contando o troco. As vendas em dinheiro somam no esperado. No
+            fim do dia, conte de novo: o app mostra se sobrou ou faltou.
           </p>
         </div>
         <button

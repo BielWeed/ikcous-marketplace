@@ -1,3 +1,5 @@
+import { gerarUuidV4 as gerarChave } from "@/lib/uuid-v4";
+
 // Uma intenção por autor, sessão e tipo, sem prazo. Guarda SOMENTE o UUID.
 // Editar campos, fechar a folha ou recarregar não prova que o servidor recusou.
 // Sem armazenamento, quem chama conserva a chave em memória enquanto a folha vive.
@@ -9,20 +11,6 @@ type Tipo = "sangria" | "suprimento";
 
 function endereco(autor: string, sessao: string, tipo: Tipo): string {
   return PREFIXO + JSON.stringify([autor, sessao, tipo]);
-}
-
-/** Em HTTP local, randomUUID pode faltar; getRandomValues gera UUID v4. */
-function gerarChave(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export function chaveDaTentativaDoCaixa(
