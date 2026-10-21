@@ -51,7 +51,7 @@ function cenario(op = {}) {
     { name: "SEND_EMAIL_HOOK_SECRET", value: "digest-ficticio" },
   ];
   const functions = op.functions ?? [
-    { slug: "auth-send-email", status: "ACTIVE" },
+    { slug: "auth-send-email", status: "ACTIVE", verify_jwt: false },
   ];
   const eventos = [];
   const logs = [];
@@ -193,6 +193,77 @@ Deno.test("medir: só GET, relata booleanos e URI fixa sem corpos nem nomes arbi
     assert(!c.tudo().includes(v));
 });
 
+// SHA-256 calculado separadamente sobre o SECRET fictício completo, em UTF-8.
+const DIGEST =
+  "f4d8f82bd257325f43cece208e7b047e9f26e570b2945e532876ff9e3afcfee8";
+for (const [nome, segredo, config, esperado] of [
+  ["value igual (OpenAPI)", { value: DIGEST }, {}, "igual"],
+  ["sha256 igual", { sha256: DIGEST }, {}, "igual"],
+  ["digest igual em maiúsculas", { digest: DIGEST.toUpperCase() }, {}, "igual"],
+  ["hash diferente", { value: "0".repeat(64) }, {}, "diferente"],
+  ["hash ausente", {}, {}, "formato desconhecido"],
+  ["hash ilegível", { value: "digest-ficticio" }, {}, "formato desconhecido"],
+  ["valor não é hash", { value: SECRET }, {}, "formato desconhecido"],
+  ["hash não textual", { sha256: 17 }, {}, "formato desconhecido"],
+  [
+    "segredo Auth ausente",
+    { value: DIGEST },
+    { hook_send_email_secrets: null },
+    "formato desconhecido",
+  ],
+  [
+    "segredo Auth ilegível",
+    { value: DIGEST },
+    { hook_send_email_secrets: "outro-formato" },
+    "formato desconhecido",
+  ],
+])
+  Deno.test(`medir: comparação dos segredos sem revelar valores — ${nome}`, async () => {
+    const c = cenario({
+      secrets: [{ name: "SEND_EMAIL_HOOK_SECRET", ...segredo }],
+      config,
+    });
+    assertEquals(await c.rodar("medir"), 0);
+    assertEquals(escritas(c), []);
+    assertStringIncludes(c.tudo(), `comparação dos segredos: ${esperado}`);
+    for (const v of [
+      SECRET,
+      SECRET.slice(9),
+      DIGEST,
+      DIGEST.toUpperCase(),
+      "0".repeat(64),
+    ])
+      assert(!c.tudo().includes(v));
+    assert(
+      c.mascaras.includes(SECRET) ||
+        config.hook_send_email_secrets !== undefined,
+    );
+  });
+
+Deno.test("medir: sem segredo da função não afirma igualdade", async () => {
+  const c = cenario({ secrets: [] });
+  assertEquals(await c.rodar("medir"), 0);
+  assertStringIncludes(
+    c.tudo(),
+    "comparação dos segredos: formato desconhecido",
+  );
+});
+
+for (const [nome, campos, esperado] of [
+  ["false", { verify_jwt: false }, "false"],
+  ["true", { verify_jwt: true }, "true"],
+  ["ausente", {}, "desconhecido"],
+  ["texto remoto", { verify_jwt: "::warning::NAO-IMPRIMIR" }, "desconhecido"],
+])
+  Deno.test(`medir: informa verify_jwt em saída fechada — ${nome}`, async () => {
+    const c = cenario({
+      functions: [{ slug: "auth-send-email", status: "ACTIVE", ...campos }],
+    });
+    assertEquals(await c.rodar("medir"), 0);
+    assertStringIncludes(c.tudo(), `verify_jwt da função: ${esperado}`);
+    assert(!c.tudo().includes("NAO-IMPRIMIR"));
+  });
+
 Deno.test("CAF: só o token próprio e o ref fechado, mesmo com Savy no ambiente", async () => {
   const c = cenario({ projeto: "ikcous-publicada" });
   assertEquals(await c.rodar("ativar"), 0);
@@ -275,6 +346,15 @@ Deno.test("preparar: já preparado não gera nem grava outro segredo", async () 
   assertEquals(escritas(c), []);
 });
 
+Deno.test("preparar: já preparado e ligado não desliga nem rotaciona", async () => {
+  const c = cenario({ config: { hook_send_email_enabled: true } });
+  assertEquals(await c.rodar("preparar"), 0);
+  assertEquals(escritas(c), []);
+  assert(c.chamadas.every((r) => r.init.method === "GET"));
+  assertStringIncludes(c.tudo(), "hook já ligado, nada a preparar");
+  assertStringIncludes(c.tudo(), "hook ativado: sim");
+});
+
 for (const [nome, op] of [
   ["segredo só na função", { config: { hook_send_email_secrets: "" } }],
   ["segredo só no Auth", { secrets: [] }],
@@ -304,6 +384,38 @@ Deno.test("ativar: todas guardas passam, PATCH só enabled e relê", async () =>
   assertStringIncludes(c.tudo(), "hook ativado: sim");
   assertStringIncludes(c.tudo(), "Gmail cadastrado: sim");
 });
+
+for (const [nome, campos] of [
+  ["true", { verify_jwt: true }],
+  ["ausente", {}],
+  ["null", { verify_jwt: null }],
+  ["texto false", { verify_jwt: "false" }],
+])
+  Deno.test(`ativar: exige verify_jwt false antes de consultar Gmail ou escrever — ${nome}`, async () => {
+    const c = cenario({
+      functions: [{ slug: "auth-send-email", status: "ACTIVE", ...campos }],
+    });
+    assertEquals(await c.rodar("ativar"), 1);
+    assertEquals(escritas(c), []);
+    assert(!c.chamadas.some((r) => r.path.endsWith("/database/query")));
+    assertStringIncludes(c.tudo(), "publicada sem verificação de login");
+    assertStringIncludes(c.tudo(), "assinatura de webhook, não com login");
+  });
+
+for (const [nome, segredo] of [
+  ["diferente", { value: "0".repeat(64) }],
+  ["desconhecido", { sha256: "outro-formato" }],
+])
+  Deno.test(`ativar: comparação de hash ${nome} não vira guarda`, async () => {
+    const c = cenario({
+      secrets: [{ name: "SEND_EMAIL_HOOK_SECRET", ...segredo }],
+    });
+    assertEquals(await c.rodar("ativar"), 0);
+    assertEquals(
+      patches(c).map((p) => p.body),
+      [{ hook_send_email_enabled: true }],
+    );
+  });
 
 for (const [nome, op] of [
   ["sem função", { functions: [] }],
@@ -390,6 +502,9 @@ for (const op of [
     const c = cenario(op);
     assertEquals(await c.rodar("ativar"), 1);
     assert(!c.tudo().includes("hook ativado: sim"));
+    assertStringIncludes(c.tudo(), "estado do hook DESCONHECIDO");
+    assertStringIncludes(c.tudo(), "rode medir");
+    assert(!c.tudo().includes(SECRET));
   });
 
 for (const extra of [

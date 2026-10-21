@@ -1,5 +1,7 @@
 # Uma loja por execução. Nenhum dispatch deve ocorrer antes da revisão de
-# risco e do deploy da auth-send-email. Preparar deixa o hook DESLIGADO.
+# risco e do deploy da auth-send-email ACTIVE com verify_jwt=false.
+# Ativar exige essa publicação sem verificação de login (Auth assina o webhook).
+# Preparar cria desligado; se já preparado, preserva ligado/desligado e o segredo.
 # Desfazer: mesma loja/SHA aprovado, acao=desativar (só PATCH enabled=false).
 name: E-mail do login por loja
 run-name: "email do login em ${{ inputs.projeto }}: ${{ inputs.acao }}"
@@ -16,7 +18,7 @@ on:
           - ikcous-publicada
           - savy
       acao:
-        description: "Medir; preparar desligado; ativar com guardas; desativar para desfazer"
+        description: "Medir; preparar sem desligar hook pronto; ativar com guardas; desativar para desfazer"
         required: true
         type: choice
         default: medir

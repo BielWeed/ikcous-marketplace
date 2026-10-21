@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Send Email Hook de UMA loja: medir, preparar (desligado), ativar, desativar.
+ * Send Email Hook de UMA loja: medir, preparar sem desligar, ativar, desativar.
  * Chamado só por ativar-email-do-login.yml; nenhuma API é chamada ao importar.
  *
  * Fontes oficiais conferidas em 21/10/2026:
@@ -18,7 +18,9 @@
  * function, segredo, Gmail ou leitura inicial bem-sucedida: tenta o PATCH mesmo
  * sem snapshot; nesse caso não declara a verificação completa.
  *
- * Preparar não rotaciona: estado parcial/estranho PARA sem escrita. A criação
+ * Ativar exige auth-send-email ACTIVE e verify_jwt === false (Auth usa webhook).
+ * Preparar preserva hook já ligado e não rotaciona: estado parcial/estranho
+ * PARA sem escrita. A criação
  * do segredo e o PATCH NÃO são uma transação: interrupção pode deixar o segredo
  * só na função; não tente reparar/rotacionar automaticamente. Revisão humana
  * deve decidir a recuperação, mantendo o hook desligado.
@@ -29,7 +31,7 @@
  * A presença de Gmail não prova decifragem nem entrega; isso exige teste real.
  */
 const fs = require("node:fs");
-const { randomBytes } = require("node:crypto");
+const { createHash, randomBytes } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
 const { resolverRef } = require("./conferir-banco.cjs");
 const { ALVOS, escaparDadoDeComando } = require("./medir-auth-da-loja.cjs");
@@ -95,7 +97,34 @@ function conferirLista(lista, campo) {
   return lista;
 }
 
-function relatar({ saida, config, uri, funcao, segredo, gmail }) {
+// OpenAPI: value é string; CLI a mostra como DIGEST. O algoritmo não é contrato.
+// Só reconhecemos SHA-256 hexadecimal, inclusive nos campos explícitos se vierem.
+// Compara o texto COMPLETO gravado por preparar, sem remover v1,whsec_.
+// Isto é diagnóstico, NUNCA guarda de ativação; não imprime hash nem segredo.
+function compararSegredos(segredo, segredoAuth) {
+  const digest = segredo?.sha256 ?? segredo?.digest ?? segredo?.value;
+  if (
+    !formatoSegredo(segredoAuth) ||
+    typeof digest !== "string" ||
+    !/^[a-fA-F0-9]{64}$/.test(digest)
+  )
+    return "formato desconhecido";
+  const esperado = createHash("sha256")
+    .update(segredoAuth, "utf8")
+    .digest("hex");
+  return esperado === digest.toLowerCase() ? "igual" : "diferente";
+}
+
+function relatar({
+  saida,
+  config,
+  uri,
+  funcao,
+  verifyJwt,
+  segredo,
+  comparacao,
+  gmail,
+}) {
   const simNao = (v) => (v ? "sim" : "não");
   // URI remota só sai se for byte a byte a URI construída do alvo fechado.
   const linhas = [
@@ -103,6 +132,8 @@ function relatar({ saida, config, uri, funcao, segredo, gmail }) {
     `URI do hook: ${config.hook_send_email_uri === uri ? uri : vazio(config.hook_send_email_uri) ? "ausente" : "diferente da esperada"}`,
     `hook preparado: ${simNao(config.hook_send_email_uri === uri && formatoSegredo(config.hook_send_email_secrets))}`,
     `função ativa: ${funcao === undefined ? "não medido" : simNao(funcao)}`,
+    `verify_jwt da função: ${typeof verifyJwt === "boolean" ? String(verifyJwt) : "desconhecido"}`,
+    `comparação dos segredos: ${comparacao ?? "não medido"}`,
     `segredo da função: ${segredo === undefined ? "não medido" : segredo ? "presente" : "ausente"}`,
     `nomes de segredos medidos: ${segredo === undefined ? "não medido" : NOME_SEGREDO}`,
     `Gmail cadastrado: ${gmail === undefined ? "não medido" : simNao(gmail)}`,
@@ -160,24 +191,30 @@ async function executar({ projeto, acao, env, fetchImpl, saida }) {
         !Object.keys(patch).every((k) => CAMPOS_HOOK.includes(k))
       )
         parar("PATCH fora dos campos do hook");
-      const resposta = await chamar("/config/auth", "PATCH", patch);
-      conferirConfig(resposta, saida);
-      const depois = await lerConfig();
-      for (const [chave, valor] of Object.entries(patch))
-        if (!isDeepStrictEqual(Reflect.get(depois, chave), valor))
-          parar("releitura não confirmou o PATCH");
-      if (!antes)
-        parar("hook desativado; verificação incompleta das outras políticas");
-      // Compara também os campos do hook NÃO pedidos neste PATCH.
-      const restantes = (c) =>
-        Object.fromEntries(
-          Object.entries(c).filter(([k]) => !Object.hasOwn(patch, k)),
-        );
-      if (!isDeepStrictEqual(restantes(antes), restantes(depois)))
+      try {
+        const resposta = await chamar("/config/auth", "PATCH", patch);
+        conferirConfig(resposta, saida);
+        const depois = await lerConfig();
+        for (const [chave, valor] of Object.entries(patch))
+          if (!isDeepStrictEqual(Reflect.get(depois, chave), valor))
+            parar("releitura não confirmou o PATCH");
+        if (!antes)
+          parar("hook desativado; verificação incompleta das outras políticas");
+        // Compara também os campos do hook NÃO pedidos neste PATCH.
+        const restantes = (c) =>
+          Object.fromEntries(
+            Object.entries(c).filter(([k]) => !Object.hasOwn(patch, k)),
+          );
+        if (!isDeepStrictEqual(restantes(antes), restantes(depois)))
+          parar(
+            "outra configuração mudou durante a operação; verificação incompleta",
+          );
+        return depois;
+      } catch (erro) {
         parar(
-          "outra configuração mudou durante a operação; verificação incompleta",
+          `${erro instanceof Parada ? erro.message : "conferência do PATCH não completou"}; estado do hook DESCONHECIDO; rode medir antes de tentar novamente`,
         );
-      return depois;
+      }
     };
 
     let config;
@@ -202,8 +239,11 @@ async function executar({ projeto, acao, env, fetchImpl, saida }) {
         formatoSegredo(config.hook_send_email_secrets) &&
         segredoPresente();
       if (preparado) {
-        if (config.hook_send_email_enabled === true)
-          config = await aplicar(config, { hook_send_email_enabled: false });
+        if (config.hook_send_email_enabled === true) {
+          const mensagem = "hook já ligado, nada a preparar";
+          saida.log(mensagem);
+          saida.resumo(mensagem);
+        }
       } else {
         if (
           segredoPresente() ||
@@ -239,15 +279,30 @@ async function executar({ projeto, acao, env, fetchImpl, saida }) {
       )
     )
       parar("estado da função inesperado");
-    const funcao = functions.some(
-      (f) => f.slug === "auth-send-email" && f.status === "ACTIVE",
-    );
+    const authSendEmail = functions.find((f) => f.slug === "auth-send-email");
+    const funcao = authSendEmail?.status === "ACTIVE";
+    const verifyJwt = authSendEmail?.verify_jwt;
     if (acao === "medir") {
-      relatar({ saida, config, uri, funcao, segredo: segredoPresente() });
+      relatar({
+        saida,
+        config,
+        uri,
+        funcao,
+        verifyJwt,
+        segredo: segredoPresente(),
+        comparacao: compararSegredos(
+          secrets.find((s) => s.name === NOME_SEGREDO),
+          config.hook_send_email_secrets,
+        ),
+      });
       return 0;
     }
 
     if (!funcao) parar("função auth-send-email ausente ou inativa");
+    if (verifyJwt !== false)
+      parar(
+        "função auth-send-email precisa ser publicada sem verificação de login (verify_jwt=false), porque o Auth chama com assinatura de webhook, não com login",
+      );
     if (!segredoPresente()) parar("segredo da função ausente");
     if (
       config.hook_send_email_uri !== uri ||
@@ -269,7 +324,15 @@ async function executar({ projeto, acao, env, fetchImpl, saida }) {
     if (!rows[0].gmail_cadastrado)
       parar("Gmail ainda não cadastrado no painel");
     config = await aplicar(config, { hook_send_email_enabled: true });
-    relatar({ saida, config, uri, funcao, segredo: true, gmail: true });
+    relatar({
+      saida,
+      config,
+      uri,
+      funcao,
+      verifyJwt,
+      segredo: true,
+      gmail: true,
+    });
     return 0;
   } catch (erro) {
     // Só mensagens FIXAS nossas. Erro de transporte/JSON pode conter segredo.
