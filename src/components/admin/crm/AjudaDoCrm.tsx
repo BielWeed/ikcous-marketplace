@@ -76,7 +76,8 @@ export function AjudaDoCrm({
             <li>
               <strong className="text-white">Histórico da loja:</strong>{" "}
               Histórico de pedidos e faturamento ao longo do tempo em gráficos
-              interativos.
+              interativos. No lucro dos gráficos, devolução parcial e estorno só
+              são descontados na aba Resultado do Financeiro.
             </li>
             <li>
               <strong className="text-white">Vendas por categoria:</strong>{" "}

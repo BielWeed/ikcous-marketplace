@@ -31,6 +31,16 @@ afterEach(() => {
 });
 
 describe("AjudaDoCrm — ranking de lucro e produto sem custo", () => {
+  it("explica visivelmente onde ver o lucro que desconta devolução parcial e estorno", () => {
+    act(() => raiz.render(<AjudaDoCrm isOpen onClose={() => {}} />));
+    const visivel = document.body.cloneNode(true) as HTMLElement;
+    visivel.querySelectorAll(".sr-only, [hidden]").forEach((el) => el.remove());
+    const texto = (visivel.textContent ?? "").replace(/\s+/g, " ");
+    expect(texto).toContain(
+      "No lucro dos gráficos, devolução parcial e estorno só são descontados na aba Resultado do Financeiro.",
+    );
+  });
+
   it("diz que produto sem custo fica FORA da conta e que o lucro usa o custo de hoje", () => {
     act(() => raiz.render(<AjudaDoCrm isOpen onClose={() => {}} />));
     const texto = (document.body.textContent ?? "").replace(/\s+/g, " ");

@@ -301,6 +301,13 @@ export const OperationalPerformanceChart = memo(
           )}
         </div>
 
+        {!loading && stats && chartMode === "roi" && (
+          <p className="text-admin-text-soft shrink-0 text-[11px] leading-tight">
+            Lucro das vendas. Devolução parcial e estorno só são descontados na
+            aba Resultado do Financeiro.
+          </p>
+        )}
+
         <div
           className={cn(
             "relative z-10 h-[150px] w-full min-w-0 shrink-0 overflow-hidden transition-opacity duration-300",

@@ -130,6 +130,36 @@ describe("tela do lucro avisa produtos sem custo", () => {
   }
 
   describe("OperationalPerformanceChart", () => {
+    it.each([undefined, 0, 3])(
+      "o lucro avisa visivelmente sobre devolução parcial e estorno mesmo com %s produtos sem custo",
+      async (semCusto) => {
+        await act(async () =>
+          raiz.render(
+            <OperationalPerformanceChart
+              stats={stats({ productsWithoutCost: semCusto })}
+              loading={false}
+              active
+            />,
+          ),
+        );
+        const aviso =
+          "Lucro das vendas. Devolução parcial e estorno só são descontados na aba Resultado do Financeiro.";
+        expect(hospedeiro.textContent).not.toContain(aviso);
+        const retorno = [...hospedeiro.querySelectorAll("button")].find((b) =>
+          b.textContent?.includes("Retorno do estoque"),
+        )!;
+        await act(async () => retorno.click());
+        const visivel = hospedeiro.cloneNode(true) as HTMLElement;
+        visivel
+          .querySelectorAll(".sr-only, [hidden]")
+          .forEach((el) => el.remove());
+        expect((visivel.textContent ?? "").replace(/\s+/g, " ")).toContain(
+          aviso,
+        );
+        expect(visivel.textContent).toContain("Lucro acumulado");
+      },
+    );
+
     it("controle: campo ausente (função antiga) = nenhum aviso", async () => {
       const texto = await montaGrafico(stats({}));
       expect(texto).toContain("Lucro acumulado");
