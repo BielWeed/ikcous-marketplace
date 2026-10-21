@@ -31,7 +31,8 @@
 -- CADEIA: o corpo desta consulta e' o SUCESSOR da 20261199000000 (portas do painel exigem o admin atual): nao ha
 -- redefinicao entre as duas. Depois a 249 sucede a 235 sem perder a trava: a 8e (lote 92-202) guarda os corpos
 -- da 99, da 235 e da 249; a 9a (lote 60-66) fixa SO o final da 249, nao o intermediario da 235.
--- A 36a prova a trava da 235, inclusive com a 249 no ar; a 52a prova o motivo privado da 249.
+-- A 36a prova a trava da 235, inclusive com a 249 ou a 280 no ar; a 52a prova o motivo privado.
+-- A 280 tem 9 argumentos e hash próprio: só essa assinatura/corpo novos são aceitos, não qualquer sobrecarga.
 --
 -- md5 recalculado dos ARQUIVOS das migrations por tests/ci_conferir_banco_test.ts e por tests/migration_a_venda_repetida_do_balcao_devolve_a_venda_feita_test.ts;
 -- tests/banco/venda-balcao-mesma-chave-portao-viva.cjs roda esta consulta num Postgres real (positiva depois do apply,
@@ -40,7 +41,10 @@
 -- tests/banco/venda-balcao-mesma-chave-viva.cjs, com duas conexoes reais). Evidencia LOCAL nao prova a IKCOUS nem a Savy:
 -- so o run desta consulta contra o ref de cada loja.
 WITH alvo(assinatura) AS (
-  VALUES ('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)')
+  SELECT COALESCE(
+    to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)'),
+    to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)')
+  )::text
 ), fn AS (
   SELECT p.oid,
          (SELECT count(*) FROM pg_proc q JOIN pg_namespace n ON n.oid = q.pronamespace
@@ -49,7 +53,8 @@ WITH alvo(assinatura) AS (
          CASE WHEN position('hashtextextended(''venda_presencial:'' || p_idempotency_key::text, 0)' IN p.prosrc) > 0
               THEN 'sim' ELSE 'nao' END AS marcador,
          CASE WHEN p.prosecdef AND l.lanname = 'plpgsql' AND p.provolatile = 'v'
-                   AND NOT p.proisstrict AND NOT p.proretset AND p.pronargs = 8
+                   AND NOT p.proisstrict AND NOT p.proretset
+                   AND (p.pronargs = 8 OR (p.pronargs = 9 AND md5(replace(p.prosrc, chr(13), '')) = 'd1da704579d91c278dd46747b4d08b43'))
                    AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]
                    AND p.prorettype = 'jsonb'::regtype
               THEN 'SECURITY DEFINER plpgsql VOLATILE search_path=pg_catalog, pg_temp -> jsonb'
@@ -77,6 +82,7 @@ WITH alvo(assinatura) AS (
   SELECT 'registrar_venda_presencial: corpo e o da 20261235000000, com a trava pela chave (md5)',
          '996caf02505ac16a8bded73bcf8900aa',
          COALESCE((SELECT CASE WHEN f.m = '796e0aaeb00b6f5133a54ce12f2df396'
+                                    OR f.m = 'd1da704579d91c278dd46747b4d08b43'
                                THEN '996caf02505ac16a8bded73bcf8900aa' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'registrar_venda_presencial: o corpo toma a trava consultiva pela chave de idempotencia',

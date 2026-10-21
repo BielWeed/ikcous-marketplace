@@ -1,5 +1,5 @@
 -- 52a-conferir-motivo-do-balcao-privado-aplicado: somente catalogo, um SELECT, 11 linhas fixas. Nenhum pedido ou nota e lido.
--- DEPOIS: exige o corpo EXATO da 20261249.
+-- DEPOIS: exige o corpo EXATO da 20261249 ou da sucessora 20261280 (total conferido), que preserva o motivo privado.
 -- Nos dois lados a tabela privada tem de estar OPERACIONAL: ausente ou fechada pelo rollback da 247 reprova.
 -- Rol FECHADO (item | esperado | vivo | ok booleano, false primeiro); objeto ausente nao elimina linha:
 -- 1. controle: funcoes de public visiveis a este papel
@@ -25,12 +25,15 @@ WITH ord AS (
          (SELECT count(*) FROM pg_proc q WHERE q.pronamespace = 'public'::regnamespace
            AND q.proname = 'registrar_venda_presencial') AS sobrecargas,
          l.lanname = 'plpgsql' AND p.prosecdef AND p.provolatile = 'v'
-           AND NOT p.proisstrict AND NOT p.proretset AND p.pronargs = 8
+           AND NOT p.proisstrict AND NOT p.proretset
+           AND (p.pronargs = 8 OR (p.pronargs = 9 AND md5(replace(p.prosrc, chr(13), '')) = 'd1da704579d91c278dd46747b4d08b43'))
            AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]
            AND pg_get_function_result(p.oid) = 'jsonb'
            AND p.proowner = (SELECT dono FROM ord) AS atributos
     FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
-   WHERE p.oid = to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)')
+   WHERE p.oid = COALESCE(
+     to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)'),
+     to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)'))
 ), itens(item, esperado, vivo) AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim', CASE WHEN COALESCE(((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace)), false) THEN 'sim' ELSE 'nao' END
 
@@ -39,7 +42,8 @@ WITH ord AS (
          COALESCE((SELECT sobrecargas::text FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'registrar_venda_presencial: corpo da 20261249000000 (motivo privado, md5)', '796e0aaeb00b6f5133a54ce12f2df396',
-         COALESCE((SELECT m FROM fn), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN m = 'd1da704579d91c278dd46747b4d08b43'
+                       THEN '796e0aaeb00b6f5133a54ce12f2df396' ELSE m END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)', 'sim',
          CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

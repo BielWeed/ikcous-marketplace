@@ -10,6 +10,14 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 
 - **Lucro bruto do estoque (`lucro-do-estoque-viva.cjs`, via `rodar-isolado.cjs`)**: migration 20261251, depois da 250. Receita com custo usa o mesmo preco efetivo por variante de totalRevenue; totalCost igual. `inventory.revenueWithoutCost`, `productsWithoutCost` e `productsWithCost` separam cobertura do ESTOQUE (nao o contador da raiz, de vendas). Custo0 conhecido, NULL ausente; override0 valido, NULL herda; variantes inativas fora; estoque efetivo0 nao conta produto. Prova prejuizo, zero conhecido misturado a semcusto, receita total = comcusto + semcusto, historico/ACL/OID/dono/dados iguais, pre/pos-voos fail-closed, reaplicacao/rollback idempotentes e CRLF. Consultas oficiais 54a/54b e ancestrais no corpo novo E no rollback250; portao real APLICAR/NADA/PARAR, rol parcial/duplicado invalido; nove controles negativos. So clone descartavel no CI, nunca lojas reais. As provas ancestrais desfazem a 251 antes da 250 pelo helper `lucro-do-estoque-posterior.cjs`.
 
+- **Total conferido do balcão (`pdv-total-conferido-viva.cjs`, via `rodar-isolado.cjs`)**:
+  migration 20261280, parâmetro opcional `p_total_esperado`; diferença acima de R$0,01
+  recusa com `PDV01` e preços da mesma conferência, antes de gravar venda/estoque/históricos/nota.
+  A chave recusada continua usável; uma venda já gravada devolve `ja_existia` mesmo com outro
+  total e estoque esgotado. Variante, desconto, tolerância dos dois lados, legado sem parâmetro,
+  ACL fechada, chamadas por nome e só com dois obrigatórios, reaplicação, rollback para a 249
+  e controle negativo sem a guarda. Só clone efêmero; não prova loja nem PostgREST.
+
 ## As provas (`invariantes-dinheiro.cjs`)
 
 - **(a) cupom**: `usage_limit` nunca fica negativo; a vaga do cupom não volta

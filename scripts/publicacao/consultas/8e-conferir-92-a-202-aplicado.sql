@@ -144,6 +144,7 @@ WITH corpos AS (
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
     ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa', '20261235000000'),
     ('registrar_venda_presencial', '796e0aaeb00b6f5133a54ce12f2df396', '20261249000000'),
+    ('registrar_venda_presencial', 'd1da704579d91c278dd46747b4d08b43', '20261280000000'),
     ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000'),
     ('pedido__saldo_a_estornar', '99741b4cdbf1e8d8340f80440e6da094', '20261241000000'),
     ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),

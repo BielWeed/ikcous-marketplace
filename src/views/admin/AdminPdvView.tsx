@@ -41,6 +41,7 @@ import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import { useAuth } from "@/hooks/useAuth";
 import {
   chaveDoItemDoCupom,
+  totalDaVenda,
   useVendaPresencial,
 } from "@/hooks/useVendaPresencial";
 import type {
@@ -51,6 +52,7 @@ import type {
   RespostaDoCodigo,
 } from "@/hooks/useVendaPresencial";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { precosDaVendaRecusada } from "@/lib/erro-da-venda-presencial";
 import type { Leitura } from "@/lib/leitor/decodificador";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
@@ -463,6 +465,7 @@ export function AdminPdvView({
             p_cliente_whatsapp:
               estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
             p_desconto: estado.desconto,
+            p_total_esperado: totalDaVenda(estado),
             p_observacao:
               estado.desconto > 0 ? estado.motivoDoDesconto || null : null,
             // A MESMA chave em toda retentativa do MESMO cupom — nasce em
@@ -477,16 +480,21 @@ export function AdminPdvView({
         () => new Error("O registro da venda não respondeu a tempo."),
       );
 
-      // Deixa o erro CRU subir: quem traduz para português é
-      // `mensagemDaFalhaDaVenda` (C3.4), chamada de dentro de
-      // `FechamentoDaVenda` — repetir a tradução aqui criaria dois lugares
-      // decidindo a mesma frase (o mesmo defeito que o cabeçalho de
-      // `recusaDoPedido.ts` descreve para outra RPC). Em QUALQUER falha aqui
-      // (rede, 22023, 23505, 42501, PGRST202) nada é despachado: o cupom (e o
-      // rascunho, que só é apagado depois de `venda_registrada` — ver o
-      // efeito de gravação em `useVendaPresencial.ts`) ficam exatamente como
-      // estavam. É a invariante de D3, não um `if`.
-      if (error) throw error;
+      // Só a divergência de total traz os preços da conferência do banco.
+      // Atualiza apenas preços; cliente, desconto, pagamento e chave ficam.
+      // Falhas de rede NÃO provam recusa e nunca giram a chave.
+      if (error) {
+        const atualizacao = precosDaVendaRecusada(error);
+        if (atualizacao) {
+          despachar({
+            tipo: "precos_atualizados",
+            chaveDeIdempotencia: estado.chaveDeIdempotencia,
+            itens: atualizacao.itens,
+          });
+        }
+        // A tradução continua só no fechamento.
+        throw error;
+      }
 
       const resposta = data as unknown as RespostaDoFechamento;
       const pedido = resposta.order;

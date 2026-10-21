@@ -383,7 +383,7 @@ const CASOS = [
   {
     porta: "registrar_venda_presencial (venda de balcão sem sessão)",
     assinatura:
-      "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)",
+      "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)",
     preparar: async () => ({ chave: novoId("a5dddddd") }),
     controle: chamar(
       "admin",

@@ -1079,6 +1079,9 @@ jobs:
       - name: Prova viva do motivo privado do desconto do balcao (20261249000000, papeis reais e mutantes)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/pdv-motivo-privado-viva.cjs
+      - name: Prova viva do total conferido do balcao (20261280000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pdv-total-conferido-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

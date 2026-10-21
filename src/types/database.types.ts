@@ -3929,6 +3929,7 @@ export type Database = {
           p_itens: unknown;
           p_observacao?: string | null;
           p_pagamento: string;
+          p_total_esperado?: number | null;
         };
         Returns: Json;
       };

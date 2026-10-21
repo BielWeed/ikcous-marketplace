@@ -933,7 +933,7 @@ const ESCRITORAS_NOMEADAS = [
   "create_marketplace_order(jsonb,text,uuid,text,text,text,text)",
   "create_marketplace_order_v23(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb,text,text,uuid)",
   "create_marketplace_order_v24(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb,text,text,uuid)",
-  "registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)",
+  "registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid,numeric)",
   "update_order_status_atomic(uuid,text,text,boolean)",
   "pedido__mudar_status(uuid,text,text,uuid,boolean,boolean)",
   "cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)",

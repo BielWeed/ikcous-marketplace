@@ -50,7 +50,7 @@
 --     get_admin_orders_cancelados_recentes e upsert_store_config) foram
 --     redefinidas na 20261199 e o corpo vivo prova a 99 (registrar_venda_presencial
 --     ganhou a trava pela chave de idempotência na 20261235000000 e depois
---     o motivo privado na 20261249000000: o corpo vivo prova a 249;
+--     o motivo privado na 20261249000000 e o total conferido na 20261280000000: o corpo vivo prova a 280;
 --     e upsert_store_config foi redefinida de novo na
 --     20261239 — a loja declara razão social, CNPJ/CPF e e-mail de atendimento — e de novo
 --     na 20261244 — a loja escolhe como entrega na cidade e em quantos dias: as chaves
@@ -116,7 +116,7 @@ WITH corpos AS (
     ('get_admin_orders_paged', '5861dbbe0e9c007a4196f5308c17d763'),
     ('get_product_recommendations', '3de5b27cc17c31301249861b7921a6fe'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
-    ('registrar_venda_presencial', '796e0aaeb00b6f5133a54ce12f2df396'),
+    ('registrar_venda_presencial', 'd1da704579d91c278dd46747b4d08b43'),
     ('upsert_store_config', '391e8e1064400df5aea579f3472b203c')
 ), acls(fn, esperado) AS (VALUES
     ('buscar_por_codigo_barras', 'anon=false authenticated=true service_role=true public=nao'),
@@ -136,7 +136,7 @@ WITH corpos AS (
     ('get_admin_orders_paged', 'secdef=true config=search_path=public, extensions volatil=v strict=false dono=postgres args=p_search text, p_status text, p_start_date text, p_end_date text, p_page integer, p_page_size integer, p_payment_status text, p_canal text retorno=jsonb lang=plpgsql'),
     ('get_product_recommendations', 'secdef=true config=search_path=public volatil=v strict=false dono=postgres args=p_product_id uuid, p_limit integer retorno=SETOF produtos lang=plpgsql'),
     ('limpar_cotacoes_fora_da_janela', 'secdef=false config=(nenhum) volatil=v strict=false dono=postgres args= retorno=trigger lang=plpgsql'),
-    ('registrar_venda_presencial', 'secdef=true config=search_path=pg_catalog, pg_temp volatil=v strict=false dono=postgres args=p_itens jsonb, p_pagamento text, p_cliente_user_id uuid, p_cliente_nome text, p_cliente_whatsapp text, p_desconto numeric, p_observacao text, p_idempotency_key uuid retorno=jsonb lang=plpgsql'),
+    ('registrar_venda_presencial', 'secdef=true config=search_path=pg_catalog, pg_temp volatil=v strict=false dono=postgres args=p_itens jsonb, p_pagamento text, p_cliente_user_id uuid, p_cliente_nome text, p_cliente_whatsapp text, p_desconto numeric, p_observacao text, p_idempotency_key uuid, p_total_esperado numeric retorno=jsonb lang=plpgsql'),
     ('upsert_store_config', 'secdef=true config=search_path=public volatil=v strict=false dono=postgres args=config_json jsonb retorno=jsonb lang=plpgsql')
 ), defaults_aceitos(expr, canonico) AS (VALUES
     -- Lista FECHADA de deparses (pg_get_expr) de defaults CONSTANTES equivalentes,
