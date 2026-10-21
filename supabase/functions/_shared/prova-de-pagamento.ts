@@ -34,10 +34,10 @@
  *   (f) VALOR PAGO capturado: `total_paid_amount` da raiz — ou, só quando ele
  *       não vem, `paid_amount` do pagamento — presente, finito, > 0 e
  *       conferido pela mesma régua de valor: parcelado nunca aceita menos
- *       que o pedido; excedente exige as provas de juros descritas acima.
+ *       que o pedido. Com principal correto, crédito 2..12x aceita captura
+ *       até o teto sem depender do valor por parcela, que o MP não garante.
  *       Os DOIS ausentes: recusa `valor_pago_ausente`. A raiz manda quando
- *       existe. Os números contraditórios dos exemplos da doc não autorizam
- *       afirmar juros sem parcelas e valor por parcela coerentes;
+ *       existe. Só principal acima do pedido exige a soma das parcelas;
  *   (g) CONTRADIÇÃO recusa, AUSÊNCIA não: `currency`/`currency_id` presente
  *       ≠ "BRL"; `country_code` presente fora de {"BR", "BRA"} (a referência
  *       do GET publica "BR"; as páginas de integração de cartão e de PIX
@@ -113,8 +113,10 @@ function comoNumero(v: unknown): number | null {
  * financiamento. Cobre o caso medido (37,27 -> 40,86, +9,63%) sem aceitar
  * sobrepreço ilimitado. Acima disso mantém a revisão de valor divergente.
  * A doc GET /v1/orders/{id} não garante quais totais incluem juros e publica
- * exemplos contraditórios: só aceitamos excedente com crédito 2..12x,
- * captura suficiente e soma das parcelas coerente. Sem esses campos, recusa.
+ * exemplos contraditórios. Crédito 2..12x com PRINCIPAL correto e captura
+ * entre o principal e o teto não depende de installment_amount (opcional no
+ * MP, pode nem incluir juros). Só PRINCIPAL acima do pedido exige também a
+ * soma das parcelas coerente; assim não afrouxamos o valor enviado à loja.
  */
 const TETO_DE_JUROS = 1.5;
 function pagamentoUnico(order: Record<string, unknown> | undefined) {
@@ -157,15 +159,34 @@ export function conferirValorDoPagamento(
   if (Math.abs(valor - total) > TOLERANCIA_DE_VALOR && (!order || !jurosCompativeis(valor, total, order))) {
     return { provado: false, motivo: "valor_divergente" };
   }
-  // Mesmo com principal exato, captura parcial/excessiva não é prova de juros.
+  // Captura parcial ou acima do teto não confirma. Principal exato não
+  // exige installment_amount: juros podem existir só no total capturado.
   if (order && orderEhDeCartao(order) && presente(valorCapturado(order))) {
     const pago = comoNumero(valorCapturado(order));
     if ((parcelado && (pago === null || Math.round(pago * 100) < Math.round(total * 100))) ||
-      (pago !== null && pago > total + TOLERANCIA_DE_VALOR && !jurosCompativeis(valor, total, order))) {
+      (pago !== null && pago > total + TOLERANCIA_DE_VALOR &&
+        (!parcelado || Math.round(pago * 100) > Math.floor(Math.round(total * 100) * TETO_DE_JUROS)))) {
       return { provado: false, motivo: "valor_divergente" };
     }
   }
   return { provado: true, valor, total };
+}
+
+/**
+ * Aviso operacional da exceção: principal correto, captura dentro do teto,
+ * mas a parcela não permite conferir os juros. Só projeta os quatro campos
+ * abaixo, nunca o objeto do MP. As portas chamam depois de conferir a prova.
+ */
+export function avisarJurosSemParcelaConferida(pedido: string, totalRelido: unknown, order: Record<string, unknown>) {
+  const principal = extrairValorDaOrder(order);
+  const conferencia = conferirValorDoPagamento(principal, totalRelido, order);
+  if (!conferencia.provado || tipoDoPagamentoDaOrder(order) !== "credit_card" ||
+    (parcelasDaOrder(order) ?? 0) <= 1) return;
+  const { valor, total } = conferencia;
+  const capturado = comoNumero(valorCapturado(order));
+  if (capturado === null || capturado <= total + TOLERANCIA_DE_VALOR ||
+    Math.abs(valor - total) > TOLERANCIA_DE_VALOR || jurosCompativeis(valor, total, order)) return;
+  console.warn("pagamento: juros_sem_parcela_conferida", { pedido, total, capturado, parcelas: parcelasDaOrder(order) });
 }
 
 /** Lista PRESENTE e não vazia — ou qualquer coisa presente que não seja lista
@@ -249,6 +270,10 @@ export function provarPagamentoPelaConsulta(args: {
   // PIX mantém o contrato anterior de captura >= total - tolerância.
   // Só o cartão recebe a nova conferência de juros, nunca o PIX.
   if (tipoDoPagamentoDaOrder(o) === "bank_transfer") {
+    if (valorPago < total - TOLERANCIA_DE_VALOR) return recusa("valor_pago");
+  } else if (orderEhDeCartao(o)) {
+    // A captura do cartão já passou pela conferência acima. Repassá-la como
+    // se fosse PRINCIPAL exigiria parcela coerente até com principal correto.
     if (valorPago < total - TOLERANCIA_DE_VALOR) return recusa("valor_pago");
   } else if (!conferirValorDoPagamento(valorPago, total, o).provado) {
     return recusa("valor_pago");

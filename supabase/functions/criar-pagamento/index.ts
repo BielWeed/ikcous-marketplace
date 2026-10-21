@@ -188,7 +188,7 @@ import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import { type CredenciaisMp, resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 // Confirmação imediata (04/10/2026): a régua da prova e a RPC + efeitos do
 // webhook — ver o cabeçalho deste arquivo e `confirmarNaHoraSeProvado`.
-import { ORIGEM_GET_POR_ID, provarPagamentoPelaConsulta } from "../_shared/prova-de-pagamento.ts";
+import { avisarJurosSemParcelaConferida, ORIGEM_GET_POR_ID, provarPagamentoPelaConsulta } from "../_shared/prova-de-pagamento.ts";
 import { registrarDiagnosticoDoCartao } from "../_shared/diagnostico-do-cartao.ts";
 import {
   aplicarEfeitosDoPagamentoConfirmado,
@@ -1200,6 +1200,7 @@ async function confirmarNaHoraSeProvado(args: {
     });
     return null;
   }
+  avisarJurosSemParcelaConferida(pedidoId, linha.total, order);
   const confirmacao = await confirmarPagamentoProvado({ supabase, pedidoId, vaga: idConsultado });
   if (!confirmacao.ok) return null;
   const resultado = confirmacao.resultado;

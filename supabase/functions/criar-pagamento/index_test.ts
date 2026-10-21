@@ -13732,8 +13732,57 @@ Deno.test("CORRIDA T3 (e) — FUMAÇA de concorrência no caminho observado (a c
 // Os valores pagos (109,64 / 112,40) são FIXTURES SINTÉTICAS, não taxas
 // medidas no MP. O contrato não garante se total_amount inclui juros;
 // D7 testa também total_amount/amount já financiados. A aceitação de
-// excedente exige installments > 1, installment_amount coerente com a
-// captura e teto de 50%; sem esses sinais, fica para revisão.
+// principal acima do pedido exige installments > 1, parcela coerente e
+// teto de 50%. Com principal correto, a captura até o teto não depende da
+// parcela opcional do MP; a exceção produz aviso estruturado.
+for (const principal of ["37.27", "40.86"]) {
+  for (const parcela of [null, "18.64", "20.43"]) {
+    Deno.test(`R1 criar-pagamento: principal ${principal}, captura 40,86, parcela ${parcela ?? "ausente"}`, async () => {
+      const { db, contado } = bancoContandoEscritas(pedidoCI({ total: 37.27, parcelas: 2 }));
+      const o = cartaoParceladoComJuros(cartaoPagoCI(), 2, "40.86");
+      o.total_amount = principal;
+      pagamentoDaOrderCI(o).amount = principal;
+      if (parcela === null) delete pagamentoDaOrderCI(o).payment_method.installment_amount;
+      else pagamentoDaOrderCI(o).payment_method.installment_amount = parcela;
+      const logs = [];
+      const warn = console.warn;
+      console.warn = (...args) => logs.push(args);
+      let r;
+      try {
+        Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+        r = await handler(requisicao(PEDIDO_VERIFICAR, montarToken(DONO_LOGADO)), {
+          supabase: contado, fetchImpl: mpDaConsulta({ orders: [o] }).fn, ...efeitosCI().deps,
+        });
+      } finally { console.warn = warn; }
+      const esperado = principal === "37.27" || parcela === "20.43";
+      assertEquals(r.status, 200);
+      assertEquals(confirmacoesCI(db).length, esperado ? 1 : 0);
+      const avisos = logs.filter((l) => l[0] === "pagamento: juros_sem_parcela_conferida");
+      assertEquals(avisos.length, principal === "37.27" && parcela !== "20.43" ? 1 : 0);
+      if (avisos.length) assertEquals(avisos[0][1], { pedido: UUID, total: 37.27, capturado: 40.86, parcelas: 2 });
+    });
+  }
+}
+
+Deno.test("R1 POST da criação: GET sem parcela ou com parcela sem juros não trava principal correto", async () => {
+  for (const principal of ["37.27", "40.86"]) {
+    for (const parcela of [null, "18.64", "20.43"]) {
+      const { db, contado } = bancoContandoEscritas({ ...pedidoDaCriacaoCI(), total: 37.27 });
+      const o = cartaoParceladoComJuros(aprovadaDaCriacao(), 2, "40.86");
+      o.total_amount = principal;
+      pagamentoDaOrderCI(o).amount = principal;
+      if (parcela === null) delete pagamentoDaOrderCI(o).payment_method.installment_amount;
+      else pagamentoDaOrderCI(o).payment_method.installment_amount = parcela;
+      const mp = mpDaCriacaoComGet({ get: o });
+      const r = await emSilencio(() => handler(requisicao(corpoCartao({ parcelas: 2 }), montarToken(DONO_LOGADO)), {
+        supabase: contado, fetchImpl: mp.fn, credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS, ...efeitosCI().deps,
+      }));
+      assertEquals(r.status, 200);
+      assertEquals(confirmacoesCI(db).length, principal === "37.27" || parcela === "20.43" ? 1 : 0);
+    }
+  }
+});
+
 Deno.test("D7 verificar: raiz e pagamento financiados confirmam; acima do teto ou captura menor não confirmam", async () => {
   for (const [total, pago, parcela, esperado] of [
     ["109.64", "109.64", "54.82", true],

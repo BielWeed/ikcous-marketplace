@@ -3855,6 +3855,79 @@ Deno.test("R1-C4 - só com a 96 (criada_sob_autorizacao NULL vindo do banco), PO
 // A conferência lê total_amount e a evidência de juros do pagamento:
 // installments, installment_amount e captura. D7 também cobre o total
 // financiado na raiz; não depende da premissa "só total_paid_amount sobe".
+for (const principal of ["37.27", "40.86"]) {
+  for (const parcela of [null, "18.64", "20.43"]) {
+    Deno.test(`R1 cron: principal ${principal}, captura 40,86, parcela ${parcela ?? "ausente"}`, async () => {
+      const id = "ORDTST01PARCELADOCOMJUROS";
+      const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+      const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }],
+        pedidoTotal: 37.27, registro });
+      const o = orderParceladaComJuros(id, 2, "40.86");
+      o.total_amount = principal;
+      o.transactions.payments[0].amount = principal;
+      if (parcela === null) delete o.transactions.payments[0].payment_method.installment_amount;
+      else o.transactions.payments[0].payment_method.installment_amount = parcela;
+      const logs = [];
+      const warn = console.warn;
+      console.warn = (...args) => logs.push(args);
+      let r;
+      try {
+        r = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1 });
+      } finally { console.warn = warn; }
+      const esperado = principal === "37.27" || parcela === "20.43";
+      assertEquals(r.status, 200);
+      assertEquals(registro.chamadasConfirmar.length, esperado ? 1 : 0);
+      const avisos = logs.filter((l) => l[0] === "pagamento: juros_sem_parcela_conferida");
+      assertEquals(avisos.length, principal === "37.27" && parcela !== "20.43" ? 1 : 0);
+      if (avisos.length) assertEquals(avisos[0][1], { pedido: UUID_PEDIDO_1, total: 37.27, capturado: 40.86, parcelas: 2 });
+    });
+  }
+}
+
+Deno.test("R1 cron: divergência avisa o admin uma vez, sem confirmar", async () => {
+  const id = "ORDTST01PARCELADOCOMJUROS";
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+  const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], pedidoTotal: 37.27, registro });
+  const o = orderParceladaComJuros(id, 2, "55.91");
+  o.total_amount = "37.27";
+  o.transactions.payments[0].amount = "37.27";
+  delete o.transactions.payments[0].payment_method.installment_amount;
+  const alertas = [];
+  for (let vez = 0; vez < 2; vez++) {
+    const r = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase, fetchImpl: fetchConsulta(200, o),
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+    });
+    assertEquals((await r.json()).confirmados, 0);
+  }
+  assertEquals(registro.chamadasConfirmar.length, 0);
+  assertEquals(alertas.length, 1);
+  assertEquals(alertas[0].body.includes("valor divergente"), true);
+});
+
+Deno.test("R2 sentinela: raiz financiada é adotada; menor não é; valor ausente preserva adoção anterior", async () => {
+  for (const [principal, esperadoAdotar, esperadoConfirmar] of [["40.86", true, true], ["37.26", false, false], [null, true, false]]) {
+    const id = "ORDTST01CARTAOCAPTURADO";
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] };
+    const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }], pedidoTotal: 37.27, registro });
+    const o = orderParceladaComJuros(id, 2, "40.86");
+    o.total_amount = principal;
+    o.transactions.payments[0].amount = principal;
+    const avisos = [];
+    const r = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase, fetchImpl: fetchSentinela({ status: 200, corpo: { results: [o] } }, o, []),
+      enviarPushContado: async ({ aviso }) => { avisos.push(aviso); return 1; },
+    });
+    assertEquals(r.status, 200);
+    if (principal === "37.26") {
+      assertEquals(avisos.length, 1, "divergência antes da adoção também precisa chegar ao admin");
+      assertEquals(avisos[0].body.includes("valor divergente"), true);
+    }
+    assertEquals(registro.adocoesPedido.length, esperadoAdotar ? 1 : 0, String(principal));
+    assertEquals(registro.chamadasConfirmar.length, esperadoConfirmar ? 1 : 0, String(principal));
+  }
+});
+
 Deno.test("D7 cron: raiz financiada confirma; acima do teto ou captura menor não confirmam", async () => {
   for (const [total, pago, parcela, esperado] of [
     ["164.35", "164.35", "82.18", true],

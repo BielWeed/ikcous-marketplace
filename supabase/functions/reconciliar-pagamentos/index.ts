@@ -79,10 +79,9 @@ import {
   recusaLiberaAVaga,
   resolverSentinela,
   tipoDoPagamentoDaOrder,
-  TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
-import { conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import { avisarJurosSemParcelaConferida, conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
 import { comTempoLimite, readKey } from "../_shared/webpush.ts";
 import {
   avisarAdminUmaVez,
@@ -341,6 +340,7 @@ async function adotarCartaoCapturadoDoSentinela(args: {
   pedidoId: string;
   sentinela: string;
   fetchImpl?: typeof fetch;
+  enviarPushContado?: typeof dispararPushContadoReal;
 }): Promise<string | null> {
   const { data: pedido, error: erroPedido } = await args.supabase
     .from("marketplace_orders")
@@ -389,13 +389,24 @@ async function adotarCartaoCapturadoDoSentinela(args: {
   const valorAprovado = extrairValorDaOrder(orderReconsultada);
   if (
     typeof valorAprovado === "number" &&
-    Number.isFinite(totalDoPedido) &&
-    Math.abs(valorAprovado - totalDoPedido) > TOLERANCIA_DE_VALOR
+    !conferirValorDoPagamento(valorAprovado, brutoTotal, orderReconsultada).provado
   ) {
     console.error(
       "reconciliar-pagamentos: cartão capturado atrás do sentinela com VALOR divergente — não adotado; conferir no painel do MP",
       { orderId: args.pedidoId, idOrder, valorAprovado, totalDoPedido },
     );
+    await comTempoLimite(avisarAdminUmaVez({
+      supabase: args.supabase,
+      enviarPushContado: args.enviarPushContado ??
+        ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+      chave: `valor_divergente:${args.pedidoId}:${idOrder}`,
+      aviso: {
+        title: "Pagamento precisa de conferência",
+        body: `${numeroDoPedido(args.pedidoId)} · valor divergente; confira no painel do Mercado Pago`,
+        url: "/admin-orders",
+      },
+      rotulo: "reconciliar-pagamentos",
+    }), TETO_DO_PUSH_MS);
     return null;
   }
 
@@ -654,8 +665,9 @@ async function handler(
       // decidem como para qualquer outro candidato. Order viva (em análise),
       // morta ou busca inconclusiva: fica como estava (ignorado) — liberar
       // a vaga ou esperar a análise continua com quem já decide isso hoje.
-      // Nenhum push NESTE passo: o aviso da cobrança em dúvida já saiu uma
-      // vez, na escrita do sentinela. Adotado aqui, o candidato segue o laço
+      // Análise não repete o aviso que já saiu na escrita do sentinela.
+      // Divergência de valor avisa o admin pela mesma chave do laço.
+      // Adotado aqui, o candidato segue o laço
       // e, se `confirmar_pagamento` devolver `pago_apos_expirar`, ganha o
       // push "Pagamento fora do fluxo" como qualquer outro (ver "PUSH AO
       // ADMIN" no cabeçalho).
@@ -666,6 +678,7 @@ async function handler(
           pedidoId: candidato.order_id,
           sentinela: candidato.gateway_payment_id,
           fetchImpl: deps.fetchImpl,
+          enviarPushContado: deps.enviarPushContado,
         });
         if (idAdotado === null) {
           ignorados++;
@@ -866,22 +879,24 @@ async function handler(
                 motivo: conferencia.motivo,
               },
             );
-            await comTempoLimite(avisarAdminUmaVez({
-              supabase,
-              enviarPushContado: deps.enviarPushContado ??
-                ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
-              chave: `valor_nao_conferido:${candidato.order_id}:${candidato.gateway_payment_id}`,
-              aviso: {
-                title: "Pagamento precisa de conferência",
-                body: `${numeroDoPedido(candidato.order_id)} · valor não conferido; tentando novamente`,
-                url: "/admin-orders",
-              },
-              rotulo: "reconciliar-pagamentos",
-            }), TETO_DO_PUSH_MS);
           }
+          const divergente = conferencia.motivo === "valor_divergente";
+          await comTempoLimite(avisarAdminUmaVez({
+            supabase,
+            enviarPushContado: deps.enviarPushContado ??
+              ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+            chave: `${divergente ? "valor_divergente" : "valor_nao_conferido"}:${candidato.order_id}:${candidato.gateway_payment_id}`,
+            aviso: {
+              title: "Pagamento precisa de conferência",
+              body: `${numeroDoPedido(candidato.order_id)} · ${divergente ? "valor divergente; confira no painel do Mercado Pago" : "valor não conferido; tentando novamente"}`,
+              url: "/admin-orders",
+            },
+            rotulo: "reconciliar-pagamentos",
+          }), TETO_DO_PUSH_MS);
           ignorados++;
           continue;
         }
+        if (orderParaConferir) avisarJurosSemParcelaConferida(candidato.order_id, brutoTotal, orderParaConferir);
       }
 
       // A RPC é quem decide 'pago' vs 'pago_apos_expirar' (e idempotência,

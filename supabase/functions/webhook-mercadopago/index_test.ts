@@ -1084,7 +1084,7 @@ for (const rota of ["payment", "order"] as const) {
   });
 }
 
-Deno.test("rota payment: MP aprovou R$ 100 de um pedido de R$ 149,90 -> NÃO confirma, sem push, 200 'valor divergente'", async () => {
+Deno.test("rota payment: MP aprovou R$ 100 de um pedido de R$ 149,90 -> NÃO confirma, avisa divergência (não pedido pago), 200", async () => {
   const registro = { chamadasRpc: [], chamadasFrom: [] };
   const pedido = {
     id: UUID_PEDIDO,
@@ -1105,8 +1105,13 @@ Deno.test("rota payment: MP aprovou R$ 100 de um pedido de R$ 149,90 -> NÃO con
   const enviarPush = async (args: unknown) => {
     chamadasPush.push(args);
   };
-
-  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  const avisosAdmin = [];
+  const resposta = await handler(req, {
+    supabase, fetchImpl, enviarPush,
+    enviarPushContado: async ({ aviso }) => { avisosAdmin.push(aviso); return 1; },
+  });
+  assertEquals(avisosAdmin.length, 1);
+  assertEquals(avisosAdmin[0].body.includes("valor divergente"), true);
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
@@ -7824,6 +7829,61 @@ Deno.test("rota payment — pagamento RECUSADO com id CLÁSSICO gravado (PIX leg
 // parcelado, valor por parcela coerente com a captura e teto de 50%.
 // Não dependemos de a raiz continuar sem juros; campos ausentes não
 // autorizam aceitar excedente.
+for (const principal of ["37.27", "40.86"]) {
+  for (const parcela of [null, "18.64", "20.43"]) {
+    Deno.test(`R1 webhook: principal ${principal}, captura 40,86, parcela ${parcela ?? "ausente"}`, async () => {
+      ambienteDoWebhook();
+      const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+      const supabase = clienteFalso({ rpcResultado: "pago", registro,
+        pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP } });
+      const o = orderParceladaComJuros(2, "40.86");
+      o.total_amount = principal;
+      o.transactions.payments[0].amount = principal;
+      if (parcela === null) delete o.transactions.payments[0].payment_method.installment_amount;
+      else o.transactions.payments[0].payment_method.installment_amount = parcela;
+      const logs = [];
+      const warn = console.warn;
+      console.warn = (...args) => logs.push(args);
+      let r;
+      try {
+        r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+          supabase, fetchImpl: fetchConsulta(200, o), enviarPush: async () => {}, enviarComprovante: async () => {},
+          enviarPushContado: async () => 1,
+        });
+      } finally { console.warn = warn; }
+      const esperado = principal === "37.27" || parcela === "20.43";
+      assertEquals(r.status, 200);
+      assertEquals(registro.chamadasRpc.length, esperado ? 1 : 0);
+      const avisos = logs.filter((l) => l[0] === "pagamento: juros_sem_parcela_conferida");
+      assertEquals(avisos.length, principal === "37.27" && parcela !== "20.43" ? 1 : 0);
+      if (avisos.length) assertEquals(avisos[0][1], { pedido: UUID_PEDIDO, total: 37.27, capturado: 40.86, parcelas: 2 });
+    });
+  }
+}
+
+Deno.test("R1 webhook: divergência avisa o admin uma vez, sem confirmar", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasAviso: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro,
+    pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP } });
+  const o = orderParceladaComJuros(2, "55.91");
+  o.total_amount = "37.27";
+  o.transactions.payments[0].amount = "37.27";
+  delete o.transactions.payments[0].payment_method.installment_amount;
+  const alertas = [];
+  for (let vez = 0; vez < 2; vez++) {
+    const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase, fetchImpl: fetchConsulta(200, o),
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+    });
+    assertEquals((await r.json()).ignorado, "valor divergente");
+  }
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(alertas.length, 1);
+  assertEquals(alertas[0].title, "Pagamento precisa de conferência");
+  assertEquals(alertas[0].body.includes("valor divergente"), true);
+});
+
 Deno.test("D7 webhook: raiz financiada confirma; acima do teto ou captura menor segue em revisão", async () => {
   for (const [total, pago, parcela, esperado] of [
     ["164.35", "164.35", "82.18", true],

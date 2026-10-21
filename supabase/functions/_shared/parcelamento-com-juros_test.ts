@@ -20,6 +20,26 @@ function prova(o) {
   });
 }
 
+for (const principal of ["37.27", "40.86"]) {
+  for (const parcela of [null, "18.64", "20.43"]) {
+    Deno.test(`R1: principal ${principal}, captura 40,86, parcela ${parcela ?? "ausente"}`, () => {
+      const o = order(principal);
+      if (parcela === null) delete o.transactions.payments[0].payment_method.installment_amount;
+      else o.transactions.payments[0].payment_method.installment_amount = parcela;
+      const esperado = principal === "37.27" || parcela === "20.43";
+      assertEquals(prova(o).provado, esperado);
+      assertEquals(conferirValorDoPagamento(Number(principal), 37.27, o).provado, esperado);
+    });
+  }
+}
+Deno.test("R1: sem parcela, teto 55,90 aceita e 55,91 recusa; captura menor nunca confirma", () => {
+  for (const [captura, esperado] of [["55.90", true], ["55.91", false], ["37.26", false]]) {
+    const o = order("37.27", captura);
+    delete o.transactions.payments[0].payment_method.installment_amount;
+    assertEquals(prova(o).provado, esperado);
+  }
+});
+
 Deno.test("D7: total da order já com juros, 2 x 20,43 para pedido 37,27, confirma", () => {
   assertEquals(prova(order()), { provado: true, valor: 40.86, valorPago: 40.86 });
   assertEquals(conferirValorDoPagamento(40.86, 37.27, order()).provado, true);
