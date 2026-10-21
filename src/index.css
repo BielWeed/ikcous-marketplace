@@ -55,24 +55,24 @@
     --glass-opacity: 0.7;
     --glass-blur: 16px;
     --header-height: 52px;
-    --nav-height: 56px;
+    --nav-height: 64px;
+    --customer-nav-offset: 0px;
     --safe-area-top: var(--safe-area-top-fixed, env(safe-area-inset-top, 0px));
     --safe-area-bottom: var(
       --safe-area-bottom-fixed,
       env(safe-area-inset-bottom, 0px)
     );
+    /* Uma reserva só: navegação + área segura + barra medida + respiro.
+       O offset mantém a navegação flutuante de desktop no mesmo lugar. */
     --customer-pb: calc(
-      64px +
+      var(--nav-height) +
       var(--safe-area-bottom, 0px) +
       var(--visual-bottom-offset, 0px) +
-      24px
+      var(--customer-nav-offset) +
+      var(--customer-footer-height, 0px) +
+      16px
     );
-    --customer-pb-summary: calc(
-      130px +
-      var(--safe-area-bottom, 0px) +
-      var(--visual-bottom-offset, 0px) +
-      15px
-    );
+    --customer-pb-summary: var(--customer-pb);
 
     /* Admin Specific Colors — escala de ELEVAÇÃO (só o painel; o tema escuro é
        o único do admin). Cada degrau separa do anterior por ≥4 de L* (CIE), e
@@ -99,24 +99,6 @@
 
     /* Emerald */
     --admin-gold: 47 95% 50%;
-  }
-
-  /* Mobile Browser Viewport Padding Override (Chrome/Safari Address Bar Offset) */
-  @media (display-mode: browser) {
-    :root {
-      --customer-pb: calc(
-        64px +
-        var(--safe-area-bottom, 0px) +
-        var(--visual-bottom-offset, 0px) +
-        36px
-      );
-      --customer-pb-summary: calc(
-        130px +
-        var(--safe-area-bottom, 0px) +
-        var(--visual-bottom-offset, 0px) +
-        28px
-      );
-    }
   }
 
   .dark {
@@ -202,7 +184,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
-    overscroll-behavior-y: none;
+    overscroll-behavior: none;
   }
 
   html,
@@ -300,9 +282,10 @@
      navegação usa `.bottom-docked-navigation`. */
   .bottom-docked-navigation {
     bottom: calc(
-      64px +
+      var(--nav-height) +
       var(--safe-area-bottom, 0px) +
-      var(--visual-bottom-offset, 0px)
+      var(--visual-bottom-offset, 0px) +
+      var(--customer-nav-offset)
     );
   }
 
@@ -316,6 +299,52 @@
 
   .pb-customer-summary {
     padding-bottom: var(--customer-pb-summary);
+  }
+
+  /* A apresentação do resumo fica no CSS para não engrossar o JS da loja. */
+  .checkout-values {
+    @apply grid items-center gap-4;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+
+  .checkout-values > div:first-child {
+    @apply space-y-1 text-xs text-zinc-600;
+  }
+
+  .checkout-values > div:first-child > div {
+    @apply flex items-center justify-between gap-2;
+  }
+
+  .checkout-values span:last-child {
+    @apply whitespace-nowrap tabular-nums;
+  }
+
+  .checkout-values [aria-label] {
+    @apply font-semibold;
+  }
+
+  .checkout-values > div:last-child {
+    @apply min-w-0 border-l border-zinc-200 pl-4;
+  }
+
+  .checkout-values p:first-child {
+    @apply text-xs font-medium text-zinc-500;
+  }
+
+  .checkout-values p:last-child {
+    @apply text-right text-2xl font-bold tabular-nums tracking-tight text-zinc-900;
+  }
+
+  .checkout-finalizar {
+    @apply flex h-12 items-center justify-center gap-2 rounded-2xl px-3 text-base font-bold shadow-lg transition-all duration-300 active:scale-[0.98];
+  }
+
+  .checkout-finalizar:not(:disabled) {
+    @apply bg-primary text-primary-foreground shadow-black/10 hover:bg-primary/90;
+  }
+
+  .checkout-finalizar:disabled {
+    @apply cursor-not-allowed border border-zinc-200 bg-zinc-100 text-zinc-400 shadow-none;
   }
 
   .pb-admin {
@@ -1140,6 +1169,13 @@ body.admin-modal-open .active-scroll-container {
      .gpu-accelerated) o will-change segue vivo e vem de lá; o fade de
      entrada continua pelo transition acima. */
   backface-visibility: hidden;
+
+  /* O painel de cada aba do cliente e `overflow-y-auto` (App.tsx) e, pela
+     regra do CSS, `overflow-x: visible` vira `auto` quando o outro eixo nao e
+     `visible`: qualquer sobra de 1 px virava rolagem lateral pelo toque (a
+     aba inteira deslizava e aparecia uma faixa branca, 21/10/2026). Fechar o
+     eixo X aqui cobre toda aba, sem custo de bytes no JS. */
+  overflow-x: hidden;
 }
 
 .admin-tab-left {
@@ -1216,6 +1252,16 @@ body.admin-modal-open .active-scroll-container {
   opacity: 1;
   cursor: not-allowed;
 }
+/* aria-disabled mantém o botão alcançável pelo teclado durante e após salvar. */
+.admin-acoes-da-barra .admin-barra-principal[aria-disabled="true"] {
+  background: hsl(var(--admin-raised));
+  color: hsl(var(--admin-text-soft, 240 6.8% 65.5%));
+  opacity: 1;
+  cursor: not-allowed;
+}
+.admin-acoes-da-barra .admin-barra-principal:focus-visible {
+  outline-color: hsl(var(--admin-text-soft, 240 6.8% 65.5%));
+}
 .admin-acoes-da-barra button:focus-visible {
   outline: 2px solid #a5d7e9;
   outline-offset: 2px;
@@ -1232,8 +1278,7 @@ body.admin-modal-open .active-scroll-container {
 
 @media (width >= 768px) {
   :root {
-    --customer-pb: 112px;
-    --customer-pb-summary: 184px;
+    --customer-nav-offset: 24px;
   }
 }
 

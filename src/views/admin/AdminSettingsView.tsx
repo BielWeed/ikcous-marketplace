@@ -60,6 +60,7 @@ import {
   IconeDeAjustes,
   type MatizDeAjustes,
 } from "@/components/admin/settings/visual-ajustes";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import "@/components/admin/settings/ajustes.css";
 import { Skeleton } from "@/components/ui/skeleton";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
@@ -178,7 +179,7 @@ const PALAVRAS_DA_CONEXAO = new Map<
       titulo: "Conexão lenta",
       frase:
         "A loja demora (ou às vezes não responde) neste aparelho. Se o painel travar, tente outra rede: Wi-Fi ou dados móveis.",
-      cor: "text-orange-300",
+      cor: classeDoTexto("atencao"),
     },
   ],
   [
@@ -448,7 +449,9 @@ function SecaoColapsavel({
         </span>
         <span className="flex max-w-[40%] shrink-0 flex-wrap items-center justify-end gap-2">
           {aberta && comPendencia && (
-            <span className="text-[11px] font-black uppercase tracking-widest text-orange-300">
+            <span
+              className={`text-[11px] font-black uppercase tracking-widest ${classeDoTexto("atencao")}`}
+            >
               Salve antes de fechar
             </span>
           )}
@@ -495,6 +498,15 @@ const ICONE_DA_PORTA = new Map<TelaDoPainel, React.ReactNode>([
     "admin-carousels",
     <GalleryHorizontal
       key="l"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
+  ],
+  [
+    "admin-free-shipping-card",
+    <Truck
+      key="frete-card"
       aria-hidden="true"
       className={CLASSE_DO_ICONE_DA_PORTA}
       strokeWidth={2.25}
@@ -673,7 +685,7 @@ function GrupoDeAjustes({
               <span
                 data-grupo-subtitulo=""
                 id={`subtitulo-${chave}`}
-                className={`mt-1 block text-xs font-normal leading-relaxed ${subtitulo.startsWith("Falta:") ? "text-orange-300" : "text-zinc-400"}`}
+                className={`mt-1 block text-xs font-normal leading-relaxed ${subtitulo.startsWith("Falta:") ? classeDoTexto("atencao") : classeDoTexto("neutro")}`}
               >
                 {subtitulo}
               </span>
@@ -681,7 +693,7 @@ function GrupoDeAjustes({
             {aberta && comPendencia && (
               <span
                 id={`pendencia-${chave}`}
-                className="mt-1 block text-xs font-normal text-orange-300"
+                className={`mt-1 block text-xs font-normal ${classeDoTexto("atencao")}`}
               >
                 Salve antes de fechar
               </span>

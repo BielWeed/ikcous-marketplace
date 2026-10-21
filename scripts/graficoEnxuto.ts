@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import path from "node:path";
 import type { Plugin } from "vite";
 
 /**
@@ -18,6 +19,7 @@ import type { Plugin } from "vite";
  * revisar estes caminhos e repetir a prova antes de alterar a versão abaixo.
  */
 const VERSAO_RECHARTS = "2.15.4";
+const VERSAO_D3_SCALE = "4.0.2";
 const INTERPOLADOR = "\0ikcous:interpolacao-numerica";
 const CURVAS = "\0ikcous:curvas-do-painel";
 
@@ -86,12 +88,27 @@ export function graficoEnxuto(): Plugin {
     name: "grafico-enxuto",
     enforce: "pre",
     buildStart() {
-      const { version } = createRequire(import.meta.url)(
-        "recharts/package.json",
-      ) as { version: string };
+      const require = createRequire(import.meta.url);
+      const { version } = require("recharts/package.json") as {
+        version: string;
+      };
       if (version !== VERSAO_RECHARTS) {
         throw new Error(
           `Gráfico enxuto: revisar substituições e prova SVG para Recharts ${version} (validado: ${VERSAO_RECHARTS}).`,
+        );
+      }
+      // d3-scale não exporta package.json; resolver a entrada mantém a leitura
+      // no pacote instalado, sem depender da posição de node_modules.
+      // eslint-disable-next-line security/detect-non-literal-require -- Manifesto local do pacote fixo resolvido pelo Node, sem entrada de usuário.
+      const d3 = require(
+        path.resolve(
+          path.dirname(require.resolve("d3-scale")),
+          "../package.json",
+        ),
+      ) as { version: string };
+      if (d3.version !== VERSAO_D3_SCALE) {
+        throw new Error(
+          `Gráfico enxuto: revisar substituições e prova SVG para d3-scale ${d3.version} (validado: ${VERSAO_D3_SCALE}).`,
         );
       }
     },

@@ -1,5 +1,8 @@
 import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
+import { type TomDeEstado, classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
+
+export type MetricaDoPainel = KpiCardConfig & { readonly tom?: TomDeEstado };
 import { ChevronDown, ChevronUp, Info } from "lucide-react";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import "./metricas-do-painel.css";
@@ -76,7 +79,7 @@ export function MetricasDoPainel({
 }: {
   readonly titulo: string;
   readonly legendasDoResumo: readonly string[];
-  readonly cards: readonly KpiCardConfig[];
+  readonly cards: readonly MetricaDoPainel[];
   readonly loading?: boolean;
   readonly nota?: ReactNode;
   readonly onEntender?: () => void;
@@ -161,7 +164,12 @@ export function MetricasDoPainel({
                   >
                     {legendasDoResumo.at(i) ?? card.label}
                   </span>
-                  <NumeroAdaptavel className="metricas-painel-valor break-words text-[22px] font-bold tabular-nums leading-tight text-white">
+                  <NumeroAdaptavel
+                    className={cn(
+                      "metricas-painel-valor break-words text-[22px] font-bold tabular-nums leading-tight",
+                      card.tom ? classeDoTexto(card.tom) : "text-white",
+                    )}
+                  >
                     {loading ? esqueleto : <ValorDoResumo valor={card.value} />}
                   </NumeroAdaptavel>
                   <p className="sr-only">{card.subValue}</p>
@@ -211,7 +219,12 @@ export function MetricasDoPainel({
                     card.accent,
                   )}
                 />
-                <NumeroAdaptavel className="mt-1 break-words text-xl font-bold tabular-nums leading-tight text-white">
+                <NumeroAdaptavel
+                  className={cn(
+                    "mt-1 break-words text-xl font-bold tabular-nums leading-tight",
+                    card.tom ? classeDoTexto(card.tom) : "text-white",
+                  )}
+                >
                   {loading ? esqueleto : card.value}
                 </NumeroAdaptavel>
                 <p className="mt-2 break-words text-xs font-semibold text-zinc-100">

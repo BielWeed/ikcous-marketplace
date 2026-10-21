@@ -468,7 +468,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       )}
 
       {cargaFase === "erro" && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-center text-sm font-medium text-red-300">
+        <div className="rounded-xl border border-admin-border bg-admin-surface p-3 text-center text-sm font-medium text-red-400">
           Não foi possível carregar os dados da etiqueta.{" "}
           <button
             type="button"
@@ -489,15 +489,15 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           {mensagemResultado?.tipo === "erro" && (
             <p
               data-testid="erro-etiqueta"
-              className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm font-medium leading-snug text-red-300 duration-200 animate-in fade-in"
+              className="rounded-xl border border-admin-border bg-admin-surface px-3 py-2 text-sm font-medium leading-snug text-red-400 duration-200 animate-in fade-in"
             >
               {mensagemResultado.texto}
             </p>
           )}
 
           {elegibilidade.estado === "emitida" && (
-            <div className="space-y-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 duration-200 animate-in fade-in">
-              <div className="flex items-center gap-2 text-sm font-medium text-emerald-300">
+            <div className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in">
+              <div className="flex items-center gap-2 text-sm font-medium text-emerald-400">
                 <CheckCircle2 className="size-4 shrink-0" />
                 <span>
                   {mensagemResultado?.tipo === "sucesso"
@@ -558,15 +558,15 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           {elegibilidade.estado === "precisa_cpf" && (
             <div
               data-testid="precisa-cpf"
-              className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 duration-200 animate-in fade-in"
+              className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in"
             >
-              <p className="flex items-start gap-2 text-sm font-medium leading-snug text-amber-200">
+              <p className="flex items-start gap-2 text-sm font-medium leading-snug text-amber-400">
                 <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
                 <span>
                   O Melhor Envio exige o CPF do destinatário para emitir a
                   etiqueta.
                   {elegibilidade.cpfInvalido && (
-                    <span className="mt-1 block font-normal text-amber-100/90">
+                    <span className="mt-1 block font-normal text-zinc-300">
                       O CPF salvo neste pedido é inválido — corrija abaixo.
                     </span>
                   )}
@@ -596,7 +596,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                 {cpfErro && (
                   <p
                     data-testid="erro-cpf"
-                    className="text-sm font-medium leading-snug text-red-300"
+                    className="text-sm font-medium leading-snug text-red-400"
                   >
                     {cpfErro}
                   </p>
@@ -631,22 +631,22 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           )}
 
           {elegibilidade.estado === "disponivel" && compraFase !== "ocioso" && (
-            <div className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 duration-200 animate-in fade-in">
-              <p className="flex items-start gap-2 text-sm font-medium leading-snug text-amber-200">
+            <div className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in">
+              <p className="flex items-start gap-2 text-sm font-medium leading-snug text-amber-400">
                 <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
                 <span>
                   A etiqueta é comprada com o saldo da SUA conta no Melhor
                   Envio.
-                  <span className="mt-1 block font-normal text-amber-100/90">
+                  <span className="mt-1 block font-normal text-zinc-300">
                     Serviço: {elegibilidade.servico}
                   </span>
-                  <span className="mt-1 block font-normal text-amber-100/90">
+                  <span className="mt-1 block font-normal text-zinc-300">
                     Frete pago pelo cliente: R${" "}
                     {freteEfetivoDoPedido(pedido).toFixed(2).replace(".", ",")}
                   </span>
                   <span
                     data-testid="cpf-mascarado"
-                    className="mt-1 block font-normal text-amber-100/90"
+                    className="mt-1 block font-normal text-zinc-300"
                   >
                     CPF do destinatário: {mascararCpf(pedido.cpf)}
                   </span>

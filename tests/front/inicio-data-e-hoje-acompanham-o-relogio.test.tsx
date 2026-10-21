@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
-// A data do cartão "Hoje" e a coluna "Hoje" do gráfico de 14 dias eram
+// A data do cabeçalho do Início (antes no cartão "Hoje") e a coluna "Hoje" do gráfico de 14 dias eram
 // calculadas só ao desenhar: com o Início aberto de um dia para o outro, ou
 // voltando do segundo plano, continuavam em ontem. Relógio falso cruzando a
 // meia-noite de São Paulo (UTC−3: 03:00Z). 14/10/2026 é uma quarta-feira.
-import { HojeNaLoja } from "@/components/admin/inicio/HojeNaLoja";
+import { DataDeHoje } from "@/components/admin/inicio/DataDeHoje";
 import { SerieDe14Dias } from "@/components/admin/inicio/SerieDe14Dias";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -15,14 +15,6 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const ANTES_DA_MEIA_NOITE = "2026-10-14T02:59:50Z"; // 13/10, 23:59:50 em SP
 const DEPOIS_DA_MEIA_NOITE = "2026-10-14T03:00:10Z"; // 14/10, 00:00:10 em SP
-
-const HOJE = {
-  receita: 100,
-  online: 60,
-  presencial: 40,
-  pedidos: 2,
-  receitaSemanaPassada: 80,
-};
 
 /** 14 dias terminando em 14/10/2026. */
 const SERIE = Array.from({ length: 14 }, (_, i) => {
@@ -56,39 +48,33 @@ describe("o Início acompanha o relógio através da meia-noite", () => {
   });
 
   const textoDaData = () =>
-    hospedeiro.querySelector("section p.capitalize")?.textContent;
+    hospedeiro.querySelector('[data-testid="inicio-data"]')?.textContent;
 
-  it("o cartão Hoje troca a data sozinho quando o dia vira com a tela aberta", async () => {
-    await act(async () =>
-      raiz.render(<HojeNaLoja hoje={HOJE} carregando={false} />),
-    );
-    expect(textoDaData()).toBe("terça-feira, 13 de outubro");
+  it("a data do cabeçalho troca sozinha quando o dia vira com a tela aberta", async () => {
+    await act(async () => raiz.render(<DataDeHoje />));
+    expect(textoDaData()).toBe("Terça, 13 de outubro");
     await avancar(12_000);
-    expect(textoDaData()).toBe("quarta-feira, 14 de outubro");
+    expect(textoDaData()).toBe("Quarta, 14 de outubro");
   });
 
-  it("o cartão Hoje troca a data quando o app volta a ficar visível no dia seguinte", async () => {
-    await act(async () =>
-      raiz.render(<HojeNaLoja hoje={HOJE} carregando={false} />),
-    );
-    expect(textoDaData()).toBe("terça-feira, 13 de outubro");
+  it("a data do cabeçalho troca quando o app volta a ficar visível no dia seguinte", async () => {
+    await act(async () => raiz.render(<DataDeHoje />));
+    expect(textoDaData()).toBe("Terça, 13 de outubro");
     // O celular congelou o app (sem temporizador) e o relógio andou.
     await act(async () => {
       vi.setSystemTime(new Date(DEPOIS_DA_MEIA_NOITE));
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    expect(textoDaData()).toBe("quarta-feira, 14 de outubro");
+    expect(textoDaData()).toBe("Quarta, 14 de outubro");
   });
 
   it("controle: sem virada de dia, a data não muda", async () => {
-    await act(async () =>
-      raiz.render(<HojeNaLoja hoje={HOJE} carregando={false} />),
-    );
+    await act(async () => raiz.render(<DataDeHoje />));
     await act(async () => {
       vi.setSystemTime(new Date("2026-10-14T02:59:55Z"));
       window.dispatchEvent(new Event("focus"));
     });
-    expect(textoDaData()).toBe("terça-feira, 13 de outubro");
+    expect(textoDaData()).toBe("Terça, 13 de outubro");
   });
 
   const colunaDeHoje = () =>

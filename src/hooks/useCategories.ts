@@ -198,11 +198,28 @@ export function useCategories() {
 
         const queryPromise = (async () => {
           ultimaConsultaEm = Date.now();
-          const { data, error } = await supabase
+          let { data, error } = await supabase
             .from("categorias")
             .select("*")
             .order("nome");
 
+          // select("*") funciona mesmo sem icone: a propriedade ausente
+          // vira null no mapeamento abaixo. Este fallback é só defensivo se
+          // a camada de consulta devolver erro explícito de coluna; não é o
+          // caminho normal de um banco antigo. Erro de rede não vira vazio.
+          if (
+            error &&
+            ["42703", "PGRST204"].includes(error.code) &&
+            /icone/i.test(error.message)
+          ) {
+            const antiga = await supabase
+              .from("categorias")
+              .select("id,nome,slug,descricao,ativo,created_at")
+              .order("nome");
+            error = antiga.error;
+            data =
+              antiga.data?.map((item) => ({ ...item, icone: null })) ?? null;
+          }
           if (error) throw error;
 
           const adaptedCategories: Category[] = (data || []).map((item) => ({
@@ -211,6 +228,7 @@ export function useCategories() {
             slug: item.slug || "",
             description: item.descricao || "",
             isActive: item.ativo ?? true,
+            icone: item.icone ?? null,
             createdAt: item.created_at,
           }));
           globalCategoriesCache = adaptedCategories;
@@ -472,12 +490,37 @@ export function useCategories() {
     async (
       id: string,
       updates: Partial<Omit<Category, "id" | "createdAt" | "slug">>,
+      silent = false,
     ) => {
       try {
         // O nome só muda pela porta do banco (veja acima); o slug é dela.
         if (updates.name !== undefined) await renameCategory(id, updates.name);
         if (updates.isActive !== undefined) {
           await setCategoryActive(id, updates.isActive);
+        }
+        if (updates.icone !== undefined) {
+          if (!navigator.onLine) {
+            throw new ErroDeCategoria(
+              "Conecte-se à internet para mudar o ícone.",
+            );
+          }
+          const { data, error } = await supabase
+            .from("categorias")
+            .update({ icone: updates.icone })
+            .eq("id", id)
+            .select("id");
+          if (error) throw error;
+          if (!data?.length) {
+            throw new ErroDeCategoria(
+              "Não foi possível mudar o ícone. Atualize a tela e tente de novo.",
+            );
+          }
+          aplicarNaLista((lista) =>
+            lista.map((c) =>
+              c.id === id ? { ...c, icone: updates.icone } : c,
+            ),
+          );
+          avisarMudancaDeCategorias();
         }
         if (updates.description !== undefined) {
           const { error } = await supabase
@@ -491,14 +534,15 @@ export function useCategories() {
             ),
           );
         }
-        toast.success("Categoria atualizada com sucesso!");
+        if (!silent) toast.success("Categoria atualizada com sucesso!");
       } catch (error) {
         console.error("Error updating category:", error);
-        toast.error(
-          error instanceof ErroDeCategoria
-            ? error.message
-            : "Erro ao atualizar categoria",
-        );
+        if (!silent)
+          toast.error(
+            error instanceof ErroDeCategoria
+              ? error.message
+              : "Erro ao atualizar categoria",
+          );
         throw error;
       }
     },

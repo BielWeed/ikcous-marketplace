@@ -132,6 +132,7 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   TipoColunaStoreConfig
 >([
   ["free_shipping_min", "numeric"],
+  ["free_shipping_card_style", "texto"],
   ["shipping_fee", "numeric"],
   ["local_delivery_fee", "numeric"],
   // "Como entrego na minha cidade" (16/10/2026): entrega própria ligada e o
@@ -635,6 +636,14 @@ export function StoreProvider({
 
     return {
       freeShippingMin: Number(freeMin),
+      freeShippingCardStyle:
+        getVal(
+          "free_shipping_card_style",
+          "freeShippingCardStyle",
+          "completo",
+        ) === "compacto"
+          ? "compacto"
+          : "completo",
       shippingFee: Number(shipFee),
       whatsappNumber: getVal(
         "whatsapp_number",
@@ -1156,6 +1165,8 @@ export function StoreProvider({
 
         const dbUpdates: any = {};
         const identityUpdates: Partial<StoreConfig> = {};
+        if (updates.freeShippingCardStyle !== undefined)
+          dbUpdates.free_shipping_card_style = updates.freeShippingCardStyle;
         if (updates.freeShippingMin !== undefined)
           dbUpdates.free_shipping_min = updates.freeShippingMin;
         if (updates.shippingFee !== undefined)

@@ -10,6 +10,7 @@ import {
   proximoPasso,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import type { View } from "@/types";
 import {
   ArrowRight,
@@ -26,20 +27,20 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
-  ACAO_PRINCIPAL_INICIO,
   BOTAO_INICIO,
   CARTAO_INICIO,
   FalhaDoInicio,
   LINHA_INICIO,
-  SeloDoInicio,
-  TituloDoInicio,
-  type TomDoInicio,
+  TileDoInicio,
 } from "../inicio/visualDoInicio";
 
 /** Checklist e estoque do Início, sem novas leituras de dados.
  * A prontidão continua nas funções de loja-pronta; a apresentação completa
  * deixa reabrir os seis passos e recolhe a lista ao concluir o cadastro.
  * O modo de boas-vindas reaproveita o mesmo próximo passo e seu destino.
+ *
+ * No modo completo são LINHAS (um fragmento): "Loja pronta" e o estoque baixo
+ * moram dentro do cartão "Sua loja" do Início, que desenha o cartão e o título.
  */
 
 interface ProdutoMinimo {
@@ -86,14 +87,6 @@ const ICONE_DO_PASSO: Record<ChaveDosSeisPassos, typeof Wallet> = {
   recebe: Wallet,
   entrega: Truck,
   produto: Package,
-};
-const TOM_DO_PASSO: Record<ChaveDosSeisPassos, TomDoInicio> = {
-  marca: "teal",
-  endereco: "ceu",
-  whatsapp: "verde",
-  recebe: "roxo",
-  entrega: "laranja",
-  produto: "azul",
 };
 
 export function LojaProntaEEstoqueBaixo({
@@ -164,7 +157,7 @@ export function LojaProntaEEstoqueBaixo({
         <button
           type="button"
           onClick={() => onNavigate(proximo.destino)}
-          className={ACAO_PRINCIPAL_INICIO}
+          className={BOTAO_INICIO}
         >
           <Icone className="size-5 shrink-0" aria-hidden="true" />
           {proximo.rotuloPendente}
@@ -174,151 +167,169 @@ export function LojaProntaEEstoqueBaixo({
   }
 
   return (
-    <div className="min-w-0 space-y-3">
-      <section aria-labelledby="inicio-checklist-titulo">
-        <TituloDoInicio id="inicio-checklist-titulo" icone={Store} tom="teal">
-          Sua loja está pronta para vender?
-        </TituloDoInicio>
-        <div className={`${CARTAO_INICIO} space-y-3`}>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-white">
+    <>
+      <section
+        aria-labelledby="inicio-checklist-titulo"
+        className="min-w-0 space-y-3 py-3"
+      >
+        <div className="flex items-center gap-3">
+          <TileDoInicio
+            icone={Store}
+            tom={lojaPronta ? "positivo" : "neutro"}
+          />
+          <div className="min-w-0 flex-1">
+            <h3
+              id="inicio-checklist-titulo"
+              className="text-base font-semibold leading-snug text-white"
+            >
+              Loja pronta
+            </h3>
+            <p className="mt-0.5 text-sm text-zinc-400">
               {conferindo
                 ? "Conferindo sua loja…"
                 : `${feitos} de ${total} passos concluídos`}
             </p>
-            {lojaPronta ? (
-              <CheckCircle2
-                className="size-5 shrink-0 text-teal-300"
-                aria-label="Seis passos concluídos"
-              />
-            ) : null}
           </div>
           {lojaPronta ? (
-            <p className="text-sm text-zinc-400">Cadastro completo</p>
+            <CheckCircle2
+              className={`size-5 shrink-0 ${classeDoTexto("positivo")}`}
+              aria-label="Seis passos concluídos"
+            />
           ) : null}
-          {proximo && !conferindo ? (
-            <>
-              <button
-                type="button"
-                onClick={() => onNavigate(proximo.destino)}
-                className={BOTAO_INICIO}
-              >
-                <span className="min-w-0">
-                  Próximo passo: {proximo.rotuloPendente}
-                </span>
-                <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
-              </button>
-              {proximo.explicacaoPendente ? (
-                <p className="text-sm text-zinc-400">
-                  {proximo.explicacaoPendente}
-                </p>
-              ) : null}
-            </>
-          ) : null}
-          {avisoDaFaixa ? (
+        </div>
+        <div
+          aria-hidden="true"
+          className="h-1.5 overflow-hidden rounded-full bg-white/10"
+        >
+          <div
+            className="h-full rounded-full bg-emerald-400 transition-[width] motion-reduce:transition-none"
+            style={{
+              width: `${conferindo ? 0 : (feitos / total) * 100}%`,
+            }}
+          />
+        </div>
+        {lojaPronta ? (
+          <p className="text-sm text-zinc-400">Cadastro completo</p>
+        ) : null}
+        {proximo && !conferindo ? (
+          <>
             <button
               type="button"
-              onClick={() => onNavigate("admin-shipping")}
-              className={`${LINHA_INICIO} border-t border-admin-border`}
+              onClick={() => onNavigate(proximo.destino)}
+              className={BOTAO_INICIO}
             >
-              <SeloDoInicio icone={Truck} tom="laranja" />
-              <span className="min-w-0 flex-1 text-sm leading-relaxed text-orange-300">
-                {avisoDaFaixa}
-                <span className="mt-1 block text-zinc-400">
-                  Entrega e frete
-                </span>
+              <span className="min-w-0">
+                Próximo passo: {proximo.rotuloPendente}
               </span>
-              <ChevronRight
-                className="size-5 shrink-0 text-zinc-400"
-                aria-hidden="true"
-              />
+              <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
             </button>
-          ) : null}
-          {listaAberta ? (
-            <ul
-              id={idDaLista}
-              className="divide-y divide-admin-border border-t border-admin-border"
-            >
-              {passos.map((passo) => {
-                const Icone = ICONE_DO_PASSO[passo.chave];
-                return (
-                  <li key={passo.chave} className="min-h-11">
-                    {passo.estado === "carregando" ? (
-                      <span className="flex min-h-11 items-center gap-3 py-3">
-                        <CircleDashed
-                          className="size-5 shrink-0 animate-spin text-sky-300"
-                          aria-hidden="true"
-                        />
-                        <span className="text-sm text-zinc-400">
-                          Conferindo {passo.rotulo}…
-                        </span>
-                      </span>
-                    ) : passo.estado === "feito" ? (
-                      <span className="flex min-h-11 items-center gap-3 py-3">
-                        <SeloDoInicio
-                          icone={Icone}
-                          tom={TOM_DO_PASSO[passo.chave]}
-                        />
-                        <span className="min-w-0 text-sm text-zinc-300">
-                          Concluído · {passo.rotuloFeito}
-                        </span>
-                        <CheckCircle2
-                          className="ml-auto size-4 shrink-0 text-teal-300"
-                          aria-hidden="true"
-                        />
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onNavigate(passo.destino)}
-                        className={LINHA_INICIO}
-                      >
-                        <SeloDoInicio
-                          icone={Icone}
-                          tom={TOM_DO_PASSO[passo.chave]}
-                        />
-                        <span className="min-w-0 flex-1 text-sm font-semibold text-white">
-                          {passo.rotuloPendente}
-                        </span>
-                        <ChevronRight
-                          className="size-5 shrink-0 text-zinc-400"
-                          aria-hidden="true"
-                        />
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
+            {proximo.explicacaoPendente ? (
+              <p className="text-sm text-zinc-400">
+                {proximo.explicacaoPendente}
+              </p>
+            ) : null}
+          </>
+        ) : null}
+        {avisoDaFaixa ? (
           <button
             type="button"
-            aria-expanded={listaAberta}
-            aria-controls={listaAberta ? idDaLista : undefined}
-            onClick={() => setListaAberta((aberta) => !aberta)}
-            className={BOTAO_INICIO}
+            onClick={() => onNavigate("admin-shipping")}
+            className={`${LINHA_INICIO} border-t border-admin-border`}
           >
-            <ChevronDown
-              className={`size-5 shrink-0 ${listaAberta ? "rotate-180" : ""}`}
+            <TileDoInicio icone={Truck} tom="atencao" />
+            <span
+              className={`min-w-0 flex-1 text-sm leading-relaxed ${classeDoTexto("atencao")}`}
+            >
+              {avisoDaFaixa}
+              <span className="mt-1 block text-zinc-400">Entrega e frete</span>
+            </span>
+            <ChevronRight
+              className="size-5 shrink-0 text-zinc-400"
               aria-hidden="true"
             />
-            {listaAberta ? "Esconder os seis passos" : "Ver os seis passos"}
           </button>
-        </div>
+        ) : null}
+        {listaAberta ? (
+          <ul
+            id={idDaLista}
+            className="divide-y divide-admin-border border-t border-admin-border"
+          >
+            {passos.map((passo) => {
+              const Icone = ICONE_DO_PASSO[passo.chave];
+              return (
+                <li key={passo.chave} className="min-h-11">
+                  {passo.estado === "carregando" ? (
+                    <span className="flex min-h-11 items-center gap-3 py-3">
+                      <CircleDashed
+                        className="size-5 shrink-0 animate-spin text-zinc-300 motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                      <span className="text-sm text-zinc-400">
+                        Conferindo {passo.rotulo}…
+                      </span>
+                    </span>
+                  ) : passo.estado === "feito" ? (
+                    <span className="flex min-h-11 items-center gap-3 py-3">
+                      <TileDoInicio icone={Icone} tom="positivo" />
+                      <span className="min-w-0 text-sm text-zinc-300">
+                        Concluído · {passo.rotuloFeito}
+                      </span>
+                      <CheckCircle2
+                        className={`ml-auto size-4 shrink-0 ${classeDoTexto("positivo")}`}
+                        aria-hidden="true"
+                      />
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate(passo.destino)}
+                      className={LINHA_INICIO}
+                    >
+                      <TileDoInicio icone={Icone} tom="atencao" />
+                      <span className="min-w-0 flex-1 text-sm font-semibold text-white">
+                        {passo.rotuloPendente}
+                      </span>
+                      <ChevronRight
+                        className="size-5 shrink-0 text-zinc-400"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+        <button
+          type="button"
+          aria-expanded={listaAberta}
+          aria-controls={listaAberta ? idDaLista : undefined}
+          onClick={() => setListaAberta((aberta) => !aberta)}
+          className={BOTAO_INICIO}
+        >
+          <ChevronDown
+            className={`size-5 shrink-0 ${listaAberta ? "rotate-180" : ""}`}
+            aria-hidden="true"
+          />
+          {listaAberta ? "Esconder os seis passos" : "Ver os seis passos"}
+        </button>
       </section>
       {numeroDeAlertasValido ? (
         <button
           type="button"
           onClick={() => onNavigate("admin-notifications")}
-          className={`${CARTAO_INICIO} ${LINHA_INICIO} !p-3`}
+          className={LINHA_INICIO}
         >
-          <SeloDoInicio icone={Package} tom="azul" />
+          <TileDoInicio
+            icone={Package}
+            tom={stats!.inventoryAlerts > 0 ? "atencao" : "neutro"}
+          />
           <span className="min-w-0 flex-1">
             <span className="block text-base font-semibold text-white">
               Estoque baixo: {stats!.inventoryAlerts}{" "}
               {stats!.inventoryAlerts === 1 ? "produto" : "produtos"}
             </span>
-            <span className="mt-1 block text-sm text-zinc-400">
+            <span className="mt-0.5 block text-sm text-zinc-400">
               Abrir Notificações
             </span>
           </span>
@@ -328,9 +339,9 @@ export function LojaProntaEEstoqueBaixo({
           />
         </button>
       ) : estoqueEstaCarregando ? (
-        <div className={`${CARTAO_INICIO} flex items-center gap-3`}>
+        <div className="flex items-center gap-3 py-3">
           <CircleDashed
-            className="size-5 shrink-0 animate-spin text-sky-300"
+            className="size-5 shrink-0 animate-spin text-zinc-300 motion-reduce:animate-none"
             aria-hidden="true"
           />
           <span className="text-sm text-zinc-400">
@@ -338,13 +349,13 @@ export function LojaProntaEEstoqueBaixo({
           </span>
         </div>
       ) : (
-        <section aria-label="Estoque baixo">
+        <section aria-label="Estoque baixo" className="py-3">
           <FalhaDoInicio onTentarDeNovo={onTentarDeNovo}>
             Não foi possível conferir o estoque agora. A quantidade está
             indisponível.
           </FalhaDoInicio>
         </section>
       )}
-    </div>
+    </>
   );
 }

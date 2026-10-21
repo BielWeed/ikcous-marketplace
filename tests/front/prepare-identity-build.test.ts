@@ -160,6 +160,143 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
+describe("badge monocromático da identidade", () => {
+  async function prepararComIcone(
+    modo: "alpha" | "opaco" | "opaco-cantos" | "ambiguo" | "vazio",
+  ) {
+    const downloaded = await fixture();
+    const pixels = Buffer.alloc(192 * 192 * 4, 255);
+    /* eslint-disable security/detect-object-injection -- Fixed RGBA pixel offsets bounded by this 192×192 fixture. */
+    for (let y = 0; y < 192; y++) {
+      for (let x = 0; x < 192; x++) {
+        const p = (y * 192 + x) * 4;
+        const marca = x >= 48 && x < 144 && y >= 32 && y < 160;
+        if (modo === "alpha") {
+          pixels[p] = 180;
+          pixels[p + 1] = 20;
+          pixels[p + 2] = 40;
+          pixels[p + 3] = marca ? 128 : 0;
+        } else if (marca && modo !== "vazio") {
+          pixels[p] = pixels[p + 1] = pixels[p + 2] = 0;
+        } else if (modo === "ambiguo") {
+          pixels[p] = x;
+        }
+        if (modo === "opaco-cantos" && (x < 8 || x > 183) && (y < 8 || y > 183))
+          pixels[p + 3] = 0;
+      }
+    }
+    /* eslint-enable security/detect-object-injection */
+    const bytes = await sharp(pixels, {
+      raw: { width: 192, height: 192, channels: 4 },
+    })
+      .png()
+      .toBuffer();
+    const antigo = downloaded.identity.assets.icon_192;
+    const sha256 = hash(bytes);
+    const novo = {
+      ...antigo,
+      path: `v1/${sha256}/192.png`,
+      sha256,
+      bytes: bytes.length,
+    };
+    downloaded.identity.assets.icon_192 = novo;
+    downloaded.identity.urls.icon_192 = `https://abcdefghijklmnopqrst.supabase.co/storage/v1/object/public/branding/${novo.path}`;
+    const file = downloaded.files.find((item) => item.path === antigo.path)!;
+    Object.assign(file, { path: novo.path, bytes, sha256 });
+    downloaded.revision = await identityRevision(downloaded.identity);
+    return prepareIdentityBuild({
+      downloaded,
+      commonPublicDir: common,
+      temporaryParent: parent,
+      code,
+    });
+  }
+
+  it.each(["alpha", "opaco", "opaco-cantos"] as const)(
+    "gera branco/alpha 96×96 a partir de logo %s sem usar o ícone colorido",
+    async (modo) => {
+      const prepared = await prepararComIcone(modo);
+      try {
+        const url = Reflect.get(prepared.localUrls, "badge_96");
+        expect(url).toMatch(
+          /^\/store-identity\/v1\/[a-f0-9]{64}\/badge-96x96\.png$/,
+        );
+        expect(url).not.toBe(prepared.localUrls.icon_192);
+        if (!url) throw new Error("badge ausente");
+        const bytes = await fs.readFile(path.join(prepared.publicDir, url));
+        const metadata = await sharp(bytes).metadata();
+        expect(metadata).toMatchObject({
+          format: "png",
+          width: 96,
+          height: 96,
+          hasAlpha: true,
+        });
+        const { data, info } = await sharp(bytes)
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        expect(data[3]).toBe(0);
+        expect(data[(48 * 96 + 48) * info.channels + 3]).toBe(
+          modo === "alpha" ? 128 : 255,
+        );
+        for (let p = 0; p < data.length; p += 4) {
+          if (data[p + 3] > 0)
+            expect([...data.subarray(p, p + 3)]).toEqual([255, 255, 255]);
+        }
+      } finally {
+        await prepared.dispose();
+      }
+    },
+  );
+
+  it.each(["ambiguo", "vazio"] as const)(
+    "logo %s usa reserva neutra sem inventar desenho",
+    async (modo) => {
+      const prepared = await prepararComIcone(modo);
+      try {
+        expect(Reflect.get(prepared.localUrls, "badge_96")).toBe(
+          "/icons/badge-96x96.png",
+        );
+      } finally {
+        await prepared.dispose();
+      }
+    },
+  );
+
+  it("publica a reserva real branca/transparente (não aposentada pelo preparo)", async () => {
+    const reserva = await fs.readFile(
+      path.resolve("public/icons/badge-96x96.png"),
+    );
+    await put("icons/badge-96x96.png", reserva);
+    const prepared = await prepararComIcone("vazio");
+    try {
+      const publicada = await fs.readFile(
+        path.join(prepared.publicDir, "icons/badge-96x96.png"),
+      );
+      expect(publicada).toEqual(reserva);
+      expect(await sharp(publicada).metadata()).toMatchObject({
+        format: "png",
+        width: 96,
+        height: 96,
+        hasAlpha: true,
+      });
+      const { data } = await sharp(publicada)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const alphas = [...data].filter((_, p) => p % 4 === 3);
+      expect(Math.min(...alphas)).toBe(0);
+      expect(Math.max(...alphas)).toBe(255);
+      for (let p = 0; p < data.length; p += 4) {
+        if (data[p + 3] > 0)
+          expect([...data.subarray(p, p + 3)]).toEqual([255, 255, 255]);
+      }
+    } finally {
+      await prepared.dispose();
+    }
+  });
+});
+
 describe("preparação privada da identidade", () => {
   it("isola duas lojas simultâneas e mantém versão determinística", async () => {
     const a = await fixture();

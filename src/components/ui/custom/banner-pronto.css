@@ -1,0 +1,248 @@
+/* O alvo de 44px dos pontos não pode roubar o toque na chamada do banner.
+   Só a loja reserva essa faixa; a miniatura continua usando o espaço inteiro. */
+.banner-pronto-slide {
+  height: 100%;
+}
+.banner-pronto-slide[data-varios="true"] > .banner-pronto {
+  padding-bottom: 60px;
+}
+
+/* No slide real, a faixa dos pontos não pode diminuir a letra até virar miniatura. */
+.banner-pronto-slide .banner-pronto h2 {
+  font-size: 24px;
+}
+.banner-pronto-slide .banner-pronto p,
+.banner-pronto-slide .banner-pronto-botao {
+  font-size: 12px;
+}
+.banner-pronto-slide .banner-pronto-botao {
+  padding: 6px 12px;
+}
+.banner-pronto-slide .banner-pronto-selo {
+  font-size: 9px;
+  padding: 1px 6px;
+}
+.banner-pronto-slide [data-modelo="promocao"] h2 {
+  font-size: 36px;
+}
+.banner-pronto-slide [data-modelo="vitrine"] h2,
+.banner-pronto-slide [data-modelo="lancamento"] h2 {
+  font-size: 14px;
+}
+.banner-pronto-slide [data-modelo="vitrine"] .banner-pronto-foto,
+.banner-pronto-slide [data-modelo="lancamento"] .banner-pronto-foto {
+  width: min(23cqw, 46cqh);
+}
+.banner-pronto-slide [data-modelo="lancamento"] .banner-pronto-foto {
+  outline-offset: 3px;
+}
+
+.banner-pronto-slide
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"])
+  .banner-pronto-conteudo {
+  gap: 2px;
+  padding: 4px;
+}
+.banner-pronto-slide
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"])
+  :is(p, .banner-pronto-botao) {
+  font-size: 10px;
+}
+.banner-pronto-slide
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"])
+  .banner-pronto-botao {
+  padding: 3px 8px;
+}
+
+/* Largura E altura do banner: a loja usa 4:1 no desktop, a miniatura usa 2:1. */
+.banner-pronto {
+  container-type: size;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #2a2a31;
+  color: #fff;
+}
+.banner-pronto[data-tinta="escuro"] {
+  color: #000;
+}
+.banner-pronto-conteudo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: min(4cqw, 6cqh);
+  height: 100%;
+  padding: min(5cqw, 8cqh);
+}
+.banner-pronto-foto {
+  order: 1;
+  flex: 0 0 auto;
+  width: min(40cqw, 78cqh);
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+.banner-pronto-texto {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: min(2cqw, 2cqh);
+  min-width: 0;
+  max-height: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.banner-pronto h2 {
+  font-size: min(6cqw, 12cqh);
+  font-weight: 800;
+  line-height: 1.05;
+}
+.banner-pronto h2 span {
+  display: block;
+}
+.banner-pronto p {
+  font-size: min(3cqw, 6cqh);
+  line-height: 1.3;
+}
+.banner-pronto-selo {
+  padding: min(0.7cqw, 0.7cqh) 2cqw;
+  border: 1px solid currentColor;
+  border-radius: 99px;
+  font-size: min(1.9cqw, 3.6cqh);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+}
+.banner-pronto-botao {
+  display: inline-block;
+  padding: min(1.8cqw, 3cqh) 3.3cqw;
+  border-radius: 99px;
+  background: #fff;
+  color: #000;
+  font-size: min(2.3cqw, 4.4cqh);
+  font-weight: 700;
+  line-height: 1.2;
+}
+[data-tinta="escuro"] .banner-pronto-botao {
+  background: #000;
+  color: #fff;
+}
+[data-modelo="destaque"][data-tinta="claro"] .banner-pronto-conteudo {
+  background: linear-gradient(125deg, transparent, #0002);
+}
+[data-modelo="destaque"][data-tinta="escuro"] .banner-pronto-conteudo {
+  background: linear-gradient(125deg, transparent, #fff2);
+}
+[data-modelo="claro"] .banner-pronto-foto {
+  order: -1;
+}
+[data-modelo="promocao"] .banner-pronto-foto {
+  border-radius: 12%;
+}
+[data-modelo="promocao"] h2 {
+  font-size: min(10cqw, 20cqh);
+}
+[data-modelo="promocao"] p {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+[data-modelo="vitrine"] .banner-pronto-conteudo,
+[data-modelo="lancamento"] .banner-pronto-conteudo {
+  flex-direction: column;
+  justify-content: center;
+  gap: min(1.5cqw, 2cqh);
+  padding: min(3cqw, 4cqh);
+}
+[data-modelo="vitrine"] .banner-pronto-foto,
+[data-modelo="lancamento"] .banner-pronto-foto {
+  order: 0;
+  width: min(23cqw, 38cqh);
+  margin-top: 0;
+}
+[data-modelo="lancamento"] .banner-pronto-foto {
+  outline: 1px solid currentColor;
+  outline-offset: 1cqw;
+}
+[data-modelo="vitrine"] .banner-pronto-texto,
+[data-modelo="lancamento"] .banner-pronto-texto {
+  position: static;
+  flex: 0 0 auto;
+  align-items: center;
+  text-align: center;
+  gap: min(1cqw, 2cqh);
+  width: 100%;
+}
+[data-modelo="vitrine"] h2,
+[data-modelo="lancamento"] h2 {
+  font-size: min(4cqw, 7cqh);
+}
+[data-modelo="vitrine"] h2 span,
+[data-modelo="lancamento"] h2 span {
+  display: inline;
+}
+[data-modelo="vitrine"] p,
+[data-modelo="lancamento"] p {
+  font-size: min(2.3cqw, 4cqh);
+}
+[data-modelo="vitrine"] .banner-pronto-selo,
+[data-modelo="lancamento"] .banner-pronto-selo {
+  position: absolute;
+  top: min(2cqw, 3cqh);
+  left: 50%;
+  transform: translateX(-50%);
+}
+[data-modelo="foto"] .banner-pronto-foto {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+[data-modelo="foto"] .banner-pronto-texto {
+  flex: 0 1 65%;
+  align-self: flex-end;
+}
+
+@supports not (width: 1cqw) {
+  .banner-pronto-conteudo {
+    gap: 8px;
+    padding: 12px;
+  }
+  .banner-pronto-foto {
+    width: 38%;
+  }
+  .banner-pronto-texto {
+    gap: 4px;
+  }
+  .banner-pronto h2 {
+    font-size: 24px;
+  }
+  .banner-pronto p {
+    font-size: 12px;
+  }
+  .banner-pronto-selo {
+    padding: 1px 6px;
+    font-size: 9px;
+  }
+  .banner-pronto-botao {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  [data-modelo="promocao"] h2 {
+    font-size: 36px;
+  }
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"]) .banner-pronto-foto {
+    width: 23%;
+    outline-offset: 3px;
+  }
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"]) h2 {
+    font-size: 14px;
+  }
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"]) .banner-pronto-selo {
+    top: 4px;
+  }
+}

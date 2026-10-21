@@ -64,7 +64,7 @@ describe("TransportadorasSection — test_credentials honesto por serviço (R1-8
 
   async function abrir() {
     const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
+      "./apoio/transportadoras-isoladas"
     );
     await act(async () => {
       raiz.render(<TransportadorasSection />);

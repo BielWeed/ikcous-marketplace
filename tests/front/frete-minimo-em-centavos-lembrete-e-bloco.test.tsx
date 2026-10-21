@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const estado = vi.hoisted(() => ({
   config: {
     freeShippingMin: 20.3,
+    freeShippingCardStyle: "completo",
     storeCity: "",
   } as Record<string, unknown>,
   cartTotal: 0,
@@ -41,7 +42,11 @@ describe("meta de frete grátis em centavos — lembrete e bloco da Home", () =>
 
   beforeEach(() => {
     vi.useFakeTimers();
-    estado.config = { freeShippingMin: 20.3, storeCity: "" };
+    estado.config = {
+      freeShippingMin: 20.3,
+      freeShippingCardStyle: "completo",
+      storeCity: "",
+    };
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -105,6 +110,13 @@ describe("meta de frete grátis em centavos — lembrete e bloco da Home", () =>
     await montarBloco(10.1 + 10.2);
 
     expect(texto()).toContain("Liberado!");
+  });
+
+  it("FreeShippingBlock compacto também libera na soma em centavos", async () => {
+    estado.config.freeShippingCardStyle = "compacto";
+    await montarBloco(10.1 + 10.2);
+    expect(texto()).toContain("liberado");
+    expect(texto()).not.toContain("Faltam");
   });
 
   it("FreeShippingBlock CONTROLE: um centavo abaixo (20.29) -> 'Falta pouquinho', nunca 'Liberado!'", async () => {

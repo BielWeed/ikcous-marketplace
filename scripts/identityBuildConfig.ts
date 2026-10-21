@@ -6,6 +6,7 @@ import path from "node:path";
 import type { ConfigEnv, Plugin, UserConfig } from "vite";
 import type { VitePWAOptions } from "vite-plugin-pwa";
 import type { BuildIdentitySnapshot } from "../src/config/buildIdentityContract";
+import { BADGE_NEUTRO } from "../src/config/fichaDaLojaContract";
 // `identityHtml` mora agora em `src/config/identidadeNoHtml.ts` — extraída
 // para ser a MESMA função pura que o porteiro (`src/hospedagem/porteiro.ts`)
 // usa em tempo real (etapa 2 da escala, 11/09/2026). Reexportada abaixo
@@ -435,11 +436,21 @@ export function createIdentityBuildConfig(options: {
               type: "image/png",
               purpose: "maskable",
             },
+            {
+              src: localUrls.badge_96 ?? BADGE_NEUTRO,
+              sizes: "96x96",
+              type: "image/png",
+              purpose: "monochrome",
+            },
           ],
         });
         pwaOptions.includeAssets = [
-          // eslint-disable-next-line security/detect-object-injection -- Closed tuple of validated identity roles, not caller input.
-          ...new Set(essentialRoles.map((role) => localUrls[role].slice(1))),
+          ...new Set([
+            // eslint-disable-next-line security/detect-object-injection -- Closed tuple of validated identity roles, not caller input.
+            ...essentialRoles.map((role) => localUrls[role].slice(1)),
+            (localUrls.badge_96 ?? BADGE_NEUTRO).slice(1),
+            BADGE_NEUTRO.slice(1),
+          ]),
         ];
         return {
           publicDir: prepared.publicDir,

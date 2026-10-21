@@ -3,6 +3,15 @@ import { CheckCircle, Clock, Package, Truck, XCircle } from "lucide-react";
 import type React from "react";
 import { memo } from "react";
 
+// useOrders também leva este mapa à loja. Literais equivalentes aos tokens
+// evitam levar a paleta inteira do painel ao pacote público; o teste de cores
+// compara estes valores com classeDoTexto para impedir divergência.
+const POSITIVO = "text-emerald-400";
+const NEGATIVO = "text-red-400";
+const ATENCAO = "text-amber-400";
+const INFO = "text-sky-400";
+const NEUTRO = "text-zinc-400";
+
 export const statusConfig: Record<
   OrderStatus,
   {
@@ -17,44 +26,42 @@ export const statusConfig: Record<
   pending: {
     label: "Novo Pedido",
     icon: Package,
-    color: "text-blue-400",
-    bgColor: "bg-blue-500/10",
-    borderColor: "border-blue-500/20",
-    className: "text-blue-400",
+    color: INFO,
+    bgColor: "bg-sky-500/10",
+    borderColor: "border-sky-500/20",
+    className: INFO,
   },
   processing: {
     label: "Em Separação",
     icon: Clock,
-    color: "text-amber-400",
+    color: ATENCAO,
     bgColor: "bg-amber-500/10",
     borderColor: "border-amber-500/20",
-    className: "text-amber-400",
+    className: ATENCAO,
   },
   shipping: {
     label: "Em Trânsito",
     icon: Truck,
-    color: "text-indigo-400",
-    bgColor: "bg-indigo-500/10",
-    borderColor: "border-indigo-500/20",
-    className: "text-indigo-400",
+    color: INFO,
+    bgColor: "bg-sky-500/10",
+    borderColor: "border-sky-500/20",
+    className: INFO,
   },
   delivered: {
     label: "Finalizado",
     icon: CheckCircle,
-    color: "text-emerald-400",
+    color: POSITIVO,
     bgColor: "bg-emerald-500/10",
     borderColor: "border-emerald-500/20",
-    className: "text-emerald-400",
+    className: POSITIVO,
   },
   cancelled: {
     label: "Cancelado",
     icon: XCircle,
-    // zinc-400 (e nao 500): sobre o fundo escuro do painel o 500 dava ~3,6:1,
-    // abaixo do minimo AA de 4,5:1; o 400 da ~6,7:1.
-    color: "text-zinc-400",
-    bgColor: "bg-zinc-500/10",
-    borderColor: "border-zinc-500/20",
-    className: "text-zinc-400",
+    color: NEGATIVO,
+    bgColor: "bg-red-500/10",
+    borderColor: "border-red-500/20",
+    className: NEGATIVO,
   },
 };
 
@@ -101,23 +108,18 @@ export const OrderStatusBadge = memo(function OrderStatusBadge({
 }: Readonly<OrderStatusBadgeProps>) {
   const cfg = statusConfig[status || "pending"] || statusConfig.pending;
   const cartao = tamanho === "cartao";
-  const corDoCartao =
-    status === "processing"
-      ? "bg-violet-300/10 text-violet-300"
-      : status === "shipping"
-        ? "bg-cyan-300/10 text-cyan-300"
-        : status === "cancelled"
-          ? "bg-red-400/10 text-red-300"
-          : status === "delivered"
-            ? "bg-emerald-300/10 text-emerald-300"
-            : "bg-indigo-300/10 text-indigo-300";
+  const corDoCartao = cfg.color;
 
   return (
     <div
       className={`flex items-center rounded-full ${
-        cartao ? "gap-1.5 px-2.5 py-1" : "px-2 py-0.5"
-      } ${cartao ? corDoCartao : cfg.bgColor} ${className || ""}`}
+        cartao ? "gap-1.5 px-2.5 py-1" : "gap-1.5 px-2 py-0.5"
+      } ${corDoCartao} ${className || ""}`}
     >
+      <span
+        aria-hidden="true"
+        className="size-1.5 shrink-0 rounded-full bg-current"
+      />
       <span
         className={`${
           cartao
@@ -177,32 +179,32 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
     aguardando: {
       label: "Aguardando pagamento",
       shortLabel: "Aguardando pgto.",
-      color: "text-amber-400",
+      color: ATENCAO,
       bgColor: "bg-amber-500/10",
       borderColor: "border-amber-500/20",
     },
     pago: {
       label: "Pago",
-      color: "text-emerald-400",
+      color: POSITIVO,
       bgColor: "bg-emerald-500/10",
       borderColor: "border-emerald-500/20",
     },
     recusado: {
       label: "Recusado",
-      color: "text-rose-400",
-      bgColor: "bg-rose-500/10",
-      borderColor: "border-rose-500/20",
+      color: NEGATIVO,
+      bgColor: "bg-red-500/10",
+      borderColor: "border-red-500/20",
     },
     expirado: {
       label: "Expirado",
-      color: "text-zinc-400",
+      color: NEUTRO,
       bgColor: "bg-zinc-500/10",
       borderColor: "border-zinc-500/20",
     },
     estornado: {
       label: "Estornado — precisa de atenção",
       shortLabel: "Estornado",
-      color: "text-red-400",
+      color: NEGATIVO,
       bgColor: "bg-red-500/10",
       borderColor: "border-red-500/40",
       needsAttention: true,
@@ -217,7 +219,7 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
       // causa que às vezes é outra.
       label: "Pago fora do fluxo — precisa de atenção",
       shortLabel: "Pago fora do fluxo",
-      color: "text-red-400",
+      color: NEGATIVO,
       bgColor: "bg-red-500/10",
       borderColor: "border-red-500/40",
       needsAttention: true,
@@ -228,14 +230,14 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
     // `pago`.
     recebido_na_entrega: {
       label: "Recebido na entrega",
-      color: "text-emerald-400",
+      color: POSITIVO,
       bgColor: "bg-emerald-500/10",
       borderColor: "border-emerald-500/20",
     },
     sem_cobranca: {
       label: "Sem cobrança online",
       // Mesmo motivo do "Cancelado": zinc-500 ficava abaixo de 4,5:1.
-      color: "text-zinc-400",
+      color: NEUTRO,
       bgColor: "bg-zinc-500/10",
       borderColor: "border-zinc-500/20",
     },
@@ -394,16 +396,18 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   return (
     <div
       title={compact ? label : undefined}
-      className={`flex max-w-full items-center ${
-        tamanho === "cartao"
-          ? ""
-          : `rounded-full border px-2 py-0.5 ${cfg.bgColor} ${cfg.borderColor}`
+      className={`flex max-w-full items-center gap-1.5 ${
+        tamanho === "cartao" ? "" : "px-2 py-0.5"
       } ${
         cfg.needsAttention && tamanho !== "cartao"
           ? "animate-pulse ring-1 ring-red-500/60"
           : ""
       } ${className || ""}`}
     >
+      <span
+        aria-hidden="true"
+        className={`size-1.5 shrink-0 rounded-full bg-current ${cfg.color}`}
+      />
       <span
         className={`whitespace-normal break-words ${
           tamanho === "cartao"

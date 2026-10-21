@@ -6,6 +6,10 @@ import { defineConfig, loadEnv } from "vite";
 import type { UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
+import {
+  authSemWebAuthn,
+  zodSemJsonSchema,
+} from "./scripts/dependenciasEnxutasDaLoja";
 import { escalasEnxutasDoGrafico } from "./scripts/escalasEnxutasDoGrafico";
 import { graficoEnxuto } from "./scripts/graficoEnxuto";
 import { helpersCompartilhadosDoGrafico } from "./scripts/helpersCompartilhadosDoGrafico";
@@ -136,6 +140,10 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     },
     plugins: [
       identity.plugin,
+      // Só gerador de JSON Schema e WebAuthn não usados; versões e conteúdo
+      // travados. Validação de formulários e login mantêm a implementação original.
+      zodSemJsonSchema(),
+      authSemWebAuthn(),
       // O recharts mantém o d3-scale INTEIRO por um acesso dinâmico; os gráficos
       // do painel só usam 3 escalas (~6 kB brotli). Detalhes e a trava que
       // protege o caso `scale="time"` em scripts/escalasEnxutasDoGrafico.ts.

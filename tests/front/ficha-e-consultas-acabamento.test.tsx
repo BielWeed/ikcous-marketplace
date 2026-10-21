@@ -1,3 +1,4 @@
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 // @vitest-environment jsdom
 //
 // Painel simples, onda K (K-C) — acabamento da ficha do cliente, de Clientes e
@@ -15,6 +16,7 @@
 // render.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   afterEach,
   beforeAll,
@@ -317,6 +319,21 @@ describe("ficha, Clientes e consultas — acabamento da onda K", () => {
       expect(codigo?.className).not.toMatch(/text-\[(?:[6-9]|10(?:\.5)?)px\]/);
     });
 
+    it("o contato v2 tem o glifo oficial e o avatar não tem moldura grossa", async () => {
+      await abrirFicha();
+
+      const contato = botaoPorTexto("Conversar no WhatsApp");
+      expect(contato).toBeDefined();
+      const oficial = document.createElement("div");
+      oficial.innerHTML = renderToStaticMarkup(<IconeWhatsapp />);
+      expect(contato?.querySelector("svg path")?.getAttribute("d")).toBe(
+        oficial.querySelector("path")?.getAttribute("d"),
+      );
+      const avatar = hospedeiro.querySelector('[data-slot="avatar"]');
+      expect(avatar).not.toBeNull();
+      expect(classesDe(avatar)).not.toContain("border-4");
+    });
+
     it("o toque tem 44px: WhatsApp, Limpar Carrinho, ajuda e abrir o pedido", async () => {
       estado.pedidos = [
         {
@@ -344,8 +361,12 @@ describe("ficha, Clientes e consultas — acabamento da onda K", () => {
       ];
       await abrirFicha();
 
-      expect(classesDe(botaoPorTexto("Contato Direto"))).toContain("h-11");
-      expect(classesDe(botaoPorTexto("Contato Direto"))).not.toContain("h-10");
+      expect(classesDe(botaoPorTexto("Conversar no WhatsApp"))).toContain(
+        "h-11",
+      );
+      expect(classesDe(botaoPorTexto("Conversar no WhatsApp"))).not.toContain(
+        "h-10",
+      );
 
       const ajuda = hospedeiro.querySelector(
         'button[title="Guia da ficha do cliente e ajuda"]',

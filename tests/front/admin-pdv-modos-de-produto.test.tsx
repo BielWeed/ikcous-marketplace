@@ -103,7 +103,7 @@ async function montar(active = true) {
   );
 }
 
-function aba(modo: "bipar" | "buscar") {
+function aba(modo: "bipar" | "digitar" | "buscar") {
   return host.querySelector<HTMLButtonElement>(`#modo-${modo}-produto`)!;
 }
 
@@ -113,6 +113,32 @@ async function selecionar(modo: "bipar" | "buscar") {
 
 const painelVisivel = () =>
   host.querySelector('[role="tabpanel"]:not([hidden])')!;
+
+it("três modos segmentados compartilham os handlers sem ligar a câmera em Digitar", async () => {
+  await montar();
+  expect(
+    [...host.querySelectorAll('[role="tab"]')].map((b) => b.textContent),
+  ).toEqual(["Câmera", "Digitar", "Buscar"]);
+  expect(host.querySelector(".pdv-viewport")).not.toBeNull();
+  await act(async () => aba("digitar").click());
+  expect(host.querySelector("video")).toBeNull();
+  expect(host.querySelector("#codigo-de-barras-manual")).not.toBeNull();
+  expect(hook).toHaveBeenLastCalledWith(
+    expect.objectContaining({ ativo: false, lerTeclado: true }),
+  );
+  await act(async () => {
+    aba("digitar").dispatchEvent(
+      new KeyboardEvent("keydown", { key: "End", bubbles: true }),
+    );
+  });
+  expect(document.activeElement).toBe(aba("buscar"));
+  await act(async () => {
+    aba("buscar").dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Home", bubbles: true }),
+    );
+  });
+  expect(document.activeElement).toBe(aba("bipar"));
+});
 
 it("abre em Bipar, alterna um painel por vez e mantém teclado ligado com câmera desligada em Buscar", async () => {
   await montar();
@@ -176,8 +202,8 @@ it("abas funcionam pelo teclado e somem ao identificar o cliente, com câmera de
       new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
     );
   });
-  expect(document.activeElement).toBe(aba("buscar"));
-  expect(aba("buscar").getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(aba("digitar"));
+  expect(aba("digitar").getAttribute("aria-selected")).toBe("true");
   await selecionar("bipar");
   await act(async () => {
     [...host.querySelectorAll("button")]

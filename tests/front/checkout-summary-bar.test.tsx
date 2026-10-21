@@ -758,6 +758,17 @@ describe("CheckoutView — gatilho do resumo no topo, painel e barra de baixo co
       gatilho!.click();
     });
 
+    const barra = localizarBotaoFinalizar()!.closest(
+      ".bottom-docked-navigation",
+    )!;
+    expect(barra.textContent).toContain("Subtotal");
+    expect(barra.textContent).toContain("Entrega");
+    expect(barra.textContent).toContain("Desconto");
+    expect(barra.textContent).toContain("-R$ 3,00");
+    expect(barra.textContent).toContain("R$ 17,00");
+    const desconto = barra.querySelector('[aria-label="Desconto de R$ 3,00"]')!;
+    expect(desconto.className).toContain("text-emerald-700");
+    expect(desconto.className).not.toContain("bg-");
     const texto = document.body.textContent ?? "";
     expect(texto).toContain("Desconto");
     expect(texto).toContain("-R$ 3,00");
@@ -968,7 +979,7 @@ describe("CheckoutView — gatilho do resumo no topo, painel e barra de baixo co
     expect(gatilho!.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("barra de baixo: mostra Subtotal e Total, e o botão 'Finalizar' compacto (sem '1x ...' nem 'Inclui R$ ... de entrega')", async () => {
+  it("barra de baixo: mostra Subtotal, Entrega e Total, com Finalizar pedido em largura total", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     const cart: CartItem[] = [
       {
@@ -992,14 +1003,14 @@ describe("CheckoutView — gatilho do resumo no topo, painel e barra de baixo co
 
     const botaoFinalizar = localizarBotaoFinalizar();
     expect(botaoFinalizar).toBeDefined();
-    // Texto VISÍVEL compacto — "Finalizar", não "Finalizar Pedido" (o nome
-    // completo continua acessível via `aria-label`, já usado para achar o
-    // botão acima).
+    // O botão largo mostra o nome completo, também usado pela suíte antiga.
     const spanVisivel = botaoFinalizar!.querySelector("span:not(.sr-only)");
-    expect(spanVisivel?.textContent).toBe("Finalizar");
-    // `textContent` do botão inteiro segue contendo "Finalizar Pedido"
-    // (span `sr-only` completando), de propósito: mantém toda suíte antiga
-    // que procura o botão por esse texto funcionando.
+    expect(spanVisivel?.textContent).toBe("Finalizar Pedido");
+    expect(botaoFinalizar!.className).toContain("w-full");
+    const barra = botaoFinalizar!.closest(".bottom-docked-navigation")!;
+    expect(barra.textContent).toContain("Entrega");
+    expect(barra.textContent).toContain("R$ 8,00");
+    expect(barra.querySelector("[data-testid=frase-de-aceite] br")).toBeNull();
     expect(botaoFinalizar!.textContent).toContain("Finalizar Pedido");
 
     expect(document.body.textContent).not.toContain("1× Maleta");
@@ -1013,7 +1024,7 @@ describe("CheckoutView — gatilho do resumo no topo, painel e barra de baixo co
     expect(document.body.textContent).toContain("R$ 17,00");
   });
 
-  it("a barra de baixo não fica mais alta do que antes (2 linhas de texto, sem o antigo bloco de 3-4 linhas)", async () => {
+  it("os valores ficam acima do botão, não espremidos ao lado dele", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     const cart: CartItem[] = [
       { product: produto({ name: "Coxinha", price: 9 }), quantity: 1 },
@@ -1033,17 +1044,13 @@ describe("CheckoutView — gatilho do resumo no topo, painel e barra de baixo co
     await esperarBarraMontar();
 
     const botaoFinalizar = localizarBotaoFinalizar();
-    // A coluna de Subtotal/Total é irmã do botão, dentro do mesmo container
-    // `flex items-center justify-between` — subimos até achar esse
-    // container e contamos as LINHAS internas da coluna de texto (a prova
-    // de altura em pixels de verdade é medição no navegador, registrada no
-    // relatório; jsdom não faz layout).
-    const linha = botaoFinalizar!.closest(
-      "div.flex.items-center.justify-between",
-    );
-    expect(linha).not.toBeNull();
-    const colunaDeTexto = linha!.querySelector("div.flex-col");
-    expect(colunaDeTexto).not.toBeNull();
-    expect(colunaDeTexto!.children).toHaveLength(2);
+    // A ordem é estrutural. Altura e folga em pixels exigem navegador real.
+    const barra = botaoFinalizar!.closest(".bottom-docked-navigation")!;
+    const totais = barra.querySelector("[aria-label='Valores do pedido']");
+    expect(totais).not.toBeNull();
+    expect(totais!.textContent).toContain("Subtotal");
+    expect(totais!.textContent).toContain("Entrega");
+    expect(totais!.textContent).toContain("Total");
+    expect(totais!.contains(botaoFinalizar!)).toBe(false);
   });
 });

@@ -4,10 +4,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 /**
- * Cartão de identidade do Início: logo (ou a inicial), nome da loja,
+ * Primeira linha de "Sua loja" no Início: logo (ou a inicial), nome da loja,
  * cidade/UF, quem está no comando e o botão de compartilhar o link da loja
  * (WhatsApp/Instagram). O antigo "Ver loja" saiu: o botão Voltar do Perfil
  * já leva para a vitrine — dois botões para o mesmo lugar não fazem sentido.
+ * É só uma linha: o cartão e o título "Sua loja" são da tela.
  * Componente puro — quem lê `useStore`/`useAuth` é a ponte em
  * `AdminDashboardView`.
  */
@@ -59,12 +60,9 @@ export function PerfilDaLoja({
   }
 
   return (
-    <section
-      aria-label="Sua loja"
-      className="min-w-0 rounded-[22px] border border-admin-border bg-admin-surface p-3 lg:border-0 lg:bg-transparent lg:p-0"
-    >
+    <div className="min-w-0 py-3">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-admin-border bg-sky-400/10 text-sky-300">
+        <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-admin-border bg-admin-raised text-zinc-300">
           {logoUrl && !logoFalhou ? (
             <img
               src={logoUrl}
@@ -75,7 +73,7 @@ export function PerfilDaLoja({
           ) : (
             <span
               aria-hidden="true"
-              className="text-2xl font-bold text-sky-300"
+              className="text-xl font-bold text-zinc-300"
             >
               {inicial}
             </span>
@@ -83,9 +81,9 @@ export function PerfilDaLoja({
         </div>
 
         <div className="relative min-w-0 flex-1">
-          <h2 className="break-words text-base font-bold leading-snug text-white [overflow-wrap:anywhere]">
+          <h3 className="break-words text-base font-bold leading-snug text-white [overflow-wrap:anywhere]">
             {nome}
-          </h2>
+          </h3>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400">
             {local ? (
               <span className="inline-flex items-center gap-1">
@@ -108,7 +106,7 @@ export function PerfilDaLoja({
           type="button"
           onClick={() => void compartilharLoja()}
           aria-label="Compartilhar o link da loja"
-          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-400/10 text-sky-300 transition-colors hover:bg-sky-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-admin-border bg-admin-raised text-zinc-200 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
         >
           <Share2 className="size-5" aria-hidden="true" />
           <span className="sr-only" aria-hidden="true">
@@ -121,7 +119,7 @@ export function PerfilDaLoja({
           role="status"
           className="mt-3 space-y-2 border-t border-admin-border pt-3"
         >
-          <p className="flex items-center gap-2 text-sm font-semibold text-teal-300">
+          <p className="flex items-center gap-2 text-sm font-semibold text-emerald-400">
             <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />
             Endereço da loja copiado
           </p>
@@ -131,6 +129,6 @@ export function PerfilDaLoja({
           </p>
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }

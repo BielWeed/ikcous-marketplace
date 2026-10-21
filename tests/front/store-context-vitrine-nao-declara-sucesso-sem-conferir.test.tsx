@@ -753,6 +753,7 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
     // instante em que StoreConfig cresce.
     const todasAsChaves: Required<StoreConfig> = {
       freeShippingMin: 1,
+      freeShippingCardStyle: "completo",
       shippingFee: 1,
       whatsappNumber: "34900000000",
       shareText: "x",

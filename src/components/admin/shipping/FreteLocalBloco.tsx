@@ -1,6 +1,5 @@
 import {
   CabecaDeSecao,
-  Chave,
   Linha,
   PontoEstado,
 } from "@/components/admin/shipping/primitivas-direcao-d";
@@ -67,7 +66,7 @@ function OpcaoDeAlcance({
   );
 }
 
-/** As três respostas de "Como você entrega na sua cidade?" e o EFEITO de cada. */
+/** As três respostas de "Como o cliente da sua região recebe?" e o EFEITO de cada. */
 const RESPOSTAS_DE_ENTREGA: readonly {
   readonly modo: ModoDaEntregaNaCidade;
   readonly titulo: string;
@@ -75,84 +74,30 @@ const RESPOSTAS_DE_ENTREGA: readonly {
 }[] = [
   {
     modo: "entrego",
-    titulo: "Entrego",
-    efeito:
-      "Você leva o pedido até o cliente da sua cidade. Ele não pode retirar na loja.",
+    titulo: "Eu entrego",
+    efeito: "Você leva o pedido até a casa do cliente.",
   },
   {
     modo: "entrego_e_retiro",
-    titulo: "Entrego e retiro",
-    efeito: "O cliente escolhe: recebe em casa ou retira na loja, de graça.",
+    titulo: "Eu entrego ou ele retira",
+    efeito:
+      "O cliente escolhe: recebe em casa ou busca na loja, sem pagar frete.",
   },
   {
     modo: "so_retiro",
-    titulo: "Só retiro",
-    efeito: "Seus clientes só poderão retirar na loja. Não oferecemos entrega.",
+    titulo: "Só retirada",
+    efeito:
+      "Ninguém recebe em casa. Qualquer cliente, de qualquer lugar, busca na loja.",
   },
 ];
 
-/**
- * Seção "Entrega na sua cidade" da tela de Frete v2 — direção D aprovada
- * pelo dono (03/09): linhas finas, sem caixa/card. O que existe hoje nessa
- * área (`localDeliveryFee`, `localCepRange`, `shippingCoverage`) continua
- * funcionando IGUAL — aqui só muda a casca (mando do dono: casca nova,
- * regra intacta).
- *
- * A CHAVE desta seção é o ÚNICO interruptor de verdade da tela (com campo
- * gravável real por trás): "Só entregar na cidade" grava `shippingCoverage`:
- * - LIGADA    = "local"    → a edge function RECUSA CEP de fora (a loja
- *   só atende a cidade — comportamento real de calculate-shipping);
- * - DESLIGADA = "national" → a cidade segue sendo atendida pela entrega
- *   local E o resto do Brasil compra com a transportadora.
- *
- * Por que NÃO se chama "Entrega local" como no mockup: a entrega local não
- * tem "desligar" no sistema — CEP da cidade SEMPRE recebe a opção
- * "Entrega Local", nos dois estados da cobertura. Uma chave "Entrega
- * local" desligada seria chave que mente. O campo real que liga e desliga
- * algo aqui é a cobertura, e o nome diz exatamente o que ela faz.
- *
- * Semântica do valor (vem da edge, repetida sem inventar): CEP do cliente
- * dentro da faixa → opção "Entrega Local" custa `localDeliveryFee`
- * (R$ 0 = entrega de graça na cidade). Faixa vazia = só CEPs que começam
- * com os 5 primeiros números do CEP da loja (NÃO a cidade inteira: em
- * cidade com CEP por rua isso deixa bairros de fora — ver `avisoDaFaixaDeCep`).
- *
- * ATÉ ONDE VOCÊ ENTREGA (16/10/2026): no lugar do campo de texto "Alcance
- * por CEP", duas respostas com o EFEITO escrito embaixo. "Só perto da loja"
- * grava os 5 primeiros números do CEP da loja no MESMO campo do formulário
- * (o Salvar do topo grava; nenhum fluxo novo): no instante da gravação é a
- * mesma regra do alcance VAZIO nas três cópias do servidor, só que agora dita
- * pela lojista — o cartão "Sua loja está pronta?" fecha o passo. O número é
- * uma CÓPIA: se o CEP da loja mudar, Minha loja o regrava no mesmo Salvar do
- * endereço (`alcanceAoMudarOCepDaLoja`). "Em mais lugares" abre o teste de CEP
- * ("entra / fica de fora") e o botão que acrescenta a região. O texto livre
- * continua, recolhido, para quem já o usa. Nenhum formato novo: só o que
- * `cepEhLocal`/`is_local_cep`/edge já leem.
- *
- * COMO VOCÊ ENTREGA (16/10/2026): três respostas ("Entrego", "Entrego e
- * retiro", "Só retiro") no lugar do interruptor "Permitir retirada na loja".
- * O pai traduz a escolha nos dois campos reais (entrega própria ligada +
- * chave `store-pickup` em `enabledShippingMethods`, calculada do config
- * ATUAL, preservando os serviços de transportadora). A cliente vê "Retirar na
- * loja", grátis, com o endereço de Minha loja — aqui ele só aparece para
- * LEITURA (D7, painel simples: o endereço tem uma casa só). Sem esse
- * endereço as duas respostas com retirada NÃO se escolhem: a tela explica e
- * oferece "Cadastrar endereço em Minha loja" (a edge também não oferece a
- * retirada sem endereço — a retirada ligada ali seria chave que mente).
- *
- * "Só retiro" não entrega, então esconde o que só existe para entrega: valor,
- * prazo, alcance por CEP e "Só entregar na cidade" (quem é de fora também
- * retira). O pai guarda esses valores e eles voltam ao escolher "Entrego".
- */
+/** Configuração local: os mesmos campos e guardas, sem a cobertura de fora. */
 export const FreteLocalBloco = memo(function FreteLocalBloco({
   valor,
   onValor,
   faixa,
   onFaixa,
   coverage,
-  onCoverage,
-  cidade,
-  uf,
   semOrigem,
   cepDaLoja,
   desabilitado,
@@ -171,7 +116,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   readonly faixa: string;
   readonly onFaixa: (faixa: string) => void;
   readonly coverage: "local" | "national";
-  readonly onCoverage: (coverage: "local" | "national") => void;
+  readonly onCoverage?: (coverage: "local" | "national") => void;
   readonly cidade?: string | null;
   readonly uf?: string | null;
   /** A loja ainda não definiu o CEP de origem — a entrega está parada. */
@@ -230,8 +175,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       detalhesRef.current.open = true;
   }, [faixaPropria, mexeuNoPainel]);
   const temEndereco = (enderecoDaLoja ?? "").trim() !== "";
-  const onde =
-    cidade && uf ? `${cidade}/${uf}` : cidade ? cidade : "sua cidade";
+
   // UM aviso só sobre o endereço (nunca dois empilhados, nem repetido na dica):
   // o estado salvo/escolhido sem endereço ganha o texto do que isso causa; o
   // clique recusado só explica por que a escolha não valeu.
@@ -329,12 +273,12 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       {onModo && (
         <div className="py-4" data-como-entrego="">
           <p className="text-sm font-bold text-zinc-100">
-            Como você entrega na sua cidade?
+            Como o cliente da sua região recebe?
           </p>
           <div
             role="radiogroup"
-            aria-label="Como você entrega na sua cidade"
-            className="mt-3 grid gap-3 sm:grid-cols-3"
+            aria-label="Como o cliente da sua região recebe"
+            className="mt-3 grid gap-3"
           >
             {RESPOSTAS_DE_ENTREGA.map((r) => (
               <OpcaoDeAlcance
@@ -374,7 +318,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               {alertaDoModo}
             </p>
           )}
-          {avisoDoCep && onNavigate && (
+          {alertaDoModo && onNavigate && (
             <button
               type="button"
               onClick={() => onNavigate("admin-about-store")}
@@ -388,24 +332,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
 
       {!soRetiro && (
         <Linha
-          nome="Só entregar na cidade"
-          dica="Ligada: quem é de fora não consegue comprar. Desligada: o resto do Brasil compra com a transportadora."
-        >
-          <Chave
-            rotulo="Só entregar na cidade"
-            ligada={coverage === "local"}
-            desabilitado={desabilitado}
-            onToggle={() =>
-              onCoverage(coverage === "local" ? "national" : "local")
-            }
-          />
-        </Linha>
-      )}
-
-      {!soRetiro && (
-        <Linha
-          nome="Valor por pedido"
-          dica={`O que o cliente de ${onde} paga${onDias ? " e em quantos dias você entrega (0 = no mesmo dia)" : ""}`}
+          nome="Valor da entrega"
+          dica="Valor vazio = entrega grátis. Prazo 0 = no mesmo dia."
         >
           {/* Mesma mecânica da tela anterior (o campo vazio lê 0 = grátis na
             cidade) — mudou a casca, não o comportamento. */}
@@ -415,6 +343,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           >
             <span className="text-xs font-semibold text-zinc-400">R$</span>
             <input
+              aria-label="Valor da entrega"
               id="local-delivery-fee"
               type="number"
               min="0"
@@ -456,7 +385,10 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       {soRetiro ? null : prefixo === null ? (
         // Sem CEP completo da loja não há "perto da loja" para escolher: só o
         // campo de texto, como sempre foi.
-        <Linha nome="Escrever faixa de CEP" dica={dicaDoTexto(cepDaLoja)}>
+        <Linha
+          nome="Escrever a faixa de CEP à mão"
+          dica={dicaDoTexto(cepDaLoja)}
+        >
           {campoDaFaixa}
         </Linha>
       ) : (
@@ -474,7 +406,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           >
             <OpcaoDeAlcance
               ativa={!maisLugares && soPerto}
-              titulo="Só perto da loja"
+              titulo="Perto da loja"
               efeito={`CEPs que começam com ${prefixo}, normalmente um pedaço do seu bairro.${
                 comprarDeFora === null
                   ? ""
@@ -492,7 +424,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             />
             <OpcaoDeAlcance
               ativa={maisLugares}
-              titulo="Em mais lugares"
+              titulo="Escolher CEPs"
               efeito="Você escolhe quais CEPs entram. Teste o CEP de um cliente e veja na hora."
               desabilitado={desabilitado}
               onEscolher={() => setCliqueEmMais(true)}
@@ -548,7 +480,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                   }}
                   className="mt-2 flex min-h-11 items-center rounded-lg border border-solid border-admin-border px-3.5 py-2 text-[12px] font-bold text-zinc-200 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:opacity-50"
                 >
-                  Incluir a região deste CEP
+                  Incluir a região {cepDeTeste.replace(/\D/g, "").slice(0, 5)}
                 </button>
               )}
             </div>
@@ -559,7 +491,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               onClick={() => setMexeuNoPainel(true)}
               className="flex min-h-11 cursor-pointer list-none items-center text-[13px] font-semibold text-zinc-300 before:mr-2 before:inline-block before:text-base before:text-zinc-300 before:transition-transform before:content-['▸'] group-open:before:rotate-90 [&::-webkit-details-marker]:hidden"
             >
-              Escrever faixa de CEP
+              Escrever a faixa de CEP à mão
             </summary>
             <Linha nome="CEPs da entrega" dica={dicaDoTexto(cepDaLoja)}>
               {campoDaFaixa}
@@ -577,7 +509,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       {/* Em "Entrego" a cliente NÃO pode retirar: com endereço cadastrado a
           linha afirmaria o contrário, então só aparece sem endereço (o botão
           de cadastrar é o caminho para ligar a retirada depois). */}
-      {onModo && (modo !== "entrego" || !temEndereco) && (
+      {onModo && modo !== "entrego" && (
         <Linha
           nome="Endereço da retirada"
           dica={
@@ -588,13 +520,13 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 : "Para oferecer a retirada, cadastre o endereço da loja em Minha loja — o cliente precisa saber onde buscar o pedido."
           }
         >
-          {!temEndereco && onNavigate && (
+          {onNavigate && (
             <button
               type="button"
               onClick={() => onNavigate("admin-about-store")}
               className="flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-admin-border px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
             >
-              Cadastrar endereço em Minha loja
+              Alterar em Minha loja
             </button>
           )}
         </Linha>

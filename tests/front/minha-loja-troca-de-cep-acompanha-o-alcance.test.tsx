@@ -132,7 +132,7 @@ describe("Minha loja: trocar o CEP da loja leva o alcance 'só perto da loja' ju
 
   async function clicarSalvar() {
     const botao = hospedeiro.querySelector(
-      "button.bg-admin-gold",
+      '[aria-label="Ações de Minha loja"] button',
     ) as HTMLButtonElement;
     await act(async () => {
       botao.click();

@@ -5,6 +5,7 @@
 
 import type { FichaDaLoja } from "../config/fichaDaLojaContract";
 import {
+  BADGE_NEUTRO,
   CAMINHO_IDENTIDADE_JSON,
   FICHA_DA_LOJA_ID,
 } from "../config/fichaDaLojaContract";
@@ -41,9 +42,10 @@ const IDENTIDADE_CACHE_NAME = "ikcous-identidade";
 // (`GET /icons/icon-192x192.png` → 200 text/html). Só sobrevivem ao build
 // `cart-96x96.png` e `heart-96x96.png` (medidos 200 image/png); SVG fica de
 // fora de `showNotification` por inconsistência entre navegadores. Por isso
-// o literal abaixo tem de ser um dos DOIS que sobrevivem — nunca um dos 3
-// aposentados. Continua sendo só o ÚLTIMO recurso: `resolverIconeDaLoja`
-// abaixo sempre prefere a ficha da loja quando ela já está em cache.
+// o literal abaixo tem de sobreviver ao preparo — nunca um dos 3
+// aposentados. O badge tem PNG próprio branco/alpha, também preservado.
+// Continua sendo só o ÚLTIMO recurso: `resolverIconesDaLoja` abaixo sempre
+// prefere a ficha da loja quando ela já está em cache.
 const ICONE_ASSADO = "/icons/heart-96x96.png";
 
 // A variável __APP_VERSION__ é injetada pelo Vite (definida em vite.config.ts)
@@ -797,21 +799,29 @@ setInterval(() => {
 // mesmo dispositivo (SW não é limpo por navegação). Por isso, mesmo achando
 // a ficha no cache próprio, só ela é aceita se `ficha.host` bater com
 // `self.location.hostname` — senão, ícone assado (nunca a ficha de outra loja).
-async function resolverIconeDaLoja(): Promise<string> {
+async function resolverIconesDaLoja(): Promise<{
+  icon: string;
+  badge: string;
+}> {
   try {
     const cache = await caches.open(IDENTIDADE_CACHE_NAME);
     const resposta = await cache.match(CAMINHO_IDENTIDADE_JSON);
     if (resposta) {
       const ficha: FichaDaLoja = await resposta.json();
       if (ficha?.host === sw.location.hostname) {
-        const icone = ficha?.identidade?.localUrls?.icon_192;
-        if (icone) return icone;
+        const urls = ficha?.identidade?.localUrls;
+        return {
+          icon: urls?.icon_192 || ICONE_ASSADO,
+          // Ficha antiga: mantém o icon e usa reserva monocromática.
+          // Nunca interpretar a imagem colorida como silhueta do Android.
+          badge: urls?.badge_96 || BADGE_NEUTRO,
+        };
       }
     }
   } catch (e) {
     console.warn("[SW] Falha ao ler a ficha da loja em cache:", e);
   }
-  return ICONE_ASSADO;
+  return { icon: ICONE_ASSADO, badge: BADGE_NEUTRO };
 }
 
 sw.addEventListener("push", (event: any) => {
@@ -819,11 +829,11 @@ sw.addEventListener("push", (event: any) => {
   try {
     const payload = event.data.json();
     const title = payload.title || "Novidade!";
-    const notificar = (icon: string) => {
+    const notificar = ({ icon, badge }: { icon: string; badge: string }) => {
       const options = {
         body: payload.body || "",
         icon,
-        badge: icon,
+        badge,
         data: {
           url: payload.url || "/",
           ...payload.data,
@@ -835,15 +845,16 @@ sw.addEventListener("push", (event: any) => {
     // ficha — segue direto para o ícone assado, exatamente como antes desta
     // mudança. Com a API disponível (todo SW real), a ficha tem preferência.
     if (typeof caches?.match !== "function") {
-      event.waitUntil(notificar(ICONE_ASSADO));
+      event.waitUntil(notificar({ icon: ICONE_ASSADO, badge: BADGE_NEUTRO }));
     } else {
-      event.waitUntil(resolverIconeDaLoja().then(notificar));
+      event.waitUntil(resolverIconesDaLoja().then(notificar));
     }
   } catch (e) {
     console.error("[SW] Push parse error:", e);
     event.waitUntil(
       sw.registration.showNotification("Notificação", {
         body: event.data.text(),
+        badge: BADGE_NEUTRO,
       }),
     );
   }

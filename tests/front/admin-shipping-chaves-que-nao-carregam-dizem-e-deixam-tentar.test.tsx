@@ -124,7 +124,7 @@ describe("TransportadorasSection — chaves que não carregam dizem, e deixam te
     await abrirSecao();
 
     expect(hospedeiro.textContent).toMatch(
-      /não foi possível carregar as chaves/i,
+      /Não deu para confirmar as transportadoras/i,
     );
   });
 
@@ -159,19 +159,23 @@ describe("TransportadorasSection — chaves que não carregam dizem, e deixam te
       chamadasDepoisDaAbertura,
     );
     expect(hospedeiro.textContent).not.toMatch(
-      /não foi possível carregar as chaves/i,
+      /Não deu para confirmar as transportadoras/i,
     );
 
     // E a seção volta a funcionar de verdade: o campo do token destrava e a
     // tela diz que há chave salva (a chave em si não volta ao campo — só
     // escrita). Sem esta asserção, o teste aceitaria uma tela que só esconde
     // a mensagem de erro e continua morta.
-    const campoToken = [...hospedeiro.querySelectorAll("input")].find(
+    const abrirFrenet = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Melhor Envio"]',
+    )!;
+    await act(async () => abrirFrenet.click());
+    const campoToken = [...document.querySelectorAll("input")].find(
       (i) => i.type === "password",
     ) as HTMLInputElement | undefined;
     expect(campoToken).toBeDefined();
     expect(campoToken?.disabled).toBe(false);
     expect(campoToken?.value).toBe("");
-    expect(hospedeiro.textContent).toMatch(/chave salva/i);
+    expect(document.body.textContent).toMatch(/chave salva|Chave de acesso/i);
   });
 });

@@ -1,4 +1,5 @@
-// Onda L · frente "cupons" — prova ESTÁTICA (lê o fonte; o jsdom não aplica CSS,
+// @vitest-environment jsdom
+// Onda L · frente "cupons" — fonte e marcação renderizada (o jsdom não aplica CSS,
 // então a medida de verdade, com a pílula e os selos já crescidos, é a do render).
 //
 //  (a) A lista e o formulário de cupons não têm texto abaixo de 11px (a régua do
@@ -12,7 +13,36 @@
    lê arquivos-fonte do próprio repositório (caminhos constantes deste teste, não entrada de usuário); regex constantes (os rótulos interpolados são literais fixos do próprio teste), sem backtracking sobre entrada externa */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { AdminCouponsView } from "@/views/admin/AdminCouponsView";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/hooks/useCoupons", () => ({
+  useCoupons: () => ({
+    coupons: [
+      {
+        id: "letra",
+        code: "LETRA",
+        type: "percentage",
+        value: 10,
+        usageCount: 0,
+        active: true,
+      },
+    ],
+    loading: false,
+    updateCoupon: vi.fn(),
+    deleteCoupon: vi.fn(),
+    refreshCoupons: vi.fn(),
+  }),
+}));
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { enableCoupons: true },
+    isLoaded: true,
+    updateConfig: vi.fn(),
+  }),
+}));
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 const RAIZ = join(__dirname, "..", "..");
 
@@ -95,12 +125,22 @@ describe("cupons — pílula e selos do bilhete crescem sem estourar", () => {
   });
 
   it("o selo de status da lista cresce para 12px sem comprimir letras", () => {
-    const [selo, ...resto] = linhasCom(ler(LISTA), "classesDoSeloPorRotulo[");
-    const alvo = [selo, ...resto].filter((l) => l.includes("className="));
-    expect(alvo).toHaveLength(1);
-    expect(alvo[0]).toMatch(/\btext-xs\b/);
-    expect(alvo[0]).toMatch(/\bfont-bold\b/);
-    expect(alvo[0]).not.toMatch(/\btracking-widest\b/);
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(
+      <AdminCouponsView onNavigate={() => {}} />,
+    );
+    const card = host
+      .querySelector('[aria-label="Copiar código LETRA"]')
+      ?.closest(".group");
+    expect(card).not.toBeNull();
+    const rotulo = "Ativo";
+    const selos = [...card!.querySelectorAll("span")].filter(
+      (el) => el.textContent?.trim() === rotulo,
+    );
+    expect(selos).toHaveLength(1);
+    expect(selos[0].classList.contains("text-xs")).toBe(true);
+    expect(selos[0].classList.contains("font-bold")).toBe(true);
+    expect(selos[0].classList.contains("tracking-widest")).toBe(false);
   });
 });
 

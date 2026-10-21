@@ -34,6 +34,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherImagemPropria } from "./helpers/editor-de-banner";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -241,6 +242,7 @@ describe("AdminBannersView — remoção de Duplicar preserva Criar e Editar", (
     await act(async () => {
       botaoNovoBanner.click();
     });
+    await escolherImagemPropria();
 
     // Dialog aberto para CRIAR: editingBanner é null, formData.imageUrl
     // começa vazio.

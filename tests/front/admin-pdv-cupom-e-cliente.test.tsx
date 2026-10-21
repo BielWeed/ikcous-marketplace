@@ -245,7 +245,7 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     await montar();
     expect(rpcMock).not.toHaveBeenCalled();
     await act(async () =>
-      localizarBotaoPorTexto(hospedeiro, "Buscar produto")!.click(),
+      localizarBotaoPorTexto(hospedeiro, "Buscar")!.click(),
     );
     expect(rpcMock).toHaveBeenCalledExactlyOnceWith(
       "get_admin_products_paged",
@@ -339,7 +339,7 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     expect(hospedeiro.textContent).toContain("Camiseta Lisa");
 
     const botaoMenos = hospedeiro.querySelector(
-      'button[aria-label="Diminuir quantidade de Camiseta Lisa"]',
+      'button[aria-label="Remover Camiseta Lisa da venda"]',
     ) as HTMLButtonElement;
     expect(botaoMenos).toBeTruthy();
 
@@ -362,8 +362,8 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
 
     const botaoFechar = localizarBotaoPorTexto(hospedeiro, "Fechar venda")!;
     expect(botaoFechar).toBeTruthy();
-    expect(botaoFechar.className).toContain("bg-admin-gold");
-    expect(botaoFechar.className).toContain("text-black");
+    expect(botaoFechar.className).toContain("bg-green-600");
+    expect(botaoFechar.className).toContain("text-white");
   });
 
   it("caso 6 — busca de cliente lista e escolher preenche o cliente", async () => {

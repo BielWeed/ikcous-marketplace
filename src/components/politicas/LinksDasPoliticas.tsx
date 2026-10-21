@@ -5,14 +5,12 @@ import { type TipoDePolitica, nomeDaPolitica } from "@/lib/nomes-das-politicas";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
 
-// Link no meio de uma frase: o texto fica pequeno, mas a CAIXA do botão tem
-// 44px de altura de verdade (`min-h-11`), sem margem negativa e sem padding que
-// vaze para fora dela. Foi assim de propósito: a versão anterior esticava a
-// área de toque ~14px para cima e para baixo (`-my-3.5` + `py-3.5`), e a barra
-// do checkout tem o botão Finalizar a 6px de distância — um toque na beirada de
-// baixo do Finalizar podia abrir os Termos. Os links ficam sozinhos numa
-// segunda linha da frase (`<br />`), então a altura extra é da frase, não
-// invade o vizinho.
+// Por padrão, os links ficam na segunda linha e têm caixa de 44px
+// (`inline-flex min-h-11`), sem invadir o botão Finalizar com margem negativa.
+// Em `emLinha` (checkout), os links seguem dentro da frase, sem o <br />.
+// Mesmo com `inline p-0`, o <button> funciona como inline-block e
+// `min-h-11` mantém o alvo de toque de 44px. Preservamos esse alvo:
+// ele deixa a frase e a barra mais altas; não é altura apenas de texto.
 //
 // CORES: estes dois componentes moram sobre superfícies BRANCAS fixas (a barra
 // do Finalizar, o cartão do cadastro, a página do produto — todas `bg-white`
@@ -32,7 +30,9 @@ const LINK_NA_FRASE =
 export function FraseDeAceite({
   acao,
   className,
+  emLinha = false,
 }: {
+  readonly emLinha?: boolean;
   /** O que a cliente está prestes a fazer: "finalizar", "entrar", "criar sua conta". */
   readonly acao: string;
   readonly className?: string;
@@ -50,11 +50,11 @@ export function FraseDeAceite({
         data-testid="frase-de-aceite"
         className={cn("text-[11px] leading-snug text-zinc-500", className)}
       >
-        Ao {acao} você concorda com os <br />
+        Ao {acao} você concorda com os {!emLinha && <br />}
         <button
           type="button"
           onClick={() => abrir("termos")}
-          className={LINK_NA_FRASE}
+          className={cn(LINK_NA_FRASE, emLinha && "inline p-0")}
         >
           {nomeDaPolitica("termos")}
         </button>{" "}
@@ -62,7 +62,7 @@ export function FraseDeAceite({
         <button
           type="button"
           onClick={() => abrir("privacidade")}
-          className={LINK_NA_FRASE}
+          className={cn(LINK_NA_FRASE, emLinha && "inline p-0")}
         >
           {nomeDaPolitica("privacidade")}
         </button>

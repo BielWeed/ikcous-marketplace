@@ -19,14 +19,17 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { abrirMaisOpcoes } from "./helpers/editor-de-banner";
 
+import {
+  destinoDoBanner,
+  destinoSeguroDoBanner,
+} from "@/lib/destino-do-banner";
 import {
   AVISO_DE_LINK_RECUSADO,
   avisoDoLinkDigitado,
-  destinoDoBanner,
-  destinoSeguroDoBanner,
   linkDoBannerParaSalvar,
-} from "@/lib/destino-do-banner";
+} from "@/lib/link-do-banner-no-painel";
 import type { Banner } from "@/types";
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -585,9 +588,9 @@ describe("AdminBannersView: o painel recusa o link perigoso ao salvar", () => {
     await clicar(
       document.body.querySelector<HTMLElement>('button[title="Editar"]'),
     );
-    await clicar(botao("3Destino"));
+    await abrirMaisOpcoes();
     await espera(600);
-    await clicar(botao("Link customizado"));
+    await clicar(botao("Link / URL"));
     const campo = document.getElementById(
       "banner-link-custom",
     ) as HTMLInputElement | null;

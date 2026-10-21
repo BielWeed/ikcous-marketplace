@@ -2,7 +2,7 @@
 //
 // O CEP da loja tem UMA casa: Minha loja (P2 do painel simples — o CEP da
 // loja É o de onde saem as entregas). A tela "Entrega e frete" deixou de
-// pedir e de gravar esse CEP: ela o LÊ, mostra "Entregas saem de: CEP …" e
+// pedir e de gravar esse CEP: ela o LÊ, mostra "CEP …" e
 // leva a Minha loja para quem quer mudar. Duas casas para o mesmo dado era
 // o defeito: a lojista salvava aqui um CEP e em Minha loja outro.
 import { act } from "react";
@@ -133,7 +133,7 @@ describe("Entrega e frete — lê o CEP de Minha loja e não grava", () => {
     await act(async () => {
       (
         hospedeiro.querySelector(
-          'button[role="switch"][aria-label="Só entregar na cidade"]',
+          'button[role="switch"][aria-label="Vender para fora da sua região"]',
         ) as HTMLButtonElement
       ).click();
     });
@@ -151,15 +151,15 @@ describe("Entrega e frete — lê o CEP de Minha loja e não grava", () => {
     expect(payload).toHaveProperty("shippingCoverage", "local");
   });
 
-  it("com CEP: mostra 'Entregas saem de: CEP …' e 'Alterar em Minha loja' leva a Minha loja", async () => {
+  it("com CEP: mostra 'CEP …' e 'Alterar em Minha loja' leva a Minha loja", async () => {
     await abrirTela();
 
-    expect(hospedeiro.textContent).toContain("Entregas saem de: CEP 01310-100");
+    expect(hospedeiro.textContent).toContain("CEP 01310-100");
     expect(hospedeiro.textContent?.toLowerCase()).not.toContain(
       "a loja não vende",
     );
 
-    const alterar = botaoComTexto(/^Alterar em Minha loja$/);
+    const alterar = botaoComTexto(/^Alterar$/);
     expect(alterar).toBeDefined();
     await act(async () => {
       alterar?.click();
@@ -167,15 +167,17 @@ describe("Entrega e frete — lê o CEP de Minha loja e não grava", () => {
     expect(onNavigate).toHaveBeenCalledWith("admin-about-store");
   });
 
-  it("sem CEP: o aviso 'sem isso a loja não vende' leva a Minha loja", async () => {
+  it("sem CEP: o aviso 'sem ele nenhum frete é calculado e ninguém finaliza a compra.' leva a Minha loja", async () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, originCep: undefined };
     await abrirTela();
 
     const texto = hospedeiro.textContent?.toLowerCase() ?? "";
-    expect(texto).toContain("sem isso a loja não vende");
+    expect(texto).toContain(
+      "sem ele nenhum frete é calculado e ninguém finaliza a compra.",
+    );
     expect(texto).not.toContain("entregas saem de: cep");
 
-    const cadastrar = botaoComTexto(/^Cadastrar CEP em Minha loja$/);
+    const cadastrar = botaoComTexto(/^Cadastrar em Minha loja$/);
     expect(cadastrar).toBeDefined();
     await act(async () => {
       cadastrar?.click();
@@ -188,14 +190,14 @@ describe("Entrega e frete — lê o CEP de Minha loja e não grava", () => {
     await abrirTela();
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Parado — falta o CEP da loja");
+    expect(texto).toContain("Falta o CEP de onde você envia");
     expect(texto).toContain("Minha loja");
     expect(texto).not.toMatch(/configure abaixo/i);
   });
 
   it("sem onNavigate não há botão morto: o texto do CEP continua lá", async () => {
     await abrirTela(false);
-    expect(hospedeiro.textContent).toContain("Entregas saem de: CEP 01310-100");
+    expect(hospedeiro.textContent).toContain("CEP 01310-100");
     expect(botaoComTexto(/Alterar em Minha loja/)).toBeUndefined();
   });
 
@@ -204,7 +206,7 @@ describe("Entrega e frete — lê o CEP de Minha loja e não grava", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, originCep: "38400-000" };
     await abrirTela();
 
-    expect(hospedeiro.textContent).toContain("Entregas saem de: CEP 38400-000");
+    expect(hospedeiro.textContent).toContain("CEP 38400-000");
     expect(botaoComTexto(/^Salvo$/)?.disabled).toBe(true);
   });
 });

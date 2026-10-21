@@ -87,7 +87,8 @@ it("o perfil conserva nome e responsável longos sem truncar", () => {
       />,
     ),
   );
-  expect(tela.querySelector("h2")?.textContent).toBe(nome);
+  // O nome é um item dentro de "Sua loja" (h2 da tela): subtítulo, h3.
+  expect(tela.querySelector("h3")?.textContent).toBe(nome);
   expect(
     tela.querySelector(".truncate, .line-clamp-1, .line-clamp-2"),
   ).toBeNull();

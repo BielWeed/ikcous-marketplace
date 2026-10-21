@@ -114,7 +114,7 @@ describe("Sobre a Loja — Horário de atendimento", () => {
 
   function pegarBotaoSalvar(): HTMLButtonElement {
     const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar horário"),
+      b.textContent?.includes("Salvar alterações"),
     ) as HTMLButtonElement;
     expect(botao).toBeDefined();
     return botao;

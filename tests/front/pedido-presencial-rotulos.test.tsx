@@ -198,7 +198,9 @@ describe("PaymentStatusBadge (componente) — prop `canal`", () => {
     expect(selo?.className).not.toContain("animate-pulse");
     // Mesma família visual de "Recebido na entrega": verde (emerald), não
     // âmbar — dinheiro que entrou não pode parecer pendência.
-    expect(selo?.className).toContain("emerald");
+    const textoDoSelo = selo?.querySelector("span:not([aria-hidden])");
+    expect(textoDoSelo?.textContent).toBe("Recebido no balcão");
+    expect(textoDoSelo?.classList.contains("text-emerald-400")).toBe(true);
   });
 
   it("sem a prop `canal` (compatibilidade): continua 'Recebido na entrega', comportamento de antes desta tarefa", async () => {

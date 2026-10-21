@@ -1,16 +1,10 @@
 import type { CartItem, Product, ShippingOption } from "@/types";
 // @vitest-environment jsdom
 //
-// Peça 1 do pedido do Gabriel (12/09/2026): a barra de baixo do checkout
-// ganha uma pílula com a ECONOMIA obtida (cupom + o que o frete grátis
-// deixou de cobrar). A tabela que decide QUANDO existe economia de frete
-// (e se ela precisa cotar a edge) mora em `src/lib/economia-do-frete.ts`
-// (economia-do-frete-regra-pura.test.ts) e o efeito em
-// `src/hooks/useEconomiaDoFreteExibida.ts`
-// (economia-do-frete-cotacao-hook.test.tsx). Este arquivo prova a
-// INTEGRAÇÃO com a tela: a pílula aparece com o valor certo, o painel de
-// cima explica ela riscando o valor da Entrega, e — a trava mais cara —
-// nada disto entra no pedido de verdade.
+// A barra e o painel usam a mesma convenção: economia do frete no preço
+// riscado da Entrega, Desconto só do cupom. A conta visível fecha no Total.
+// A origem da economia continua em `src/lib/economia-do-frete.ts` e
+// `src/hooks/useEconomiaDoFreteExibida.ts`: exibi-la não pode mudar o pedido.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,7 +34,7 @@ const { mockUseCartOverrides } = vi.hoisted(() => ({
     // ESCOLHA de entrega (o servidor recusa id ausente — FRETE V2 EMENDA,
     // ELSIF do bloco 4), e sem ela a barra mostra "a calcular" em vez dos
     // totais que ESTE arquivo audita. A opção de price 0 preserva o cenário
-    // de frete grátis que a pílula existe para explicar.
+    // de frete grátis que a barra precisa explicar.
     selectedShippingOption: {
       id: "local-delivery",
       name: "Entrega Local",
@@ -193,12 +187,13 @@ function digitar(id: string, valor: string) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra de baixo", () => {
+describe("CheckoutView — economia do frete e conta visível na barra de baixo", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let slotDoHeader: HTMLDivElement;
 
   beforeEach(async () => {
+    sessionStorage.clear();
     // 🔴 AJUSTE 2 (revisão Opus): o cache de cotação de exibição agora mora
     // no MÓDULO (sobrevive à desmontagem, de propósito). Mais de um teste
     // aqui usa o MESMO CEP (01310-100, de `mockAddresses`) com o MESMO
@@ -266,7 +261,108 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     vi.restoreAllMocks();
   });
 
-  it("CEP LOCAL com frete grátis: a pílula mostra o valor de localDeliveryFee, sem chamar a edge", async () => {
+  it.each([
+    {
+      nome: "frete grátis com economia e cupom",
+      shipping: 0,
+      gratis: true,
+      retirada: false,
+    },
+    {
+      nome: "entrega paga com cupom",
+      shipping: 10,
+      gratis: false,
+      retirada: false,
+    },
+    { nome: "retirada com cupom", shipping: 0, gratis: false, retirada: true },
+  ])(
+    "a conta exibida na barra fecha: $nome",
+    async ({ shipping, gratis, retirada }) => {
+      mockConfig.freeShippingMin = gratis ? 50 : 0;
+      mockUseCartOverrides.freteGratis = gratis;
+      mockUseCartOverrides.selectedShippingOption = {
+        id: retirada ? "store-pickup" : "local-delivery",
+        name: retirada ? "Retirar na loja" : "Entrega Local",
+        price: shipping,
+        deliveryDays: 1,
+        provider: "local",
+      };
+      mockInvoke.mockResolvedValue({
+        data: {
+          options: [{ id: "pac", name: "PAC", price: 10, deliveryDays: 7 }],
+        },
+        error: null,
+      });
+      mockValidateCoupon.mockResolvedValue({ valid: true, discount: 5 });
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await act(async () => {
+        raiz.render(
+          <CheckoutView
+            cart={[{ product: produto({ price: 80 }), quantity: 1 }]}
+            subtotal={80}
+            shipping={shipping}
+            total={80 + shipping}
+            onNavigate={onNavigate}
+            onSetBackOverride={onSetBackOverride}
+          />,
+        );
+      });
+      await esperarBarraMontar();
+      await esperarCotacao();
+      act(() => digitar("coupon-code-input", "CUPOM5"));
+      await act(async () => {
+        [...document.body.querySelectorAll("button")]
+          .find((b) => b.textContent === "Aplicar")!
+          .click();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      const barra = localizarBotaoFinalizar()!.closest(
+        ".bottom-docked-navigation",
+      )!;
+      const valores = barra.querySelector('[aria-label="Valores do pedido"]')!;
+      const valorDaLinha = (rotulo: string) => {
+        const linha = [...valores.querySelectorAll("div")].find(
+          (el) => el.firstElementChild?.textContent === rotulo,
+        )!;
+        return linha.lastElementChild as HTMLElement;
+      };
+      const entrega = valorDaLinha("Entrega");
+      if (gratis) {
+        expect(entrega.textContent).toContain("Grátis");
+        const riscado = entrega.querySelector(".line-through")!;
+        expect(riscado.textContent).toContain("R$ 10,00");
+        expect(riscado.classList.contains("text-zinc-500")).toBe(true);
+        expect(
+          [...entrega.querySelectorAll(".sr-only")].map((el) =>
+            el.textContent?.trim(),
+          ),
+        ).toEqual(["de", "por"]);
+      } else {
+        expect(entrega.querySelector(".line-through")).toBeNull();
+      }
+      expect(valorDaLinha("Desconto").textContent).toBe("-R$ 5,00");
+      const centavosVisiveis = (elemento: HTMLElement) => {
+        const copia = elemento.cloneNode(true) as HTMLElement;
+        copia.querySelectorAll(".line-through").forEach((el) => el.remove());
+        if (copia.textContent?.includes("Grátis")) return 0;
+        const numero = copia.textContent!.match(/R\$\s*([\d.,]+)/)![1];
+        return Math.round(
+          Number(numero.replaceAll(".", "").replace(",", ".")) * 100,
+        );
+      };
+      expect(
+        centavosVisiveis(valorDaLinha("Subtotal")) +
+          centavosVisiveis(entrega) -
+          centavosVisiveis(valorDaLinha("Desconto")),
+      ).toBe(centavosVisiveis(valorDaLinha("Total")));
+      expect(centavosVisiveis(valorDaLinha("Total"))).toBe(
+        (75 + shipping) * 100,
+      );
+    },
+  );
+
+  it("CEP LOCAL com frete grátis: Entrega risca localDeliveryFee, sem chamar a edge", async () => {
     mockConfig.originCep = "38500-000";
     const cart: CartItem[] = [
       { product: produto({ name: "Coxinha", price: 20 }), quantity: 1 },
@@ -291,22 +387,20 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     await esperarCotacao();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
-    const linhaTotal = botaoFinalizar.closest(
-      "div.flex.items-center.justify-between",
-    )!;
-    const pilula = linhaTotal.querySelector(
-      '[aria-label^="Desconto de R$"]',
-    ) as HTMLElement | null;
-    expect(pilula).not.toBeNull();
-    expect(pilula!.getAttribute("aria-label")).toBe("Desconto de R$ 12,90");
-    expect(pilula!.textContent).toContain("12,90");
+    const linhaTotal = botaoFinalizar.closest(".bottom-docked-navigation")!;
+    const entrega = linhaTotal.querySelector(".line-through")!;
+    expect(entrega.textContent).toContain("12,90");
+    expect(linhaTotal.textContent).toContain("Grátis");
+    expect(
+      linhaTotal.querySelector('[aria-label^="Desconto de R$"]'),
+    ).toBeNull();
     expect(mockInvoke).not.toHaveBeenCalled();
 
     // Restaura para os próximos testes (mockAddresses é módulo compartilhado).
     mockAddresses[0] = { ...enderecoLocal, cep: "01310-100" };
   });
 
-  it("fora da cidade, cotação da edge devolve a mais barata: pílula = cupom + frete; sem cupom, só o frete", async () => {
+  it("fora da cidade, Entrega risca a cotação mais barata, sem desconto de cupom inexistente", async () => {
     mockInvoke.mockResolvedValue({
       data: {
         options: [
@@ -337,16 +431,14 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     await esperarCotacao();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
-    const linhaTotal = botaoFinalizar.closest(
-      "div.flex.items-center.justify-between",
-    )!;
-    const pilula = () =>
-      linhaTotal.querySelector(
-        '[aria-label^="Desconto de R$"]',
-      ) as HTMLElement | null;
-
-    expect(pilula()).not.toBeNull();
-    expect(pilula()!.getAttribute("aria-label")).toBe("Desconto de R$ 30,00");
+    const linhaTotal = botaoFinalizar.closest(".bottom-docked-navigation")!;
+    expect(linhaTotal.querySelector(".line-through")?.textContent).toContain(
+      "30,00",
+    );
+    expect(linhaTotal.textContent).toContain("Grátis");
+    expect(
+      linhaTotal.querySelector('[aria-label^="Desconto de R$"]'),
+    ).toBeNull();
 
     // Painel de cima: a linha Entrega risca o valor e mostra "Grátis".
     const gatilho = [...document.body.querySelectorAll("button")].find((b) =>
@@ -369,7 +461,7 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     );
   });
 
-  it("sem economia nenhuma (freteGratis falso, sem cupom): a pílula não aparece", async () => {
+  it("sem economia nenhuma (freteGratis falso, sem cupom): Desconto não aparece", async () => {
     mockUseCartOverrides.freteGratis = false;
     const cart: CartItem[] = [
       { product: produto({ name: "Coxinha", price: 20 }), quantity: 1 },
@@ -392,9 +484,7 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     await esperarCotacao();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
-    const linhaTotal = botaoFinalizar.closest(
-      "div.flex.items-center.justify-between",
-    )!;
+    const linhaTotal = botaoFinalizar.closest(".bottom-docked-navigation")!;
     expect(
       linhaTotal.querySelector('[aria-label^="Desconto de R$"]'),
     ).toBeNull();
@@ -404,9 +494,9 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
   // T3 (23/09/2026): a opção NACIONAL já ESCOLHIDA carrega a própria
   // economia (`precoCheio − price`) -- linha 0 de `modoDeEconomiaDoFrete`.
   // Cenário de DESCONTO (não grátis): `freteGratis` é falso (o preço final
-  // é positivo), mas a pílula e a linha "Entrega" ainda precisam explicar
+  // é positivo), mas a linha "Entrega" ainda precisa explicar
   // o desconto -- SEM cotar a edge de novo (a fonte é a própria opção).
-  it("opção NACIONAL com desconto da loja (não grátis): pílula mostra a diferença e a linha Entrega risca o cheio, sem chamar a edge de novo", async () => {
+  it("opção NACIONAL com desconto da loja (não grátis): Entrega risca o cheio e mostra o preço pago, sem chamar a edge de novo", async () => {
     mockUseCartOverrides.freteGratis = false;
     mockUseCartOverrides.selectedShippingOption = {
       id: "melhorenvio-pac",
@@ -437,18 +527,19 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     await esperarCotacao();
 
     // Fonte é a PRÓPRIA opção (precoCheio já veio da cotação real) — nunca
-    // cota a edge de novo só para mostrar a pílula.
+    // cota a edge de novo só para exibir a economia.
     expect(mockInvoke).not.toHaveBeenCalled();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
-    const linhaTotal = botaoFinalizar.closest(
-      "div.flex.items-center.justify-between",
-    )!;
-    const pilula = linhaTotal.querySelector(
-      '[aria-label^="Desconto de R$"]',
-    ) as HTMLElement | null;
-    expect(pilula).not.toBeNull();
-    expect(pilula!.getAttribute("aria-label")).toBe("Desconto de R$ 15,00");
+    const linhaTotal = botaoFinalizar.closest(".bottom-docked-navigation")!;
+    expect(linhaTotal.querySelector(".line-through")?.textContent).toContain(
+      "35,00",
+    );
+    expect(linhaTotal.textContent).toContain("20,00");
+    expect(linhaTotal.textContent).not.toContain("Grátis");
+    expect(
+      linhaTotal.querySelector('[aria-label^="Desconto de R$"]'),
+    ).toBeNull();
 
     const gatilho = [...document.body.querySelectorAll("button")].find((b) =>
       b.hasAttribute("aria-expanded"),

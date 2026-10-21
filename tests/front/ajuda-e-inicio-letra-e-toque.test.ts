@@ -53,7 +53,8 @@ function tagDeAbertura(fonte: string, inicio: number): string {
 type BotaoDeAjuda = { abertura: string; entreBotaoEIcone: string };
 
 /** Para cada `<HelpCircle`, o `<button` que o envolve (se houver). */
-function botoesDeAjuda(fonte: string): BotaoDeAjuda[] {
+function botoesDeAjuda(texto: string): BotaoDeAjuda[] {
+  const fonte = texto.replace(/<\/?Button\b/g, (tag) => tag.toLowerCase());
   const achados: BotaoDeAjuda[] = [];
   for (const m of fonte.matchAll(/<HelpCircle\b/g)) {
     const antes = fonte.slice(0, m.index);
@@ -101,6 +102,16 @@ describe("botão de ajuda com 44px de toque (Padrão A3)", () => {
     expect(achados).toHaveLength(1);
     expect(achados[0].abertura).toContain("onClick={() => f()}");
     expect(achados[0].entreBotaoEIcone).toContain("<span");
+  });
+
+  it("o auxiliar também verifica o Button compartilhado, sem ignorar seu conteúdo", () => {
+    const fonte =
+      '<Button title="Ajuda" className="min-h-11 min-w-11"><span aria-hidden="true"><HelpCircle /></span></Button>';
+    const achados = botoesDeAjuda(fonte);
+    expect(achados).toHaveLength(1);
+    expect(problemasDoBotao(achados[0])).toEqual([]);
+    const semNome = botoesDeAjuda(fonte.replace('title="Ajuda"', ""))[0];
+    expect(problemasDoBotao(semNome)).toContain("sem title nem aria-label");
   });
 
   const CLASSE = 'className="min-h-11 min-w-11"';

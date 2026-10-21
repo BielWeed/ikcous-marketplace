@@ -191,6 +191,9 @@ describe("banners vetam a atualização durante upload e gravação", () => {
     await act(async () =>
       localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click(),
     );
+    await act(async () =>
+      localizarBotaoPorTexto(hospedeiro, "Usar minha imagem")!.click(),
+    );
   }
 
   async function enviar() {

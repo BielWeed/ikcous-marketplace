@@ -929,7 +929,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     await renderizar(undefined, onNavigate);
 
     const portas = [...hospedeiro.querySelectorAll("[data-porta-ajustes]")];
-    expect(portas.length).toBe(5);
+    expect(portas.length).toBe(6);
     await act(async () => {
       for (const porta of portas) {
         porta.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -940,5 +940,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     expect(destinos).toContain("admin-carousels");
     expect(destinos).toContain("admin-about-store");
     expect(destinos).toContain("admin-shipping");
+    expect(destinos).toContain("admin-free-shipping-card");
+    expect(destinos).toContain("admin-app-color");
   });
 });

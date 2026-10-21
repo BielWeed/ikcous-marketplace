@@ -576,9 +576,7 @@ Deno.test("as consultas antecessoras (8e, 9a, 31a, 37a, 40a) e as provas que fix
   const c9a = lerArquivo(
     "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
   );
-  assert.ok(
-    c9a.includes(`('upsert_store_config', '${NOVO.upsert_store_config}')`),
-  );
+  assert.ok(c9a.includes(`c.h = '${NOVO.upsert_store_config}'`));
   assert.ok(!c9a.includes(VIGENTE.upsert_store_config));
   const c31a = lerArquivo(
     "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql",
@@ -602,7 +600,7 @@ Deno.test("as consultas antecessoras (8e, 9a, 31a, 37a, 40a) e as provas que fix
   );
   assert.ok(
     c40a.includes(
-      `f.m IN ('${VIGENTE.upsert_store_config}', '${NOVO.upsert_store_config}')`,
+      `f.m IN ('${VIGENTE.upsert_store_config}', '${NOVO.upsert_store_config}', 'aa4ed730ac6ad3d3c2644b4285ff39a9')`,
     ),
   );
   // as quatro 'b' (ausência) NÃO citam os corpos desta migration

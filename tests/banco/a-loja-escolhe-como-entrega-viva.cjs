@@ -2485,6 +2485,11 @@ prova(
 async function main() {
   C = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await C.connect();
+  await C.query("BEGIN");
+  await require("./estilo-card-frete-posterior.cjs").desfazerEstiloCardFreteNaTransacao(
+    C,
+  );
+  await C.query("COMMIT");
   let ok = 0;
   const falhas = [];
   // No modo mutante de arquivo roda SO a prova de comportamento (ver MUTADO).
