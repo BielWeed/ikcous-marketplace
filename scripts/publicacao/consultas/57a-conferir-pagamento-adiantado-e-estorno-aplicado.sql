@@ -28,7 +28,12 @@ WITH alvo(nome, assinatura, lingua, retorna_conjunto, retorno, argumentos, padro
          COALESCE((SELECT m FROM fn WHERE nome = 'concluir_estorno'), 'AUSENTE')
   UNION ALL
   SELECT 'pagamentos_a_reconciliar: corpo exato (md5)', 'aed09ec910825168a3217b2e308824c5',
-         COALESCE((SELECT m FROM fn WHERE nome = 'pagamentos_a_reconciliar'), 'AUSENTE')
+         -- 2 hashes aceitos: o corpo da 20261270000000 OU o da SUCESSORA dele, a 20261349000000 (o pedido entregue
+         -- antes da confirmacao do PIX entra na fila: o mesmo corpo com 'delivered' nas duas listas). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN m IN ('aed09ec910825168a3217b2e308824c5', '350e732dbae6ba45bede77c08e0db6d8')
+                               THEN 'aed09ec910825168a3217b2e308824c5'
+                               ELSE m END
+                     FROM fn WHERE nome = 'pagamentos_a_reconciliar'), 'AUSENTE')
   UNION ALL
   SELECT 'as duas funcoes: assinaturas, atributos e EXECUTE so do servidor', 'sim',
          CASE WHEN COALESCE((SELECT count(*) = 2 AND bool_and(atributos_ok AND acl_ok) FROM fn), false) THEN 'sim' ELSE 'nao' END

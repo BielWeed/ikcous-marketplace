@@ -72,6 +72,14 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  "20261349000000_o_pedido_entregue_antes_da_confirmacao_entra_na_reconciliacao.sql":
+    {
+      funcao: "pagamentos_a_reconciliar",
+      esperado: [
+        "OR (o.payment_status = 'aguardando' AND o.status IN ('pending', 'processing', 'shipping', 'delivered'))",
+        "ORDER BY (o.status IN ('pending', 'processing', 'shipping', 'delivered')) DESC",
+      ],
+    },
   "20261330000000_mototaxi_privado.sql": {
     funcao: "salvar_config_mototaxi",
     esperado: [

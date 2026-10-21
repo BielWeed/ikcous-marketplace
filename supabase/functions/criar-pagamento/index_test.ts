@@ -13521,17 +13521,17 @@ Deno.test("T0-LOCAL (d, cron): o agendamento de reconciliar-pagamentos é de 10 
   assertEquals(agendadoras.map((m) => m.nome), ["20260808000100_reconciliacao.sql"]);
   assertEquals(/cron\.schedule\(\s*'reconciliar-pagamentos',\s*'\*\/10 \* \* \* \*'/.test(agendadoras[0].texto), true);
 
-  // A última definição de `pagamentos_a_reconciliar` inclui os adiantados (A3).
+  // A última definição de `pagamentos_a_reconciliar` inclui os adiantados (A3) e o entregue antes do PIX confirmar (20261349).
   const definidoras = migrations
     .filter((m) => /CREATE OR REPLACE FUNCTION public\.pagamentos_a_reconciliar\(\)/.test(m.texto))
     .map((m) => m.nome)
     .sort();
-  assertEquals(definidoras.at(-1), "20261270000000_pagamento_adiantado_e_estorno_antes_da_confirmacao.sql");
+  assertEquals(definidoras.at(-1), "20261349000000_o_pedido_entregue_antes_da_confirmacao_entra_na_reconciliacao.sql");
   const texto = migrations.find((m) => m.nome === definidoras.at(-1))!.texto;
   const corpo = texto.slice(texto.lastIndexOf("FUNCTION public.pagamentos_a_reconciliar()"));
   assertEquals(corpo.includes("o.gateway_payment_id IS NOT NULL"), true);
   assertEquals(corpo.includes("o.paid_at IS NULL"), true);
-  assertEquals(corpo.includes("o.payment_status = 'aguardando' AND o.status IN ('pending', 'processing', 'shipping')"), true);
+  assertEquals(corpo.includes("o.payment_status = 'aguardando' AND o.status IN ('pending', 'processing', 'shipping', 'delivered')"), true);
   assertEquals(corpo.includes("o.metodo_online IN ('credito', 'debito')"), true);
   // Nenhuma idade mínima: o pedido aprovado entra na fila no ciclo seguinte.
   assertEquals(/created_at\s*<|paid_at\s*<|interval '[0-9]+ minutes?'/i.test(corpo), false);

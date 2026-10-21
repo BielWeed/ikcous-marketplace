@@ -35,7 +35,19 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 - **pagamentos (`pagamentos-rpc-viva.cjs`, via `rodar-isolado.cjs`)**:
   `confirmar_pagamento` e `registrar_pagamento_recebido` — transições,
   estoque devolvido uma vez, expiração, permissão por papel e corridas com
-  duas conexões reais (a 2a espera o `FOR UPDATE`).
+  duas conexões reais (a 2a espera o `FOR UPDATE`). A fila `pagamentos_a_reconciliar`
+  (A3/A3b/A3c) alcança o pedido adiantado pelo lojista em `processing`, `shipping` e
+  `delivered` (esta última desde a 20261349000000) sem expirá-lo.
+- **fila de reconciliação do pedido entregue (`reconciliacao-do-entregue-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261349000000` (só o corpo de `pagamentos_a_reconciliar`: o pedido `delivered` ainda `aguardando` o PIX
+  entra na fila). O diff do corpo contra o da `20261270000000` tem só as duas linhas de código do desenho; a borda
+  (fora das 24 h, sem cobrança, já pago, cobrança terminal, cancelado, `pending`, `new`) comparada entre o corpo da 270 e
+  o novo; o pedido que já estava preso entra SEM ser reescrito (o md5 da tabela é o mesmo); ordem e rodízio dos 100;
+  só o servidor executa (anon e authenticated recebem `permission denied`), atributos e ACL iguais; reaplicar 2x e CRLF;
+  rollback com o `prosrc` idêntico ao da 270 (md5 e sha256) e repetido recusado; pré-voo que recusa sem escrever
+  (corpo desconhecido, corpo anterior à 270, `SECURITY INVOKER`, `search_path`, ACL aberta, serviço sem EXECUTE,
+  sobrecarga, função ausente); pós-voo que desfaz tudo; consultas `80a`/`80b` (rol de 4 linhas, positivas no estado
+  certo, cada desvio no item certo) e a `57a` aceitando o corpo novo como sucessor. **Não prova** a IKCOUS nem a Savy.
 - **admin atual (`admin-atual-viva.cjs`, via `rodar-isolado.cjs`)**: a
   migration 20261197000000 — admin rebaixado com JWT de admin ainda válido
   (só no `profiles`, só no `auth.users`, nos dois) é recusado nas seis RPCs
@@ -720,7 +732,9 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   a prova MIGRATION de `reembolso-em-duvida` e seu portão) a desfazem ANTES da 241, na transação do clone,
   por `pagamento-adiantado-posterior.cjs` (só se no ar). A 270 redefine `concluir_estorno`: os pré-voos da 226/241
   e as consultas históricas 29b/43b exigem o corpo anterior. O helper afirma o hash restaurado; as demais provas
-  de comportamento da 241 continuam medindo o corpo de produção.
+  de comportamento da 241 continuam medindo o corpo de produção. O helper desfaz ANTES a SUCESSORA da 270, a
+  `20261349000000` (que redefine `pagamentos_a_reconciliar` em cima do corpo da 270), por
+  `reconciliacao-do-entregue-posterior.cjs`: o pré-voo do rollback da 270 recusa com o corpo novo da fila no ar.
 - **as provas que DESFAZEM corpos redefinidos pela `20261244000000`** (`endereco-no-pedido`, `a-compra-que-da-zero-reais...`, `loja-declara-quem-e` e
   `portao-8e-aceita-sucessoras`, mais a cadeia das sucessoras da 99) a desfazem ANTES por `a-loja-escolhe-como-entrega-posterior.cjs`.
 - **as provas que DESFAZEM corpos redefinidos pela `20261243000000`** (`pagamentos-rpc` e `admin-atual`: o rollback da 95 e da

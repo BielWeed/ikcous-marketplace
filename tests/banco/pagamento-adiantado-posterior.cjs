@@ -5,6 +5,7 @@
  * As provas históricas da 226 e da 241 precisam dos corpos anteriores:
  * desfazem esta sucessora ANTES da 241, só na transação do clone efêmero.
  * O rollback mantém dados e ACL; o chamador decide BEGIN/COMMIT/ROLLBACK.
+ * A 20261349000000 (o pedido entregue entra na fila) é a sucessora desta: ver reconciliacao-do-entregue-posterior.cjs.
  */
 
 /* eslint-disable security/detect-non-literal-fs-filename --
@@ -23,8 +24,15 @@ const PAGAMENTO_ADIANTADO = Object.freeze({
     = '1738457c2b95c5c3709beed42e656394', false) AS sim`,
 });
 
-/** Desfaz a 270 na transação aberta, se no ar; repetir é no-op. Devolve true se desfez. */
+/**
+ * Desfaz a 270 na transação aberta, se no ar; repetir é no-op. Devolve true se desfez.
+ * A SUCESSORA dela (a 20261349000000, que redefine pagamentos_a_reconciliar em cima do corpo da 270) cai ANTES: o
+ * pré-voo do rollback da 270 recusa com o corpo novo da fila no ar.
+ */
 async function desfazerPagamentoAdiantadoNaTransacao(cliente) {
+  await require("./reconciliacao-do-entregue-posterior.cjs").desfazerReconciliacaoDoEntregueNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(PAGAMENTO_ADIANTADO.noAr);
   if (r.rows[0]?.sim !== true) return false;
   await cliente.query(

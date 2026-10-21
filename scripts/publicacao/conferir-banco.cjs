@@ -2411,7 +2411,17 @@ const ROL_DA_61B = [
   "categorias.icone: ausente ou text nulavel preservada",
   "categorias_icone_check: ausente",
 ];
+// Lote 80 (20261349000000, o pedido entregue entra na fila de reconciliacao): os mesmos quatro fatos ANTES/DEPOIS;
+// so o corpo (md5) e a contagem de delivered trocam de valor.
+const ROL_DA_80 = [
+  "controle: funcoes de public visiveis a este papel",
+  "pagamentos_a_reconciliar: corpo exato (md5)",
+  "pagamentos_a_reconciliar: delivered nas duas listas de status",
+  "pagamentos_a_reconciliar: assinatura, atributos e EXECUTE so do servidor",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "80a-conferir-pedido-entregue-na-reconciliacao-aplicado": ROL_DA_80,
+  "80b-antes-pedido-entregue-na-reconciliacao-base-vigente": ROL_DA_80,
   "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
   "61b-antes-icones-das-categorias": ROL_DA_61B,
   "62a-conferir-mototaxi-aplicado": [

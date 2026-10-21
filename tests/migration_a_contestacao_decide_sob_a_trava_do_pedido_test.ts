@@ -379,6 +379,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    // 20261349000000: o pedido entregue antes da confirmacao do PIX entra na fila de reconciliacao (borda, dados existentes, ACL, rollback, pre/pos-voo e consultas 80a/80b).
+    "tests/banco/reconciliacao-do-entregue-viva.cjs",
     // 20261300000000: icones de categoria, CHECK, ACL/RLS e rollback sem perda.
     "tests/banco/categorias-icones-viva.cjs",
     // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.
