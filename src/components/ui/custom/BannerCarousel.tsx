@@ -183,7 +183,11 @@ export const BannerCarousel = memo(function BannerCarousel({
               aria-label={`${index + 1} de ${validBanners.length}: ${banner.title || ""}`}
             >
               {modeloDoBanner(banner.templateType) ? (
-                <BannerPronto banner={banner} prioridade={index === 0} />
+                <BannerPronto
+                  banner={banner}
+                  prioridade={index === 0}
+                  varios={validBanners.length > 1}
+                />
               ) : (
                 <>
                   <LazyImage

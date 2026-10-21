@@ -3,7 +3,7 @@
 .banner-pronto-slide {
   height: 100%;
 }
-.banner-pronto-slide > .banner-pronto {
+.banner-pronto-slide[data-varios="true"] > .banner-pronto {
   padding-bottom: 60px;
 }
 
@@ -27,14 +27,31 @@
 }
 .banner-pronto-slide [data-modelo="vitrine"] h2,
 .banner-pronto-slide [data-modelo="lancamento"] h2 {
-  font-size: 18px;
+  font-size: 14px;
 }
 .banner-pronto-slide [data-modelo="vitrine"] .banner-pronto-foto,
 .banner-pronto-slide [data-modelo="lancamento"] .banner-pronto-foto {
-  width: min(23cqw, 28cqh);
+  width: min(23cqw, 46cqh);
 }
 .banner-pronto-slide [data-modelo="lancamento"] .banner-pronto-foto {
   outline-offset: 3px;
+}
+
+.banner-pronto-slide
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"])
+  .banner-pronto-conteudo {
+  gap: 2px;
+  padding: 4px;
+}
+.banner-pronto-slide
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"])
+  :is(p, .banner-pronto-botao) {
+  font-size: 10px;
+}
+.banner-pronto-slide
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"])
+  .banner-pronto-botao {
+  padding: 3px 8px;
 }
 
 /* Largura E altura do banner: a loja usa 4:1 no desktop, a miniatura usa 2:1. */
@@ -74,6 +91,8 @@
   align-items: flex-start;
   gap: min(2cqw, 2cqh);
   min-width: 0;
+  max-height: 100%;
+  overflow: hidden;
   overflow-wrap: anywhere;
 }
 .banner-pronto h2 {
@@ -141,7 +160,7 @@
 [data-modelo="lancamento"] .banner-pronto-foto {
   order: 0;
   width: min(23cqw, 38cqh);
-  margin-top: min(4cqw, 6cqh);
+  margin-top: 0;
 }
 [data-modelo="lancamento"] .banner-pronto-foto {
   outline: 1px solid currentColor;
@@ -186,4 +205,44 @@
 [data-modelo="foto"] .banner-pronto-texto {
   flex: 0 1 65%;
   align-self: flex-end;
+}
+
+@supports not (width: 1cqw) {
+  .banner-pronto-conteudo {
+    gap: 8px;
+    padding: 12px;
+  }
+  .banner-pronto-foto {
+    width: 38%;
+  }
+  .banner-pronto-texto {
+    gap: 4px;
+  }
+  .banner-pronto h2 {
+    font-size: 24px;
+  }
+  .banner-pronto p {
+    font-size: 12px;
+  }
+  .banner-pronto-selo {
+    padding: 1px 6px;
+    font-size: 9px;
+  }
+  .banner-pronto-botao {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  [data-modelo="promocao"] h2 {
+    font-size: 36px;
+  }
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"]) .banner-pronto-foto {
+    width: 23%;
+    outline-offset: 3px;
+  }
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"]) h2 {
+    font-size: 14px;
+  }
+  :is([data-modelo="vitrine"], [data-modelo="lancamento"]) .banner-pronto-selo {
+    top: 4px;
+  }
 }

@@ -30,7 +30,8 @@ export function BannerProntoPreview({
   selo,
   prioridade = false,
 }: BannerProntoPreviewProps) {
-  const tinta = modelo === "foto" ? "claro" : tintaSobre(corHex);
+  const fundo = /^#([\da-f]{3}|[\da-f]{6})$/i.test(corHex) ? corHex : "#2A2A31";
+  const tinta = modelo === "foto" ? "claro" : tintaSobre(fundo);
   const linhas = dividirTitulo(titulo);
   const foto = (
     <LazyImage
@@ -47,7 +48,7 @@ export function BannerProntoPreview({
       className="banner-pronto"
       data-modelo={modelo}
       data-tinta={tinta}
-      style={{ backgroundColor: corHex }}
+      style={{ backgroundColor: fundo }}
     >
       {modelo === "foto" && (
         <>
@@ -62,17 +63,17 @@ export function BannerProntoPreview({
         {modelo !== "foto" && foto}
         <div className="banner-pronto-texto">
           {selo?.trim() && (
-            <span data-selo className="banner-pronto-selo">
+            <span data-selo className="banner-pronto-selo line-clamp-1">
               {selo}
             </span>
           )}
           {titulo.trim() && (
-            <h2>
+            <h2 className="line-clamp-2">
               {linhas[0]}
               {linhas[1] && <span> {linhas[1]}</span>}
             </h2>
           )}
-          {subtitulo.trim() && <p>{subtitulo}</p>}
+          {subtitulo.trim() && <p className="line-clamp-2">{subtitulo}</p>}
           {botao.trim() && (
             <span data-botao className="banner-pronto-botao">
               {botao}
@@ -87,11 +88,12 @@ export function BannerProntoPreview({
 export function BannerPronto({
   banner,
   prioridade,
-}: { banner: Banner; prioridade?: boolean }) {
+  varios = false,
+}: { banner: Banner; prioridade?: boolean; varios?: boolean }) {
   const modelo = modeloDoBanner(banner.templateType);
   if (!modelo) return null;
   return (
-    <div className="banner-pronto-slide">
+    <div className="banner-pronto-slide" data-varios={varios}>
       <BannerProntoPreview
         modelo={modelo}
         corHex={banner.overlayColor || "#2A2A31"}

@@ -101,6 +101,66 @@ describe("banner pronto no carrossel", () => {
       hospedeiro.querySelector("[data-modelo]")?.getAttribute("data-tinta"),
     ).toBe(tinta);
   });
+  it("reserva a faixa dos pontos somente com vários slides válidos", () => {
+    montar();
+    expect(
+      hospedeiro
+        .querySelector(".banner-pronto-slide")
+        ?.getAttribute("data-varios"),
+    ).toBe("false");
+    act(() =>
+      raiz.render(
+        <BannerCarousel
+          banners={[criarBanner(), criarBanner({ id: "b2" })]}
+          autoPlay={false}
+        />,
+      ),
+    );
+    expect(
+      hospedeiro
+        .querySelector(".banner-pronto-slide")
+        ?.getAttribute("data-varios"),
+    ).toBe("true");
+    act(() =>
+      raiz.render(
+        <BannerCarousel
+          banners={[criarBanner(), criarBanner({ id: "b2", imageUrl: "" })]}
+          autoPlay={false}
+        />,
+      ),
+    );
+    expect(
+      hospedeiro
+        .querySelector(".banner-pronto-slide")
+        ?.getAttribute("data-varios"),
+    ).toBe("false");
+  });
+  it("textos longos usam limites de linhas sem perder o conteúdo acessível", () => {
+    const titulo =
+      "Uma coleção especial com novidades incríveis para seu verão";
+    montar({ title: titulo, subtitle: "Frete grátis em todo o site" });
+    expect(
+      hospedeiro.querySelector("h2")?.classList.contains("line-clamp-2"),
+    ).toBe(true);
+    expect(
+      hospedeiro.querySelector("p")?.classList.contains("line-clamp-2"),
+    ).toBe(true);
+    expect(
+      hospedeiro
+        .querySelector("[data-selo]")
+        ?.classList.contains("line-clamp-1"),
+    ).toBe(true);
+    expect(hospedeiro.querySelector("h2")?.textContent).toBe(titulo);
+  });
+  it.each(["white", "#ffff", "rgb(255,255,255)", "var(--cor)", "inválido"])(
+    "cor fora do contrato hex (%s) usa fundo grafite e tinta clara",
+    (overlayColor) => {
+      montar({ overlayColor });
+      const pronto = hospedeiro.querySelector<HTMLElement>("[data-modelo]");
+      expect(pronto?.style.backgroundColor).toBe("rgb(42, 42, 49)");
+      expect(pronto?.getAttribute("data-tinta")).toBe("claro");
+    },
+  );
   it("foto usa branco sobre véu escuro mesmo com cor de fundo clara", () => {
     montar({
       templateType: "pronto_foto",
