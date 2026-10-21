@@ -5,6 +5,12 @@
   "validadeDaEvidenciaHoras": 6,
   "provasDeObjetos": [
     {
+      "consulta": "68a-conferir-avanco-status-esperado-aplicado",
+      "versoes": ["20261345000000"],
+      "ausenciaConfirmadaPor": "68b-antes-avanco-status-esperado",
+      "_comentario": "ADITIVA: RPC nova para o avanco atomico com status esperado. Banco antes do front em cada loja; clientes antigos continuam usando a porta existente, sem alterar assinatura. Voltar front antes do rollback que apaga somente a RPC nova. Sem aplicacao nesta frente."
+    },
+    {
       "consulta": "67a-conferir-reembolso-manual-reserva-aplicado",
       "versoes": ["20261343000000"],
       "ausenciaConfirmadaPor": "67b-antes-reembolso-manual-reserva",

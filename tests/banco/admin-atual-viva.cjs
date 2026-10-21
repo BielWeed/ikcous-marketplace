@@ -367,6 +367,10 @@ const POSTERIORES_A_97 = [
   // O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em tests/banco/mototaxi-posterior.cjs.
   // No FIM da lista de proposito (as provas enderecam 202/200/99/98 por indice).
   MOTOTAXI,
+  {
+    nome: "20261345000000_o_avanco_confere_o_status_esperado.sql",
+    noAr: "SELECT to_regprocedure('public.avancar_status_do_pedido(uuid,text,text,text)') IS NOT NULL AS sim",
+  },
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar

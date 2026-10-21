@@ -4027,6 +4027,15 @@ export type Database = {
         };
         Returns: undefined;
       };
+      avancar_status_do_pedido: {
+        Args: {
+          p_order_id: string;
+          p_status_esperado: string;
+          p_new_status: string;
+          p_notes?: string | null;
+        };
+        Returns: Json;
+      };
       update_order_status_atomic: {
         Args: {
           p_new_status: string;

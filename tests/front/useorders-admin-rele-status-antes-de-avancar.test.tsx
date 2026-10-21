@@ -144,7 +144,10 @@ function instalarRpc(
           }),
       };
     }
-    if (nome === "update_order_status_atomic") {
+    if (
+      nome === "update_order_status_atomic" ||
+      nome === "avancar_status_do_pedido"
+    ) {
       chamadasUpdateOrderStatus.push(args);
       return handlerUpdate(args);
     }
@@ -296,8 +299,43 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
     expect(chamadasUpdateOrderStatus[0]).toMatchObject({
       p_order_id: "pedido-1",
       p_new_status: "shipping",
-      p_silent: true,
+      p_status_esperado: "processing",
     });
+  });
+
+  it("M8: se mudou DEPOIS da releitura, a RPC recebe o esperado e a tela desfaz o avanço com mensagem amigavel", async () => {
+    instalarRpc(async () => ({
+      error: {
+        code: "P0001",
+        message: "pedido_status_mudou: processing -> cancelled",
+      },
+    }));
+    const { pegarOrders, updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("processing"),
+    );
+    let erro: unknown;
+    await act(async () => {
+      try {
+        await updateOrderStatus("pedido-1", "shipping");
+      } catch (e) {
+        erro = e;
+      }
+    });
+    expect(erro).toMatchObject({
+      message: expect.stringContaining("pedido_status_mudou"),
+    });
+    expect(rpc).toHaveBeenCalledWith("avancar_status_do_pedido", {
+      p_order_id: "pedido-1",
+      p_status_esperado: "processing",
+      p_new_status: "shipping",
+      p_notes: null,
+    });
+    expect(pegarOrders().find((o) => o.id === "pedido-1")?.status).toBe(
+      "processing",
+    );
+    expect(toast.error).toHaveBeenCalledWith(
+      "O pedido mudou de situação enquanto você olhava. Atualize e tente de novo.",
+    );
   });
 
   it("critério 3 — a releitura FALHA (erro de rede/RLS): a RPC não é chamada, sem update otimista, toast avisando que não conseguiu conferir", async () => {
@@ -373,7 +411,11 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
       armazem.get("orders_offline_updates_queue:lojista-1") || "[]",
     );
     expect(fila).toHaveLength(1);
-    expect(fila[0]).toMatchObject({ orderId: "pedido-1", status: "shipping" });
+    expect(fila[0]).toMatchObject({
+      orderId: "pedido-1",
+      status: "shipping",
+      statusEsperado: "processing",
+    });
     expect(toast.info).toHaveBeenCalledTimes(1);
   });
 

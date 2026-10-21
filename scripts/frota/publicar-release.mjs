@@ -562,6 +562,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "59b-antes-online-sem-forma-base-vigente",
   "60a-conferir-estilo-card-frete-aplicado",
   "60b-antes-estilo-card-frete-base-vigente",
+  "68a-conferir-avanco-status-esperado-aplicado",
+  "68b-antes-avanco-status-esperado",
   "67a-conferir-reembolso-manual-reserva-aplicado",
   "67b-antes-reembolso-manual-reserva",
   "61a-conferir-icones-das-categorias-aplicado",
