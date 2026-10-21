@@ -266,6 +266,99 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     );
   });
 
+  it("depois da recusa mostra o estoque atual, mantém o preço digitado e permite redigitar e salvar", async () => {
+    await montar();
+    await digitar("product-sale-price", "60,00");
+    await digitar("product-stock", "8");
+    banco.produto.estoque = 9;
+    avancarVersao();
+    const versaoAtual = banco.produto.ultima_atualizacao;
+    await salvar();
+
+    expect(banco.gravacoes).toBe(0);
+    expect(
+      (document.getElementById("product-stock") as HTMLInputElement).value,
+    ).toBe("9");
+    expect(
+      (document.getElementById("product-sale-price") as HTMLInputElement).value,
+    ).toContain("60");
+    await digitar("product-stock", "7");
+    await salvar();
+    expect(banco.gravacoes).toBe(1);
+    expect(banco.produto.estoque).toBe(7);
+    expect(banco.produto.preco_venda).toBe(60);
+    expect(banco.filtros[1]).toContainEqual([
+      "ultima_atualizacao",
+      versaoAtual,
+    ]);
+  });
+
+  it("um segundo toque sem redigitar não reenvia o estoque recusado", async () => {
+    await montar();
+    await digitar("product-stock", "8");
+    banco.produto.estoque = 9;
+    avancarVersao();
+    await salvar();
+    expect(
+      (document.getElementById("product-stock") as HTMLInputElement).value,
+    ).toBe("9");
+    await salvar();
+    expect(banco.produto.estoque).toBe(9);
+    expect(banco.filtros[1]).toEqual([["id", "p-1"]]);
+    expect(banco.toastError).toHaveBeenCalledTimes(1);
+  });
+
+  it("a recusa também repõe o estoque atual das variações sem apagar o preço digitado", async () => {
+    banco.variacoes = [
+      {
+        id: "v-1",
+        product_id: "p-1",
+        name: "Cor",
+        value: "Rosa",
+        stock_increment: 10,
+        active: true,
+      },
+    ];
+    await montar();
+    await digitar("product-sale-price", "60,00");
+    await editarVariacao();
+    banco.produto.estoque = 9;
+    banco.variacoes[0].stock_increment = 9;
+    avancarVersao();
+    const versaoAtual = banco.produto.ultima_atualizacao;
+    await salvar();
+    expect(
+      (document.getElementById("product-stock") as HTMLInputElement).value,
+    ).toBe("9");
+
+    await act(async () => {
+      const linha = host.querySelector('[data-testid="variante-cadastrada"]');
+      (
+        linha
+          ?.closest("div.group")
+          ?.querySelector("button") as HTMLButtonElement
+      ).click();
+    });
+    expect(
+      (document.getElementById("variant-stock") as HTMLInputElement).value,
+    ).toBe("9");
+    await digitar("variant-stock", "7");
+    await act(async () => {
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent?.trim() === "Salvar variação")!
+        .click();
+    });
+    await salvar();
+    expect(banco.gravacoes).toBe(1);
+    expect(banco.variacoes[0].stock_increment).toBe(7);
+    expect(banco.produto.estoque).toBe(7);
+    expect(banco.produto.preco_venda).toBe(60);
+    expect(banco.filtros[1]).toContainEqual([
+      "ultima_atualizacao",
+      versaoAtual,
+    ]);
+  });
+
   it("duas gravações seguidas aceitam a versão devolvida pelo primeiro salvar", async () => {
     await act(async () => raiz.render(<SondaDoHook />));
     let primeira: Awaited<ReturnType<typeof api.updateProduct>>;

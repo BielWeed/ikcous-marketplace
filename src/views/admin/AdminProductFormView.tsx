@@ -2304,6 +2304,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setFormData(formAposRecusas);
         }
 
+        // A janela entre a conferência e este upsert só fecha com SQL.
         // 3. Salvar variantes restantes em lote. O estoque de cada uma só vai
         // se a lojista mexeu naquele número (as devolvidas acima não entram: o
         // banco continua com elas como estavam).
@@ -2478,6 +2479,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onNavigate("admin-products", undefined, true);
       }, 1500);
     } catch (error) {
+      const atual = (error as { produtoAtual?: Product })?.produtoAtual;
+      if (atual) {
+        const { stock, variants } = camposDoFormularioDoProduto(atual);
+        setCurrentProduct(atual);
+        setInitialData({ ...initialData, stock, variants });
+        setFormData(
+          formComVariacoes(
+            { ...formData, stock, variants },
+            variacoesDoRascunhoComEstoqueDoBanco(formData.variants, variants),
+          ),
+        );
+      }
       setIsSubmitting(false);
       console.error("Erro ao salvar produto:", error);
       // Laudo 0109 (A12): o toast ficou no hook (useProducts traduz o erro

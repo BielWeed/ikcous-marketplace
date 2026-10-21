@@ -1440,21 +1440,12 @@ export function useProducts({ autoFetch = true } = {}) {
 
         if (error) throw error;
         if (conferenciaDeEstoque && !data) {
-          let estoqueAtual: number | undefined;
-          try {
-            const { data: atual, error: erroDaLeitura } = await supabase
-              .from("vw_produtos_admin")
-              .select("estoque")
-              .eq("id", id)
-              .maybeSingle();
-            if (!erroDaLeitura && typeof atual?.estoque === "number") {
-              estoqueAtual = atual.estoque;
-            }
-          } catch {
-            // A releitura só enriquece o aviso; nunca libera a gravação.
-          }
-          throw new RecusaDoCadastroDeProduto(
-            `O estoque deste produto mudou enquanto você editava${estoqueAtual !== undefined ? ` (agora está ${estoqueAtual})` : ""}. Confira e salve de novo.`,
+          const produtoAtual = await fetchProduct(id).catch(() => null);
+          throw Object.assign(
+            new RecusaDoCadastroDeProduto(
+              `O estoque deste produto mudou enquanto você editava${produtoAtual ? ` (agora está ${produtoAtual.stock})` : ""}. Confira e salve de novo.`,
+            ),
+            { produtoAtual },
           );
         }
 
