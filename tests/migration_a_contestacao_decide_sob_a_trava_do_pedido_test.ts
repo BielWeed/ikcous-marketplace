@@ -511,6 +511,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261244000000: a loja escolhe como entrega na cidade e em quantos dias (v23, v24 e upsert_store_config; matriz das duas compras, trigger, rollbacks nos dois degraus e mutantes; e o portao 47a/47b).
     "tests/banco/a-loja-escolhe-como-entrega-viva.cjs",
     "tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs",
+    // 20261310000000: o estilo do card de frete preserva a escolha no upsert e na view; comportamento, rollback e mutantes.
+    "tests/banco/estilo-card-frete-viva.cjs",
     // 20261246000000: o lancamento repetido nao duplica (chave de tentativa em fin_lancamento_salvar; corrida real, atomicidade, mutantes e o portao 49a/49b).
     "tests/banco/lancamento-idempotente-viva.cjs",
     // 20261247000000: a anotacao interna do pedido nao chega a cliente (tabela so do admin de agora; papeis reais, pre-voo, rollbacks, mutantes e o portao 50a/50b).

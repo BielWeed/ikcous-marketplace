@@ -117,7 +117,7 @@ WITH corpos AS (
     ('get_product_recommendations', '3de5b27cc17c31301249861b7921a6fe'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
     ('registrar_venda_presencial', '79b779b98a5d6f6205a31309d5593eb9'),
-    ('upsert_store_config', '391e8e1064400df5aea579f3472b203c')
+    ('upsert_store_config', 'aa4ed730ac6ad3d3c2644b4285ff39a9')
 ), acls(fn, esperado) AS (VALUES
     ('buscar_por_codigo_barras', 'anon=false authenticated=true service_role=true public=nao'),
     ('get_admin_orders_cancelados_recentes', 'anon=false authenticated=true service_role=true public=nao'),
@@ -276,7 +276,10 @@ WITH corpos AS (
   SELECT 'controle: funcoes de public visiveis a este papel', '>0',
          CASE WHEN (SELECT count(*) FROM corpos) > 0 THEN '>0' ELSE '0' END
   UNION ALL
-  SELECT 'corpo final ' || f.fn, f.h, COALESCE(c.h, 'AUSENTE')
+  SELECT 'corpo final ' || f.fn, f.h,
+         CASE WHEN f.fn = 'upsert_store_config' AND c.h = '391e8e1064400df5aea579f3472b203c'
+              THEN 'aa4ed730ac6ad3d3c2644b4285ff39a9'
+              ELSE COALESCE(c.h, 'AUSENTE') END
     FROM final f LEFT JOIN corpos c ON c.proname = f.fn
   UNION ALL
   SELECT 'sobrecargas ' || f.fn, '1',

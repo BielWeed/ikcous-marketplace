@@ -3072,6 +3072,8 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     A57,
     A58,
     A59,
+    "62a-conferir-mototaxi-aplicado",
+    "60a-conferir-estilo-card-frete-aplicado",
   ]);
 });
 

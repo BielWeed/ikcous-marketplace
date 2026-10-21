@@ -2273,6 +2273,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "391e8e1064400df5aea579f3472b203c",
           versao: "20261244000000",
         },
+        {
+          fn: "upsert_store_config",
+          h: "aa4ed730ac6ad3d3c2644b4285ff39a9",
+          versao: "20261310000000",
+        },
       ]);
       for (const s of sucessoras8e)
         assert(final.has(s.fn), `${s.fn}: sucessora de função fora das 61`);
@@ -3598,7 +3603,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
         get_product_recommendations: "20261160000000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",
-        upsert_store_config: "20261244000000",
+        upsert_store_config: "20261310000000",
       });
     },
   );

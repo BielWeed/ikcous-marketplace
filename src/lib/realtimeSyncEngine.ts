@@ -122,6 +122,7 @@ export const TABLE_CONFIGS: TableConfig[] = [
         raw.free_shipping_min !== null && raw.free_shipping_min !== undefined
           ? Number(raw.free_shipping_min)
           : undefined,
+      freeShippingCardStyle: raw.free_shipping_card_style ?? undefined,
       shippingFee:
         raw.shipping_fee !== null && raw.shipping_fee !== undefined
           ? Number(raw.shipping_fee)

@@ -36,6 +36,7 @@ export const TELAS_DE_ENTRADA = [
   "admin-banners",
   "admin-carousels",
   "admin-app-color",
+  "admin-free-shipping-card",
   "admin-shipping",
   "admin-shipping-national",
   "admin-settings",

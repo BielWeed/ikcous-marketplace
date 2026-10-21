@@ -1,4 +1,5 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { normalizarNumeroMototaxi } from "@/components/admin/minha-loja/contato";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import {
   type ConfigDoProvedor,
@@ -15,8 +16,10 @@ import { FreteLocalBloco } from "@/components/admin/shipping/FreteLocalBloco";
 import { FreteNacionalBloco } from "@/components/admin/shipping/FreteNacionalBloco";
 import { PainelRecolhivel } from "@/components/admin/shipping/PainelRecolhivel";
 import { PreviaDoFrete } from "@/components/admin/shipping/PreviaDoFrete";
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useMototaxi } from "@/hooks/useMototaxi";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   transportadoraFicaSemPagamento,
@@ -117,6 +120,31 @@ export const AdminShippingView = memo(function AdminShippingView({
 }: Readonly<AdminShippingViewProps>) {
   const { config, isLoaded, updateConfig } = useStore();
   const isOffline = useOnlineStatus();
+  const mototaxi = useMototaxi(active);
+  const [contatoMototaxi, setContatoMototaxi] = useState({
+    whatsapp: "",
+    nome: "",
+  });
+  const mototaxiPendenteRef = useRef(false);
+  useEffect(() => {
+    if (mototaxi.config && !mototaxiPendenteRef.current) {
+      setContatoMototaxi({
+        whatsapp: mototaxi.config.whatsapp ?? "",
+        nome: mototaxi.config.nome ?? "",
+      });
+    }
+  }, [mototaxi.config]);
+  const mototaxiPendente =
+    !!mototaxi.config &&
+    (contatoMototaxi.whatsapp !== (mototaxi.config.whatsapp ?? "") ||
+      contatoMototaxi.nome !== (mototaxi.config.nome ?? ""));
+  const erroMototaxi =
+    !!contatoMototaxi.whatsapp.trim() &&
+    !normalizarNumeroMototaxi(contatoMototaxi.whatsapp);
+  useEffect(() => {
+    mototaxiPendenteRef.current = mototaxiPendente;
+  }, [mototaxiPendente]);
+
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const sincronizacaoSuspensaRef = useRef(false);
@@ -433,7 +461,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   }, [formDataNacional, config]);
 
   const regrasMudaram = isFormDirtyLocal || isFormDirtyNacional;
-  const isFormDirty = regrasMudaram || !!acaoTransportadoras?.mudou;
+  const isFormDirty =
+    regrasMudaram || !!acaoTransportadoras?.mudou || mototaxiPendente;
+  const soMototaxiPendente =
+    mototaxiPendente && !regrasMudaram && !acaoTransportadoras?.mudou;
   const erroLocal =
     formData.preset === "acima_de_valor" && formData.acimaDe <= 0
       ? "Escreva o valor. Para não dar frete grátis, escolha a primeira opção."
@@ -526,13 +557,13 @@ export const AdminShippingView = memo(function AdminShippingView({
       });
       return;
     }
-    if (isSaving) return;
-    if (erroLocal) {
+    if (isSaving || erroMototaxi) return;
+    if (!soMototaxiPendente && erroLocal) {
       setPainelAberto((prev) => ({ ...prev, estrategiasLocais: true }));
       setAbaGratis("local");
       return;
     }
-    if (erroNacional) {
+    if (!soMototaxiPendente && erroNacional) {
       // Segunda trava (a primeira é o botão desabilitado): se algo chamar
       // handleSave mesmo assim, o painel com o erro abre e ganha foco em
       // vez de a tela fingir que salvou.
@@ -540,7 +571,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
-    if (retiradaSemEndereco) {
+    if (!soMototaxiPendente && retiradaSemEndereco) {
       // Antes do `setIsSaving`: recusar não pode deixar a tela em "Salvando…".
       toast.error("Cadastre o endereço da loja em Minha loja", {
         description: "Sem endereço, o cliente não sabe onde retirar.",
@@ -548,7 +579,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
-    if (soRetiroSemCep) {
+    if (!soMototaxiPendente && soRetiroSemCep) {
       toast.error("Cadastre o CEP da loja em Minha loja", {
         description:
           "Para vender só com retirada, a loja precisa do CEP. Ou escolha outra forma de entrega.",
@@ -594,6 +625,21 @@ export const AdminShippingView = memo(function AdminShippingView({
     try {
       // Se esta gravação falhar, PARA AQUI (ADMIN-010, #94). O toast de
       // erro sai de dentro do `updateConfig`.
+      let mototaxiSalvoNestaRodada = false;
+      if (mototaxiPendente) {
+        const salvouMototaxi = await mototaxi.salvar(contatoMototaxi);
+        if (!salvouMototaxi) {
+          setFalhaAoSalvar(true);
+          toast.error("Não foi possível salvar o mototáxi. Tente de novo.");
+          return;
+        }
+        mototaxiSalvoNestaRodada = true;
+        mototaxiPendenteRef.current = false;
+        setContatoMototaxi({
+          whatsapp: normalizarNumeroMototaxi(contatoMototaxi.whatsapp) ?? "",
+          nome: contatoMototaxi.nome.trim(),
+        });
+      }
       const salvou = !regrasMudaram
         ? true
         : await updateConfig({
@@ -659,6 +705,8 @@ export const AdminShippingView = memo(function AdminShippingView({
       // A guarda acompanha o dirty check e os tokens pendentes pelo efeito.
       haptic.success();
       if (regrasMudaram) toast.success("Regras de frete salvas!");
+      else if (mototaxiSalvoNestaRodada)
+        toast.success("Contato do mototáxi salvo");
     } catch (err) {
       console.error("[AdminShippingView] Error saving configs:", err);
       haptic.error();
@@ -681,10 +729,9 @@ export const AdminShippingView = memo(function AdminShippingView({
     !isSaving &&
     !isOffline &&
     isFormDirty &&
-    !erroLocal &&
-    !erroNacional &&
-    !retiradaSemEndereco &&
-    !soRetiroSemCep;
+    !erroMototaxi &&
+    (soMototaxiPendente ||
+      (!erroLocal && !erroNacional && !retiradaSemEndereco && !soRetiroSemCep));
 
   // Map (não Record indexado por variável): indexação dinâmica dispara
   // `security/detect-object-injection` do eslint e o teto do lint reprova
@@ -864,8 +911,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                     titulo="Falta o endereço da retirada"
                     detalhe="O cliente precisa saber onde buscar. Cadastre o endereço da loja."
                     botao="Abrir Minha loja"
-                    onClick={
-                      onNavigate
+                    onClick={                      onNavigate
                         ? () => onNavigate("admin-about-store")
                         : undefined
                     }
@@ -989,6 +1035,95 @@ export const AdminShippingView = memo(function AdminShippingView({
                 nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
                 pagamentoPeloAppLigado={pagamentoPeloAppLigado}
               />
+              <fieldset
+                disabled={isOffline || isSaving || !mototaxi.config}
+                className="mt-6 space-y-4 border-t border-admin-border pt-5"
+              >
+                <legend className="text-sm font-bold text-zinc-200">
+                  Mototáxi{" "}
+                  <span className="ml-2 text-xs font-normal text-zinc-500">
+                    opcional
+                  </span>
+                </legend>
+                <p className="text-xs text-zinc-500">
+                  Quem faz as entregas para você. O número fica só no painel.
+                </p>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="mototaxi-whatsapp"
+                    className="flex items-center gap-2 text-xs text-zinc-400"
+                  >
+                    <IconeWhatsapp className="size-4 text-emerald-400" />{" "}
+                    WhatsApp do mototáxi
+                  </label>
+                  <input
+                    id="mototaxi-whatsapp"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="off"
+                    value={contatoMototaxi.whatsapp}
+                    aria-invalid={erroMototaxi}
+                    aria-describedby={erroMototaxi ? "mototaxi-erro" : undefined}
+                    onChange={(e) => {
+                      setFalhaAoSalvar(false);
+                      setContatoMototaxi((c) => ({
+                        ...c,
+                        whatsapp: e.target.value,
+                      }));
+                    }}
+                    className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3 text-sm text-zinc-100 disabled:opacity-50"
+                    placeholder="(11) 98765-4321"
+                  />
+                  {erroMototaxi && (
+                    <p
+                      id="mototaxi-erro"
+                      role="alert"
+                      className="text-xs text-amber-300"
+                    >
+                      Informe DDD e número brasileiros válidos.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="mototaxi-nome"
+                    className="text-xs text-zinc-400"
+                  >
+                    Nome dele (opcional)
+                  </label>
+                  <input
+                    id="mototaxi-nome"
+                    type="text"
+                    autoComplete="off"
+                    maxLength={80}
+                    value={contatoMototaxi.nome}
+                    onChange={(e) => {
+                      setFalhaAoSalvar(false);
+                      setContatoMototaxi((c) => ({
+                        ...c,
+                        nome: e.target.value,
+                      }));
+                    }}
+                    className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3 text-sm text-zinc-100 disabled:opacity-50"
+                  />
+                </div>
+                <p className="text-xs text-zinc-500">
+                  No pedido de entrega local aparece “Enviar ao mototáxi”, com
+                  a mensagem pronta.
+                </p>
+              </fieldset>
+              {mototaxi.erro && (
+                <div role="alert" className="mt-3 text-xs text-amber-300">
+                  Não foi possível carregar o mototáxi.{" "}
+                  <button
+                    type="button"
+                    onClick={mototaxi.recarregar}
+                    className="min-h-11 underline"
+                  >
+                    Tentar carregar de novo
+                  </button>
+                </div>
+              )}
             </PainelRecolhivel>
             <PainelRecolhivel
               id="painel-frete-nacional"

@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const estado = vi.hoisted(() => ({
   config: {
     freeShippingMin: 0,
+    freeShippingCardStyle: "completo",
     storeCity: "",
   },
   cartTotal: 0,
@@ -41,7 +42,11 @@ describe("FreeShippingBlock — carrinho vazio: a descrição cabe na tela (rela
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    estado.config = { freeShippingMin: 0, storeCity: "" };
+    estado.config = {
+      freeShippingMin: 0,
+      freeShippingCardStyle: "completo",
+      storeCity: "",
+    };
     estado.cartTotal = 0;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -57,7 +62,11 @@ describe("FreeShippingBlock — carrinho vazio: a descrição cabe na tela (rela
   });
 
   async function montar(freeShippingMin: number) {
-    estado.config = { freeShippingMin, storeCity: "" };
+    estado.config = {
+      freeShippingMin,
+      freeShippingCardStyle: "completo",
+      storeCity: "",
+    };
     estado.cartTotal = 0;
     const { FreeShippingBlock } = await import(
       "@/components/ui/custom/FreeShippingBlock"

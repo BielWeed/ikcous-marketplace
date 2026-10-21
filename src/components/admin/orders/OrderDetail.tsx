@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { ConfirmarRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
+import { EnviarAoMototaxi } from "@/components/admin/orders/EnviarAoMototaxi";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
@@ -582,6 +583,7 @@ function OrderStepperPipeline({
 }
 
 interface OrderDeliveryCardProps {
+  storeName?: string;
   order: Order;
   isOffline: boolean;
   copiedAddress: boolean;
@@ -597,6 +599,7 @@ interface OrderDeliveryCardProps {
 // checkout). Antes eram o card "Cliente" e, soltas na etiqueta, as dicas de
 // frete.
 function OrderDeliveryCard({
+  storeName,
   order,
   isOffline,
   copiedAddress,
@@ -712,6 +715,8 @@ function OrderDeliveryCard({
           </a>
         </div>
       </div>
+
+      <EnviarAoMototaxi order={order} loja={storeName ?? ""} />
 
       {formaDeEntrega && (
         <p
@@ -1992,6 +1997,7 @@ export const OrderDetail = memo(function OrderDetail({
           )}
 
         <OrderDeliveryCard
+          storeName={storeName}
           order={order}
           isOffline={isOffline}
           copiedAddress={copiedAddress}
