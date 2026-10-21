@@ -649,10 +649,17 @@ export function orderEhDeCartao(order: Record<string, unknown> | null | undefine
 export function recusaLiberaAVaga(
   order: Record<string, unknown> | null | undefined,
   statusMapeado: string | null,
+  pedido?: { metodo_online?: unknown; gateway_payment_id?: unknown } | null,
 ): boolean {
   if (statusMapeado !== "recusado" && statusMapeado !== "expirado") return false;
-  if (orderEhDeCartao(order)) return true;
-  return orderCancelada(order);
+  if (orderEhDeCartao(order) || orderCancelada(order)) return true;
+  // Segundo sinal compartilhado por webhook e cron: a resposta do MP pode
+  // omitir o tipo. Sentinela sem método é exclusivo da tentativa de cartão.
+  return statusMapeado === "recusado" && (
+    pedido?.metodo_online === "credito" || pedido?.metodo_online === "debito" ||
+    (pedido?.metodo_online == null &&
+      typeof pedido?.gateway_payment_id === "string" && vagaEmVerificacao(pedido.gateway_payment_id))
+  );
 }
 
 /**

@@ -3374,6 +3374,51 @@ for (
   });
 }
 
+for (const metodo of ["credito", "debito", null, "pix"]) {
+  Deno.test(`L3a-W3 - cron: recusa sem tipo usa método gravado ${metodo} e preserva PIX`, async () => {
+    const idOrder = "ORDL3ASEMTIPO";
+    const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+    const supabase = clienteFalso({
+      candidatos, registro,
+      resolverPedidoFresco: (id) => {
+        assertEquals(id, UUID_PEDIDO_1);
+        return { total: 149.9, metodo_online: metodo, gateway_payment_id: idOrder };
+      },
+    });
+    const order = orderDoCandidato(idOrder, "failed", "high_risk", "");
+    delete order.transactions.payments[0].payment_method;
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, order) });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.falhas, 0);
+    if (metodo === "credito" || metodo === "debito") {
+      assertEquals(registro.chamadasConfirmar, [], "cartão recusado não cancela o pedido");
+      assertEquals(registro.chamadasLiberar, [{ args: { p_order_id: UUID_PEDIDO_1, p_gateway_payment_id: idOrder } }]);
+    } else {
+      assertEquals(registro.chamadasLiberar, []);
+      assertEquals(registro.chamadasConfirmar.length, 1);
+      assertEquals(registro.chamadasConfirmar[0].args.p_status, "recusado");
+    }
+  });
+}
+
+Deno.test("L3a-W3 - cron: erro ao ler método mantém candidato para reconsulta sem cancelar", async () => {
+  const idOrder = "ORDL3AERROMETODO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }], registro,
+    erroFrom: { message: "falha simulada da leitura" },
+  });
+  const order = orderDoCandidato(idOrder, "failed", "high_risk", "");
+  delete order.transactions.payments[0].payment_method;
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, order) });
+  const corpo = await resposta.json();
+  assertEquals(corpo.falhas, 1);
+  assertEquals(registro.chamadasConfirmar, []);
+  assertEquals(registro.chamadasLiberar, []);
+});
+
 Deno.test("cartão — liberar devolve false (vaga já solta pelo webhook, ou pedido já expirado) -> ignorados:1, cobrancasLiberadas:0", async () => {
   const idOrder = "ORDTST01CARTAOJASOLTO";
   const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };

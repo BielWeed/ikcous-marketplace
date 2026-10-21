@@ -795,6 +795,17 @@ async function handler(
         valorAprovado = extrairValorDaOrder(order);
         orderParaConferir = order;
         liberarAVaga = recusaLiberaAVaga(order, statusMapeado);
+        // Mesma segunda evidência do webhook quando o GET omite o tipo.
+        // Falha de leitura não pode transformar cartão em PIX: volta à fila.
+        if (!liberarAVaga && statusMapeado === "recusado") {
+          const { data: pedidoDoMetodo, error: erroMetodo } = await supabase
+            .from("marketplace_orders")
+            .select("metodo_online, gateway_payment_id")
+            .eq("id", candidato.order_id)
+            .maybeSingle();
+          if (erroMetodo) throw erroMetodo;
+          liberarAVaga = recusaLiberaAVaga(order, statusMapeado, pedidoDoMetodo);
+        }
         await registrarDiagnosticoDoCartao({
           supabase, pedidoId: candidato.order_id, order,
           cartaoConhecido: liberarAVaga && statusRaiz === "failed",
