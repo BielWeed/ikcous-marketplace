@@ -72,6 +72,28 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  "20261347000000_o_codigo_de_barras_nao_repete_entre_produto_e_variacao.sql": [
+    {
+      // Gatilho de produtos: trava por codigo (a mesma chave da variacao), olha a variacao (qualquer uma, ativa
+      // ou desligada) e recusa com 23505; produto apagado nao e checado. Cada marcador conta UMA vez no corpo vivo.
+      funcao: "produto_codigo_barras_livre_de_variacao",
+      esperado: [
+        "PERFORM pg_advisory_xact_lock(hashtextextended('codigo_de_barras:' || v_codigo, 0));",
+        "FROM public.product_variants v WHERE v.codigo_barras = v_codigo",
+        "ERRCODE = '23505'",
+        "IF NEW.deleted_at IS NOT NULL THEN",
+      ],
+    },
+    {
+      // Gatilho de product_variants: mesma trava, olha so produto NAO apagado e recusa com 23505.
+      funcao: "variacao_codigo_barras_livre_de_produto",
+      esperado: [
+        "PERFORM pg_advisory_xact_lock(hashtextextended('codigo_de_barras:' || v_codigo, 0));",
+        "FROM public.produtos p WHERE p.codigo_barras = v_codigo AND p.deleted_at IS NULL",
+        "ERRCODE = '23505'",
+      ],
+    },
+  ],
   "20261330000000_mototaxi_privado.sql": {
     funcao: "salvar_config_mototaxi",
     esperado: [

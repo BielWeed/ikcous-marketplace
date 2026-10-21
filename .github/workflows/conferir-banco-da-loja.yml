@@ -219,6 +219,8 @@ on:
           - 61b-antes-icones-das-categorias
           - 62a-conferir-mototaxi-aplicado
           - 62b-antes-mototaxi-ausente
+          - 74a-conferir-codigo-de-barras-entre-tabelas-aplicado
+          - 74b-antes-codigo-de-barras-entre-tabelas-ausente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

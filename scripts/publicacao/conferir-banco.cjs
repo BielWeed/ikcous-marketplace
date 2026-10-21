@@ -2411,6 +2411,13 @@ const ROL_DA_61B = [
   "categorias.icone: ausente ou text nulavel preservada",
   "categorias_icone_check: ausente",
 ];
+const ROL_DA_74A = [
+  "controle: catalogo publico visivel",
+  "codigo_barras: colunas e indices unicos por tabela",
+  "gatilhos: funcoes com corpo exato e atributos",
+  "gatilhos: funcoes sem EXECUTE para PUBLIC, anon, authenticated e service_role",
+  "gatilhos: BEFORE INSERT OR UPDATE OF codigo_barras ligados nas duas tabelas",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "61a-conferir-icones-das-categorias-aplicado": ROL_DA_61A,
   "61b-antes-icones-das-categorias": ROL_DA_61B,
@@ -2426,6 +2433,12 @@ const ROL_FECHADO_POR_CONSULTA = {
     "controle: catalogo publico visivel",
     "mototaxi: tabela e RPC ausentes",
     "contato privado: fora da configuracao publica",
+  ],
+  "74a-conferir-codigo-de-barras-entre-tabelas-aplicado": ROL_DA_74A,
+  "74b-antes-codigo-de-barras-entre-tabelas-ausente": [
+    ROL_DA_74A[0],
+    ROL_DA_74A[1],
+    "gatilhos de codigo de barras: funcoes e gatilhos ausentes",
   ],
   "60a-conferir-estilo-card-frete-aplicado": ROL_DA_60,
   "60b-antes-estilo-card-frete-base-vigente": ROL_DA_60,

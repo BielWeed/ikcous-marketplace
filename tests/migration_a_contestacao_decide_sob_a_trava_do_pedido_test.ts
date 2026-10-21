@@ -379,6 +379,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
+    "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
     // 20261300000000: icones de categoria, CHECK, ACL/RLS e rollback sem perda.
     "tests/banco/categorias-icones-viva.cjs",
     // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.
