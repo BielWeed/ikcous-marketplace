@@ -1604,6 +1604,7 @@ async function handler(
     statusDetailDoEstorno === "partially_refunded" ||
     statusDoEstorno === STATUS_DA_CONTESTACAO;
 
+  let corpoConfiavelParaEstorno: Record<string, unknown> | null = null;
   if (gatilhoDeEstorno && corpoConsultado) {
     // Achado B1 (2ª revisão de risco, 26/09/2026): este passo lia status/
     // status_detail/refunds do objeto CONSULTADO desta notificação — que
@@ -1669,7 +1670,6 @@ async function handler(
     // pagamento, sem `valor_estornado` nem razão (W9, missão pagamentos,
     // 28/09/2026).
     let formatoConfiavelParaEstorno: "payment" | "order" = rota;
-    let corpoConfiavelParaEstorno: Record<string, unknown> | null = null;
     if (idGravadoParaEstornoStr !== null && idGravadoParaEstornoStr === idParaRpc) {
       corpoConfiavelParaEstorno = corpoConsultado;
     } else if (rota === "payment" && idGravadoParaEstornoStr && !idEhClassico(idGravadoParaEstornoStr)) {
@@ -1901,7 +1901,7 @@ async function handler(
   // conferências verem linhas DIFERENTES num intervalo de reescrita.
   const { data: linhaDoPedido, error: erroLeituraPedido } = await supabase
     .from("marketplace_orders")
-    .select("total, total_amount, gateway_payment_id, payment_status")
+    .select("total, total_amount, gateway_payment_id, payment_status, paid_at, status")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -1912,6 +1912,15 @@ async function handler(
       erroLeituraPedido,
     );
     return json({ error: "Erro ao consultar o pedido." }, 500);
+  }
+
+  // A1: concluir_estorno fecha atomicamente a reserva nunca confirmada
+  // (paid_at + cancelamento + estoque). Se o ledger não conseguiu concluir
+  // nenhum refund, NÃO cair no confirmar_pagamento legado: ele encerraria a
+  // reserva sem a entrada financeira. 500 conserva o evento para reconsulta.
+  if (corpoConfiavelParaEstorno !== null && statusMapeado === "estornado" && linhaDoPedido &&
+    linhaDoPedido.paid_at === null && linhaDoPedido.status === "pending") {
+    return json({ error: "Estorno ainda não confirmado no ledger." }, 500);
   }
 
   // RECUSA PELA ROTA `payment` DE UMA COBRANÇA DA ORDERS API (Fase 3.5): o
