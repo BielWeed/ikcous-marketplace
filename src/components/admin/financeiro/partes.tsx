@@ -8,6 +8,7 @@ import { type ReactNode, createContext, useContext, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatarBRL, formatarBRLComSinal } from "@/lib/financeiro";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -153,9 +154,9 @@ export function Dinheiro({
 
 /** Cor de valor com sinal: verde entra, vermelho sai, neutro zero. */
 export function corDoValor(valor: number): string {
-  if (Math.round(valor * 100) > 0) return "text-emerald-400";
-  if (Math.round(valor * 100) < 0) return "text-red-400";
-  return "text-zinc-300";
+  const tom = tomDoValor(Math.round(valor * 100));
+  // Zero segue zinc-300 (mais claro que o neutro -400 das cores de estado).
+  return tom === "neutro" ? "text-zinc-300" : classeDoTexto(tom);
 }
 
 // ---------------------------------------------------------------------------
