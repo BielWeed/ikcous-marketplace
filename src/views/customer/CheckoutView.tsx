@@ -120,6 +120,7 @@ import {
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
+import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { arredondarParaCentavos, cn, formatCurrency } from "@/lib/utils";
 import type {
   Address,
@@ -1015,7 +1016,7 @@ export function CheckoutViewDaConta({
               path: ["city"],
             });
           }
-          if (!data.state || data.state.trim() === "") {
+          if (!ufBrasileiraValida(data.state)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Estado inválido",
@@ -2234,7 +2235,7 @@ export function CheckoutViewDaConta({
     !!numeroAtual?.trim() &&
     !!bairroAtual?.trim() &&
     !!cidadeAtual?.trim() &&
-    !!estadoAtual?.trim();
+    ufBrasileiraValida(estadoAtual);
   const faltaCpf = exigeCpfDoDestinatario && !cpfValido(cpfAtual ?? "");
   // Só uma ação EXPLÍCITA abre a seção: cabeçalho, "Editar"/"Trocar"/
   // "Cadastre um endereço" do resumo, ou o submit inválido (que também foca

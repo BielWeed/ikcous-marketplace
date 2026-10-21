@@ -27,6 +27,7 @@ import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
 declare const __APP_VERSION__: string;
 const VERSAO_DO_APP =
   typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "";
+import { mapProductFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { PreloadedOrLazy, lazyWithPreload } from "@/utils/lazyWithPreload";
@@ -551,7 +552,7 @@ const AppContent = () => {
     toggleFavorite,
     loading: favoritesLoading,
   } = useFavorites();
-  const { config } = useStore();
+  const { config, incluirProduto } = useStore();
 
   const [currentView, setCurrentView] = useState<View>("home");
   const [isStandalone, setIsStandalone] = useState(false);
@@ -2324,7 +2325,7 @@ const AppContent = () => {
             }
             const { data, error } = await supabase
               .from("vw_produtos_public")
-              .select("id")
+              .select("*, product_variants(*)")
               .eq("id", selectedProductId)
               .single();
             if (error) {
@@ -2348,8 +2349,7 @@ const AppContent = () => {
               redirecionarParaHome(true);
               return;
             }
-            // Product exists in database, do not redirect!
-            console.log("[App] Product exists on network, avoiding redirect.");
+            if (active) incluirProduto(mapProductFromDB(data));
           } catch (err: any) {
             console.error(
               "[App] verifyProduct caught error:",
@@ -2371,6 +2371,7 @@ const AppContent = () => {
     authLoading,
     productsLoading,
     tentativaDoProduto,
+    incluirProduto,
   ]);
 
   // Unified scroll restoration is handled in the consolidated useLayoutEffect hook above
