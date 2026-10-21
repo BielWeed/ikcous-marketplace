@@ -161,6 +161,11 @@ describe("CheckoutView (convidado, cobertura LOCAL) — endereço editável", ()
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    vi.stubGlobal("sessionStorage", {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     createOrder.mockClear();
     onNavigate.mockClear();
     buscasPendentes.clear();
@@ -227,102 +232,113 @@ describe("CheckoutView (convidado, cobertura LOCAL) — endereço editável", ()
     expect(state.readOnly).toBe(false);
   });
 
-  it("convidado digita cidade e estado e consegue fechar o pedido", async () => {
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+  it.each(["SP", "M", "ZZ"])(
+    "convidado valida a UF %s antes de fechar o pedido",
+    async (uf) => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
-    await act(async () => {
-      raiz.render(
-        <CheckoutView
-          onNavigate={onNavigate}
-          onSetBackOverride={onSetBackOverride}
-        />,
-      );
-    });
-
-    const botaoPix = localizarBotaoPorTexto(hospedeiro, "Pix na Entrega")!;
-    expect(botaoPix).toBeDefined();
-
-    // Cada `digitar` no seu próprio `act`, com uma passagem de microtarefas
-    // entre um e outro: disparar todos os `onChange` no mesmo lote síncrono
-    // faz validações assíncronas concorrentes do zodResolver correrem em
-    // paralelo, e a última a resolver pode deixar `formState.isValid`
-    // parado em `false` mesmo com `formState.errors` já vazio.
-    await act(async () => {
-      botaoPix.click();
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      digitar("checkout-name", "Cliente Teste");
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      digitar("checkout-tel", "34999999999");
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      digitar("guest-cep", "01310-100");
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      digitar("guest-street", "Rua Teste");
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      digitar("guest-number", "100");
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      digitar("guest-neighborhood", "Centro");
-      await esperarMicrotarefas();
-    });
-    // O ponto que este teste prova: em cobertura LOCAL, o campo de cidade e
-    // o de estado ACEITAM digitação — antes da correção eles estavam
-    // `readOnly` e vazios ao mesmo tempo, e não havia como preenchê-los.
-    await act(async () => {
-      digitar("guest-city", "Cidade Teste");
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      digitar("guest-state", "SP");
-      await esperarMicrotarefas();
-    });
-
-    // A busca do CEP, que saiu no começo, só responde AGORA — com cidade, UF,
-    // rua e bairro diferentes dos digitados. Nada do que o convidado digitou
-    // pode ser trocado por ela.
-    expect(buscasPendentes.has("01310100")).toBe(true);
-    await act(async () => {
-      buscasPendentes.get("01310100")!({
-        logradouro: "Avenida Paulista",
-        bairro: "Bela Vista",
-        localidade: "São Paulo",
-        uf: "SP",
+      await act(async () => {
+        raiz.render(
+          <CheckoutView
+            onNavigate={onNavigate}
+            onSetBackOverride={onSetBackOverride}
+          />,
+        );
       });
-      await esperarMicrotarefas();
-    });
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 420));
-    });
+      const botaoPix = localizarBotaoPorTexto(hospedeiro, "Pix na Entrega")!;
+      expect(botaoPix).toBeDefined();
 
-    const botaoFinalizar = localizarBotaoPorTexto(
-      document.body,
-      "Finalizar Pedido",
-    );
-    expect(botaoFinalizar).toBeDefined();
-    expect(botaoFinalizar!.disabled).toBe(false);
+      // Cada `digitar` no seu próprio `act`, com uma passagem de microtarefas
+      // entre um e outro: disparar todos os `onChange` no mesmo lote síncrono
+      // faz validações assíncronas concorrentes do zodResolver correrem em
+      // paralelo, e a última a resolver pode deixar `formState.isValid`
+      // parado em `false` mesmo com `formState.errors` já vazio.
+      await act(async () => {
+        botaoPix.click();
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        digitar("checkout-name", "Cliente Teste");
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        digitar("checkout-tel", "34999999999");
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        digitar("guest-cep", "01310-100");
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        digitar("guest-street", "Rua Teste");
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        digitar("guest-number", "100");
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        digitar("guest-neighborhood", "Centro");
+        await esperarMicrotarefas();
+      });
+      // O ponto que este teste prova: em cobertura LOCAL, o campo de cidade e
+      // o de estado ACEITAM digitação — antes da correção eles estavam
+      // `readOnly` e vazios ao mesmo tempo, e não havia como preenchê-los.
+      await act(async () => {
+        digitar("guest-city", "Cidade Teste");
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        digitar("guest-state", uf);
+        await esperarMicrotarefas();
+      });
 
-    await act(async () => {
-      botaoFinalizar!.click();
-      await esperarMicrotarefas();
-      await esperarMicrotarefas();
-    });
+      // A busca do CEP, que saiu no começo, só responde AGORA — com cidade, UF,
+      // rua e bairro diferentes dos digitados. Nada do que o convidado digitou
+      // pode ser trocado por ela.
+      expect(buscasPendentes.has("01310100")).toBe(true);
+      await act(async () => {
+        buscasPendentes.get("01310100")!({
+          logradouro: "Avenida Paulista",
+          bairro: "Bela Vista",
+          localidade: "São Paulo",
+          uf: "SP",
+        });
+        await esperarMicrotarefas();
+      });
 
-    expect(createOrder).toHaveBeenCalledTimes(1);
-    const [pedidoEnviado] = createOrder.mock.calls[0];
-    expect(pedidoEnviado.addressData.city).toBe("Cidade Teste");
-    expect(pedidoEnviado.addressData.state).toBe("SP");
-    expect(pedidoEnviado.addressData.street).toBe("Rua Teste");
-    expect(pedidoEnviado.addressData.neighborhood).toBe("Centro");
-  });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+
+      const botaoFinalizar = localizarBotaoPorTexto(
+        document.body,
+        "Finalizar Pedido",
+      );
+      expect(botaoFinalizar).toBeDefined();
+      if (uf !== "SP") {
+        expect(
+          document.getElementById("guest-state")?.getAttribute("aria-invalid"),
+        ).toBe("true");
+        expect(botaoFinalizar!.disabled).toBe(true);
+        expect(createOrder).not.toHaveBeenCalled();
+        return;
+      }
+      expect(botaoFinalizar!.disabled).toBe(false);
+
+      await act(async () => {
+        botaoFinalizar!.click();
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      const [pedidoEnviado] = createOrder.mock.calls[0];
+      expect(pedidoEnviado.addressData.city).toBe("Cidade Teste");
+      expect(pedidoEnviado.addressData.state).toBe("SP");
+      expect(pedidoEnviado.addressData.street).toBe("Rua Teste");
+      expect(pedidoEnviado.addressData.neighborhood).toBe("Centro");
+    },
+  );
 });

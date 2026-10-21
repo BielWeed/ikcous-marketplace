@@ -319,7 +319,7 @@ export const ProductCard = memo(function ProductCard({
   // o card coberto pela folha.
   const nenhumaOpcaoDisponivel =
     temGruposDeOpcao &&
-    Array.from(variantGroups.values()).every((valores) =>
+    Array.from(variantGroups.values()).some((valores) =>
       valores.every((v) => (v.stockIncrement ?? 0) <= 0),
     );
 
@@ -356,10 +356,13 @@ export const ProductCard = memo(function ProductCard({
   // nome" -- quem comanda por voz diz o que lê) e acrescenta o produto.
   // Só no estado parado: durante "Salvando..."/"Salvo!" o próprio texto do
   // botão é o nome (e o aviso falado diz qual produto entrou).
+  const semEstoqueNoCard = temGruposDeOpcao
+    ? nenhumaOpcaoDisponivel
+    : estoqueAtual <= 0;
   const rotuloAcessivelDoBotao =
     cartStatus !== "idle"
       ? undefined
-      : estoqueAtual <= 0
+      : semEstoqueNoCard
         ? `${product.name} esgotado`
         : hasActiveVariant
           ? `Escolher opções de ${product.name}`
@@ -393,7 +396,7 @@ export const ProductCard = memo(function ProductCard({
     // escolha e o "Adicionar" moram no rodapé dela. O rótulo do botão do
     // card é sempre "Escolher opções".
     if (hasActiveVariant && onAddToCartWithVariants) {
-      if (estoqueAtual <= 0 || cartStatus !== "idle") return;
+      if (semEstoqueNoCard) return;
       setFolhaOpcoesAberta(true);
       return;
     }
@@ -793,9 +796,9 @@ export const ProductCard = memo(function ProductCard({
             // foco (com `disabled` o foco caía no body e o leitor de tela
             // ficava mudo); o bloqueio do clique é a guarda de `cartStatus` no
             // handler.
-            disabled={estoqueAtual <= 0}
+            disabled={semEstoqueNoCard}
             aria-disabled={
-              estoqueAtual > 0 && cartStatus !== "idle" ? true : undefined
+              !semEstoqueNoCard && cartStatus !== "idle" ? true : undefined
             }
             aria-label={rotuloAcessivelDoBotao}
             className={cn(
@@ -803,7 +806,7 @@ export const ProductCard = memo(function ProductCard({
               // encolhia ao toque; aria-disabled não o desliga sozinho -- a
               // classe mantém o visual de antes.
               "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 aria-disabled:active:scale-100 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
-              estoqueAtual <= 0
+              semEstoqueNoCard
                 ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
                 : cartStatus === "success"
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -814,11 +817,11 @@ export const ProductCard = memo(function ProductCard({
               <Loader2 className="size-3 shrink-0 animate-spin" />
             )}
             {cartStatus === "success" && <Check className="size-3 shrink-0" />}
-            {cartStatus === "idle" && estoqueAtual > 0 && (
+            {cartStatus === "idle" && !semEstoqueNoCard && (
               <ShoppingCart className="size-3 shrink-0" />
             )}
             <span className="truncate">
-              {estoqueAtual <= 0
+              {semEstoqueNoCard
                 ? "Esgotado"
                 : hasActiveVariant
                   ? "Escolher opções"

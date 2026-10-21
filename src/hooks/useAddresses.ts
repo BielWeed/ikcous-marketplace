@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import type { Address } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -192,6 +193,10 @@ export function useAddresses() {
 
   const addAddress = async (address: Omit<Address, "id" | "user_id">) => {
     if (!user) return null;
+    if (!ufBrasileiraValida(address.state)) {
+      toast.error("Estado inválido");
+      return null;
+    }
     const idDaConta = user.id;
     try {
       // If this is the first address, make it default automatically
@@ -253,6 +258,10 @@ export function useAddresses() {
 
   const updateAddress = async (id: string, updates: Partial<Address>) => {
     if (!user) return false;
+    if (updates.state !== undefined && !ufBrasileiraValida(updates.state)) {
+      toast.error("Estado inválido");
+      return false;
+    }
     const idDaConta = user.id;
     try {
       const { data, error } = await supabase
