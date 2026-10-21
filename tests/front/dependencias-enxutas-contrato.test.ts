@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const REMOVIDOS =
-  /^(toJSONSchema|jsonSchema|zodToJsonSchema|webauthn|passkey|mfa|signInWithPasskey|registerPasskey|deletePasskey|listPasskeys|globalRegistry|registry)$/i;
+  /^(toJSONSchema|jsonSchema|zodToJsonSchema|webauthn|passkey|mfa|signInWithPasskey|registerPasskey|deletePasskey|listPasskeys|globalRegistry|registry|JSONSchemaGenerator|initializeContext|processSchema|process|extractDefs|finalize|handleUnrepresentable|createToJSONSchemaMethod|createStandardJSONSchemaMethod|allProcessors|(?:string|number|boolean|bigint|symbol|null|undefined|void|never|any|unknown|date|enum|literal|nan|templateLiteral|file|success|custom|function|transform|map|set|array|object|union|intersection|tuple|record|nullable|nonoptional|default|prefault|catch|pipe|readonly|promise|optional|lazy)Processor|webAuthnAbortService|createNewAbortSignal|cancelCeremony|WebAuthnApi|browserSupportsWebAuthn|createCredential|getCredential|deserializeCredentialCreationOptions|deserializeCredentialRequestOptions|serializeCredentialCreationResponse|serializeCredentialRequestResponse)$/i;
 
 function violacoes(codigo: string, nome = "exemplo.tsx"): string[] {
   const fonte = ts.createSourceFile(
@@ -78,6 +78,20 @@ describe("loja enxuta — nenhum consumidor pede caminhos retirados", () => {
     'import { toJSONSchema as gerar } from "zod"; gerar(s)',
     'const { jsonSchema: gerar } = schema["~standard"]',
     'import { zodToJsonSchema as gerar } from "zod-to-json-schema"',
+    "new z.core.JSONSchemaGenerator({})",
+    "z.core.processSchema(schema)",
+    'z.core["initializeContext"]({})',
+    "const { extractDefs: extrair } = z.core",
+    "z.core.finalize({})",
+    "z.core.handleUnrepresentable({})",
+    "z.core.process(schema)",
+    "z.core.createToJSONSchemaMethod(schema)",
+    "z.core.createStandardJSONSchemaMethod(schema)",
+    "z.core.allProcessors",
+    "z.core.stringProcessor(schema)",
+    "supabase.auth.browserSupportsWebAuthn()",
+    "supabase.auth.createCredential({})",
+    "supabase.auth.webAuthnAbortService.cancelCeremony()",
     "z.registry()",
     "z.globalRegistry.add(s, {})",
     's.meta({ title: "campo" })',
