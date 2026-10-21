@@ -153,8 +153,8 @@ describe("Minha loja — texto sem linguagem interna", () => {
   it("sem edição o Salvar único tem 44px e o desligado visível", () => {
     const salvar = botao("Nada para salvar");
     expect(salvar.className).toContain("min-h-11");
-    expect(salvar.className).toContain("disabled:text-zinc-400");
-    expect(salvar.disabled).toBe(true);
+    expect(salvar.className).toContain("admin-barra-principal");
+    expect(salvar.getAttribute("aria-disabled")).toBe("true");
     expect(hospedeiro.textContent).toContain("Tudo salvo");
     expect(
       [...hospedeiro.querySelectorAll("button")].some((b) =>

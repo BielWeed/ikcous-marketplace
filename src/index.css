@@ -1223,6 +1223,16 @@ body.admin-modal-open .active-scroll-container {
   opacity: 1;
   cursor: not-allowed;
 }
+/* aria-disabled mantém o botão alcançável pelo teclado durante e após salvar. */
+.admin-acoes-da-barra .admin-barra-principal[aria-disabled="true"] {
+  background: hsl(var(--admin-raised));
+  color: hsl(var(--admin-text-soft, 240 6.8% 65.5%));
+  opacity: 1;
+  cursor: not-allowed;
+}
+.admin-acoes-da-barra .admin-barra-principal:focus-visible {
+  outline-color: hsl(var(--admin-text-soft, 240 6.8% 65.5%));
+}
 .admin-acoes-da-barra button:focus-visible {
   outline: 2px solid #a5d7e9;
   outline-offset: 2px;

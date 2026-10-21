@@ -20,7 +20,15 @@ import {
 } from "@/lib/loja-pronta";
 import { descricaoDaLojaParaHtml, textoDaLoja } from "@/lib/texto-da-loja";
 import { AlertTriangle, RefreshCw, Save } from "lucide-react";
-import { Suspense, lazy, memo, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import type { View } from "@/types";
@@ -167,9 +175,36 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   const [salvandoTudo, setSalvandoTudo] = useState(false);
   const editores = useRef(new Map<ChaveDeSalvamento, EditorDeMinhaLoja>());
   const operacao = useRef<object | null>(null);
+  const botaoSalvar = useRef<HTMLButtonElement>(null);
+  const formulario = useRef<HTMLFieldSetElement>(null);
+  const devolverFoco = useRef(false);
+  const registrarMarca = useCallback((editor: EditorDeMinhaLoja) => {
+    editores.current.set("marca", editor);
+  }, []);
+  const registrarContato = useCallback((editor: EditorDeMinhaLoja) => {
+    editores.current.set("contato", editor);
+  }, []);
+  const registrarEmpresa = useCallback((editor: EditorDeMinhaLoja) => {
+    editores.current.set("empresa", editor);
+  }, []);
+  const registrarHorario = useCallback((editor: EditorDeMinhaLoja) => {
+    editores.current.set("horario", editor);
+  }, []);
   const [errosDeSalvar, setErrosDeSalvar] = useState<
     Partial<Record<ChaveDeSalvamento, string>>
   >({});
+  useEffect(() => {
+    if (salvandoTudo || !devolverFoco.current || !active) return;
+    devolverFoco.current = false;
+    // Só depois do commit que reabilita o fieldset: focus() não alcança
+    // campo desabilitado, inclusive na validação de blocos mais adiante na fila.
+    const campoComErro =
+      formulario.current?.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+      (errosDeSalvar.contato
+        ? formulario.current?.querySelector<HTMLElement>("#settings-whatsapp")
+        : null);
+    (campoComErro ?? botaoSalvar.current)?.focus();
+  }, [salvandoTudo, active, errosDeSalvar]);
   const [identidadePendente, setIdentidadePendente] = useState(false);
   const [horarioPendente, setHorarioPendente] = useState(false);
   const [contatoPendente, setContatoPendente] = useState(false);
@@ -306,6 +341,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     } finally {
       if (isCurrent()) {
         operacao.current = null;
+        devolverFoco.current = true;
         setSalvandoTudo(false);
       }
     }
@@ -423,6 +459,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
       </div>
 
       <fieldset
+        ref={formulario}
         disabled={salvandoTudo || !active}
         className="mx-auto min-w-0 max-w-4xl space-y-4 px-4 pt-4"
       >
@@ -475,9 +512,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           >
             <IdentitySettingsSection
               active={active}
-              onRegistrarSalvamento={(editor) =>
-                editores.current.set("marca", editor)
-              }
+              onRegistrarSalvamento={registrarMarca}
               onDirtyChange={setIdentidadePendente}
               onNavigate={onNavigate}
             />
@@ -534,9 +569,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         >
           <BusinessHoursSection
             active={active}
-            onRegistrarSalvamento={(editor) =>
-              editores.current.set("horario", editor)
-            }
+            onRegistrarSalvamento={registrarHorario}
             onDirtyChange={setHorarioPendente}
           />
         </BlocoNumerado>
@@ -579,9 +612,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         >
           <ContatoDaLoja
             ativa={active}
-            onRegistrarSalvamento={(editor) =>
-              editores.current.set("contato", editor)
-            }
+            onRegistrarSalvamento={registrarContato}
             onDirtyChange={setContatoPendente}
             onSetBackOverride={onSetBackOverride}
           />
@@ -595,9 +626,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           descricao="Razão social, CNPJ ou CPF e e-mail de atendimento. Quem compra lê nos Termos, na Política de Privacidade e no rodapé do app. Em branco, nada aparece."
         >
           <DadosDaEmpresa
-            onRegistrarSalvamento={(editor) =>
-              editores.current.set("empresa", editor)
-            }
+            onRegistrarSalvamento={registrarEmpresa}
             onDirtyChange={setEmpresaPendente}
           />
         </BlocoNumerado>
@@ -634,12 +663,13 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             )}
           </div>
           <button
+            ref={botaoSalvar}
             type="button"
             onClick={() => void salvarTudo()}
-            disabled={
+            aria-disabled={
               !isLoaded || isOffline || salvandoTudo || !alterados.length
             }
-            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-zinc-900 px-5 text-sm font-bold text-white transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 disabled:pointer-events-none disabled:bg-zinc-200 disabled:text-zinc-400"
+            className="admin-barra-principal flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-admin-gold px-5 text-sm font-bold text-zinc-950 transition-colors hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60"
           >
             {salvandoTudo ? (
               <RefreshCw aria-hidden="true" className="size-4 animate-spin" />

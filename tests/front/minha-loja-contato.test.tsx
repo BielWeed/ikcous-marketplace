@@ -251,10 +251,10 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
 
   it("sem alteração o Salvar do Contato fica desabilitado; digitar liga o sinal de alteração não salva", async () => {
     await abrirTela();
-    expect(botaoSalvarContato().disabled).toBe(true);
+    expect(botaoSalvarContato().getAttribute("aria-disabled")).toBe("true");
 
     await digitarWhatsApp("11987654321");
-    expect(botaoSalvarContato().disabled).toBe(false);
+    expect(botaoSalvarContato().getAttribute("aria-disabled")).toBe("false");
     expect(aoSujar).toHaveBeenLastCalledWith(true);
   });
 

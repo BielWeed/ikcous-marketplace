@@ -198,7 +198,7 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
       '[aria-label="Ações de Minha loja"] button',
     ) as HTMLButtonElement | null;
     expect(botao).not.toBeNull();
-    expect(botao?.disabled).toBe(true);
+    expect(botao?.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("o título da tela é 'Minha loja'", async () => {
@@ -405,7 +405,7 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
     const botao = hospedeiro.querySelector(
       '[aria-label="Ações de Minha loja"] button',
     ) as HTMLButtonElement;
-    expect(botao.disabled).toBe(true);
+    expect(botao.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("a atualização do config NÃO apaga edição real em andamento do lojista", async () => {

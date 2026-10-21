@@ -242,7 +242,7 @@ describe("horário com editor e StoreProvider reais", () => {
     await type("Nova tentativa");
     await click("Salvar alterações");
     await confirm();
-    expect(button("Salvando…").disabled).toBe(true);
+    expect(button("Salvando…").getAttribute("aria-disabled")).toBe("true");
     expect(field().value).toBe("Nova tentativa");
     expect(store.config.businessHours).toBe("Antigo");
     expect(toast.success).not.toHaveBeenCalled();

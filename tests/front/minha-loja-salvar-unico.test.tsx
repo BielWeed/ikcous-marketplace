@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 // @vitest-environment jsdom
 // Componentes reais; só as fronteiras de gravação/leitura são dublês.
 // Retirar o coordenador, paralelizar saves ou incluir horário no contato quebra estes casos.
@@ -142,6 +144,7 @@ function Tela({ active = true }: { active?: boolean }) {
 }
 let root: Root;
 let host: HTMLDivElement;
+let montado = true;
 const pausa = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 function publicar(updates: Record<string, unknown>) {
   h.config = { ...h.config, ...updates };
@@ -190,9 +193,10 @@ beforeEach(() => {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
+  montado = true;
 });
 afterEach(() => {
-  act(() => root.unmount());
+  if (montado) act(() => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
 });
@@ -253,7 +257,7 @@ async function clicar() {
 
 it("sem edição: uma única ação, desabilitada e acoplada à navegação, com Tudo salvo", async () => {
   await abrir();
-  expect(salvar().disabled).toBe(true);
+  expect(salvar().getAttribute("aria-disabled")).toBe("true");
   expect(salvar().textContent).toBe("Nada para salvar");
   expect(host.textContent).toContain("Tudo salvo");
   expect(salvar().closest("[data-prateleira]")).not.toBeNull();
@@ -281,7 +285,7 @@ it("contato e horário: conta dois blocos, salva uma vez cada EM SEQUÊNCIA e n�
     return true;
   });
   await clicar();
-  expect(salvar().disabled).toBe(true);
+  expect(salvar().getAttribute("aria-disabled")).toBe("true");
   expect(salvar().textContent).toContain("Salvando");
   expect(h.update).toHaveBeenCalledTimes(1);
   expect(h.update.mock.calls[0][0]).toEqual({
@@ -413,6 +417,221 @@ it("trocar de administrador durante a gravação não continua a fila nem entreg
   });
   expect(h.update).toHaveBeenCalledTimes(1);
   expect(bloco("Contato").querySelector('[role="alert"]')).toBeNull();
+});
+
+it("duplo clique no mesmo tick grava uma única vez", async () => {
+  await abrir();
+  await digitar("settings-whatsapp", "11988887777");
+  const liberacoes: (() => void)[] = [];
+  h.update.mockImplementation(async (updates: Record<string, unknown>) => {
+    await new Promise<void>((resolve) => {
+      liberacoes.push(resolve);
+    });
+    publicar(updates);
+    return true;
+  });
+  const botao = salvar();
+  await act(async () => {
+    botao.click();
+    botao.click();
+  });
+  const chamadas = h.update.mock.calls.length;
+  await act(async () => {
+    for (const liberar of liberacoes) liberar();
+    await pausa();
+  });
+  expect(chamadas).toBe(1);
+});
+
+it("desmontar no meio da fila não grava o bloco seguinte", async () => {
+  await abrir();
+  await digitar("settings-whatsapp", "11988887777");
+  await digitar("store-business-hours", "Sáb, 9h às 12h");
+  let liberar!: () => void;
+  h.update.mockImplementationOnce(async () => {
+    await new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    return true;
+  });
+  await clicar();
+  expect(h.update).toHaveBeenCalledTimes(1);
+  act(() => root.unmount());
+  montado = false;
+  await act(async () => {
+    liberar();
+    await pausa();
+  });
+  expect(h.update).toHaveBeenCalledTimes(1);
+});
+
+it("salvar pelo teclado preserva foco no botão, inclusive quando termina Tudo salvo", async () => {
+  await abrir();
+  await digitar("settings-whatsapp", "11988887777");
+  let liberar!: () => void;
+  h.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+    await new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    publicar(updates);
+    return true;
+  });
+  const botao = salvar();
+  act(() => botao.focus());
+  await clicar();
+  expect(botao.disabled).toBe(false);
+  expect(botao.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(botao);
+  await act(async () => {
+    liberar();
+    await pausa();
+  });
+  expect(botao.disabled).toBe(false);
+  expect(document.activeElement).toBe(botao);
+  expect(
+    host.querySelector('[aria-label="Ações de Minha loja"] [role="status"]')
+      ?.textContent,
+  ).toContain("Tudo salvo");
+});
+
+it("CNPJ inválido após outro bloco: reabilita o formulário antes de focar o campo com erro", async () => {
+  await abrir();
+  await digitar("settings-whatsapp", "11988887777");
+  await digitar("empresa-documento", "123");
+  let liberar!: () => void;
+  h.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+    await new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    publicar(updates);
+    return true;
+  });
+  act(() => salvar().focus());
+  await clicar();
+  expect(host.querySelector("fieldset")?.disabled).toBe(true);
+  await act(async () => {
+    liberar();
+    await pausa();
+  });
+  expect(document.activeElement).toBe(host.querySelector("#empresa-documento"));
+  expect(host.querySelector("fieldset")?.disabled).toBe(false);
+  expect(
+    host.querySelector('[aria-label="Ações de Minha loja"] [role="status"]')
+      ?.textContent,
+  ).toContain("1 alteração para salvar");
+  expect(
+    bloco("Dados da empresa (opcional)").querySelector('[role="alert"]'),
+  ).not.toBeNull();
+});
+
+it("ação única usa o botão primário compartilhado, sem cores zinc que escapem dos temas", async () => {
+  await abrir();
+  expect(salvar().classList.contains("admin-barra-principal")).toBe(true);
+  expect(salvar().className).not.toContain("disabled:bg-zinc-200");
+  expect(salvar().className).not.toContain("hover:bg-zinc-800");
+});
+
+// Calcula sobre as declarações reais, incluindo o pior ponto do degradê,
+// em vez de confundir jsdom (que não resolve variáveis CSS) com medição visual.
+it("botão primário tem contraste AA em repouso, hover, foco e desabilitado nos três temas", () => {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do CSS do próprio projeto
+  const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do CSS de temas do próprio projeto
+  const temas = readFileSync(
+    resolve(process.cwd(), "src/components/layouts/temas-do-painel.css"),
+    "utf8",
+  );
+  const regra = (seletor: string) => {
+    const inicio = css.indexOf(`${seletor} {`);
+    expect(inicio, seletor).toBeGreaterThan(-1);
+    return css.slice(inicio, css.indexOf("}", inicio));
+  };
+  const normal = regra(
+    ".admin-acoes-da-barra .admin-barra-principal:not(:disabled)",
+  );
+  const desabilitado = regra(
+    '.admin-acoes-da-barra .admin-barra-principal[aria-disabled="true"]',
+  );
+  const foco = regra(
+    ".admin-acoes-da-barra .admin-barra-principal:focus-visible",
+  );
+  expect(desabilitado).toContain("background: hsl(var(--admin-raised))");
+  expect(desabilitado).toContain(
+    "color: hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
+  );
+  expect(foco).toContain(
+    "outline-color: hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
+  );
+  const hex = (valor: string) =>
+    [1, 3, 5].map((i) => Number.parseInt(valor.slice(i, i + 2), 16));
+  const hsl = (valor: string) => {
+    const [h, s, l] = valor.trim().split(/\s+/).map(Number.parseFloat);
+    const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
+    return [0, 8, 4].map((n) => {
+      const k = (n + h / 30) % 12;
+      return 255 * (l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)));
+    });
+  };
+  const luminancia = (rgb: number[]) => {
+    const linear = rgb.map((n) => {
+      const v = n / 255;
+      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  };
+  const contraste = (a: number[], b: number[]) => {
+    const [claro, escuro] = [luminancia(a), luminancia(b)].sort(
+      (x, y) => y - x,
+    );
+    return (claro + 0.05) / (escuro + 0.05);
+  };
+  const token = (fonte: string, seletor: string, nome: string) => {
+    const inicio = fonte.indexOf(seletor);
+    const bloco = fonte.slice(inicio, fonte.indexOf("}", inicio));
+    // eslint-disable-next-line security/detect-non-literal-regexp -- nomes fechados dos tokens do próprio teste
+    return bloco.match(new RegExp(`--admin-${nome}:\\s*([^;]+);`))![1];
+  };
+  const cores = normal.match(/linear-gradient\((#[a-f0-9]+), (#[a-f0-9]+)\)/)!;
+  const de = hex(cores[1]);
+  const ate = hex(cores[2]);
+  const texto = hex(normal.match(/color: (#[a-f0-9]+)/)![1]);
+  for (const tema of ["escuro", "claro", "confortavel"]) {
+    const seletor = `html.admin-mode[data-admin-tema="${tema}"] {`;
+    const elevado = hsl(
+      token(
+        tema === "escuro" ? css : temas,
+        tema === "escuro" ? ":root {" : seletor,
+        "raised",
+      ),
+    );
+    const textoSuave = hsl(
+      tema === "escuro" ? "240 6.8% 65.5%" : token(temas, seletor, "text-soft"),
+    );
+    const nav = hsl(
+      token(
+        tema === "escuro" ? css : temas,
+        tema === "escuro" ? ":root {" : seletor,
+        "nav",
+      ),
+    );
+    const minimoNormal = Math.min(
+      ...Array.from({ length: 101 }, (_, i) =>
+        contraste(
+          texto,
+          // eslint-disable-next-line security/detect-object-injection -- índice numérico 0..2 dos canais RGB do degradê
+          de.map((n, canal) => n + ((ate[canal] - n) * i) / 100),
+        ),
+      ),
+    );
+    const minimoDesabilitado = contraste(textoSuave, elevado);
+    const minimoFoco = contraste(textoSuave, nav);
+    expect(minimoNormal).toBeGreaterThanOrEqual(4.5);
+    expect(minimoDesabilitado).toBeGreaterThanOrEqual(4.5);
+    expect(minimoFoco).toBeGreaterThanOrEqual(4.5);
+    console.info(
+      `Contraste ${tema}: repouso/hover/foco ${minimoNormal.toFixed(2)}:1; desabilitado ${minimoDesabilitado.toFixed(2)}:1; contorno de foco ${minimoFoco.toFixed(2)}:1`,
+    );
+  }
 });
 
 it("tela inativa não ocupa a prateleira", async () => {

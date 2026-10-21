@@ -193,7 +193,7 @@ describe("K-D · Minha loja e painel recolhível: letra >= 11px e tokens (estát
     expect(tag).not.toMatch(/\bh-10\b/);
     expect(tag).not.toMatch(TEXTO_MIUDO);
     expect(tag).not.toMatch(/#e3c25e|#09090b/i);
-    expect(tag).toContain("hover:bg-zinc-800");
+    expect(tag).toContain("hover:bg-admin-gold/90");
     expect(tag).toContain("focus-visible:ring-2");
   });
 
