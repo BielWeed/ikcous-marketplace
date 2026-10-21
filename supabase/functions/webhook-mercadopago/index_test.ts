@@ -7889,6 +7889,53 @@ Deno.test("REV1 webhook: estorno da order financiada já paga passa pela mesma c
   }
 });
 
+Deno.test("REV1 webhook: pedido já estornado aceita o refund financiado e alcança a RPC de estorno", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasAviso: [] };
+  const supabase = clienteFalso({ rpcResultado: "estornado", registro,
+    pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP, payment_status: "estornado" } });
+  const o = orderParceladaComJuros(2, "40.86");
+  o.total_amount = "40.86";
+  o.status = "refunded";
+  o.status_detail = "refunded";
+  o.transactions.payments[0].amount = "40.86";
+  o.transactions.payments[0].status = "refunded";
+  o.transactions.payments[0].status_detail = "refunded";
+  const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+    supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
+  });
+  assertEquals(r.status, 200);
+  assertEquals(registro.chamadasRpc.map((c) => ({
+    pedido: c.args.p_order_id, pagamento: c.args.p_payment_id, status: c.args.p_status,
+  })), [{ pedido: UUID_PEDIDO, pagamento: ID_ORDER_CARTAO_MP, status: "estornado" }]);
+});
+
+for (const [rotulo, campo] of [
+  ["nulo", { payment_status: null }],
+  ["ausente", {}],
+  ["desconhecido", { payment_status: "estado_desconhecido" }],
+]) {
+  Deno.test(`REV1 webhook: payment_status ${rotulo} não recebe prova de juros no refund financiado`, async () => {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasAviso: [] };
+    const supabase = clienteFalso({ rpcResultado: "estornado", registro,
+      pedido: { id: UUID_PEDIDO, total: 37.27, gateway_payment_id: ID_ORDER_CARTAO_MP, ...campo } });
+    const o = orderParceladaComJuros(2, "40.86");
+    o.total_amount = "40.86";
+    o.status = "refunded";
+    o.status_detail = "refunded";
+    o.transactions.payments[0].amount = "40.86";
+    o.transactions.payments[0].status = "refunded";
+    o.transactions.payments[0].status_detail = "refunded";
+    const r = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1,
+    });
+    assertEquals(r.status, 200);
+    assertEquals(registro.chamadasRpc, []);
+    assertEquals((await r.json()).ignorado, "valor divergente");
+  });
+}
+
 Deno.test("REV2 webhook: aguardando 3DS com total financiado não envia push nem reserva aviso", async () => {
   ambienteDoWebhook();
   const registro = { chamadasRpc: [], chamadasAviso: [] };
