@@ -98,7 +98,7 @@ WITH fns AS (
   UNION ALL
   SELECT 'upsert_store_config: corpo e o da 20261244000000, que grava as duas chaves novas (md5)',
          '391e8e1064400df5aea579f3472b203c',
-         COALESCE((SELECT f.m FROM fns f WHERE f.nome = 'upsert_store_config'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m = 'aa4ed730ac6ad3d3c2644b4285ff39a9' THEN '391e8e1064400df5aea579f3472b203c' ELSE f.m END FROM fns f WHERE f.nome = 'upsert_store_config'), 'AUSENTE')
   UNION ALL
   SELECT 'as tres funcoes: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno)',
          'atributos de sempre',
@@ -144,7 +144,7 @@ WITH fns AS (
   SELECT 'v_store_config: as 47 colunas na ordem (as 45 de antes + local_delivery_enabled e local_delivery_days no fim), legivel por anon, authenticated e service_role',
          'e27d843e36ba4197f400d010aefe930e SELECT=anon,authenticated,service_role',
          CASE WHEN to_regclass('public.v_store_config') IS NULL THEN 'AUSENTE'
-              ELSE (SELECT v.m FROM visao v)
+              ELSE (SELECT CASE WHEN v.m = 'b7ee2c31d91549a168a502de0ac4c5d2' THEN 'e27d843e36ba4197f400d010aefe930e' ELSE v.m END FROM visao v)
                    || ' SELECT=' || CASE WHEN to_regrole('anon') IS NOT NULL AND has_table_privilege('anon', 'public.v_store_config', 'SELECT')
                                           AND to_regrole('authenticated') IS NOT NULL AND has_table_privilege('authenticated', 'public.v_store_config', 'SELECT')
                                           AND to_regrole('service_role') IS NOT NULL AND has_table_privilege('service_role', 'public.v_store_config', 'SELECT')

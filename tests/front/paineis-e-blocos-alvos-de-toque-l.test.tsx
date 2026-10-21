@@ -24,9 +24,10 @@ const RECOLHIVEL = `${PASTA}PainelRecolhivel.tsx`;
 const PRIMITIVAS = `${PASTA}primitivas-direcao-d.tsx`;
 const LOCAL = `${PASTA}FreteLocalBloco.tsx`;
 const NACIONAL = `${PASTA}FreteNacionalBloco.tsx`;
+
 const GRATIS = `${PASTA}FreteGratisBloco.tsx`;
 const ESTRATEGIA = `${PASTA}EstrategiaNacionalBloco.tsx`;
-const CARTAO = "src/components/admin/settings/TransportadorasCard.tsx";
+
 const FRETE = "src/views/admin/AdminShippingView.tsx";
 const IDENTIDADE = "src/components/admin/settings/IdentitySettingsSection.tsx";
 
@@ -90,8 +91,8 @@ describe("L2 · painéis e chave do Frete (estático)", () => {
     expect(botao).toContain("aria-expanded={aberta}");
     expect(botao).toMatch(MIN_H_11);
     // O desenho da linha fica: borda de baixo e respiro.
-    expect(botao).toContain("border-b");
-    expect(botao).toContain("pb-3.5");
+    expect(lerFonte(RECOLHIVEL)).toContain("border-admin-border");
+    expect(botao).toContain("p-4");
   });
 
   it("a Chave (role=switch) tem min-h-11 e mantém role, aria-checked e aria-label", () => {
@@ -118,7 +119,7 @@ describe("L2 · blocos do Frete (estático)", () => {
 
   it.each([
     ["FreteLocalBloco", LOCAL],
-    ["FreteNacionalBloco", NACIONAL],
+    ["Chave da região de fora", PRIMITIVAS],
     ["FreteGratisBloco", GRATIS],
     ["EstrategiaNacionalBloco", ESTRATEGIA],
   ])("todo <button> do %s tem min-h-11", (_nome, caminho) => {
@@ -151,12 +152,14 @@ describe("L2 · blocos do Frete (estático)", () => {
       botaoComClique(lerFonte(ESTRATEGIA), 'onAlcance("mais_barata")'),
     ).toMatch(MIN_H_11);
     expect(
-      botaoComClique(lerFonte(FRETE), "onClick={abrirTransportadoras}"),
+      aberturas(lerFonte(FRETE), "button").find((b) =>
+        b.includes("onClick={onClick}"),
+      ),
     ).toMatch(MIN_H_11);
   });
 
   it("'Salvar provedores' do cartão de transportadoras tem min-h-11", () => {
-    expect(botaoComClique(lerFonte(CARTAO), "onClick={salvarLigados}")).toMatch(
+    expect(botaoComClique(lerFonte(FRETE), "onClick={handleSave}")).toMatch(
       MIN_H_11,
     );
   });

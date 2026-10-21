@@ -201,6 +201,7 @@ describe("FreeShippingBlock — o rótulo de cidade lê o config, ou some", () =
     // aviso-de-regiao-olha-a-cobertura.test.tsx.
     mockConfig = {
       freeShippingMin: 50,
+      freeShippingCardStyle: "completo",
       storeCity: "Uberlândia",
       storeState: "MG",
       shippingCoverage: "local",

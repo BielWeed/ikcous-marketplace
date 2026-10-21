@@ -173,75 +173,62 @@ describe("AdminShippingView — a faixa distingue local de nacional, e o botão 
     });
   }
 
-  const textoDaFaixa = () =>
-    hospedeiro.querySelector('[aria-label="Como a entrega funciona hoje"]')
-      ?.textContent ?? "";
-
-  it("a faixa continua com 3 colunas (nenhuma 4ª coluna nasceu)", async () => {
+  const previa = () =>
+    hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')!;
+  const resumoGratis = () =>
+    hospedeiro.querySelector("#painel-frete-gratis > button")!;
+  it("a antiga faixa foi substituída por uma prévia de preço por modalidade", async () => {
     await abrirTela();
-    const faixa = hospedeiro.querySelector(
-      '[aria-label="Como a entrega funciona hoje"]',
-    );
-    // As 3 colunas são os filhos diretos do grid — o rótulo de cada uma
-    // aparece em uppercase (classe `uppercase`) uma vez por coluna.
-    const rotulos = [...(faixa?.querySelectorAll(".uppercase") ?? [])];
-    expect(rotulos).toHaveLength(3);
+    expect(
+      hospedeiro.querySelector('[aria-label="Como a entrega funciona hoje"]'),
+    ).toBeNull();
+    expect(previa().textContent).toContain("Entrega na sua região");
+    expect(previa().textContent).toContain("Fora da sua região");
+    expect(previa().querySelectorAll("[aria-pressed]")).toHaveLength(3);
   });
-
-  it("a coluna que era 'Frete grátis' agora se identifica como LOCAL", async () => {
+  it("as duas regras se identificam pela região, sem uma sobrescrever a outra", async () => {
     await abrirTela();
-    expect(textoDaFaixa()).toMatch(/frete gr[áa]tis local/i);
-  });
-
-  it("REVISÃO (correção 4): o detalhe da coluna local nomeia cidade/retirada — nunca 'entrega' sem dizer onde", async () => {
-    await abrirTela();
-    expect(textoDaFaixa()).toMatch(
-      /n[ãa]o paga entrega na cidade nem retirada/i,
+    expect(resumoGratis().textContent).toContain("Na região:");
+    expect(resumoGratis().textContent).toContain("Fora:");
+    expect(hospedeiro.querySelector('[role="tablist"]')?.textContent).toBe(
+      "Na sua regiãoFora da região",
     );
   });
-
-  it("a coluna 'Fora da cidade' mostra o resumo curto da estratégia NACIONAL salva", async () => {
+  it("o detalhe local nomeia entrega e retirada sem prometer grátis na transportadora", async () => {
     await abrirTela();
-    expect(textoDaFaixa()).toContain(
+    expect(
+      hospedeiro.querySelector("#bloco-frete-local-estrategias")?.textContent,
+    ).toContain("Vale para a sua entrega e para a retirada na loja.");
+  });
+  it("o resumo da regra de fora preserva o mínimo e o alcance nacionais salvos", async () => {
+    await abrirTela();
+    expect(resumoGratis().textContent).toContain(
       "grátis acima de R$ 199 · todas as opções",
     );
   });
-
-  it("estratégia nacional 'desligado': a coluna 'Fora da cidade' não perde o texto de conexão (nada de resumo vazio poluindo)", async () => {
+  it("sem regra nacional o cliente continua vendo o preço cotado na hora", async () => {
     estadoDaLoja.atual = {
       ...estadoDaLoja.atual,
       nationalShippingStrategy: "desligado",
       nationalShippingMin: 0,
     };
     await abrirTela();
-    expect(textoDaFaixa()).toMatch(/cota[çc][ãa]o real na hora/i);
-    expect(textoDaFaixa()).not.toContain("desligado ·");
+    expect(previa().textContent).toContain("preço da transportadora");
+    expect(previa().textContent).toContain("Na hora");
   });
-
-  // T4-UNIFICAÇÃO (23/09/2026): o botão deixou de NAVEGAR para uma tela
-  // própria — a estratégia nacional agora mora no MESMO painel "Fora da
-  // cidade". Clicar garante o painel aberto (`aria-expanded="true"`) em
-  // vez de chamar `onNavigate`.
-  it("o botão 'Estratégias do frete nacional' abre o painel 'Fora da cidade' (não navega mais)", async () => {
+  it("a regra nacional abre na aba de fora de Frete grátis sem navegar para outra tela", async () => {
     await abrirTela();
-    const botaoPainel = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      /^fora da cidade/i.test(b.textContent?.trim() || ""),
-    ) as HTMLButtonElement;
-    expect(botaoPainel).toBeDefined();
-    expect(botaoPainel.getAttribute("aria-expanded")).toBe("false");
-
-    const botaoEstrategias = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => /estrat[ée]gias do frete nacional/i.test(b.textContent || ""),
-    ) as HTMLButtonElement;
-    expect(botaoEstrategias).toBeDefined();
-    await act(async () => {
-      botaoEstrategias.click();
-    });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    expect(onNavigate).not.toHaveBeenCalledWith("admin-shipping-national");
-    expect(botaoPainel.getAttribute("aria-expanded")).toBe("true");
+    const b = resumoGratis() as HTMLButtonElement;
+    await act(async () => b.click());
+    const aba = hospedeiro.querySelector<HTMLButtonElement>(
+      "#aba-gratis-nacional",
+    )!;
+    await act(async () => aba.click());
+    expect(b.getAttribute("aria-expanded")).toBe("true");
+    expect(aba.getAttribute("aria-selected")).toBe("true");
+    expect(
+      hospedeiro.querySelector("#gratis-nacional")?.hasAttribute("hidden"),
+    ).toBe(false);
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 });

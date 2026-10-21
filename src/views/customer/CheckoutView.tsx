@@ -78,6 +78,7 @@ import {
   retiradaLivreParaQualquerCep,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   formasDePagamentoParaTotalZero,
@@ -133,6 +134,7 @@ import {
   Clock,
   CreditCard,
   FileText,
+  Info,
   Loader2,
   Lock,
   MapPin,
@@ -3362,13 +3364,6 @@ export function CheckoutViewDaConta({
   // pagamento (a decisão do total zero precisa deles, e os efeitos rodam antes
   // do retorno antecipado de `authLoading`).
 
-  // ECONOMIA total exibida na barra de baixo (pedido do Gabriel,
-  // 12/09/2026): cupom + o que o frete grátis deixou de cobrar. NÃO muda o
-  // Total — a economia do frete já está embutida nele (frete grátis já
-  // entra como 0 em `shipping`/`total`); somar aqui de novo dobraria o
-  // desconto. Isto é só o NÚMERO da pílula.
-  const economiaTotal = discount + economiaDoFrete;
-
   const isValid = form.formState.isValid;
 
   // REGRA DO CONVIDADO (decisão do Gabriel, 30/08/2026 — laudo caça-bugs
@@ -4487,7 +4482,7 @@ export function CheckoutViewDaConta({
     retomarPedidoId
   ) {
     return (
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Retomar o pagamento do pedido
         </h1>
@@ -4543,7 +4538,7 @@ export function CheckoutViewDaConta({
 
   if (retomadaSemPagamentoPendente) {
     return (
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Este pedido não está aguardando pagamento
         </h1>
@@ -4564,7 +4559,7 @@ export function CheckoutViewDaConta({
 
   if (retomadaEscolhendoForma) {
     return (
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Como você quer pagar este pedido?
         </h1>
@@ -4694,7 +4689,7 @@ export function CheckoutViewDaConta({
       // Mesma coluna do formulário (`mx-auto max-w-md`): sem ela, o cliente
       // saía de uma tela de 448px de largura e caía numa que esticava o texto
       // "Seu pedido está reservado…" de ponta a ponta em tela larga.
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Finalize o pagamento
         </h1>
@@ -4704,11 +4699,20 @@ export function CheckoutViewDaConta({
             {formatCurrency(arredondarParaCentavos(valorDoPedido))}
           </p>
         )}
-        <p className="text-xs text-zinc-500">
-          {metodoDoPedido === "cartao"
-            ? "Reservamos seus itens enquanto o pagamento é concluído. Se o banco não confirmar a tempo, o pedido é cancelado e os itens voltam para a loja."
-            : "Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os itens voltam para o estoque e o pedido é cancelado."}
-        </p>
+        {metodoDoPedido === "cartao" ? (
+          <p className="flex items-start gap-2 rounded-xl border border-blue-200 px-3 py-2 text-xs leading-snug text-zinc-600">
+            <Info
+              aria-hidden="true"
+              className="size-4 shrink-0 text-blue-600"
+            />
+            <span>Reservamos seus itens enquanto você paga.</span>
+          </p>
+        ) : (
+          <p className="text-xs text-zinc-500">
+            Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
+            itens voltam para o estoque e o pedido é cancelado.
+          </p>
+        )}
         {erroPagamento?.cartaoEmAnalise ? (
           // B3 da revisão de risco pré-publicação (26/09/2026, reforçado na
           // rodada 2): NUNCA "Cancelar pedido" nem "Pagar com PIX" aqui — o
@@ -6334,54 +6338,7 @@ export function CheckoutViewDaConta({
         )}
       </div>
 
-      {/* Spacer to prevent overlap by the sticky footer and bottom nav.
-          REMEDIDO em 02/09/2026, depois do redesenho da barra (mesmo método
-          do navegador de 17/08/2026: fim do último card menos `top` da barra
-          fixa, no scroll máximo — nunca somar número por adivinhação).
-          Medição REAL desta vez: Chrome via puppeteer, viewport 375×667,
-          dev server local, carrinho injetado no localStorage.
-
-          O que mudou na barra: a coluna do total tinha 4 linhas e, com
-          cupom, o selo "(-R$ X OFF)" quebrava para uma 5ª (~87px sem cupom,
-          ~100px com). Agora são 3 linhas com o selo INLINE truncado — a
-          barra tem altura fixa de 73px (24px de padding + 48px do botão
-          "Finalizar Pedido" + 1px de borda; medido com e sem itens: igual,
-          a coluna nova mede 45,5px e a linha "itens · entrega" fica em UMA
-          linha truncada de 12,5px). O maior consumidor de altura da barra
-          passou a ser o aviso de frete: 1–2 linhas (33px medido em 2 linhas
-          no ambiente de medida) → barra 112px no pior caso medido.
-
-          Mobile (375px), medido no scroll máximo: com espaçador de 168px o
-          GAP foi +31,5px no caso comum (barra 73px) e −7,5px no pior caso
-          (aviso de frete em 2 linhas, barra 112px). Necessário = 168 + 7,5
-          ≈ 175,5px → 196px adotado (fecha o pior caso e mantém ~20px de
-          folga; o buraco no caso comum, ~123px, é da mesma ordem do valor
-          antigo, que com barra mínima de 87px sobrava ~113px).
-
-          Desktop (1280px): mesma barra de 3 linhas cai de ~92px para 73px;
-          necessário antigo era 215,9px → 215,9 − 19 ≈ 197 → 200px mantidos.
-
-          Se a barra crescer de novo (nova linha, mais um selo, aviso novo),
-          remedir do mesmo jeito antes de só somar um número por adivinhação.
-
-          14/10/2026: a barra ganhou a frase "Ao finalizar você concorda com os
-          Termos de uso e a Política de Privacidade" (`FraseDeAceite`): 6px de
-          margem + 1ª linha de 11px (~15px) + 2ª linha só com os dois links, cuja
-          caixa tem 44px de verdade (alvo de toque sem invadir o botão
-          Finalizar) = ~65px. Reserva somada por CONTA, não por medida no
-          navegador: 196→264px no celular, 200→268px no computador. Falta
-          REMEDIR no aparelho (fim do último card menos o `top` da barra, no
-          scroll máximo) — se sobrar folga grande, aperte. */}
-      <div
-        className="hidden md:block"
-        style={{ height: "268px" }}
-        aria-hidden="true"
-      />
-      <div
-        className="block md:hidden"
-        style={{ height: "calc(264px + var(--safe-area-bottom, 0px))" }}
-        aria-hidden="true"
-      />
+      {/* A reserva inferior vem de pb-customer-summary e da barra medida. */}
 
       {/* Order Summary - Fixed Bottom Bar (+ painel do resumo, ancorado
           LOGO ABAIXO DA BARRA SUPERIOR — D1 refinado, 12/09/2026) */}
@@ -6630,7 +6587,10 @@ export function CheckoutViewDaConta({
                 // meio). A classe foi removida de `src/index.css` junto com este
                 // uso, para ninguém reabrir a fresta escolhendo o nome que soa
                 // mais seguro.
-                <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
+                <div
+                  ref={medirRodapeCliente}
+                  className="bottom-docked-navigation fixed inset-x-0 z-[110] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2"
+                >
                   {/* O PAINEL DE RESUMO SAIU DAQUI (D1 refinado, 12/09/2026):
                       ele subia ACIMA desta barra; agora mora num container
                       próprio, ancorado logo abaixo da barra SUPERIOR (ver o
@@ -6646,60 +6606,64 @@ export function CheckoutViewDaConta({
                   >
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
-                    <div className="mx-auto flex max-w-md items-center justify-between gap-2">
-                      {/* Pedido do Gabriel (12/09/2026, D1 refinado): a
-                          barra de baixo perde "1x maleta..." e "Inclui R$ X
-                          de entrega" (foram para o painel/gatilho de cima) e
-                          fica só com SUBTOTAL (produtos) e TOTAL (produtos +
-                          frete − desconto), claros e sem disputar espaço com
-                          o botão. Não é mais um botão — o "ver mais" que
-                          abria o resumo agora mora no gatilho do topo
-                          (`GatilhoDoResumoDoPedido`, portado para o Header). */}
-                      <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                          <span>Subtotal</span>
-                          <span>
-                            R$ {subtotal.toFixed(2).replace(".", ",")}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 text-sm font-black text-zinc-900">
-                          {/* AJUSTE da re-revisão (Opus, medido a 320/360/375px
-                              com o CSS real): quem cede espaço é a PALAVRA
-                              "Total" (`min-w-0 truncate`), nunca um número.
-                              Truncar a pílula mostrava dinheiro pela metade
-                              ("-R$ 12,…") a 320px mesmo com valores comuns;
-                              a pílula e o valor do total ficam inteiros
-                              (`shrink-0 whitespace-nowrap`). A 375px nada
-                              muda: "Total" aparece inteiro. */}
-                          <span className="flex min-w-0 items-center gap-1">
-                            <span className="min-w-0 truncate whitespace-nowrap">
-                              Total
+                    <div className="mx-auto flex max-w-md flex-col gap-3">
+                      <div
+                        role="group"
+                        aria-label="Valores do pedido"
+                        className="checkout-values"
+                      >
+                        <div>
+                          <div>
+                            <span>Subtotal</span>
+                            <span>
+                              R$ {subtotal.toFixed(2).replace(".", ",")}
                             </span>
-                            {/* Pedido do Gabriel (12/09/2026): pílula
-                                compacta com a ECONOMIA (cupom + o que o
-                                frete grátis deixou de cobrar) — nunca a
-                                porcentagem nem o código do cupom, só o
-                                valor. Some quando não há economia nenhuma;
-                                não altera `totalExibido` (o desconto já
-                                está embutido nele). */}
-                            {economiaTotal > 0 && (
+                          </div>
+                          <div>
+                            <span>Entrega</span>
+                            <span>
+                              {semFreteSelecionado ? (
+                                "a calcular"
+                              ) : (
+                                <>
+                                  {economiaDoFrete > 0 && (
+                                    <>
+                                      <span className="sr-only">de </span>
+                                      <span className="mr-1 text-zinc-500 line-through">
+                                        R${" "}
+                                        {(shipping + economiaDoFrete)
+                                          .toFixed(2)
+                                          .replace(".", ",")}
+                                      </span>
+                                      <span className="sr-only">por </span>
+                                    </>
+                                  )}
+                                  {shipping > 0
+                                    ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                                    : "Grátis"}
+                                </>
+                              )}
+                            </span>
+                          </div>
+                          {discount > 0 && (
+                            <div>
+                              <span>Desconto</span>
                               <span
-                                className="shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
-                                aria-label={`Desconto de R$ ${economiaTotal.toFixed(2).replace(".", ",")}`}
+                                className="text-emerald-700"
+                                aria-label={`Desconto de R$ ${discount.toFixed(2).replace(".", ",")}`}
                               >
-                                -R$ {economiaTotal.toFixed(2).replace(".", ",")}
+                                -R$ {discount.toFixed(2).replace(".", ",")}
                               </span>
-                            )}
-                          </span>
-                          <span className="shrink-0 whitespace-nowrap">
-                            {/* Achado 1 do bloqueante (12/09/2026): mesmo
-                                valor do painel (`totalExibido`) — sem
-                                cotação válida a barra de baixo não pode
-                                fechar um total que ainda vai mudar. */}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p>Total</p>
+                          <p>
                             {totalExibido === null
                               ? "a calcular"
                               : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
-                          </span>
+                          </p>
                         </div>
                       </div>
 
@@ -6722,28 +6686,14 @@ export function CheckoutViewDaConta({
                           });
                         }}
                         disabled={botaoFinalizarDesabilitado}
-                        // Texto visível compacto ("Finalizar", não "Finalizar
-                        // Pedido") pedido pelo Gabriel (12/09/2026) — o nome
-                        // completo ocupava espaço demais ao lado do bloco de
-                        // totais. `aria-label` mantém o nome completo para
-                        // quem usa leitor de tela; o `sr-only` " Pedido"
-                        // completa o `textContent` do botão (compatível com
-                        // toda suíte que já procurava "Finalizar Pedido" por
-                        // texto) sem ocupar um pixel a mais na tela.
                         aria-label="Finalizar pedido"
-                        className={cn(
-                          "h-12 px-3 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-1.5 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                          botaoFinalizarDesabilitado
-                            ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                            : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-black/10",
-                        )}
+                        className="checkout-finalizar w-full"
                       >
                         {isSubmitting ? (
                           <div className="size-4 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
                         ) : (
                           <>
-                            <span>Finalizar</span>
-                            <span className="sr-only"> Pedido</span>
+                            <span>Finalizar Pedido</span>
                             <ArrowLeft className="size-4 rotate-180" />
                           </>
                         )}
@@ -6757,7 +6707,8 @@ export function CheckoutViewDaConta({
                         como estavam (sair daqui apagaria o formulário). */}
                     <FraseDeAceite
                       acao="finalizar"
-                      className="mx-auto mt-1.5 max-w-md text-center"
+                      emLinha
+                      className="mx-auto mt-2 max-w-md pb-1 text-center"
                     />
                     {!semFreteSelecionado &&
                       !isOffline &&

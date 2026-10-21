@@ -136,6 +136,18 @@ afterEach(() => {
 });
 
 describe("Cor do app — tela com editor real e fotografia completa", () => {
+  it("reserva no fim da tela o espaço da navegação inferior do painel", async () => {
+    await render();
+    const tela = host.firstElementChild!;
+    // jsdom não mede a rolagem: verifica o uso da reserva compartilhada,
+    // que inclui a barra, a área segura e a folga acima da navegação.
+    expect(tela.classList.contains("pb-admin")).toBe(true);
+    expect(tela.classList.contains("pb-8")).toBe(false);
+    expect(tela.contains(host.querySelector("#app-color-preview-title"))).toBe(
+      true,
+    );
+  });
+
   it("lê a cor salva; explica os usos e não muda a cor global na prévia", async () => {
     document.documentElement.style.setProperty("--primary", "valor-anterior");
     await render();
@@ -153,6 +165,68 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
     );
     expect(h.save).not.toHaveBeenCalled();
     expect(h.dirty).toHaveBeenLastCalledWith(true);
+  });
+
+  it("mostra três usos em linhas sem simular a barra do celular", async () => {
+    await render();
+    const preview = host.querySelector(
+      '[aria-labelledby="app-color-preview-title"]',
+    )!;
+    expect(preview.textContent).not.toContain("9:41");
+    expect(preview.textContent).not.toContain("Barra do celular");
+    expect(preview.textContent).not.toContain("▰");
+    const rows = preview.querySelectorAll("[data-previa-uso]");
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain("Finalizar compra");
+    expect(rows[0].textContent).toContain("Botões");
+    expect(rows[0].textContent).toContain("Texto branco · fácil de ler");
+    expect(rows[1].textContent).toContain("Ícone e tela de abertura");
+    expect(rows[1].textContent).toContain("Loja Teste");
+    expect(rows[2].textContent).toContain("Barra de cima do celular");
+    expect(rows[2].textContent).toContain("Só muda quando o app atualizar.");
+    await type("#FACC15");
+    expect(rows[0].textContent).toContain("Texto escuro · fácil de ler");
+    await type("#8B5CF6");
+    expect(rows[0].textContent).toContain("Texto escuro · difícil de ler");
+    expect(h.save).not.toHaveBeenCalled();
+  });
+
+  it("mantém contorno nas três amostras sem mudar o preenchimento da marca", async () => {
+    await render();
+    const rows = host.querySelectorAll("[data-previa-uso]");
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      const amostra = row.firstElementChild as HTMLElement;
+      expect(amostra.classList.contains("border")).toBe(true);
+      expect(amostra.classList.contains("border-admin-border-strong")).toBe(
+        true,
+      );
+      expect(amostra.style.backgroundColor).toBe("rgb(35, 69, 103)");
+    }
+    await type("#18181B");
+    for (const row of rows) {
+      expect((row.firstElementChild as HTMLElement).style.backgroundColor).toBe(
+        "rgb(24, 24, 27)",
+      );
+    }
+  });
+
+  it("separa o aviso do Android e não repete a atualização na prévia", async () => {
+    await render();
+    const preview = host.querySelector(
+      '[aria-labelledby="app-color-preview-title"]',
+    )!;
+    expect(preview.lastElementChild?.textContent).toBe(
+      "O ícone do Android só muda quando você envia o ícone de novo, em Minha loja.",
+    );
+    expect(
+      preview.textContent?.match(/Só muda quando o app atualizar/g),
+    ).toHaveLength(1);
+    expect(
+      preview.querySelector(
+        "[data-previa-uso] p.text-emerald-300 [aria-hidden]",
+      ),
+    ).toBeNull();
   });
 
   it("salvar muda SOMENTE primary_color: compara as oito chaves e os assets completos", async () => {
@@ -219,7 +293,7 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
     await render();
     await type("#FACC15");
     expect(host.textContent).toContain("Texto escuro");
-    expect(host.textContent).toContain("Fácil de ler");
+    expect(host.textContent).toContain("fácil de ler");
     await type("#8B5CF6");
     expect(host.textContent).toContain("O texto pode ficar difícil de ler");
     expect(host.textContent).toContain("4,2 para 1");

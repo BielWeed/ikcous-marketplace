@@ -425,7 +425,7 @@ export function VerificacaoDoPagamento({
         : null;
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+    <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
       <h1 className="text-lg font-bold text-zinc-900">Situação do pagamento</h1>
 
       {/* Região viva sempre montada: o leitor de tela só anuncia mudança em

@@ -142,7 +142,9 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
   }
 
   const botaoSalvar = () =>
-    hospedeiro.querySelector("button.bg-admin-gold") as HTMLButtonElement;
+    hospedeiro.querySelector(
+      '[aria-label="Ações de Minha loja"] button',
+    ) as HTMLButtonElement;
 
   async function digitarNaDescricao(descricao: string) {
     const descricaoInput = hospedeiro.querySelector(
@@ -190,13 +192,13 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     });
   }
 
-  it("na montagem limpa o botão Salvar nasce desabilitado — ele é SÓ do form (pendência de identidade/horário não o habilita)", async () => {
+  it("na montagem limpa o botão único nasce desabilitado", async () => {
     await renderizarTela();
     const botao = hospedeiro.querySelector(
-      "button.bg-admin-gold",
+      '[aria-label="Ações de Minha loja"] button',
     ) as HTMLButtonElement | null;
     expect(botao).not.toBeNull();
-    expect(botao?.disabled).toBe(true);
+    expect(botao?.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("o título da tela é 'Minha loja'", async () => {
@@ -250,13 +252,13 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     expect(toast.success).toHaveBeenCalled();
   });
 
-  it("CEP digitado sem número: o Salvar espera, com o motivo à vista; nada é gravado", async () => {
+  it("CEP digitado sem número: o Salvar recusa o bloco, com o motivo à vista; nada é gravado", async () => {
     instalarCepDeSaoPaulo();
     await renderizarTela();
     await digitarNoEndereco("endereco-cep", "01310100");
     await digitarNaDescricao("Nossa história");
 
-    expect(botaoSalvar().disabled).toBe(true);
+    expect(botaoSalvar().disabled).toBe(false);
     expect(hospedeiro.textContent).toContain("Falta o número do endereço");
     // dirty de verdade: sair da tela agora perderia o que ela digitou
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
@@ -401,9 +403,9 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
     // sem edição nenhuma do lojista, nada está pendente
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
     const botao = hospedeiro.querySelector(
-      "button.bg-admin-gold",
+      '[aria-label="Ações de Minha loja"] button',
     ) as HTMLButtonElement;
-    expect(botao.disabled).toBe(true);
+    expect(botao.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("a atualização do config NÃO apaga edição real em andamento do lojista", async () => {

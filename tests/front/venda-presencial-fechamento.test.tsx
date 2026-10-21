@@ -729,16 +729,10 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
   });
 
   it("caso 7 — o recibo mostra os itens que a RPC gravou (`data.items`), não os da TELA no momento do clique", async () => {
-    // Reprodução do achado BLOQUEIA da revisão: o balconista bipa 1x, mas
-    // ANTES de clicar em "Registrar venda" (ou entre uma tentativa que já
-    // commitou no servidor e uma retentativa) mexe na quantidade pelo `+`
-    // do cupom — que continua clicável sob a folha de fechamento, porque
-    // `CupomDaVenda` renderiza sempre que `etapa !== "recibo"`. A RPC devolve
-    // `ja_existia: true` com o pedido de 1 unidade que REALMENTE foi
-    // gravado. O recibo tem de mostrar 1x, não 2x: os itens vêm de
-    // `resposta.items` (o que o BANCO gravou), e `estado.itens` só serve
-    // para achar a imagem/variação por `product_id`+`variant_id` — nunca
-    // para quantidade ou preço.
+    // A tela tem 2 unidades ANTES do fechamento. Na retentativa, a RPC
+    // devolve `ja_existia: true` com a única unidade que gravou de verdade.
+    // O recibo vem de `resposta.items`; `estado.itens` só fornece imagem e
+    // variação por product_id+variant_id, nunca quantidade ou preço.
     registrarImplRef.atual = async () => ({
       data: {
         ja_existia: true,
@@ -757,11 +751,17 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
       error: null,
     });
 
-    await montarAtePagamentoEscolhido();
+    codigoBipadoRef.atual = PRODUTO_SIMPLES.codigo;
+    await act(async () => {
+      raiz.render(<AdminPdvView onNavigate={vi.fn()} />);
+    });
+    await avancar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "bipar")!.click();
+    });
+    await avancar();
 
-    // O `+` do item, ainda visível e clicável por baixo do fechamento —
-    // sobe a quantidade da TELA para 2 sem que nenhuma venda nova tenha
-    // sido registrada.
+    // A quantidade só pode ser alterada enquanto o cupom está aberto.
     await act(async () => {
       (
         hospedeiro.querySelector(
@@ -771,6 +771,14 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     });
     await avancar();
     expect(hospedeiro.textContent).toContain("2");
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Fechar venda")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Dinheiro")!.click();
+    });
+    await avancar();
 
     await act(async () => {
       localizarBotaoPorTexto(hospedeiro, "Registrar venda")!.click();

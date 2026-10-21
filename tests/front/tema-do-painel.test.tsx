@@ -229,7 +229,9 @@ describe("tema do painel — a vitrine não recebe nem sofre o tema", () => {
       .filter(Boolean);
     expect(seletores.length).toBeGreaterThan(4);
     for (const s of seletores) {
-      expect(s, s).toMatch(/^html\.admin-mode\[data-admin-tema/);
+      expect(s, s).toMatch(
+        /^(?:html\.admin-mode\[data-admin-tema|:where\(html\.admin-mode\[data-admin-tema(?:="(?:claro|confortavel|escuro)")?\]\))/,
+      );
     }
   });
 
@@ -434,7 +436,9 @@ describe("tema do painel — cores soltas dos CSS do painel", () => {
   );
 
   it("o Escuro não muda: a reserva de cada var é EXATAMENTE o hex que estava escrito", () => {
-    expect(usos.length).toBeGreaterThan(100);
+    // O PDV migrou superfícies e texto para --admin-*. Restam 76 usos
+    // legados nos cinco CSS; a guarda de reserva e o contraste não mudam.
+    expect(usos.length).toBeGreaterThanOrEqual(76);
     for (const u of usos) {
       expect(u.reserva.toLowerCase(), `${u.arquivo} ${u.chave}`).toBe(u.chave);
     }

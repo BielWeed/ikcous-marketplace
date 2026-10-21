@@ -5,6 +5,7 @@ import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import type { Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AnimatePresence, motion, usePresence } from "framer-motion";
@@ -362,7 +363,10 @@ export const FavoritesView = React.memo(function FavoritesView({
         createPortal(
           <AnimatePresence>
             {isActive && isPresent && isReady && (
-              <div className="bottom-docked-navigation pointer-events-none fixed inset-x-0 z-[90] px-6 md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
+              <div
+                ref={medirRodapeCliente}
+                className="bottom-docked-navigation pointer-events-none fixed inset-x-0 z-[90] px-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2"
+              >
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}

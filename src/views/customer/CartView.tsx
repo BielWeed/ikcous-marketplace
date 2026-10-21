@@ -1328,14 +1328,6 @@ export function CartView({
                   </motion.div>
                 </AnimatePresence>
               </div>
-
-              {/* Spacer to prevent overlap by the sticky bottom actions */}
-              <div
-                style={{
-                  height: "calc(80px + var(--safe-area-bottom, 0px))",
-                }}
-                aria-hidden="true"
-              />
             </motion.div>
           )}
         </AnimatePresence>

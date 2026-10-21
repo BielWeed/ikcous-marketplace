@@ -121,8 +121,9 @@ describe("Início liga o carregamento do painel ao card de estoque", () => {
   }
 
   function botaoSincronizar() {
+    // Botão redondo só com ícone (redesenho do Início, 21/10): o nome é o aria-label.
     return Array.from(hospedeiro.querySelectorAll("button")).find((botao) =>
-      botao.textContent?.includes("Sincronizar"),
+      botao.getAttribute("aria-label")?.includes("Sincronizar"),
     );
   }
 

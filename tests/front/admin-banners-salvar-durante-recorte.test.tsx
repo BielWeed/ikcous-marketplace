@@ -3,6 +3,7 @@ import type { Banner } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { abrirMaisOpcoes, configurarTextos } from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn<(file: File) => Promise<string>>();
 const deleteStorageFile = vi.fn<(url: string) => Promise<void>>();
@@ -170,7 +171,7 @@ describe("salvar banner e recortar não disputam a imagem publicada", () => {
     if (!editar) throw new Error("Botão Editar ausente");
     await act(async () => editar.click());
     await act(async () => esperar());
-    if (modo === "Completo") await clicar("Completo");
+    if (modo === "Completo") await configurarTextos(true);
     const input =
       hospedeiro.querySelector<HTMLInputElement>('input[type="file"]');
     if (!input) throw new Error("Upload ausente");
@@ -190,7 +191,7 @@ describe("salvar banner e recortar não disputam a imagem publicada", () => {
   }
 
   async function destino(modo: "Simples" | "Completo") {
-    if (modo === "Completo") await clicar("3Destino");
+    if (modo === "Completo") await abrirMaisOpcoes();
     const enviando = [...hospedeiro.querySelectorAll("button")].find(
       (el) => el.textContent?.trim() === "Enviando Imagem...",
     );
@@ -299,7 +300,7 @@ describe("salvar banner e recortar não disputam a imagem publicada", () => {
       expect(localStorage.getItem("admin_banner_form_draft:lojista-1")).toBe(
         rascunho,
       );
-      if (modo === "Completo") await clicar("✓Conteúdo");
+      if (modo === "Completo") await abrirMaisOpcoes();
       expect(imagem()).toBe(imagemNova);
       await clicar("Ajustar");
       uploadBannerImage.mockResolvedValueOnce(imagemAjustada);

@@ -127,7 +127,7 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
   });
 });
 
-describe("NumerosDoMes (Início) — resumo e contas usam a mesma superfície", () => {
+describe("NumerosDoMes e DinheiroNasContas (Início) — usam a mesma superfície", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -146,19 +146,34 @@ describe("NumerosDoMes (Início) — resumo e contas usam a mesma superfície", 
     const { NumerosDoMes } = await import(
       "@/components/admin/inicio/NumerosDoMes"
     );
+    const { DinheiroNasContas } = await import(
+      "@/components/admin/inicio/DinheiroNasContas"
+    );
 
     await act(async () => {
       raiz.render(
-        <NumerosDoMes painel={null} carregando={false} onNavigate={() => {}} />,
+        <>
+          <NumerosDoMes painel={null} carregando={false} />
+          <DinheiroNasContas
+            painel={null}
+            carregando={false}
+            onNavigate={() => {}}
+          />
+        </>,
       );
     });
 
-    const secao = hospedeiro.querySelector("section")!;
-    const tiles = Array.from(secao.children).filter((el) =>
-      el.classList.contains("rounded-[22px]"),
+    // Duas seções ("Este mês" e "Dinheiro nas contas"), um cartão cada, e as
+    // três contas são botões que levam ao Financeiro.
+    const secoes = Array.from(hospedeiro.querySelectorAll("section"));
+    expect(secoes).toHaveLength(2);
+    const tiles = secoes.flatMap((secao) =>
+      Array.from(secao.children).filter((el) =>
+        el.classList.contains("rounded-[22px]"),
+      ),
     );
     expect(tiles).toHaveLength(2);
-    expect(secao.querySelectorAll("button")).toHaveLength(3);
+    expect(secoes[1].querySelectorAll("button")).toHaveLength(3);
     for (const tile of tiles) {
       expect(tile.classList.contains("bg-admin-surface")).toBe(true);
       expect(tile.classList.contains("bg-zinc-900/60")).toBe(false);

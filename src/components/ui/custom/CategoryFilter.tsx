@@ -1,7 +1,7 @@
+import { IconeDaCategoria, iconeDaCategoria } from "@/lib/icones-de-categoria";
 import type { Category } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { motion } from "framer-motion";
-import { memo, useMemo } from "react";
+import { memo } from "react";
 
 interface CategoryFilterProps {
   categories: Category[];
@@ -10,52 +10,49 @@ interface CategoryFilterProps {
   isLoading?: boolean;
 }
 
+// Mesma altura nos estados vazio, carregando e pronto: o catálogo não salta.
+// A largura de 80px deixa o próximo bloco cortado no celular, indicando rolagem.
+const FAIXA =
+  "scrollbar-hide flex w-full min-w-0 gap-0 overflow-x-auto overscroll-x-contain px-1 py-1";
+
 export const CategoryFilter = memo(function CategoryFilter({
   categories,
   selectedCategory,
   onCategoryChange,
   isLoading,
 }: CategoryFilterProps) {
-  // "Todas" is a virtual category, so we handle it separately in the UI
-  const allCategories = useMemo(
-    () => [
-      { id: "all", name: "Todas" },
-      ...categories.filter((c) => c.isActive),
-    ],
-    [categories],
-  );
-
   if (isLoading) {
     return (
-      // Laudo de acessibilidade 03/09, achado 12: o skeleton era silêncio
-      // para leitor de tela — role="status" + sr-only anunciam "Carregando
-      // categorias" sem mudar o visual (sr-only não renderiza).
-      //
-      // CLS (frente cls-home-0409): os paddings/pills do esqueleto espelham
-      // a barra carregada (px-1 py-0.5 + botões py-2 text-[10px] ≈ 31px —
-      // pill h-8). Antes era px-4 py-3 + h-9: ~25px a mais, que deslocava a
-      // grade do catálogo quando as categorias chegavam.
       <div role="status" className="flex w-full items-center">
         <span className="sr-only">Carregando categorias</span>
-        <div className="scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5">
-          {[1, 2, 3, 4].map((i) => (
+        <div className={FAIXA} aria-hidden="true">
+          {[1, 2, 3, 4, 5].map((i) => (
             <div
               key={i}
-              className="h-8 w-24 flex-shrink-0 animate-pulse rounded-full bg-gray-100"
-            />
+              data-testid="categoria-skeleton"
+              className="flex h-[108px] w-20 shrink-0 flex-col items-center gap-2"
+            >
+              <div className="size-16 animate-pulse rounded-[20px] bg-muted" />
+              <div className="h-4 w-14 animate-pulse rounded bg-muted" />
+            </div>
           ))}
         </div>
       </div>
     );
   }
 
+  const allCategories = [
+    { id: "all", name: "Todas", icone: "todas" },
+    ...categories.filter((c) => c.isActive),
+  ];
   return (
     <div className="flex w-full items-center">
-      <div className="scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5">
+      <div className={FAIXA}>
         {allCategories.map((category) => {
           const isActive = selectedCategory === category.name;
           return (
             <button
+              type="button"
               key={category.id}
               onClick={() => {
                 haptic.light();
@@ -63,25 +60,29 @@ export const CategoryFilter = memo(function CategoryFilter({
               }}
               aria-label={`Selecionar categoria ${category.name}`}
               aria-pressed={isActive}
-              // Laudo 05/09, M3: `outline-none` apagava o anel de foco sem
-              // repor — anel visível só para quem navega por TECLADO, no
-              // padrão do BottomNav (onda 1 do laudo 03/09).
-              className="relative flex-shrink-0 rounded-full px-5 py-2 text-[10px] font-black uppercase tracking-widest outline-none transition-all duration-150 focus-visible:ring-2 focus-visible:ring-zinc-900/50 active:scale-95"
+              className="group flex h-[108px] w-20 shrink-0 flex-col items-center rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-white/70"
             >
-              {isActive && (
-                <motion.div
-                  layoutId="activeCategoryPill"
-                  className="absolute inset-0 z-0 rounded-full bg-zinc-900 shadow-lg shadow-zinc-300/40"
-                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                />
-              )}
               <span
-                className={`relative z-10 transition-colors duration-300 ${
-                  isActive ? "text-white" : "text-zinc-500 hover:text-zinc-900"
+                className={`flex size-16 shrink-0 items-center justify-center rounded-[20px] border transition-colors ${
+                  isActive
+                    ? "border-foreground bg-foreground text-card"
+                    : "border-border bg-card text-muted-foreground group-hover:border-muted-foreground"
                 }`}
+              >
+                <IconeDaCategoria
+                  icone={iconeDaCategoria(category)}
+                  className="size-9"
+                />
+              </span>
+              <span
+                className={`mt-2 line-clamp-1 w-full px-0.5 text-xs ${isActive ? "font-extrabold text-foreground" : "font-medium text-muted-foreground"}`}
               >
                 {category.name}
               </span>
+              <span
+                aria-hidden="true"
+                className={`mt-1 size-1 rounded-full ${isActive ? "bg-foreground" : "bg-transparent"}`}
+              />
             </button>
           );
         })}

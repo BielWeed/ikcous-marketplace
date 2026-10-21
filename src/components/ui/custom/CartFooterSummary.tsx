@@ -1,3 +1,4 @@
+import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { motion } from "framer-motion";
@@ -65,7 +66,10 @@ export function CartFooterSummary({
     return null;
 
   return createPortal(
-    <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 lg:hidden">
+    <div
+      ref={medirRodapeCliente}
+      className="bottom-docked-navigation fixed inset-x-0 z-[110] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 lg:hidden"
+    >
       <motion.div
         initial={{ y: "100%", opacity: 0.5 }}
         animate={{ y: 0, opacity: 1 }}

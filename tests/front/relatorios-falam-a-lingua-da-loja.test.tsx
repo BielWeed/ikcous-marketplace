@@ -231,17 +231,11 @@ describe("Relatórios — telas sem jargão", () => {
       mes: { receita: 1000, pedidos: 10, ticket_medio: 100 },
     });
     await act(async () => {
-      raiz.render(
-        <NumerosDoMes
-          painel={painel}
-          carregando={false}
-          onNavigate={vi.fn()}
-        />,
-      );
+      raiz.render(<NumerosDoMes painel={painel} carregando={false} />);
     });
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Valor médio por venda");
+    expect(texto).toContain("valor médio por venda");
     expect(texto).not.toMatch(/ticket/i);
   });
 });

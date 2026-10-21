@@ -7,6 +7,7 @@
 //       (`venc <= hoje + 7`), enquanto o Financeiro separa "Vencido" de "Próximos 7 dias";
 //   (c) o aviso de estoque dizia "1 unidade restantes".
 // Só o TEXTO muda: os valores mostrados continuam os que o banco manda.
+import { DinheiroNasContas } from "@/components/admin/inicio/DinheiroNasContas";
 import { NumerosDoMes } from "@/components/admin/inicio/NumerosDoMes";
 import { type EntradaDeAvisos, montarAvisos } from "@/utils/avisos-do-lojista";
 import { act } from "react";
@@ -60,11 +61,14 @@ describe("Início: os textos dizem a janela que o banco calcula", () => {
     raiz = createRoot(hospedeiro);
     await act(async () => {
       raiz.render(
-        <NumerosDoMes
-          painel={PAINEL}
-          carregando={false}
-          onNavigate={onNavigate}
-        />,
+        <>
+          <NumerosDoMes painel={PAINEL} carregando={false} />
+          <DinheiroNasContas
+            painel={PAINEL}
+            carregando={false}
+            onNavigate={onNavigate}
+          />
+        </>,
       );
     });
   });
@@ -76,8 +80,10 @@ describe("Início: os textos dizem a janela que o banco calcula", () => {
 
   it("(a) a variação do mês diz 'mesmos dias do mês anterior', não 'mês anterior'", () => {
     const pagina = texto(hospedeiro);
-    expect(pagina).toContain("vs. os mesmos dias do mês anterior");
+    // 4200 / 10000: queda de 58%, dita com a janela inteira.
+    expect(pagina).toContain("58% a menos que nos mesmos dias do mês anterior");
     expect(pagina).not.toContain("vs. mês anterior");
+    expect(pagina).not.toContain("que no mês anterior");
   });
 
   it("(b) 'A receber' e 'A pagar' dizem que incluem o que já venceu", () => {

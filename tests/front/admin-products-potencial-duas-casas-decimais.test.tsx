@@ -26,6 +26,7 @@ const onNavigate = vi.fn();
 const fetchExecutiveSummary = vi.fn();
 
 let produtosMock: any[] = [];
+let custoDoResumo = 500;
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
@@ -40,7 +41,16 @@ vi.mock("@/hooks/useProducts", () => ({
 
 vi.mock("@/hooks/useAnalytics", () => ({
   useAnalytics: () => ({
-    stats: { inventory: { totalCost: 500, totalValue: 900 } },
+    stats: {
+      inventory: {
+        totalCost: custoDoResumo,
+        totalValue: 900,
+        totalRevenue: 900,
+        revenueWithoutCost: 0,
+        productsWithoutCost: 0,
+        productsWithCost: 1,
+      },
+    },
     fetchExecutiveSummary,
   }),
 }));
@@ -178,6 +188,7 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
 
   beforeEach(() => {
     vi.clearAllMocks();
+    custoDoResumo = 500;
     loadProducts.mockResolvedValue({ products: produtosMock, total: 1 });
     fetchExecutiveSummary.mockResolvedValue(null);
     addProduct.mockResolvedValue(undefined);
@@ -256,6 +267,164 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
     const valor = elementoRotulo?.nextElementSibling;
     return valor?.textContent ?? null;
   }
+
+  it.each([
+    { price: 150, costPrice: 100, cor: "text-emerald-400" },
+    { price: 50, costPrice: 100, cor: "text-red-400" },
+    { price: 100, costPrice: 100, cor: "text-zinc-400" },
+  ])(
+    "margem, retorno e lucro seguem o sinal: $cor",
+    async ({ price, costPrice, cor }) => {
+      montarProduto({ price, costPrice, stock: 2 });
+      await montar();
+      for (const seletor of ["[data-margem]", "[data-lucro-sobre-custo]"]) {
+        expect(
+          cartaoDoProduto().querySelector(seletor)?.classList.contains(cor),
+        ).toBe(true);
+      }
+      const rotulo = [...cartaoDoProduto().querySelectorAll("p")].find(
+        (el) => el.textContent === "Lucro bruto do estoque",
+      );
+      expect(rotulo?.nextElementSibling?.classList.contains(cor)).toBe(true);
+    },
+  );
+
+  it.each([
+    { custo: 500, cor: "text-emerald-400" },
+    { custo: 1000, cor: "text-red-400" },
+    { custo: 900, cor: "text-zinc-400" },
+  ])(
+    "KPI de lucro colore o número, não o ícone: $cor",
+    async ({ custo, cor }) => {
+      custoDoResumo = custo;
+      montarProduto({ price: 100, costPrice: 20, stock: 2 });
+      await montar();
+      const resumo = hospedeiro.querySelector(
+        '[role="group"][aria-label="Lucro bruto potencial"]',
+      )!;
+      expect
+        .soft(resumo.querySelector("h3")?.classList.contains(cor))
+        .toBe(true);
+      expect
+        .soft(resumo.querySelector("svg")?.classList.contains("text-zinc-400"))
+        .toBe(true);
+      const expandir = [...hospedeiro.querySelectorAll("button")].find((el) =>
+        el.textContent?.includes("Expandir"),
+      )!;
+      await act(async () => expandir.click());
+      const expandido = hospedeiro.querySelector(
+        'article[aria-label="Lucro bruto potencial"]',
+      )!;
+      expect
+        .soft(expandido.querySelector("h3")?.classList.contains(cor))
+        .toBe(true);
+      expect
+        .soft(
+          expandido.querySelector("svg")?.classList.contains("text-zinc-400"),
+        )
+        .toBe(true);
+    },
+  );
+
+  it("simulador usa cor no resultado e risco, sem bloco colorido", async () => {
+    montarProduto({ price: 100, costPrice: 20, stock: 2 });
+    await montar();
+    const guia = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-label="Guia e simulador"]',
+    )!;
+    await act(async () => guia.click());
+    const simulador = [...document.querySelectorAll("button")].find(
+      (el) => el.textContent?.trim() === "Simulador",
+    )!;
+    await act(async () => simulador.click());
+    const dialogo = document.querySelector('[role="dialog"]')!;
+    expect(dialogo).not.toBeNull();
+    expect.soft(dialogo.querySelector('[class*="rose-"]')).toBeNull();
+    const rotulo = [...dialogo.querySelectorAll("p")].find(
+      (el) => el.textContent === "Lucro bruto do lote simulado",
+    )!;
+    expect
+      .soft(rotulo.nextElementSibling?.classList.contains("text-emerald-400"))
+      .toBe(true);
+    expect
+      .soft(
+        dialogo.querySelector(
+          'div[class*="bg-red-"], div[class*="bg-emerald-"], div[class*="bg-amber-"], div[class*="bg-teal-"]',
+        ),
+      )
+      .toBeNull();
+    const preco = document.getElementById("sim-price") as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(preco, "5");
+      preco.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect
+      .soft(rotulo.nextElementSibling?.classList.contains("text-red-400"))
+      .toBe(true);
+    expect.soft(dialogo.querySelector('[class*="rose-"]')).toBeNull();
+    expect
+      .soft(
+        dialogo.querySelector(
+          'div[class*="bg-red-"], div[class*="bg-emerald-"], div[class*="bg-amber-"], div[class*="bg-teal-"]',
+        ),
+      )
+      .toBeNull();
+  });
+
+  it.each([
+    { stock: 0, cor: "text-red-400" },
+    { stock: 2, cor: "text-amber-400" },
+  ])(
+    "quantidade $stock tem o tom $cor em ambos os modos",
+    async ({ stock, cor }) => {
+      montarProduto({ price: 100, costPrice: 20, stock, estoqueMinimo: 3 });
+      await montar();
+      const card = cartaoDoProduto();
+      const quantidade = card.querySelector(
+        ".produto-resumo > div:nth-child(2) > p:last-child",
+      )!;
+      const numero = quantidade.querySelector("span") ?? quantidade;
+      expect(
+        numero.classList.contains(cor) || quantidade.classList.contains(cor),
+      ).toBe(true);
+      expect(
+        numero.classList.contains(
+          stock === 0 ? "text-amber-400" : "text-red-400",
+        ),
+      ).toBe(false);
+      expect(
+        card
+          .querySelector(".produto-detalhes > div > span")
+          ?.classList.contains(cor),
+      ).toBe(true);
+      const compacto = hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-label="Mostrar em grade"]',
+      )!;
+      expect(compacto).toBeDefined();
+      await act(async () => compacto.click());
+      const quantidades = [...hospedeiro.querySelectorAll("span")].filter(
+        (el) =>
+          el.textContent === String(stock) &&
+          el.nextElementSibling?.textContent?.trim() === "un.",
+      );
+      expect(quantidades.length).toBeGreaterThan(0);
+      for (const el of quantidades)
+        expect(el.classList.contains(cor)).toBe(true);
+    },
+  );
+
+  it("estoque crítico é âmbar sem pintar um bloco", async () => {
+    montarProduto({ price: 100, costPrice: 20, stock: 2, estoqueMinimo: 3 });
+    await montar();
+    const critico = [...cartaoDoProduto().querySelectorAll("span")].find(
+      (el) => el.textContent === "Crítico",
+    );
+    expect(critico?.classList.contains("text-amber-400")).toBe(true);
+    expect(cartaoDoProduto().querySelector('[class*="orange-"]')).toBeNull();
+  });
 
   it("valor com centavos que 'sobram' (37,2 do relatório): mostra 'R$ 37,20', nunca 'R$ 37,2'", async () => {
     // totalProfit = price*stock - costPrice*stock = 137.2*1 - 100*1 = 37.2

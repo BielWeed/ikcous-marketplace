@@ -102,7 +102,7 @@ async function montar() {
   await act(async () =>
     raiz.render(<AdminPdvView active onNavigate={vi.fn()} />),
   );
-  await act(async () => botao("Buscar produto").click());
+  await act(async () => botao("Buscar").click());
 }
 
 async function bipar(alvo: HTMLElement) {

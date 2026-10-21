@@ -123,6 +123,11 @@ describe("paiDaTelaDoAdmin", () => {
       paiDaTelaDoAdmin("admin-app-color", "admin-about-store", false),
     ).toBe("admin-settings");
   });
+  it("Card de frete grátis volta a Ajustes", () => {
+    expect(paiDaTelaDoAdmin("admin-free-shipping-card", null, false)).toBe(
+      "admin-settings",
+    );
+  });
   it("a tabela antiga continua de pé para as demais views", () => {
     expect(paiDaTelaDoAdmin("admin-coupon-form", null, false)).toBe(
       "admin-coupons",

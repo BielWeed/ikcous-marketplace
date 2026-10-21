@@ -179,6 +179,22 @@ describe("HomeView — categoria que não existe cai em Todas", () => {
       .querySelector('[data-testid="product-list"]')
       ?.getAttribute("data-nomes") ?? null;
 
+  it("mostra a contagem filtrada junto do mesmo botão de filtros", async () => {
+    await montar("Cama & Banho");
+    expect(
+      hospedeiro.querySelector('[data-testid="resultado-categoria"]')
+        ?.textContent,
+    ).toBe("Cama & Banho · 1 produto");
+    const filtro = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[title="Filtrar e Ordenar"]',
+    )!;
+    expect(filtro.textContent).toContain("Filtros");
+    await act(async () => {
+      filtro.click();
+    });
+    expect(hospedeiro.querySelector('[role="listbox"]')).not.toBeNull();
+  });
+
   it.each([
     ["Cama & Banho", "Toalha"],
     ["Mais+Vendidos", "Vela"],

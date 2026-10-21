@@ -359,7 +359,7 @@ export function BuscaDeProduto({
                         {ativas.length === 0 && (
                           <span
                             className={
-                              produto.estoque <= 0 ? "pdv-orange" : undefined
+                              produto.estoque <= 0 ? "pdv-red" : undefined
                             }
                           >
                             {produto.estoque <= 0

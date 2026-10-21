@@ -397,10 +397,12 @@ describe("Formulário de produto cabe no celular (onda J, J3)", () => {
       expect(faixa.className).toContain("text-[11px]");
       expect(faixa.className).not.toMatch(LETRA_PEQUENA);
 
-      const arraste = [...document.querySelectorAll("p")].find((el) =>
-        el.textContent?.includes("Arraste as imagens"),
+      const orientacao = [...document.querySelectorAll("p")].find((el) =>
+        el.textContent?.includes("a primeira é a principal"),
       );
-      expect(arraste?.className).toContain("text-[11px]");
+      expect(orientacao).toBeDefined();
+      expect(orientacao?.className).toContain("text-xs");
+      expect(orientacao?.className).not.toMatch(LETRA_PEQUENA);
     });
   });
 });

@@ -395,17 +395,23 @@ describe("CheckoutView — retirada na loja é escolha explícita e chega inteir
 
   it("retirada não mostra 'economia de frete' inventada (controle: com a entrega local grátis, mostra)", async () => {
     economia.valor = 10;
+    invoke.mockResolvedValueOnce({
+      data: {
+        options: [{ ...LOCAL, price: 0 }, RETIRADA],
+        cotacaoIncompleta: false,
+      },
+      error: null,
+    });
     await montar();
     expect(espelho.selecionada?.id).toBe("local-delivery");
-    expect(
-      document.body.querySelector('[aria-label="Desconto de R$ 10,00"]'),
-    ).not.toBeNull();
+    const riscadoNaBarra = () =>
+      document.body.querySelector(".bottom-docked-navigation .line-through");
+    expect(riscadoNaBarra()).not.toBeNull();
+    expect(riscadoNaBarra()!.textContent).toContain("10,00");
 
     await clicar(trocarFrete());
     await clicar(botao("Retirar na loja"));
     expect(espelho.selecionada?.id).toBe("store-pickup");
-    expect(
-      document.body.querySelector('[aria-label^="Desconto de R$"]'),
-    ).toBeNull();
+    expect(riscadoNaBarra()).toBeNull();
   });
 });

@@ -15,7 +15,7 @@ import type { View } from "@/types";
 //      contrato final: 0,01 do "sempre" e -1 do "por produto"
 //      (FRETE_GRATIS_POR_PRODUTO; a estratégia mora na marcação do produto,
 //      o negativo no config é só o marcador dela);
-//   4. CHAVES só onde há estado real: "Só entregar na cidade" grava
+//   4. CHAVES só onde há estado real: "Vender para fora da sua região" grava
 //      `shippingCoverage` (role="switch"); a credencial da transportadora é
 //      de Ajustes, então "Cotação na hora" é EXIBIÇÃO — nenhum botão finge
 //      salvar o que não salva;
@@ -217,7 +217,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
   const texto = () => hospedeiro.textContent ?? "";
 
   const textoDaFaixa = () =>
-    hospedeiro.querySelector('[aria-label="Como a entrega funciona hoje"]')
+    hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')
       ?.textContent ?? "";
 
   function botaoComTexto(padrao: RegExp): HTMLButtonElement | undefined {
@@ -257,7 +257,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
    * painel — a estratégia NACIONAL tem pills com o MESMO texto agora que
    * as duas vivem na mesma tela. */
   async function escolherPresetLocal(nome: RegExp) {
-    await abrirPainel(/estrat[ée]gias do frete local/i);
+    await abrirPainel(/frete grátis/i);
     const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
     const pill = [...(escopo?.querySelectorAll('[role="radio"]') ?? [])].find(
       (r) => nome.test(r.textContent || ""),
@@ -285,13 +285,13 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
   it("a faixa descreve o estado REAL salvo: local com cidade, nacional ligado, grátis pelo preset", async () => {
     await abrirTela();
 
-    expect(textoDaFaixa()).toContain("R$ 10 por entrega");
+    expect(textoDaFaixa()).toContain("Grátis");
     // A promessa é a abrangência REAL (alcance vazio = os 5 primeiros números
     // do CEP da loja), nunca o nome da cidade.
     expect(textoDaFaixa()).toContain("CEPs que começam com 38400");
     expect(textoDaFaixa()).not.toContain("Uberlândia/MG");
-    expect(textoDaFaixa()).toContain("Melhor Envio ligado");
-    expect(textoDaFaixa()).toContain("Acima de R$ 100");
+    expect(textoDaFaixa()).toContain("Melhor Envio");
+    expect(textoDaFaixa()).toContain("entrega grátis");
     // Nada foi mexido: o botão do cabeçalho mostra "Salvo", desabilitado.
     expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
     expect(botaoSalvar()?.disabled).toBe(true);
@@ -305,25 +305,29 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     expect(hospedeiro.querySelector("#shipping-flat-fee")).toBeNull();
   });
 
-  it("só há chave onde há campo gravável: 'Só entregar na cidade' grava a cobertura de verdade", async () => {
+  it("só há chave onde há campo gravável: 'Vender para fora da sua região' grava a cobertura de verdade", async () => {
     estadoDaLoja.atual = {
       ...estadoDaLoja.atual,
       shippingCoverage: "national",
     };
     await abrirTela();
-    await abrirPainel(/entrega na sua cidade/i);
+    await abrirPainel(/na sua região/i);
 
     // A credencial da transportadora NÃO tem chave clicável (é de Ajustes —
     // aqui é exibição). As chaves interativas são SÓ as que têm campo
     // gravável real por trás: a cobertura. A retirada deixou de ser chave
     // (16/10/2026): são as três respostas "Como você entrega" — provadas em
     // admin-frete-retirada-na-loja.test.tsx.
-    const chaves = [...hospedeiro.querySelectorAll('[role="switch"]')];
+    const chaves = [
+      ...hospedeiro.querySelectorAll(
+        '[role="switch"][aria-label="Vender para fora da sua região"]',
+      ),
+    ];
     expect(chaves.map((c) => c.getAttribute("aria-label"))).toEqual([
-      "Só entregar na cidade",
+      "Vender para fora da sua região",
     ]);
     const cobertura = chaves[0] as HTMLElement;
-    expect(cobertura.getAttribute("aria-checked")).toBe("false");
+    expect(cobertura.getAttribute("aria-checked")).toBe("true");
 
     await act(async () => {
       cobertura.click();
@@ -331,7 +335,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await act(async () => {
       await esperarMicrotarefas();
     });
-    expect(cobertura.getAttribute("aria-checked")).toBe("true");
+    expect(cobertura.getAttribute("aria-checked")).toBe("false");
 
     await salvar();
     expect(updateConfig.mock.calls[0][0]).toHaveProperty(
@@ -346,18 +350,16 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
 
     expect(
       hospedeiro.querySelector('[role="switch"]')?.getAttribute("aria-checked"),
-    ).toBe("true");
+    ).toBe("false");
   });
 
   it("'Cotação na hora' é EXIBIÇÃO de estado: a frase do estado existe, mas nenhum botão com esse nome (nada salva credencial daqui)", async () => {
     await abrirTela();
 
     // O estado aparece em texto (dica da Linha "Cotação na hora", dentro do
-    // painel "Fora da cidade" — o conteúdo NUNCA desmonta, só fica
+    // painel "Fora da sua região" — o conteúdo NUNCA desmonta, só fica
     // `hidden`, então o texto é lido sem precisar abrir o painel)…
-    expect(texto()).toMatch(
-      /Cota[çc][ãa]o real, na hora, pelos provedores ligados/i,
-    );
+    expect(texto()).toMatch(/preço dela, cotado na hora/i);
     // …mas NÃO existe botão "Cotação na hora" — chave decorativa que não
     // salvaria nada é proibida nesta tela.
     expect(botaoComTexto(/cota[çc][ãa]o na hora/i)).toBeUndefined();
@@ -429,14 +431,14 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     // `min="0.01"`: 0 é "desligado" no contrato de presets — nunca é limiar.
     expect(campoValor.min).toBe("0.01");
     // E a consequência é dita ANTES do salvar, não no susto da reabertura.
-    expect(texto()).toMatch(/valor vazio desliga o frete gr[áa]tis/i);
+    expect(texto()).toContain("A partir de");
   });
 
-  it("preset 'Por produto marcado' grava a sentinela -1 e NÃO envia campo alheio", async () => {
+  it("preset 'Só produtos marcados' grava a sentinela -1 e NÃO envia campo alheio", async () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0 };
     await abrirTela();
 
-    await escolherPresetLocal(/Por produto marcado/);
+    await escolherPresetLocal(/Só produtos marcados/);
     await salvar();
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
@@ -456,20 +458,20 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: -1 };
     await abrirTela();
 
-    expect(textoDaFaixa()).toContain("Por produto marcado");
+    expect(textoDaFaixa()).toContain("grátis se tiver produto marcado");
     const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
     const marcado = escopo?.querySelector(
       '[role="radio"][aria-checked="true"]',
     )?.textContent;
-    expect(marcado).toMatch(/Por produto marcado/);
+    expect(marcado).toMatch(/Só produtos marcados/);
     // Nada foi mexido: o config já descreve o preset escolhido.
     expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
   });
 
-  it("escolher 'Desligado' sobre um config de grátis-por-valor grava 0 (presets são exclusivos)", async () => {
+  it("escolher 'Não dar frete grátis' sobre um config de grátis-por-valor grava 0 (presets são exclusivos)", async () => {
     await abrirTela();
 
-    await escolherPresetLocal(/Desligado/);
+    await escolherPresetLocal(/Não dar frete grátis/);
     await salvar();
 
     expect(updateConfig.mock.calls[0][0]).toHaveProperty("freeShippingMin", 0);
@@ -479,7 +481,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0.01 };
     await abrirTela();
 
-    expect(textoDaFaixa()).toContain("Em toda a loja");
+    expect(textoDaFaixa()).toContain("Grátis");
     const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
     const marcado = escopo?.querySelector(
       '[role="radio"][aria-checked="true"]',
@@ -491,7 +493,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
   // próprio — o caminho que levava a Ajustes agora abre o painel.
   function painelDasTransportadoras(): HTMLButtonElement {
     return hospedeiro.querySelector(
-      "#painel-frete-transportadoras > button[aria-expanded]",
+      "#painel-frete-nacional > button[aria-expanded]",
     ) as HTMLButtonElement;
   }
 
@@ -502,9 +504,9 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     expect(texto()).toMatch(/Nenhuma transportadora ligada/i);
-    expect(texto()).toMatch(/s[óo] entrega na sua cidade/i);
+    expect(texto()).toMatch(/Se só vende perto, tudo bem/i);
 
-    const cta = botaoComTexto(/conectar transportadora/i);
+    const cta = botaoComTexto(/^ligar transportadora$/i);
     expect(cta).toBeDefined();
     expect(painelDasTransportadoras().getAttribute("aria-expanded")).toBe(
       "false",
@@ -523,9 +525,9 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     expect(texto()).not.toMatch(/Nenhuma transportadora ligada/i);
-    expect(texto()).toMatch(/Melhor Envio ligado/);
+    expect(texto()).toMatch(/Melhor Envio/);
 
-    const botaoTransportadoras = botaoComTexto(/abrir transportadoras/i);
+    const botaoTransportadoras = painelDasTransportadoras();
     expect(botaoTransportadoras).toBeDefined();
     await act(async () => {
       (botaoTransportadoras as HTMLElement).click();
@@ -540,9 +542,9 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, originCep: "" };
     await abrirTela();
 
-    expect(textoDaFaixa()).toMatch(/Parado/i);
-    expect(textoDaFaixa()).toMatch(/falta o CEP da loja/i);
+    expect(texto()).toMatch(/Sem CEP: nenhum frete é calculado/i);
+    expect(texto()).toMatch(/Falta o CEP de onde você envia/i);
     // A nota aponta para Minha loja (onde o CEP se cadastra), não para "abaixo".
-    expect(textoDaFaixa()).toMatch(/Minha loja/);
+    expect(texto()).toMatch(/Minha loja/);
   });
 });

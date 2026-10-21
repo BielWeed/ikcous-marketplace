@@ -138,8 +138,7 @@ const ESCURO_SOBRE_CLARO =
   "texto/ícone escuro sobre preenchimento claro ou vivo (botão dourado, pílula branca): serve nos três temas";
 const SOMBRA = "véu escuro translúcido: escurece em qualquer tema";
 const CORTINA = "cortina de modal: escurece o fundo em qualquer tema";
-const INEXISTENTE =
-  "tom que não existe no Tailwind do projeto (zinc-555/655/955): a classe não gera CSS, sem efeito";
+const INEXISTENTE = "tom que não existe no Tailwind do projeto: sem efeito";
 const SERIE = "cor de série de gráfico/legenda: identidade, não superfície";
 const MEDALHA =
   "medalha prateada (1º/2º lugar) com texto escuro: identidade, igual nos três temas";
@@ -152,6 +151,12 @@ const CLARO_SOLIDO =
   "preenchimento claro sólido (miolo de interruptor, selo claro) com texto escuro por cima: fica claro nos três temas";
 const MANTIDAS = new Map<string, string>([
   ["bg-zinc-100", CLARO_SOLIDO],
+  ["hover:bg-zinc-200", CLARO_SOLIDO],
+  ["bg-[#BE123C]", "ação negativa sólida com texto branco AA nos três temas"],
+  [
+    "hover:bg-[#BE123C]",
+    "ação negativa sólida com texto branco AA nos três temas",
+  ],
   ["bg-zinc-50", CLARO_SOLIDO],
   ["[&_[data-slot=switch-thumb]]:bg-zinc-50", CLARO_SOLIDO],
   ["bg-[#0b141a]", PREVIA_DE_APARELHO],
@@ -161,7 +166,6 @@ const MANTIDAS = new Map<string, string>([
   ["from-[#2A2A33]", PREVIA_DE_APARELHO],
   ["bg-[#B82243]", "selo carmim sólido com texto branco: vivo nos três temas"],
   ["hover:text-[#53bdeb]/80", PREVIA_DE_APARELHO],
-  ["text-[#25d366]", PREVIA_DE_APARELHO],
   ["text-[#53bdeb]", PREVIA_DE_APARELHO],
   ["text-[#aebac1]", PREVIA_DE_APARELHO],
   ["text-[#e9edef]", PREVIA_DE_APARELHO],
@@ -170,7 +174,6 @@ const MANTIDAS = new Map<string, string>([
   ["hover:text-black", ESCURO_SOBRE_CLARO],
   ["text-zinc-950", ESCURO_SOBRE_CLARO],
   ["fill-black", ESCURO_SOBRE_CLARO],
-  ["fill-zinc-950", ESCURO_SOBRE_CLARO],
   ["border-black/20", ESCURO_SOBRE_CLARO],
   ["border-zinc-950", ESCURO_SOBRE_CLARO],
   ["border-zinc-950/25", ESCURO_SOBRE_CLARO],
@@ -179,12 +182,7 @@ const MANTIDAS = new Map<string, string>([
   ["bg-black/10", SOMBRA],
   ["bg-black/20", SOMBRA],
   ["bg-black/80", CORTINA],
-  ["bg-zinc-955", INEXISTENTE],
   ["border-zinc-955", INEXISTENTE],
-  ["text-zinc-555", INEXISTENTE],
-  ["text-zinc-655", INEXISTENTE],
-  ["bg-slate-300", SERIE],
-  ["bg-slate-400", SERIE],
   ["bg-zinc-300", SERIE],
   ["bg-zinc-400", SERIE],
   ["data-[state=checked]:bg-zinc-300", SERIE],
@@ -194,10 +192,6 @@ const MANTIDAS = new Map<string, string>([
   ["disabled:to-zinc-400", MEDALHA],
   ["via-zinc-900", PREVIA_ESCURA],
   ["to-black", PREVIA_ESCURA],
-  [
-    "via-zinc-900/30",
-    "véu decorativo a ~15% efetivo (opacity-50): some sozinho no claro",
-  ],
   ["[&_.bg-admin-gold]:bg-zinc-300", SERIE],
   ["border-zinc-500/20", CINZA_NEUTRO],
   ["border-zinc-500/30", CINZA_NEUTRO],
@@ -272,6 +266,36 @@ describe("mapa das cores soltas do painel", () => {
     expect(d && regrasDaClasse(d)).toEqual([
       expect.objectContaining({
         seletor: `.data-\\[state\\=checked\\]\\:bg-zinc-700[data-state="checked"]${FORA_DO_SIMULADOR}`,
+      }),
+    ]);
+  });
+
+  it("seleção de categoria e foco ganham tokens legíveis nos temas claros", () => {
+    for (const [classe, declaracao] of [
+      ["aria-pressed:bg-zinc-800", "background-color:hsl(var(--admin-raised))"],
+      [
+        "aria-pressed:border-zinc-400",
+        "border-color:hsl(var(--admin-text-soft))",
+      ],
+      [
+        "focus-visible:ring-zinc-400",
+        "--tw-ring-color:hsl(var(--admin-text-soft))",
+      ],
+      [
+        "focus-within:ring-zinc-400",
+        "--tw-ring-color:hsl(var(--admin-text-soft))",
+      ],
+      ["border-zinc-50", "border-color:hsl(var(--admin-text))"],
+    ]) {
+      const c = lerClasse(classe);
+      expect(c && regrasDaClasse(c)).toEqual([
+        expect.objectContaining({ escopo: "ambos", declaracao }),
+      ]);
+    }
+    const c = lerClasse("aria-pressed:bg-zinc-800");
+    expect(c && regrasDaClasse(c)).toEqual([
+      expect.objectContaining({
+        seletor: `.aria-pressed\\:bg-zinc-800[aria-pressed="true"]${FORA_DO_SIMULADOR}`,
       }),
     ]);
   });

@@ -90,7 +90,7 @@ describe("TransportadorasSection — serviços da conta e seguro (1.5.7 v2)", ()
 
   async function abrir() {
     const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
+      "./apoio/transportadoras-isoladas"
     );
     await act(async () => {
       raiz.render(<TransportadorasSection />);
@@ -174,7 +174,7 @@ describe("TransportadorasSection — serviços da conta e seguro (1.5.7 v2)", ()
       return Promise.resolve({ data: { success: true }, error: null });
     });
     // Salva SEM mexer na lista carregada.
-    await clicar(botoes(/^Salvar$/)[0]);
+    await clicar(botoes(/^Salvar transportadora$/)[0]);
     const chamadaSalvar = invoke.mock.calls.find(
       (c: any[]) => c[1]?.body?.action === "save_credentials",
     );
@@ -211,8 +211,8 @@ describe("TransportadorasSection — serviços da conta e seguro (1.5.7 v2)", ()
     expect(hospedeiro.textContent).toMatch(/nada foi apagado/i);
     // Nenhuma caixa de serviço na tela (a lista não carregou).
     expect(hospedeiro.querySelectorAll('input[type="checkbox"]').length).toBe(
-      3,
-    ); // só as 3 do bloco "ligados"
+      0,
+    ); // ligar/desligar agora usa interruptores; nenhuma caixa de serviço foi inventada
   });
 
   it("marcar zero serviços depois de mexer bloqueia o Salvar (sem ida à edge)", async () => {
@@ -255,7 +255,7 @@ describe("TransportadorasSection — serviços da conta e seguro (1.5.7 v2)", ()
     await clicar(caixaServico);
     const { toast } = await import("sonner");
     invoke.mockClear();
-    await clicar(botoes(/^Salvar$/)[0]);
+    await clicar(botoes(/^Salvar transportadora$/)[0]);
     expect(invoke).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(
       "Selecione ao menos um serviço antes de salvar.",
@@ -318,7 +318,7 @@ describe("TransportadorasSection — serviços da conta e seguro (1.5.7 v2)", ()
     });
     await abrir();
     invoke.mockClear();
-    await clicar(botoes(/^Salvar$/)[0]);
+    await clicar(botoes(/^Salvar transportadora$/)[0]);
     const chamadaSalvar = invoke.mock.calls.find(
       (c: any[]) => c[1]?.body?.action === "save_credentials",
     );
@@ -352,7 +352,7 @@ describe("TransportadorasSection — serviços da conta e seguro (1.5.7 v2)", ()
       "Seguro desligado por fora do painel — ao salvar, volta para Com seguro.",
     );
     invoke.mockClear();
-    await clicar(botoes(/^Salvar$/)[0]);
+    await clicar(botoes(/^Salvar transportadora$/)[0]);
     const chamadaSalvar = invoke.mock.calls.find(
       (c: any[]) => c[1]?.body?.action === "save_credentials",
     );

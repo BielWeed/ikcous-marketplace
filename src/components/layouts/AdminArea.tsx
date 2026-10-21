@@ -64,6 +64,11 @@ const AdminBanners = lazyWithPreload(() =>
     default: m.AdminBannersView,
   })),
 );
+const AdminFreeShippingCard = lazyWithPreload(() =>
+  import("@/views/admin/AdminFreeShippingCardView").then((m) => ({
+    default: m.AdminFreeShippingCardView,
+  })),
+);
 const AdminAppColor = lazyWithPreload(() =>
   import("@/views/admin/AdminAppColorView").then((m) => ({
     default: m.AdminAppColorView,
@@ -666,6 +671,18 @@ export function AdminArea({
                             active: currentView === "admin-banners",
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-free-shipping-card":
+                    return (
+                      <LocalErrorBoundary key="admin-free-shipping-card">
+                        <PreloadedOrLazy
+                          component={AdminFreeShippingCard}
+                          props={{
+                            active: currentView === "admin-free-shipping-card",
+                            onSetDirty: setIsAdminDirty,
                           }}
                         />
                       </LocalErrorBoundary>

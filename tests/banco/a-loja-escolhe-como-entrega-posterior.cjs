@@ -37,6 +37,9 @@ const ENTREGA_NA_CIDADE = Object.freeze({
 
 /** Desfaz a 20261244000000 no clone/na transação aberta do cliente, se ela estiver no ar. Devolve true se desfez. */
 async function desfazerEntregaNaCidadeNaTransacao(cliente) {
+  await require("./estilo-card-frete-posterior.cjs").desfazerEstiloCardFreteNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(ENTREGA_NA_CIDADE.noAr);
   if (!r.rows[0] || r.rows[0].sim !== true) return false;
   const sql = fs.readFileSync(

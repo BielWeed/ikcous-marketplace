@@ -67,6 +67,7 @@ export interface ProductVariant {
 }
 
 export interface Category {
+  icone?: string | null;
   id: string;
   name: string;
   slug: string;
@@ -216,6 +217,8 @@ export interface Order {
    * `canal` (cache antigo hidratado sem o mapper): ausente = entrega.
    */
   retiradaNaLoja?: boolean;
+  /** Id canônico do snapshot customer_data.shipping_option_id; ausente em cache antigo. */
+  shippingOptionId?: string | null;
   /** O endereço da loja no momento da compra (retrato, aparado). */
   enderecoDeRetirada?: string | null;
   /**
@@ -308,6 +311,7 @@ export interface Banner {
 
 export interface StoreConfig {
   freeShippingMin: number;
+  freeShippingCardStyle: "completo" | "compacto";
   shippingFee: number;
   /** WhatsApp da loja. Vazio/`null` = a loja não configurou — o botão de contato some, nunca aponta para número inventado (20261033000000). */
   whatsappNumber: string | null;
@@ -524,6 +528,7 @@ export type View =
   | "admin-banners"
   | "admin-carousels"
   | "admin-app-color"
+  | "admin-free-shipping-card"
   | "admin-shipping"
   | "admin-shipping-national"
   | "admin-settings"

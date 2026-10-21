@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { ConfirmarRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
+import { EnviarAoMototaxi } from "@/components/admin/orders/EnviarAoMototaxi";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
@@ -387,10 +388,10 @@ function OrderHeader({ order, avisoDeEspera }: Readonly<OrderHeaderProps>) {
       )}
 
       {order.status === "cancelled" && (
-        <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-3.5">
+        <div className="flex items-start gap-3 rounded-2xl border border-admin-border bg-admin-surface p-3.5">
           <XCircle className="mt-0.5 size-5 shrink-0 text-red-400" />
           <div>
-            <p className="text-sm font-medium text-red-300">Pedido cancelado</p>
+            <p className="text-sm font-medium text-red-400">Pedido cancelado</p>
             <p className="mt-0.5 text-xs text-zinc-400">
               Este pedido foi cancelado e não pode prosseguir.
             </p>
@@ -582,6 +583,7 @@ function OrderStepperPipeline({
 }
 
 interface OrderDeliveryCardProps {
+  storeName?: string;
   order: Order;
   isOffline: boolean;
   copiedAddress: boolean;
@@ -597,6 +599,7 @@ interface OrderDeliveryCardProps {
 // checkout). Antes eram o card "Cliente" e, soltas na etiqueta, as dicas de
 // frete.
 function OrderDeliveryCard({
+  storeName,
   order,
   isOffline,
   copiedAddress,
@@ -650,10 +653,10 @@ function OrderDeliveryCard({
         // Retirada na loja: a cliente BUSCA — nada a enviar nem etiqueta a
         // gerar. O endereço é o retrato da compra (customer_data).
         <div
-          className="space-y-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3"
+          className="space-y-1 rounded-xl border border-admin-border bg-admin-surface p-3"
           aria-label="Retirada na loja"
         >
-          <p className="text-sm font-medium text-emerald-300">
+          <p className="text-sm font-medium text-emerald-400">
             Retirada na loja
           </p>
           <p className="text-sm leading-relaxed text-zinc-200">
@@ -712,6 +715,8 @@ function OrderDeliveryCard({
           </a>
         </div>
       </div>
+
+      <EnviarAoMototaxi order={order} loja={storeName ?? ""} />
 
       {formaDeEntrega && (
         <p
@@ -820,7 +825,7 @@ function OrderItemsCard({
             <span className="flex items-center gap-1.5">
               Desconto
               {order.couponCode && (
-                <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium">
+                <span className="rounded border border-admin-border bg-admin-surface px-1.5 py-0.5 text-xs font-medium">
                   {order.couponCode}
                 </span>
               )}
@@ -1992,6 +1997,7 @@ export const OrderDetail = memo(function OrderDetail({
           )}
 
         <OrderDeliveryCard
+          storeName={storeName}
           order={order}
           isOffline={isOffline}
           copiedAddress={copiedAddress}

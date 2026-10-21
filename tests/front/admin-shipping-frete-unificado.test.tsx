@@ -183,8 +183,7 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
     await abrirTela();
     const h1 = hospedeiro.querySelector("h1");
     expect(h1).toBeTruthy();
-    const linhaDoCabecalho = h1!.parentElement;
-    expect(linhaDoCabecalho?.className).toContain("flex-wrap");
+    expect(h1?.className).toContain("break-words");
   });
 
   it("classes anti-estouro: CabecaDeSecao quebra título/estado em vez de forçar a linha a alargar", async () => {
@@ -194,7 +193,7 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
     await act(async () => {
       raiz.render(
         <CabecaDeSecao
-          titulo="Fora da cidade"
+          titulo="Fora da sua região"
           estado={<span>Melhor Envio ligado</span>}
         />,
       );
@@ -208,24 +207,26 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
   it("os painéis nascem TODOS fechados, com resumo do estado salvo", async () => {
     await abrirTela();
 
-    const painelLocal = botaoComTexto(/^entrega na sua cidade/i);
-    const painelNacional = botaoComTexto(/^fora da cidade/i);
-    const painelEstrategias = botaoComTexto(/^estrat[ée]gias do frete local/i);
+    const painelLocal = botaoComTexto(/^na sua região/i);
+    const painelNacional = botaoComTexto(/^fora da sua região/i);
+    const painelEstrategias = botaoComTexto(/^frete grátis/i);
 
     for (const painel of [painelLocal, painelNacional, painelEstrategias]) {
       expect(painel).toBeDefined();
       expect(painel!.getAttribute("aria-expanded")).toBe("false");
     }
     // Resumo do estado salvo aparece no texto do próprio botão fechado.
-    expect(painelLocal!.textContent).toContain("R$ 10 por entrega");
-    expect(painelNacional!.textContent).toContain("Melhor Envio ligado");
-    expect(painelEstrategias!.textContent).toContain("Acima de R$ 100");
+    expect(painelLocal!.textContent).toContain("Você entrega");
+    expect(painelNacional!.textContent).toContain(
+      "Melhor Envio cota o frete na hora",
+    );
+    expect(painelEstrategias!.textContent).toContain("acima de R$ 100");
   });
 
   it("abrir um painel troca aria-expanded para true e o botão vira aria-controls de uma região visível", async () => {
     await abrirTela();
 
-    const painelLocal = botaoComTexto(/^entrega na sua cidade/i)!;
+    const painelLocal = botaoComTexto(/^na sua região/i)!;
     const idConteudo = painelLocal.getAttribute("aria-controls")!;
     expect(idConteudo).toBeTruthy();
     const conteudo = document.getElementById(idConteudo);
@@ -238,7 +239,7 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
     // Os controles completos de sempre continuam lá dentro.
     expect(
       hospedeiro.querySelector(
-        '[role="switch"][aria-label="Só entregar na cidade"]',
+        '[role="switch"][aria-label="Vender para fora da sua região"]',
       ),
     ).toBeTruthy();
   });
@@ -269,10 +270,10 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
     expect(botaoSalvar()?.disabled).toBe(true);
 
     // Suja o formulário local.
-    const painelLocal = botaoComTexto(/^entrega na sua cidade/i)!;
+    const painelLocal = botaoComTexto(/^na sua região/i)!;
     await clicar(painelLocal);
     const chaveCobertura = hospedeiro.querySelector(
-      '[role="switch"][aria-label="Só entregar na cidade"]',
+      '[role="switch"][aria-label="Vender para fora da sua região"]',
     ) as HTMLElement;
     await clicar(chaveCobertura);
 
@@ -318,7 +319,7 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
     await abrirTela();
 
     // Mexe SÓ no lado nacional.
-    const painelNacional = botaoComTexto(/^fora da cidade/i)!;
+    const painelNacional = botaoComTexto(/^fora da sua região/i)!;
     await clicar(painelNacional);
     const pillSempreNacional = [
       ...(hospedeiro

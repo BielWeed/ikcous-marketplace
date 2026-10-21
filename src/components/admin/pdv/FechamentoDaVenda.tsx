@@ -45,7 +45,7 @@ import {
   Wallet,
   WifiOff,
 } from "lucide-react";
-import { type ReactElement, useEffect, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 import "./pdv.css";
 
 export interface PropsDoFechamentoDaVenda {
@@ -182,186 +182,257 @@ export function FechamentoDaVenda({
     }
   }
 
+  const corpoRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // A falha nasce no início do corpo; não role a página nem a barra de ações.
+    if (estado.erro && corpoRef.current) corpoRef.current.scrollTop = 0;
+  }, [estado.erro]);
+
   return (
-    <section className="pdv-layer" aria-label="Cobrança da venda">
-      <div className="pdv-layer-heading">
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            className="pdv-secondary size-11 shrink-0"
-            aria-label="Voltar à venda"
-            onClick={() => despachar({ tipo: "etapa_pedida", etapa: "cupom" })}
-          >
-            <ChevronLeft aria-hidden="true" className="pdv-blue size-5" />
-            <span className="sr-only">Voltar à venda</span>
-          </Button>
-          <div>
-            <h2>Fechar venda</h2>
-            <p className="pdv-muted">2 · Cobrança</p>
-          </div>
-        </div>
-      </div>
-
-      {isOffline && (
-        <div role="alert" className="pdv-notice">
-          <p className="pdv-heading">
-            <WifiOff aria-hidden="true" className="pdv-icon pdv-red" />
-            Sem internet. Venda salva.
-          </p>
-          <p className="pdv-muted">
-            Sem internet agora. A venda fica salva aqui; registre a venda quando
-            a conexão voltar.
-          </p>
-        </div>
-      )}
-
-      <div className="pdv-discount">
-        <div className="pdv-card">
-          <label htmlFor="desconto-da-venda" className="pdv-muted">
-            Desconto (R$)
-          </label>
-          <LocalBufferedInput
-            id="desconto-da-venda"
-            disabled={estado.enviando}
-            value={descontoStr}
-            mask="currency"
-            onFlush={(valor) => {
-              setDescontoStr(valor);
-              atualizarDesconto(valor, motivoStr);
-            }}
-            className="pdv-field"
-          />
-          <p className="pdv-muted mt-2">Até R$ {reais(subtotal)}</p>
-        </div>
-        {estado.desconto > 0 && (
-          <div className="pdv-card">
-            <label htmlFor="motivo-do-desconto" className="pdv-muted">
-              Motivo do desconto (obrigatório)
-            </label>
-            <LocalBufferedInput
-              id="motivo-do-desconto"
-              maxLength={2000}
-              disabled={estado.enviando}
-              value={motivoStr}
-              onFlush={(valor) => {
-                setMotivoStr(valor);
-                atualizarDesconto(descontoStr, valor);
-              }}
-              placeholder="Ex.: cliente fidelidade, mostruário"
-              className="pdv-field"
-            />
-            <p className="pdv-muted mt-2 flex items-center gap-1">
-              <LockKeyhole aria-hidden="true" className="pdv-pink size-4" />
-              Privado · {motivoStr.length}/2.000
+    <section className="pdv-layer pdv-checkout" aria-label="Cobrança da venda">
+      <div ref={corpoRef} className="pdv-checkout-body">
+        {estado.erro && (
+          <div role="alert" className="pdv-notice">
+            <p className="pdv-heading">
+              <AlertTriangle aria-hidden="true" className="pdv-icon pdv-red" />
+              Não foi possível registrar a venda
+            </p>
+            <p className="pdv-muted">
+              {estado.erro}
+              {ultimaFalha?.precisaEntrarDeNovo &&
+                " Saia e entre de novo na conta."}
             </p>
           </div>
         )}
-      </div>
-
-      <div className="pdv-stack">
-        <h3 className="pdv-heading">
-          <Wallet aria-hidden="true" className="pdv-icon pdv-teal" />
-          Forma de pagamento
-        </h3>
-        <div className="pdv-payment-grid">
-          {FORMAS_DE_PAGAMENTO.map(({ valor, rotulo, Icone }) => (
-            <button
-              key={valor}
-              type="button"
-              disabled={estado.enviando}
-              aria-pressed={estado.pagamento === valor}
-              onClick={() =>
-                despachar({ tipo: "pagamento_escolhido", pagamento: valor })
-              }
-              className="pdv-payment"
-            >
-              <Icone
-                aria-hidden="true"
-                className={`pdv-icon ${valor === "cash" ? "pdv-green" : valor === "pix" ? "pdv-teal" : "pdv-purple"}`}
-              />
-              <span>{rotulo}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {pedeConferencia && estado.pagamento !== null && (
-        <div className="pdv-stack">
-          <div className="pdv-check">
-            <input
-              id="conferi-o-pagamento"
-              type="checkbox"
-              checked={conferiu}
-              aria-describedby="conferi-o-pagamento-ajuda"
-              onChange={(e) =>
-                setConferido(
-                  e.target.checked && estado.pagamento !== null
-                    ? { pagamento: estado.pagamento, total }
-                    : null,
-                )
-              }
-            />
-            <label htmlFor="conferi-o-pagamento">{ROTULO_DA_CONFERENCIA}</label>
+        {ultimaFalha && !ultimaFalha.podeTentarDeNovo && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={limparCupom}
+            className="pdv-secondary"
+          >
+            <ShoppingCart aria-hidden="true" className="pdv-purple size-5" />
+            Começar uma venda nova
+          </Button>
+        )}
+        {isOffline && (
+          <div role="alert" className="pdv-notice">
+            <p className="pdv-heading">
+              <WifiOff aria-hidden="true" className="pdv-icon pdv-red" />
+              Sem internet. Venda salva.
+            </p>
+            <p className="pdv-muted">
+              Sem internet agora. A venda fica salva aqui; registre a venda
+              quando a conexão voltar.
+            </p>
           </div>
-          <p id="conferi-o-pagamento-ajuda" className="pdv-muted">
-            {estado.pagamento === "pix"
-              ? "Abra o app do banco e veja o PIX de R$ "
-              : "Abra o app do banco ou da maquininha e veja o pagamento de R$ "}
-            {reais(total)} entrar antes de registrar.
-          </p>
+        )}
+
+        <div className="pdv-layer-heading">
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="pdv-secondary size-11 shrink-0"
+              aria-label="Voltar à venda"
+              onClick={() =>
+                despachar({ tipo: "etapa_pedida", etapa: "cupom" })
+              }
+            >
+              <ChevronLeft aria-hidden="true" className="pdv-blue size-5" />
+              <span className="sr-only">Voltar à venda</span>
+            </Button>
+            <div>
+              <h2>Fechar venda</h2>
+              <p className="pdv-muted">Cobrança</p>
+            </div>
+          </div>
         </div>
-      )}
-      {!isOffline && !validacao.ok && (
-        <p className="pdv-muted flex items-center gap-2">
-          <AlertTriangle
-            aria-hidden="true"
-            className="pdv-orange size-4 shrink-0"
-          />
-          {validacao.motivo}
-        </p>
-      )}
-      {!isOffline && validacao.ok && faltaConferir && (
-        <p className="pdv-muted flex items-center gap-2">
-          <AlertTriangle
-            aria-hidden="true"
-            className="pdv-orange size-4 shrink-0"
-          />
-          Marque &quot;{ROTULO_DA_CONFERENCIA}&quot; para registrar.
-        </p>
-      )}
-      {estado.erro && (
-        <div role="alert" className="pdv-notice">
-          <p className="pdv-heading">
-            <AlertTriangle aria-hidden="true" className="pdv-icon pdv-red" />
-            Não foi possível registrar a venda
-          </p>
-          <p className="pdv-muted">
-            {estado.erro}
-            {ultimaFalha?.precisaEntrarDeNovo &&
-              " Saia e entre de novo na conta."}
-          </p>
-        </div>
-      )}
-      {ultimaFalha && !ultimaFalha.podeTentarDeNovo && (
-        <Button
-          type="button"
-          variant="outline"
-          onClick={limparCupom}
-          className="pdv-secondary"
+
+        <section
+          className="pdv-cupom pdv-stack"
+          aria-label="Itens da venda"
+          data-resumo="true"
         >
-          <ShoppingCart aria-hidden="true" className="pdv-purple size-5" />
-          Começar uma venda nova
-        </Button>
-      )}
+          <div className="pdv-heading">
+            <ShoppingCart aria-hidden="true" className="size-5" />
+            <h3 className="flex-1">Venda atual</h3>
+            <span className="pdv-muted">
+              {estado.itens.length}{" "}
+              {estado.itens.length === 1 ? "item" : "itens"}
+            </span>
+            <strong className="text-sm">R$ {reais(subtotal)}</strong>
+          </div>
+          <p className="pdv-summary-names">
+            <span>
+              {estado.itens
+                .slice(0, 2)
+                .map((item) => item.nome)
+                .join(", ")}
+            </span>
+            {estado.itens.length > 2 && <span>+{estado.itens.length - 2}</span>}
+          </p>
+          {estado.cliente.tipo !== "sem_cliente" && (
+            <p className="pdv-muted">Cliente: {estado.cliente.nome}</p>
+          )}
+        </section>
+
+        <div className="pdv-discount">
+          <div className="pdv-card">
+            <label htmlFor="desconto-da-venda" className="pdv-muted">
+              Desconto (R$)
+            </label>
+            <LocalBufferedInput
+              id="desconto-da-venda"
+              disabled={estado.enviando}
+              value={descontoStr}
+              mask="currency"
+              placeholder="0,00"
+              onFlush={(valor) => {
+                setDescontoStr(valor);
+                atualizarDesconto(valor, motivoStr);
+              }}
+              className="pdv-field"
+            />
+            <p className="pdv-muted mt-2">Até R$ {reais(subtotal)}</p>
+          </div>
+          {estado.desconto > 0 && (
+            <div className="pdv-card">
+              <label htmlFor="motivo-do-desconto" className="pdv-muted">
+                Motivo
+                <span className="pdv-detail"> do desconto (obrigatório)</span>
+              </label>
+              <LocalBufferedInput
+                id="motivo-do-desconto"
+                maxLength={2000}
+                disabled={estado.enviando}
+                value={motivoStr}
+                onFlush={(valor) => {
+                  setMotivoStr(valor);
+                  atualizarDesconto(descontoStr, valor);
+                }}
+                placeholder="Ex.: cliente fidelidade, mostruário"
+                className="pdv-field"
+              />
+              <p className="pdv-muted mt-2 flex items-center gap-1">
+                <LockKeyhole aria-hidden="true" className="pdv-pink size-4" />
+                Privado · {motivoStr.length}/2.000
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="pdv-stack pdv-payments">
+          <h3 className="pdv-heading">
+            <Wallet aria-hidden="true" className="pdv-icon pdv-teal" />
+            Forma de pagamento
+          </h3>
+          <div className="pdv-payment-grid">
+            {FORMAS_DE_PAGAMENTO.map(({ valor, rotulo, Icone }) => (
+              <button
+                key={valor}
+                type="button"
+                disabled={estado.enviando}
+                aria-pressed={estado.pagamento === valor}
+                onClick={() =>
+                  despachar({ tipo: "pagamento_escolhido", pagamento: valor })
+                }
+                className="pdv-payment"
+              >
+                <Icone aria-hidden="true" className="pdv-icon" />
+                <span>
+                  <strong>{rotulo}</strong>
+                  <small className="pdv-muted">
+                    {valor === "cash"
+                      ? "Recebido na mão"
+                      : valor === "pix"
+                        ? "Cliente paga pelo celular"
+                        : "Passe na maquininha"}
+                  </small>
+                </span>
+                <span className="pdv-payment-radio" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {pedeConferencia && estado.pagamento !== null && (
+          <div className="pdv-stack pdv-conference">
+            <div className="pdv-check">
+              <input
+                id="conferi-o-pagamento"
+                type="checkbox"
+                checked={conferiu}
+                aria-describedby="conferi-o-pagamento-ajuda"
+                onChange={(e) =>
+                  setConferido(
+                    e.target.checked && estado.pagamento !== null
+                      ? { pagamento: estado.pagamento, total }
+                      : null,
+                  )
+                }
+              />
+              <div className="pdv-conference-copy">
+                <label htmlFor="conferi-o-pagamento">
+                  {ROTULO_DA_CONFERENCIA}
+                </label>
+                <p id="conferi-o-pagamento-ajuda" className="pdv-muted">
+                  <span className="pdv-detail">
+                    {estado.pagamento === "pix"
+                      ? "Abra o app do banco e veja o PIX de R$ "
+                      : "Abra o app do banco ou da maquininha e veja o pagamento de R$ "}
+                    {reais(total)} entrar antes de registrar.
+                  </span>
+                  <span className="pdv-compact-help" aria-hidden="true">
+                    Veja R$ {reais(total)} entrar antes de registrar.
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
       <AcaoDaBarra aria-label="Registrar a venda">
         <div className="pdv-footer">
-          <div className="pdv-total pdv-muted">
+          <div className="pdv-checkout-status" role="status">
+            {!isOffline && !validacao.ok && (
+              <p className="pdv-muted flex items-center gap-2">
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="pdv-orange size-4 shrink-0"
+                />
+                {validacao.motivo}
+              </p>
+            )}
+            {!isOffline && validacao.ok && faltaConferir && (
+              <p className="pdv-muted flex items-center gap-2">
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="pdv-orange size-4 shrink-0"
+                />
+                <span className="pdv-detail">
+                  Marque &quot;{ROTULO_DA_CONFERENCIA}&quot; para registrar.
+                </span>
+                <span className="pdv-compact-help" aria-hidden="true">
+                  Confira o pagamento antes de registrar.
+                </span>
+              </p>
+            )}
+            {!desabilitado && (
+              <p className="pdv-green flex items-center gap-2">
+                <Check aria-hidden="true" className="size-4 shrink-0" />
+                {pedeConferencia
+                  ? "Pagamento conferido. Tudo pronto para registrar."
+                  : "Tudo pronto para registrar."}
+              </p>
+            )}
+          </div>
+          <div className="pdv-total pdv-muted pdv-checkout-breakdown">
             <span>Subtotal</span>
             <span>R$ {reais(subtotal)}</span>
           </div>
           {estado.desconto > 0 && (
-            <div className="pdv-total pdv-muted">
+            <div className="pdv-total pdv-muted pdv-checkout-breakdown">
               <span>Desconto</span>
               <span>- R$ {reais(estado.desconto)}</span>
             </div>
@@ -376,7 +447,7 @@ export function FechamentoDaVenda({
             type="button"
             disabled={desabilitado}
             onClick={aoClicarRegistrar}
-            className="pdv-primary admin-barra-principal bg-admin-gold text-black"
+            className="pdv-primary pdv-sale-action bg-green-600 text-white"
           >
             {desabilitado ? (
               <LockKeyhole aria-hidden="true" className="size-5" />

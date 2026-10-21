@@ -84,6 +84,7 @@ const { REEMBOLSO_EM_DUVIDA } = require("./reembolso-em-duvida-posterior.cjs");
 const {
   DESFAZER_RECEBIMENTO,
 } = require("./desfazer-recebimento-posterior.cjs");
+const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
 
 const U_CLIENTE = "71111111-1111-1111-1111-111111111111";
 const U_OUTRO = "71111111-1111-1111-1111-111111111112";
@@ -1785,6 +1786,11 @@ const POSTERIORES_A_97 = [
   // nao depende de nenhuma outra da lista; tem de sair ANTES da 97. No FIM da lista de proposito.
   // Definicao unica em tests/banco/desfazer-recebimento-posterior.cjs.
   DESFAZER_RECEBIMENTO,
+  // 20261330000000: o contato do mototaxi. A RPC salvar_config_mototaxi usa is_admin_atual() e a politica
+  // config_mototaxi_admin_select usa rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). O rollback-manual dela apaga as duas (tabela e contato ficam). Definicao unica em
+  // tests/banco/mototaxi-posterior.cjs. No FIM da lista de proposito.
+  MOTOTAXI,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

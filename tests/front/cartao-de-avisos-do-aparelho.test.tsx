@@ -174,7 +174,7 @@ describe("CartaoDeAvisosDoAparelho", () => {
       // Biome recusam).
       expect(r?.tagName).toBe("SECTION");
       expect(texto()).toContain(TITULO);
-      expect(texto()).toContain("Desligados · receba novos pedidos");
+      expect(texto()).toContain("Desligados — ative para receber pedidos");
       expect(botao(LIGAR)).toBeDefined();
       expect(botao(AGORA_NAO)).toBeDefined();
     });

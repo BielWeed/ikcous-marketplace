@@ -426,7 +426,7 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     const diferenca = [...(li?.querySelectorAll("dt") ?? [])].find(
       (el) => normalizar(el.textContent) === "Diferença",
     );
-    expect(classes(diferenca?.nextElementSibling)).toContain("text-red-300");
+    expect(classes(diferenca?.nextElementSibling)).toContain("text-red-400");
   });
 
   it("Contas e categorias: cada linha é um botão-linha com selo e seta", async () => {

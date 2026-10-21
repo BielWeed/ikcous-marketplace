@@ -134,7 +134,7 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
     });
     await avancar();
     await act(async () => {
-      botaoPorTexto(hospedeiro, "Buscar produto")!.click();
+      botaoPorTexto(hospedeiro, "Buscar")!.click();
     });
     await act(async () => {
       digitarInput("busca-manual-de-produto", termo);
@@ -210,7 +210,7 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
     expect(hospedeiro.textContent).not.toContain("Nenhum produto encontrado");
     expect(rpcMock).not.toHaveBeenCalled();
     await act(async () => {
-      botaoPorTexto(hospedeiro, "Buscar produto")!.click();
+      botaoPorTexto(hospedeiro, "Buscar")!.click();
     });
 
     // Uma letra só mantém a consulta base, sem pedir uma busca por 'v'.

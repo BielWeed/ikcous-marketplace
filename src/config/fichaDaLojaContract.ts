@@ -1,4 +1,5 @@
 import type { PublicStoreIdentity } from "../lib/storeIdentity";
+import type { LocalIdentityUrls } from "./buildIdentityContract";
 
 /**
  * A FICHA DA LOJA — o que o porteiro (middleware.ts, na borda da Vercel)
@@ -51,6 +52,9 @@ export const FICHA_DA_LOJA_ID = "ikcous-loja";
  * o service worker não tem `document` e busca aqui no `install`. */
 export const CAMINHO_IDENTIDADE_JSON = "/identidade.json";
 
+/** PNG neutro branco/alpha, preservado pelo preparo (não está em retiredPaths). */
+export const BADGE_NEUTRO = "/icons/badge-96x96.png";
+
 export interface ConexaoDaLoja {
   /** `https://<project_ref>.supabase.co` — sem barra final. */
   readonly supabaseUrl: string;
@@ -66,7 +70,7 @@ export interface IdentidadeServida {
    * mesma forma de `PublicStoreIdentity["urls"]` — o build assado usava
    * caminho local `/store-identity/…`; num build compartilhado não existe
    * caminho local por loja. */
-  readonly localUrls: PublicStoreIdentity["urls"];
+  readonly localUrls: LocalIdentityUrls;
   /** `https://<host>` — o endereço público desta loja, sem barra final. */
   readonly publicUrl: string;
   /** sha256 canônico da identidade (`identityRevision()` de

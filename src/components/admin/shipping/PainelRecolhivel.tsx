@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
@@ -32,7 +32,9 @@ export function PainelRecolhivel({
   onToggle,
   comPendencia = false,
   children,
+  icone: Icone,
 }: {
+  readonly icone?: LucideIcon;
   readonly id: string;
   readonly titulo: string;
   /** Resumo curto do estado salvo — só aparece com o painel FECHADO. */
@@ -45,9 +47,14 @@ export function PainelRecolhivel({
 }) {
   const idConteudo = `${id}-conteudo`;
   return (
-    <section id={id} aria-label={titulo} className="scroll-mt-24">
+    <section
+      id={id}
+      aria-label={titulo}
+      className="scroll-mt-48 rounded-[20px] border border-admin-border bg-admin-surface"
+    >
       <button
         type="button"
+        aria-label={titulo}
         aria-expanded={aberta}
         aria-controls={idConteudo}
         onClick={() => {
@@ -57,14 +64,19 @@ export function PainelRecolhivel({
           }
           onToggle();
         }}
-        className="group flex min-h-11 w-full flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-admin-border pb-3.5 text-left"
+        className="group flex min-h-11 w-full flex-wrap items-center gap-3 p-4 text-left"
       >
-        <span className="min-w-0 flex-1 basis-40">
-          <span className="block text-xs font-extrabold uppercase tracking-[0.22em] text-zinc-300">
+        {Icone && (
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-admin-raised text-admin-gold">
+            <Icone aria-hidden="true" className="size-5" />
+          </span>
+        )}
+        <span className="min-w-0 flex-1 basis-40 break-words">
+          <span className="block text-[15px] font-extrabold text-zinc-100">
             {titulo}
           </span>
-          {!aberta && resumo != null && (
-            <span className="mt-1 block truncate text-[12.5px] font-normal normal-case tracking-normal text-zinc-500">
+          {resumo != null && (
+            <span className="mt-1 block break-words text-[12.5px] font-normal normal-case tracking-normal text-zinc-500">
               {resumo}
             </span>
           )}
@@ -85,7 +97,7 @@ export function PainelRecolhivel({
         </span>
       </button>
 
-      <div id={idConteudo} hidden={!aberta} className="pt-5">
+      <div id={idConteudo} hidden={!aberta} className="px-4 pb-4 pt-2">
         {children}
       </div>
     </section>
