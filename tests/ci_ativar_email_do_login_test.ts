@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 // @ts-nocheck
 /* eslint-disable security/detect-object-injection -- mapas e dublês locais de testes. */
@@ -41,7 +42,9 @@ function cenario(op = {}) {
   let config = {
     hook_send_email_enabled: false,
     hook_send_email_uri: `https://${ref}.supabase.co/functions/v1/auth-send-email`,
-    hook_send_email_secrets: SECRET,
+    hook_send_email_secrets: createHmac("sha256", ref)
+      .update(SECRET)
+      .digest("hex"),
     smtp_pass: "senha-smtp-ficticia",
     mailer_autoconfirm: false,
     rate_limit_email_sent: 30,
@@ -89,7 +92,17 @@ function cenario(op = {}) {
           ),
           "nenhuma política fora do hook no PATCH",
         );
-        if (!op.patchIgnorado) config = { ...config, ...body };
+        if (!op.patchIgnorado) {
+          config = { ...config, ...body };
+          // O GET/PATCH do Auth retorna HMAC, nunca o texto puro recebido.
+          if (Object.hasOwn(body, "hook_send_email_secrets"))
+            config.hook_send_email_secrets = createHmac(
+              "sha256",
+              op.chaveDoHash ?? ref,
+            )
+              .update(body.hook_send_email_secrets)
+              .digest("hex");
+        }
         if (op.politicaAlterada) config.mailer_autoconfirm = true;
         data = clone(config);
       }
@@ -193,59 +206,65 @@ Deno.test("medir: só GET, relata booleanos e URI fixa sem corpos nem nomes arbi
     assert(!c.tudo().includes(v));
 });
 
-// SHA-256 calculado separadamente sobre o SECRET fictício completo, em UTF-8.
+// SHA-256 da lista de segredos e HMAC do Auth são valores diferentes.
 const DIGEST =
   "f4d8f82bd257325f43cece208e7b047e9f26e570b2945e532876ff9e3afcfee8";
-for (const [nome, segredo, config, esperado] of [
-  ["value igual (OpenAPI)", { value: DIGEST }, {}, "igual"],
-  ["sha256 igual", { sha256: DIGEST }, {}, "igual"],
-  ["digest igual em maiúsculas", { digest: DIGEST.toUpperCase() }, {}, "igual"],
-  ["hash diferente", { value: "0".repeat(64) }, {}, "diferente"],
-  ["hash ausente", {}, {}, "formato desconhecido"],
-  ["hash ilegível", { value: "digest-ficticio" }, {}, "formato desconhecido"],
-  ["valor não é hash", { value: SECRET }, {}, "formato desconhecido"],
-  ["hash não textual", { sha256: 17 }, {}, "formato desconhecido"],
-  [
-    "segredo Auth ausente",
-    { value: DIGEST },
-    { hook_send_email_secrets: null },
-    "formato desconhecido",
-  ],
-  [
-    "segredo Auth ilegível",
-    { value: DIGEST },
-    { hook_send_email_secrets: "outro-formato" },
-    "formato desconhecido",
-  ],
+// HMAC obtido separadamente com a chave REF e o texto SECRET completo.
+const AUTH_HASH =
+  "f7df797e81d028ecefe8d472aceffdea2f720f849daf3a0654bb4bb19d085017";
+for (const [nome, valor, presente] of [
+  ["HMAC presente", AUTH_HASH, true],
+  ["só formato conhecido", "0".repeat(64), true],
+  ["ausente", null, false],
+  ["vazio", "", false],
+  ["texto puro", SECRET, false],
+  ["maiúsculas", AUTH_HASH.toUpperCase(), false],
+  ["curto", AUTH_HASH.slice(1), false],
+  ["não hexadecimal", "z".repeat(64), false],
 ])
-  Deno.test(`medir: comparação dos segredos sem revelar valores — ${nome}`, async () => {
+  Deno.test(`medir: relata presença, nunca igualdade dos segredos — ${nome}`, async () => {
     const c = cenario({
-      secrets: [{ name: "SEND_EMAIL_HOOK_SECRET", ...segredo }],
-      config,
+      secrets: [{ name: "SEND_EMAIL_HOOK_SECRET", value: DIGEST }],
+      config: { hook_send_email_secrets: valor },
     });
     assertEquals(await c.rodar("medir"), 0);
     assertEquals(escritas(c), []);
-    assertStringIncludes(c.tudo(), `comparação dos segredos: ${esperado}`);
-    for (const v of [
-      SECRET,
-      SECRET.slice(9),
-      DIGEST,
-      DIGEST.toUpperCase(),
-      "0".repeat(64),
-    ])
-      assert(!c.tudo().includes(v));
-    assert(
-      c.mascaras.includes(SECRET) ||
-        config.hook_send_email_secrets !== undefined,
+    assertStringIncludes(
+      c.tudo(),
+      `campo do Auth: ${presente ? "hash presente" : "ausente"}`,
     );
+    assertStringIncludes(
+      c.tudo(),
+      `hook preparado: ${presente ? "sim" : "não"}`,
+    );
+    assertStringIncludes(c.tudo(), "segredo da função: presente");
+    assertStringIncludes(
+      c.tudo(),
+      "igualdade entre Auth e função: não verificada (texto puro indisponível)",
+    );
+    assert(!c.tudo().includes("comparação dos segredos:"));
+    for (const v of [SECRET, SECRET.slice(9), DIGEST, AUTH_HASH])
+      assert(!c.tudo().includes(v));
+    if (valor !== null && valor !== "") {
+      assert(
+        c.mascaras.includes(valor),
+        "todo campo secreto recebido precisa de máscara",
+      );
+      assert(!c.tudo().includes(valor));
+    }
+    assert(c.mascaras.includes("senha-smtp-ficticia"));
+    assert(c.mascaras.includes(TOKEN));
   });
 
-Deno.test("medir: sem segredo da função não afirma igualdade", async () => {
+Deno.test("medir: hash no Auth sem segredo da função não é preparado", async () => {
   const c = cenario({ secrets: [] });
   assertEquals(await c.rodar("medir"), 0);
+  assertStringIncludes(c.tudo(), "campo do Auth: hash presente");
+  assertStringIncludes(c.tudo(), "segredo da função: ausente");
+  assertStringIncludes(c.tudo(), "hook preparado: não");
   assertStringIncludes(
     c.tudo(),
-    "comparação dos segredos: formato desconhecido",
+    "igualdade entre Auth e função: não verificada",
   );
 });
 
@@ -280,7 +299,7 @@ Deno.test("CAF: só o token próprio e o ref fechado, mesmo com Savy no ambiente
   );
 });
 
-Deno.test("preparar: segredo aleatório mascarado antes do POST, igual nos dois lados, sem ligar", async () => {
+Deno.test("preparar: segredo aleatório mascarado antes do POST, HMAC confirmado na releitura, sem ligar", async () => {
   const c = cenario({
     config: { hook_send_email_uri: null, hook_send_email_secrets: null },
     secrets: [],
@@ -309,10 +328,57 @@ Deno.test("preparar: segredo aleatório mascarado antes do POST, igual nos dois 
       },
     ],
   );
+  const hash = createHmac("sha256", REF).update(gerado).digest("hex");
+  assert(c.mascaras.includes(hash));
   assert(!c.tudo().includes(gerado));
   assert(!c.tudo().includes(gerado.slice(9)));
+  assert(!c.tudo().includes(hash));
+  assertStringIncludes(
+    c.tudo(),
+    "igualdade entre Auth e função: confirmada nesta preparação",
+  );
   assertEquals(await c.rodar("preparar"), 0);
   assertEquals(escritas(c).length, 2, "repetir não gira nem regrava segredo");
+  assertStringIncludes(
+    c.tudo(),
+    "igualdade entre Auth e função: não verificada (texto puro indisponível)",
+  );
+});
+
+Deno.test("preparar: HMAC de outro projeto não confirma o PATCH", async () => {
+  const c = cenario({
+    chaveDoHash: "cafkrminfnokvgjqtkle",
+    secrets: [],
+    config: { hook_send_email_uri: null, hook_send_email_secrets: null },
+  });
+  assertEquals(await c.rodar("preparar"), 1);
+  assertEquals(
+    patches(c).length,
+    1,
+    "a falha foi na conferência, depois do PATCH",
+  );
+  assertStringIncludes(c.tudo(), "releitura não confirmou o PATCH");
+  assertStringIncludes(c.tudo(), "estado do hook DESCONHECIDO");
+  assertStringIncludes(c.tudo(), "rode medir");
+  const gerado = patches(c)[0].body.hook_send_email_secrets;
+  assert(!c.tudo().includes(gerado));
+  assert(
+    !c.tudo().includes(createHmac("sha256", REF).update(gerado).digest("hex")),
+  );
+});
+
+Deno.test("preparar: CAF usa a chave do próprio projeto para confirmar HMAC", async () => {
+  const c = cenario({
+    projeto: "ikcous-publicada",
+    secrets: [],
+    config: { hook_send_email_uri: null, hook_send_email_secrets: null },
+  });
+  assertEquals(await c.rodar("preparar"), 0, c.tudo());
+  assertEquals(patches(c).length, 1);
+  assertStringIncludes(
+    c.tudo(),
+    "igualdade entre Auth e função: confirmada nesta preparação",
+  );
 });
 
 Deno.test("preparar: POST secrets 201 sem corpo é documentado; confirma pela releitura", async () => {
@@ -406,7 +472,7 @@ for (const [nome, segredo] of [
   ["diferente", { value: "0".repeat(64) }],
   ["desconhecido", { sha256: "outro-formato" }],
 ])
-  Deno.test(`ativar: comparação de hash ${nome} não vira guarda`, async () => {
+  Deno.test(`ativar: digest ${nome} da função não substitui a guarda de presença`, async () => {
     const c = cenario({
       secrets: [{ name: "SEND_EMAIL_HOOK_SECRET", ...segredo }],
     });
@@ -425,6 +491,14 @@ for (const [nome, op] of [
   ],
   ["sem segredo", { secrets: [] }],
   ["sem hook", { config: { hook_send_email_secrets: "" } }],
+  [
+    "texto puro não é resposta do Auth",
+    { config: { hook_send_email_secrets: SECRET } },
+  ],
+  [
+    "hash maiúsculo",
+    { config: { hook_send_email_secrets: AUTH_HASH.toUpperCase() } },
+  ],
   [
     "URI errada",
     { config: { hook_send_email_uri: "https://outro.invalid/hook" } },
@@ -470,7 +544,9 @@ Deno.test("desativar: leitura inicial inválida não bloqueia PATCH de emergênc
     patches(c).map((p) => p.body),
     [{ hook_send_email_enabled: false }],
   );
-  assertStringIncludes(c.tudo(), "verificação incompleta");
+  assertStringIncludes(c.tudo(), "hook desativado confirmado por releitura");
+  assertStringIncludes(c.tudo(), "verificação incompleta das outras políticas");
+  assert(!c.tudo().includes("DESCONHECIDO"));
 });
 
 for (const [nome, op] of [
