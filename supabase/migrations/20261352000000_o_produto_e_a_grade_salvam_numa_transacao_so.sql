@@ -6,7 +6,8 @@
 -- A view vw_produtos_admin exige is_admin(); não filtra ativo/deleted_at.
 -- Aqui também exigimos is_admin_atual() e recusamos produto excluído.
 -- Exclusão com FK de pedido vai para recusadas; qualquer outro erro desfaz tudo.
--- Pré-voo exige função AUSENTE: reaplicar recusa sem modificar o estado.
+-- Pré-voo: a função ausente (primeira aplicação) OU com o corpo desta migration (reaplicar); outro corpo = sucessora, recusa.
+-- Estoque só grava com a versão conferida: patch com `estoque` ou variação existente com `stock_increment` exige base (22023).
 -- ROLLBACK: rollback-manual-20261352000000_o_produto_e_a_grade_salvam_numa_transacao_so.sql
 -- Voltar primeiro o front; rollback apaga só a porta nova, nunca dado.
 -- Sem BEGIN/COMMIT: o aplicador controla a transação.
@@ -42,10 +43,14 @@ BEGIN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: falta product_variants.%', v_coluna;
     END IF;
   END LOOP;
-  -- Reaplicar é permitido (CREATE OR REPLACE reescreve o mesmo texto); sobrecarga não.
+  -- Reaplicar reescreve o MESMO texto (CREATE OR REPLACE); sobrecarga ou corpo de sucessora recusam, sem escrever.
   IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace
         AND proname = 'salvar_produto_com_grade') > 1 THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: salvar_produto_com_grade tem sobrecarga em public — meça a loja e revise antes de aplicar.';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE oid = to_regprocedure('public.salvar_produto_com_grade(uuid,timestamptz,jsonb,jsonb,uuid[])')
+      AND md5(replace(prosrc, E'\r\n', E'\n')) <> '09c2a4b5724acbe46fb2c2e758e96c8f') THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: o corpo vivo de salvar_produto_com_grade não é o desta migration (sucessora no ar?) — não reaplique por cima.';
   END IF;
 END $preflight_352$;
 
@@ -77,6 +82,15 @@ BEGIN
   IF p_produto_id IS NULL OR jsonb_typeof(p_produto) IS DISTINCT FROM 'object'
      OR jsonb_typeof(p_variantes) IS DISTINCT FROM 'array' OR p_apagar IS NULL THEN
     RAISE EXCEPTION 'Produto, variantes e exclusões precisam ter o formato esperado.' USING ERRCODE = '22023';
+  END IF;
+
+  -- Estoque é dinheiro: sem a versão conferida (base nula) nenhum estoque absoluto de linha EXISTENTE é gravado.
+  -- (Variação nova, sem id, só insere: não há venda a desfazer.)
+  IF p_base_atualizado_em IS NULL
+     AND (p_produto ? 'estoque'
+          OR EXISTS (SELECT 1 FROM jsonb_array_elements(p_variantes) e
+                      WHERE jsonb_typeof(e) = 'object' AND e ? 'stock_increment' AND e->>'id' IS NOT NULL)) THEN
+    RAISE EXCEPTION 'Estoque só é gravado com a versão do produto conferida.' USING ERRCODE = '22023';
   END IF;
 
   -- Ordem global de travas da 20261350000000: TODAS as variações do produto (por id) e só então o produto.
@@ -188,7 +202,7 @@ BEGIN
   IF NOT COALESCE((SELECT count(*) = 1 AND bool_and(prosecdef AND provolatile = 'v' AND NOT proisstrict
       AND prorettype = 'jsonb'::regtype AND proconfig = ARRAY['search_path=public']
       AND prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
-      AND md5(replace(prosrc, E'\r\n', E'\n')) = '56803cebbd098f4270cf352a59f72a68'
+      AND md5(replace(prosrc, E'\r\n', E'\n')) = '09c2a4b5724acbe46fb2c2e758e96c8f'
       AND NOT EXISTS (SELECT 1 FROM aclexplode(COALESCE(proacl, acldefault('f', proowner))) a
         WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'))
     FROM pg_proc WHERE oid = to_regprocedure('public.salvar_produto_com_grade(uuid,timestamptz,jsonb,jsonb,uuid[])')), false)

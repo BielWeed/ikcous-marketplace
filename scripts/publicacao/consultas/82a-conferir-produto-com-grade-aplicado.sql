@@ -2,7 +2,7 @@
 WITH itens(item, esperado, vivo) AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'salvar_produto_com_grade: uma so, com o corpo da 20261352000000 (md5)', 'sim', CASE WHEN COALESCE(
-    (SELECT count(*) = 1 AND bool_and(md5(replace(p.prosrc, E'\r', '')) = '56803cebbd098f4270cf352a59f72a68')
+    (SELECT count(*) = 1 AND bool_and(md5(replace(p.prosrc, E'\r', '')) = '09c2a4b5724acbe46fb2c2e758e96c8f')
        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'salvar_produto_com_grade'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'salvar_produto_com_grade: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path=public, jsonb)', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(l.lanname = 'plpgsql' AND p.prosecdef AND p.provolatile = 'v' AND NOT p.proisstrict AND NOT p.proretset

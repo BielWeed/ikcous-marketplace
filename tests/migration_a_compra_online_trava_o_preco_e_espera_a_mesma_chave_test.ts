@@ -290,13 +290,13 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       undefined,
       campo,
     );
-  // A 350 vem DEPOIS da 244 e é a ÚLTIMA entrada da lista (convenção: lote novo no fim).
+  // A 350 vem DEPOIS da 244 e entra UMA vez na lista; lote mais novo vai depois dela (convenção: lote novo no fim).
   const versoes = canais.provasDeObjetos.flatMap((p) => p.versoes ?? []);
   assert(versoes.indexOf("20261244000000") < versoes.indexOf("20261350000000"));
   assertEquals(
-    canais.provasDeObjetos.at(-1).consulta,
-    A81,
-    "lote novo vai no fim",
+    canais.provasDeObjetos.filter((p) => p.consulta === A81).length,
+    1,
+    "a 81a entra uma vez",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(

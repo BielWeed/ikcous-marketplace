@@ -6,7 +6,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace
     AND proname = 'salvar_produto_com_grade'
     AND (oid <> COALESCE(to_regprocedure('public.salvar_produto_com_grade(uuid,timestamptz,jsonb,jsonb,uuid[])'), 0)
-      OR md5(replace(prosrc, E'\r\n', E'\n')) <> '56803cebbd098f4270cf352a59f72a68')) THEN
+      OR md5(replace(prosrc, E'\r\n', E'\n')) <> '09c2a4b5724acbe46fb2c2e758e96c8f')) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: salvar_produto_com_grade desconhecida; nada foi apagado.';
   END IF;
 END $rollback_352$;

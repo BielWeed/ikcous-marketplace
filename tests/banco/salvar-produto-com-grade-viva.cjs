@@ -318,12 +318,17 @@ const SEM_TRAVAS = () => {
   assert.notEqual(r2, r1, "o mutante sem a trava do produto não mudou nada");
   return r2;
 };
+/** Volta ao estado da migration, qualquer que seja o corpo vivo (o pré-voo recusa reaplicar por cima de outro corpo). */
+async function restaurarTudo() {
+  await ADM.query(`DROP FUNCTION IF EXISTS ${FN}`);
+  await ADM.query(MIGRATION);
+}
 async function comCorpo(sql, fn) {
   await ADM.query(sql);
   try {
     return await fn();
   } finally {
-    await ADM.query(MIGRATION);
+    await restaurarTudo();
   }
 }
 
@@ -521,13 +526,25 @@ prova(
         "o estoque do banco sobrevive",
       );
       assert.equal(await nomeDe(prod.id), "Só o nome");
-      const f = await falhaCom(
-        rpc(painel, prod.id, null, {}, [
-          item(prod.vars[0], "T0", { stock_increment: null }),
-        ]),
-      );
-      assert.equal(f?.code, "22023", "stock_increment nulo nunca zera");
+      // Estoque só grava com a versão conferida: base nula + estoque de linha existente ou do produto = recusa.
+      const antesD = await foto(prod.id);
+      for (const [produto, variantes] of [
+        [{ estoque: 5 }, []],
+        [{}, [item(prod.vars[0], "T0", { stock_increment: 50 })]],
+        [{}, [item(prod.vars[0], "T0", { stock_increment: null })]],
+      ]) {
+        const g = await falhaCom(
+          rpc(painel, prod.id, null, produto, variantes),
+        );
+        assert.equal(g?.code, "22023", g?.message);
+        assert.match(g.message, /versão/);
+      }
+      assert.equal(await foto(prod.id), antesD, "a recusa não escreveu nada");
       assert.equal(await estoqueDa(prod.vars[0]), 49);
+      // Variação NOVA (sem id) só insere: passa sem versão.
+      await rpc(painel, prod.id, null, {}, [
+        item(null, "SEM-VERSAO", { stock_increment: 4 }),
+      ]);
     } finally {
       await fechar(comprador, painel);
     }
@@ -586,6 +603,18 @@ prova(
         await foto(outro.id),
         antes,
         "a variação do outro produto não mudou",
+      );
+      const alheia = (await rpc(painel, prod.id, null, {}, [], [outro.vars[0]]))
+        .rows[0].r;
+      assert.deepEqual(
+        alheia.apagadas,
+        [],
+        "variação de outro produto não é apagada",
+      );
+      assert.equal(
+        await foto(outro.id),
+        antes,
+        "a variação do outro produto segue lá",
       );
     } finally {
       await fechar(comprador, painel);
@@ -825,7 +854,13 @@ prova(
     const rec = await falhaCom(ADM.query(ROLLBACK));
     assert.match(rec?.message ?? "", /B1_BASELINE_DIVERGENT/);
     assert.ok(await hash(), "a função segue lá");
-    await ADM.query(MIGRATION);
+    const reaplica = await falhaCom(ADM.query(MIGRATION));
+    assert.match(
+      reaplica?.message ?? "",
+      /B1_BASELINE_DIVERGENT/,
+      "o pré-voo recusa reaplicar por cima de outro corpo",
+    );
+    await restaurarTudo();
 
     await ADM.query(ROLLBACK);
     assert.equal(await hash(), undefined, "o rollback apaga a função");
@@ -873,7 +908,7 @@ prova(
     assert.deepEqual(itensVermelhos(await rodar(A)), [
       "salvar_produto_com_grade: uma so, com o corpo da 20261352000000 (md5)",
     ]);
-    await ADM.query(MIGRATION);
+    await restaurarTudo();
     await ADM.query(`GRANT EXECUTE ON FUNCTION ${FN} TO anon`);
     assert.deepEqual(itensVermelhos(await rodar(A)), [
       "salvar_produto_com_grade: EXECUTE so para authenticated e service_role (PUBLIC e anon nao)",
@@ -935,7 +970,7 @@ async function main() {
             .split("\n")
             .join("\n      ")}`,
         );
-        await ADM.query(MIGRATION).catch(() => {});
+        await restaurarTudo().catch(() => {});
       }
     }
   } finally {
