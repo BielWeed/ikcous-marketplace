@@ -2544,6 +2544,49 @@ Deno.test("W-orfa (rota order): reembolso da ÓRFÃ no painel do MP NÃO mexe no
   assertEquals(resposta.status, 200);
 });
 
+for (const gateway of [S_ORFA, null]) {
+  Deno.test(`W-orfa pending: estorno fora da vaga ${gateway ? "ocupada por S" : "vazia"} recebe 200 também na reentrega`, async () => {
+    const registro = { chamadasRpc: [], chamadasConcluirEstorno: [], insertsOrderRefunds: [] as any[] };
+    const pedido = {
+      id: UUID_PEDIDO, gateway_payment_id: gateway, total: 100, total_amount: 100,
+      valor_estornado: 0, payment_status: "aguardando", paid_at: null, status: "pending",
+    };
+    const supabase = clienteFalso({ rpcResultado: "divergente", pedido, registro, orderRefundsRows: [] });
+    const orfaReembolsada = {
+      id: O_ORFA, external_reference: UUID_PEDIDO, status: "refunded",
+      status_detail: "refunded", total_amount: "100.00",
+      transactions: {
+        payments: [{ id: "PAY2", status: "refunded", payment_method: { type: "credit_card" } }],
+        refunds: [{ id: "R-ORFA", amount: "100.00", status: "processed" }],
+      },
+    };
+    const antes = { ...pedido };
+    const chamadasPush: unknown[] = [];
+    const erroReal = console.error;
+    console.error = () => {};
+    try {
+      for (let entrega = 0; entrega < 2; entrega++) {
+        const resposta = await handler(
+          await requisicaoAssinada(O_ORFA, { corpoExtra: { type: "order" } }),
+          {
+            supabase, fetchImpl: fetchConsulta(200, orfaReembolsada),
+            enviarPush: async (a: unknown) => { chamadasPush.push(a); },
+          },
+        );
+        assertEquals(resposta.status, 200, "órfã não mantém o evento na fila do MP");
+        assertEquals(pedido, antes);
+        assertEquals(registro.insertsOrderRefunds.length, 0);
+        assertEquals(registro.chamadasConcluirEstorno.length, 0);
+      }
+    } finally {
+      console.error = erroReal;
+    }
+    // O aviso órfão já não tem dedupe: uma reentrega espontânea ainda avisa de novo.
+    // Não alterar esse contrato aqui; o 200 elimina a reentrega provocada pela guarda A1.
+    assertEquals(chamadasPush.length, 2);
+  });
+}
+
 Deno.test("W-orfa (rota payment, a que o A3 fecha do outro lado): reembolso da ÓRFÃ pela rota clássica -> ledger intacto, pedido REAL continua 'pago'", async () => {
   const registro = { chamadasRpc: [], insertsOrderRefunds: [] as any[] };
   const pedido = {

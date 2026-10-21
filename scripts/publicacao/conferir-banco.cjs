@@ -2360,7 +2360,17 @@ const ROL_DA_56B = [
   "dependencias: marketplace_orders (id uuid) existe",
   "dependencias: os papeis anon, authenticated e service_role existem",
 ];
+// Lote 57: mesmos cinco fatos de catalogo, corpos diferentes ANTES/DEPOIS.
+const ROL_DA_57 = [
+  "controle: funcoes de public visiveis a este papel",
+  "concluir_estorno: corpo exato (md5)",
+  "pagamentos_a_reconciliar: corpo exato (md5)",
+  "as duas funcoes: assinaturas, atributos e EXECUTE so do servidor",
+  "dependencia 20261241: marcas e corpos do saldo em duvida presentes",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,
+  "57b-antes-pagamento-adiantado-e-estorno-base-vigente": ROL_DA_57,
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
   "8k-subtotal-divergente-ou-vazia-provada": ROL_DA_8K,

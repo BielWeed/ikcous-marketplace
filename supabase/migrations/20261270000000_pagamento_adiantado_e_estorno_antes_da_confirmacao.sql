@@ -237,8 +237,8 @@ BEGIN
 
     -- Só a reserva pending NUNCA confirmada pode voltar automaticamente.
     -- Parcial, pedido já pago/adiantado ou com envio anterior não reestocam.
-    -- Carimbo explícito: funciona também onde devolver_estoque é a versão
-    -- antiga não idempotente; tudo é desfeito junto se esta transação falhar.
+    -- devolver_estoque vigente já é idempotente por stock_returned_at.
+    -- Mantém o carimbo explícito; tudo é desfeito junto se esta transação falhar.
     IF v_payment_status = 'estornado'
        AND v_pedido.paid_at IS NULL
        AND v_pedido.payment_status = 'aguardando'
@@ -263,6 +263,9 @@ BEGIN
     );
 END;
 $$;
+
+COMMENT ON FUNCTION public.concluir_estorno(uuid, text, text, text) IS
+  'Fecha a devolucao confirmada pelo Mercado Pago: conclui order_refunds e soma valor_estornado na mesma transacao, sem ultrapassar o total. Integral vira estornado e preenche paid_at se ausente; parcial preserva pagamento e data. Estorno integral de pending nunca pago cancela, devolve estoque e grava paid_at. Exige pagamento aguardando e ausencia de envio anterior; pedido ja pago ou adiantado nao cancela nem reestoca. Idempotente: reentrega nao soma nem devolve estoque duas vezes. So servidor.';
 
 REVOKE ALL ON FUNCTION public.concluir_estorno(uuid, text, text, text) FROM PUBLIC, anon, authenticated;
 

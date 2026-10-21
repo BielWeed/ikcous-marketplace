@@ -168,6 +168,7 @@ const A53 = "53a-conferir-faturamento-potencial-aplicado";
 const A54 = "54a-conferir-lucro-do-estoque-aplicado";
 const A55 = "55a-conferir-intencao-do-caixa-aplicado";
 const A56 = "56a-conferir-motivo-da-recusa-do-cartao-aplicado";
+const A57 = "57a-conferir-pagamento-adiantado-e-estorno-aplicado";
 const A52 = "52a-conferir-motivo-do-balcao-privado-aplicado";
 const B52 = "52b-antes-motivo-do-balcao-base-vigente";
 // O lote da migration 20261233000000 (o sino do pedido de retirada fala de retirada: notifica_cliente_de_mudanca_de_status): consulta do lote (DEPOIS: o corpo novo, o texto da retirada e o da entrega, atributos, gatilho ligado, ACL de hoje) e a do ANTES (o corpo vigente da 20261026000000).
@@ -3066,6 +3067,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     A54,
     A55,
     A56,
+    A57,
   ]);
 });
 

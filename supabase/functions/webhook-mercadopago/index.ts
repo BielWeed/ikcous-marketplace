@@ -1604,6 +1604,7 @@ async function handler(
     statusDetailDoEstorno === "partially_refunded" ||
     statusDoEstorno === STATUS_DA_CONTESTACAO;
 
+  let corpoConfiavelParaEstorno: Record<string, unknown> | null = null;
   if (gatilhoDeEstorno && corpoConsultado) {
     // Achado B1 (2ª revisão de risco, 26/09/2026): este passo lia status/
     // status_detail/refunds do objeto CONSULTADO desta notificação — que
@@ -1669,7 +1670,6 @@ async function handler(
     // pagamento, sem `valor_estornado` nem razão (W9, missão pagamentos,
     // 28/09/2026).
     let formatoConfiavelParaEstorno: "payment" | "order" = rota;
-    let corpoConfiavelParaEstorno: Record<string, unknown> | null = null;
     if (idGravadoParaEstornoStr !== null && idGravadoParaEstornoStr === idParaRpc) {
       corpoConfiavelParaEstorno = corpoConsultado;
     } else if (rota === "payment" && idGravadoParaEstornoStr && !idEhClassico(idGravadoParaEstornoStr)) {
@@ -1918,7 +1918,7 @@ async function handler(
   // (paid_at + cancelamento + estoque). Se o ledger não conseguiu concluir
   // nenhum refund, NÃO cair no confirmar_pagamento legado: ele encerraria a
   // reserva sem a entrada financeira. 500 conserva o evento para reconsulta.
-  if (statusMapeado === "estornado" && linhaDoPedido &&
+  if (corpoConfiavelParaEstorno !== null && statusMapeado === "estornado" && linhaDoPedido &&
     linhaDoPedido.paid_at === null && linhaDoPedido.status === "pending") {
     return json({ error: "Estorno ainda não confirmado no ledger." }, 500);
   }
