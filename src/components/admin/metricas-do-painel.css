@@ -1,19 +1,70 @@
 .metricas-painel {
   container-type: inline-size;
 }
+.admin-topo-cabecalho,
+.metricas-painel-nota {
+  min-width: 0;
+}
+.admin-topo-conteudo {
+  padding-top: 12px;
+}
+.admin-topo-resumo {
+  margin-bottom: 8px;
+}
+.admin-topo-lista {
+  margin-top: 30px;
+}
+.metricas-painel[data-expandido="true"] .metricas-painel-resumo {
+  padding: 12px;
+}
+.metricas-painel-cabecalho {
+  height: 58px;
+  margin-bottom: 12px;
+}
+.metricas-painel-grade {
+  grid-auto-rows: 96px;
+}
+.metricas-painel-grade article {
+  position: relative;
+}
+.metricas-painel-grade article > svg {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 24px;
+  height: 24px;
+}
+.metricas-painel-grade article h3 {
+  padding-right: 24px;
+  font-size: 16px;
+}
+.metricas-painel-grade article p {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 14px;
+}
+.metricas-painel-secundarias .metricas-painel-detalhe {
+  flex: 1;
+}
+.metricas-painel-secundarias .metricas-painel-detalhe span[aria-hidden] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .metricas-painel .metricas-painel-resumo {
   position: relative;
-  border: 1px solid #343039;
+  height: 100%;
+  border: 1px solid hsl(var(--admin-border));
   border-radius: 14px;
-  background: linear-gradient(135deg, #17161b, #111114);
+  background: hsl(var(--admin-card));
 }
 
 .metricas-painel .metricas-painel-principais {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  padding: 12px 54px 11px 12px;
+  padding: 8px 54px 8px 12px;
 }
 
 .metricas-painel .metricas-painel-destaque > svg,
@@ -22,7 +73,7 @@
 }
 
 .metricas-painel .metricas-painel-destaque + .metricas-painel-destaque {
-  border-left: 1px solid #ffffff12;
+  border-left: 1px solid hsl(var(--admin-border));
   padding-left: 10px;
 }
 
@@ -30,7 +81,7 @@
   min-height: 28px;
   font-size: 11px;
   line-height: 14px;
-  color: #b5b1bd;
+  color: inherit;
 }
 
 .metricas-painel .metricas-painel-valor {
@@ -50,12 +101,12 @@
   font-size: 0.55em;
   font-weight: 500;
   letter-spacing: 0;
-  color: #b5b1bd;
+  color: inherit;
 }
 
 .metricas-painel[data-expandido="false"] .metricas-painel-controle {
   position: absolute;
-  top: 17px;
+  top: 44px;
   right: 5px;
   flex-direction: column;
   justify-content: center;
@@ -63,20 +114,19 @@
   border-radius: 8px;
   font-size: 9px;
   line-height: 12px;
-  color: #cbc3dd;
+  color: inherit;
 }
 
 .metricas-painel .metricas-painel-controle:hover {
-  background: #ffffff08;
+  background: hsl(var(--admin-border));
 }
 
 .metricas-painel .metricas-painel-secundarias {
-  gap: 6px 14px;
-  border-top: 1px solid #ffffff0d;
-  padding: 9px 12px;
+  border-top: 1px solid hsl(var(--admin-border));
+  padding: 0 8px 0 12px;
   font-size: 11px;
   line-height: 15px;
-  color: #a8a3b1;
+  color: inherit;
 }
 
 .metricas-painel .metricas-painel-secundarias h3 {

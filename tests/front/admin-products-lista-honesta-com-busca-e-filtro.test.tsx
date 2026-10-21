@@ -302,6 +302,11 @@ describe("AdminProductsView — a lista não mente quando há busca ou filtro", 
         return { products: produtosMock, total: 3 };
       });
       await montarEEsperarPrimeiraBusca();
+      await act(async () =>
+        hospedeiro
+          .querySelector<HTMLButtonElement>("button[aria-expanded]")!
+          .click(),
+      );
     }
 
     it("sem busca nem filtro: 'Catálogo Geral'", async () => {

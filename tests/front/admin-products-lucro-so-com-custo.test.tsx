@@ -195,7 +195,7 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
     await montar();
     // A ajuda (dicionário) só monta com o guia aberto — o botão do cabeçalho.
     const botao = hospedeiro.querySelector<HTMLButtonElement>(
-      'button[title="Guia Completo de Métricas e Ajuda"]',
+      'button[aria-label="Guia e simulador"]',
     );
     expect(botao).toBeTruthy();
     await act(async () => {

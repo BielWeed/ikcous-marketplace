@@ -129,8 +129,13 @@ it("resumo já mostra pagamento sem setas; expandir preserva as quatro fontes", 
     "2",
     "1",
   ]);
-  expect(metricas.querySelectorAll("button")).toHaveLength(1);
-  expect(metricas.querySelector("button")?.textContent).toContain("Recolher");
+  expect(metricas.querySelectorAll("button")).toHaveLength(2);
+  expect(
+    metricas.querySelector('button[aria-label="Entender valores"]'),
+  ).not.toBeNull();
+  expect(
+    metricas.querySelector("button[aria-expanded]")?.textContent,
+  ).toContain("Recolher");
   await clicar("Recolher");
   expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(4);
 });
@@ -260,6 +265,13 @@ it("sem conexão e carregando têm explicações próprias", async () => {
   await montar();
   expect(host.textContent).toContain("Sem internet agora");
   expect(host.textContent).toContain("Carregando pedidos...");
+  const barra = host.querySelector(".admin-sync-progress-bar")!;
+  expect(barra).not.toBeNull();
+  expect(barra.parentElement?.className).not.toContain("space-y-");
+  const status = [...host.querySelectorAll('[role="status"]')].find((el) =>
+    el.textContent?.includes("Carregando pedidos..."),
+  )!;
+  expect(status.className).toBe("sr-only");
   expect(host.textContent).not.toContain("Seus pedidos vão aparecer aqui");
 });
 

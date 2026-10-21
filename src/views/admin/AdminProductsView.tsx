@@ -57,6 +57,7 @@ import {
   Copy,
   DollarSign,
   Edit2,
+  HelpCircle,
   Package,
   Pause,
   Percent,
@@ -803,60 +804,73 @@ export const AdminProductsView = memo(function AdminProductsView({
         active !== false && expandedHelp["global-guide"] ? "aberto" : undefined
       }
     >
-      <header className="px-5 pb-4 pt-5">
-        <div className="flex items-center justify-between gap-3">
+      <header className="admin-topo-cabecalho flex h-[76px] items-center justify-between gap-3 px-5">
+        <div className="min-w-0">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-products"]} />
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="produtos-cupons">
-              <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
-            </div>
+          <div className="mt-1 flex items-center gap-2 text-xs">
+            {loadError ? (
+              <AlertTriangle
+                aria-hidden="true"
+                className="size-3.5 text-red-300"
+              />
+            ) : (
+              <PontoDeOperacao sincronizando={effectiveLoading} />
+            )}
+            <span
+              className={isOffline || loadError ? "text-red-300" : undefined}
+            >
+              {isOffline
+                ? "Sem conexão com o servidor"
+                : loadError
+                  ? "Não sincronizou"
+                  : effectiveLoading
+                    ? "Recarregando..."
+                    : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
+            </span>
           </div>
         </div>
-        <div className="mt-2 flex items-center gap-2 text-xs text-zinc-400">
-          {loadError ? (
-            <AlertTriangle
-              aria-hidden="true"
-              className="size-3.5 text-red-300"
-            />
-          ) : (
-            <PontoDeOperacao sincronizando={effectiveLoading} />
-          )}
-          <span className={isOffline || loadError ? "text-red-300" : undefined}>
-            {isOffline
-              ? "Sem conexão com o servidor"
-              : loadError
-                ? "Não sincronizou"
-                : effectiveLoading
-                  ? "Recarregando..."
-                  : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
-          </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="produtos-cupons">
+            <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
+          </div>
+          <button
+            type="button"
+            aria-label="Guia e simulador"
+            onClick={() => toggleHelp("global-guide")}
+            className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-admin-border bg-admin-card text-admin-accent"
+          >
+            <HelpCircle aria-hidden="true" className="size-5" />
+          </button>
         </div>
       </header>
 
-      <div className="space-y-7 px-5">
-        {isOffline && (
-          <div
-            role="status"
-            className="flex gap-3 rounded-2xl border border-red-300/15 bg-red-300/10 p-4 text-sm"
-          >
-            <AlertTriangle
-              aria-hidden="true"
-              className="size-5 shrink-0 text-red-300"
-            />
-            <div>
-              <p className="font-bold">Sem conexão com o servidor</p>
-              <p className="mt-1 text-zinc-300">
-                Novo produto e ações dos produtos voltam quando a internet
-                voltar.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-4">
+      <div className="admin-topo-conteudo px-5">
+        <div className="admin-topo-resumo">
           <LocalErrorBoundary>
             <MetricasDoPainel
               titulo="Métricas de Produtos"
+              onEntender={() => toggleHelp("financial-values")}
+              nota={
+                isOffline ? (
+                  <span role="status">
+                    Sem conexão · ações indisponíveis até a internet voltar
+                  </span>
+                ) : !financialStats.coberturaConferida ? (
+                  <span role="status">Conferindo custos…</span>
+                ) : financialStats.parcial ? (
+                  <span role="status" className="text-amber-200">
+                    {financialStats.produtosSemCusto}{" "}
+                    {financialStats.produtosSemCusto === 1
+                      ? "produto sem custo"
+                      : "produtos sem custo"}{" "}
+                    · lucro parcial
+                  </span>
+                ) : (
+                  <span className="text-admin-accent">
+                    Todos os produtos em estoque têm custo cadastrado.
+                  </span>
+                )
+              }
               legendasDoResumo={[
                 "Custo conhecido",
                 financialStats.parcial
@@ -954,38 +968,6 @@ export const AdminProductsView = memo(function AdminProductsView({
               </p>
             </div>
           </FolhaDoPainel>
-          {financialStats.parcial ? (
-            <p role="status" className="text-xs text-amber-200">
-              {financialStats.produtosSemCusto}{" "}
-              {financialStats.produtosSemCusto === 1
-                ? "produto sem custo"
-                : "produtos sem custo"}{" "}
-              · lucro parcial
-            </p>
-          ) : !financialStats.coberturaConferida ? (
-            <p role="status" className="text-xs text-zinc-400">
-              Conferindo custos…
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center justify-between gap-x-4">
-            <button
-              type="button"
-              onClick={() => toggleHelp("financial-values")}
-              aria-haspopup="dialog"
-              className="min-h-11 text-xs font-semibold text-violet-300 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
-            >
-              Entender valores
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleHelp("global-guide")}
-              className="flex min-h-11 items-center gap-2 text-xs text-zinc-300 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300"
-              title="Guia Completo de Métricas e Ajuda"
-            >
-              <BookOpen aria-hidden="true" className="size-4 text-violet-300" />
-              Guia e simulador
-            </button>
-          </div>
         </div>
 
         <BarraDeBusca
@@ -1029,192 +1011,206 @@ export const AdminProductsView = memo(function AdminProductsView({
           </Suspense>
         )}
 
-        {/* Grid view of Products as Assets */}
-        <LocalErrorBoundary>
-          {!effectiveLoading && products?.length === 0 ? null : (
-            <div className="relative" aria-busy={effectiveLoading}>
-              {showVisualLoading && <div className="admin-sync-progress-bar" />}
-              {viewMode === "detailed" ? (
-                <div
-                  key="detailed-grid"
-                  className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3"
-                >
-                  {effectiveLoading && products.length === 0
-                    ? Array.from({ length: 8 }).map((_, i) => (
-                        <div
-                          key={i}
-                          aria-hidden="true"
-                          className={cn(
-                            "produto-esqueleto flex animate-pulse flex-col gap-3 rounded-2xl border border-white/10 bg-[#101013] p-4",
-                            ALTURA_DO_ESQUELETO_DETALHADO,
-                          )}
-                        >
-                          <Skeleton className="h-12 w-full bg-white/5" />
-                          <Skeleton className="h-6 w-3/4 bg-white/5" />
-                          <Skeleton className="h-10 w-full bg-white/5" />
-                        </div>
-                      ))
-                    : products?.map((product) => (
-                        <AdminProductCard
-                          key={product.id}
-                          product={product}
-                          viewMode="detailed"
-                          onNavigate={handleLocalNavigate}
-                          onToggleStatus={handleToggleStatus}
-                          onDuplicate={handleDuplicate}
-                          onDelete={handleDelete}
-                          isOffline={isOffline}
-                          onPrefetch={handlePrefetchProductForm}
-                        />
-                      ))}
-                </div>
-              ) : (
-                <div
-                  key="compact-grid"
-                  className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-                >
-                  {effectiveLoading && products.length === 0
-                    ? Array.from({ length: 12 }).map((_, i) => (
-                        <div
-                          key={i}
-                          aria-hidden="true"
-                          className="produto-esqueleto flex min-h-[260px] animate-pulse flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#101013]"
-                        >
-                          <Skeleton className="h-[60px] w-full bg-white/5" />
-                          <div className="space-y-3 p-3">
-                            <Skeleton className="h-3 w-1/2 bg-white/5" />
-                            <Skeleton className="h-8 w-full bg-white/5" />
+        <div className="admin-topo-lista">
+          {/* Grid view of Products as Assets */}
+          <LocalErrorBoundary>
+            {!effectiveLoading && products?.length === 0 ? null : (
+              <div className="relative" aria-busy={effectiveLoading}>
+                {(effectiveLoading || showVisualLoading) && (
+                  <div className="admin-sync-progress-bar" />
+                )}
+                {viewMode === "detailed" ? (
+                  <div
+                    key="detailed-grid"
+                    className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3"
+                  >
+                    {effectiveLoading && products.length === 0
+                      ? Array.from({ length: 8 }).map((_, i) => (
+                          <div
+                            key={i}
+                            aria-hidden="true"
+                            className={cn(
+                              "produto-esqueleto flex animate-pulse flex-col gap-3 rounded-2xl border border-white/10 bg-[#101013] p-4",
+                              ALTURA_DO_ESQUELETO_DETALHADO,
+                            )}
+                          >
+                            <Skeleton className="h-12 w-full bg-white/5" />
                             <Skeleton className="h-6 w-3/4 bg-white/5" />
-                            <Skeleton className="h-11 w-full bg-white/5" />
+                            <Skeleton className="h-10 w-full bg-white/5" />
                           </div>
-                        </div>
-                      ))
-                    : products?.map((product) => (
-                        <AdminProductCard
-                          key={product.id}
-                          product={product}
-                          viewMode="compact"
-                          onNavigate={handleLocalNavigate}
-                          onToggleStatus={handleToggleStatus}
-                          onDuplicate={handleDuplicate}
-                          onDelete={handleDelete}
-                          isOffline={isOffline}
-                          onPrefetch={handlePrefetchProductForm}
-                        />
-                      ))}
-                </div>
+                        ))
+                      : products?.map((product) => (
+                          <AdminProductCard
+                            key={product.id}
+                            product={product}
+                            viewMode="detailed"
+                            onNavigate={handleLocalNavigate}
+                            onToggleStatus={handleToggleStatus}
+                            onDuplicate={handleDuplicate}
+                            onDelete={handleDelete}
+                            isOffline={isOffline}
+                            onPrefetch={handlePrefetchProductForm}
+                          />
+                        ))}
+                  </div>
+                ) : (
+                  <div
+                    key="compact-grid"
+                    className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+                  >
+                    {effectiveLoading && products.length === 0
+                      ? Array.from({ length: 12 }).map((_, i) => (
+                          <div
+                            key={i}
+                            aria-hidden="true"
+                            className="produto-esqueleto flex min-h-[260px] animate-pulse flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#101013]"
+                          >
+                            <Skeleton className="h-[60px] w-full bg-white/5" />
+                            <div className="space-y-3 p-3">
+                              <Skeleton className="h-3 w-1/2 bg-white/5" />
+                              <Skeleton className="h-8 w-full bg-white/5" />
+                              <Skeleton className="h-6 w-3/4 bg-white/5" />
+                              <Skeleton className="h-11 w-full bg-white/5" />
+                            </div>
+                          </div>
+                        ))
+                      : products?.map((product) => (
+                          <AdminProductCard
+                            key={product.id}
+                            product={product}
+                            viewMode="compact"
+                            onNavigate={handleLocalNavigate}
+                            onToggleStatus={handleToggleStatus}
+                            onDuplicate={handleDuplicate}
+                            onDelete={handleDelete}
+                            isOffline={isOffline}
+                            onPrefetch={handlePrefetchProductForm}
+                          />
+                        ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </LocalErrorBoundary>
+
+          <div className="relative">
+            {/* Missão 06 (C2): paginação única do painel */}
+            <PaginacaoAdmin
+              className="produtos-paginacao"
+              pagina={currentPage}
+              totalPaginas={totalPages}
+              totalItens={totalProducts}
+              itensPorPagina={pageSize}
+              aoMudar={(nova) => {
+                setCurrentPage(nova);
+                shouldScrollToTop.current = true;
+              }}
+            />
+            {totalProducts > 0 &&
+              (totalPages > 1 ? (
+                <p className="produtos-pagina text-xs font-semibold">
+                  {Math.min(currentPage + 1, totalPages)} de {totalPages}
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-center gap-4 text-xs">
+                    <button
+                      type="button"
+                      disabled
+                      className="produto-secundario"
+                    >
+                      Anterior
+                    </button>
+                    <span className="font-semibold">1 de 1</span>
+                    <button
+                      type="button"
+                      disabled
+                      className="produto-secundario"
+                    >
+                      Próximo
+                    </button>
+                  </div>
+                  <p className="mt-3 text-center text-[11px] text-zinc-400">
+                    Todos os resultados estão nesta página.
+                  </p>
+                </>
+              ))}
+          </div>
+
+          {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
+          {!effectiveLoading && !loadError && products?.length === 0 && (
+            <div className="flex flex-col items-center justify-center rounded-3xl border border-white/10 bg-[#101013] px-5 py-7 text-center">
+              <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
+                {temBuscaOuFiltro ? (
+                  <Search
+                    aria-hidden="true"
+                    className="size-6 text-indigo-300"
+                  />
+                ) : (
+                  <ShoppingBag
+                    aria-hidden="true"
+                    className="size-6 text-indigo-300"
+                  />
+                )}
+              </div>
+              <h3 className="text-lg font-bold text-zinc-50">
+                {temBuscaOuFiltro
+                  ? "Nenhum produto encontrado"
+                  : "Nenhum produto cadastrado"}
+              </h3>
+              {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
+                diz o que está filtrado e dá a saída. */}
+              {!temBuscaOuFiltro && (
+                <p className="mt-3 text-sm text-zinc-400">
+                  Cadastre seu primeiro produto pelo botão Novo produto.
+                </p>
+              )}
+              {temBuscaOuFiltro && (
+                <>
+                  <p className="mt-3 text-sm text-zinc-400">
+                    Nada combina com {descricaoDoFiltro}. Seus produtos
+                    continuam cadastrados.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={limparBuscaEFiltros}
+                    className="produto-secundario mt-4 w-full"
+                  >
+                    Limpar busca e filtros
+                  </button>
+                </>
               )}
             </div>
           )}
-        </LocalErrorBoundary>
 
-        <div className="relative">
-          {/* Missão 06 (C2): paginação única do painel */}
-          <PaginacaoAdmin
-            className="produtos-paginacao"
-            pagina={currentPage}
-            totalPaginas={totalPages}
-            totalItens={totalProducts}
-            itensPorPagina={pageSize}
-            aoMudar={(nova) => {
-              setCurrentPage(nova);
-              shouldScrollToTop.current = true;
-            }}
-          />
-          {totalProducts > 0 &&
-            (totalPages > 1 ? (
-              <p className="produtos-pagina text-xs font-semibold">
-                {Math.min(currentPage + 1, totalPages)} de {totalPages}
-              </p>
-            ) : (
-              <>
-                <div className="flex items-center justify-center gap-4 text-xs">
-                  <button type="button" disabled className="produto-secundario">
-                    Anterior
-                  </button>
-                  <span className="font-semibold">1 de 1</span>
-                  <button type="button" disabled className="produto-secundario">
-                    Próximo
-                  </button>
-                </div>
-                <p className="mt-3 text-center text-[11px] text-zinc-400">
-                  Todos os resultados estão nesta página.
-                </p>
-              </>
-            ))}
-        </div>
-
-        {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
-        {!effectiveLoading && !loadError && products?.length === 0 && (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-white/10 bg-[#101013] px-5 py-7 text-center">
-            <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
-              {temBuscaOuFiltro ? (
-                <Search aria-hidden="true" className="size-6 text-indigo-300" />
-              ) : (
-                <ShoppingBag
-                  aria-hidden="true"
-                  className="size-6 text-indigo-300"
-                />
-              )}
-            </div>
-            <h3 className="text-lg font-bold text-zinc-50">
-              {temBuscaOuFiltro
-                ? "Nenhum produto encontrado"
-                : "Nenhum produto cadastrado"}
-            </h3>
-            {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
-                diz o que está filtrado e dá a saída. */}
-            {!temBuscaOuFiltro && (
-              <p className="mt-3 text-sm text-zinc-400">
-                Cadastre seu primeiro produto pelo botão Novo produto.
-              </p>
-            )}
-            {temBuscaOuFiltro && (
-              <>
-                <p className="mt-3 text-sm text-zinc-400">
-                  Nada combina com {descricaoDoFiltro}. Seus produtos continuam
-                  cadastrados.
-                </p>
-                <button
-                  type="button"
-                  onClick={limparBuscaEFiltros}
-                  className="produto-secundario mt-4 w-full"
-                >
-                  Limpar busca e filtros
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Erro ao carregar — estado distinto do vazio real e do
+          {/* Erro ao carregar — estado distinto do vazio real e do
             carregamento: achado 11 avisava que trocar a mentira "vazio" por
             um esqueleto eterno na falha seria trocar uma mentira por outra. */}
-        {!effectiveLoading && loadError && products?.length === 0 && (
-          <div
-            role="alert"
-            className="rounded-3xl border border-white/10 bg-[#101013] p-6 text-center"
-          >
-            <AlertTriangle
-              aria-hidden="true"
-              className="mx-auto mb-4 size-11 rounded-2xl bg-red-300/10 p-2 text-red-300"
-            />
-            <h3 className="text-lg font-bold">Erro ao Carregar Produtos</h3>
-            <p className="my-4 text-sm text-zinc-400">
-              A lista não chegou. Confira a internet e tente de novo.
-            </p>
-            <button
-              type="button"
-              onClick={() => loadData(currentPage)}
-              disabled={loading}
-              className="produto-secundario w-full"
+          {!effectiveLoading && loadError && products?.length === 0 && (
+            <div
+              role="alert"
+              className="rounded-3xl border border-white/10 bg-[#101013] p-6 text-center"
             >
-              <RefreshCw aria-hidden="true" className="size-4" /> Tentar
-              Novamente
-            </button>
-          </div>
-        )}
-
+              <AlertTriangle
+                aria-hidden="true"
+                className="mx-auto mb-4 size-11 rounded-2xl bg-red-300/10 p-2 text-red-300"
+              />
+              <h3 className="text-lg font-bold">Erro ao Carregar Produtos</h3>
+              <p className="my-4 text-sm text-zinc-400">
+                A lista não chegou. Confira a internet e tente de novo.
+              </p>
+              <button
+                type="button"
+                onClick={() => loadData(currentPage)}
+                disabled={loading}
+                className="produto-secundario w-full"
+              >
+                <RefreshCw aria-hidden="true" className="size-4" /> Tentar
+                Novamente
+              </button>
+            </div>
+          )}
+        </div>
         <AcaoDaBarra ativa={active !== false}>
           <button
             type="button"

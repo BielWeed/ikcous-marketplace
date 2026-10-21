@@ -29,7 +29,6 @@ import {
   Box,
   CloudOff,
   HelpCircle,
-  Info,
   Megaphone,
   MessageSquare,
   RefreshCw,
@@ -465,7 +464,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       ref={viewRef}
       className="pb-admin h-auto bg-[#08080A] text-white lg:pb-12"
     >
-      <div className="flex items-start justify-between gap-3 px-5 pb-2 pt-4">
+      <div className="admin-topo-cabecalho flex h-[76px] items-center justify-between gap-3 px-5">
         <div className="min-w-0 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-customers"]} />
           <div
@@ -505,27 +504,30 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           <AjudaDaBaseClientes />
         </FolhaClientes>
       </div>
-      <p className="flex items-start gap-1.5 px-5 pb-3 text-xs text-zinc-400">
-        <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-        <span>
-          Clientes com conta no app. Quem comprou só no balcão aparece em{" "}
-          {NOMES_DO_PAINEL["admin-crm"]} › Clientes.
-        </span>
-      </p>
-      <div className="px-5">
-        <LocalErrorBoundary>
-          <MetricasDoPainel
-            titulo="Métricas de Clientes"
-            legendasDoResumo={[
-              "Total",
-              "Novos · 30d",
-              "Média/pedido",
-              "Pedidos",
-            ]}
-            cards={kpiCards}
-          />
-        </LocalErrorBoundary>
-        <div className="relative z-30 mt-7 flex flex-col">
+      <div className="admin-topo-conteudo px-5">
+        <div className="admin-topo-resumo">
+          <LocalErrorBoundary>
+            <MetricasDoPainel
+              titulo="Métricas de Clientes"
+              loading={loading && !globalStats}
+              nota={
+                <>
+                  Clientes com conta no app. Quem comprou só no balcão aparece
+                  em {NOMES_DO_PAINEL["admin-crm"]} › Clientes.
+                </>
+              }
+              onEntender={() => setShowHelpModal(true)}
+              legendasDoResumo={[
+                "Total",
+                "Novos · 30d",
+                "Média/pedido",
+                "Pedidos",
+              ]}
+              cards={kpiCards}
+            />
+          </LocalErrorBoundary>
+        </div>
+        <div className="relative z-30 flex flex-col">
           {/* Sticky de filha DIRETA deste bloco (que contém a lista): sticky
               só anda dentro do próprio containing block — embrulhada num
               wrapper da própria altura ela nunca gruda (achado 1 da revisão). */}
@@ -560,181 +562,188 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             }))}
             onLimpar={temBuscaOuOrdenacao ? limparBuscaEOrdenacao : undefined}
           />
-          {isOffline && (
-            <div
-              role="status"
-              className="mt-5 flex items-start gap-3 rounded-2xl border border-red-300/10 bg-red-400/5 p-4 text-xs text-zinc-300"
-            >
-              <CloudOff
-                aria-hidden="true"
-                className="size-8 shrink-0 rounded-xl bg-red-400/10 p-1.5 text-red-300"
-              />
-              <div>
-                <p className="font-semibold text-red-300">
-                  Sem conexão com o servidor
-                </p>
-                <p className="mt-1">
-                  Os dados na tela podem estar desatualizados até a conexão
-                  voltar.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Data List (Responsive Grid/Cards) */}
-          {erroDaListagem && (
-            <div
-              role="alert"
-              className="mt-7 flex flex-col items-center gap-3 rounded-3xl border border-red-300/10 bg-red-400/5 p-5 text-center text-sm text-zinc-100"
-            >
-              <AlertCircle
-                aria-hidden="true"
-                className="size-10 rounded-xl bg-red-400/10 p-2 text-red-300"
-              />
-              <p className="font-semibold">
-                Não conseguimos carregar os clientes agora.
-              </p>
-              <button
-                type="button"
-                aria-label="Tentar carregar os clientes de novo"
-                onClick={() => fetchCustomers(page)}
-                disabled={loading}
-                className={`${BOTAO_CLIENTES} w-full disabled:opacity-60`}
-              >
-                <RefreshCw
-                  aria-hidden="true"
-                  className="size-4 text-violet-300"
-                />
-                Tentar de novo
-              </button>
-            </div>
-          )}
-          <LocalErrorBoundary>
-            <div className="group/table relative w-full">
-              {loading && paginatedCustomers.length > 0 && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden rounded-full bg-[#26262E]"
-                >
-                  <span className="block h-full w-2/5 animate-pulse bg-indigo-300" />
-                </div>
-              )}
+          <div className="admin-topo-lista">
+            {isOffline && (
               <div
-                className="relative z-10 mt-7 flex w-full flex-col"
-                aria-busy={loading}
+                role="status"
+                className="mt-5 flex items-start gap-3 rounded-2xl border border-red-300/10 bg-red-400/5 p-4 text-xs text-zinc-300"
               >
-                {loading && paginatedCustomers.length > 0 && (
-                  <p role="status" className="mb-3 text-xs text-zinc-400">
-                    Carregando novos dados...
+                <CloudOff
+                  aria-hidden="true"
+                  className="size-8 shrink-0 rounded-xl bg-red-400/10 p-1.5 text-red-300"
+                />
+                <div>
+                  <p className="font-semibold text-red-300">
+                    Sem conexão com o servidor
                   </p>
-                )}
-                {loading && paginatedCustomers.length === 0 ? (
-                  renderSkeletons()
-                ) : erroDaListagem ? null : paginatedCustomers.length === 0 ? (
-                  <div className="flex flex-col items-center gap-3 rounded-3xl bg-[#101013] px-4 py-6 text-center">
-                    <Search
-                      aria-hidden="true"
-                      className="size-10 rounded-xl border border-indigo-300/20 bg-indigo-300/10 p-2 text-indigo-300"
-                    />
-                    <p className="text-sm font-bold text-white">
-                      Nenhum cliente retornado
-                    </p>
-                    <p className="text-xs text-zinc-400">
-                      Revise os filtros ou sua pesquisa.
-                    </p>
-                    {temBuscaOuOrdenacao && (
-                      <button
-                        type="button"
-                        onClick={limparBuscaEOrdenacao}
-                        className={BOTAO_CLIENTES}
-                      >
-                        Limpar tudo
-                      </button>
-                    )}
-                  </div>
-                ) : viewMode === "detailed" ? (
-                  <>
-                    {/* Cabeçalhos desktop: mesmos campos e handlers de ordenação. */}
-                    <div className="sticky top-[120px] z-20 hidden grid-cols-12 gap-4 border-b border-white/10 bg-[#17171C] p-3 md:grid">
-                      <div
-                        className="group/th col-span-4 flex min-h-11 cursor-pointer items-center gap-2"
-                        onClick={() => handleSort("full_name")}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleSort("full_name");
-                          }
-                        }}
-                      >
-                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
-                          Cliente
-                        </span>
-                        <ArrowUpDown className="size-3 text-indigo-300" />
-                      </div>
-                      <div
-                        className="group/th col-span-3 flex min-h-11 cursor-pointer items-center gap-2"
-                        onClick={() => handleSort("role")}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleSort("role");
-                          }
-                        }}
-                      >
-                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
-                          Contato / Tipo de conta
-                        </span>
-                        <ArrowUpDown className="size-3 text-indigo-300" />
-                      </div>
-                      <div
-                        className="group/th col-span-2 flex min-h-11 cursor-pointer items-center justify-end gap-2"
-                        onClick={() => handleSort("total_spent")}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleSort("total_spent");
-                          }
-                        }}
-                      >
-                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
-                          Total já comprado
-                        </span>
-                        <ArrowUpDown className="size-3 text-indigo-300" />
-                      </div>
-                      <div
-                        className="group/th col-span-1 flex min-h-11 cursor-pointer items-center justify-center gap-2"
-                        onClick={() => handleSort("orders_count")}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleSort("orders_count");
-                          }
-                        }}
-                      >
-                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
-                          Pedidos
-                        </span>
-                      </div>
-                      <div className="col-span-2 flex items-center justify-end">
-                        <span className="text-[11px] font-semibold text-zinc-300">
-                          Gestão
-                        </span>
-                      </div>
-                    </div>
+                  <p className="mt-1">
+                    Os dados na tela podem estar desatualizados até a conexão
+                    voltar.
+                  </p>
+                </div>
+              </div>
+            )}
 
-                    {/* Data Rows */}
-                    <div className="flex flex-col gap-3">
+            {/* Data List (Responsive Grid/Cards) */}
+            {erroDaListagem && (
+              <div
+                role="alert"
+                className="mt-7 flex flex-col items-center gap-3 rounded-3xl border border-red-300/10 bg-red-400/5 p-5 text-center text-sm text-zinc-100"
+              >
+                <AlertCircle
+                  aria-hidden="true"
+                  className="size-10 rounded-xl bg-red-400/10 p-2 text-red-300"
+                />
+                <p className="font-semibold">
+                  Não conseguimos carregar os clientes agora.
+                </p>
+                <button
+                  type="button"
+                  aria-label="Tentar carregar os clientes de novo"
+                  onClick={() => fetchCustomers(page)}
+                  disabled={loading}
+                  className={`${BOTAO_CLIENTES} w-full disabled:opacity-60`}
+                >
+                  <RefreshCw
+                    aria-hidden="true"
+                    className="size-4 text-violet-300"
+                  />
+                  Tentar de novo
+                </button>
+              </div>
+            )}
+            <LocalErrorBoundary>
+              <div className="group/table relative w-full">
+                {loading && <div className="admin-sync-progress-bar" />}
+                <div
+                  className="relative z-10 flex w-full flex-col"
+                  aria-busy={loading}
+                >
+                  {loading && paginatedCustomers.length > 0 && (
+                    <p role="status" className="sr-only">
+                      Carregando novos dados...
+                    </p>
+                  )}
+                  {loading && paginatedCustomers.length === 0 ? (
+                    renderSkeletons()
+                  ) : erroDaListagem ? null : paginatedCustomers.length ===
+                    0 ? (
+                    <div className="flex flex-col items-center gap-3 rounded-3xl bg-[#101013] px-4 py-6 text-center">
+                      <Search
+                        aria-hidden="true"
+                        className="size-10 rounded-xl border border-indigo-300/20 bg-indigo-300/10 p-2 text-indigo-300"
+                      />
+                      <p className="text-sm font-bold text-white">
+                        Nenhum cliente retornado
+                      </p>
+                      <p className="text-xs text-zinc-400">
+                        Revise os filtros ou sua pesquisa.
+                      </p>
+                      {temBuscaOuOrdenacao && (
+                        <button
+                          type="button"
+                          onClick={limparBuscaEOrdenacao}
+                          className={BOTAO_CLIENTES}
+                        >
+                          Limpar tudo
+                        </button>
+                      )}
+                    </div>
+                  ) : viewMode === "detailed" ? (
+                    <>
+                      {/* Cabeçalhos desktop: mesmos campos e handlers de ordenação. */}
+                      <div className="sticky top-[120px] z-20 hidden grid-cols-12 gap-4 border-b border-white/10 bg-[#17171C] p-3 md:grid">
+                        <div
+                          className="group/th col-span-4 flex min-h-11 cursor-pointer items-center gap-2"
+                          onClick={() => handleSort("full_name")}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleSort("full_name");
+                            }
+                          }}
+                        >
+                          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
+                            Cliente
+                          </span>
+                          <ArrowUpDown className="size-3 text-indigo-300" />
+                        </div>
+                        <div
+                          className="group/th col-span-3 flex min-h-11 cursor-pointer items-center gap-2"
+                          onClick={() => handleSort("role")}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleSort("role");
+                            }
+                          }}
+                        >
+                          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
+                            Contato / Tipo de conta
+                          </span>
+                          <ArrowUpDown className="size-3 text-indigo-300" />
+                        </div>
+                        <div
+                          className="group/th col-span-2 flex min-h-11 cursor-pointer items-center justify-end gap-2"
+                          onClick={() => handleSort("total_spent")}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleSort("total_spent");
+                            }
+                          }}
+                        >
+                          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
+                            Total já comprado
+                          </span>
+                          <ArrowUpDown className="size-3 text-indigo-300" />
+                        </div>
+                        <div
+                          className="group/th col-span-1 flex min-h-11 cursor-pointer items-center justify-center gap-2"
+                          onClick={() => handleSort("orders_count")}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleSort("orders_count");
+                            }
+                          }}
+                        >
+                          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-300 transition-colors group-hover/th:text-white">
+                            Pedidos
+                          </span>
+                        </div>
+                        <div className="col-span-2 flex items-center justify-end">
+                          <span className="text-[11px] font-semibold text-zinc-300">
+                            Gestão
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Data Rows */}
+                      <div className="flex flex-col gap-3">
+                        {paginatedCustomers.map((customer) => (
+                          <CartaoCliente
+                            detalhado
+                            key={customer.id}
+                            customer={customer}
+                            onNavigate={handleLocalNavigate}
+                            onPrefetch={handlePrefetchUserDetail}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">
                       {paginatedCustomers.map((customer) => (
                         <CartaoCliente
-                          detalhado
                           key={customer.id}
                           customer={customer}
                           onNavigate={handleLocalNavigate}
@@ -742,36 +751,25 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                         />
                       ))}
                     </div>
-                  </>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">
-                    {paginatedCustomers.map((customer) => (
-                      <CartaoCliente
-                        key={customer.id}
-                        customer={customer}
-                        onNavigate={handleLocalNavigate}
-                        onPrefetch={handlePrefetchUserDetail}
-                      />
-                    ))}
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          </LocalErrorBoundary>
-          {/* Missão 06 (C2): paginação única — "Segmento" morre e o tamanho de
+            </LocalErrorBoundary>
+            {/* Missão 06 (C2): paginação única — "Segmento" morre e o tamanho de
               página alinha com pedidos/produtos (12). Sem cartão próprio:
               mesmo padrão limpo das outras telas (pedido do Gabriel, 02/09). */}
-          <PaginacaoAdmin
-            aparencia="clientes"
-            pagina={page}
-            totalPaginas={totalPages}
-            totalItens={totalExibido}
-            itensPorPagina={PAGE_SIZE}
-            aoMudar={(nova) => {
-              setPage(nova);
-              shouldScrollToTop.current = true;
-            }}
-          />
+            <PaginacaoAdmin
+              aparencia="clientes"
+              pagina={page}
+              totalPaginas={totalPages}
+              totalItens={totalExibido}
+              itensPorPagina={PAGE_SIZE}
+              aoMudar={(nova) => {
+                setPage(nova);
+                shouldScrollToTop.current = true;
+              }}
+            />
+          </div>
         </div>
         <AcaoDaBarra ativa={active !== false} aria-label="Ações dos clientes">
           <button
