@@ -126,7 +126,7 @@ describe("AdminShippingView — não inventa CEP de origem", () => {
     await abrirTela();
 
     expect(hospedeiro.querySelector("#origin-cep")).toBeNull();
-    expect(hospedeiro.textContent).toContain("Entregas saem de: CEP 38400-000");
+    expect(hospedeiro.textContent).toContain("CEP 38400-000");
   });
 
   it("não marca o formulário como alterado só por abrir sem CEP configurado", async () => {
@@ -154,8 +154,8 @@ describe("AdminShippingView — não inventa CEP de origem", () => {
     // O hint antigo dizia "obrigatório para calcular frete" — verdade pela
     // metade: o lojista não sabia que a loja fica FECHADA (Finalizar
     // travado para todo cliente). O aviso novo diz a consequência.
-    expect(texto).toContain("a loja não vende");
-    expect(texto).toContain("finalizar pedido");
+    expect(texto).toContain("ninguém finaliza a compra");
+    expect(texto).toContain("nenhum frete é calculado");
   });
 
   it("não mostra o aviso de loja-fechada quando a loja já configurou o CEP", async () => {

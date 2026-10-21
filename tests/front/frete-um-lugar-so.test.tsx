@@ -267,282 +267,182 @@ describe("Frete: as Transportadoras e as Consultas de frete moram aqui", () => {
     await drenar();
   }
 
-  it("F1 — 'Transportadoras' fica entre 'Fora da cidade' e 'Estratégias do frete local', fechado, com UMA leitura antes de abrir", async () => {
-    await abrirFrete();
-
-    const ordem = [
-      ...hospedeiro.querySelectorAll<HTMLElement>(
-        "section[id^='painel-frete-']",
-      ),
-    ].map((s) => s.id);
-    const nacional = ordem.indexOf("painel-frete-nacional");
-    expect(ordem[nacional + 1]).toBe("painel-frete-transportadoras");
-    expect(ordem[nacional + 2]).toBe("painel-frete-estrategias-locais");
-
-    const cabecalho = cabecalhoDoPainel("painel-frete-transportadoras");
-    expect(cabecalho.textContent).toContain("Transportadoras");
-    expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
-
-    // A seção não montou: nenhuma segunda leitura, nenhum campo de chave.
-    expect(leiturasDeFrete()).toBe(1);
-    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
-  });
-
-  it("F2 — abrir o painel monta o formulário de chave de cada transportadora", async () => {
-    await abrirFrete();
-
-    await clicar(cabecalhoDoPainel("painel-frete-transportadoras"));
-
-    expect(
-      cabecalhoDoPainel("painel-frete-transportadoras").getAttribute(
-        "aria-expanded",
-      ),
-    ).toBe("true");
-    expect(hospedeiro.querySelectorAll('input[type="password"]')).toHaveLength(
-      3,
+  function linha(nome: string) {
+    return hospedeiro.querySelector<HTMLButtonElement>(
+      `[aria-label="${nome}"]`,
+    )!;
+  }
+  function folha() {
+    return document.querySelector<HTMLElement>('[role="dialog"]')!;
+  }
+  async function abrirChave() {
+    await clicar(cabecalhoDoPainel("painel-frete-nacional"));
+    await clicar(linha("Melhor Envio"));
+    return folha().querySelector<HTMLInputElement>('input[type="password"]')!;
+  }
+  async function fecharChave() {
+    await clicar(
+      folha().querySelector<HTMLButtonElement>('[aria-label="Fechar"]')!,
     );
-    expect(botaoComTexto(/Salvar provedores/)).toBeDefined();
-    // A seção leu a configuração dela ao montar.
-    expect(leiturasDeFrete()).toBe(2);
-  });
+  }
 
-  it("F3 — fechar e reabrir mantém o token digitado e não lê de novo", async () => {
+  it("F1 — transportadoras moram em Fora da sua região, com uma única leitura", async () => {
     await abrirFrete();
-    const cabecalho = cabecalhoDoPainel("painel-frete-transportadoras");
-    await clicar(cabecalho);
-
-    const campo = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    await act(async () => {
-      digitar(campo, "tok-novo");
-    });
-
-    await clicar(cabecalho);
-    expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
-    // Fechado só esconde: o campo continua montado, com o que foi digitado.
-    expect(hospedeiro.contains(campo)).toBe(true);
-    expect(campo.value).toBe("tok-novo");
-
-    await clicar(cabecalho);
-    expect(cabecalho.getAttribute("aria-expanded")).toBe("true");
-    const campoDepois = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    expect(campoDepois).toBe(campo);
-    expect(campoDepois.value).toBe("tok-novo");
-    expect(leiturasDeFrete()).toBe(2);
+    const ordem = [
+      ...hospedeiro.querySelectorAll("section[id^='painel-frete-']"),
+    ].map((s) => s.id);
+    expect(ordem).toEqual([
+      "painel-frete-local",
+      "painel-frete-nacional",
+      "painel-frete-gratis",
+      "painel-frete-avancado",
+    ]);
+    expect(
+      cabecalhoDoPainel("painel-frete-nacional").getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(leiturasDeFrete()).toBe(1);
+    expect(document.querySelector('input[type="password"]')).toBeNull();
   });
-
-  it("F4 — token não salvo liga a guarda da tela sem acender o Salvar do cabeçalho; salvar a chave desliga", async () => {
+  it("F2 — o nome abre um formulário por vez; não há Salvar provedores separado", async () => {
+    await abrirFrete();
+    await abrirChave();
+    expect(document.querySelectorAll('input[type="password"]')).toHaveLength(1);
+    expect(folha().textContent).toContain("Salvar transportadora");
+    expect(botaoComTexto(/Salvar provedores/)).toBeUndefined();
+    expect(leiturasDeFrete()).toBe(1);
+  });
+  it("F3 — fechar a folha e o painel preserva o token, sem nova leitura", async () => {
+    await abrirFrete();
+    const campo = await abrirChave();
+    await act(async () => digitar(campo, "chave-ficticia-nova"));
+    await fecharChave();
+    await clicar(cabecalhoDoPainel("painel-frete-nacional"));
+    expect(
+      cabecalhoDoPainel("painel-frete-nacional").getAttribute("aria-expanded"),
+    ).toBe("false");
+    await abrirChave();
+    expect(
+      folha().querySelector<HTMLInputElement>('input[type="password"]')?.value,
+    ).toBe("chave-ficticia-nova");
+    expect(leiturasDeFrete()).toBe(1);
+  });
+  it("F4 — chave pendente liga a guarda, mas só Salvar transportadora grava o segredo", async () => {
     const onSetDirty = vi.fn();
     await abrirFrete({ onSetDirty });
-    expect(onSetDirty).toHaveBeenLastCalledWith(false);
-
-    await clicar(cabecalhoDoPainel("painel-frete-transportadoras"));
-    const campo = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    await act(async () => {
-      digitar(campo, "tok-novo");
-    });
+    const campo = await abrirChave();
+    await act(async () => digitar(campo, "chave-ficticia-nova"));
     await drenar();
-
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
-    // O Salvar do cabeçalho grava as regras de frete, não a chave: continua
-    // "Salvo" (a chave tem o botão Salvar do próprio cartão).
     expect(botaoComTexto(/^Salvo$/)).toBeDefined();
-
-    const salvarDoCartao = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Salvar",
-    ) as HTMLButtonElement;
-    expect(salvarDoCartao).toBeDefined();
-    await clicar(salvarDoCartao);
-    await drenar();
-
+    await clicar(
+      [...folha().querySelectorAll<HTMLButtonElement>("button")].find(
+        (b) => b.textContent?.trim() === "Salvar transportadora",
+      )!,
+    );
     expect(
       invoke.mock.calls.some((c) => c[1]?.body?.action === "save_credentials"),
     ).toBe(true);
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
   });
-
-  it("F4b — token digitado com o painel FECHADO: o resumo do painel avisa que falta salvar", async () => {
+  it("F4b — a chave pendente continua sinalizada com folha e painel fechados", async () => {
     await abrirFrete();
-    const cabecalho = cabecalhoDoPainel("painel-frete-transportadoras");
-    expect(cabecalho.textContent).not.toMatch(/falta salvar/);
-    await clicar(cabecalho);
-    const campo = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    await act(async () => {
-      digitar(campo, "tok-novo");
-    });
+    const campo = await abrirChave();
+    await act(async () => digitar(campo, "chave-ficticia-nova"));
     await drenar();
-
-    await clicar(cabecalho);
-    expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
-    // O Salvar do cabeçalho segue "Salvo" (é das regras); a pista da chave
-    // pendente fica no próprio painel fechado.
-    expect(cabecalho.textContent).toContain("chave digitada — falta salvar");
+    await fecharChave();
+    await clicar(cabecalhoDoPainel("painel-frete-nacional"));
+    expect(cabecalhoDoPainel("painel-frete-nacional").textContent).toContain(
+      "chave digitada — falta salvar",
+    );
   });
-
-  it("F4c — salvar as regras pelo cabeçalho com um token sendo digitado no meio do caminho mantém a guarda ligada", async () => {
-    let soltarSave: (ok: boolean) => void = () => {};
+  it("F4c — chave digitada durante o Salvar das regras mantém a guarda ligada", async () => {
+    let soltar!: (ok: boolean) => void;
     updateConfig.mockImplementation(
       () =>
         new Promise<boolean>((resolve) => {
-          soltarSave = resolve;
+          soltar = resolve;
         }),
     );
     const onSetDirty = vi.fn();
     await abrirFrete({ onSetDirty });
-
-    // Mexe numa regra (acende o Salvar do cabeçalho).
-    await clicar(cabecalhoDoPainel("painel-frete-local"));
-    const taxa = hospedeiro.querySelector(
-      "#local-delivery-fee",
-    ) as HTMLInputElement;
-    expect(taxa, "campo da taxa local ausente").not.toBeNull();
-    await act(async () => {
-      digitar(taxa, "12");
-    });
+    await act(async () =>
+      digitar(
+        hospedeiro.querySelector<HTMLInputElement>("#local-delivery-fee")!,
+        "12",
+      ),
+    );
+    await clicar(botaoComTexto(/^Salvar$/)!);
+    const campo = await abrirChave();
+    await act(async () => digitar(campo, "chave-ficticia-nova"));
+    await act(async () => soltar(true));
     await drenar();
-    const salvarCabecalho = botaoComTexto(/^Salvar$/) as HTMLButtonElement;
-    expect(salvarCabecalho).toBeDefined();
-    await act(async () => {
-      salvarCabecalho.click();
-    });
-
-    // Enquanto o salvar das regras espera o servidor, a lojista cola um token.
-    await clicar(cabecalhoDoPainel("painel-frete-transportadoras"));
-    const campo = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    await act(async () => {
-      digitar(campo, "tok-novo");
-    });
-    await drenar();
-
-    await act(async () => {
-      soltarSave(true);
-    });
-    await drenar();
-
-    // A chave não foi salva: a guarda de navegação continua ligada.
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
   });
-
-  it("F5 — salvar quem está ligado dentro do painel atualiza 'Fora da cidade' na hora", async () => {
+  it("F5 — o Salvar do topo confirma a lista e atualiza o resumo sem recarregar", async () => {
     estadoDoBanco.provedores = {
-      melhor_envio: { tem_chave: true },
-      superfrete: { tem_chave: true, contato_email: "tecnico@loja.com.br" },
+      melhor_envio: { tem_chave: true, contato_email: "contato@exemplo.com" },
+      superfrete: { tem_chave: true, contato_email: "contato@exemplo.com" },
     };
     await abrirFrete();
-    const nacional = cabecalhoDoPainel("painel-frete-nacional");
-    expect(nacional.textContent).toContain("Melhor Envio ligado");
-
-    await clicar(cabecalhoDoPainel("painel-frete-transportadoras"));
-    const linhaSF = [...hospedeiro.querySelectorAll("label")].find(
-      (l) =>
-        /SuperFrete/.test(l.textContent ?? "") &&
-        l.querySelector('input[type="checkbox"]'),
-    ) as HTMLLabelElement;
-    await act(async () => {
-      (linhaSF.querySelector('input[type="checkbox"]') as HTMLElement).click();
-    });
-
-    invoke.mockImplementation((_nome: string, opcoes: any) => {
-      const action = opcoes?.body?.action;
-      if (action === "save_active_providers") {
-        estadoDoBanco.ligados = ["melhor_envio", "superfrete"];
-        return Promise.resolve({
-          data: { success: true, ligados: estadoDoBanco.ligados },
-          error: null,
-        });
+    await clicar(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Ligar SuperFrete"]',
+      )!,
+    );
+    invoke.mockImplementation(async (_: string, { body }: any) => {
+      if (body.action === "save_active_providers") {
+        estadoDoBanco.ligados = body.ligados;
+        return { data: { success: true, ligados: body.ligados } };
       }
-      if (action === "ler_configuracao_frete") {
-        return Promise.resolve({ data: respostaConfig(), error: null });
-      }
-      return Promise.resolve({ data: { success: true }, error: null });
+      return { data: respostaConfig() };
     });
-    await clicar(botaoComTexto(/Salvar provedores/) as HTMLButtonElement);
-    await drenar();
-
-    // Sem recarregar a tela: o resumo de "Fora da cidade" já conta os dois.
+    await clicar(botaoComTexto(/^Salvar$/)!);
+    expect(estadoDoBanco.ligados).toEqual(["melhor_envio", "superfrete"]);
     expect(cabecalhoDoPainel("painel-frete-nacional").textContent).toContain(
-      "2 provedores ligados",
+      "Melhor Envio e SuperFrete cotam o frete na hora",
     );
   });
-
-  it("F6 — 'Conectar transportadora' e 'Abrir Transportadoras' abrem o painel, sem sair da tela", async () => {
+  it("F6 — Ligar transportadora abre a única lista, sem sair da tela", async () => {
     estadoDoBanco.ligados = [];
     estadoDoBanco.provedores = {};
     const onNavigate = vi.fn();
     await abrirFrete({ onNavigate });
-
-    await clicar(
-      botaoComTexto(/conectar transportadora/i) as HTMLButtonElement,
-    );
+    await clicar(botaoComTexto(/^Ligar transportadora$/)!);
     expect(
-      cabecalhoDoPainel("painel-frete-transportadoras").getAttribute(
-        "aria-expanded",
-      ),
+      cabecalhoDoPainel("painel-frete-nacional").getAttribute("aria-expanded"),
     ).toBe("true");
-    expect(hospedeiro.querySelectorAll('input[type="password"]')).toHaveLength(
-      3,
-    );
-
-    await clicar(cabecalhoDoPainel("painel-frete-transportadoras"));
-    await clicar(botaoComTexto(/abrir transportadoras/i) as HTMLButtonElement);
     expect(
-      cabecalhoDoPainel("painel-frete-transportadoras").getAttribute(
-        "aria-expanded",
-      ),
-    ).toBe("true");
-    expect(onNavigate).not.toHaveBeenCalledWith("admin-settings");
-    expect(hospedeiro.textContent).not.toMatch(/Abrir Ajustes/);
+      botaoComTexto(/Abrir Transportadoras|Conectar transportadora/),
+    ).toBeUndefined();
+    expect(onNavigate).not.toHaveBeenCalled();
   });
-
-  it("F7 — 'Consultas de frete' mora sob 'Avançado', junto de 'Etiquetas', e só busca com o painel aberto", async () => {
+  it("F7 — Consultas e etiquetas ficam em Avançado; cada abertura busca histórico fresco", async () => {
     await abrirFrete();
-
-    const avancado = [...hospedeiro.querySelectorAll("h2")].find(
-      (h) => h.textContent === "Avançado",
-    );
-    expect(avancado, "título 'Avançado' ausente").toBeDefined();
-    const bloco = avancado!.parentElement as HTMLElement;
-    expect(bloco.querySelector("#painel-frete-etiquetas")).not.toBeNull();
-    expect(bloco.querySelector("#painel-frete-consultas")).not.toBeNull();
-    expect(bloco.querySelector("#painel-frete-transportadoras")).toBeNull();
-
-    const consultas = cabecalhoDoPainel("painel-frete-consultas");
-    expect(consultas.textContent).toContain("Consultas de frete");
-    expect(consultas.getAttribute("aria-expanded")).toBe("false");
+    const cabecalho = cabecalhoDoPainel("painel-frete-avancado");
+    expect(
+      hospedeiro.querySelector("#painel-frete-avancado")?.textContent,
+    ).toContain("Etiquetas de envio");
     expect(leiturasDoHistorico()).toBe(0);
-    expect(hospedeiro.querySelector("#historico-cotacoes-section")).toBeNull();
-
-    await clicar(consultas);
+    await clicar(cabecalho);
     expect(leiturasDoHistorico()).toBe(1);
     expect(
       hospedeiro.querySelector("#historico-cotacoes-section"),
     ).not.toBeNull();
-
-    // Fechar desmonta; reabrir busca de novo (o histórico é fresco).
-    await clicar(consultas);
+    await clicar(cabecalho);
     expect(hospedeiro.querySelector("#historico-cotacoes-section")).toBeNull();
-    await clicar(consultas);
+    await clicar(cabecalho);
     expect(leiturasDoHistorico()).toBe(2);
   });
-
-  it("F8 — painelInicial='nacional' ainda abre 'Fora da cidade' (e só ele)", async () => {
+  it("F8 — a rota nacional ainda abre Fora da sua região, sem abrir as outras seções", async () => {
     await abrirFrete({ painelInicial: "nacional" });
     expect(
       cabecalhoDoPainel("painel-frete-nacional").getAttribute("aria-expanded"),
     ).toBe("true");
     expect(
-      cabecalhoDoPainel("painel-frete-transportadoras").getAttribute(
-        "aria-expanded",
-      ),
+      cabecalhoDoPainel("painel-frete-local").getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(
+      cabecalhoDoPainel("painel-frete-gratis").getAttribute("aria-expanded"),
     ).toBe("false");
     expect(leiturasDeFrete()).toBe(1);
   });

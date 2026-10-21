@@ -91,7 +91,7 @@ describe("TransportadorasSection — erro ao testar credenciais de frete sai tra
   // erro refém de mais um campo que não é o foco aqui).
   async function abrirSecaoEDigitarToken() {
     const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
+      "./apoio/transportadoras-isoladas"
     );
     await act(async () => {
       raiz.render(<TransportadorasSection />);

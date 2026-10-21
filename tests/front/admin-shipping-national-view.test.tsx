@@ -6,7 +6,7 @@ import type { View } from "@/types";
 // T4-UNIFICAÇÃO (23/09/2026, pedido do dono): a tela PRÓPRIA morreu poucas
 // horas depois de nascer — o cabeçalho transbordava e a tela ficou poluída
 // com uma seção a mais. `AdminShippingNationalView` virou uma CASCA fina
-// que renderiza `AdminShippingView` com o painel "Fora da cidade" aberto
+// que renderiza `AdminShippingView` com o painel "Fora da sua região" aberto
 // (`painelInicial="nacional"`) — este arquivo testa exatamente essa casca,
 // através da ROTA (o componente que `AdminArea.tsx` importa), então tudo
 // que muda aqui é o que muda pela unificação:
@@ -178,7 +178,7 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
   function pill(padrao: RegExp): HTMLElement | undefined {
     // Escopado ao bloco da ESTRATÉGIA NACIONAL: a tela unificada também
     // tem pills do preset LOCAL com o mesmo texto ("Grátis acima de um
-    // valor", "Sempre grátis"…) no painel "Estratégias do frete local".
+    // valor", "Sempre grátis"…) no painel "Frete grátis".
     const escopo = hospedeiro.querySelector("#bloco-estrategia-nacional");
     return [...(escopo?.querySelectorAll('[role="radio"]') ?? [])].find((r) =>
       padrao.test(r.textContent || ""),
@@ -218,27 +218,29 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     });
   }
 
-  it("a rota abre a tela de Frete com o painel 'Fora da cidade' JÁ aberto", async () => {
+  it("a rota abre a tela de Frete com o painel 'Fora da sua região' JÁ aberto", async () => {
     await abrirTela();
     const botaoPainel = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      /^fora da cidade/i.test(b.textContent?.trim() || ""),
+      /^fora da sua região/i.test(b.textContent?.trim() || ""),
     );
     expect(botaoPainel).toBeDefined();
     expect(botaoPainel?.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("as 5 estratégias existem como pills, com 'Desligado' marcada por padrão", async () => {
+  it("as 5 estratégias existem como pills, com 'Não dar frete grátis' marcada por padrão", async () => {
     await abrirTela();
     for (const nome of [
-      /Desligado/i,
+      /Não dar frete grátis/i,
       /Grátis acima de um valor/i,
       /Sempre grátis/i,
-      /Por produto marcado/i,
-      /Desconto na opção mais barata/i,
+      /Só produtos marcados/i,
+      /Desconto no frete/i,
     ]) {
       expect(pill(nome)).toBeDefined();
     }
-    expect(pill(/Desligado/i)?.getAttribute("aria-checked")).toBe("true");
+    expect(pill(/Não dar frete grátis/i)?.getAttribute("aria-checked")).toBe(
+      "true",
+    );
   });
 
   it("acima_de_valor: mostra o campo de mínimo, e SEM alcance nasce 'mais_barata' pré-selecionado ao sair de desligado", async () => {
@@ -250,34 +252,36 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     ) as HTMLInputElement;
     expect(minimo).toBeDefined();
 
-    const alcanceMaisBarata = pill(/s[óo] a op[çc][ãa]o mais barata/i);
+    const alcanceMaisBarata = pill(/s[óo] a mais barata/i);
     expect(alcanceMaisBarata?.getAttribute("aria-checked")).toBe("true");
   });
 
   it("desconto: mostra tipo + valor + mínimo opcional, e NÃO mostra alcance", async () => {
     await abrirTela();
-    await clicar(pill(/Desconto na opção mais barata/i)!);
+    await clicar(pill(/Desconto no frete/i)!);
 
-    expect(pill(/^Percentual$/i)).toBeDefined();
-    expect(pill(/^Valor fixo$/i)).toBeDefined();
+    expect(pill(/^Porcentagem$/i)).toBeDefined();
+    expect(pill(/^Valor em R\$/i)).toBeDefined();
     expect(
       hospedeiro.querySelector("#frete-nacional-valor-desconto"),
     ).toBeDefined();
     expect(hospedeiro.querySelector("#frete-nacional-minimo")).toBeDefined();
-    expect(pill(/s[óo] a op[çc][ãa]o mais barata/i)).toBeUndefined();
-    expect(pill(/todas as op[çc][õo]es/i)).toBeUndefined();
+    expect(pill(/s[óo] a mais barata/i)).toBeUndefined();
+    expect(pill(/qualquer uma/i)).toBeUndefined();
   });
 
   it("o cabeçalho da estratégia descreve a ESTRATÉGIA escolhida, não finge ser 'estado salvo'", async () => {
     await abrirTela();
     const escopo = hospedeiro.querySelector("#bloco-estrategia-nacional");
-    expect(escopo?.textContent).toMatch(/estrat[ée]gia:/i);
+    expect(
+      hospedeiro.querySelector("#painel-frete-gratis > button")?.textContent,
+    ).toContain("Fora:");
     expect(escopo?.textContent).not.toMatch(/estado salvo:/i);
   });
 
   it("desconto sem tipo escolhido NUNCA mostra 'R$ 0 na mais barata'", async () => {
     await abrirTela();
-    await clicar(pill(/Desconto na opção mais barata/i)!);
+    await clicar(pill(/Desconto no frete/i)!);
 
     const escopo = hospedeiro.querySelector("#bloco-estrategia-nacional");
     expect(escopo?.textContent).not.toMatch(/r\$\s*0\s*na mais barata/i);
@@ -297,9 +301,7 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     ) as HTMLInputElement;
     await digitar(minimo, "250");
 
-    expect(pill(/todas as op[çc][õo]es/i)?.getAttribute("aria-checked")).toBe(
-      "true",
-    );
+    expect(pill(/qualquer uma/i)?.getAttribute("aria-checked")).toBe("true");
   });
 
   it("trocar entre DUAS estratégias de grátis (sem passar por desligado) preserva o alcance salvo", async () => {
@@ -312,9 +314,7 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
 
     await clicar(pill(/Grátis acima de um valor/i)!);
 
-    expect(pill(/todas as op[çc][õo]es/i)?.getAttribute("aria-checked")).toBe(
-      "true",
-    );
+    expect(pill(/qualquer uma/i)?.getAttribute("aria-checked")).toBe("true");
   });
 
   it("aviso de custo aparece com alcance 'todas' numa estratégia de grátis, e o botão troca para 'mais_barata'", async () => {
@@ -335,9 +335,9 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     expect(botaoLimitar).toBeDefined();
 
     await clicar(botaoLimitar!);
-    expect(
-      pill(/s[óo] a op[çc][ãa]o mais barata/i)?.getAttribute("aria-checked"),
-    ).toBe("true");
+    expect(pill(/s[óo] a mais barata/i)?.getAttribute("aria-checked")).toBe(
+      "true",
+    );
     // Ainda exige salvar — não é aplicado sozinho.
     expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
   });
@@ -346,14 +346,14 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     estadoDoBanco.ligados = [];
     await abrirTela();
     expect(hospedeiro.textContent).toMatch(
-      /a estrat[ée]gia s[óo] vale quando h[áa] cota[çc][ãa]o de transportadora/i,
+      /Ninguém de fora da sua região compra/i,
     );
   });
 
   it("prévia em reais: 15% de R$ 24,90 mostra R$ 21,16", async () => {
     await abrirTela();
-    await clicar(pill(/Desconto na opção mais barata/i)!);
-    await clicar(pill(/^Percentual$/i)!);
+    await clicar(pill(/Desconto no frete/i)!);
+    await clicar(pill(/^Porcentagem$/i)!);
     const valor = hospedeiro.querySelector(
       "#frete-nacional-valor-desconto",
     ) as HTMLInputElement;
@@ -375,8 +375,8 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
 
   it("validação: desconto percentual > 100 bloqueia o salvar", async () => {
     await abrirTela();
-    await clicar(pill(/Desconto na opção mais barata/i)!);
-    await clicar(pill(/^Percentual$/i)!);
+    await clicar(pill(/Desconto no frete/i)!);
+    await clicar(pill(/^Porcentagem$/i)!);
     const valor = hospedeiro.querySelector(
       "#frete-nacional-valor-desconto",
     ) as HTMLInputElement;
@@ -398,8 +398,8 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
 
   it("REVISÃO (correção 3): desconto fixo com valor que ARREDONDA para R$ 0,00 em centavos bloqueia o salvar", async () => {
     await abrirTela();
-    await clicar(pill(/Desconto na opção mais barata/i)!);
-    await clicar(pill(/^Valor fixo$/i)!);
+    await clicar(pill(/Desconto no frete/i)!);
+    await clicar(pill(/^Valor em R\$$/i)!);
     const valor = hospedeiro.querySelector(
       "#frete-nacional-valor-desconto",
     ) as HTMLInputElement;
@@ -416,9 +416,10 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     ) as HTMLInputElement;
     await digitar(minimo, "0");
 
-    const botaoPainel = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      /^fora da cidade/i.test(b.textContent?.trim() || ""),
+    const botaoPainel = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.getAttribute("aria-label") === "Frete grátis",
     ) as HTMLButtonElement;
+    await clicar(botaoPainel);
     expect(botaoPainel.getAttribute("aria-expanded")).toBe("true");
 
     await clicar(botaoPainel);
@@ -484,7 +485,7 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
 
     onSetDirty.mockClear();
 
-    const alcanceMaisBarata = pill(/s[óo] a op[çc][ãa]o mais barata/i)!;
+    const alcanceMaisBarata = pill(/s[óo] a mais barata/i)!;
     expect(alcanceMaisBarata).toBeDefined();
     await clicar(alcanceMaisBarata);
 
@@ -526,8 +527,8 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
 
   it("salvar desconto: grava tipo/valor e zera o mínimo quando o campo ficou vazio (sem mínimo)", async () => {
     await abrirTela();
-    await clicar(pill(/Desconto na opção mais barata/i)!);
-    await clicar(pill(/^Valor fixo$/i)!);
+    await clicar(pill(/Desconto no frete/i)!);
+    await clicar(pill(/^Valor em R\$$/i)!);
     const valor = hospedeiro.querySelector(
       "#frete-nacional-valor-desconto",
     ) as HTMLInputElement;

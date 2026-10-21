@@ -66,10 +66,7 @@ function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-// Melhor Envio: chave + e-mail válidos, sem pendência -> nasce FECHADO.
-// SuperFrete: TEM chave mas SEM e-mail (a única que exige e-mail para
-// salvar) -> incompleta, nasce ABERTO.
-// Frenet: SEM chave -> nasce ABERTO.
+// Configuração fictícia; nenhum segredo é devolvido.
 const RESPOSTA_MISTA = {
   success: true,
   modo: "multi",
@@ -91,222 +88,170 @@ const RESPOSTA_MISTA = {
   },
 };
 
-describe("TransportadorasSection — cartão de provedor expansível (23/09/2026)", () => {
+describe("Transportadoras — lista e folha por cima, sem duplicar o formulário", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    invoke.mockImplementation((_nome: string, opcoes: any) => {
-      if (opcoes?.body?.action === "ler_configuracao_frete") {
-        return Promise.resolve({ data: RESPOSTA_MISTA, error: null });
-      }
-      return Promise.resolve({ data: { success: true }, error: null });
-    });
+    invoke.mockImplementation(async (_: string, opcoes: any) => ({
+      data:
+        opcoes.body.action === "ler_configuracao_frete"
+          ? RESPOSTA_MISTA
+          : { success: true },
+    }));
     hospedeiro = document.createElement("div");
-    document.body.appendChild(hospedeiro);
+    document.body.append(hospedeiro);
     raiz = createRoot(hospedeiro);
   });
-
   afterEach(() => {
-    act(() => {
-      raiz.unmount();
-    });
+    act(() => raiz.unmount());
     hospedeiro.remove();
     vi.restoreAllMocks();
   });
-
   async function abrir() {
     const { TransportadorasSection } = await import(
       "@/components/admin/settings/TransportadorasCard"
     );
-    await act(async () => {
-      raiz.render(<TransportadorasSection />);
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
+    await act(async () => raiz.render(<TransportadorasSection />));
   }
-
-  // Cabeçalhos dos TRÊS cartões de provedor, na ordem ME, SF, Frenet — o
-  // guia "Como pegar a chave" também usa `aria-expanded`, por isso o
-  // filtro pelo texto do próprio cartão.
-  const cabecalhosDeCartao = () =>
-    [...hospedeiro.querySelectorAll("button[aria-expanded]")].filter((b) =>
-      /Chave de acesso —/.test(b.textContent?.trim() ?? ""),
-    ) as HTMLButtonElement[];
-
-  const camposToken = () =>
-    [
-      ...hospedeiro.querySelectorAll('input[type="password"]'),
-    ] as HTMLInputElement[];
-
-  function corpoDoCartao(cabecalho: HTMLButtonElement): HTMLElement {
-    const id = cabecalho.getAttribute("aria-controls");
-    expect(id).toBeTruthy();
-    const corpo = document.getElementById(id ?? "");
-    expect(corpo).toBeDefined();
-    return corpo as HTMLElement;
+  function nome(provedor: string) {
+    return hospedeiro.querySelector<HTMLButtonElement>(
+      `button[aria-label="${provedor}"]`,
+    )!;
   }
-
-  async function clicar(b: HTMLElement | undefined) {
-    expect(b).toBeDefined();
-    await act(async () => {
-      b?.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
+  function folha() {
+    return document.querySelector<HTMLElement>('[role="dialog"]')!;
   }
-
-  async function digitar(campo: HTMLInputElement, valor: string) {
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, valor);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+  async function clicar(b: HTMLElement) {
+    expect(b).toBeTruthy();
+    await act(async () => b.click());
   }
-
-  it("provedor CONFIGURADO e sem pendência (Melhor Envio) nasce FECHADO: resumo visível, corpo com hidden", async () => {
-    await abrir();
-    const [cabecalhoME] = cabecalhosDeCartao();
-    expect(cabecalhoME.getAttribute("aria-expanded")).toBe("false");
-    expect(cabecalhoME.textContent).toContain("Ligado");
-    const corpo = corpoDoCartao(cabecalhoME);
-    expect(corpo.hidden).toBe(true);
-    // O campo de chave está no DOM (o padrão escolhido é `hidden`, não
-    // desmontar — ver comentário do arquivo), mas fica marcado como oculto
-    // junto do corpo inteiro: nenhum campo do Melhor Envio fica alcançável
-    // fora do `hidden` do próprio corpo.
-    expect(corpo.contains(camposToken()[0])).toBe(true);
-  });
-
-  it("provedor SEM CHAVE (Frenet) nasce ABERTO: a pendência aparece sem clique", async () => {
-    await abrir();
-    const cabecalhoFrenet = cabecalhosDeCartao()[2];
-    expect(cabecalhoFrenet.getAttribute("aria-expanded")).toBe("true");
-    expect(cabecalhoFrenet.textContent).toContain("Sem chave");
-    expect(corpoDoCartao(cabecalhoFrenet).hidden).toBe(false);
-  });
-
-  it("provedor com chave mas SEM E-MAIL exigido (SuperFrete) nasce ABERTO", async () => {
-    await abrir();
-    const cabecalhoSF = cabecalhosDeCartao()[1];
-    expect(cabecalhoSF.getAttribute("aria-expanded")).toBe("true");
-    expect(cabecalhoSF.textContent).toContain("Sem e-mail de contato");
-    expect(corpoDoCartao(cabecalhoSF).hidden).toBe(false);
-  });
-
-  it("clique no cabeçalho expande o cartão fechado e o clique seguinte fecha de novo", async () => {
-    await abrir();
-    const [cabecalhoME] = cabecalhosDeCartao();
-    expect(corpoDoCartao(cabecalhoME).hidden).toBe(true);
-
-    await clicar(cabecalhoME);
-    expect(cabecalhoME.getAttribute("aria-expanded")).toBe("true");
-    expect(corpoDoCartao(cabecalhoME).hidden).toBe(false);
-
-    await clicar(cabecalhoME);
-    expect(cabecalhoME.getAttribute("aria-expanded")).toBe("false");
-    expect(corpoDoCartao(cabecalhoME).hidden).toBe(true);
-  });
-
-  it("o cabeçalho é um <button> real — Enter e Espaço disparam o mesmo clique nativo que o mouse", async () => {
-    await abrir();
-    const [cabecalhoME] = cabecalhosDeCartao();
-    expect(cabecalhoME.tagName).toBe("BUTTON");
-    expect(cabecalhoME.type).toBe("button");
-    // Alvo de toque >= 44px (min-h-11 = 2.75rem = 44px no Tailwind) e foco
-    // visível — conferidos pela classe, já que jsdom não faz layout real.
-    expect(cabecalhoME.className).toMatch(/min-h-11/);
-    expect(cabecalhoME.className).toMatch(/focus-visible:ring/);
-    // O clique nativo (o que o navegador dispara sozinho ao apertar Enter
-    // ou Espaço num <button> focado) é o que o handler escuta.
-    await clicar(cabecalhoME);
-    expect(cabecalhoME.getAttribute("aria-expanded")).toBe("true");
-  });
-
-  it("rascunho digitado sobrevive fechar e reabrir o cartão", async () => {
-    await abrir();
-    const [cabecalhoME] = cabecalhosDeCartao();
-    await clicar(cabecalhoME); // abre
-    await digitar(camposToken()[0], "tok-me-em-digitacao");
-    expect(camposToken()[0].value).toBe("tok-me-em-digitacao");
-
-    await clicar(cabecalhoME); // fecha
-    expect(corpoDoCartao(cabecalhoME).hidden).toBe(true);
-    // O campo continua no DOM com o MESMO valor — o corpo só ficou oculto,
-    // o rascunho mora no estado do pai (`TransportadorasSection`).
-    expect(camposToken()[0].value).toBe("tok-me-em-digitacao");
-
-    await clicar(cabecalhoME); // reabre
-    expect(corpoDoCartao(cabecalhoME).hidden).toBe(false);
-    expect(camposToken()[0].value).toBe("tok-me-em-digitacao");
-  });
-
-  it("o guia 'Como pegar a chave' de cada provedor abre por conta própria, com passos numerados e link oficial seguro", async () => {
-    await abrir();
-    const botaoGuiaME = [...hospedeiro.querySelectorAll("button")].filter((b) =>
-      /Como pegar a chave/.test(b.textContent?.trim() ?? ""),
-    )[0] as HTMLButtonElement;
-    expect(botaoGuiaME).toBeDefined();
-    expect(botaoGuiaME.getAttribute("aria-expanded")).toBe("false");
-
-    await clicar(botaoGuiaME);
-    expect(botaoGuiaME.getAttribute("aria-expanded")).toBe("true");
-
-    const corpoGuia = corpoDoCartao(botaoGuiaME);
-    expect(corpoGuia.hidden).toBe(false);
-    const passos = corpoGuia.querySelectorAll("ol li");
-    expect(passos.length).toBeGreaterThan(0);
-
-    const link = corpoGuia.querySelector("a") as HTMLAnchorElement | null;
-    expect(link).toBeTruthy();
-    expect(link?.getAttribute("target")).toBe("_blank");
-    expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(link?.getAttribute("href")).toMatch(/^https:\/\//);
-  });
-
-  it("abrir o guia do Melhor Envio não abre o guia da SuperFrete nem da Frenet (cada um independente)", async () => {
-    await abrir();
-    const botoesGuia = [...hospedeiro.querySelectorAll("button")].filter((b) =>
-      /Como pegar a chave/.test(b.textContent?.trim() ?? ""),
-    ) as HTMLButtonElement[];
-    expect(botoesGuia).toHaveLength(3);
-
-    await clicar(botoesGuia[0]);
-    expect(botoesGuia[0].getAttribute("aria-expanded")).toBe("true");
-    expect(botoesGuia[1].getAttribute("aria-expanded")).toBe("false");
-    expect(botoesGuia[2].getAttribute("aria-expanded")).toBe("false");
-  });
-
-  it("a chave salva NUNCA aparece em texto, com os cartões abertos ou fechados", async () => {
-    await abrir();
-    // Alterna os três (ME abre; SuperFrete e Frenet, que nascem abertas,
-    // fecham) — o corpo escondido segue no DOM, então a asserção vale para
-    // os dois estados. A fixture marca `tem_chave: true` para Melhor Envio E
-    // SuperFrete, mas a edge NUNCA devolve o valor do segredo (só o
-    // booleano). Os três campos de senha nascem vazios independente do
-    // cartão estar aberto ou fechado — é essa vacuidade que garante que
-    // não há segredo para vazar, porque o componente nunca o recebeu.
-    for (const cabecalho of cabecalhosDeCartao()) {
-      await clicar(cabecalho);
-    }
-    expect(camposToken().map((c) => c.value)).toEqual(["", "", ""]);
-    // Nenhum selo "Chave salva" imprime o valor — só a frase fixa.
-    const selos = [...hospedeiro.querySelectorAll("p")].filter((p) =>
-      /Chave salva\./.test(p.textContent ?? ""),
+  async function fechar() {
+    await clicar(
+      folha().querySelector<HTMLButtonElement>('[aria-label="Fechar"]')!,
     );
-    for (const selo of selos) {
-      expect(selo.textContent).toBe(
-        "Chave salva. Por segurança ela não aparece aqui — para trocar, cole a nova e salve.",
-      );
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+  }
+  async function digitar(valor: string) {
+    const input = folha().querySelector<HTMLInputElement>(
+      'input[type="password"]',
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(input, valor);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+  it("configurada nasce como linha, sem campo de segredo fora da folha", async () => {
+    await abrir();
+    expect(nome("Melhor Envio").getAttribute("aria-expanded")).toBe("false");
+    expect(nome("Melhor Envio").textContent).toContain("Ligada");
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+  });
+  it("sem chave a linha informa como conectar, mas não abre uma folha sozinha", async () => {
+    await abrir();
+    expect(nome("Frenet").textContent).toContain(
+      "Sem chave — toque para conectar",
+    );
+    expect(folha()).toBeNull();
+  });
+  it("e-mail incompleto aparece na linha e impede ligar a SuperFrete", async () => {
+    await abrir();
+    expect(nome("SuperFrete").textContent).toContain(
+      "Falta o e-mail de contato",
+    );
+    expect(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Ligar SuperFrete"]',
+      )?.disabled,
+    ).toBe(true);
+  });
+  it("nome abre a folha nomeada; fechar desmonta o formulário e devolve foco", async () => {
+    await abrir();
+    nome("Melhor Envio").focus();
+    await clicar(nome("Melhor Envio"));
+    expect(folha().textContent).toContain("Melhor Envio");
+    expect(nome("Melhor Envio").getAttribute("aria-expanded")).toBe("true");
+    await fechar();
+    expect(folha()).toBeNull();
+    expect(nome("Melhor Envio").getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(nome("Melhor Envio"));
+  });
+  it("alvo do nome é botão de 44px com indicação de foco", async () => {
+    await abrir();
+    expect(nome("Melhor Envio").tagName).toBe("BUTTON");
+    expect(nome("Melhor Envio").className).toContain("min-h-11");
+    expect(nome("Melhor Envio").className).toContain("focus-visible:ring");
+    await clicar(nome("Melhor Envio"));
+    expect(folha()).toBeTruthy();
+  });
+  it("rascunho sobrevive ao fechar e trocar de transportadora sem nova leitura", async () => {
+    await abrir();
+    await clicar(nome("Melhor Envio"));
+    await digitar("chave-ficticia-pendente");
+    await fechar();
+    await clicar(nome("Frenet"));
+    expect(
+      folha().querySelector<HTMLInputElement>('input[type="password"]')?.value,
+    ).toBe("");
+    await fechar();
+    await clicar(nome("Melhor Envio"));
+    expect(
+      folha().querySelector<HTMLInputElement>('input[type="password"]')?.value,
+    ).toBe("chave-ficticia-pendente");
+    expect(
+      invoke.mock.calls.filter(
+        (c) => c[1].body.action === "ler_configuracao_frete",
+      ),
+    ).toHaveLength(1);
+  });
+  it("guia da chave abre com passos e link oficial seguro", async () => {
+    await abrir();
+    await clicar(nome("Melhor Envio"));
+    const guia = [
+      ...folha().querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => b.textContent?.includes("Como pegar a chave"))!;
+    await clicar(guia);
+    expect(guia.getAttribute("aria-expanded")).toBe("true");
+    expect(folha().querySelectorAll("ol li").length).toBeGreaterThan(0);
+    const link = folha().querySelector("a")!;
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toBe("noopener noreferrer");
+    expect(link.href).toMatch(/^https:/);
+  });
+  it("o guia da outra transportadora não herda a abertura anterior", async () => {
+    await abrir();
+    await clicar(nome("Melhor Envio"));
+    await clicar(
+      [...folha().querySelectorAll<HTMLButtonElement>("button")].find((b) =>
+        b.textContent?.includes("Como pegar a chave"),
+      )!,
+    );
+    await fechar();
+    await clicar(nome("SuperFrete"));
+    expect(
+      [...folha().querySelectorAll("button")]
+        .find((b) => b.textContent?.includes("Como pegar a chave"))
+        ?.getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+  it("nenhuma das três folhas revela a chave salva", async () => {
+    await abrir();
+    for (const provedor of ["Melhor Envio", "SuperFrete", "Frenet"]) {
+      await clicar(nome(provedor));
+      expect(
+        folha().querySelector<HTMLInputElement>('input[type="password"]')
+          ?.value,
+      ).toBe("");
+      if (provedor !== "Frenet")
+        expect(folha().textContent).toContain(
+          "Chave salva. Por segurança ela não aparece aqui",
+        );
+      await fechar();
     }
   });
 });
