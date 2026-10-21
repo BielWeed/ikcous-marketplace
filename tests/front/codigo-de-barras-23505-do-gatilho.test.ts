@@ -27,6 +27,7 @@ vi.mock("sonner", () => ({
 
 import { mensagemAmigavelErroProduto } from "@/hooks/useProducts";
 
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do proprio teste.
 const SQL = readFileSync(
   new URL(
     "../../supabase/migrations/20261347000000_o_codigo_de_barras_nao_repete_entre_produto_e_variacao.sql",

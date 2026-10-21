@@ -27,6 +27,7 @@ const B = "74b-antes-codigo-de-barras-entre-tabelas-ausente";
 /** O corpo exato (entre os $function$) de uma funcao da migration. */
 function corpo(sql: string, fn: string): string {
   const m = sql.match(
+    // eslint-disable-next-line security/detect-non-literal-regexp -- `fn` vem so das duas constantes literais de nome de funcao deste teste, nunca de entrada externa.
     new RegExp(
       `CREATE OR REPLACE FUNCTION public\\.${fn}\\(\\)[\\s\\S]*?AS \\$function\\$([\\s\\S]*?)\\$function\\$;`,
     ),
@@ -178,6 +179,7 @@ Deno.test("347: rollback so apaga os 4 objetos novos, com pre-voo, sem tocar dad
 
 Deno.test("347: db-apply confere os marcadores dos dois corpos, cada um uma vez", () => {
   const { VERIFICACOES } = require("../scripts/db-apply.cjs");
+  // eslint-disable-next-line security/detect-object-injection -- `nome` e a constante literal da migration deste teste.
   const entrada = VERIFICACOES[nome];
   assert(Array.isArray(entrada) && entrada.length === 2);
   const sql = ler(dir + nome);
@@ -224,6 +226,7 @@ Deno.test("347: registros de publicacao completos e os rois recusam linhas falta
   for (const consulta of [A, B]) {
     const caminho = `scripts/publicacao/consultas/${consulta}.sql`;
     const sql = ler(caminho);
+    // eslint-disable-next-line security/detect-object-injection -- `consulta` vem so do par literal [A, B] deste teste.
     const rol = rois[consulta];
     assertEquals(contarStatements(sql), 1);
     assert(rol?.length >= 3, consulta);
@@ -246,7 +249,9 @@ Deno.test("347: registros de publicacao completos e os rois recusam linhas falta
       false,
     );
   }
+  // eslint-disable-next-line security/detect-object-injection -- `A` e constante literal deste teste.
   assertEquals(rois[A].length, 5);
+  // eslint-disable-next-line security/detect-object-injection -- `B` e constante literal deste teste.
   assertEquals(rois[B].length, 3);
   assertStringIncludes(
     rpc,

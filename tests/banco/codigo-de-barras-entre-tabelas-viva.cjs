@@ -14,6 +14,7 @@ const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
 const ROOT = path.resolve(__dirname, "../..");
 const ARQ =
   "20261347000000_o_codigo_de_barras_nao_repete_entre_produto_e_variacao.sql";
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do proprio teste.
 const ler = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 const migration = ler(`supabase/migrations/${ARQ}`);
 const rollback = ler(`supabase/migrations/rollback-manual-${ARQ}`);
