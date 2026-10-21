@@ -310,8 +310,9 @@ export function useStoreIdentityEditor(active = true) {
   useEffect(() => {
     const voltou = active && !estavaAtivo.current;
     estavaAtivo.current = active;
-    // Marca e Cor são telas mantidas montadas: voltar concilia a fotografia
-    // nova sem apagar a escolha local, como já acontece com cidade/UF.
+    // As telas secundárias remontam ao navegar (AdminArea, key=currentView).
+    // Se o consumidor só alternar active sem desmontar, reler concilia a
+    // fotografia nova sem apagar a escolha local, como já ocorre com cidade/UF.
     if (voltou && allowed && origin && model.current.phase === "editing")
       void syncExternalLocation();
     if (active && allowed && origin && model.current.phase === "idle")

@@ -405,6 +405,9 @@ export function IdentitySettingsSection({
               <p className="text-sm">Sua escolha / configuração atual:</p>
               <ul className="space-y-1 text-sm">
                 {camposDoConflito.map(([key, label]) => {
+                  // A Marca não edita a primária; uma semente apresentada sobre
+                  // null não é alteração feita aqui. A tela Cor do app a compara.
+                  if (key === "primaryColor") return null;
                   const rawKey = new Map<keyof IdentityDraftFields, string>([
                     ["storeName", "store_name"],
                     ["storeCity", "store_city"],
@@ -419,7 +422,11 @@ export function IdentitySettingsSection({
                   // key comes exclusively from the closed local field list.
                   // eslint-disable-next-line security/detect-object-injection
                   const mine = draft.fields[key];
-                  return mine !== (current ?? "") ? (
+                  const atual = typeof current === "string" ? current : "";
+                  const diferente = key.endsWith("Color")
+                    ? mine.toLowerCase() !== atual.toLowerCase()
+                    : mine !== atual;
+                  return diferente ? (
                     <li key={key}>
                       {label}: {mine || "Não informado"} /{" "}
                       {typeof current === "string" && current

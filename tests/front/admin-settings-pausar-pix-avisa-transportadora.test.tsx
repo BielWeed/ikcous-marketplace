@@ -233,7 +233,15 @@ describe("Ajustes — Pausar avisa da transportadora e conta ao Frete o estado d
     });
     await assentar();
     await clicar(botaoPorTexto("Mercado Pago"));
-    await assentar();
+    // A seção é lazy: 10 ms não garantem que o primeiro import e a leitura
+    // terminaram. Aguarde o controle real, sem alterar a regra do pagamento.
+    await vi.waitFor(
+      async () => {
+        await assentar();
+        expect(botaoExato("Pausar").disabled).toBe(false);
+      },
+      { timeout: 5000 },
+    );
   }
 
   const pausouNaEdge = () =>

@@ -632,6 +632,55 @@ describe("cancelamento, concorrência e resposta incerta", () => {
     // a cidade externa não tocada entra no pacote da nova tentativa
     expect(h.save.mock.calls[1][0].desired.store_city).toBe("Cidade externa");
   });
+  it("conflito da Marca não inventa diferença pela semente da primária nula nem pela caixa das cores", async () => {
+    const before = {
+      ...snapshot(),
+      identity: {
+        ...snapshot().identity,
+        primary_color: null,
+        secondary_color: "#AABBCC",
+        accent_color: "#DDEEFF",
+      },
+    };
+    h.read.mockResolvedValue(before);
+    h.save.mockResolvedValue({
+      status: "conflict",
+      source: "readback",
+      current: {
+        ...before,
+        revision: "4",
+        identity: {
+          ...before.identity,
+          store_name: "Nome externo",
+          secondary_color: "#aabbcc",
+          accent_color: "#dDeEfF",
+        },
+      },
+    });
+    await render();
+    await type("store-name", "Meu nome");
+    await click("Salvar identidade");
+    const diferencas = host.querySelector("ul")!.textContent;
+    expect(diferencas).toContain("Nome da loja: Meu nome / Nome externo");
+    expect(diferencas).not.toContain("Cor do app:");
+    expect(diferencas).not.toContain("Cor secundária:");
+    expect(diferencas).not.toContain("Cor de destaque:");
+  });
+  it("o conflito continua mostrando uma diferença real nas cores de apoio", async () => {
+    const current = snapshot();
+    current.identity.secondary_color = "#AABBCC";
+    h.save.mockResolvedValue({
+      status: "conflict",
+      source: "readback",
+      current,
+    });
+    await render();
+    await type("store-name", "Meu nome");
+    await click("Salvar identidade");
+    expect(host.querySelector("ul")!.textContent).toContain(
+      "Cor secundária: #000000 / #AABBCC",
+    );
+  });
   it("conflito do servidor exige leitura antes de conciliar", async () => {
     h.save.mockResolvedValue({ status: "conflict", source: "server" });
     await render();
