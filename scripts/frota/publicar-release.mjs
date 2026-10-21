@@ -576,6 +576,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "65b-antes-codigo-do-convidado-corpo-da-1217",
   "66a-conferir-rastreio-do-convidado-sem-nota-aplicado",
   "66b-antes-rastreio-do-convidado-corpo-da-1341",
+  "74a-conferir-codigo-de-barras-entre-tabelas-aplicado",
+  "74b-antes-codigo-de-barras-entre-tabelas-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

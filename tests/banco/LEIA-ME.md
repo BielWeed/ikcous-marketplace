@@ -969,3 +969,20 @@ aplicação.
   corpos, a 9a exige o final 249. `venda-balcao-mesma-chave-portao-viva.cjs` também prova a 36a com a 249,
   desfaz só a sucessora antes dos casos históricos da 235 e a repõe ao terminar a transação (ROLLBACK),
   além de ensaiar rollback 249 → rollback 235 → apply 235 → apply 249. A 36b continua negativa com a trava.
+
+- **`codigo-de-barras-entre-tabelas-viva.cjs`** (20261347000000): execute pelo
+  `node tests/banco/rodar-isolado.cjs tests/banco/codigo-de-barras-entre-tabelas-viva.cjs`.
+  Dois gatilhos novos (`BEFORE INSERT OR UPDATE OF codigo_barras`, em `produtos` e em `product_variants`) barram o
+  MESMO código de barras nas duas tabelas (23505, "Este código de barras já está em uso por outro produto ou
+  variação."), com `pg_advisory_xact_lock` por código. Parte 1 (uma transação): as duas direções, igualdade exata,
+  NULL/vazio/só-branco repetidos, variação desligada, produto apagado, o admin pela view `vw_produtos_admin`,
+  cliente e visitante, ACL das funções, o pré-voo contra seis adulterações e o gatilho desligado como controle.
+  Dado antigo: uma duplicata já existente entre as tabelas continua como está, não trava a edição de outro campo
+  nem o UPDATE que regrava o mesmo código (o painel regrava a linha inteira), e sair dela é livre; voltar a ela,
+  não. Rollback e reaplicação não mudam linha, índice, ACL nem policy (retrato antes/depois). Parte 2 (conexões
+  reais com COMMIT, no clone descartável): a corrida de dois cadastros do mesmo código, um em cada tabela, nas duas
+  ordens (o segundo tem de ESPERAR na trava e então levar 23505), códigos diferentes sem espera, e o controle com
+  os gatilhos desligados, em que a duplicata entra. Portão: `74a-conferir-codigo-de-barras-entre-tabelas-aplicado`
+  (5 linhas) e `74b-antes-codigo-de-barras-entre-tabelas-ausente` (3 linhas), só catálogo, sem ler código algum.
+  Ordem: banco antes ou depois do front dá no mesmo; sem backfill. Rodar antes, em cada loja, a contagem de códigos
+  nas duas tabelas do cabeçalho da migration (informativa).

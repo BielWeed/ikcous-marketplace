@@ -166,6 +166,8 @@ on:
       - "scripts/publicacao/consultas/65b-antes-codigo-do-convidado-corpo-da-1217.sql"
       - "scripts/publicacao/consultas/66a-conferir-rastreio-do-convidado-sem-nota-aplicado.sql"
       - "scripts/publicacao/consultas/66b-antes-rastreio-do-convidado-corpo-da-1341.sql"
+      - "scripts/publicacao/consultas/74a-conferir-codigo-de-barras-entre-tabelas-aplicado.sql"
+      - "scripts/publicacao/consultas/74b-antes-codigo-de-barras-entre-tabelas-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -301,6 +303,8 @@ on:
       - "scripts/publicacao/consultas/65b-antes-codigo-do-convidado-corpo-da-1217.sql"
       - "scripts/publicacao/consultas/66a-conferir-rastreio-do-convidado-sem-nota-aplicado.sql"
       - "scripts/publicacao/consultas/66b-antes-rastreio-do-convidado-corpo-da-1341.sql"
+      - "scripts/publicacao/consultas/74a-conferir-codigo-de-barras-entre-tabelas-aplicado.sql"
+      - "scripts/publicacao/consultas/74b-antes-codigo-de-barras-entre-tabelas-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -444,6 +448,9 @@ jobs:
       - name: Prova viva do rastreio do convidado (migrations 20261341000000 e 20261342000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/rastreio-do-convidado-viva.cjs
+      - name: Prova viva do codigo de barras unico entre produto e variacao (20261347)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/codigo-de-barras-entre-tabelas-viva.cjs
       - name: Prova viva do estilo do card de frete
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estilo-card-frete-viva.cjs

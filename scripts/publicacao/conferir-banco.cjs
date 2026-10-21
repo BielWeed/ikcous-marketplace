@@ -2451,6 +2451,13 @@ const ROL_DA_66B = [
   "get_orders_by_otp_v2: corpo da 20261341000000 (base anterior, md5)",
   "get_orders_by_otp_v2: assinatura, atributos e EXECUTE preservados",
 ];
+const ROL_DA_74A = [
+  "controle: catalogo publico visivel",
+  "codigo_barras: colunas e indices unicos por tabela",
+  "gatilhos: funcoes com corpo exato e atributos",
+  "gatilhos: funcoes sem EXECUTE para PUBLIC, anon, authenticated e service_role",
+  "gatilhos: BEFORE INSERT OR UPDATE OF codigo_barras ligados nas duas tabelas",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "68a-conferir-avanco-status-esperado-aplicado": [
     "avancar_status_do_pedido: unica assinatura conhecida",
@@ -2487,6 +2494,12 @@ const ROL_FECHADO_POR_CONSULTA = {
   "65b-antes-codigo-do-convidado-corpo-da-1217": ROL_DA_65B,
   "66a-conferir-rastreio-do-convidado-sem-nota-aplicado": ROL_DA_66A,
   "66b-antes-rastreio-do-convidado-corpo-da-1341": ROL_DA_66B,
+  "74a-conferir-codigo-de-barras-entre-tabelas-aplicado": ROL_DA_74A,
+  "74b-antes-codigo-de-barras-entre-tabelas-ausente": [
+    ROL_DA_74A[0],
+    ROL_DA_74A[1],
+    "gatilhos de codigo de barras: funcoes e gatilhos ausentes",
+  ],
   "60a-conferir-estilo-card-frete-aplicado": ROL_DA_60,
   "60b-antes-estilo-card-frete-base-vigente": ROL_DA_60,
   "57a-conferir-pagamento-adiantado-e-estorno-aplicado": ROL_DA_57,

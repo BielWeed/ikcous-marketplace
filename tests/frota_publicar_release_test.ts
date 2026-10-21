@@ -3081,6 +3081,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "66a-conferir-rastreio-do-convidado-sem-nota-aplicado",
     "67a-conferir-reembolso-manual-reserva-aplicado",
     "68a-conferir-avanco-status-esperado-aplicado",
+    "74a-conferir-codigo-de-barras-entre-tabelas-aplicado",
   ]);
 });
 
