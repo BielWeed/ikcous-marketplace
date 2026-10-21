@@ -64,14 +64,14 @@ export function PainelRecolhivel({
           }
           onToggle();
         }}
-        className="group flex min-h-11 w-full items-center gap-3 p-4 text-left"
+        className="group flex min-h-11 w-full flex-wrap items-center gap-3 p-4 text-left"
       >
         {Icone && (
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-admin-raised text-admin-gold">
             <Icone aria-hidden="true" className="size-5" />
           </span>
         )}
-        <span className="min-w-0 flex-1 break-words">
+        <span className="min-w-0 flex-1 basis-40 break-words">
           <span className="block text-[15px] font-extrabold text-zinc-100">
             {titulo}
           </span>

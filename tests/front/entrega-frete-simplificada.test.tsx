@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
+import { PainelRecolhivel } from "@/components/admin/shipping/PainelRecolhivel";
 import type { StoreConfig } from "@/types";
+import { Gift } from "lucide-react";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -218,6 +220,33 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
       });
     },
   );
+
+  it("reserva espaço para título e resumo quando o selo de erro precisa de outra linha", async () => {
+    await act(async () =>
+      root.render(
+        <PainelRecolhivel
+          id="frete-teste"
+          titulo="Frete grátis"
+          resumo="Na região: acima de R$ 100"
+          icone={Gift}
+          aberta
+          comPendencia
+          onToggle={vi.fn()}
+        >
+          Conteúdo
+        </PainelRecolhivel>,
+      ),
+    );
+    const cabecalho = host.querySelector<HTMLButtonElement>("button")!;
+    const titulo = [...cabecalho.querySelectorAll("span")].find(
+      (span) => span.textContent === "Frete grátis",
+    )!;
+    // jsdom não mede pixels: prende as guardas de quebra de linha, não a prova visual.
+    expect(cabecalho.classList.contains("flex-wrap")).toBe(true);
+    expect(titulo.parentElement!.classList.contains("basis-40")).toBe(true);
+    expect(cabecalho.getAttribute("aria-label")).toBe("Frete grátis");
+    expect(cabecalho.textContent).toContain("Resolva o erro para fechar");
+  });
 
   it("não anuncia pronta quando não conseguiu confirmar as transportadoras", async () => {
     loja.atual.shippingCoverage = "national";
