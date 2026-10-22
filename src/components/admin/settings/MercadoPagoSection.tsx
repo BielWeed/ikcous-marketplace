@@ -1140,12 +1140,12 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           className={`${CARTAO_AJUSTES} space-y-4`}
         >
           <span className="block text-xs font-bold text-white">
-            Receber PIX no app
+            Receber pelo app (Pix e cartão)
           </span>
           {!servidorDesatualizado && (
             <span className="block text-[11px] leading-relaxed text-zinc-400">
-              O Pix pelo app liga sozinho quando as três chaves estão salvas e o
-              teste de conexão passa.
+              O pagamento pelo app liga sozinho quando as três chaves estão
+              salvas e o teste de conexão passa. Vale para Pix e cartão.
             </span>
           )}
 
@@ -1177,8 +1177,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                 <span>
                   O sistema de pagamentos desta loja ainda não foi atualizado.
-                  Enquanto isso, o Pix segue como está; fale com o suporte para
-                  atualizar.
+                  Enquanto isso, o Pix e o cartão seguem como estão; fale com o
+                  suporte para atualizar.
                 </span>
               </p>
             </div>
@@ -1187,21 +1187,26 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           {estadoDoRecebimento === "recebendo" && avisoDePausar}
           {estadoDoRecebimento === "recebendo" && !avisoDePausar && (
             <div className="flex items-center justify-between gap-3">
-              {/* Só o que é verdade: `pagamento_online` liberou o PIX, mas o
-                      CARTÃO tem interruptor próprio (`config_pagamento_cartao`,
+              {/* Só o que é verdade: `pagamento_online` liga/pausa o
+                      recebimento online INTEIRO (Pix e cartão pelo app), mas o
+                      CARTÃO tem ainda interruptor próprio (`config_pagamento_cartao`,
                       no card Formas de pagamento) e nasce desligado — o
                       `criar-pagamento` recusa cartão enquanto ele estiver
                       assim. Esta seção não lê essa config (não há prop nem
                       contexto, e o card vizinho a muda sem avisar aqui), então
-                      o texto não afirma cartão nem o nega. E não repete
+                      o texto diz que Pausar vale para os dois e que o cartão
+                      tem o seu interruptor, sem afirmar que o cartão
+                      funciona. E não repete
                       "Pix liberado" (H6): o estado é o termômetro de
                       Pagamentos; aqui fica só a ação. */}
               <div className="space-y-0.5">
                 <p className="text-[11px] leading-relaxed text-zinc-400">
-                  Para parar de receber pelo app por um tempo, toque em Pausar.
+                  Para parar de receber Pix e cartão pelo app por um tempo,
+                  toque em Pausar.
                 </p>
                 <p className="text-[11px] leading-relaxed text-zinc-400">
-                  Cartão pelo app: ligue ou desligue em Formas de pagamento.
+                  O cartão tem também o seu próprio interruptor, em Formas de
+                  pagamento.
                 </p>
               </div>
               <button
@@ -1235,8 +1240,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 </button>
               </div>
               <p className="text-[11px] leading-relaxed text-orange-200/90">
-                Nenhum cliente consegue pagar pelo app enquanto estiver pausado.
-                Salvar ou testar as chaves não religa: toque em Retomar.
+                Nenhum cliente consegue pagar com Pix ou cartão pelo app
+                enquanto estiver pausado. Salvar ou testar as chaves não religa:
+                toque em Retomar.
               </p>
               {listaDoQueFalta.length > 0 && (
                 <p className="text-[11px] leading-relaxed text-orange-200/90">

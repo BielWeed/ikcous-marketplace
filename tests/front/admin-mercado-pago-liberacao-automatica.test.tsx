@@ -270,22 +270,47 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     expect(document.body.querySelector('[role="switch"]')).toBeNull();
   });
 
-  it("A1b — o texto só diz o que é verdade: cartão NÃO é afirmado (tem interruptor próprio em Formas de pagamento)", async () => {
-    // O `pagamento_online` liga o Pix, mas o cartão depende de
-    // `config_pagamento_cartao` (crédito/débito), que na IKCOUS está
-    // desligado e faz o `criar-pagamento` recusar cartão. A seção não tem essa
-    // config (ela vive no card Formas de pagamento), então o texto é o mesmo
-    // com cartão ligado ou desligado — e verdadeiro nos dois.
+  it("A1b — o texto diz Pix E cartão e não promete cartão ligado (tem interruptor próprio em Formas de pagamento)", async () => {
+    // `pagamento_online` liga/pausa o recebimento ONLINE inteiro (Pix e cartão
+    // pelo app). O cartão tem, além disso, o interruptor próprio
+    // (`config_pagamento_cartao`, nasce desligado). A seção não lê essa config,
+    // então o texto é o mesmo com cartão ligado ou desligado e é verdadeiro
+    // nos dois: nunca diz que o cartão "está funcionando".
     cenario.salvo = { ...RECEBENDO };
     raiz = await montarSecaoComChavesAbertas();
 
     const estado = estadoDoRecebimento().textContent ?? "";
     expect(recebendo()).toBe(true);
+    expect(estado).toContain("Receber pelo app (Pix e cartão)");
     expect(estado).toContain(
-      "Cartão pelo app: ligue ou desligue em Formas de pagamento",
+      "O pagamento pelo app liga sozinho quando as três chaves estão salvas e o teste de conexão passa. Vale para Pix e cartão.",
     );
-    expect(estado).not.toContain("Pix e cartão");
+    expect(estado).toContain(
+      "Para parar de receber Pix e cartão pelo app por um tempo, toque em Pausar.",
+    );
+    expect(estado).toContain(
+      "O cartão tem também o seu próprio interruptor, em Formas de pagamento.",
+    );
+    // O texto antigo (só Pix) não volta.
+    expect(estado).not.toContain("Receber PIX no app");
+    expect(estado).not.toContain("O Pix pelo app liga sozinho");
+    expect(estado).not.toContain("Para parar de receber pelo app");
+    expect(estado).not.toContain("Cartão pelo app: ligue ou desligue");
+    expect(estado).not.toMatch(/cartão (está|esta) (funcionando|ligado)/i);
     expect(estado).not.toContain("Recebendo pelo app");
+  });
+
+  it("A1c — pausado: o texto também fala de Pix e cartão", async () => {
+    cenario.salvo = { ...PAUSADO };
+    raiz = await montarSecaoComChavesAbertas();
+
+    const estado = estadoDoRecebimento().textContent ?? "";
+    expect(estado).toContain("Receber pelo app (Pix e cartão)");
+    expect(estado).toContain("Pausado por você");
+    expect(estado).toContain(
+      "Nenhum cliente consegue pagar com Pix ou cartão pelo app enquanto estiver pausado.",
+    );
+    expect(estado).not.toContain("Receber PIX no app");
   });
 
   it("A2 — Pausar chama a edge, vira 'Pausado por você' + Retomar, avisa a vitrine e ecoa para o painel", async () => {
@@ -618,7 +643,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     raiz = await montarSecaoComChavesAbertas(onPixAlternado);
     const estado = estadoDoRecebimento().textContent ?? "";
     expect(estado).toContain(
-      "O sistema de pagamentos desta loja ainda não foi atualizado. Enquanto isso, o Pix segue como está; fale com o suporte para atualizar.",
+      "O sistema de pagamentos desta loja ainda não foi atualizado. Enquanto isso, o Pix e o cartão seguem como estão; fale com o suporte para atualizar.",
     );
     // Sem prazo: há lojas cuja function não tem rota de publicação, e
     // "tente de novo em alguns minutos" seria falso para elas.

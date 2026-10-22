@@ -139,8 +139,8 @@ describe("DEPLOYMENT.md §5.2 conta as duas origens da credencial do Mercado Pag
     // Âncora do RÓTULO: a §5.2.1 manda tocar num interruptor com este nome.
     const tela =
       TELAS["/src/components/admin/settings/MercadoPagoSection.tsx"] ?? "";
-    expect(tela, "MercadoPagoSection perdeu o rótulo do interruptor").toContain(
-      "Receber PIX no app",
+    expect(tela, "MercadoPagoSection perdeu o rótulo do bloco").toContain(
+      "Receber pelo app (Pix e cartão)",
     );
 
     const texto = secao52();
