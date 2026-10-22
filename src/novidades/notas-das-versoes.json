@@ -3,8 +3,8 @@
     "titulo": "Finalizar compra mais enxuto, ofertas com foto ao lado e produto com código automático",
     "novidades": [
       "Na seção Ofertas das vitrines, você escolhe um terceiro desenho, o Lateral: a foto fica ao lado do texto e o botão só coloca no carrinho.",
-      "Ao cadastrar um produto, o código interno agora é gerado sozinho, e você ainda pode trocá-lo se quiser.",
-      "Cada categoria pode ter um ícone escolhido numa galeria, com os ícones separados por grupo.",
+      "Ao cadastrar um produto, você pode ligar o código interno automático: a loja gera o código, e você troca por outro ou desliga para digitar o seu.",
+      "Na galeria de ícones das categorias, cada grupo mostra quantos ícones tem e os ícones já usados ganham a marca Usado.",
       "No Finalizar compra, o cupom fica atrás do link Tenho um código de cupom, e os cupons disponíveis aparecem em cartões que você toca para usar."
     ],
     "correcoes": [
