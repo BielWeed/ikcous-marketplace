@@ -80,7 +80,11 @@ module.exports = [
     // 21/10/2026 (aprovado pelo dono no chat): 552 -> 556 kB para acomodar o
     // redesenho dos cards compactos de frete grátis (anel de progresso) e de
     // Ofertas Imperdíveis. O card de frete sozinho mediu +99 B sobre a base.
-    limit: "556 kB",
+    // 22/10/2026 (aprovado pelo dono no chat; regra dele: nunca trocar o teto
+    // por código arriscado): 556 -> 560 kB para acomodar o redesenho da tela de
+    // produto (fileiras de variação e folha de opções) junto da barra única da
+    // Home. Medido no lote: 556,27 kB, ou seja, 270 B acima do teto anterior.
+    limit: "560 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem

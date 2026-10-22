@@ -59,7 +59,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 556 kB, painel 472 kB", () => {
+  it("os tetos de JS são os fixados: cliente 560 kB, painel 472 kB", () => {
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. Painel 450 -> 455 em 15/10/2026
     // (lote da noite: 39 ajustes de tela juntos) e 455 -> 460 no mesmo dia
@@ -67,8 +67,9 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // a base com o lote 4 (PR #883) e 464,5 -> 466 no lote R1 do reembolso e 466 -> 467 em 16/10/2026 e 467 -> 471 -> 472 em 17/10/2026 (ultima subida, redesenho do painel)
     // (chave anti-duplicação do lançamento financeiro, PR #981);
     // cliente 552 -> 556 em 21/10/2026 (cards compactos novos, aprovado pelo dono);
+    // cliente 556 -> 560 em 22/10/2026 (redesenho da tela de produto, aprovado pelo dono);
     // ver comentário no `.size-limit.cjs`.
-    expect(entrada("cliente.map(")).toContain('limit: "556 kB"');
+    expect(entrada("cliente.map(")).toContain('limit: "560 kB"');
     expect(entrada("painel.map(")).toContain('limit: "472 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
