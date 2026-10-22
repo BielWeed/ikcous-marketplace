@@ -17,7 +17,7 @@ import {
   iconeEscolhido,
   nomeDoIcone,
 } from "@/lib/icones-de-categoria";
-import { Check, ChevronDown, Search, Sparkles, Wand2 } from "lucide-react";
+import { Check, ChevronDown, Search } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 
 // Seletor de ícone de uma categoria (Gerenciar categorias). Mostra os 14 clássicos de sempre e, quando o
@@ -268,7 +268,6 @@ export function SeletorDeIcone({
               </span>
               <p className="min-w-0 flex-1 basis-40 text-sm text-admin-text">
                 <span className="flex items-center gap-1 text-xs text-admin-text-soft">
-                  <Sparkles aria-hidden="true" className="size-3.5" />
                   Sugerimos pelo nome “{nomeParaSugerir}”
                 </span>
                 <strong className="font-black">
@@ -308,7 +307,6 @@ export function SeletorDeIcone({
               onClick={() => escolherClassico(null)}
               className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2 text-sm font-bold text-admin-text-2 hover:text-admin-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-text-soft disabled:opacity-40"
             >
-              <Wand2 aria-hidden="true" className="size-4" />
               Automático
               {semEscolha ? (
                 <Check aria-hidden="true" className="size-4" />

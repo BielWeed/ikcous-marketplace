@@ -1,6 +1,5 @@
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
 import { useCategories } from "@/hooks/useCategories";
-import { useIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { useUsoDasCategorias } from "@/hooks/useUsoDasCategorias";
 import {
   type CategoriaComUso,
@@ -73,8 +72,6 @@ function ConteudoDaGestao() {
     updateCategory,
   } = useCategories();
 
-  // Sem ícone salvo, a linha mostra o do catálogo que combina com o nome (o mesmo que a vitrine desenha).
-  const pelosNomes = useIconesPeloNome(categories);
   const [editando, setEditando] = useState<{
     readonly id: string;
     readonly valor: string;
@@ -252,10 +249,8 @@ function ConteudoDaGestao() {
             >
               <div className="flex flex-wrap items-center gap-2">
                 <IconeDaCategoria
-                  icone={
-                    pelosNomes.get(c.nome)?.icone ?? iconeDaCategoria(categoria)
-                  }
-                  forma={categoria.iconeForma ?? pelosNomes.get(c.nome)?.forma}
+                  icone={iconeDaCategoria(categoria)}
+                  forma={categoria.iconeForma}
                   className="size-6 shrink-0 text-zinc-300"
                 />
                 <span className="min-w-0 break-words text-base font-black text-white">
