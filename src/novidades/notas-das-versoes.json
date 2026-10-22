@@ -1,4 +1,12 @@
 {
+  "1.5.50": {
+    "titulo": "Total do Finalizar compra mais bem alinhado",
+    "novidades": [],
+    "correcoes": [
+      "No Finalizar compra, o valor do Total fica logo abaixo da palavra Total, ao lado da linha divisória, e não mais encostado no canto direito."
+    ],
+    "melhorias": []
+  },
   "1.5.49": {
     "titulo": "Início mais enxuto e Finalizar compra mais compacto",
     "novidades": [
