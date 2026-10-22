@@ -874,7 +874,10 @@ export const AdminProductsView = memo(function AdminProductsView({
               <PontoDeOperacao sincronizando={effectiveLoading} />
             )}
             <span
-              className={isOffline || loadError ? "text-red-300" : undefined}
+              className={cn(
+                "min-w-0 truncate",
+                (isOffline || loadError) && "text-red-300",
+              )}
             >
               {isOffline
                 ? "Sem conexão com o servidor"
