@@ -5296,7 +5296,6 @@ export function CheckoutViewDaConta({
     metodoOnline?: MetodoOnline;
     label: string;
     icon: ComponentType<{ className?: string }>;
-    color: string;
     requerConta: boolean;
   }
 
@@ -5315,7 +5314,6 @@ export function CheckoutViewDaConta({
           // prometia ao cliente o que o código negava.
           label: "Pagar agora com PIX",
           icon: IconePix,
-          color: "text-[#32BCAD] bg-[#32BCAD]/10",
           // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) —
           // só as opções "no app" carregam a exigência; as outras (entrega)
           // continuam abertas a convidado.
@@ -5330,7 +5328,6 @@ export function CheckoutViewDaConta({
                 // "Cartão de débito" ou os dois.
                 label: rotuloDaOpcaoDeCartao(configDoCartao),
                 icon: IconeCartao,
-                color: "text-blue-500 bg-blue-50",
                 requerConta: true,
               } satisfies OpcaoDePagamento,
             ]
@@ -5356,21 +5353,18 @@ export function CheckoutViewDaConta({
         value: "pix",
         label: `Pix ${quandoPaga}`,
         icon: IconePix,
-        color: "text-[#32BCAD] bg-[#32BCAD]/10",
         requerConta: false,
       },
       {
         value: "card",
         label: `Cartão ${quandoPaga}`,
         icon: IconeCartao,
-        color: "text-blue-500 bg-blue-50",
         requerConta: false,
       },
       {
         value: "cash",
         label: `Dinheiro ${quandoPaga}`,
         icon: IconeDinheiro,
-        color: "text-amber-600 bg-amber-50",
         requerConta: false,
       },
     ] satisfies OpcaoDePagamento[]
@@ -5420,26 +5414,29 @@ export function CheckoutViewDaConta({
         // justamente o único item da lista que precisa ser LIDO, porque
         // explica o que fazer. Quem diz "indisponível" aqui é o fundo
         // cinza, o cadeado e a cor do rótulo, não a transparência.
-        className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
+        //
+        // PASSO A5 (22/10/2026): marca NEUTRA — ícone cinza-escuro em
+        // quadradinho cinza claro (o Pix com o glifo oficial que a casa já
+        // tem), marcada = borda forte + bolinha escura com check, e as outras
+        // com bolinha vazia. Nada de cor de bandeira nem da marca da loja.
+        className={`flex min-h-11 w-full items-center gap-3 rounded-2xl border-2 p-3 transition-colors active:scale-[0.99] ${
           bloqueadaPorFaltaDeConta
             ? "border-zinc-100 bg-zinc-50/60"
             : isSelected
-              ? "z-10 border-zinc-900 bg-white shadow-md"
-              : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
+              ? "border-zinc-900 bg-white"
+              : "border-zinc-200 bg-white hover:border-zinc-300"
         }`}
       >
-        <div
-          className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
-        >
+        <QuadradinhoDoIcone grande>
           <Icon className="size-5" />
-        </div>
-        <div className="flex min-w-0 flex-col items-start gap-1.5 text-left">
+        </QuadradinhoDoIcone>
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5 text-left">
           {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de pagamento
               não escolhidos ficavam ilegíveis, com cara de desabilitados.
               `zinc-600` (7:1) mantém a hierarquia (escolhido continua
               sendo o mais escuro) sem apagar as outras opções. */}
           <span
-            className={`text-xs font-bold uppercase tracking-wider ${
+            className={`text-sm font-semibold ${
               bloqueadaPorFaltaDeConta
                 ? "text-zinc-500"
                 : isSelected
@@ -5461,12 +5458,20 @@ export function CheckoutViewDaConta({
         </div>
         {bloqueadaPorFaltaDeConta ? (
           <Lock className="ml-auto size-4 shrink-0 text-zinc-500" />
-        ) : (
-          <div
-            className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
+        ) : isSelected ? (
+          <span
+            data-testid="selo-de-escolhida"
+            aria-hidden="true"
+            className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white"
           >
-            {isSelected && <Check className="size-3 text-primary-foreground" />}
-          </div>
+            <Check className="size-3.5" strokeWidth={3} />
+          </span>
+        ) : (
+          <span
+            data-testid="bolinha-vazia"
+            aria-hidden="true"
+            className="ml-auto size-6 shrink-0 rounded-full border-2 border-zinc-300"
+          />
         )}
       </button>
     );
@@ -6170,7 +6175,7 @@ export function CheckoutViewDaConta({
                       setEditingAddressId(null);
                       setIsAddressModalOpen(true);
                     }}
-                    className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-primary-foreground transition-all hover:opacity-90"
+                    className="flex h-11 items-center gap-1 rounded-xl bg-zinc-900 px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:bg-black"
                   >
                     <Plus className="size-3" /> Novo
                   </Button>
@@ -6184,7 +6189,7 @@ export function CheckoutViewDaConta({
                     className="flex min-h-[112px] flex-col items-center justify-center py-8"
                   >
                     <span className="sr-only">Carregando endereços</span>
-                    <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
+                    <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-zinc-900" />
                     <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                       Sincronizando endereços...
                     </p>
@@ -6305,14 +6310,20 @@ export function CheckoutViewDaConta({
         )}
 
         {/* Payment Method */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+        <section
+          aria-labelledby="titulo-pagamento"
+          className="rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm"
+        >
+          <div className="flex items-center gap-2">
+            <QuadradinhoDoIcone>
               <CreditCard className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-              Meio de Pagamento
-            </span>
+            </QuadradinhoDoIcone>
+            <h2
+              id="titulo-pagamento"
+              className="text-base font-semibold text-zinc-900"
+            >
+              Meio de pagamento
+            </h2>
           </div>
           {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
               são uma escolha ÚNICA, mas nada anunciava qual estava marcada —
@@ -6325,7 +6336,7 @@ export function CheckoutViewDaConta({
           <div
             role="radiogroup"
             aria-label="Meio de pagamento"
-            className="space-y-4 p-4"
+            className="mt-3 space-y-4"
           >
             {opcoesNoApp.length > 0 && (
               <div className="space-y-2.5">
@@ -6438,29 +6449,29 @@ export function CheckoutViewDaConta({
                       haptic.light();
                       onNavigate("auth");
                     }}
-                    className="flex min-h-[40px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                    className="flex min-h-11 items-center rounded-lg bg-zinc-900 px-4 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-black"
                   >
                     Entrar ou criar conta
                   </button>
                 </div>
               )}
           </div>
-        </div>
+        </section>
 
         {/* Notes */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+        <section className="rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <QuadradinhoDoIcone>
               <FileText className="size-4" />
-            </div>
+            </QuadradinhoDoIcone>
             <label
               htmlFor="order-notes"
-              className="text-[11px] font-bold uppercase tracking-wider text-zinc-500"
+              className="text-base font-semibold text-zinc-900"
             >
               Notas Adicionais (Opcional)
             </label>
           </div>
-          <div className="p-4">
+          <div className="mt-3">
             <textarea
               id="order-notes"
               name="order_notes"
@@ -6468,11 +6479,11 @@ export function CheckoutViewDaConta({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
               rows={2}
-              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-primary focus:bg-white md:text-sm"
+              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
               autoComplete="off"
             />
           </div>
-        </div>
+        </section>
 
         {/* Location Notice — exige cobertura LOCAL porque a frase afirma
             EXCLUSIVIDADE de entrega na cidade (#525): com cobertura
