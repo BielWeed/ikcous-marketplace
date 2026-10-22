@@ -163,7 +163,7 @@ function CartaoOfertaLateral({
         rola ? "shrink-0 basis-[88%]" : "w-full",
       )}
     >
-      <div className="relative w-[40%] shrink-0 self-stretch overflow-hidden rounded-[14px] bg-zinc-100">
+      <div className="relative w-2/5 shrink-0 self-stretch overflow-hidden rounded-[14px] bg-zinc-100">
         {product.images[0] ? (
           // Absoluta: a proporção da foto não pode definir a altura do cartão.
           <div className="absolute inset-0">
