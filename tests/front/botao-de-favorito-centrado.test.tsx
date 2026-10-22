@@ -102,6 +102,19 @@ describe("BotaoDeFavorito — estrutura que mantém o coração no centro", () =
   });
 });
 
+describe("BotaoDeFavorito — marca neutra, sem vermelho", () => {
+  it("preto nos dois estados; só o preenchimento diferencia", () => {
+    for (const marcado of [true, false]) {
+      const botao = montar(marcado);
+      expect(botao.className).toContain("text-zinc-950");
+      expect(botao.className).not.toMatch(/red|rose/);
+      expect(botao.firstElementChild?.getAttribute("class")).not.toMatch(
+        /red|rose/,
+      );
+    }
+  });
+});
+
 describe("Favoritos: a folha de estilo da tela não mexe no botão do coração", () => {
   it("as regras de botão genérico excluem o coração", () => {
     const css = readFileSync("src/views/customer/FavoritesView.css", "utf8");
