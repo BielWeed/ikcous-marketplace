@@ -19,6 +19,7 @@ import { supabase } from "@/lib/supabase";
 import type { Product, ProductVariant } from "@/types";
 import type { Database } from "@/types/database.types";
 import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
+import { produtoSemCustoEmEstoque } from "@/utils/produtos-sem-custo";
 import { TruthGate } from "@/utils/truth_gate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -1046,6 +1047,81 @@ export function useProducts({ autoFetch = true } = {}) {
       }
     },
     [isAdmin, autoFetch],
+  );
+
+  // Lista "Sem custo" da tela Produtos. A lista do painel é paginada no
+  // servidor e `get_admin_products_paged` não filtra por custo: para a lista
+  // ser COMPLETA (e bater com o número do selo, que o banco conta no catálogo
+  // inteiro) percorre todas as páginas dos produtos ativos e filtra aqui com a
+  // regra do selo. NÃO mexe em `products` (a página normal fica como está) e
+  // devolve `null` em qualquer falha — nunca uma lista pela metade como se
+  // fosse completa. Uma busca mais nova (desta ou de `loadProducts`) vence:
+  // a resposta velha é descartada.
+  const loadProductsSemCusto = useCallback(
+    async (filters?: { search?: string; category?: string }) => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
+      const loadId = ++lastLoadId.current;
+      const TAMANHO_DA_PAGINA = 200;
+      const LIMITE_DE_PAGINAS = 50;
+      try {
+        if (!isAdmin) throw new Error("lista de custo é só do painel");
+        setLoading(true);
+        // Por id: um cadastro no meio da leitura pode repetir uma linha.
+        const semCusto = new Map<string, Product>();
+        let terminou = false;
+        for (let pagina = 0; pagina < LIMITE_DE_PAGINAS; pagina++) {
+          const { data, error } = await callRpcWithRetry<any>(async () =>
+            (supabase.rpc as any)("get_admin_products_paged", {
+              p_search: filters?.search || "",
+              p_category: filters?.category || "all",
+              p_status: "active",
+              p_stock: "all",
+              p_page: pagina,
+              p_page_size: TAMANHO_DA_PAGINA,
+            }).abortSignal(signal),
+          );
+          if (error) throw error;
+          if (loadId !== lastLoadId.current) return null;
+          if (!data || !Array.isArray(data.data)) {
+            throw new Error("resposta sem lista de produtos");
+          }
+          for (const linha of data.data) {
+            const produto = mapProductFromDB(linha);
+            if (produtoSemCustoEmEstoque(produto)) {
+              semCusto.set(produto.id, produto);
+            }
+          }
+          const total = Number(data.total_count) || 0;
+          if (
+            data.data.length === 0 ||
+            (pagina + 1) * TAMANHO_DA_PAGINA >= total
+          ) {
+            terminou = true;
+            break;
+          }
+        }
+        if (!terminou)
+          throw new Error("catálogo maior que o limite de leitura");
+        return { products: [...semCusto.values()], total: semCusto.size };
+      } catch (err: any) {
+        if (
+          err?.name === "AbortError" ||
+          err?.message === "Fetch is aborted" ||
+          err?.message?.includes("aborted")
+        ) {
+          return null;
+        }
+        console.error("Error loading products without cost:", err);
+        if (loadId === lastLoadId.current)
+          toast.error("Erro ao listar produtos");
+        return null;
+      } finally {
+        if (loadId === lastLoadId.current) setLoading(false);
+      }
+    },
+    [isAdmin],
   );
 
   // We rely on the context for autoFetch now
@@ -2492,6 +2568,7 @@ export function useProducts({ autoFetch = true } = {}) {
     isLoaded: !currentLoading, // Derived property for backward compatibility
     fetchProducts,
     loadProducts,
+    loadProductsSemCusto,
     fetchAdminProducts: loadProducts, // Alias for backward compatibility if needed
     getProductById,
     addProduct,
