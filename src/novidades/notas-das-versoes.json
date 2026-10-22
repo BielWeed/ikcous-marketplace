@@ -2,11 +2,10 @@
   "1.5.51": {
     "titulo": "Início com barra única e tela de produto redesenhada",
     "novidades": [
-      "A tela de produto foi redesenhada: escolha de cor e tamanho em fileiras, folha de opções com o preço, o desconto e o estoque de cada combinação, e botão de comprar sempre à mão."
+      "A tela de produto foi redesenhada: cor e tamanho aparecem em fileiras, e o botão de comprar fica sempre à mão e abre uma folha para escolher as opções.",
+      "Nos cartões da vitrine, a folha de opções mostra o preço, o desconto e o estoque de cada combinação."
     ],
-    "correcoes": [
-      "Na tela de produto, a folha de opções não fica mais por baixo da barrinha de gesto do iPhone."
-    ],
+    "correcoes": [],
     "melhorias": [
       "Na página inicial, as categorias e o botão Filtros ficam na mesma barra, e a contagem de produtos saiu. O Filtros mostra um pontinho quando a lista está ordenada."
     ]
