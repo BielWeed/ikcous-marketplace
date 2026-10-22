@@ -377,10 +377,11 @@ describe("barra de categorias: altura estável sem dados", () => {
     expect(src).toMatch(
       /<div\s+role="status"\s+className="flex w-full items-center"/,
     );
-    // Faixa compartilhada e blocos de 108px nos dois estados.
+    // Faixa compartilhada e blocos de 80px nos dois estados.
     expect(src.split("className={FAIXA}").length - 1).toBe(2);
-    expect(src.split("h-[108px] w-20").length - 1).toBe(2);
-    expect(src).toContain("size-16");
+    expect(src.split("h-[80px] w-[68px]").length - 1).toBe(2);
+    expect(src.split("size-12").length - 1).toBe(2);
+    expect(src.split("rounded-2xl").length - 1).toBe(2);
     expect(src).toContain("overscroll-x-contain");
   });
 });
