@@ -819,7 +819,8 @@ describe("CheckoutView — a seção 'Cupons' com os cartões (tarefa 22)", () =
     await act(async () => {
       botaoAplicarVip()!.click();
     });
-    expect(botaoAplicarVip()!.textContent).toBe("Aplicando…");
+    // PASSO A3: o cartão inteiro é o botão — o "Aplicando…" fica DENTRO dele.
+    expect(botaoAplicarVip()!.textContent).toContain("Aplicando…");
     expect(botaoAplicarVip()!.disabled).toBe(true);
     await act(async () => {
       botaoAplicarVip()!.click();
