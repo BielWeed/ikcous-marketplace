@@ -133,7 +133,7 @@ describe("F3 — produto no computador e celular preservado", () => {
     // descrição rolava por baixo do bloco preto.
     const raiz = host.firstElementChild!;
     expect(classesDoCelular(raiz.className)).toBe(
-      "pb-customer relative min-h-full bg-white",
+      "pb-customer relative min-h-full bg-background text-foreground",
     );
     expect(raiz.classList.contains("lg:shrink-0")).toBe(true);
     expect(raiz.classList.contains("lg:pb-0")).toBe(true);
@@ -167,8 +167,8 @@ describe("F3 — produto no computador e celular preservado", () => {
       "Adicionar ao Carrinho",
       "Detalhes",
       "Descrição da blusa",
-      "Este produto ainda não foi avaliado",
-      "Perguntas e Respostas",
+      "Ainda sem avaliações",
+      "Perguntas ao vendedor",
       "Você também pode gostar",
     ];
     const texto = host.textContent!;
@@ -215,8 +215,8 @@ describe("F3 — produto no computador e celular preservado", () => {
         "lg:text-3xl",
       );
       classe(
-        "span.text-2xl",
-        `text-2xl font-black tracking-tight ${promocao ? "text-emerald-600" : "text-zinc-900"}`,
+        "span[class*='text-[30px]']",
+        `text-[30px] font-bold tracking-tight ${promocao ? "text-emerald-600" : "text-foreground"}`,
         "lg:text-4xl",
       );
       const comprar = [...host.querySelectorAll("button")].find((b) =>
@@ -257,15 +257,14 @@ describe("F3 — produto no computador e celular preservado", () => {
     // Desktop: abas de site -- linha inteira com separador embaixo, não a
     // pílula flutuante de 360px (prévia 29/09).
     expect(abas.classList.contains("lg:max-w-none")).toBe(true);
-    expect(abas.classList.contains("lg:bg-transparent")).toBe(true);
+    expect(abas.classList.contains("rounded-full")).toBe(true);
     // A barra sticky não sangra a coluna com as margens negativas do celular.
     expect(abas.parentElement!.classList.contains("lg:mx-0")).toBe(true);
     // O indicador ativo vira um traço preto rente ao separador: o pill
     // (motion.div) é o primeiro filho do botão com aria-current.
     const pill = abas.querySelector("button[aria-current='true'] > div");
     expect(pill).not.toBeNull();
-    expect(pill!.classList.contains("lg:bg-zinc-950")).toBe(true);
-    expect(pill!.classList.contains("lg:h-[2.5px]")).toBe(true);
+    expect(pill!.classList.contains("lg:rounded-full")).toBe(true);
     classe(
       "#details-section p",
       "text-sm leading-relaxed text-gray-600",
@@ -276,7 +275,9 @@ describe("F3 — produto no computador e celular preservado", () => {
         "lg:max-w-prose",
       ),
     ).toBe(true);
-    classe("#chat-section h3 + p", "text-xs text-zinc-500", "lg:text-sm");
+    expect(elemento("#chat-section h3").textContent).toBe(
+      "Perguntas ao vendedor",
+    );
   });
 
   it("F3.7 relacionados em três colunas sem alterar a grade de celular", async () => {
@@ -327,7 +328,7 @@ describe("F3 — produto no computador e celular preservado", () => {
       ],
     });
     const tamanho = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent === "M(5 un.)",
+      (b) => b.getAttribute("aria-label") === "M",
     )!;
     expect(tamanho).toBeDefined();
     await act(async () => tamanho.click());

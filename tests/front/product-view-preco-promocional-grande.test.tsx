@@ -89,9 +89,9 @@ const produtoSemPromocao: Product = {
  * distinto do "De: R$ ..." (riscado, text-zinc-400) e da barra dockada
  * (não existe sem `scrolled=true`, que o jsdom nunca liga sozinho). */
 function encontraPrecoGrande(hospedeiro: HTMLElement): Element | undefined {
-  return Array.from(hospedeiro.querySelectorAll("span.text-2xl")).find((el) =>
-    el.textContent?.trim().startsWith("R$"),
-  );
+  return Array.from(
+    hospedeiro.querySelectorAll("span[class*='text-[30px]']"),
+  ).find((el) => el.textContent?.trim().startsWith("R$"));
 }
 
 describe("ProductView — preço promocional GRANDE (bloco principal) usa verde, não vermelho", () => {
@@ -148,7 +148,7 @@ describe("ProductView — preço promocional GRANDE (bloco principal) usa verde,
     expect(preco?.classList.contains("text-red-600")).toBe(false);
   });
 
-  it("sem promoção: o preço grande é neutro (text-zinc-900), não verde nem vermelho", async () => {
+  it("sem promoção: o preço grande é neutro (text-foreground), não verde nem vermelho", async () => {
     const { ProductView } = await import("@/views/customer/ProductView");
 
     await act(async () => {
@@ -165,7 +165,7 @@ describe("ProductView — preço promocional GRANDE (bloco principal) usa verde,
 
     const preco = encontraPrecoGrande(hospedeiro);
     expect(preco).not.toBeUndefined();
-    expect(preco?.classList.contains("text-zinc-900")).toBe(true);
+    expect(preco?.classList.contains("text-foreground")).toBe(true);
     expect(preco?.classList.contains("text-emerald-600")).toBe(false);
     expect(preco?.classList.contains("text-rose-600")).toBe(false);
   });
