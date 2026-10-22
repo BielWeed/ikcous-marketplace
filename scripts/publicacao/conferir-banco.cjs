@@ -2500,7 +2500,7 @@ const ROL_DA_81B = [
   "as duas compras: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
   "as duas compras: EXECUTE como sempre (PUBLIC nao; anon, authenticated e service_role sim)",
 ];
-// Lote 82 (20261352000000, o produto e a grade salvam numa transacao so: funcao NOVA salvar_produto_com_grade).
+// Lote 84 (20261352000000, o produto e a grade salvam numa transacao so: funcao NOVA salvar_produto_com_grade).
 const ROL_DA_84A = [
   "controle: catalogo publico visivel",
   "salvar_produto_com_grade: uma so, com o corpo da 20261352000000 (md5)",
