@@ -11,8 +11,8 @@
 //
 // O CONTRATO (a lógica de negócio é PORTE INTACTO da versão no-card):
 //   - Com a prop `onAddToCartWithVariants` presente: "Escolher opções" ABRE
-//     a folha (não navega); os chips da folha selecionam variações (tocar de
-//     novo DESELECIONA — toggle); o preço do card e da folha reflete o
+//     a folha (não navega); desde 21/10, só Cor é pré-escolhida e os eixos
+//     abrem um por vez (tocar no marcado só recolhe); o preço reflete o
 //     `priceOverride` da escolha; o CTA do RODAPÉ da folha entrega
 //     (product, variantId, "Grupo: valor", quantidade) para a prop; grupo sem
 //     escolha → toast nomeando o que falta e nada é entregue; variação sem
@@ -210,7 +210,9 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
 
   const chip = (texto: string) =>
     Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
-      (b) => b.textContent?.trim() === texto,
+      (b) =>
+        b.getAttribute("aria-label") === texto ||
+        b.textContent?.trim() === texto,
     )!;
 
   // A ALÇA (barrinha do topo da folha): peça 03, 13/09 — pedido do dono ao
@@ -366,10 +368,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       onAddToCartWithVariants,
     });
 
-    await abrirFolha();
-    await act(async () => {
-      chip("M").click();
-    });
+    await abrirFolha(); // Só Cor nasce escolhida; Tamanho continua pendente.
     await act(async () => {
       ctaDaFolha().click();
     });
@@ -378,7 +377,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe("Falta escolher");
     expect(JSON.stringify(vi.mocked(toast.warning).mock.calls[0][1])).toContain(
-      "Cor",
+      "Tamanho",
     );
   });
 
@@ -898,6 +897,422 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(chip("M").getAttribute("aria-pressed")).toBe("true");
     expect(ctaDaFolha().textContent).toContain("65,00");
   });
+
+  const linha = (nome: string) =>
+    Array.from(
+      folha()!.querySelectorAll<HTMLButtonElement>("button[aria-expanded]"),
+    ).find((b) => b.getAttribute("aria-label")?.startsWith(`${nome}:`))!;
+  const produtoComposto = () =>
+    criarProduto({
+      variants: [
+        {
+          id: "azul-pp",
+          productId: "prod-caderno",
+          name: "Cor / Tamanho",
+          value: "Azul / PP",
+          stockIncrement: 5,
+          priceOverride: 60,
+          imageUrl: "https://example.com/azul.png",
+          active: true,
+        },
+        {
+          id: "azul-m",
+          productId: "prod-caderno",
+          name: "Cor / Tamanho",
+          value: "Azul / M",
+          stockIncrement: 3,
+          priceOverride: 75,
+          active: true,
+        },
+        {
+          id: "preto-pp",
+          productId: "prod-caderno",
+          name: "Cor / Tamanho",
+          value: "Preto / PP",
+          stockIncrement: 2,
+          active: true,
+        },
+        {
+          id: "verde-m",
+          productId: "prod-caderno",
+          name: "Cor / Tamanho",
+          value: "Verde / M",
+          stockIncrement: 0,
+          active: true,
+        },
+      ],
+    });
+
+  it("compacta: só Cor pré-escolhida, tamanho aberto com foco; foto parcial não muda preço do card", async () => {
+    await renderizarCard(produtoComposto(), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    expect(hospedeiro.textContent).toContain("50,00");
+    await abrirFolha();
+    expect(linha("Cor").getAttribute("aria-label")).toBe(
+      "Cor: Azul. Toque para trocar",
+    );
+    expect(linha("Cor").getAttribute("aria-expanded")).toBe("false");
+    expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(chip("PP"));
+    expect(ctaDaFolha().textContent).toContain("Escolha: Tamanho");
+    expect(hospedeiro.textContent).toContain("50,00");
+    const foto = folha()!.querySelector(
+      '[data-testid="product-card-options-thumbnail"] img',
+    )!;
+    expect(foto.getAttribute("src")).toContain("azul.png");
+    expect(foto.getAttribute("style")).toContain("contain");
+  });
+
+  it("compacta: escolher recolhe e foca CTA com total; tocar marcado não desmarca", async () => {
+    const entregar = vi.fn();
+    await renderizarCard(produtoComposto(), {
+      onAddToCartWithVariants: entregar,
+    });
+    await abrirFolha();
+    await act(async () => chip("M").click());
+    expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(ctaDaFolha());
+    await act(async () => botaoQuantidade("Aumentar").click());
+    expect(ctaDaFolha().textContent).toContain("150,00");
+    await act(async () => linha("Tamanho").click());
+    await act(async () => chip("M").click());
+    expect(chip("M").getAttribute("aria-pressed")).toBe("true");
+    expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("false");
+    await act(async () => ctaDaFolha().click());
+    expect(entregar.mock.calls[0].slice(1)).toEqual([
+      "azul-m",
+      "Cor / Tamanho: Azul / M",
+      2,
+    ]);
+  });
+
+  it("compacta: trocar a cor permite a nova cor e desfaz tamanho inexistente", async () => {
+    await renderizarCard(produtoComposto(), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+    await act(async () => chip("M").click());
+    await act(async () => linha("Cor").click());
+    expect(chip("Preto").disabled).toBe(false);
+    await act(async () => chip("Preto").click());
+    expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("true");
+    expect(chip("M").disabled).toBe(false);
+    expect(chip("M").className).toContain("line-through");
+    expect(folha()!.textContent).toContain("M não tem em Preto.");
+    expect(ctaDaFolha().textContent).toContain("Escolha: Tamanho");
+  });
+
+  it("compacta: estoque vivo zera, desfaz tamanho e explica sem entregar item", async () => {
+    const entregar = vi.fn();
+    const produto = produtoComposto();
+    await renderizarCard(produto, { onAddToCartWithVariants: entregar });
+    await abrirFolha();
+    await act(async () => chip("M").click());
+    await renderizarCard(
+      {
+        ...produto,
+        variants: produto.variants!.map((v) =>
+          v.id === "azul-m" ? { ...v, stockIncrement: 0 } : v,
+        ),
+      },
+      { onAddToCartWithVariants: entregar },
+    );
+    expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("true");
+    expect(folha()!.textContent).toContain("M em Azul acabou agora.");
+    await act(async () => ctaDaFolha().click());
+    expect(entregar).not.toHaveBeenCalled();
+  });
+
+  it("compacta: um único tamanho continua esperando; Ver detalhes sai da folha uma vez", async () => {
+    const navegar = vi.fn();
+    await renderizarCard(criarProduto({ variants: [criarVariantes()[0]!] }), {
+      onProductClick: navegar,
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+    expect(ctaDaFolha().textContent).toContain("Escolha: Tamanho");
+    const detalhes = Array.from(
+      folha()!.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((b) => b.textContent?.includes("Ver detalhes"))!;
+    await act(async () => detalhes.click());
+    expect(navegar.mock.calls).toEqual([["prod-caderno"]]);
+    expect(folha()).toBeNull();
+  });
+
+  it("compacta: três eixos abrem um por vez e esperam até a última escolha", async () => {
+    const entregar = vi.fn();
+    await renderizarCard(
+      criarProduto({
+        variants: [
+          {
+            ...criarVariantes()[0]!,
+            name: "Cor / Tamanho / Manga",
+            value: "Azul / M / Longa",
+            priceOverride: 80,
+          },
+        ],
+      }),
+      { onAddToCartWithVariants: entregar },
+    );
+    await abrirFolha();
+    expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("true");
+    expect(linha("Manga").getAttribute("aria-expanded")).toBe("false");
+    await act(async () => chip("M").click());
+    expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("false");
+    expect(linha("Manga").getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(chip("Longa"));
+    expect(ctaDaFolha().textContent).toContain("Escolha: Manga");
+    expect(hospedeiro.textContent).toContain("50,00");
+    await act(async () => chip("Longa").click());
+    await act(async () => ctaDaFolha().click());
+    expect(entregar.mock.calls[0].slice(1)).toEqual([
+      "var-p",
+      "Cor / Tamanho / Manga: Azul / M / Longa",
+      1,
+    ]);
+  });
+
+  it("compacta: só Cor pronta foca CTA; tocar cor marcada só recolhe mesmo com tamanho pendente", async () => {
+    await renderizarCard(
+      criarProduto({
+        variants: [{ ...criarVariantes()[0]!, name: "Cor", value: "Azul" }],
+      }),
+      { onAddToCartWithVariants: vi.fn() },
+    );
+    await abrirFolha();
+    expect(document.activeElement).toBe(ctaDaFolha());
+    await act(async () => alcaDaFolha().click());
+    await renderizarCard(produtoComposto(), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+    await act(async () => linha("Cor").click());
+    await act(async () => chip("Azul").click());
+    expect(linha("Cor").getAttribute("aria-expanded")).toBe("false");
+    expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("false");
+    expect(ctaDaFolha().textContent).toContain("Escolha: Tamanho");
+  });
+
+  it("compacta: nenhuma opção disponível mantém o card esgotado sem abrir a folha", async () => {
+    const entregar = vi.fn();
+    await renderizarCard(
+      criarProduto({
+        variants: criarVariantes().map((v) => ({ ...v, stockIncrement: 0 })),
+      }),
+      { onAddToCartWithVariants: entregar },
+    );
+    await abrirFolha();
+    expect(botaoDeAcao().disabled).toBe(true);
+    expect(botaoDeAcao().textContent).toContain("Esgotado");
+    expect(folha()).toBeNull();
+    expect(entregar).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it("compacta: com Cor em segundo lugar, tamanho incompatível fica riscado mas permite trocar", async () => {
+    await renderizarCard(
+      criarProduto({
+        variants: [
+          {
+            ...criarVariantes()[0]!,
+            name: "Tamanho / Cor",
+            value: "PP / Azul",
+          },
+          {
+            ...criarVariantes()[1]!,
+            name: "Tamanho / Cor",
+            value: "M / Preto",
+          },
+        ],
+      }),
+      { onAddToCartWithVariants: vi.fn() },
+    );
+    await abrirFolha();
+    expect(chip("M").disabled).toBe(false);
+    expect(chip("M").className).toContain("line-through");
+    expect(chip("PP").disabled).toBe(false);
+  });
+
+  it("compacta: sem foto mantém o quadrado com ícone, sem imagem vazia", async () => {
+    await renderizarCard(
+      criarProduto({ images: [], variants: criarVariantes() }),
+      { onAddToCartWithVariants: vi.fn() },
+    );
+    await abrirFolha();
+    const miniatura = folha()!.querySelector(
+      '[data-testid="product-card-options-thumbnail"]',
+    )!;
+    expect(miniatura.querySelector("img")).toBeNull();
+    expect(miniatura.querySelector("svg")).not.toBeNull();
+  });
+
+  it.each(
+    [
+      {
+        nome: "Tamanho / Material",
+        primeira: ["M", "Algodão"],
+        segunda: ["G", "Poliéster"],
+      },
+      {
+        nome: "Tonalidade / Tamanho",
+        primeira: ["Clara", "M"],
+        segunda: ["Escura", "G"],
+      },
+      {
+        nome: "Cor / Tamanho / Material",
+        primeira: ["Azul", "M", "Algodão"],
+        segunda: ["Azul", "G", "Poliéster"],
+      },
+    ].flatMap((caso) =>
+      caso.segunda.flatMap((valor, pivo) =>
+        valor === caso.primeira.at(pivo) ? [] : [{ ...caso, pivo }],
+      ),
+    ),
+  )(
+    "troca sem saída: $nome permite chegar à outra combinação pelo eixo $pivo",
+    async ({ nome, primeira, segunda, pivo }) => {
+      const entregar = vi.fn();
+      const produto = criarProduto({
+        variants: [
+          {
+            ...criarVariantes()[0]!,
+            id: "combinacao-a",
+            name: nome,
+            value: primeira.join(" / "),
+            priceOverride: 60,
+          },
+          {
+            ...criarVariantes()[1]!,
+            id: "combinacao-b",
+            name: nome,
+            value: segunda.join(" / "),
+            priceOverride: 80,
+          },
+        ],
+      });
+      const eixos = nome.split(" / ");
+      await renderizarCard(produto, { onAddToCartWithVariants: entregar });
+      await abrirFolha();
+      for (const valor of primeira) {
+        if (chip(valor).getAttribute("aria-pressed") !== "true")
+          await act(async () => chip(valor).click());
+      }
+      expect(ctaDaFolha().textContent).toContain("60,00");
+      // Não basta liberar só o primeiro eixo: a cliente pode trocar pelo último.
+      for (const [indice, valor] of segunda.entries()) {
+        if (valor === primeira.at(indice)) continue;
+        await act(async () => linha(eixos.at(indice)!).click());
+        expect(chip(valor).disabled).toBe(false);
+        expect(chip(valor).className).toContain("line-through");
+      }
+      const linhaDaTroca = linha(eixos.at(pivo)!);
+      if (linhaDaTroca.getAttribute("aria-expanded") !== "true") {
+        await act(async () => linhaDaTroca.click());
+      }
+      await act(async () => chip(segunda.at(pivo)!).click());
+      expect(entregar).not.toHaveBeenCalled();
+      expect(ctaDaFolha().textContent).toContain("Escolha:");
+      expect(folha()!.textContent).toContain("não tem em");
+      for (const valor of segunda) {
+        if (chip(valor).getAttribute("aria-pressed") !== "true")
+          await act(async () => chip(valor).click());
+      }
+      await act(async () => ctaDaFolha().click());
+      expect(entregar.mock.calls).toEqual([
+        [produto, "combinacao-b", `${nome}: ${segunda.join(" / ")}`, 1],
+      ]);
+    },
+  );
+
+  it("troca sem saída: eixo único continua alternando e só estoque global zero desabilita", async () => {
+    const entregar = vi.fn();
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: entregar,
+    });
+    await abrirFolha();
+    await act(async () => chip("M").click());
+    await act(async () => linha("Tamanho").click());
+    await act(async () => chip("M").click()); // Marcado recolhe, mas não aprisiona.
+    await act(async () => linha("Tamanho").click());
+    expect(chip("P").disabled).toBe(false);
+    expect(chip("G").disabled).toBe(true);
+    await act(async () => chip("P").click());
+    await act(async () => ctaDaFolha().click());
+    expect(entregar.mock.calls[0].slice(1)).toEqual(["var-p", "Tamanho: P", 1]);
+  });
+
+  it("troca sem saída: aviso não chama combinação inexistente de esgotada", async () => {
+    await renderizarCard(produtoComposto(), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+    await act(async () => linha("Cor").click());
+    await act(async () => chip("Preto").click());
+    expect(folha()!.textContent).toContain("Riscado = indisponível em Preto.");
+    expect(folha()!.textContent).not.toContain("Riscado = esgotado");
+    expect(chip("M").disabled).toBe(false);
+    expect(chip("Verde").disabled).toBe(true); // Nenhuma combinação Verde tem estoque.
+  });
+
+  // Mesmos resultados literais conferidos no fluxo antigo de chips compostos.
+  it.each([
+    ["Azul / PP", "azul-pp", 60, 2],
+    ["Azul / M", "azul-m", 75, 2],
+    ["Verde / M", "verde-m", 0, 1],
+  ] as const)(
+    "equivalência antigo × novo no carrinho: %s",
+    async (valor, id, preco, qtd) => {
+      const entregar = vi.fn();
+      const produto = criarProduto({
+        variants: [
+          {
+            id: "azul-pp",
+            productId: "prod-caderno",
+            name: "Cor / Tamanho",
+            value: "Azul / PP",
+            stockIncrement: 5,
+            priceOverride: 60,
+            active: true,
+          },
+          {
+            id: "azul-m",
+            productId: "prod-caderno",
+            name: "Cor / Tamanho",
+            value: "Azul / M",
+            stockIncrement: 3,
+            priceOverride: 75,
+            active: true,
+          },
+          {
+            id: "verde-m",
+            productId: "prod-caderno",
+            name: "Cor / Tamanho",
+            value: "Verde / M",
+            stockIncrement: 1,
+            priceOverride: 0,
+            active: true,
+          },
+        ],
+      });
+      await renderizarCard(produto, { onAddToCartWithVariants: entregar });
+      await abrirFolha();
+      const [cor, tamanho] = valor.split(" / ");
+      if (cor !== "Azul") {
+        await act(async () => linha("Cor").click());
+        await act(async () => chip(cor!).click());
+      }
+      await act(async () => chip(tamanho!).click());
+      if (qtd === 2) await act(async () => botaoQuantidade("Aumentar").click());
+      await act(async () => ctaDaFolha().click());
+      expect(entregar.mock.calls).toEqual([
+        [produto, id, `Cor / Tamanho: ${valor}`, qtd],
+      ]);
+      expect(hospedeiro.textContent).toContain(
+        preco.toFixed(2).replace(".", ","),
+      );
+    },
+  );
 
   // ── FECHAR PELA ALÇA (peça 03: pedido do dono ao vivo, 13/09) ──────────
   // Três caminhos: clicar na barrinha, arrastar a barrinha para baixo e

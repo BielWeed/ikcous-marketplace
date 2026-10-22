@@ -236,6 +236,13 @@ export default defineConfig(async (context): Promise<UserConfig> => {
             if (normalizedId.endsWith("/src/lib/utils.ts")) {
               return "vendor-inicio";
             }
+            // 21/10: a folha de opções passou a usar o parser de atributos.
+            // Mantê-lo no painel-ui fazia a loja baixar o bloco inteiro do
+            // painel (+5,6 kB). O parser compartilhado ganha um chunk próprio;
+            // ambos continuam medidos pelo grafo real, sem mudar a fronteira.
+            if (normalizedId.endsWith("/src/utils/variante-composta.ts")) {
+              return "variante-composta";
+            }
             // Peças pequenas compartilham imports, minificação e dicionário
             // Brotli. Lista fechada: não absorver telas ou dependências novas
             // por uma regra genérica de diretório. O nome sem Admin* mantém
@@ -265,7 +272,7 @@ export default defineConfig(async (context): Promise<UserConfig> => {
                 normalizedId,
               ) ||
               normalizedId.endsWith("/src/hooks/useScrollRestoration.ts") ||
-              /\/src\/(components\/layouts\/AcaoDaBarra\.tsx|lib\/erro-do-painel\.ts|utils\/variante-composta\.ts)$/.test(
+              /\/src\/(components\/layouts\/AcaoDaBarra\.tsx|lib\/erro-do-painel\.ts)$/.test(
                 normalizedId,
               )
             ) {
