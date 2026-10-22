@@ -830,9 +830,9 @@ export const ProductView = React.memo(function ProductView({
                 <button
                   onClick={handleShare}
                   aria-label="Compartilhar"
-                  className="flex size-11 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm backdrop-blur-md transition-all active:scale-95"
+                  className="grid size-11 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-950 shadow-sm outline-none transition-transform active:scale-90 focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:focus-visible:ring-white"
                 >
-                  <Share2 className="size-4.5 text-zinc-600" />
+                  <Share2 aria-hidden="true" className="block size-5" />
                 </button>
               </div>
             }

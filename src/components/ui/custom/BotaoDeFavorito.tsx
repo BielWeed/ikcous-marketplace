@@ -22,7 +22,7 @@ interface BotaoDeFavoritoProps {
   rotulo?: string;
   favorito: boolean;
   onClick: (evento: MouseEvent<HTMLButtonElement>) => void;
-  /** Só posição (absolute/right/top). Nunca padding, margem ou translate. */
+  /** Só posição (absolute/right/top). Nunca padding nem margem (o centro do ícone depende disso). */
   className?: string;
 }
 
