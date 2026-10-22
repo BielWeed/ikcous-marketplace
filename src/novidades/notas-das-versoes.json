@@ -1,4 +1,15 @@
 {
+  "1.5.52": {
+    "titulo": "Painel mais limpo: botões, barra de baixo e títulos",
+    "novidades": [],
+    "correcoes": [
+      "Na barra de baixo do painel, a aba escolhida não fica mais coberta por um bloco amarelo: ela ganha um tracinho dourado em cima e o nome em destaque.",
+      "Os títulos de Ajustes e de Minha loja agora rolam junto com a tela, como nas outras telas do painel."
+    ],
+    "melhorias": [
+      "Na tela Clientes, os botões Perguntas e avaliações e Avisar clientes ficaram com o mesmo tamanho e o mesmo desenho."
+    ]
+  },
   "1.5.51": {
     "titulo": "Início com barra única e tela de produto redesenhada",
     "novidades": [
