@@ -96,7 +96,7 @@ const produto: Product = {
 
 describe("ProductView — o botão de comprar é legível em loja de cor clara", () => {
   let raiz: Root;
-  let hospedeiro: HTMLDivElement;
+  let hospedeiro: HTMLElement;
 
   beforeEach(() => {
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
@@ -111,7 +111,7 @@ describe("ProductView — o botão de comprar é legível em loja de cor clara",
         armazem.delete(chave);
       },
     });
-    hospedeiro = document.createElement("div");
+    hospedeiro = document.createElement("main");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
   });
@@ -143,7 +143,7 @@ describe("ProductView — o botão de comprar é legível em loja de cor clara",
   }
 
   function botoesDeComprar(): HTMLButtonElement[] {
-    return Array.from(hospedeiro.querySelectorAll("button")).filter((b) =>
+    return Array.from(document.querySelectorAll("button")).filter((b) =>
       /Adicionar/.test(b.textContent ?? ""),
     );
   }
@@ -153,11 +153,11 @@ describe("ProductView — o botão de comprar é legível em loja de cor clara",
     await montar();
 
     const botoes = botoesDeComprar();
-    // Âncora: o botão principal existe (o do rodapé fixo pode ou não estar).
-    expect(botoes.length).toBeGreaterThanOrEqual(1);
+    // O main real monta tanto o botão principal quanto o do rodapé fixo.
+    expect(botoes).toHaveLength(2);
     for (const botao of botoes) {
-      expect(botao.className).toContain("bg-primary");
-      expect(botao.className).toContain("text-primary-foreground");
+      expect(botao.classList.contains("bg-primary")).toBe(true);
+      expect(botao.classList.contains("text-primary-foreground")).toBe(true);
       expect(botao.className).not.toMatch(/(^|\s)text-white(\s|$)/);
     }
 

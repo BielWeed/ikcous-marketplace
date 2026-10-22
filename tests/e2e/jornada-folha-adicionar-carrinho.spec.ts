@@ -129,6 +129,25 @@ async function escolherEAdicionar(page: Page) {
   const folha = page.locator('[data-slot="sheet-content"]');
   await expect(folha).toBeVisible();
 
+  // A navegação continua visível, sem véu; a folha não ocupa sua faixa.
+  await expect(page.locator("#bottom-nav-cart")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const folha = document
+          .querySelector('[data-slot="sheet-content"]')!
+          .getBoundingClientRect();
+        const veu = document
+          .querySelector('[data-slot="sheet-overlay"]')!
+          .getBoundingClientRect();
+        const barra = document
+          .querySelector('nav[aria-label="Navegação principal"]')!
+          .getBoundingClientRect();
+        return Math.max(folha.bottom, veu.bottom) - barra.top;
+      }),
+    )
+    .toBeLessThanOrEqual(0);
+
   // Escolhe a opção "P" (chip da folha).
   await folha.getByRole("button", { name: "P", exact: true }).click();
 
@@ -175,6 +194,7 @@ test.describe("toque de dedo real", () => {
     const folha = page.locator('[data-slot="sheet-content"]');
     await expect(folha).toBeVisible();
 
+    await expect(page.locator("#bottom-nav-cart")).toBeVisible();
     await folha.getByRole("button", { name: "P", exact: true }).tap();
     const mais = folha.getByRole("button", { name: "Aumentar quantidade" });
     await mais.tap();

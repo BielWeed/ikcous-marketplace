@@ -62,6 +62,33 @@ test("folha de opções: clicar fora SÓ fecha — o fundo não navega", async (
 test.describe("toque de dedo real", () => {
   test.use({ hasTouch: true });
 
+  test("toque na barra visível só fecha a folha; o segundo toque navega", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await instalarLojaFixtura(page);
+    const errosNoFim = await abrirLoja(page);
+    const url = page.url();
+    await page.getByRole("button", { name: "Escolher opções" }).first().tap();
+    const folha = page.locator('[data-slot="sheet-content"]');
+    await expect(folha).toBeVisible();
+    const carrinho = page.locator("#bottom-nav-cart");
+    await expect(carrinho).toBeVisible();
+    const alvo = await carrinho.boundingBox();
+    expect(alvo).not.toBeNull();
+    // Coordenadas reais: com o diálogo modal, a área externa não é alvo
+    // acionável do Playwright, mas o gesto físico tem que fechar a camada.
+    await page.touchscreen.tap(
+      alvo!.x + alvo!.width / 2,
+      alvo!.y + alvo!.height / 2,
+    );
+    await expect(folha).toHaveCount(0);
+    expect(page.url()).toBe(url);
+    await carrinho.tap();
+    await expect(page).not.toHaveURL(url);
+    expect(errosNoFim().erros).toEqual([]);
+  });
+
   test("folha de opções: TOQUE fora SÓ fecha — o fundo não navega", async ({
     page,
   }) => {

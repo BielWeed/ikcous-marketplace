@@ -126,9 +126,7 @@ it("falha não afirma ausência de avaliações e permite tentar de novo", async
   await mostrar();
   const secao = host.querySelector("#reviews-section")!;
   expect(secao.querySelector('[role="alert"]')).not.toBeNull();
-  expect(secao.textContent).not.toContain(
-    "Este produto ainda não foi avaliado",
-  );
+  expect(secao.textContent).not.toContain("Ainda sem avaliações");
   expect(secao.textContent).not.toContain("falha interna");
   const repetir = [...secao.querySelectorAll<HTMLButtonElement>("button")].find(
     (botao) => botao.textContent?.trim() === "Tentar de novo",
@@ -138,7 +136,7 @@ it("falha não afirma ausência de avaliações e permite tentar de novo", async
     repetir!.click();
   });
   expect(secao.querySelector('[role="alert"]')).toBeNull();
-  expect(secao.textContent).toContain("Este produto ainda não foi avaliado");
+  expect(secao.textContent).toContain("Ainda sem avaliações");
   expect(h.ler).toHaveBeenCalledTimes(2);
 });
 
@@ -159,5 +157,5 @@ it("erro atrasado do produto anterior não contamina a consulta atual", async ()
   });
   const secao = host.querySelector("#reviews-section")!;
   expect(secao.querySelector('[role="alert"]')).toBeNull();
-  expect(secao.textContent).toContain("Este produto ainda não foi avaliado");
+  expect(secao.textContent).toContain("Ainda sem avaliações");
 });

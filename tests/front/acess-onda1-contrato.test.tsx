@@ -41,6 +41,7 @@ const PRODUCT_VIEW = "/src/views/customer/ProductView.tsx";
 const GALERIA_DO_PRODUTO = "/src/components/ui/custom/GaleriaDoProduto.tsx";
 const COUPON_INPUT = "/src/components/ui/custom/CouponInput.tsx";
 const PRODUCT_CARD = "/src/components/ui/custom/ProductCard.tsx";
+const FOLHA_DE_OPCOES = "/src/components/ui/custom/FolhaDeOpcoes.tsx";
 const BOTTOM_NAV = "/src/components/ui/custom/BottomNav.tsx";
 const HEADER = "/src/components/ui/custom/Header.tsx";
 const QUANTITY_SELECTOR = "/src/components/ui/custom/QuantitySelector.tsx";
@@ -147,13 +148,13 @@ describe("achado 2 — página de produto e cupom: botões de ícone com nome", 
 
 describe("achado 3 — escolha marcada: variantes e meio de pagamento", () => {
   it("variantes da página de produto usam aria-pressed", () => {
-    const src = fonte(PRODUCT_VIEW);
-    expect(src).toContain("aria-pressed={isSelected}");
+    const src = fonte("/src/components/ui/custom/FileirasDeVariacao.tsx");
+    expect(src).toContain("aria-pressed={ativa}");
   });
 
-  it("variantes do card usam aria-pressed", () => {
-    const src = fonte(PRODUCT_CARD);
-    expect(src).toContain("aria-pressed={ativa}");
+  it("variantes da folha do card usam aria-pressed", () => {
+    const src = fonte(FOLHA_DE_OPCOES);
+    expect(src).toContain("aria-pressed={escolhido === valor}");
   });
 
   it("meios de pagamento são radiogroup com radio e aria-checked", () => {
