@@ -165,12 +165,15 @@ function CartaoOfertaLateral({
     >
       <div className="relative w-[40%] shrink-0 self-stretch overflow-hidden rounded-[14px] bg-zinc-100">
         {product.images[0] ? (
-          <LazyImage
-            src={product.images[0]}
-            alt={product.name}
-            sizes="130px"
-            className="size-full object-cover"
-          />
+          // Absoluta: a proporção da foto não pode definir a altura do cartão.
+          <div className="absolute inset-0">
+            <LazyImage
+              src={product.images[0]}
+              alt={product.name}
+              sizes="130px"
+              className="size-full object-cover"
+            />
+          </div>
         ) : (
           <div
             data-sem-foto

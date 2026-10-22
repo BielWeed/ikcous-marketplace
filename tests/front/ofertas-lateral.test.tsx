@@ -126,6 +126,13 @@ describe("Ofertas Lateral", () => {
     expect(host.querySelectorAll("[data-pagina-ofertas]")).toHaveLength(3);
   });
 
+  it("a foto fica fora do fluxo: a proporção dela não define a altura do cartão", async () => {
+    await montar([produto("a"), produto("b")]);
+    const foto = cartoes()[0].querySelector("img") as HTMLElement;
+    expect(foto.parentElement?.className).toContain("absolute");
+    expect(foto.parentElement?.className).toContain("inset-0");
+  });
+
   it("uma oferta só: sem rolagem e sem indicadores", async () => {
     await montar([produto("a")]);
     expect(useEmblaCarousel).toHaveBeenLastCalledWith(
