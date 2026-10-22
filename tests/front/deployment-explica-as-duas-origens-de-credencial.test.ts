@@ -136,16 +136,18 @@ describe("DEPLOYMENT.md §5.2 conta as duas origens da credencial do Mercado Pag
     expect(edge).toContain('body.acao === "ligar_pix"');
     expect(edge).toContain('body.acao === "desligar_pix"');
 
-    // Âncora do RÓTULO: a §5.2.1 manda tocar num interruptor com este nome.
+    // Âncora do RÓTULO: a §5.2.1 manda procurar o bloco com este nome.
     const tela =
       TELAS["/src/components/admin/settings/MercadoPagoSection.tsx"] ?? "";
-    expect(tela, "MercadoPagoSection perdeu o rótulo do interruptor").toContain(
-      "Receber PIX no app",
+    expect(tela, "MercadoPagoSection perdeu o rótulo do bloco").toContain(
+      "Receber pelo app (Pix e cartão)",
     );
 
     const texto = secao52();
     expect(texto).toContain("Ajustes > Pagamentos > Mercado Pago");
-    expect(texto).toContain("Receber PIX no app");
+    // Tela e documento citam o MESMO rótulo, e o antigo não sobra no documento.
+    expect(texto).toContain("Receber pelo app (Pix e cartão)");
+    expect(texto).not.toContain("Receber PIX no app");
   });
 
   it("avisa que pagamento_online e mp_public_key são escritas pela própria edge, com service role", () => {

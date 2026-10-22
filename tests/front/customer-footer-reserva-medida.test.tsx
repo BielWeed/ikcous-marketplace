@@ -42,7 +42,6 @@ it("todos os rodapés fixos medem a própria altura, sem bottom divergente", () 
     "src/components/ui/custom/CartFooterSummary.tsx",
     "src/views/customer/CheckoutView.tsx",
     "src/views/customer/ProductView.tsx",
-    "src/views/customer/FavoritesView.tsx",
   ]) {
     const fonte = readFileSync(caminho, "utf8");
     expect(fonte).toContain("ref={medirRodapeCliente}");

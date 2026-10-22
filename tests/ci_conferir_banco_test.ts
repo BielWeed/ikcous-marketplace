@@ -2214,6 +2214,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "d6c092c3e0d8069891af795147d65e9e",
           versao: "20261230000000",
         },
+        // 22/10/2026: o aviso de cancelados antigos conta só pendência real (só o bloco do fora_da_janela muda).
+        {
+          fn: "get_admin_orders_cancelados_recentes",
+          h: "9567454f17698f3f0624cca0b06458cd",
+          versao: "20261380000000",
+        },
         {
           fn: "painel_inicio",
           h: "f11d22d076c59ab54d1beb280954dd15",
@@ -3604,11 +3610,11 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para as três que nenhuma migration posterior redefine; duas são da 20261199, registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
+    "quem é o dono do corpo: 60..66 só para as três que nenhuma migration posterior redefine; get_admin_orders_paged é da 20261199, get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261161000000",
-        get_admin_orders_cancelados_recentes: "20261199000000",
+        get_admin_orders_cancelados_recentes: "20261380000000",
         get_admin_orders_paged: "20261199000000",
         get_product_recommendations: "20261160000000",
         limpar_cotacoes_fora_da_janela: "20261166000000",

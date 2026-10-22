@@ -24,6 +24,7 @@ import {
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import { pedirNovoBanner } from "@/lib/novo-banner-pendente";
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
@@ -43,12 +44,12 @@ import {
 } from "@/utils/admin_cache";
 import { haptic } from "@/utils/haptic";
 import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
+import { avancarTrilha, origemDaTrilha } from "@/utils/trilha-do-painel";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   Bell,
   Layers,
-  LayoutGrid,
   Lock,
   Package,
   Plus,
@@ -94,6 +95,13 @@ export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = STATUS_PARA_PREPARAR;
  */
 const RETENTATIVA_BASE_MS = 4000;
 const RETENTATIVA_MAX_TENTATIVAS = 3;
+
+const ABA_ATIVA = "text-white";
+const ICONE_ABA_ATIVA = "border-admin-gold text-admin-gold";
+const TRACO_ABA_ATIVA =
+  "absolute left-1/2 top-0 h-[3px] w-5 -translate-x-1/2 rounded-full bg-admin-gold";
+const BOTAO_ABA_INFERIOR =
+  "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -770,26 +778,29 @@ export function AdminLayout({
     globalThis.location &&
     new URLSearchParams(globalThis.location.search).has("id");
 
-  // Guarda a view ANTERIOR a `currentView`, para o botão "Voltar" de
-  // "admin-push" saber de onde a pessoa veio (sidebar, menu do cliente,
-  // banner...) em vez de sempre cair em "admin-settings". O sino NÃO está
-  // mais nessa lista: ele leva às Notificações do lojista, não ao envio para
-  // clientes. Só
-  // atualiza quando a view muda de fato — a origem tem que continuar
-  // apontando para a tela anterior enquanto "admin-push" está em foco.
+  // Guarda DE ONDE a pessoa veio até `currentView`, para o botão "Voltar" de
+  // "admin-push", "admin-notifications" e "admin-whatsapp-config" saber a
+  // porta por onde ela entrou (sidebar, menu do cliente, banner, sino...) em
+  // vez de um pai fixo.
+  //
+  // A origem NÃO é "a tela anterior a cada troca": isso gravava origem também
+  // quando a troca era um Voltar, e Avisar clientes <-> Notificações viravam
+  // origem uma da outra, num laço sem saída (dono, 22/10/2026). A trilha de
+  // `trilha-do-painel.ts` trata a troca para a tela anterior como VOLTA e não
+  // grava nada — vale igual para o botão do topo e para o Voltar do celular.
   //
   // `origemDaView` fica em estado, não em ref: `getParentView` é chamado
   // durante a renderização (aqui embaixo, e dentro dos dois `navItems.map`
   // da sidebar), e a regra `react-hooks/refs` do eslint proíbe ler
-  // `ref.current` em render — só em efeito ou handler. O `useRef` que o
-  // efeito usa para lembrar a view anterior fica isolado dentro do próprio
-  // `useEffect`, nunca lido em render.
+  // `ref.current` em render — só em efeito ou handler. O `useRef` da trilha
+  // fica isolado dentro do próprio `useEffect`, nunca lido em render.
   const [origemDaView, setOrigemDaView] = React.useState<View | null>(null);
-  const viewAnteriorRef = React.useRef<View>(currentView);
+  const trilhaRef = React.useRef<readonly View[]>([currentView]);
   React.useEffect(() => {
-    if (viewAnteriorRef.current !== currentView) {
-      setOrigemDaView(viewAnteriorRef.current);
-      viewAnteriorRef.current = currentView;
+    const proxima = avancarTrilha(trilhaRef.current, currentView);
+    if (proxima !== trilhaRef.current) {
+      trilhaRef.current = proxima;
+      setOrigemDaView(origemDaTrilha(proxima));
     }
   }, [currentView]);
 
@@ -870,23 +881,32 @@ export function AdminLayout({
               onMouseLeave={handleMouseLeave}
               onTouchStart={() => handleMouseEnter("admin-pdv", true)}
               className={cn(
-                "mb-3 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-admin-border-strong px-3 text-left text-sm font-semibold transition-transform active:scale-95",
+                "relative mb-3 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-admin-border-strong px-3 text-left text-sm font-semibold transition-transform active:scale-95",
                 currentView === "admin-pdv"
-                  ? "bg-[#3B3016] text-admin-gold"
+                  ? ABA_ATIVA
                   : "bg-admin-raised text-zinc-50",
               )}
             >
+              {currentView === "admin-pdv" && (
+                <span aria-hidden="true" className={TRACO_ABA_ATIVA} />
+              )}
               <span
                 className={cn(
                   "flex size-8 items-center justify-center rounded-xl border",
                   currentView === "admin-pdv"
-                    ? "border-transparent"
+                    ? ICONE_ABA_ATIVA
                     : "border-emerald-400/20 bg-emerald-400/10 text-emerald-400",
                 )}
               >
                 <ScanBarcode aria-hidden="true" className="size-5" />
               </span>
-              Vender
+              <span
+                className={
+                  currentView === "admin-pdv" ? "font-bold" : undefined
+                }
+              >
+                Vender
+              </span>
             </button>
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -914,20 +934,23 @@ export function AdminLayout({
                   onTouchStart={() => handleMouseEnter(item.view, true)}
                   className={cn(
                     "relative flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-[color,transform] active:scale-95",
-                    isActive
-                      ? "bg-[#3B3016] font-semibold text-admin-gold"
-                      : "text-[#A1A1AD] hover:text-white",
+                    isActive ? ABA_ATIVA : "text-[#A1A1AD] hover:text-white",
                   )}
                 >
+                  {isActive && (
+                    <span aria-hidden="true" className={TRACO_ABA_ATIVA} />
+                  )}
                   <span
                     className={cn(
                       "flex size-8 shrink-0 items-center justify-center rounded-xl border",
-                      isActive ? "border-transparent" : item.cor,
+                      isActive ? ICONE_ABA_ATIVA : item.cor,
                     )}
                   >
                     <Icon aria-hidden="true" className="size-5" />
                   </span>
-                  <span className="flex-1">{item.label}</span>
+                  <span className={cn("flex-1", isActive && "font-bold")}>
+                    {item.label}
+                  </span>
                   {item.view === "admin-orders" && pendingOrdersCount > 0 && (
                     <span
                       aria-hidden="true"
@@ -1083,15 +1106,10 @@ export function AdminLayout({
             {/* Row 2: Coupled Sub-Header Bar (Admin Banners) */}
             {currentView === "admin-banners" && (
               <div className="border-t border-admin-border py-2">
-                <div className="flex min-h-14 items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-pink-300/20 bg-pink-300/10 text-pink-300">
-                      <LayoutGrid className="size-3" />
-                    </div>
-                    <h1 className="min-w-0 break-words text-sm font-semibold text-zinc-50">
-                      {NOMES_DO_PAINEL["admin-banners"]}
-                    </h1>
-                  </div>
+                <div className="flex min-h-11 items-center justify-between gap-3">
+                  <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-zinc-50">
+                    {NOMES_DO_PAINEL["admin-banners"]}
+                  </h1>
 
                   {!editorDeBannerAberto && (
                     <button
@@ -1102,15 +1120,13 @@ export function AdminLayout({
                       }
                       onClick={() => {
                         haptic.light();
-                        window.dispatchEvent(
-                          new CustomEvent("admin:open-new-banner-dialog"),
-                        );
+                        pedirNovoBanner();
                       }}
                       className={cn(
-                        "flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-bold transition-transform active:scale-95",
+                        "flex h-11 min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-nav",
                         isOffline
-                          ? "border border-admin-border-strong bg-admin-raised text-[#A1A1AD]"
-                          : "bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] text-[#1B1300] shadow-lg",
+                          ? "border border-admin-border-strong bg-admin-raised text-zinc-400"
+                          : "bg-admin-gold text-black hover:bg-admin-gold/90",
                       )}
                     >
                       {isOffline ? (
@@ -1119,7 +1135,7 @@ export function AdminLayout({
                         <Plus aria-hidden="true" className="size-4 shrink-0" />
                       )}
                       <span>
-                        {isOffline ? "Novo Banner indisponível" : "Novo Banner"}
+                        {isOffline ? "Indisponível offline" : "Novo banner"}
                       </span>
                     </button>
                   )}
@@ -1127,7 +1143,7 @@ export function AdminLayout({
                 {isOffline && !editorDeBannerAberto && (
                   <p
                     id="motivo-banner-offline"
-                    className="mt-2 text-xs text-[#A1A1AD]"
+                    className="mt-1 text-xs text-zinc-400"
                   >
                     Disponível quando a conexão retornar.
                   </p>
@@ -1300,21 +1316,29 @@ export function AdminLayout({
                       onMouseLeave={handleMouseLeave}
                       onTouchStart={() => handleMouseEnter(item.view, true)}
                       className={cn(
-                        "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
+                        BOTAO_ABA_INFERIOR,
                         isActive
-                          ? "bg-[#3B3016] text-admin-gold"
+                          ? ABA_ATIVA
                           : "text-[#A1A1AD] hover:text-white",
                       )}
                     >
+                      {isActive && (
+                        <span aria-hidden="true" className={TRACO_ABA_ATIVA} />
+                      )}
                       <span
                         className={cn(
                           "flex size-6 items-center justify-center rounded-lg border",
-                          isActive ? "border-transparent" : item.cor,
+                          isActive ? ICONE_ABA_ATIVA : item.cor,
                         )}
                       >
                         <Icon aria-hidden="true" className="size-[18px]" />
                       </span>
-                      <span className="text-center text-[11px] font-medium leading-3">
+                      <span
+                        className={cn(
+                          "text-center text-[11px] leading-3",
+                          isActive ? "font-bold" : "font-medium",
+                        )}
+                      >
                         {item.label}
                       </span>
                       {item.view === "admin-orders" &&
@@ -1346,23 +1370,31 @@ export function AdminLayout({
                   onTouchStart={() => handleMouseEnter("admin-pdv", true)}
                   aria-label="Vender"
                   className={cn(
-                    "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
+                    BOTAO_ABA_INFERIOR,
                     currentView === "admin-pdv"
-                      ? "bg-[#3B3016] text-admin-gold"
+                      ? ABA_ATIVA
                       : "text-[#A1A1AD] hover:text-white",
                   )}
                 >
+                  {currentView === "admin-pdv" && (
+                    <span aria-hidden="true" className={TRACO_ABA_ATIVA} />
+                  )}
                   <span
                     className={cn(
                       "flex size-6 items-center justify-center rounded-lg border",
                       currentView === "admin-pdv"
-                        ? "border-transparent"
+                        ? ICONE_ABA_ATIVA
                         : "border-emerald-400/20 bg-emerald-400/10 text-emerald-400",
                     )}
                   >
                     <ScanBarcode aria-hidden="true" className="size-[18px]" />
                   </span>
-                  <span className="text-center text-[11px] font-medium leading-3">
+                  <span
+                    className={cn(
+                      "text-center text-[11px] leading-3",
+                      currentView === "admin-pdv" ? "font-bold" : "font-medium",
+                    )}
+                  >
                     Vender
                   </span>
                 </button>

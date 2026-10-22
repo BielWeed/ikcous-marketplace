@@ -1,6 +1,6 @@
 import { Pencil } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 
 import {
   Sheet,
@@ -10,6 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
 import { useTelaLarga } from "@/hooks/useFinanceiro";
 import { cn } from "@/lib/utils";
 import { SeloFinanceiro } from "./partes";
@@ -41,6 +42,41 @@ export function FolhaFinanceira({
   readonly matiz?: string;
 }) {
   const larga = useTelaLarga();
+  const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
+  // O teclado do celular se sobrepõe à página: a folha sobe acima dele e,
+  // ao focar um campo, ele é trazido à vista dentro do corpo que rola.
+  useEffect(() => {
+    if (larga) return;
+    let timer: number | undefined;
+    const aoFocar = (evento: FocusEvent) => {
+      const alvo = evento.target;
+      if (!(alvo instanceof HTMLElement)) return;
+      if (alvo.tagName !== "INPUT" && alvo.tagName !== "TEXTAREA") return;
+      if (!alvo.closest("[data-folha-financeira]")) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(
+        // `?.`: navegador sem a função (e o jsdom dos testes) não quebra.
+        () => alvo.scrollIntoView?.({ block: "nearest" }),
+        150,
+      );
+    };
+    document.addEventListener("focusin", aoFocar);
+    return () => {
+      document.removeEventListener("focusin", aoFocar);
+      window.clearTimeout(timer);
+    };
+  }, [larga]);
+  // O teclado leva um tempo para abrir: refaz a rolagem quando a altura muda
+  // com um campo da folha em foco (o de 150ms acima pode chegar cedo demais).
+  useEffect(() => {
+    if (larga || teclado === 0) return;
+    const ativo = document.activeElement;
+    if (!(ativo instanceof HTMLElement)) return;
+    if (ativo.tagName !== "INPUT" && ativo.tagName !== "TEXTAREA") return;
+    if (!ativo.closest("[data-folha-financeira]")) return;
+    ativo.scrollIntoView?.({ block: "nearest" });
+  }, [larga, teclado]);
+  const comTeclado = !larga && teclado > 0;
   return (
     <Sheet
       open
@@ -50,6 +86,15 @@ export function FolhaFinanceira({
     >
       <SheetContent
         side={larga ? "right" : "bottom"}
+        data-folha-financeira=""
+        style={
+          comTeclado
+            ? {
+                bottom: teclado,
+                maxHeight: `calc(${alturaVisivel}px - 1rem)`,
+              }
+            : undefined
+        }
         className={cn(
           "gap-0 border-admin-border bg-admin-bg p-0 text-white [&>button]:flex [&>button]:size-11 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full [&>button]:bg-admin-raised [&>button]:text-zinc-300",
           larga ? "w-full sm:max-w-md" : "max-h-[94dvh] rounded-t-3xl",

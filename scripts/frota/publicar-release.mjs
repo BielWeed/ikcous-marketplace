@@ -588,6 +588,10 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "82b-antes-ex-admin-nas-demais-tabelas",
   "83a-conferir-caixa-so-na-conta-da-loja-aplicado",
   "83b-antes-caixa-so-na-conta-da-loja-base-vigente",
+  "84a-conferir-produto-com-grade-aplicado",
+  "84b-antes-produto-com-grade-ausente",
+  "85a-conferir-aviso-de-cancelados-antigos-aplicado",
+  "85b-antes-aviso-de-cancelados-antigos-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

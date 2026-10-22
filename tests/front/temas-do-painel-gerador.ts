@@ -207,8 +207,6 @@ export function hexDaPaleta(chave: string): string | undefined {
  * Chave: `util|#hex` (minúsculo). Valor: [escopo, cor].
  *   - pastéis de TEXTO (feitos para fundo escuro) viram o tom 700 da mesma família
  *     no Claro;
- *   - o fundo da aba ativa (#3B3016) vira dourado vivo a 20% no Claro (o `#FFF2CC` do
- *     mockup); no Confortável o marrom escuro original já dá 6:1 com o dourado;
  *   - fundos escuros de alerta/cartão (rosé, violeta) viram o tom 50 da família.
  */
 const HEX_CLARO: Record<string, readonly [Escopo, string, string?]> = {
@@ -220,7 +218,6 @@ const HEX_CLARO: Record<string, readonly [Escopo, string, string?]> = {
   "text|#c4a7ff": ["claro", "#6d28d9"],
   "text|#ffa1c6": ["claro", "#be185d"],
   "text|#6de0cf": ["claro", "#115e59"],
-  "bg|#3b3016": ["claro", "hsl(var(--admin-gold-fill) / 0.2)"],
   "bg|#2b151d": ["claro", "#fff1f2"],
   "bg|#401a24": ["claro", "#ffe4e6"],
   "bg|#192a31": ["claro", "#e0f2fe", "hsl(var(--admin-raised))"],

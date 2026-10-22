@@ -1812,6 +1812,13 @@ const POSTERIORES_A_97 = [
   // tests/banco/admin-atual-perfis-posterior.cjs. No FIM da lista de proposito.
   PERFIS_ADMIN_ATUAL,
   EX_ADMIN_DEMAIS_TABELAS,
+  // 20261352000000: o produto e a grade salvam numa transacao so. A RPC salvar_produto_com_grade usa is_admin_atual():
+  // sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual dela so apaga a funcao.
+  // No FIM da lista de proposito.
+  {
+    nome: "20261352000000_o_produto_e_a_grade_salvam_numa_transacao_so.sql",
+    noAr: `SELECT to_regprocedure('public.salvar_produto_com_grade(uuid,timestamptz,jsonb,jsonb,uuid[])') IS NOT NULL AS sim`,
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

@@ -51,6 +51,9 @@
 --     redefinidas na 20261199 e o corpo vivo prova a 99 (registrar_venda_presencial
 --     ganhou a trava pela chave de idempotência na 20261235000000 e depois
 --     o motivo privado na 20261249000000 e o total conferido na 20261280000000: o corpo vivo prova a 280;
+--     get_admin_orders_cancelados_recentes foi redefinida de novo na 20261380 — o aviso de cancelados
+--     antigos conta só pendência real —: o corpo esperado é o dela, e o da 99 ainda no ar (migration
+--     não aplicada nesta loja) aparece como o dela, igual ao upsert_store_config, para não parar o backfill;
 --     e upsert_store_config foi redefinida de novo na
 --     20261239 — a loja declara razão social, CNPJ/CPF e e-mail de atendimento — e de novo
 --     na 20261244 — a loja escolhe como entrega na cidade e em quantos dias: as chaves
@@ -112,7 +115,7 @@ WITH corpos AS (
    GROUP BY p.proname
 ), final(fn, h) AS (VALUES
     ('buscar_por_codigo_barras', '8762faab7f7efaf4bfd183499408d8df'),
-    ('get_admin_orders_cancelados_recentes', '99a9e4cb232aef020bf297ddcd1901f0'),
+    ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd'),
     ('get_admin_orders_paged', '5861dbbe0e9c007a4196f5308c17d763'),
     ('get_product_recommendations', '3de5b27cc17c31301249861b7921a6fe'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
@@ -279,6 +282,8 @@ WITH corpos AS (
   SELECT 'corpo final ' || f.fn, f.h,
          CASE WHEN f.fn = 'upsert_store_config' AND c.h = '391e8e1064400df5aea579f3472b203c'
               THEN 'aa4ed730ac6ad3d3c2644b4285ff39a9'
+              WHEN f.fn = 'get_admin_orders_cancelados_recentes' AND c.h = '99a9e4cb232aef020bf297ddcd1901f0'
+              THEN '9567454f17698f3f0624cca0b06458cd'
               ELSE COALESCE(c.h, 'AUSENTE') END
     FROM final f LEFT JOIN corpos c ON c.proname = f.fn
   UNION ALL

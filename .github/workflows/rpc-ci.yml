@@ -178,6 +178,10 @@ on:
       - "scripts/publicacao/consultas/82b-antes-ex-admin-nas-demais-tabelas.sql"
       - "scripts/publicacao/consultas/83a-conferir-caixa-so-na-conta-da-loja-aplicado.sql"
       - "scripts/publicacao/consultas/83b-antes-caixa-so-na-conta-da-loja-base-vigente.sql"
+      - "scripts/publicacao/consultas/84a-conferir-produto-com-grade-aplicado.sql"
+      - "scripts/publicacao/consultas/84b-antes-produto-com-grade-ausente.sql"
+      - "scripts/publicacao/consultas/85a-conferir-aviso-de-cancelados-antigos-aplicado.sql"
+      - "scripts/publicacao/consultas/85b-antes-aviso-de-cancelados-antigos-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -325,6 +329,10 @@ on:
       - "scripts/publicacao/consultas/82b-antes-ex-admin-nas-demais-tabelas.sql"
       - "scripts/publicacao/consultas/83a-conferir-caixa-so-na-conta-da-loja-aplicado.sql"
       - "scripts/publicacao/consultas/83b-antes-caixa-so-na-conta-da-loja-base-vigente.sql"
+      - "scripts/publicacao/consultas/84a-conferir-produto-com-grade-aplicado.sql"
+      - "scripts/publicacao/consultas/84b-antes-produto-com-grade-ausente.sql"
+      - "scripts/publicacao/consultas/85a-conferir-aviso-de-cancelados-antigos-aplicado.sql"
+      - "scripts/publicacao/consultas/85b-antes-aviso-de-cancelados-antigos-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -511,6 +519,22 @@ jobs:
       - name: Prova viva da compra online que trava o preço e espera a mesma chave (migration 20261350000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/compra-online-travas-viva.cjs
+      # Migration 20261352000000 (o produto e a grade salvam numa transacao so: salvar_produto_com_grade): o caminho
+      # antigo (duas requisicoes) restaura o estoque que uma compra do meio baixou (defeito reproduzido); a RPC espera a
+      # compra, ve a versao mudada, recusa com PRD01 e nao escreve nada (controles sem a conferencia e sem as travas
+      # perdem a venda; com a ordem invertida cai em deadlock); sem estoque mexido o estoque do banco sobrevive;
+      # variacao num pedido vai para recusadas; permissoes, 20 rodadas contra a compra online sem 40P01, reaplicar,
+      # rollback e consultas 84a/84b. CLONE proprio.
+      - name: Prova viva do produto e da grade numa transacao so (migration 20261352000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/salvar-produto-com-grade-viva.cjs
+      # Migration 20261380000000 (o aviso de cancelados antigos conta so pendencia real): fora_da_janela de
+      # get_admin_orders_cancelados_recentes so conta o antigo com dinheiro a devolver ou mercadoria a voltar; antigo
+      # sem pagamento e sem envio, ou ja estornado, nao conta; recente nunca entra; p_dias NULL da 0; total_count e
+      # data nao mudam; mutantes, reaplicar, rollback byte a byte, preflight e consultas 85a/85b. CLONE proprio.
+      - name: Prova viva do aviso de cancelados antigos (migration 20261380000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-aviso-de-cancelados-antigos-viva.cjs
       # Migration 20261197000000 (o dinheiro exige o admin de agora): admin
       # rebaixado com JWT velho — nas duas direções da contradição auth.users
       # × profiles — é recusado nas seis RPCs sem escrever nada e não lê

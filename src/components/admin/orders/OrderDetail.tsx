@@ -40,6 +40,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
+import { tipoDeEntregaDoPedido } from "@/lib/tipo-de-entrega-do-pedido";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus, PaymentStatus } from "@/types";
@@ -362,22 +363,39 @@ function OrderHeader({ order, avisoDeEspera }: Readonly<OrderHeaderProps>) {
 
   return (
     <header className="space-y-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className="text-[22px] font-medium leading-tight tracking-tight text-white">
-          Pedido{" "}
-          <span className="text-admin-gold">#{numeroDoPedido(order.id)}</span>
-        </h1>
-        {statusForaDaTrilha && (
-          <OrderStatusBadge
-            status={order.status}
-            retiradaNaLoja={order.retiradaNaLoja}
-            className={seloDaFicha}
-          />
-        )}
+      {/* Imprimir mora na linha do título, no canto direito (pedido do dono):
+          o texto à esquerda tem min-w-0 e pode quebrar; o botão é shrink-0
+          e nunca sai da tela, nem em 320px. */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="break-words text-[22px] font-medium leading-tight tracking-tight text-white">
+              Pedido{" "}
+              <span className="text-admin-gold">
+                #{numeroDoPedido(order.id)}
+              </span>
+            </h1>
+            {statusForaDaTrilha && (
+              <OrderStatusBadge
+                status={order.status}
+                retiradaNaLoja={order.retiradaNaLoja}
+                className={seloDaFicha}
+              />
+            )}
+          </div>
+          <p className="text-sm tabular-nums text-zinc-400">
+            {data} às {hora}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          onClick={() => globalThis.print()}
+          className="size-11 shrink-0 rounded-xl border border-admin-border bg-white/5 p-0 text-zinc-200 transition-colors hover:bg-white/10 active:scale-95"
+          title="Imprimir Pedido"
+        >
+          <Printer className="size-5" />
+        </Button>
       </div>
-      <p className="text-sm tabular-nums text-zinc-400">
-        {data} às {hora}
-      </p>
 
       {pagamentoPedeAtencao && (
         <PaymentStatusBadge
@@ -433,7 +451,7 @@ interface OrderActionBarProps {
 // exatamente sob a barra ADMIN (h-11, lg:hidden), e não depende de
 // containing block — a mesma lição do bug da barra que rolava junto. No
 // desktop a barra ADMIN não existe e ela gruda no topo do painel. São os
-// MESMOS botões e guardas de sempre: 🖨 imprime · ✕ Cancelar pedido
+// MESMOS botões e guardas de sempre (o 🖨 imprimir foi para o cabeçalho): ✕ Cancelar pedido
 // (texto vermelho suave, sem preenchimento) · Avançar → próxima etapa
 // (dourado, primária, ocupa o resto). Redesenho de 08/10: menos brilho e
 // sombra, letra de 14px em vez de 10–11px em caixa alta, alvo de toque de 44px.
@@ -451,6 +469,10 @@ function OrderActionBar({
     orderStatus !== "cancelled" && orderStatus !== "delivered";
   const podeAvancar = nextStatus !== null && orderStatus !== "cancelled";
 
+  // Sem ação nenhuma (pedido entregue ou cancelado) a barra não existe: o
+  // botão de imprimir mora no cabeçalho, e uma faixa vazia só gastaria tela.
+  if (!podeCancelar && !podeAvancar) return null;
+
   // z-40 basta: dentro do painel é o elemento mais alto ao rolar; a barra
   // ADMIN (z-50) e o menu inferior (z-[60]) vivem FORA do painel e não
   // competem. Linha separadora embaixo (border-b): ela é o teto da ficha.
@@ -458,15 +480,6 @@ function OrderActionBar({
   return (
     <div className="sticky top-0 z-40 border-b border-admin-border bg-admin-bg">
       <div className="mx-auto flex w-full max-w-[600px] items-center gap-2 px-4 py-3">
-        <Button
-          variant="ghost"
-          onClick={() => globalThis.print()}
-          className="size-11 shrink-0 rounded-xl border border-admin-border bg-white/5 p-0 text-zinc-200 transition-colors hover:bg-white/10 active:scale-95"
-          title="Imprimir Pedido"
-        >
-          <Printer className="size-5" />
-        </Button>
-
         {podeCancelar && (
           <Button
             onClick={() => onCancel(orderId)}
@@ -511,6 +524,8 @@ function OrderActionBar({
 interface OrderStepperPipelineProps {
   orderStatus: OrderStatus;
   retiradaNaLoja?: boolean;
+  /** Venda de balcão: a trilha mostra só "Novo" e "Finalizado". */
+  vendaDeBalcao?: boolean;
 }
 
 const statusesStepper: { key: OrderStatus; label: string }[] = [
@@ -526,14 +541,33 @@ const statusesStepper: { key: OrderStatus; label: string }[] = [
 function OrderStepperPipeline({
   orderStatus,
   retiradaNaLoja,
+  vendaDeBalcao,
 }: Readonly<OrderStepperPipelineProps>) {
   if (orderStatus === "cancelled") return null;
 
-  const currentStepperIndex = statusFlow.indexOf(orderStatus);
+  const posicaoNoFluxo = statusFlow.indexOf(orderStatus);
+  // Venda de balcão não separa nem despacha: só "Novo" → "Finalizado". Cada
+  // passo guarda a posição que tem no fluxo completo; o passo ativo é o
+  // último já alcançado, então "Separação"/"Trânsito" (se existirem num
+  // balcão) continuam marcando "Novo" e a trilha nunca fica sem passo ativo.
+  const passos = statusesStepper
+    .map((step, posicao) => ({ step, posicao }))
+    .filter(
+      ({ step }) =>
+        !vendaDeBalcao || step.key === "pending" || step.key === "delivered",
+    );
+  const indiceAtivo =
+    posicaoNoFluxo < 0
+      ? -1
+      : passos.reduce(
+          (ativo, { posicao }, i) => (posicao <= posicaoNoFluxo ? i : ativo),
+          -1,
+        );
+  const currentStepperIndex = indiceAtivo;
 
   return (
     <ol aria-label="Etapas do pedido" className="flex w-full items-start px-1">
-      {statusesStepper.map((step, idx) => {
+      {passos.map(({ step }, idx) => {
         const isCompleted = idx < currentStepperIndex;
         const isActive = idx === currentStepperIndex;
 
@@ -619,12 +653,17 @@ function OrderDeliveryCard({
         return forma ? `${forma.nome} · ${forma.prazo}` : null;
       })();
 
+  // Venda de balcão: a cliente levou na hora. Fica só quem comprou (nome e
+  // WhatsApp) — sem endereço, sem "Copiar/Maps", sem forma de entrega. O
+  // endereço, se existir, continua gravado no banco; só não é mostrado.
+  const ehBalcao = tipoDeEntregaDoPedido(order) === "balcao";
+
   return (
     <section
       data-testid="bloco-entrega"
       className={cn(blocoDaFicha, "space-y-4 p-5")}
     >
-      <h3 className={tituloDoBloco}>Entrega</h3>
+      <h3 className={tituloDoBloco}>{ehBalcao ? "Cliente" : "Entrega"}</h3>
 
       {/* T3 (lote B, 12/09): a comanda é de coluna única — nome e WhatsApp
           empilhados, e o botão verde do WhatsApp à direita. */}
@@ -650,7 +689,7 @@ function OrderDeliveryCard({
         )}
       </div>
 
-      {order.retiradaNaLoja && (
+      {!ehBalcao && order.retiradaNaLoja && (
         // Retirada na loja: a cliente BUSCA — nada a enviar nem etiqueta a
         // gerar. O endereço é o retrato da compra (customer_data).
         <div
@@ -666,60 +705,64 @@ function OrderDeliveryCard({
         </div>
       )}
 
-      <div className="space-y-2 border-t border-admin-border pt-4">
-        <p className="text-xs text-zinc-400">
-          {order.retiradaNaLoja ? "Endereço do cliente" : "Endereço de entrega"}
-        </p>
-        <p className="text-sm leading-relaxed text-zinc-200">
-          {order.customer.address}
-          {order.customer.number ? `, ${order.customer.number}` : ""}
-          {order.customer.complement ? ` - ${order.customer.complement}` : ""}
-          <br />
-          <span className="text-zinc-400">
-            {order.customer.neighborhood}
-            {order.customer.city
-              ? ` • ${order.customer.city}${order.customer.state ? `/${order.customer.state}` : ""}`
-              : ""}
-            {order.customer.cep ? ` • CEP: ${order.customer.cep}` : ""}
-            {order.customer.reference
-              ? ` • Ref: ${order.customer.reference}`
-              : ""}
-          </span>
-        </p>
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            onClick={onCopyAddress}
-            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
-            title="Copiar Endereço"
-          >
-            {copiedAddress ? (
-              <>
-                <Check className="size-[15px] text-emerald-400" />
-                Copiado
-              </>
-            ) : (
-              <>
-                <Copy className="size-[15px] text-zinc-400" />
-                Copiar endereço
-              </>
-            )}
-          </button>
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsUrlQuery)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
-            title="Ver no Google Maps"
-          >
-            <MapPin className="size-[15px] text-zinc-400" />
-            Ver no Maps
-          </a>
+      {!ehBalcao && (
+        <div className="space-y-2 border-t border-admin-border pt-4">
+          <p className="text-xs text-zinc-400">
+            {order.retiradaNaLoja
+              ? "Endereço do cliente"
+              : "Endereço de entrega"}
+          </p>
+          <p className="text-sm leading-relaxed text-zinc-200">
+            {order.customer.address}
+            {order.customer.number ? `, ${order.customer.number}` : ""}
+            {order.customer.complement ? ` - ${order.customer.complement}` : ""}
+            <br />
+            <span className="text-zinc-400">
+              {order.customer.neighborhood}
+              {order.customer.city
+                ? ` • ${order.customer.city}${order.customer.state ? `/${order.customer.state}` : ""}`
+                : ""}
+              {order.customer.cep ? ` • CEP: ${order.customer.cep}` : ""}
+              {order.customer.reference
+                ? ` • Ref: ${order.customer.reference}`
+                : ""}
+            </span>
+          </p>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={onCopyAddress}
+              className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+              title="Copiar Endereço"
+            >
+              {copiedAddress ? (
+                <>
+                  <Check className="size-[15px] text-emerald-400" />
+                  Copiado
+                </>
+              ) : (
+                <>
+                  <Copy className="size-[15px] text-zinc-400" />
+                  Copiar endereço
+                </>
+              )}
+            </button>
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsUrlQuery)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+              title="Ver no Google Maps"
+            >
+              <MapPin className="size-[15px] text-zinc-400" />
+              Ver no Maps
+            </a>
+          </div>
         </div>
-      </div>
+      )}
 
-      <EnviarAoMototaxi order={order} loja={storeName ?? ""} />
+      {!ehBalcao && <EnviarAoMototaxi order={order} loja={storeName ?? ""} />}
 
-      {formaDeEntrega && (
+      {!ehBalcao && formaDeEntrega && (
         <p
           data-testid="forma-de-entrega"
           className="flex items-center gap-2 border-t border-admin-border pt-4 text-sm text-zinc-300"
@@ -835,16 +878,18 @@ function OrderItemsCard({
           </div>
         )}
 
-        <div className="flex justify-between text-zinc-300">
-          <span>Frete</span>
-          <span
-            className={(order?.shipping || 0) === 0 ? "text-emerald-400" : ""}
-          >
-            {(order?.shipping || 0) === 0
-              ? "Grátis"
-              : `R$ ${formatarValor(order?.shipping || 0)}`}
-          </span>
-        </div>
+        {tipoDeEntregaDoPedido(order) !== "balcao" && (
+          <div className="flex justify-between text-zinc-300">
+            <span>Frete</span>
+            <span
+              className={(order?.shipping || 0) === 0 ? "text-emerald-400" : ""}
+            >
+              {(order?.shipping || 0) === 0
+                ? "Grátis"
+                : `R$ ${formatarValor(order?.shipping || 0)}`}
+            </span>
+          </div>
+        )}
 
         <div className="flex justify-between border-t border-admin-border pt-2 text-base font-semibold text-white">
           <span>Total</span>
@@ -1982,6 +2027,7 @@ export const OrderDetail = memo(function OrderDetail({
         <OrderStepperPipeline
           orderStatus={order.status}
           retiradaNaLoja={order.retiradaNaLoja}
+          vendaDeBalcao={tipoDeEntregaDoPedido(order) === "balcao"}
         />
 
         <OrderFinanceCard
@@ -2041,7 +2087,10 @@ export const OrderDetail = memo(function OrderDetail({
               Admin > Frete (busca/seleção global) para o pedido já aberto.
               Venda de balcão (`canal === "presencial"`) não tem envio: a
               cliente leva o produto na hora, não existe etiqueta para gerar. */}
-          {order.canal !== "presencial" && (
+          {/* Só envio tem etiqueta. Exceção: pedido que JÁ tem código de
+              rastreio (etiqueta gerada) continua mostrando o cartão. */}
+          {(tipoDeEntregaDoPedido(order) === "envio" ||
+            localTrackingCode !== "") && (
             <EtiquetaDoPedidoCard
               // `key={order.id}` aqui NÃO é o que impede o vazamento entre
               // pedidos — 2ª rodada da revisão Opus sobre aadbf4c corrigiu um
@@ -2069,18 +2118,23 @@ export const OrderDetail = memo(function OrderDetail({
               }}
             />
           )}
-          <OrderLogisticsCard
-            localTrackingCode={localTrackingCode}
-            isEditingTracking={isEditingTracking}
-            trackingValue={trackingValue}
-            isSavingTracking={isSavingTracking}
-            copiedTracking={copiedTracking}
-            isOffline={isOffline}
-            setTrackingValue={setTrackingValue}
-            setIsEditingTracking={setIsEditingTracking}
-            onSaveTracking={handleSaveTracking}
-            onCopyTracking={handleCopyTracking}
-          />
+          {/* Código dos Correios só faz sentido no envio. Balcão, retirada e
+              entrega local não pedem; mas código JÁ gravado nunca some. */}
+          {(tipoDeEntregaDoPedido(order) === "envio" ||
+            localTrackingCode !== "") && (
+            <OrderLogisticsCard
+              localTrackingCode={localTrackingCode}
+              isEditingTracking={isEditingTracking}
+              trackingValue={trackingValue}
+              isSavingTracking={isSavingTracking}
+              copiedTracking={copiedTracking}
+              isOffline={isOffline}
+              setTrackingValue={setTrackingValue}
+              setIsEditingTracking={setIsEditingTracking}
+              onSaveTracking={handleSaveTracking}
+              onCopyTracking={handleCopyTracking}
+            />
+          )}
           {order.notes && (
             <div className="space-y-2 px-4 py-3.5">
               <h3 className="text-sm font-medium text-zinc-200">

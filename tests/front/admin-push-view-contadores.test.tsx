@@ -381,7 +381,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     // agora é "inactive", que nunca terminou de medir.
     expect(numeroDoSegmento(botaoInativo())).toBe("—");
     expect(numeroDoSegmento(botaoInativo())).not.toBe("0");
-    expect(texto()).toContain("Receberão: — aparelhos");
+    expect(texto()).toContain("Enviar agora para — aparelhos");
     expect(botaoEnviar()?.disabled).toBe(true);
   });
 
@@ -417,7 +417,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     await act(async () => {
       await esperar(50);
     });
-    expect(texto()).toContain("Receberão: 2 aparelhos");
+    expect(texto()).toContain("Enviar agora para 2 aparelhos");
 
     // 2) A partir de agora, a RPC de MEDIÇÃO do segmento "inactive" fica
     // PRESA num Promise que só este teste resolve — simula a medição em
@@ -454,8 +454,8 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     // Enquanto a medição de "inactive" está no ar, o "2" de "vip" (o
     // segmento ANTERIOR) não pode sobreviver na tela.
-    expect(texto()).not.toContain("Receberão: 2 aparelhos");
-    expect(texto()).toContain("Receberão: — aparelhos");
+    expect(texto()).not.toContain("Enviar agora para 2 aparelhos");
+    expect(texto()).toContain("Enviar agora para — aparelhos");
 
     // Limpeza: libera a RPC travada para não vazar para o teste seguinte.
     controlador.resolver?.();
@@ -522,9 +522,8 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     // Segmento "all": 8 aparelhos, real (subCount). Direção B (12/09/2026):
     // o botão deixou de ser "Enviar Notificação Agora (N aparelhos)" e virou
     // "Enviar agora para N aparelhos" — mesmo número honesto, frase nova.
-    expect(texto()).toContain("Receberão: 8 aparelhos");
     expect(texto()).toContain("Enviar agora para 8 aparelhos");
-    expect(texto()).not.toMatch(/Receberão:\s*\d+\s*clientes/);
+    expect(texto()).not.toMatch(/Enviar agora para\s*\d+\s*clientes/);
     expect(texto()).not.toMatch(/Enviar agora para \d+ clientes/);
   });
 
@@ -532,8 +531,8 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     estadoDoBanco.subCount = 1;
     await abrirTela();
 
-    expect(texto()).toContain("Receberão: 1 aparelho");
-    expect(texto()).not.toContain("Receberão: 1 aparelhos");
+    expect(texto()).toContain("Enviar agora para 1 aparelho");
+    expect(texto()).not.toContain("Enviar agora para 1 aparelhos");
   });
 
   // Achado do revisor sobre o commit 6e406b4, em 20/08/2026: o QUARTO
@@ -545,19 +544,6 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
   // o texto de alcance concordam entre si, e que o botão de enviar SEMPRE
   // falha fechado quando o total é desconhecido.
   describe("o total de aparelhos (subCount) distingue desconhecido de zero medido", () => {
-    function numeroDoTopbar(): string | undefined {
-      const span = Array.from(hospedeiro.querySelectorAll("span")).find(
-        (s) =>
-          (s.textContent ?? "").includes("Celulares Cadastrados") &&
-          !(s.textContent ?? "").includes("Computadores"),
-      );
-      return span?.querySelector("strong")?.textContent ?? undefined;
-    }
-
-    function numeroDoCartaoGrande(): string | undefined {
-      return hospedeiro.querySelector("h2.text-3xl")?.textContent ?? undefined;
-    }
-
     function numeroDoBadgeTodosOsClientes(): string | undefined {
       const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
         (b) => (b.textContent ?? "").includes("Todos os clientes"),
@@ -571,15 +557,12 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
       ) as HTMLButtonElement | undefined;
     }
 
-    it("quando a consulta ao total de aparelhos FALHA, os três lugares mostram desconhecido — nunca zero — e o botão de enviar continua desabilitado", async () => {
+    it("quando a consulta ao total de aparelhos FALHA, os dois lugares (chip e botão) mostram desconhecido — nunca zero — e o botão de enviar continua desabilitado", async () => {
       estadoDoBanco.falharSubCount = true;
       await abrirTela();
 
-      expect(numeroDoTopbar()).toBe("—");
-      expect(numeroDoCartaoGrande()).toBe("—");
       expect(numeroDoBadgeTodosOsClientes()).toContain("—");
 
-      expect(texto()).toContain("Receberão: — aparelhos");
       expect(texto()).toContain("Enviar agora para — aparelhos");
 
       // O ponto mais importante desta tarefa: total desconhecido não pode
@@ -587,27 +570,23 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
       expect(botaoEnviar()?.disabled).toBe(true);
     });
 
-    it("quando a consulta DEVOLVE 0 de verdade, os três lugares mostram 0 (medido) e o botão de enviar continua desabilitado, por ser zero real", async () => {
+    it("quando a consulta DEVOLVE 0 de verdade, os dois lugares (chip e botão) mostram 0 (medido) e o botão de enviar continua desabilitado, por ser zero real", async () => {
       estadoDoBanco.subCount = 0;
       await abrirTela();
 
-      expect(numeroDoTopbar()).toBe("0");
-      expect(numeroDoCartaoGrande()).toBe("0");
       expect(numeroDoBadgeTodosOsClientes()).toContain("0");
 
-      expect(texto()).toContain("Receberão: 0 aparelhos");
+      expect(texto()).toContain("Enviar agora para 0 aparelhos");
 
       expect(botaoEnviar()?.disabled).toBe(true);
     });
 
-    it("quando a consulta DEVOLVE 8, os três lugares mostram 8 e o botão de enviar habilita", async () => {
+    it("quando a consulta DEVOLVE 8, os dois lugares (chip e botão) mostram 8 e o botão de enviar habilita", async () => {
       await abrirTela();
 
-      expect(numeroDoTopbar()).toBe("8");
-      expect(numeroDoCartaoGrande()).toBe("8");
       expect(numeroDoBadgeTodosOsClientes()).toContain("8");
 
-      expect(texto()).toContain("Receberão: 8 aparelhos");
+      expect(texto()).toContain("Enviar agora para 8 aparelhos");
 
       expect(botaoEnviar()?.disabled).toBe(false);
     });

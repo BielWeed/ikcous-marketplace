@@ -165,17 +165,29 @@ describe("ProductView — Trocas e devoluções perto do botão de comprar", () 
     expect(link()).not.toBeNull();
   });
 
+  function botaoDoTamanhoP(): HTMLButtonElement {
+    const grupo = [
+      ...hospedeiro.querySelectorAll<HTMLElement>(
+        '[role="group"][aria-labelledby]',
+      ),
+    ].find(
+      (g) =>
+        document.getElementById(g.getAttribute("aria-labelledby")!)
+          ?.textContent === "Tamanho",
+    );
+    expect(grupo).toBeDefined();
+    const botao = [...grupo!.querySelectorAll("button")].find((b) =>
+      b.textContent?.startsWith("P"),
+    );
+    expect(botao).toBeDefined();
+    return botao!;
+  }
+
   it("abrir e fechar a folha NÃO tira o tamanho escolhido nem adiciona nada", async () => {
     await montar();
     // Escolhe o tamanho P.
-    const rotulo = [...hospedeiro.querySelectorAll("legend")].find(
-      (s) => s.textContent === "Tamanho",
-    );
-    const botaoP = [
-      ...(rotulo?.parentElement?.querySelectorAll("button") ?? []),
-    ].find((b) => b.textContent?.startsWith("P"));
-    expect(botaoP).toBeDefined();
-    act(() => botaoP?.click());
+    const botaoP = botaoDoTamanhoP();
+    act(() => botaoP.click());
 
     act(() => link()?.click());
     const folha = await aguardarFolha();
@@ -209,14 +221,8 @@ describe("ProductView — Trocas e devoluções perto do botão de comprar", () 
     globalThis.addEventListener("popstate", roteadorDoApp);
     try {
       await montar();
-      const rotulo = [...hospedeiro.querySelectorAll("legend")].find(
-        (s) => s.textContent === "Tamanho",
-      );
-      const botaoP = [
-        ...(rotulo?.parentElement?.querySelectorAll("button") ?? []),
-      ].find((b) => b.textContent?.startsWith("P"));
-      expect(botaoP).toBeDefined();
-      act(() => botaoP?.click());
+      const botaoP = botaoDoTamanhoP();
+      act(() => botaoP.click());
 
       act(() => link()?.click());
       await aguardarFolha();

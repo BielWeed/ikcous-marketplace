@@ -88,7 +88,7 @@ describe("apresentação acessível das fileiras", () => {
       });
     }
   }
-  it("cores conhecidas usam bolinhas de 36px dentro de alvos de 44px com nome e seleção", () => {
+  it("cores conhecidas usam bolinhas de 28px dentro de alvos de 44px com nome e seleção", () => {
     const host = montar(["Azul", "Branco"]);
     const azul = host.querySelector('button[aria-label="Azul"]')!;
     const branco = host.querySelector<HTMLButtonElement>(
@@ -96,11 +96,11 @@ describe("apresentação acessível das fileiras", () => {
     )!;
     expect(azul.getAttribute("aria-pressed")).toBe("true");
     expect(azul.classList.contains("min-h-11")).toBe(true);
-    expect(azul.querySelector(".size-9")?.getAttribute("style")).toContain(
+    expect(azul.querySelector(".size-7")?.getAttribute("style")).toContain(
       "background-color",
     );
     expect(branco.disabled).toBe(true);
-    expect(branco.querySelector(".size-9")?.classList.contains("border")).toBe(
+    expect(branco.querySelector(".size-7")?.classList.contains("border")).toBe(
       true,
     );
   });
@@ -112,7 +112,57 @@ describe("apresentação acessível das fileiras", () => {
     expect(
       host
         .querySelector('button[aria-label="Azul"]')
-        ?.classList.contains("min-w-[72px]"),
+        ?.classList.contains("min-w-[52px]"),
     ).toBe(true);
+  });
+  it("a coluna de rótulo mostra o valor escolhido, ou Escolha quando não há escolha", () => {
+    const fileiras = [
+      {
+        nome: "Tamanho",
+        valores: [{ valor: "M", disponivel: true, estoque: 2 }],
+      },
+    ];
+    const html = (escolha: Record<string, string>) =>
+      renderToStaticMarkup(
+        <FileirasDeVariacao
+          fileiras={fileiras}
+          escolha={escolha}
+          onEscolher={() => {}}
+        />,
+      );
+    expect(html({})).toContain(">Escolha<");
+    const com = html({ Tamanho: "M" });
+    expect(com).not.toContain(">Escolha<");
+    expect(com).toContain('class="text-xs text-muted-foreground">M<');
+  });
+  it("todo botão de opção tem alvo de toque min-h-11 (44px)", () => {
+    const host = montar(["Azul", "Branco"]);
+    const botoes = host.querySelectorAll("button");
+    expect(botoes.length).toBe(2);
+    for (const b of botoes) expect(b.classList.contains("min-h-11")).toBe(true);
+    const texto = document.createElement("div");
+    texto.innerHTML = renderToStaticMarkup(
+      <FileirasDeVariacao
+        fileiras={[
+          {
+            nome: "Tamanho",
+            valores: [{ valor: "Pp", disponivel: true, estoque: 1 }],
+          },
+        ]}
+        escolha={{}}
+        onEscolher={() => {}}
+      />,
+    );
+    const b = texto.querySelector("button")!;
+    expect(b.classList.contains("min-h-11")).toBe(true);
+    expect(b.querySelector(".h-9.rounded-full")).not.toBeNull();
+  });
+  it("o ProductView não desenha mais o título Opções nem o cartão em volta das fileiras", () => {
+    const src = readFileSync("src/views/customer/ProductView.tsx", "utf8");
+    const i = src.indexOf("<FileirasDeVariacao");
+    expect(i).toBeGreaterThan(0);
+    const antes = src.slice(i - 400, i);
+    expect(antes).not.toContain("Opções");
+    expect(antes).not.toContain("rounded-3xl");
   });
 });

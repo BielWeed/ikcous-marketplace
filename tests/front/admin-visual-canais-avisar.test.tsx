@@ -375,17 +375,23 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
 
     // A composição é cartão FIXO: zero controle de colapso para ela — o
     // conteúdo (os campos, logo abaixo) está na árvore sem interação
-    // nenhuma. O histórico segue colapsável e nasce aberto.
+    // nenhuma. O histórico segue colapsável e nasce FECHADO (tela compacta).
     const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
     expect(mensagem).not.toBeNull();
     expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
     const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar");
     expect(historico).toBeTruthy();
-    expect(historico!.getAttribute("aria-expanded")).toBe("true");
+    expect(historico!.getAttribute("aria-expanded")).toBe("false");
 
     // Campos-chave do envio — nenhum sumiu no redesenho.
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
     expect(hospedeiro.querySelector("#push-body")).not.toBeNull();
+    // O destino fica recolhido: abre ao toque e o seletor de antes aparece.
+    const destino = cabecalhoDeSecao(hospedeiro, "Ao tocar na mensagem");
+    expect(destino?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => {
+      destino!.click();
+    });
     expect(hospedeiro.querySelector("#push-destination")).not.toBeNull();
     expect(
       [...hospedeiro.querySelectorAll("button")].find((b) =>
@@ -398,8 +404,10 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
       ),
     ).toBeTruthy();
 
-    // Cartão de métrica e ajuda da tela.
-    expect(hospedeiro.querySelector("h2.text-3xl")).not.toBeNull();
+    // Selo "No ar" e ajuda da tela (o cartão de métrica saiu: repetia o número).
+    expect(
+      hospedeiro.querySelector('[data-testid="selo-no-ar"]'),
+    ).not.toBeNull();
     expect(
       hospedeiro.querySelector('button[title="Ajuda e explicação desta tela"]'),
     ).not.toBeNull();
@@ -426,15 +434,6 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     await abrirAvisar();
 
     const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar")!;
-    expect(textoDaTela()).toContain("Não confirmada");
-
-    await act(async () => {
-      historico.click();
-    });
-    await act(async () => {
-      await esperar(350); // fim da animação de saída
-    });
-    expect(historico.getAttribute("aria-expanded")).toBe("false");
     expect(textoDaTela()).not.toContain("Não confirmada");
 
     await act(async () => {
@@ -445,6 +444,15 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     });
     expect(historico.getAttribute("aria-expanded")).toBe("true");
     expect(textoDaTela()).toContain("Não confirmada");
+
+    await act(async () => {
+      historico.click();
+    });
+    await act(async () => {
+      await esperar(350); // fim da animação de saída
+    });
+    expect(historico.getAttribute("aria-expanded")).toBe("false");
+    expect(textoDaTela()).not.toContain("Não confirmada");
 
     // A composição NÃO é recolhível — cartão fixo: sem controle de colapso,
     // o campo nunca sai da árvore (o recolher/reabrir vale só para o

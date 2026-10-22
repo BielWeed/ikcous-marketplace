@@ -363,9 +363,9 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     const folha = document.querySelector('[role="dialog"]')!;
     await tocar(folha.querySelector('button[aria-label="Azul"]'));
     await tocar(folha.querySelector('button[aria-label="M"]'));
-    expect(folha.querySelector("fieldset")?.textContent).not.toContain(
-      "15 disponíveis",
-    );
+    const grupoDasOpcoes = folha.querySelector('[role="group"]');
+    expect(grupoDasOpcoes).not.toBeNull();
+    expect(grupoDasOpcoes!.textContent).not.toContain("15 disponíveis");
     expect(
       folha.querySelector('button[aria-label="Azul"]')?.getAttribute("title"),
     ).not.toContain("15 un.");

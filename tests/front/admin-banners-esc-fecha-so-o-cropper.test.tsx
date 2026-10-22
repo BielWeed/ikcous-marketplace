@@ -34,7 +34,10 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { escolherImagemPropria } from "./helpers/editor-de-banner";
+import {
+  abrirNovoBannerPelaBarra,
+  escolherImagemPropria,
+} from "./helpers/editor-de-banner";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -220,11 +223,7 @@ describe("AdminBannersView — Escape com o ImageAdjuster aberto fecha só o rec
   async function abrirDialogoESubirImagemEAjustar() {
     uploadBannerImage.mockResolvedValue(urlImagemEnviada);
 
-    const botaoNovoBanner = localizarBotaoPorTexto(hospedeiro, "Novo Banner")!;
-    expect(botaoNovoBanner).toBeDefined();
-    await act(async () => {
-      botaoNovoBanner.click();
-    });
+    await abrirNovoBannerPelaBarra();
     await escolherImagemPropria();
     expect(localizarBotaoPorTexto(hospedeiro, "Salvar Banner")).toBeDefined();
 

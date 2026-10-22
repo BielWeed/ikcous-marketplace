@@ -150,6 +150,11 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    // Regressão do fluxo legado, mantido offline; RPC online é coberta
+    // com hook real em admin-product-form-estoque-concorrente.
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     armazem = new Map();

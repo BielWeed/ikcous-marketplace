@@ -348,6 +348,22 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     expect(real).toContain('"mb-1 mt-2 flex items-center justify-center');
     expect(home).toContain('"mb-1 mt-2 flex items-center justify-center');
   });
+
+  it("cabeçalho do esqueleto do hero reserva os 44px do botão (coração) do real", () => {
+    // jsdom não mede layout; a medição em pixels (real 57px = botão 44 +
+    // pb-3 12 + borda 1) foi feita à parte, em navegador. Aqui se prova
+    // que o esqueleto declara as mesmas classes de altura/padding.
+    const home = fonte(HOME);
+    const real = fonte(PREMIUM_OFFERS);
+    const botao = fonte("/src/components/ui/custom/BotaoDeFavorito.tsx");
+    expect(botao).toContain("size-11");
+    expect(real).toContain("border-b border-zinc-100/50 pb-3");
+    const esq = home.slice(home.indexOf("function HeroOfertaEsqueleto"));
+    expect(esq).toContain("border-b border-zinc-100/50 pb-3");
+    expect(esq).toMatch(
+      /<div className="flex min-h-11 w-full items-center justify-center">\s*<Skeleton className="h-\[21px\] w-44 rounded-full" \/>/,
+    );
+  });
 });
 
 describe("catálogo: o esqueleto do card reserva a mesma proporção do real", () => {

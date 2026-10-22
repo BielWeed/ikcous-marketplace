@@ -289,14 +289,15 @@ describe("ficha do pedido (mesa do lojista) — barra de ação sticky no topo",
     expect(barraDoBotao(botaoAvancar)).not.toBeNull();
   });
 
-  it("imprimir continua na barra, com o mesmo title de sempre", async () => {
+  it("imprimir saiu da barra e mora no cabeçalho, com o mesmo title de sempre", async () => {
     await renderizar(pedidoFake({ status: "pending" }));
 
     const botaoImprimir = hospedeiro.querySelector(
       'button[title="Imprimir Pedido"]',
     );
     expect(botaoImprimir).not.toBeNull();
-    expect(barraDoBotao(botaoImprimir)).not.toBeNull();
+    expect(botaoImprimir?.closest("div.sticky")).toBeNull();
+    expect(botaoImprimir?.closest("header")).not.toBeNull();
   });
 
   it("com a ação no topo, o pé da ficha só cobre o menu inferior do admin (pb encolheu de 11rem para 7rem no pedido do dono de 20/09)", async () => {
@@ -321,7 +322,7 @@ describe("ficha do pedido (mesa do lojista) — barra de ação sticky no topo",
       (b) => b.textContent?.includes("Avançar →"),
     );
     expect(botaoAvancar).toBeUndefined();
-    // A barra não desaparece: imprimir continua.
+    // Sem ação nenhuma a barra some; imprimir continua, no cabeçalho.
     expect(
       hospedeiro.querySelector('button[title="Imprimir Pedido"]'),
     ).not.toBeNull();

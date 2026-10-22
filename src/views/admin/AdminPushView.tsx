@@ -47,18 +47,16 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Clock,
-  Coins,
   Gift,
   HelpCircle,
   History,
   Home,
   Inbox,
   LockKeyhole,
-  Moon,
   MousePointer2,
   Pencil,
   Percent,
@@ -69,35 +67,28 @@ import {
   Smartphone,
   Sparkles,
   Target,
-  UserPlus,
   Users,
   Zap,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-/** Selos locais: a cor identifica a função, sem competir com a seleção. */
+/** Selo de ícone neutro: a cor fica para o que significa algo. */
 function SeloDeIcone({
   icone: Icone,
-  matiz,
   indisponivel = false,
   className = "size-[38px] rounded-xl",
 }: {
   readonly icone: React.ElementType;
-  readonly matiz: string;
   readonly indisponivel?: boolean;
   readonly className?: string;
 }) {
-  const cor = indisponivel ? "#7E7E8A" : matiz;
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex shrink-0 items-center justify-center border ${className}`}
-      style={{
-        color: cor,
-        backgroundColor: `${cor}26`,
-        borderColor: `${cor}40`,
-      }}
+      className={`inline-flex shrink-0 items-center justify-center border border-admin-border bg-admin-raised ${
+        indisponivel ? "text-zinc-500" : "text-zinc-300"
+      } ${className}`}
     >
       <Icone className="size-5" strokeWidth={1.9} />
     </span>
@@ -137,6 +128,7 @@ function SecaoColapsavel({
   icone: Icone,
   abertaPorPadrao = false,
   comPendencia = false,
+  forcaAberta = false,
   extra,
   children,
 }: {
@@ -145,11 +137,16 @@ function SecaoColapsavel({
   readonly icone: React.ElementType;
   readonly abertaPorPadrao?: boolean;
   readonly comPendencia?: boolean;
+  /** Vira `true`: a seção abre sozinha (ex.: destino digitado à mão). */
+  readonly forcaAberta?: boolean;
   readonly extra?: React.ReactNode;
   readonly children: React.ReactNode;
 }) {
   const [aberta, setAberta] = useState(abertaPorPadrao);
   const reduzirMovimento = useReducedMotion();
+  useEffect(() => {
+    if (forcaAberta) setAberta(true);
+  }, [forcaAberta]);
 
   return (
     <div className="rounded-[20px] border border-admin-border bg-admin-card p-4">
@@ -160,7 +157,7 @@ function SecaoColapsavel({
           setAberta(!aberta);
         }}
         aria-expanded={aberta}
-        className="flex min-h-12 w-full flex-wrap items-center justify-between gap-3 text-left"
+        className="flex min-h-12 w-full items-center justify-between gap-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
       >
         <span className="flex min-w-0 items-center gap-2.5">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-admin-border bg-white/5 text-zinc-400">
@@ -331,6 +328,18 @@ function PreviaNoCelular({
     </div>
   );
 }
+
+/** Nome curto do destino, mostrado no cabeçalho do bloco recolhido. */
+const ROTULO_CURTO_DO_DESTINO: Record<string, string> = {
+  home: "Página inicial",
+  search: "Busca de produtos",
+  cart: "Carrinho",
+  favorites: "Favoritos",
+  orders: "Meus pedidos",
+  profile: "Perfil do cliente",
+  product: "Um produto",
+  custom: "Outra página",
+};
 
 // Escondida: nada na vitrine nem no servidor lê `realTimeSalesAlerts`, então a
 // chave prometia "avisos de compras" que a loja nunca mostra. A configuração
@@ -1137,55 +1146,33 @@ export const AdminPushView = memo(function AdminPushView({
 
   return (
     <div className="min-h-screen bg-admin-bg pb-admin lg:pb-12 text-white motion-safe:duration-200 motion-safe:animate-in motion-safe:fade-in">
-      {/* Top Header Bar — fórmula "Elite Header" (AdminPageHeader), mesma
-          casca das ondas anteriores: o título padrão, a ajuda na linha do
-          título e os indicadores à direita. O subtítulo fica na view. */}
+      {/* Cabeçalho enxuto: título, selo "No ar" e ajuda. `flex-wrap`
+          (pedido do dono, 23/09/2026): em 320-390px o selo cai para a linha de
+          baixo em vez de alargar a página. */}
       <div className="sticky top-0 z-20 border-b border-admin-border bg-admin-bg/90 px-4 py-3 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-4xl">
-          {/* `flex-wrap` (correção 23/09/2026, pedido do dono): título
-              (h1, shrink-0) e o wrapper de `acoes` (selo de status,
-              shrink-0 também — vem do próprio AdminPageHeader) são os DOIS
-              filhos desta linha. Nenhum encolhe, e sem quebra a soma das
-              duas larguras estourava a página inteira em 360-390px ("Enviar
-              Notificações" ~300px + selo ~160px > ~328px disponíveis). O
-              `AdminPageHeader` é compartilhado por 20 telas — a correção
-              fica aqui, local: o selo cai para uma segunda linha quando não
-              cabe, em vez de mudar o componente para todo mundo. */}
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
             <AdminPageHeader
               titulo={NOMES_DO_PAINEL["admin-push"]}
               acoes={
-                <>
-                  {/* Indicadores no Topbar (os mesmos de antes) */}
-                  <div className="hidden sm:flex items-center gap-2 rounded-lg border border-admin-border bg-admin-surface px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
-                    <Smartphone className="size-3.5 text-admin-gold" />
-                    <span>
-                      <strong className="text-white font-bold">
-                        {rotuloDaContagem(subCount)}
-                      </strong>{" "}
-                      Celulares Cadastrados
-                    </span>
-                  </div>
-                  {MOSTRAR_AVISOS_DE_COMPRAS && (
-                    <div className="flex items-center gap-1.5 rounded-lg border border-admin-border bg-admin-surface px-2.5 py-1 text-[11px] font-semibold">
-                      <span
-                        className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-admin-gold animate-pulse" : "bg-zinc-600"}`}
-                      />
-                      <span className="text-zinc-400 uppercase tracking-wider text-[11px]">
-                        {config.realTimeSalesAlerts
-                          ? "Avisos de Vendas Ativos"
-                          : "Avisos Desativados"}
-                      </span>
-                    </div>
-                  )}
-                </>
+                <span
+                  data-testid="selo-no-ar"
+                  className="inline-flex min-h-8 items-center gap-2 rounded-full border border-admin-border bg-admin-surface px-3 text-sm font-semibold text-zinc-200"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-2 shrink-0 rounded-full bg-admin-accent"
+                  />
+                  No ar
+                </span>
               }
             >
               <button
                 type="button"
                 onClick={() => setShowHelpModal(true)}
-                className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
+                className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
                 title="Ajuda e explicação desta tela"
+                aria-label="Ajuda e explicação desta tela"
               >
                 <span
                   aria-hidden="true"
@@ -1196,31 +1183,22 @@ export const AdminPushView = memo(function AdminPushView({
               </button>
             </AdminPageHeader>
           </div>
-          <p className="mt-1 text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">
-            Envie mensagens e avisos direto no celular dos clientes
-          </p>
         </div>
       </div>
 
       {/* Fluxo de composição v4; os controles e suas travas são os mesmos. */}
-      <div className="mx-auto w-full min-w-0 max-w-4xl space-y-8 px-5 pb-8 pt-4">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-400">
-          <span
-            aria-hidden="true"
-            className="size-2 shrink-0 rounded-full bg-admin-accent"
-          />
-          <span>No ar ·</span>
-          <span>Receberão: {textoDeAlcanceEmAparelhos(reachExibido)}</span>
-        </div>
+      <div className="mx-auto w-full min-w-0 max-w-4xl space-y-5 px-5 pb-8 pt-4">
         <div className="min-w-0">
-          <div className="min-w-0 space-y-8">
+          <div className="min-w-0 space-y-5">
             <section className="min-w-0 space-y-4" aria-label="Mensagem">
               <TituloDeSecao icone={Pencil}>Mensagem</TituloDeSecao>
               {/* Mensagens Prontas — pílulas (direção B). Os mesmos 3 arquétipos
                   de antes: o preenchimento, o registro VOR e o toast não mudam —
                   só a forma (cartão grande → pílula de um clique). */}
               <div className="relative min-w-0">
-                <div className="flex gap-2 overflow-x-auto pb-1 pr-5">
+                {/* `-m-1 p-1`: respiro para o anel de foco do teclado não ser cortado
+                    pela rolagem, sem empurrar o layout. */}
+                <div className="-m-1 flex gap-2 overflow-x-auto p-1 pb-2 pr-6">
                   {/* Os textos dos modelos moram em `lib/modelos-de-campanha.ts`:
                       nenhum traz código de cupom, percentual, valor ou prazo
                       inventado — onde vai o cupom da lojista fica o MARCADOR, e o
@@ -1228,17 +1206,14 @@ export const AdminPushView = memo(function AdminPushView({
                   {[
                     {
                       Icone: Percent,
-                      matiz: "#A78BFA",
                       ...MODELOS_DE_CAMPANHA.fomo,
                     },
                     {
                       Icone: ShoppingCart,
-                      matiz: "#FF9F5A",
                       ...MODELOS_DE_CAMPANHA.auth,
                     },
                     {
                       Icone: Gift,
-                      matiz: "#FF7AA8",
                       ...MODELOS_DE_CAMPANHA.value,
                     },
                   ].map((arch) => (
@@ -1251,12 +1226,12 @@ export const AdminPushView = memo(function AdminPushView({
                         notification.body === arch.mensagem.body &&
                         notification.url === arch.mensagem.url
                       }
-                      className={`flex min-h-12 shrink-0 items-center gap-2 rounded-full border-[1.5px] py-1.5 pl-1.5 pr-4 text-sm font-medium text-zinc-200 transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60 ${
+                      className={`flex min-h-12 shrink-0 items-center gap-2 rounded-full border-[1.5px] border-solid py-1.5 pl-1.5 pr-4 text-sm font-medium text-zinc-200 transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${
                         notification.title === arch.mensagem.title &&
                         notification.body === arch.mensagem.body &&
                         notification.url === arch.mensagem.url
-                          ? "border-admin-gold bg-admin-gold/10"
-                          : "border-admin-border bg-admin-card hover:border-white/25"
+                          ? "border-foreground bg-admin-raised"
+                          : "border-admin-border bg-admin-card hover:border-admin-border-strong"
                       }`}
                       onClick={() => {
                         setNotification({ ...arch.mensagem });
@@ -1281,8 +1256,13 @@ export const AdminPushView = memo(function AdminPushView({
                       }}
                     >
                       <SeloDeIcone
-                        icone={arch.Icone}
-                        matiz={arch.matiz}
+                        icone={
+                          notification.title === arch.mensagem.title &&
+                          notification.body === arch.mensagem.body &&
+                          notification.url === arch.mensagem.url
+                            ? Check
+                            : arch.Icone
+                        }
                         className="size-8 rounded-full"
                       />
                       {arch.title}
@@ -1312,7 +1292,7 @@ export const AdminPushView = memo(function AdminPushView({
                   primeiro se escreve, depois se escolhe quem lê). Contadores
                   tabulares para o número não dançar enquanto digita. */}
               <div className="space-y-4">
-                <div className="rounded-2xl border border-admin-border bg-admin-card px-4 py-3 transition-shadow focus-within:border-white/[0.35] focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none">
+                <div className="rounded-2xl border border-admin-border bg-admin-card px-4 py-3 transition-shadow focus-within:border-admin-border-strong focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none">
                   <div className="flex items-center justify-between gap-2">
                     <Label
                       htmlFor="push-title"
@@ -1348,7 +1328,7 @@ export const AdminPushView = memo(function AdminPushView({
                   />
                 </div>
 
-                <div className="min-h-[112px] rounded-2xl border border-admin-border bg-admin-card px-4 py-3 transition-shadow focus-within:border-white/[0.35] focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none">
+                <div className="min-h-[112px] rounded-2xl border border-admin-border bg-admin-card px-4 py-3 transition-shadow focus-within:border-admin-border-strong focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none">
                   <div className="flex items-center justify-between gap-2">
                     <Label
                       htmlFor="push-body"
@@ -1419,15 +1399,17 @@ export const AdminPushView = memo(function AdminPushView({
             <section className="space-y-4" aria-label="Quem recebe">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <TituloDeSecao icone={Target}>Quem recebe</TituloDeSecao>
-                <span className="text-xs text-zinc-400">contado agora</span>
+                <span className="text-xs text-zinc-400">
+                  aparelhos · contado agora
+                </span>
               </div>
 
               {targetUserId ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-admin-gold bg-admin-gold/10 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-admin-border-strong bg-admin-card p-4">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-admin-gold" />
+                    <CheckCircle2 className="size-4 text-admin-accent" />
                     <div>
-                      <p className="text-[11px] font-black uppercase tracking-wider text-admin-gold leading-tight">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-zinc-300 leading-tight">
                         Mensagem para Cliente Específico
                       </p>
                       <p className="text-xs font-bold text-white mt-0.5">
@@ -1441,7 +1423,7 @@ export const AdminPushView = memo(function AdminPushView({
                   <button
                     onClick={() => onNavigate("admin-push")}
                     disabled={isOffline}
-                    className="min-h-12 rounded-full border border-admin-border bg-white/5 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="min-h-12 rounded-full border border-solid border-admin-border bg-white/5 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Mudar para todos os clientes
                   </button>
@@ -1467,277 +1449,291 @@ export const AdminPushView = memo(function AdminPushView({
               )}
 
               {!targetUserId && (
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    {
-                      id: "all",
-                      label: "Todos os clientes",
-                      detalhe: "Toda a base da loja",
-                      Icone: Users,
-                      matiz: "#6C8CFF",
-                      count: subCount,
-                      motivoDoZero: "nenhum aparelho cadastrado ainda",
-                    },
-                    {
-                      id: "inactive",
-                      label: "Inativos há 30 dias",
-                      detalhe: "Sem pedidos de qualquer status",
-                      Icone: Moon,
-                      matiz: "#2DD4BF",
-                      count: (segment === "inactive"
-                        ? reachExibido
-                        : segmentCounts.inactive) as ContagemMedida,
-                      motivoDoZero: "ninguém passou de 30 dias sem pedir",
-                    },
-                    {
-                      id: "vip",
-                      label: "Gastaram R$ 150+",
-                      detalhe: "Só compras pagas",
-                      Icone: Coins,
-                      matiz: "#3DDC97",
-                      count: (segment === "vip"
-                        ? reachExibido
-                        : segmentCounts.vip) as ContagemMedida,
-                      motivoDoZero: "nenhuma compra paga ainda",
-                    },
-                    {
-                      id: "new",
-                      label: "Novos em 7 dias",
-                      detalhe: "Cadastros dos últimos 7 dias",
-                      Icone: UserPlus,
-                      matiz: "#A3E635",
-                      count: (segment === "new"
-                        ? reachExibido
-                        : segmentCounts.new) as ContagemMedida,
-                      motivoDoZero: "nenhum cadastro nos últimos 7 dias",
-                    },
-                  ].map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSegment(s.id)}
-                      disabled={isOffline || s.count === 0}
-                      aria-pressed={segment === s.id}
-                      className={`flex min-h-[192px] min-w-0 flex-col items-start rounded-[20px] border-[1.5px] p-3.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60 ${
-                        segment === s.id && s.count !== 0 && !isOffline
-                          ? "border-admin-gold bg-gradient-to-b from-admin-gold/[0.16] to-admin-gold/[0.04]"
-                          : "border-admin-border bg-admin-card enabled:hover:border-white/25"
-                      } disabled:cursor-not-allowed`}
-                    >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <SeloDeIcone
-                          icone={s.Icone}
-                          matiz={s.matiz}
-                          indisponivel={s.count === 0 || isOffline}
-                        />
-                        {s.count === 0 || isOffline ? (
-                          <LockKeyhole
-                            aria-hidden="true"
-                            className="size-[22px] text-[#7E7E8A]"
-                          />
-                        ) : segment === s.id ? (
-                          <CheckCircle2
-                            aria-hidden="true"
-                            className="size-[22px] fill-admin-gold text-admin-bg"
-                          />
-                        ) : null}
-                      </span>
-                      <span className="mt-4 flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
-                        <span
-                          className={`font-mono text-4xl font-bold tabular-nums leading-none tracking-tight ${s.count === 0 || isOffline ? "text-zinc-400" : segment === s.id ? "text-admin-gold" : "text-white"}`}
+                <div className="relative min-w-0">
+                  <div
+                    data-testid="carrossel-publico"
+                    role="group"
+                    aria-label="Escolha quem recebe a mensagem"
+                    className="-m-1 flex snap-x snap-mandatory scroll-pl-1 gap-2 overflow-x-auto p-1 pb-2 pr-6"
+                  >
+                    {[
+                      {
+                        id: "all",
+                        label: "Todos os clientes",
+                        detalhe: "Toda a base da loja",
+                        count: subCount,
+                        motivoDoZero: "nenhum aparelho cadastrado ainda",
+                      },
+                      {
+                        id: "inactive",
+                        label: "Inativos há 30 dias",
+                        detalhe: "Sem pedidos de qualquer status",
+                        count: (segment === "inactive"
+                          ? reachExibido
+                          : segmentCounts.inactive) as ContagemMedida,
+                        motivoDoZero: "ninguém passou de 30 dias sem pedir",
+                      },
+                      {
+                        id: "vip",
+                        label: "Gastaram R$ 150+",
+                        detalhe: "Só compras pagas",
+                        count: (segment === "vip"
+                          ? reachExibido
+                          : segmentCounts.vip) as ContagemMedida,
+                        motivoDoZero: "nenhuma compra paga ainda",
+                      },
+                      {
+                        id: "new",
+                        label: "Novos em 7 dias",
+                        detalhe: "Cadastros dos últimos 7 dias",
+                        count: (segment === "new"
+                          ? reachExibido
+                          : segmentCounts.new) as ContagemMedida,
+                        motivoDoZero: "nenhum cadastro nos últimos 7 dias",
+                      },
+                    ].map((s) => {
+                      const indisponivel = s.count === 0 || isOffline;
+                      const escolhido = segment === s.id && !indisponivel;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setSegment(s.id)}
+                          disabled={isOffline || s.count === 0}
+                          aria-pressed={segment === s.id}
+                          className={`flex min-h-[76px] w-[220px] shrink-0 snap-start flex-col items-start justify-center gap-1 rounded-[20px] border-[1.5px] border-solid px-3.5 py-2.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed ${
+                            escolhido
+                              ? "border-foreground bg-admin-raised"
+                              : "border-admin-border bg-admin-card enabled:hover:border-admin-border-strong"
+                          }`}
                         >
-                          {rotuloDaContagem(s.count)}
-                        </span>
-                        <span className="text-xs text-zinc-400">
-                          {s.count === 1 ? "aparelho" : "aparelhos"}
-                        </span>
-                      </span>
-                      <span className="mt-3 w-full break-words text-sm font-bold leading-snug text-zinc-100">
-                        {s.label}
-                      </span>
-                      <span className="mt-1 text-xs leading-relaxed text-zinc-400">
-                        {s.detalhe}
-                      </span>
-                      {s.count === 0 && (
-                        <span className="mt-1 text-xs leading-relaxed text-zinc-300">
-                          <strong className="block font-bold">
-                            Indisponível
-                          </strong>
-                          {s.motivoDoZero}
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                          <span className="flex w-full items-center justify-between gap-2">
+                            <span
+                              className={`flex min-w-0 items-center gap-1.5 text-sm font-bold leading-snug ${indisponivel ? "text-zinc-500" : "text-white"}`}
+                            >
+                              {indisponivel ? (
+                                <LockKeyhole
+                                  aria-hidden="true"
+                                  className="size-4 shrink-0"
+                                />
+                              ) : escolhido ? (
+                                <CheckCircle2
+                                  aria-hidden="true"
+                                  className="size-4 shrink-0"
+                                />
+                              ) : null}
+                              <span className="min-w-0 break-words">
+                                {s.label}
+                              </span>
+                            </span>
+                            <span
+                              className={`inline-flex min-w-7 shrink-0 items-center justify-center rounded-full bg-admin-raised px-2 py-0.5 font-mono text-sm font-bold tabular-nums ${indisponivel ? "text-zinc-500" : "text-white"}`}
+                            >
+                              {rotuloDaContagem(s.count)}
+                            </span>
+                            <span className="sr-only">
+                              {s.count === 1 ? "aparelho" : "aparelhos"}
+                            </span>
+                          </span>
+                          <span className="text-xs leading-snug text-zinc-400">
+                            {s.count === 0 ? (
+                              <>
+                                <span className="sr-only">Indisponível: </span>
+                                {s.motivoDoZero}
+                              </>
+                            ) : (
+                              s.detalhe
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-admin-bg to-transparent"
+                  />
                 </div>
               )}
             </section>
 
-            {/* O cartão e a pílula Mudar acionam o mesmo Select de antes.
-                Os sete destinos e a trava PAINEL-07 permanecem; o caminho
-                manual continua dentro do Avançado. */}
-            <section className="space-y-4" aria-label="Ao tocar na mensagem">
-              <TituloDeSecao icone={MousePointer2}>
-                Ao tocar na mensagem
-              </TituloDeSecao>
-              <Select
-                name="destType"
-                // "custom" (caminho digitado no Avançado) não é item da lista:
-                // o seletor fica vazio e o placeholder diz onde está o destino.
-                value={destType === "custom" ? "" : destType}
-                onValueChange={handleDestTypeChange}
-                // PAINEL-07: sem o loadingProducts aqui, escolher
-                // "Produto" antes da lista carregar gerava um URL
-                // '/product-detail' sem id — que o efeito de
-                // sincronização reinterpretava como "custom page".
-                disabled={isOffline || loading || loadingProducts}
-              >
-                <SelectTrigger
-                  id="push-destination"
-                  aria-label="Para onde o cliente vai ao clicar"
-                  className="h-auto min-h-[88px] w-full justify-between gap-3 whitespace-normal rounded-[20px] border-admin-border bg-admin-card dark:bg-admin-card px-3.5 py-3 text-left shadow-none motion-reduce:transition-none focus-visible:border-white/35 focus-visible:ring-admin-border-strong disabled:opacity-60 [&>svg]:hidden"
+            {/* O destino fica recolhido (já vem com a página inicial). O
+                cartão e a pílula Mudar acionam o mesmo Select de antes. Os sete
+                destinos e a trava PAINEL-07 permanecem; o caminho manual
+                continua dentro do Avançado, e o bloco abre sozinho quando o
+                destino é uma página digitada à mão. */}
+            <SecaoColapsavel
+              titulo="Ao tocar na mensagem"
+              icone={MousePointer2}
+              forcaAberta={destType === "custom"}
+              extra={
+                <span className="max-w-[9rem] truncate text-xs text-zinc-400">
+                  {destType === "product"
+                    ? (products.find((p) => p.id === selectedProductId)?.nome ??
+                      ROTULO_CURTO_DO_DESTINO.product)
+                    : (ROTULO_CURTO_DO_DESTINO[destType] ?? "Outra página")}
+                </span>
+              }
+            >
+              <div className="space-y-4">
+                <Select
+                  name="destType"
+                  // "custom" (caminho digitado no Avançado) não é item da lista:
+                  // o seletor fica vazio e o placeholder diz onde está o destino.
+                  value={destType === "custom" ? "" : destType}
+                  onValueChange={handleDestTypeChange}
+                  // PAINEL-07: sem o loadingProducts aqui, escolher
+                  // "Produto" antes da lista carregar gerava um URL
+                  // '/product-detail' sem id — que o efeito de
+                  // sincronização reinterpretava como "custom page".
+                  disabled={isOffline || loading || loadingProducts}
                 >
-                  <SeloDeIcone
-                    icone={Home}
-                    matiz="#38BDF8"
-                    className="size-11 rounded-xl"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-xs text-zinc-400">Abre a</span>
-                    <span className="mt-0.5 block break-words text-base font-bold leading-snug text-white">
-                      <SelectValue
-                        placeholder={
-                          destType === "custom"
-                            ? "Outra página (veja Avançado)"
-                            : "Selecione a tela..."
-                        }
-                      />
+                  <SelectTrigger
+                    id="push-destination"
+                    aria-label="Para onde o cliente vai ao clicar"
+                    className="h-auto min-h-[88px] w-full justify-between gap-3 whitespace-normal rounded-[20px] border-admin-border bg-admin-card dark:bg-admin-card px-3.5 py-3 text-left shadow-none motion-reduce:transition-none focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong disabled:opacity-60 [&>svg]:hidden"
+                  >
+                    <SeloDeIcone icone={Home} className="size-11 rounded-xl" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs text-zinc-400">
+                        Abre a
+                      </span>
+                      <span className="mt-0.5 block break-words text-base font-bold leading-snug text-white">
+                        <SelectValue
+                          placeholder={
+                            destType === "custom"
+                              ? "Outra página (veja Avançado)"
+                              : "Selecione a tela..."
+                          }
+                        />
+                      </span>
                     </span>
-                  </span>
-                  <span className="inline-flex min-h-12 shrink-0 items-center rounded-full bg-white/[0.06] px-4 text-sm font-bold text-zinc-200">
-                    Mudar
-                  </span>
-                </SelectTrigger>
-                <SelectContent className="rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
-                  <SelectItem className="min-h-12" value="home">
-                    Página Inicial da Loja
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="search">
-                    Página de Busca de Produtos
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="cart">
-                    Carrinho de Compras
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="favorites">
-                    Lista de Favoritos
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="orders">
-                    Meus Pedidos
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="profile">
-                    Perfil do Cliente
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="product">
-                    Abrir um Produto Específico
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                    <span className="inline-flex min-h-12 shrink-0 items-center rounded-full bg-white/[0.06] px-4 text-sm font-bold text-zinc-200">
+                      Mudar
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent className="rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
+                    <SelectItem className="min-h-12" value="home">
+                      Página Inicial da Loja
+                    </SelectItem>
+                    <SelectItem className="min-h-12" value="search">
+                      Página de Busca de Produtos
+                    </SelectItem>
+                    <SelectItem className="min-h-12" value="cart">
+                      Carrinho de Compras
+                    </SelectItem>
+                    <SelectItem className="min-h-12" value="favorites">
+                      Lista de Favoritos
+                    </SelectItem>
+                    <SelectItem className="min-h-12" value="orders">
+                      Meus Pedidos
+                    </SelectItem>
+                    <SelectItem className="min-h-12" value="profile">
+                      Perfil do Cliente
+                    </SelectItem>
+                    <SelectItem className="min-h-12" value="product">
+                      Abrir um Produto Específico
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
 
-              {destType === "product" && (
-                <div className="space-y-3 motion-safe:duration-200 motion-safe:animate-in motion-safe:fade-in">
-                  <Label
-                    htmlFor="push-product-select"
-                    className="text-xs font-bold uppercase tracking-wider text-zinc-400"
-                  >
-                    Selecione o produto
-                  </Label>
-                  <Input
-                    id="push-product-filter"
-                    type="search"
-                    autoComplete="off"
-                    aria-label="Buscar produto pelo nome"
-                    placeholder="Buscar pelo nome..."
-                    value={filtroDeProduto}
-                    onChange={(e) => setFiltroDeProduto(e.target.value)}
-                    disabled={isOffline || loading || loadingProducts}
-                    className="min-h-12 rounded-2xl border-admin-border bg-admin-card text-sm text-white placeholder:text-zinc-400 focus-visible:border-white/35 focus-visible:ring-admin-border-strong"
-                  />
-                  <Select
-                    name="productId"
-                    value={selectedProductId}
-                    onValueChange={handleProductChange}
-                    disabled={isOffline || loading || loadingProducts}
-                  >
-                    <SelectTrigger
-                      id="push-product-select"
-                      className="h-auto min-h-12 w-full rounded-2xl border border-admin-border bg-admin-card px-3 text-sm text-white focus-visible:border-white/35 focus-visible:ring-admin-border-strong [&>svg]:opacity-50"
+                {destType === "product" && (
+                  <div className="space-y-3 motion-safe:duration-200 motion-safe:animate-in motion-safe:fade-in">
+                    <Label
+                      htmlFor="push-product-select"
+                      className="text-xs font-bold uppercase tracking-wider text-zinc-400"
                     >
-                      <SelectValue
-                        placeholder={
-                          loadingProducts
-                            ? "Carregando..."
-                            : "Escolha o produto..."
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-56 overflow-y-auto rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
-                      {produtosVisiveis.map((p) => (
-                        <SelectItem
-                          className="min-h-12"
-                          key={p.id}
-                          value={p.id}
-                        >
-                          {p.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+                      Selecione o produto
+                    </Label>
+                    <Input
+                      id="push-product-filter"
+                      type="search"
+                      autoComplete="off"
+                      aria-label="Buscar produto pelo nome"
+                      placeholder="Buscar pelo nome..."
+                      value={filtroDeProduto}
+                      onChange={(e) => setFiltroDeProduto(e.target.value)}
+                      disabled={isOffline || loading || loadingProducts}
+                      className="min-h-12 rounded-2xl border-admin-border bg-admin-card text-sm text-white placeholder:text-zinc-400 focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong"
+                    />
+                    <Select
+                      name="productId"
+                      value={selectedProductId}
+                      onValueChange={handleProductChange}
+                      disabled={isOffline || loading || loadingProducts}
+                    >
+                      <SelectTrigger
+                        id="push-product-select"
+                        className="h-auto min-h-12 w-full rounded-2xl border border-admin-border bg-admin-card px-3 text-sm text-white focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong [&>svg]:opacity-50"
+                      >
+                        <SelectValue
+                          placeholder={
+                            loadingProducts
+                              ? "Carregando..."
+                              : "Escolha o produto..."
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-56 overflow-y-auto rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
+                        {produtosVisiveis.map((p) => (
+                          <SelectItem
+                            className="min-h-12"
+                            key={p.id}
+                            value={p.id}
+                          >
+                            {p.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
-              {/* Avançado: o caminho manual (mesmo `#push-custom-path` de
+                {/* Avançado: o caminho manual (mesmo `#push-custom-path` de
                   antes). Recolhido por padrão; abre sozinho quando a URL de
                   um modelo pronto não é uma das telas da lista (destino
                   `custom`), para o caminho nunca ficar escondido. */}
-              <div className="[&>section>button]:min-h-12 [&>section>button]:rounded-[20px] [&>section>button]:border [&>section>button]:border-admin-border-strong [&>section>button]:bg-admin-card [&>section>button]:px-4 [&>section>button>svg]:motion-reduce:transition-none">
-                <SecaoRecolhivel
-                  titulo="Avançado: abrir outra página"
-                  temErro={destType === "custom"}
-                >
-                  <div className="space-y-1">
-                    <Label
-                      htmlFor="push-custom-path"
-                      className="text-xs font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Endereço da página (comece com /)
-                    </Label>
-                    <LocalBufferedInput
-                      id="push-custom-path"
-                      name="customPath"
-                      autoComplete="off"
-                      value={customPath}
-                      onFlush={handleCustomPathChange}
-                      disabled={isOffline || loading}
-                      placeholder="/nome-da-pagina"
-                      useShadcn={true}
-                      className="min-h-12 rounded-2xl border-admin-border bg-admin-card font-mono text-sm text-white focus-visible:border-white/35 focus-visible:ring-admin-border-strong placeholder:text-zinc-400"
-                    />
-                  </div>
-                </SecaoRecolhivel>
+                <div className="[&>section>button]:min-h-12 [&>section>button]:rounded-[20px] [&>section>button]:border [&>section>button]:border-solid [&>section>button]:border-admin-border-strong [&>section>button]:bg-admin-card [&>section>button]:px-4 [&>section>button>svg]:motion-reduce:transition-none">
+                  <SecaoRecolhivel
+                    titulo="Avançado: abrir outra página"
+                    temErro={destType === "custom"}
+                  >
+                    <div className="space-y-1">
+                      <Label
+                        htmlFor="push-custom-path"
+                        className="text-xs font-bold uppercase tracking-wider text-zinc-400"
+                      >
+                        Endereço da página (comece com /)
+                      </Label>
+                      <LocalBufferedInput
+                        id="push-custom-path"
+                        name="customPath"
+                        autoComplete="off"
+                        value={customPath}
+                        onFlush={handleCustomPathChange}
+                        disabled={isOffline || loading}
+                        placeholder="/nome-da-pagina"
+                        useShadcn={true}
+                        className="min-h-12 rounded-2xl border-admin-border bg-admin-card font-mono text-sm text-white focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong placeholder:text-zinc-400"
+                      />
+                    </div>
+                  </SecaoRecolhivel>
+                </div>
               </div>
-            </section>
+            </SecaoColapsavel>
           </div>
         </div>
 
-        <div className="bg-gradient-to-b from-transparent to-admin-bg pt-6">
+        <div className="pt-1">
           {/* Botão de Ação */}
           <button
-            className="flex min-h-[60px] w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] p-3 text-base font-bold leading-snug text-zinc-950 shadow-[0_8px_28px_rgba(226,168,30,0.2)] transition-shadow motion-reduce:transition-none hover:shadow-[0_8px_32px_rgba(226,168,30,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-400 disabled:shadow-none"
+            className="flex min-h-[60px] w-full items-center justify-center gap-2 rounded-[20px] bg-foreground p-3 text-base font-bold leading-snug text-background transition-opacity motion-reduce:transition-none hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg disabled:cursor-not-allowed disabled:opacity-40"
             onClick={handleSend}
             disabled={botaoEnviarDesabilitado}
           >
             {loading ? (
               <div className="flex items-center gap-2">
-                <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-zinc-950/25 border-t-zinc-950" />
+                <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-background/25 border-t-background" />
                 <span>Enviando Notificação...</span>
               </div>
             ) : (
@@ -1756,75 +1752,13 @@ export const AdminPushView = memo(function AdminPushView({
           </p>
         </div>
 
-        {/* Métrica + dica, lado a lado (direção B): os dois cartões de estado
-            viram um par compacto. A prova social e o botão de teste de
-            recebimento desceram para o bloco "Ajustes", no fim da tela —
-            fora do caminho da composição. */}
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-          {/* Metric Card - Celulares Cadastrados */}
-          {/*
-              Achado 7 da auditoria de 20/08/2026: este card tinha selos
-              "iOS: X" e "Android: Y" que eram 40% e 60% de `subCount`,
-              arredondados — não existe coluna de plataforma em
-              `push_subscriptions` (id, endpoint, p256dh, auth, user_id,
-              created_at), então não havia nada para medir. Sem dado, a
-              única saída honesta é não afirmar: os selos saíram, sem
-              inventar substituto.
-            */}
-          <div className="rounded-[20px] border border-admin-border bg-admin-card p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-400">
-                <Users className="size-3.5 text-zinc-300" /> Clientes Prontos
-                para Receber
-              </p>
-              <span className="text-[11px] font-mono text-zinc-300 font-bold uppercase">
-                Ativos
-              </span>
-            </div>
-
-            <div className="flex items-baseline justify-between border-b border-admin-border pb-2.5">
-              <div className="flex min-w-0 flex-wrap items-baseline gap-2">
-                <h2 className="text-3xl font-black tabular-nums tracking-tight text-white">
-                  {rotuloDaContagem(subCount)}
-                </h2>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
-                  Celulares e Computadores Cadastrados
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Dica de Vendas — a outra metade do par (o texto é o de antes) */}
-          <div className="flex items-start gap-3 rounded-[20px] border border-admin-border bg-admin-card p-4">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-admin-border bg-white/5 text-zinc-300">
-              <Clock className="size-3.5 text-zinc-300" />
-            </div>
-            <p className="text-sm leading-relaxed text-zinc-300">
-              <span className="font-bold text-zinc-300 uppercase tracking-wider">
-                Dica de Vendas:
-              </span>{" "}
-              Enviar mensagens entre{" "}
-              <strong className="text-white">10h e 12h</strong> costuma atrair{" "}
-              <span className="font-black text-zinc-300">
-                mais clientes e aumentar as vendas
-              </span>
-              .
-            </p>
-          </div>
-        </div>
-
-        {/* O que já foi ao ar — seção colapsável (consulta), nasce aberta.
+        {/* O que já foi ao ar — seção colapsável (consulta), nasce FECHADA.
             Direção B: o estado vazio é DESENHADO (caixa postal vazia + o que
             vai aparecer aqui quando houver envio) — não uma frase seca. */}
         <SecaoColapsavel
           titulo="O que já foi ao ar"
+          descricao="Últimas 20 mensagens"
           icone={History}
-          abertaPorPadrao
-          extra={
-            <span className="text-[11px] font-mono text-zinc-400">
-              Últimas 20 mensagens
-            </span>
-          }
         >
           <div className="max-h-[350px] overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-zinc-700">
             {history === null ? (
@@ -2012,7 +1946,7 @@ export const AdminPushView = memo(function AdminPushView({
                 <button
                   onClick={handleTestSubscription}
                   disabled={isOffline}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-border bg-white/5 min-h-12 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10 motion-safe:active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-solid border-admin-border bg-white/5 min-h-12 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10 motion-safe:active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Zap className="size-3 text-zinc-300" />
                   Testar Recebimento Neste Aparelho
@@ -2036,13 +1970,13 @@ export const AdminPushView = memo(function AdminPushView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-border-strong pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               O que você pode fazer aqui
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Send className="size-3.5 text-admin-gold" />
+                  <Send className="size-3.5 text-zinc-300" />
                   Enviar Notificação
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -2053,7 +1987,7 @@ export const AdminPushView = memo(function AdminPushView({
 
               <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Sparkles className="size-3.5 text-admin-gold" />
+                  <Sparkles className="size-3.5 text-zinc-300" />
                   Mensagens Prontas
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -2064,7 +1998,7 @@ export const AdminPushView = memo(function AdminPushView({
 
               <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Users className="size-3.5 text-sky-500" />
+                  <Users className="size-3.5 text-zinc-300" />
                   Quem Vai Receber
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -2080,7 +2014,7 @@ export const AdminPushView = memo(function AdminPushView({
 
               <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <History className="size-3.5 text-purple-500" />
+                  <History className="size-3.5 text-zinc-300" />
                   Histórico de Envios
                 </div>
                 <p className="text-xs text-zinc-400">

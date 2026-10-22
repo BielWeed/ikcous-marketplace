@@ -26,12 +26,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchProduct = vi.fn();
 const updateProduct = vi.fn();
+const salvarProdutoComGrade = vi.fn();
 const upsertVariants = vi.fn();
 const deleteVariants = vi.fn();
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct: vi.fn(),
     updateProduct,
+    salvarProdutoComGrade,
     upsertVariants,
     deleteVariants,
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -180,6 +182,10 @@ describe("AdminProductFormView — restaurar rascunho não devolve estoque vendi
         armazem.delete(k);
       },
     });
+    salvarProdutoComGrade.mockResolvedValue({
+      produto: undefined,
+      recusadas: [],
+    });
     updateProduct.mockResolvedValue(undefined);
     upsertVariants.mockResolvedValue(undefined);
     deleteVariants.mockResolvedValue(undefined);
@@ -242,10 +248,12 @@ describe("AdminProductFormView — restaurar rascunho não devolve estoque vendi
     });
   }
 
+  // Online e com grade o salvar vai por UMA chamada (salvarProdutoComGrade); sem grade, pelo updateProduct de sempre.
   const remendoEnviado = () =>
-    updateProduct.mock.calls[0]?.[1] as Record<string, unknown>;
+    (salvarProdutoComGrade.mock.calls[0]?.[1] ??
+      updateProduct.mock.calls[0]?.[1]) as Record<string, unknown>;
   const variacoesEnviadas = () =>
-    (upsertVariants.mock.calls[0]?.[1] ?? []) as Array<
+    (salvarProdutoComGrade.mock.calls[0]?.[2].variantes ?? []) as Array<
       Record<string, unknown> & { id: string }
     >;
   const descricoesDeAviso = () =>

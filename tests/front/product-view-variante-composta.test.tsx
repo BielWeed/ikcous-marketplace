@@ -180,8 +180,16 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
   it("duas fileiras por dimensão sem perder as opções da combinação", async () => {
     await montar();
 
-    const grupos = [...hospedeiro.querySelectorAll("fieldset legend")];
-    expect(grupos.map((el) => el.textContent)).toEqual(["Cor", "Tamanho"]);
+    const grupos = [
+      ...hospedeiro.querySelectorAll('[role="group"][aria-labelledby]'),
+    ];
+    expect(
+      grupos.map(
+        (el) =>
+          document.getElementById(el.getAttribute("aria-labelledby") ?? "")
+            ?.textContent,
+      ),
+    ).toEqual(["Cor", "Tamanho"]);
     expect(
       hospedeiro.querySelector('button[aria-label="Branca"]'),
     ).not.toBeNull();
