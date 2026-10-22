@@ -2187,11 +2187,13 @@ export function useOrders(
   const [pedidosCanceladosIncompleto, setPedidosCanceladosIncompleto] =
     useState(false);
 
-  // pedidos-4 (migration 20261164000000): cancelados com cancelamento
-  // ANTERIOR à janela da varredura enxuta — o número que o servidor devolve
-  // em 'fora_da_janela'. Sem ele, o recorte de 90 dias esconderia pendência
-  // antiga (estorno devido, mercadoria a voltar) em silêncio — e a lista de
-  // cancelados é lista de PENDÊNCIAS: o BLOQUEIA da revisão de 17/09 foi
+  // pedidos-4 (migration 20261164000000; regra refeita na 20261380000000):
+  // cancelados com cancelamento ANTERIOR à janela de 90 dias que AINDA têm
+  // pendência real (dinheiro a devolver ou mercadoria que não voltou) — o
+  // número que o servidor devolve em 'fora_da_janela'; cancelado antigo sem
+  // nada a fazer não é contado. Sem ele, o recorte de 90 dias esconderia
+  // pendência antiga (estorno devido, mercadoria a voltar) em silêncio — e a
+  // lista de cancelados é lista de PENDÊNCIAS: o BLOQUEIA da revisão de 17/09 foi
   // exatamente sobre pendência invisível. O dropdown de alertas
   // (AlertasCancelados) mostra o número e oferece a varredura completa
   // (`buscarTambemCanceladosAntigos`, abaixo).

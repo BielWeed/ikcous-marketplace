@@ -13,8 +13,9 @@ import {
   Store,
   Truck,
   Undo2,
-  Wallet,
 } from "lucide-react";
+
+import { IconeMercadoPago } from "@/components/icons/IconeMercadoPago";
 
 // Componentes (e não funções que devolvem o ícone): escolher o componente
 // durante o render faria o React recriá-lo a cada pintura
@@ -73,7 +74,7 @@ export function IconeDoTipoDeConta({
     case "banco":
       return <Landmark aria-hidden="true" className={className} />;
     case "mercado_pago":
-      return <Wallet aria-hidden="true" className={className} />;
+      return <IconeMercadoPago className={className} />;
     default:
       return <PiggyBank aria-hidden="true" className={className} />;
   }

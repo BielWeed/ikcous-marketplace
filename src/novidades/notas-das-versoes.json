@@ -1,4 +1,30 @@
 {
+  "1.5.53": {
+    "titulo": "Painel mais claro: Financeiro, Avisar clientes e Favoritos em lista",
+    "novidades": [
+      "No Financeiro, cada forma de recebimento ganhou um ícone, o Mercado Pago aparece com o ícone original e os valores do app e da loja física ficam lado a lado.",
+      "O aviso de produtos sem custo agora é um botão: ao tocar, você vê a lista desses produtos.",
+      "Na tela Avisar clientes, tudo ficou mais compacto e a prévia continua aparecendo ao vivo. Quem recebe o aviso agora passa em um carrossel.",
+      "Os Favoritos viraram uma lista vertical, separada por categoria."
+    ],
+    "correcoes": [
+      "O botão Voltar não fica mais girando entre Avisar clientes e Notificações.",
+      "O aviso de pedidos cancelados antigos passa a contar só os que ainda têm pendência de verdade.",
+      "No celular, o painel de alertas abre inteiro dentro da tela e é anunciado como uma janela de diálogo.",
+      "No Finalizar compra, a barra de baixo não pula enquanto o frete é calculado e não mostra mais o aviso repetido de endereço.",
+      "O coração de favoritar ficou centrado em toda foto, com cor neutra, e no cartão de ofertas premium fica na mesma linha da faixa.",
+      "A folha Abrir caixa do Financeiro agora sobe acima do teclado do celular."
+    ],
+    "melhorias": [
+      "A ficha do pedido mostra só o que vale para o tipo de entrega, e o botão Imprimir ficou na linha do título.",
+      "O balão do gráfico Histórico da loja ficou menor e fica acima das barras.",
+      "Em Banners, sobrou um só botão Novo banner, também no editor.",
+      "As opções de cor e tamanho do produto ficaram mais compactas.",
+      "O botão Cupons, em Produtos, ganhou o formato de pílula, igual ao de Devoluções.",
+      "No Finalizar compra, a frase de aceite dos termos foi para o fim da tela.",
+      "Nos Favoritos, os atalhos de categoria acompanham a rolagem da lista."
+    ]
+  },
   "1.5.52": {
     "titulo": "Painel mais limpo: botões, barra de baixo e títulos",
     "novidades": [],

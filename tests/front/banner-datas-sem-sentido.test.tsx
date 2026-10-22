@@ -21,6 +21,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   abrirMaisOpcoes,
+  abrirNovoBannerPelaBarra,
   configurarTextos,
   escolherImagemPropria,
 } from "./helpers/editor-de-banner";
@@ -272,9 +273,7 @@ describe("AdminBannersView: datas sem sentido", () => {
   /** "Novo Banner" com imagem enviada, já no passo 3. */
   async function abrirBannerNovoNoPasso3() {
     await montarPainel();
-    await act(async () => {
-      botaoComTexto(hospedeiro, "Novo Banner")?.click();
-    });
+    await abrirNovoBannerPelaBarra();
     await escolherImagemPropria();
     const entrada = document.getElementById(
       "banner-upload",

@@ -6,6 +6,7 @@ import {
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { abrirNovoBannerPelaBarra } from "../helpers/editor-de-banner";
 import { adiar } from "./apoio";
 
 vi.mock("@/components/ui/custom/ImageAdjuster", () => ({
@@ -29,9 +30,10 @@ const onNavigate = vi.fn();
 const urlNova =
   "https://proj.supabase.co/storage/v1/object/public/banners/upload-orfao.jpg";
 
-// O botão "Novo Banner" só renderiza com a lista populada
-// (AdminBannersView: `isLoaded && banners.length > 0`), então a montagem
-// precisa de um banner existente mesmo com os cenários sendo de CRIAR.
+// O único botão "Novo banner" mora na barra do AdminLayout; a view só ouve o
+// evento `admin:open-new-banner-dialog` e ignora o evento enquanto a lista não
+// carregou (`isLoaded`). A montagem mantém um banner existente para os
+// cenários de CRIAR partirem de uma lista já carregada.
 const bannerPublicado = {
   id: "banner-existente-1",
   imageUrl:
@@ -77,7 +79,7 @@ vi.mock("@/hooks/useCategories", () => ({
 
 vi.mock("@/hooks/useOnlineStatus", () => ({
   // o hook devolve "isOffline": false = online. Offline o handleSubmit
-  // recusa salvar e o botão Novo Banner nasce disabled.
+  // recusa salvar (o botão da barra do AdminLayout é quem abre o editor).
   useOnlineStatus: () => false,
 }));
 
@@ -188,9 +190,7 @@ describe("banners vetam a atualização durante upload e gravação", () => {
 
   async function abrir() {
     await montar();
-    await act(async () =>
-      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click(),
-    );
+    await abrirNovoBannerPelaBarra();
     await act(async () =>
       localizarBotaoPorTexto(hospedeiro, "Usar minha imagem")!.click(),
     );

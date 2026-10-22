@@ -24,6 +24,7 @@ import {
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import { pedirNovoBanner } from "@/lib/novo-banner-pendente";
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
@@ -43,12 +44,12 @@ import {
 } from "@/utils/admin_cache";
 import { haptic } from "@/utils/haptic";
 import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
+import { avancarTrilha, origemDaTrilha } from "@/utils/trilha-do-painel";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   Bell,
   Layers,
-  LayoutGrid,
   Lock,
   Package,
   Plus,
@@ -777,26 +778,29 @@ export function AdminLayout({
     globalThis.location &&
     new URLSearchParams(globalThis.location.search).has("id");
 
-  // Guarda a view ANTERIOR a `currentView`, para o botão "Voltar" de
-  // "admin-push" saber de onde a pessoa veio (sidebar, menu do cliente,
-  // banner...) em vez de sempre cair em "admin-settings". O sino NÃO está
-  // mais nessa lista: ele leva às Notificações do lojista, não ao envio para
-  // clientes. Só
-  // atualiza quando a view muda de fato — a origem tem que continuar
-  // apontando para a tela anterior enquanto "admin-push" está em foco.
+  // Guarda DE ONDE a pessoa veio até `currentView`, para o botão "Voltar" de
+  // "admin-push", "admin-notifications" e "admin-whatsapp-config" saber a
+  // porta por onde ela entrou (sidebar, menu do cliente, banner, sino...) em
+  // vez de um pai fixo.
+  //
+  // A origem NÃO é "a tela anterior a cada troca": isso gravava origem também
+  // quando a troca era um Voltar, e Avisar clientes <-> Notificações viravam
+  // origem uma da outra, num laço sem saída (dono, 22/10/2026). A trilha de
+  // `trilha-do-painel.ts` trata a troca para a tela anterior como VOLTA e não
+  // grava nada — vale igual para o botão do topo e para o Voltar do celular.
   //
   // `origemDaView` fica em estado, não em ref: `getParentView` é chamado
   // durante a renderização (aqui embaixo, e dentro dos dois `navItems.map`
   // da sidebar), e a regra `react-hooks/refs` do eslint proíbe ler
-  // `ref.current` em render — só em efeito ou handler. O `useRef` que o
-  // efeito usa para lembrar a view anterior fica isolado dentro do próprio
-  // `useEffect`, nunca lido em render.
+  // `ref.current` em render — só em efeito ou handler. O `useRef` da trilha
+  // fica isolado dentro do próprio `useEffect`, nunca lido em render.
   const [origemDaView, setOrigemDaView] = React.useState<View | null>(null);
-  const viewAnteriorRef = React.useRef<View>(currentView);
+  const trilhaRef = React.useRef<readonly View[]>([currentView]);
   React.useEffect(() => {
-    if (viewAnteriorRef.current !== currentView) {
-      setOrigemDaView(viewAnteriorRef.current);
-      viewAnteriorRef.current = currentView;
+    const proxima = avancarTrilha(trilhaRef.current, currentView);
+    if (proxima !== trilhaRef.current) {
+      trilhaRef.current = proxima;
+      setOrigemDaView(origemDaTrilha(proxima));
     }
   }, [currentView]);
 
@@ -1102,15 +1106,10 @@ export function AdminLayout({
             {/* Row 2: Coupled Sub-Header Bar (Admin Banners) */}
             {currentView === "admin-banners" && (
               <div className="border-t border-admin-border py-2">
-                <div className="flex min-h-14 items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-pink-300/20 bg-pink-300/10 text-pink-300">
-                      <LayoutGrid className="size-3" />
-                    </div>
-                    <h1 className="min-w-0 break-words text-sm font-semibold text-zinc-50">
-                      {NOMES_DO_PAINEL["admin-banners"]}
-                    </h1>
-                  </div>
+                <div className="flex min-h-11 items-center justify-between gap-3">
+                  <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-zinc-50">
+                    {NOMES_DO_PAINEL["admin-banners"]}
+                  </h1>
 
                   {!editorDeBannerAberto && (
                     <button
@@ -1121,15 +1120,13 @@ export function AdminLayout({
                       }
                       onClick={() => {
                         haptic.light();
-                        window.dispatchEvent(
-                          new CustomEvent("admin:open-new-banner-dialog"),
-                        );
+                        pedirNovoBanner();
                       }}
                       className={cn(
-                        "flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-bold transition-transform active:scale-95",
+                        "flex h-11 min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-nav",
                         isOffline
-                          ? "border border-admin-border-strong bg-admin-raised text-[#A1A1AD]"
-                          : "bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] text-[#1B1300] shadow-lg",
+                          ? "border border-admin-border-strong bg-admin-raised text-zinc-400"
+                          : "bg-admin-gold text-black hover:bg-admin-gold/90",
                       )}
                     >
                       {isOffline ? (
@@ -1138,7 +1135,7 @@ export function AdminLayout({
                         <Plus aria-hidden="true" className="size-4 shrink-0" />
                       )}
                       <span>
-                        {isOffline ? "Novo Banner indisponível" : "Novo Banner"}
+                        {isOffline ? "Indisponível offline" : "Novo banner"}
                       </span>
                     </button>
                   )}
@@ -1146,7 +1143,7 @@ export function AdminLayout({
                 {isOffline && !editorDeBannerAberto && (
                   <p
                     id="motivo-banner-offline"
-                    className="mt-2 text-xs text-[#A1A1AD]"
+                    className="mt-1 text-xs text-zinc-400"
                   >
                     Disponível quando a conexão retornar.
                   </p>

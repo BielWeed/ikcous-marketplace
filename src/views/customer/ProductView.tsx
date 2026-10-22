@@ -5,6 +5,7 @@ import {
 } from "@/components/desktop/medidas";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { LinkDeTrocas } from "@/components/politicas/LinksDasPoliticas";
+import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { FileirasDeVariacao } from "@/components/ui/custom/FileirasDeVariacao";
 import { FolhaDeOpcoes } from "@/components/ui/custom/FolhaDeOpcoes";
 import { GaleriaDoProduto } from "@/components/ui/custom/GaleriaDoProduto";
@@ -48,7 +49,6 @@ import {
   Check,
   ChevronRight,
   Flame,
-  Heart,
   Share2,
   ShoppingCart,
   Star,
@@ -815,36 +815,24 @@ export const ProductView = React.memo(function ProductView({
             onMudarIndice={setCurrentImageIndex}
             acoes={
               <div className="absolute right-4 top-4 z-10 flex gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleFavorite();
-                  }}
-                  // Laudo de acessibilidade 03/09, achado 2: sem nome, favoritar
-                  // era impossível por leitor de tela (o "Compartilhar" ao lado já
-                  // tinha `aria-label` — este é o padrão da casa).
-                  aria-label={
+                {/* Laudo de acessibilidade 03/09, achado 2: o botão tem nome
+                    (o mesmo padrão do "Compartilhar" ao lado). */}
+                <BotaoDeFavorito
+                  nome={product.name}
+                  rotulo={
                     isFavorite
                       ? "Remover dos favoritos"
                       : "Adicionar aos favoritos"
                   }
-                  className="flex size-11 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm backdrop-blur-md transition-all active:scale-95"
-                >
-                  <Heart
-                    className={cn(
-                      "size-4.5 transition-colors",
-                      isFavorite
-                        ? "fill-red-500 text-red-500 animate-heart-pop"
-                        : "text-zinc-600",
-                    )}
-                  />
-                </button>
+                  favorito={isFavorite}
+                  onClick={() => onToggleFavorite()}
+                />
                 <button
                   onClick={handleShare}
                   aria-label="Compartilhar"
-                  className="flex size-11 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm backdrop-blur-md transition-all active:scale-95"
+                  className="grid size-11 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-950 shadow-sm outline-none transition-transform active:scale-90 focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:focus-visible:ring-white"
                 >
-                  <Share2 className="size-4.5 text-zinc-600" />
+                  <Share2 aria-hidden="true" className="block size-5" />
                 </button>
               </div>
             }
@@ -1019,16 +1007,11 @@ export const ProductView = React.memo(function ProductView({
             </div>
 
             {fileiras.length > 0 && (
-              <div className="mb-5 rounded-3xl border border-border bg-muted/40 p-4">
-                <h2 className="mb-4 text-base font-bold text-foreground">
-                  Opções
-                </h2>
-                <FileirasDeVariacao
-                  fileiras={fileiras}
-                  escolha={selectedVariants}
-                  onEscolher={alternarVariante}
-                />
-              </div>
+              <FileirasDeVariacao
+                fileiras={fileiras}
+                escolha={selectedVariants}
+                onEscolher={alternarVariante}
+              />
             )}
 
             {variacaoIndisponivel && (

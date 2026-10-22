@@ -307,6 +307,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/cartao-online-viva.cjs",
     // 20261370: conta de sistema, legado preservado e rollback do caixa.
     "tests/banco/caixa-conta-da-loja-viva.cjs",
+    // 20261380: o aviso de cancelados antigos conta so pendencia real (pedido a pedido, mutantes, rollback e consultas 85a/85b).
+    "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -385,7 +387,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/reembolso-manual-reserva-viva.cjs",
     // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
     "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
-    // 20261352000000: o produto e a grade salvam numa transacao so (travas da compra online, versao conferida, PRD01, mutantes, 2 conexoes reais, rollback e consultas 82a/82b).
+    // 20261352000000: o produto e a grade salvam numa transacao so (travas da compra online, versao conferida, PRD01, mutantes, 2 conexoes reais, rollback e consultas 84a/84b).
     "tests/banco/salvar-produto-com-grade-viva.cjs",
     // 20261351000000: a forma (path SVG) do icone da categoria, CHECK, ACL/RLS e rollback.
     "tests/banco/forma-do-icone-viva.cjs",
@@ -414,6 +416,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/cartao-online-viva.cjs",
     // 20261370: conta de sistema, legado preservado e rollback do caixa.
     "tests/banco/caixa-conta-da-loja-viva.cjs",
+    // 20261380: o aviso de cancelados antigos conta so pendencia real (pedido a pedido, mutantes, rollback e consultas 85a/85b).
+    "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

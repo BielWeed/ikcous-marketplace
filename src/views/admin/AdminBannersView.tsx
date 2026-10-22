@@ -62,6 +62,10 @@ import {
   lerModoDoEditor,
   modoAoAbrirOBanner,
 } from "@/lib/modo-do-editor-de-banner";
+import {
+  EVENTO_NOVO_BANNER,
+  consumirPedidoDeNovoBanner,
+} from "@/lib/novo-banner-pendente";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence } from "framer-motion";
@@ -73,7 +77,6 @@ import {
   HelpCircle,
   Layout,
   Loader2,
-  Plus,
   Sparkles,
   Trash,
 } from "lucide-react";
@@ -1614,21 +1617,36 @@ export const AdminBannersView = memo(function AdminBannersView({
     setIsDialogOpen(true);
   };
 
+  // O ouvinte vive a vida toda da tela, mas precisa da lista e da aba de AGORA
+  // (posicao e ordem do banner novo): chama sempre o handler da ultima
+  // renderizacao. Com a lista ainda carregando nao abre agora (ordem duplicada)
+  // e deixa o pedido pendente: o efeito abaixo o consome quando a lista chegar.
+  const abrirNovoBannerRef = useRef<() => void>(() => {});
+  abrirNovoBannerRef.current = () => {
+    if (!isLoaded) return;
+    // Pedido atendido por este caminho (ou desnecessario): nao sobra pendente.
+    consumirPedidoDeNovoBanner();
+    if (isDialogOpen) return;
+    handleOpenDialog();
+  };
+
   useEffect(() => {
     const handleTriggerNewBanner = () => {
-      handleOpenDialog();
+      abrirNovoBannerRef.current();
     };
-    window.addEventListener(
-      "admin:open-new-banner-dialog",
-      handleTriggerNewBanner,
-    );
+    window.addEventListener(EVENTO_NOVO_BANNER, handleTriggerNewBanner);
     return () => {
-      window.removeEventListener(
-        "admin:open-new-banner-dialog",
-        handleTriggerNewBanner,
-      );
+      window.removeEventListener(EVENTO_NOVO_BANNER, handleTriggerNewBanner);
     };
   }, []);
+
+  // Clique no cabecalho que chegou antes da tela montar/carregar: abre uma vez.
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (consumirPedidoDeNovoBanner() && !isDialogOpen) {
+      abrirNovoBannerRef.current();
+    }
+  }, [isLoaded, isDialogOpen]);
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
@@ -2173,14 +2191,6 @@ export const AdminBannersView = memo(function AdminBannersView({
               <p className="text-sm">
                 O que aparece no topo, meio e base da sua loja.
               </p>
-              <Button
-                className="min-h-12 w-full rounded-2xl bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current hover:bg-white"
-                disabled={isOffline || !isLoaded}
-                onClick={() => handleOpenDialog()}
-              >
-                <Plus className="mr-2 size-5" />
-                Novo Banner
-              </Button>
             </header>
             <details className="rounded-2xl border border-admin-border bg-admin-surface p-3">
               <summary className="flex min-h-11 cursor-pointer items-center text-sm text-white">

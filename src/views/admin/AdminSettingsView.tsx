@@ -9,8 +9,8 @@ import {
   GalleryHorizontal,
   HelpCircle,
   ImageIcon,
-  KeyRound,
   type LucideIcon,
+  type LucideProps,
   Mail,
   PackageCheck,
   Palette,
@@ -23,6 +23,7 @@ import {
   Wifi,
 } from "lucide-react";
 import {
+  type ComponentType,
   Suspense,
   lazy,
   memo,
@@ -60,6 +61,7 @@ import {
   IconeDeAjustes,
   type MatizDeAjustes,
 } from "@/components/admin/settings/visual-ajustes";
+import { IconeMercadoPago } from "@/components/icons/IconeMercadoPago";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import "@/components/admin/settings/ajustes.css";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -381,7 +383,7 @@ function SecaoColapsavel({
 }: {
   readonly titulo: string;
   readonly subtitulo?: string;
-  readonly icone: LucideIcon;
+  readonly icone: ComponentType<Pick<LucideProps, "className" | "strokeWidth">>;
   readonly comPendencia?: boolean;
   /**
    * FORMAS DE PAGAMENTO POR LOJA (25/09/2026): incrementa de FORA (um botão
@@ -1237,7 +1239,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   <SecaoColapsavel
                     titulo="Mercado Pago"
                     subtitulo="Chaves do seu Mercado Pago no app"
-                    icone={KeyRound}
+                    icone={IconeMercadoPago}
                     comPendencia={pagamentosPendente}
                     abrirGatilho={abrirMercadoPagoGatilho}
                   >

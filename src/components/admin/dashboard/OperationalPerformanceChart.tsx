@@ -1,5 +1,12 @@
 import { ExplicacaoDoRelatorio } from "@/components/admin/crm/ExplicacaoDoRelatorio";
 import { SUPERFICIE_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
+import {
+  ALTURA_LUCRO,
+  ALTURA_VENDAS,
+  BalaoDoGrafico,
+  MARGEM_TOPO_LUCRO,
+  MARGEM_TOPO_VENDAS,
+} from "@/components/admin/dashboard/BalaoDoGrafico";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -310,9 +317,12 @@ export const OperationalPerformanceChart = memo(
 
         <div
           className={cn(
-            "relative z-10 h-[150px] w-full min-w-0 shrink-0 overflow-hidden transition-opacity duration-300",
+            "relative z-10 w-full min-w-0 shrink-0 overflow-hidden transition-opacity duration-300",
             isPending && "opacity-60",
           )}
+          style={{
+            height: chartMode === "roi" ? ALTURA_LUCRO : ALTURA_VENDAS,
+          }}
         >
           {loading || !isChartReady ? (
             <Skeleton className="size-full animate-pulse rounded-3xl bg-white/5" />
@@ -336,7 +346,12 @@ export const OperationalPerformanceChart = memo(
               >
                 <BarChart
                   data={filteredRevenueHistory}
-                  margin={{ top: 10, right: 10, left: -8, bottom: 0 }}
+                  margin={{
+                    top: MARGEM_TOPO_VENDAS,
+                    right: 10,
+                    left: -8,
+                    bottom: 0,
+                  }}
                 >
                   <CartesianGrid
                     vertical={false}
@@ -378,51 +393,21 @@ export const OperationalPerformanceChart = memo(
                   <Tooltip
                     cursor={{ fill: "rgba(16, 185, 129, 0.05)", radius: 8 }}
                     offset={20}
+                    position={{ y: 0 }}
+                    allowEscapeViewBox={{ x: false, y: false }}
+                    wrapperStyle={{ pointerEvents: "none", zIndex: 30 }}
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
-                        const orderCount =
-                          typeof data.orders === "number" ? data.orders : 0;
-
                         return (
-                          <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-admin-border px-2.5 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-admin-border backdrop-blur-3xl">
-                            <div className="flex items-center gap-2">
-                              <span className="text-admin-text-soft whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em]">
-                                {data.full_date || data.date}
-                              </span>
-                              <div className="h-px flex-1 bg-white/10" />
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-1.5">
-                                <div className="size-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]" />
-                                <div className="flex flex-col">
-                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
-                                    Receita
-                                  </span>
-                                  <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
-                                    R$
-                                    {(data.revenue || 0).toLocaleString(
-                                      "pt-BR",
-                                      { maximumFractionDigits: 0 },
-                                    )}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1">
-                                <div className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                <div className="flex flex-col">
-                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
-                                    Pedidos
-                                  </span>
-                                  <span className="mt-0.5 text-[11px] font-black italic leading-tight tracking-tighter text-emerald-500">
-                                    {orderCount}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                          <BalaoDoGrafico
+                            tipo="vendas"
+                            data={data.full_date || data.date}
+                            receita={data.revenue || 0}
+                            pedidos={
+                              typeof data.orders === "number" ? data.orders : 0
+                            }
+                          />
                         );
                       }
                       return null;
@@ -450,7 +435,12 @@ export const OperationalPerformanceChart = memo(
               >
                 <AreaChart
                   data={processedRoiData}
-                  margin={{ top: 10, right: 10, left: -8, bottom: 0 }}
+                  margin={{
+                    top: MARGEM_TOPO_LUCRO,
+                    right: 10,
+                    left: -8,
+                    bottom: 0,
+                  }}
                 >
                   <defs>
                     <linearGradient
@@ -526,58 +516,19 @@ export const OperationalPerformanceChart = memo(
                       strokeDasharray: "4 4",
                     }}
                     offset={20}
+                    position={{ y: 0 }}
+                    allowEscapeViewBox={{ x: false, y: false }}
+                    wrapperStyle={{ pointerEvents: "none", zIndex: 30 }}
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
                         return (
-                          <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-admin-border px-2.5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-admin-border backdrop-blur-3xl">
-                            <div className="flex items-center gap-2">
-                              <span className="text-admin-text-soft whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em]">
-                                {data.full_date || data.date}
-                              </span>
-                              <div className="h-px flex-1 bg-white/10" />
-                            </div>
-
-                            <div className="flex flex-col gap-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <div className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-                                <div className="flex flex-col">
-                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
-                                    Lucro Acumulado
-                                  </span>
-                                  <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
-                                    R$
-                                    {data.cumulativeProfit.toLocaleString(
-                                      "pt-BR",
-                                      {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      },
-                                    )}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-1.5">
-                                <div className="size-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                                <div className="flex flex-col">
-                                  <span className="text-admin-text-soft text-[11px] font-black uppercase leading-none tracking-widest">
-                                    Valor Investido (Estoque)
-                                  </span>
-                                  <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
-                                    R$
-                                    {data.inventoryCost.toLocaleString(
-                                      "pt-BR",
-                                      {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      },
-                                    )}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                          <BalaoDoGrafico
+                            tipo="lucro"
+                            data={data.full_date || data.date}
+                            lucroAcumulado={data.cumulativeProfit}
+                            estoqueInvestido={data.inventoryCost}
+                          />
                         );
                       }
                       return null;

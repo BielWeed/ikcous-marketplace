@@ -171,6 +171,16 @@ describe("AdminPushView — o histórico só mostra campanhas", () => {
     });
   }
 
+  // O histórico fica recolhido ("O que já foi ao ar"): abre antes de ler.
+  async function abrirHistorico() {
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("O que já foi ao ar"),
+    );
+    await act(async () => {
+      botao?.click();
+    });
+  }
+
   const texto = () => hospedeiro.textContent ?? "";
 
   it("as linhas das respostas da loja não aparecem, as campanhas sim", async () => {
@@ -181,6 +191,7 @@ describe("AdminPushView — o histórico só mostra campanhas", () => {
       linhaDoLog("Frete grátis hoje", 12),
     ];
     await abrirTela();
+    await abrirHistorico();
 
     expect(texto()).toContain("Frete grátis hoje");
     expect(texto()).not.toContain("Sua pergunta foi respondida!");
@@ -197,6 +208,7 @@ describe("AdminPushView — o histórico só mostra campanhas", () => {
     );
     historicoDoBanco.linhas = [...respostas, ...campanhas];
     await abrirTela();
+    await abrirHistorico();
 
     for (const i of [1, 2, 3]) expect(texto()).toContain(`Campanha real ${i}`);
     expect(texto()).not.toContain("Sua pergunta foi respondida!");
@@ -210,6 +222,7 @@ describe("AdminPushView — o histórico só mostra campanhas", () => {
       linhaDoLog("Sua avaliação foi respondida!"),
     ];
     await abrirTela();
+    await abrirHistorico();
 
     expect(texto()).toContain("Nenhuma mensagem enviada até agora");
     expect(texto()).not.toContain("Não confirmada");
