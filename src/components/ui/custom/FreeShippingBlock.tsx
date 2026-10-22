@@ -96,15 +96,15 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
           />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+          <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
             Frete grátis{soLocal ? " na cidade" : ""}
           </p>
           <h3
-            className={`truncate text-[17px] font-bold leading-[22px]${liberado ? " text-emerald-400" : ""}`}
+            className={`text-[17px] font-bold leading-[22px]${liberado ? " text-emerald-400" : ""}`}
           >
             {liberado ? "Liberado" : `Faltam ${formatCurrency(remaining)}`}
           </h3>
-          <p className="truncate text-[11.5px] text-zinc-400">
+          <p className="text-[11.5px] text-zinc-400">
             {sempre
               ? soLocal
                 ? "Pedido com entrega local sai grátis."

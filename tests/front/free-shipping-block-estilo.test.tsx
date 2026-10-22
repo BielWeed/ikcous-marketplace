@@ -180,8 +180,9 @@ describe("estilo do card de frete na Home", () => {
     expect(card.className).toContain("rounded-[22px]");
     const coluna = container.querySelector("h3")!.parentElement!;
     expect(coluna.className).toContain("min-w-0");
+    // Contrato da Home: texto nunca é cortado; o cartão cresce (min-h).
     for (const linha of coluna.children)
-      expect(linha.className).toContain("truncate");
+      expect(linha.className).not.toMatch(/truncate|line-clamp|text-overflow/);
     expect(texto(container.querySelector("p:last-child"))).toBe(
       "R$ 1.999,90 de R$ 12.345,67",
     );

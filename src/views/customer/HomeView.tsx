@@ -397,7 +397,7 @@ export const HomeView = React.memo(function HomeView({
   ) : (
     <div className="relative mt-2 w-full px-4">
       <div
-        className={`${config.freeShippingCardStyle === "compacto" ? "h-[76px]" : "h-[172px]"} w-full animate-pulse rounded-[24px] bg-zinc-100`}
+        className={`${config.freeShippingCardStyle === "compacto" ? "h-[84px]" : "h-[172px]"} w-full animate-pulse rounded-[24px] bg-zinc-100`}
       />
     </div>
   );
