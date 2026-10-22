@@ -5,6 +5,7 @@ import {
 } from "@/components/desktop/medidas";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { LinkDeTrocas } from "@/components/politicas/LinksDasPoliticas";
+import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { FileirasDeVariacao } from "@/components/ui/custom/FileirasDeVariacao";
 import { FolhaDeOpcoes } from "@/components/ui/custom/FolhaDeOpcoes";
 import { GaleriaDoProduto } from "@/components/ui/custom/GaleriaDoProduto";
@@ -48,7 +49,6 @@ import {
   Check,
   ChevronRight,
   Flame,
-  Heart,
   Share2,
   ShoppingCart,
   Star,
@@ -815,30 +815,18 @@ export const ProductView = React.memo(function ProductView({
             onMudarIndice={setCurrentImageIndex}
             acoes={
               <div className="absolute right-4 top-4 z-10 flex gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleFavorite();
-                  }}
-                  // Laudo de acessibilidade 03/09, achado 2: sem nome, favoritar
-                  // era impossível por leitor de tela (o "Compartilhar" ao lado já
-                  // tinha `aria-label` — este é o padrão da casa).
-                  aria-label={
+                {/* Laudo de acessibilidade 03/09, achado 2: o botão tem nome
+                    (o mesmo padrão do "Compartilhar" ao lado). */}
+                <BotaoDeFavorito
+                  nome={product.name}
+                  rotulo={
                     isFavorite
                       ? "Remover dos favoritos"
                       : "Adicionar aos favoritos"
                   }
-                  className="flex size-11 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm backdrop-blur-md transition-all active:scale-95"
-                >
-                  <Heart
-                    className={cn(
-                      "size-4.5 transition-colors",
-                      isFavorite
-                        ? "fill-red-500 text-red-500 animate-heart-pop"
-                        : "text-zinc-600",
-                    )}
-                  />
-                </button>
+                  favorito={isFavorite}
+                  onClick={() => onToggleFavorite()}
+                />
                 <button
                   onClick={handleShare}
                   aria-label="Compartilhar"

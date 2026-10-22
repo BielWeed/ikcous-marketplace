@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import {
@@ -10,20 +11,12 @@ import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
-import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
 import { haptic } from "@/utils/haptic";
 import useEmblaCarousel from "embla-carousel-react";
-import {
-  Check,
-  Flame,
-  Heart,
-  Loader2,
-  ShoppingCart,
-  Truck,
-} from "lucide-react";
+import { Check, Flame, Loader2, ShoppingCart, Truck } from "lucide-react";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { OfertasCompactasEsqueleto } from "./OfertasCompactasEsqueleto";
 import { StarRating } from "./StarRating";
@@ -425,18 +418,12 @@ function HeroOfferCard({
         </div>
 
         {/* Favorite Button */}
-        <button
+        <BotaoDeFavorito
+          nome={product.name}
+          favorito={isFavorite}
           onClick={handleFavoriteClick}
-          className={cn(
-            "absolute right-0 p-2 rounded-full transition-all active:scale-75 hover:bg-zinc-50 z-20 border border-transparent hover:border-zinc-100/30",
-            isFavorite
-              ? "text-red-500 bg-red-50/50 shadow-sm"
-              : "text-slate-400 hover:text-red-500 bg-slate-50/40",
-          )}
-          aria-label={rotuloDeFavoritar(product.name, isFavorite)}
-        >
-          <Heart className={`size-4 ${isFavorite ? "fill-current" : ""}`} />
-        </button>
+          className="absolute right-0 top-1/2 z-20 -translate-y-1/2"
+        />
       </div>
 
       {/* Main columns for Image & Details */}

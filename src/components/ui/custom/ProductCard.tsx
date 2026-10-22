@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
@@ -11,7 +12,6 @@ import {
   fraseDoSeloDeFreteGratis,
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada } from "@/lib/imageUrl";
-import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant } from "@/types";
@@ -27,14 +27,7 @@ import {
   preselecionarCor,
   resolverSelecaoDosEixos,
 } from "@/utils/eixos-da-variacao";
-import {
-  Check,
-  Flame,
-  Heart,
-  Loader2,
-  ShoppingCart,
-  Truck,
-} from "lucide-react";
+import { Check, Flame, Loader2, ShoppingCart, Truck } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CorpoDaFolhaDeOpcoes, focarEscolhaDaFolha } from "./FolhaDeOpcoes";
@@ -725,27 +718,11 @@ export const ProductCard = memo(function ProductCard({
 
           {/* Action Buttons */}
           <div className="absolute right-3 top-3 flex translate-x-0 flex-col gap-2 opacity-100 transition-all duration-500 ease-out hover-hover:translate-x-12 hover-hover:opacity-0 hover-hover:group-hover:translate-x-0 hover-hover:group-hover:opacity-100">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleFavorite(product, e);
-              }}
-              aria-label={rotuloDeFavoritar(product.name, isFavorite)}
-              title={rotuloDeFavoritar(product.name, isFavorite)}
-              className={cn(
-                "p-2.5 rounded-full glass transition-all active:scale-75",
-                isFavorite
-                  ? "bg-red-500 text-white border-red-500/20 shadow-lg shadow-red-200/50"
-                  : "text-slate-600 hover:text-red-500",
-              )}
-            >
-              <Heart
-                className={cn(
-                  "size-4",
-                  isFavorite && "fill-current animate-heart-pop",
-                )}
-              />
-            </button>
+            <BotaoDeFavorito
+              nome={product.name}
+              favorito={isFavorite}
+              onClick={(e) => onToggleFavorite(product, e)}
+            />
           </div>
         </div>
 

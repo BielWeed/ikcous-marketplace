@@ -67,11 +67,11 @@ label:has(> select[aria-label="Ordem dos favoritos"]:focus-visible) {
   font-size: 14px;
   font-weight: 700;
 }
-.favorites-product-card button {
+.favorites-product-card button:not([data-botao-favorito]) {
   min-height: 44px;
   font-size: 11px;
 }
-.favorites-product-card button[title] {
+.favorites-product-card button[title]:not([data-botao-favorito]) {
   min-width: 44px;
   border-color: hsl(var(--border));
   background: hsl(var(--card));
