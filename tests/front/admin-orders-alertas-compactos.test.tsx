@@ -364,6 +364,16 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     expect(classes).not.toContain("absolute");
     expect(classes).not.toContain("right-0");
 
+    // O painel é um diálogo de verdade para o leitor de tela, com nome; o
+    // véu atrás dele é decorativo (escondido do leitor).
+    expect(painel.getAttribute("role")).toBe("dialog");
+    expect(painel.getAttribute("aria-label")).toBeTruthy();
+    expect(
+      hospedeiro
+        .querySelector('[data-testid="alertas-cancelados-veu"]')!
+        .getAttribute("aria-hidden"),
+    ).toBe("true");
+
     // Toque no véu fecha.
     const veu = hospedeiro.querySelector<HTMLElement>(
       '[data-testid="alertas-cancelados-veu"]',

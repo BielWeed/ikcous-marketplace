@@ -269,6 +269,12 @@ export function AlertasCancelados({
       {aberto && (
         <div
           id="alertas-cancelados-conteudo"
+          // Diálogo de verdade para o leitor de tela (era um <div> solto
+          // atrás de um véu): nome acessível = o do botão. Sem aria-modal de
+          // propósito: de `sm` pra cima é dropdown não modal, e o mesmo
+          // markup serve aos dois. Escape e toque no véu já fecham.
+          role="dialog"
+          aria-label={titulo}
           // Celular: folha fixa inteira DENTRO da tela (12px de cada lado),
           // rolável. De `sm` pra cima volta ao dropdown ancorado à direita
           // do botão (o `right-0` sozinho cortava o painel no celular).

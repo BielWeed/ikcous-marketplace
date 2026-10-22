@@ -62,6 +62,10 @@ import {
   lerModoDoEditor,
   modoAoAbrirOBanner,
 } from "@/lib/modo-do-editor-de-banner";
+import {
+  EVENTO_NOVO_BANNER,
+  consumirPedidoDeNovoBanner,
+} from "@/lib/novo-banner-pendente";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence } from "framer-motion";
@@ -1615,10 +1619,14 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   // O ouvinte vive a vida toda da tela, mas precisa da lista e da aba de AGORA
   // (posicao e ordem do banner novo): chama sempre o handler da ultima
-  // renderizacao. Com a lista ainda carregando nao abre nada (ordem duplicada).
+  // renderizacao. Com a lista ainda carregando nao abre agora (ordem duplicada)
+  // e deixa o pedido pendente: o efeito abaixo o consome quando a lista chegar.
   const abrirNovoBannerRef = useRef<() => void>(() => {});
   abrirNovoBannerRef.current = () => {
     if (!isLoaded) return;
+    // Pedido atendido por este caminho (ou desnecessario): nao sobra pendente.
+    consumirPedidoDeNovoBanner();
+    if (isDialogOpen) return;
     handleOpenDialog();
   };
 
@@ -1626,17 +1634,19 @@ export const AdminBannersView = memo(function AdminBannersView({
     const handleTriggerNewBanner = () => {
       abrirNovoBannerRef.current();
     };
-    window.addEventListener(
-      "admin:open-new-banner-dialog",
-      handleTriggerNewBanner,
-    );
+    window.addEventListener(EVENTO_NOVO_BANNER, handleTriggerNewBanner);
     return () => {
-      window.removeEventListener(
-        "admin:open-new-banner-dialog",
-        handleTriggerNewBanner,
-      );
+      window.removeEventListener(EVENTO_NOVO_BANNER, handleTriggerNewBanner);
     };
   }, []);
+
+  // Clique no cabecalho que chegou antes da tela montar/carregar: abre uma vez.
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (consumirPedidoDeNovoBanner() && !isDialogOpen) {
+      abrirNovoBannerRef.current();
+    }
+  }, [isLoaded, isDialogOpen]);
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
