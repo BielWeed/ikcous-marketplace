@@ -5019,20 +5019,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             </InterruptorDoProduto>
           </div>
         </SecaoDoProduto>
-        <div className="space-y-3 text-xs text-zinc-400">
-          <button
-            type="button"
-            onClick={() => setShowHelpModal(true)}
-            className="flex min-h-11 items-center gap-3 text-left text-sm text-zinc-300"
-          >
-            <HelpCircle className="size-5 text-blue-300" />
-            Como cadastrar um produto
-          </button>
-          <p>Ambiente de Gerenciamento Unificado</p>
-          <p className="break-all">
-            ID do Sistema · {productId || "NEW_ENTRY"}
-          </p>
-        </div>
+        {/* O guia "Como cadastrar um produto" já tem o botão "?" do
+            cabeçalho (o mesmo `setShowHelpModal`): aqui só resta o ID. */}
+        <p className="break-all text-xs text-zinc-400">
+          ID do Sistema · {productId || "NEW_ENTRY"}
+        </p>
       </motion.form>
 
       {/* Image Cropper Modal */}
