@@ -6375,6 +6375,18 @@ export function CheckoutViewDaConta({
             </div>
           </div>
         )}
+
+        {/* Termos e Privacidade no FIM da tela, fora da barra do botão (a pedido
+            do dono, 22/10/2026: dentro da barra ficava feio). Rola junto com o
+            conteúdo. LGPD/CDC: só texto e dois links, NÃO é caixa de marcar e
+            não entra em nenhuma condição do Finalizar. Os links abrem uma
+            FOLHA por cima — o checkout segue montado, com frete, pagamento e
+            dados como estavam (sair daqui apagaria o formulário). */}
+        <FraseDeAceite
+          acao="finalizar"
+          emLinha
+          className="mx-auto mt-6 max-w-md text-center"
+        />
       </div>
 
       {/* A reserva inferior vem de pb-customer-summary e da barra medida. */}
@@ -6738,17 +6750,6 @@ export function CheckoutViewDaConta({
                         )}
                       </button>
                     </div>
-                    {/* Termos e Privacidade ao lado de quem fecha a compra
-                        (LGPD/CDC): só texto e dois links, NÃO é caixa de
-                        marcar e não participa de nenhuma condição do
-                        Finalizar. Os links abrem uma FOLHA por cima — o
-                        checkout segue montado, com frete, pagamento e dados
-                        como estavam (sair daqui apagaria o formulário). */}
-                    <FraseDeAceite
-                      acao="finalizar"
-                      emLinha
-                      className="mx-auto mt-2 max-w-md text-center"
-                    />
                     {!semFreteSelecionado &&
                       !isOffline &&
                       !pagamentoIncompativel &&
