@@ -65,10 +65,11 @@ interface AlertasCanceladosProps {
   /** A consulta de cancelados pode ter vindo truncada (erro/truncagem na
    * RPC) — o aviso fica dentro do dropdown, junto de quem ele descreve. */
   readonly incompleto: boolean;
-  /** pedidos-4 (20261164000000): cancelados com cancelamento ANTERIOR à
-   * janela da varredura enxuta — o servidor conta quem ficou fora
-   * ('fora_da_janela'). 0/undefined = nada ficou fora. Sem este número, o
-   * recorte de 90 dias esconderia pendência antiga em silêncio. */
+  /** Pedidos cancelados há mais de 90 dias que AINDA têm pendência real
+   * (dinheiro a devolver ou mercadoria que não voltou) — o servidor conta
+   * ('fora_da_janela', regra da 20261380000000). Cancelado antigo sem nada a
+   * fazer não entra. 0/undefined = nenhum. Sem este número, o recorte de 90
+   * dias esconderia pendência antiga em silêncio. */
   readonly foraDaJanela?: number;
   /** Pede a varredura completa (p_dias null no servidor): o dropdown fecha
    * e a lista recarrega incluindo os antigos. */
@@ -110,9 +111,10 @@ export function AlertasCancelados({
   const alavancaRef = useRef<HTMLButtonElement>(null);
 
   const temDinheiroPreso = pagoCanceladoCount > 0;
-  // pedidos-4: cancelados fora da janela são pendência em potencial (estorno
-  // devido, mercadoria a voltar) que as listas de baixo NÃO mostram — o
-  // botão nasce por eles do mesmo jeito, e o bloco de dentro explica.
+  // Os antigos pendentes (dinheiro a devolver ou mercadoria que não voltou,
+  // já filtrados pelo servidor) são pendência REAL que as listas de baixo
+  // ainda NÃO mostram — o botão nasce por eles do mesmo jeito, e o bloco de
+  // dentro explica e oferece "Mostrar esses pedidos".
   const temForaDaJanela = (foraDaJanela ?? 0) > 0;
   const temPendencia =
     temDinheiroPreso ||
@@ -174,20 +176,23 @@ export function AlertasCancelados({
         ? `${titulo}. ${resumoBadges}`
         : titulo;
 
-  // Badge = pedidos DISTINTOS com mercadoria/estorno pendentes. Quando a
-  // única pendência é o dinheiro preso (lista não derivada aqui, só a
-  // contagem do servidor), o badge mostra essa contagem — max dos dois
-  // nunca mostra 0 com pendência viva nem inventa pedido que não está
-  // em lista nenhuma. O número exato por balde segue no dropdown.
+  // Badge = pedidos DISTINTOS com pendência: os das listas (dentro da
+  // janela) MAIS os antigos pendentes (fora dela). Os dois grupos nunca se
+  // repetem — o servidor só conta como "fora" quem não está na lista, e com
+  // a busca completa (p_dias null) "fora" vira 0 e os antigos passam para as
+  // listas —, então SOMAM. O dinheiro preso (`paid_on_cancelled`) é histórico
+  // total, sem janela e sem descontar o que já foi devolvido: PODE conter os
+  // mesmos pedidos dos dois grupos, por isso não soma por cima; entra só como
+  // piso (max) para o badge nunca mostrar menos do que ele nem 0 com
+  // pendência viva. O número exato por balde segue no dropdown.
   const pedidosNasListas = new Set(
     [...pedidosEsperandoRetorno, ...pedidosParaDevolverAgora].map(
       (pedido) => pedido.id,
     ),
   ).size;
   const badge = Math.max(
-    pedidosNasListas,
+    pedidosNasListas + (foraDaJanela ?? 0),
     pagoCanceladoCount,
-    foraDaJanela ?? 0,
   );
 
   // O aviso de lista incompleta mora dentro do dropdown DESDE o desenho de
@@ -271,29 +276,27 @@ export function AlertasCancelados({
         >
           {avisoIncompleto}
 
-          {/* pedidos-4 (20261164000000): a honestidade do recorte — a
-              varredura enxuta olha só os últimos {JANELA} dias de
-              CANCELAMENTO (não de criação). O servidor conta quem ficou
-              fora; este bloco diz o número e oferece a varredura completa,
-              para pendência antiga (estorno devido, mercadoria a voltar)
-              nunca sumir em silêncio — é o mesmo motivo do BLOQUEIA da
-              revisão de 17/09. */}
+          {/* Pedidos cancelados há mais de {JANELA} dias que AINDA têm
+              pendência (dinheiro a devolver ou produto que não voltou). A
+              lista de baixo olha só os cancelamentos recentes; o servidor
+              (20261164000000, regra refeita na 20261380000000) conta aqui só
+              os antigos com pendência real — o mesmo critério dos dois
+              baldes — e o botão busca esses pedidos. O motivo do bloco é o
+              BLOQUEIA da revisão de 17/09: pendência antiga nunca some em
+              silêncio. Texto normal (sem caixa alta nem espaçamento largo):
+              é uma frase para ler, não uma etiqueta. */}
           {temForaDaJanela && (
             <div className="relative overflow-hidden rounded-[2rem] border border-amber-500/20 bg-zinc-950/40 p-6 shadow-2xl backdrop-blur-2xl">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
-                    {foraDaJanela}{" "}
+                  <h3 className="text-sm font-bold leading-snug text-amber-500">
                     {foraDaJanela === 1
-                      ? "cancelamento anterior à janela"
-                      : "cancelamentos anteriores à janela"}{" "}
-                    de {JANELA_PEDIDOS_CANCELADOS_DIAS} dias
+                      ? `1 pedido cancelado há mais de ${JANELA_PEDIDOS_CANCELADOS_DIAS} dias ainda está pendente`
+                      : `${foraDaJanela} pedidos cancelados há mais de ${JANELA_PEDIDOS_CANCELADOS_DIAS} dias ainda estão pendentes`}
                   </h3>
-                  <p className="mt-1.5 max-w-2xl text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
-                    A varredura enxuta olha só os cancelamentos recentes. Os
-                    pedidos de fora continuam existindo — com dinheiro a
-                    devolver ao cliente e mercadoria a voltar — e não estão nas
-                    listas abaixo.
+                  <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-zinc-400">
+                    Têm dinheiro a devolver ao cliente ou produto que ainda não
+                    voltou para a loja.
                   </p>
                 </div>
                 <Button
@@ -304,9 +307,9 @@ export function AlertasCancelados({
                     // recarregando por trás, não o dropdown aberto sobre ela.
                     setAberto(false);
                   }}
-                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[11px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
+                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-sm font-bold text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
                 >
-                  Buscar também os antigos
+                  Mostrar esses pedidos
                 </Button>
               </div>
             </div>

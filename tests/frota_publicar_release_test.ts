@@ -3088,6 +3088,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
     "83a-conferir-caixa-so-na-conta-da-loja-aplicado",
     "84a-conferir-produto-com-grade-aplicado",
+    "85a-conferir-aviso-de-cancelados-antigos-aplicado",
   ]);
 });
 

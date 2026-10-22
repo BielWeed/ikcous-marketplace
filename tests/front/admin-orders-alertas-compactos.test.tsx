@@ -448,18 +448,105 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     ).toBe("3");
 
     await expandir();
+    // Português de balcão: nada de "janela" nem de "varredura enxuta".
     expect(hospedeiro.textContent).toContain(
-      "cancelamentos anteriores à janela de 90 dias",
+      "3 pedidos cancelados há mais de 90 dias ainda estão pendentes",
     );
+    expect(hospedeiro.textContent).toContain(
+      "Têm dinheiro a devolver ao cliente ou produto que ainda não voltou para a loja.",
+    );
+    expect(hospedeiro.textContent).not.toContain("janela");
+    expect(hospedeiro.textContent).not.toContain("varredura");
 
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.textContent?.trim() === "Buscar também os antigos",
+      (b) => b.textContent?.trim() === "Mostrar esses pedidos",
     );
     expect(botao).toBeTruthy();
     await act(async () => {
       botao!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(mockBuscarTambemAntigos).toHaveBeenCalledTimes(1);
+  });
+
+  it("pedidos antigos pendentes: com UM pedido o título vai para o singular e o texto não força caixa alta", async () => {
+    mockAnalyticsStats = statsFake(0);
+    mockCanceladosForaDaJanela = 1;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+
+    await expandir();
+    const titulo = Array.from(hospedeiro.querySelectorAll("h3")).find((h) =>
+      h.textContent?.includes("há mais de 90 dias"),
+    );
+    expect(titulo?.textContent?.trim()).toBe(
+      "1 pedido cancelado há mais de 90 dias ainda está pendente",
+    );
+    // O bloco usa texto normal: sem uppercase nem tracking largo.
+    const bloco = titulo!.closest("div")!.parentElement!.parentElement!;
+    expect(bloco.innerHTML).not.toContain("uppercase");
+    expect(bloco.innerHTML).not.toContain("tracking-widest");
+    expect(hospedeiro.textContent).not.toContain("1 pedidos");
+  });
+
+  // Número do botão: pedidos nas listas (dentro da janela) + antigos pendentes
+  // (fora dela) são grupos DISJUNTOS e somam; o contador `paid_on_cancelled`
+  // é histórico total e pode sobrepor os dois, então só entra como piso (max).
+  const numeroDoBotao = async (opcoes: {
+    recentes: number;
+    antigos: number;
+    pagoCancelado: number;
+  }) => {
+    mockAnalyticsStats = statsFake(opcoes.pagoCancelado);
+    mockCanceladosForaDaJanela = opcoes.antigos;
+    mockPedidosCancelados = Array.from({ length: opcoes.recentes }, (_, i) =>
+      canceladoFake({ id: `rec-${i}`, cancelledAfterShipping: true }),
+    );
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+    return hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]')
+      ?.textContent;
+  };
+
+  it("número do botão: 3 pedidos recentes + 2 antigos pendentes = 5 (grupos disjuntos somam)", async () => {
+    expect(
+      await numeroDoBotao({ recentes: 3, antigos: 2, pagoCancelado: 0 }),
+    ).toBe("5");
+  });
+
+  it("número do botão: só antigos pendentes mostra o número deles", async () => {
+    expect(
+      await numeroDoBotao({ recentes: 0, antigos: 2, pagoCancelado: 0 }),
+    ).toBe("2");
+  });
+
+  it("número do botão: só recentes mostra o número deles", async () => {
+    expect(
+      await numeroDoBotao({ recentes: 3, antigos: 0, pagoCancelado: 0 }),
+    ).toBe("3");
+  });
+
+  it("número do botão: dinheiro preso (histórico total) maior que a soma vence, sem somar por cima", async () => {
+    expect(
+      await numeroDoBotao({ recentes: 2, antigos: 1, pagoCancelado: 9 }),
+    ).toBe("9");
+  });
+
+  it("número do botão: dinheiro preso menor que a soma não a diminui", async () => {
+    expect(
+      await numeroDoBotao({ recentes: 3, antigos: 2, pagoCancelado: 4 }),
+    ).toBe("5");
+  });
+
+  it("número do botão: tudo zero esconde o botão", async () => {
+    expect(
+      await numeroDoBotao({ recentes: 0, antigos: 0, pagoCancelado: 0 }),
+    ).toBeUndefined();
+    expect(botaoAlerta()).toBeNull();
   });
 
   it("cancelado que nunca foi pago, com mercadoria fora: badge conta o pedido e o resumo fala de PRODUTO, não de estorno", async () => {
