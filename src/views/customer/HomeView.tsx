@@ -914,9 +914,13 @@ function SecaoOfertasEsqueleto({ layout }: { layout?: "padrao" | "compacto" }) {
 function HeroOfertaEsqueleto() {
   return (
     <div className="flex flex-col gap-4 rounded-[2rem] border border-zinc-100/40 p-4 sm:p-5">
-      {/* Tag header do real: border-b pb-3 + pill de ~21px. */}
+      {/* Tag header do real: border-b pb-3 + linha de 44px (botão do coração,
+          size-11) = 57px. O min-h-11 vai no contêiner interno porque o de fora
+          tem border-box (padding e borda entram na conta). */}
       <div className="flex w-full items-center justify-center border-b border-zinc-100/50 pb-3">
-        <Skeleton className="h-[21px] w-44 rounded-full" />
+        <div className="flex min-h-11 w-full items-center justify-center">
+          <Skeleton className="h-[21px] w-44 rounded-full" />
+        </div>
       </div>
       <div className="flex flex-1 flex-col gap-4 md:flex-row">
         {/* Imagem do real: aspect-[4/3] w-full (md: aspect-square md:w-2/5). */}
