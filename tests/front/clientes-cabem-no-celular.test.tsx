@@ -242,6 +242,48 @@ describe("Clientes no celular (J4)", () => {
     return mapa;
   }
 
+  it("as duas ações da barra têm o mesmo desenho e ícones soltos", async () => {
+    await abrirLista();
+
+    const acoes = document.body.querySelector(
+      '[aria-label="Ações dos clientes"]',
+    );
+    const botoes = [...(acoes?.querySelectorAll("button") ?? [])];
+    expect(botoes.map((botao) => botao.textContent)).toEqual([
+      "Perguntas e avaliações",
+      "Avisar clientes",
+    ]);
+    for (const botao of botoes) {
+      for (const classe of [
+        "flex-1",
+        "min-h-14",
+        "rounded-[1.125rem]",
+        "text-sm",
+        "leading-tight",
+        "text-left",
+        "gap-2.5",
+        "px-3.5",
+      ]) {
+        expect(botao.classList.contains(classe), classe).toBe(true);
+      }
+      expect(botao.className).not.toContain("flex-[0.8]");
+      expect(botao.className).not.toContain("text-xs");
+      expect(botao.querySelector(".truncate")).toBeNull();
+      const icone = botao.querySelector("svg")!;
+      expect(icone).not.toBeNull();
+      expect(icone.classList.contains("size-[22px]")).toBe(true);
+      expect(icone.classList.contains("shrink-0")).toBe(true);
+      expect(icone.getAttribute("stroke-width")).toBe("1.9");
+      expect(icone.getAttribute("class")).not.toMatch(/rounded|border|bg-|p-/);
+    }
+    expect(
+      botoes[0].querySelector("svg")?.classList.contains("text-violet-300"),
+    ).toBe(true);
+    expect(
+      botoes[1].querySelector("svg")?.classList.contains("text-[#1B1300]"),
+    ).toBe(true);
+  });
+
   it("(a) a lista compacta mostra o papel EXATO de cada linha, em português", async () => {
     h.modo = "compact";
     await abrirLista();
