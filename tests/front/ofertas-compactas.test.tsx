@@ -101,21 +101,21 @@ const clicar = async (el: Element) => {
 describe("Ofertas Compactas", () => {
   it.each([
     [1, 350, 0],
-    [2, 170, 0],
-    [3, 156, 2],
-    [6, 156, 3],
+    [2, 165, 0],
+    [3, 165, 2],
+    [6, 165, 3],
   ])(
-    "%i produtos: seção de 306 px, cartão de %i px e %i indicadores não interativos",
+    "%i produtos: reserva mínima de 392 px, cartão de %i px e %i indicadores não interativos",
     async (quantidade, largura, pontos) => {
       await montar(
         Array.from({ length: quantidade }, (_, i) => produto(String(i))),
       );
       expect(
         host.querySelector('[data-testid="ofertas-compactas"]')?.className,
-      ).toContain("h-[306px]");
+      ).toContain("min-h-[392px]");
       expect(cartoes()).toHaveLength(quantidade);
       for (const card of cartoes()) {
-        expect(card.className).toContain("h-[220px]");
+        expect(card.className).toContain("min-h-[290px]");
         expect(card.style.width).toBe(`${largura}px`);
       }
       expect(host.querySelectorAll("[data-pagina-ofertas]")).toHaveLength(
@@ -189,12 +189,16 @@ describe("Ofertas Compactas", () => {
     const botao = host.querySelector(
       '[aria-label="Adicionar Bola ao carrinho"]',
     )!;
-    expect(botao.className).toContain("size-11");
+    expect(botao.className).toContain("min-h-11");
+    expect(botao.className).toContain("min-w-11");
+    expect(botao.textContent).toBe("Adicionar");
     await clicar(botao);
     expect(adicionar).toHaveBeenCalledWith(p);
     expect(abrir).not.toHaveBeenCalled();
     await act(async () => vi.advanceTimersByTime(600));
-    expect(botao.className).toContain("bg-emerald-600");
+    expect(botao.className).toContain("bg-white");
+    expect(botao.className).toContain("text-emerald-700");
+    expect(botao.textContent).toBe("Adicionado");
     expect(botao.querySelector("svg")).not.toBeNull();
     await act(async () => vi.advanceTimersByTime(1500));
     expect((botao as HTMLButtonElement).disabled).toBe(false);
@@ -210,16 +214,13 @@ describe("Ofertas Compactas", () => {
       ["favorito"],
     );
     await clicar(
-      host.querySelector('[aria-label="Adicionar opções ao carrinho"]')!,
+      host.querySelector('[aria-label="Escolher opções de opções"]')!,
     );
     expect(abrir).toHaveBeenCalledWith("opções");
     expect(adicionar).not.toHaveBeenCalled();
     expect(
-      (
-        host.querySelector(
-          '[aria-label="Adicionar fim ao carrinho"]',
-        ) as HTMLButtonElement
-      ).disabled,
+      (host.querySelector('[aria-label="Esgotado: fim"]') as HTMLButtonElement)
+        .disabled,
     ).toBe(true);
     const favorito = cartoes().find(
       (c) => c.dataset.ofertaCompacta === "favorito",
@@ -233,7 +234,7 @@ describe("Ofertas Compactas", () => {
     expect(abrir).toHaveBeenCalledTimes(1);
   });
 
-  it("trava casos de borda sem mudar a altura ou inventar urgência", async () => {
+  it("deixa nome e preço alto crescerem sem cortar texto nem inventar urgência", async () => {
     await montar([
       produto("longo ".repeat(30), {
         price: 1299.9,
@@ -253,7 +254,16 @@ describe("Ofertas Compactas", () => {
     const longo = cartoes().find((c) =>
       c.dataset.ofertaCompacta?.startsWith("longo"),
     )!;
-    expect(longo.querySelector("h3")?.className).toContain("line-clamp-2");
+    expect(longo.querySelector("h3")?.textContent).toBe("longo ".repeat(30));
+    for (
+      let el: Element | null = longo.querySelector("h3");
+      el && el !== host;
+      el = el.parentElement
+    ) {
+      expect(el.className).not.toMatch(
+        /truncate|line-clamp|text-overflow|(?:^|\s)h-\[\d+px\]/,
+      );
+    }
     expect(longo.textContent).not.toContain("Por:");
     const simples = cartoes().find(
       (c) => c.dataset.ofertaCompacta === "simples",
@@ -262,6 +272,133 @@ describe("Ofertas Compactas", () => {
     expect(simples.textContent).not.toContain("OFF");
     expect(simples.textContent).not.toContain("Por:");
     expect(host.textContent).not.toContain("Economize");
+  });
+
+  it("preço e compra ficam em blocos de fluxo distintos, sem compra absoluta", async () => {
+    await montar([produto("a"), produto("b"), produto("c")]);
+    for (const card of cartoes()) {
+      const compra = card.querySelector(
+        '[aria-label^="Adicionar"][aria-label$="ao carrinho"]',
+      )!;
+      const preco = Array.from(card.querySelectorAll("span")).find(
+        (el) => el.textContent === "R$ 50,00",
+      )!;
+      expect(preco).toBeDefined();
+      expect(compra.contains(preco)).toBe(false);
+      expect(preco.contains(compra)).toBe(false);
+      for (
+        let el: Element | null = compra;
+        el && el !== card;
+        el = el.parentElement
+      ) {
+        expect(el.className).not.toMatch(/absolute|fixed/);
+      }
+      expect(compra.textContent).toBe("Adicionar");
+      expect(compra.className).toContain("min-h-11");
+      expect(compra.className).toContain("min-w-11");
+      expect(
+        card.querySelector('[aria-label*="favorit"]')?.className,
+      ).toContain("size-11");
+    }
+  });
+
+  it("adicionando bloqueia novo toque, confirma só o produto tocado e volta ao normal", async () => {
+    await montar([produto("a"), produto("b")]);
+    vi.useFakeTimers();
+    const botoes = Array.from(
+      host.querySelectorAll<HTMLButtonElement>(
+        '[aria-label^="Adicionar"][aria-label$="ao carrinho"]',
+      ),
+    );
+    await clicar(botoes[0]);
+    expect(botoes[0].textContent).toBe("Adicionando");
+    expect(botoes[0].disabled).toBe(true);
+    expect(botoes[0].querySelector(".animate-spin")).not.toBeNull();
+    expect(botoes[1].textContent).toBe("Adicionar");
+    expect(botoes[1].disabled).toBe(false);
+    await clicar(botoes[0]);
+    expect(adicionar).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(600));
+    expect(botoes[0].textContent).toBe("Adicionado");
+    expect(botoes[0].className).toContain("border-zinc-200");
+    expect(botoes[0].className).not.toMatch(/bg-emerald|bg-green/);
+    expect(abrir).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(1500));
+    expect(botoes[0].textContent).toBe("Adicionar");
+    expect(botoes[0].disabled).toBe(false);
+  });
+
+  it("mostra estoque real, opções e cores de significado sem fundos coloridos", async () => {
+    await montar([
+      produto("poucas", { stock: 3 }),
+      produto("ultima", { stock: 1 }),
+      produto("fim", { stock: 0 }),
+      produto("opções", {
+        variants: [{ id: "v", active: true }] as Product["variants"],
+      }),
+    ]);
+    expect(host.textContent).toContain("Restam 3");
+    expect(host.textContent).toContain("Resta 1!");
+    const fim = cartoes().find(
+      (card) => card.dataset.ofertaCompacta === "fim",
+    )!;
+    const esgotado = fim.querySelector<HTMLButtonElement>(
+      "[data-compra-oferta]",
+    )!;
+    expect(esgotado.textContent).toBe("Esgotado");
+    expect(esgotado.disabled).toBe(true);
+    await clicar(esgotado);
+    expect(adicionar).not.toHaveBeenCalled();
+    const opcoes = cartoes().find(
+      (card) => card.dataset.ofertaCompacta === "opções",
+    )!;
+    expect(opcoes.querySelector("[data-compra-oferta]")?.textContent).toBe(
+      "Escolher opções",
+    );
+    expect(host.innerHTML).not.toMatch(/bg-(emerald|green|red|rose)-/);
+    expect(fim.querySelector("[data-preco-oferta]")?.className).toContain(
+      "text-zinc-950",
+    );
+  });
+
+  it("uma oferta usa foto e conteúdo lado a lado e preserva a economia verdadeira", async () => {
+    await montar([produto("única")]);
+    const card = cartoes()[0];
+    expect(card.className).toContain("flex-row");
+    expect(card.querySelector("[data-foto-oferta]")?.className).toContain(
+      "w-[44%]",
+    );
+    expect(card.textContent).toContain("Economize R$ 50,00");
+    await montar([produto("única", { originalPrice: 40 })]);
+    expect(card.textContent).not.toContain("Economize");
+    expect(card.textContent).not.toContain("De:");
+    expect(card.textContent).not.toContain("OFF");
+  });
+
+  it("o nome acessível acompanha os estados e a escolha de opções", async () => {
+    await montar([
+      produto("Bola"),
+      produto("camisa", {
+        variants: [{ id: "v", active: true }] as Product["variants"],
+      }),
+      produto("fim", { stock: 0 }),
+    ]);
+    expect(
+      host.querySelector('[aria-label="Escolher opções de camisa"]'),
+    ).not.toBeNull();
+    expect(host.querySelector('[aria-label="Esgotado: fim"]')).not.toBeNull();
+    const botao = host.querySelector<HTMLButtonElement>(
+      '[aria-label="Adicionar Bola ao carrinho"]',
+    )!;
+    vi.useFakeTimers();
+    await clicar(botao);
+    expect(botao.getAttribute("aria-label")).toBe(
+      "Adicionando Bola ao carrinho",
+    );
+    await act(async () => vi.advanceTimersByTime(600));
+    expect(botao.getAttribute("aria-label")).toBe(
+      "Adicionado ao carrinho: Bola",
+    );
   });
 
   it.each([undefined, "padrao", "invalido"])(

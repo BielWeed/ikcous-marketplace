@@ -1,32 +1,35 @@
-/** Reserva síncrona de 306 px, inclusive enquanto o módulo Compacto é baixado. */
+/** Mesma reserva mínima e fluxo do Compacto; nomes longos podem crescer. */
 export function OfertasCompactasEsqueleto() {
   return (
     <div
       data-testid="esqueleto-ofertas"
-      className="h-[306px] overflow-hidden py-4"
+      className="min-h-[392px] overflow-hidden py-4"
     >
-      <div className="mb-3 flex h-5 items-center gap-1.5 px-5">
-        <span className="size-2 rounded-full bg-zinc-200" />
-        <span className="h-5 w-40 animate-pulse rounded bg-[#ECECEF]" />
+      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
+        <span className="h-6 w-40 animate-pulse rounded bg-[#ECECEF]" />
+        <span className="size-1.5 rounded-full bg-zinc-200" />
       </div>
-      <div className="flex h-[228px] gap-2.5 py-1 pl-5">
+      <div className="ml-3 flex gap-2.5 py-1 min-[360px]:ml-5">
         {[0, 1, 2].map((id) => (
           <div
             key={id}
             data-cartao-esqueleto
-            className="h-[220px] w-[156px] shrink-0 animate-pulse rounded-[20px] border border-zinc-200 bg-white p-[5px]"
+            className="flex min-h-[290px] w-[165px] shrink-0 animate-pulse flex-col rounded-[20px] border border-zinc-200 bg-white max-[359px]:w-[145px]"
           >
-            <div className="h-[120px] w-36 rounded-[14px] bg-[#ECECEF]" />
-            <div className="mx-1 mt-2 space-y-1">
-              <div className="h-3 w-[116px] rounded bg-[#ECECEF]" />
-              <div className="h-3 w-[86px] rounded bg-[#ECECEF]" />
-              <div className="h-2.5 w-16 rounded bg-[#ECECEF]" />
-              <div className="h-4 w-[92px] rounded bg-[#ECECEF]" />
+            <div className="h-[136px] w-full shrink-0 rounded-t-[19px] bg-[#ECECEF]" />
+            <div className="flex flex-1 flex-col p-2.5">
+              <div className="mb-1.5 min-h-8 space-y-1">
+                <div className="h-3 w-full rounded bg-[#ECECEF]" />
+                <div className="h-3 w-2/3 rounded bg-[#ECECEF]" />
+              </div>
+              <div className="h-3.5 w-16 rounded bg-[#ECECEF]" />
+              <div className="h-7 w-24 rounded bg-[#ECECEF]" />
+              <div className="mt-2 min-h-11 w-full rounded-xl bg-[#ECECEF]" />
             </div>
           </div>
         ))}
       </div>
-      <div className="mt-2 flex h-1.5 justify-center gap-1.5">
+      <div className="mt-3 flex h-1.5 justify-center gap-1.5">
         {[0, 1, 2].map((id) => (
           <span
             key={id}

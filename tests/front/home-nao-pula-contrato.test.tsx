@@ -495,7 +495,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     expect(esqueletoDeBanner()).not.toBeNull();
   });
 
-  it("Compacto reserva 306 px já no primeiro desenho sem config, pela memória síncrona", async () => {
+  it("Compacto reserva 392 px mínimos já no primeiro desenho sem config, pela memória síncrona", async () => {
     configCarregada = false;
     semearMemoria({
       temBanner: false,
@@ -504,13 +504,13 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
       layoutOfertas: "compacto",
     });
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).toContain("h-[306px]");
+    expect(esqueletoDeOfertas()?.className).toContain("min-h-[392px]");
     expect(
       esqueletoDeOfertas()?.querySelectorAll("[data-cartao-esqueleto]"),
     ).toHaveLength(3);
     expect(
       esqueletoDeOfertas()?.querySelector("[data-cartao-esqueleto]")?.className,
-    ).toContain("h-[220px]");
+    ).toContain("min-h-[290px]");
     expect(
       JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)
         .layoutOfertas,
@@ -522,13 +522,13 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     };
     configCarregada = true;
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).toContain("h-[306px]");
+    expect(esqueletoDeOfertas()?.className).toContain("min-h-[392px]");
   });
 
-  it("sem memória nem config mantém o Padrão; config Compacta reserva 306 px", async () => {
+  it("sem memória nem config mantém o Padrão; config Compacta reserva 392 px mínimos", async () => {
     configCarregada = false;
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).not.toContain("h-[306px]");
+    expect(esqueletoDeOfertas()?.className).not.toContain("min-h-[392px]");
     configDaLoja = {
       homeSections: [
         { id: "offers", title: "Ofertas", active: true, layout: "compacto" },
@@ -536,7 +536,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     };
     configCarregada = true;
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).toContain("h-[306px]");
+    expect(esqueletoDeOfertas()?.className).toContain("min-h-[392px]");
   });
 
   it("a config resolvida vence a memória e grava o novo layout para a próxima visita", async () => {
@@ -552,7 +552,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
       ],
     };
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).not.toContain("h-[306px]");
+    expect(esqueletoDeOfertas()?.className).not.toContain("min-h-[392px]");
     await montar([criarProduto({ id: "p", originalPrice: 130 })], false);
     expect(
       JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)

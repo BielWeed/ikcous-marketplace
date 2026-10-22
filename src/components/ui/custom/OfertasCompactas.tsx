@@ -1,17 +1,11 @@
 import { LazyImage } from "@/components/LazyImage";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
 import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
-import {
-  Check,
-  Flame,
-  Heart,
-  ImageIcon,
-  Loader2,
-  ShoppingCart,
-} from "lucide-react";
+import { Check, Heart, ImageIcon, Loader2, ShoppingCart } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   type PremiumOffersProps,
@@ -26,6 +20,7 @@ export default function OfertasCompactas({
   onToggleFavorite,
   onProductClick,
   onAddToCart,
+  onQuickBuy,
   title = "Super Descontos",
 }: PremiumOffersProps) {
   const ofertas = ordenarOfertas(products);
@@ -53,20 +48,27 @@ export default function OfertasCompactas({
   return (
     <section
       data-testid="ofertas-compactas"
-      className="relative h-[306px] overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent py-4"
+      className="relative min-h-[392px] bg-white py-4"
     >
-      <div className="mb-3 flex h-5 items-center gap-1.5 px-5">
-        <span className="relative flex size-2 shrink-0">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-secondary opacity-75" />
-          <span className="relative inline-flex size-2 rounded-full bg-secondary" />
-        </span>
-        <h2 className="truncate text-xl font-extrabold leading-none tracking-tight text-zinc-950">
+      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
+        <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">
           {title}
         </h2>
+        <span
+          aria-hidden="true"
+          className="size-1.5 shrink-0 rounded-full text-emerald-700"
+        >
+          <svg viewBox="0 0 6 6" className="size-full" aria-hidden="true">
+            <circle cx="3" cy="3" r="3" fill="currentColor" />
+          </svg>
+        </span>
       </div>
       <div
         ref={rola ? ref : undefined}
-        className={cn("ml-5 h-[228px] overflow-hidden", !rola && "mr-5")}
+        className={cn(
+          "ml-3 overflow-hidden min-[360px]:ml-5",
+          !rola && "mr-3 min-[360px]:mr-5",
+        )}
       >
         <div className="flex gap-2.5 py-1">
           {ofertas.map(({ product, discount }) => (
@@ -74,18 +76,19 @@ export default function OfertasCompactas({
               key={product.id}
               product={product}
               discount={discount}
-              largura={ofertas.length === 1 ? 350 : rola ? 156 : 170}
+              largura={ofertas.length === 1 ? 350 : 165}
               largo={ofertas.length === 1}
               rola={rola}
               isFavorite={favorites.includes(product.id)}
               onToggleFavorite={onToggleFavorite}
               onProductClick={onProductClick}
               onAddToCart={onAddToCart}
+              onQuickBuy={onQuickBuy}
             />
           ))}
         </div>
       </div>
-      <div className="mt-2 flex h-1.5 items-center justify-center gap-1.5">
+      <div className="mt-3 flex h-1.5 items-center justify-center gap-1.5">
         {rola &&
           Array.from({ length: Math.ceil(ofertas.length / 2) }, (_, i) => (
             <span
@@ -95,7 +98,7 @@ export default function OfertasCompactas({
               aria-label={`Página ${i + 1} de ofertas`}
               className={cn(
                 "h-1.5 rounded-full",
-                pagina === i ? "w-6 bg-primary" : "w-1.5 bg-zinc-200",
+                pagina === i ? "w-6 bg-zinc-950" : "w-1.5 bg-zinc-200",
               )}
             />
           ))}
@@ -114,9 +117,10 @@ function CartaoOfertaCompacta({
   onToggleFavorite,
   onProductClick,
   onAddToCart,
+  onQuickBuy,
 }: Pick<
   PremiumOffersProps,
-  "onToggleFavorite" | "onProductClick" | "onAddToCart"
+  "onToggleFavorite" | "onProductClick" | "onAddToCart" | "onQuickBuy"
 > & {
   product: Product;
   discount: number;
@@ -138,46 +142,40 @@ function CartaoOfertaCompacta({
     onToggleFavorite,
     onProductClick,
     onAddToCart,
+    onQuickBuy,
   });
   const { prefetchView } = usePrefetchOnHover();
   const esgotado = product.stock <= 0;
-  const botao = (
-    <button
-      type="button"
-      onClick={handleAddToCartClick}
-      aria-label={`Adicionar ${product.name} ao carrinho`}
-      disabled={esgotado || cartStatus !== "idle"}
-      className={cn(
-        "z-10 flex items-center justify-center gap-1 rounded-full text-[11px] font-extrabold",
-        largo
-          ? "relative mt-auto h-11 w-full shrink-0"
-          : "absolute right-[13px] top-[73px] size-11 ring-[3px] ring-white",
-        esgotado
-          ? "bg-zinc-200 text-zinc-500"
-          : cartStatus === "success"
-            ? "bg-emerald-600 text-white"
-            : "bg-primary text-primary-foreground",
-      )}
-    >
-      {cartStatus === "success" ? (
-        <Check className="size-5" />
-      ) : cartStatus === "loading" ? (
-        <Loader2 className="size-5 animate-spin" />
-      ) : (
-        <ShoppingCart className="size-5" />
-      )}
-      {largo &&
-        (esgotado
+  const desconto =
+    precoAntigo && discount > 0 ? (
+      <span
+        className={cn(
+          "text-[11px] font-bold leading-4",
+          CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+        )}
+      >
+        {discount}% OFF
+      </span>
+    ) : null;
+  const estoque =
+    esgotado || product.stock <= 10 ? (
+      <span className="text-[11px] font-bold leading-4 text-red-800">
+        {esgotado
           ? "Esgotado"
-          : hasActiveVariant
-            ? "Escolher opções"
-            : cartStatus === "success"
-              ? "Adicionado!"
-              : cartStatus === "loading"
-                ? "Adicionando..."
-                : "Adicionar")}
-    </button>
-  );
+          : product.stock === 1
+            ? "Resta 1!"
+            : `Restam ${product.stock}`}
+      </span>
+    ) : null;
+  const rotuloCompra = esgotado
+    ? "Esgotado"
+    : hasActiveVariant
+      ? "Escolher opções"
+      : cartStatus === "success"
+        ? "Adicionado"
+        : cartStatus === "loading"
+          ? "Adicionando"
+          : "Adicionar";
   return (
     <article
       data-oferta-compacta={product.id}
@@ -185,129 +183,143 @@ function CartaoOfertaCompacta({
       onMouseEnter={() => prefetchView("product-detail")}
       onTouchStart={() => prefetchView("product-detail")}
       className={cn(
-        "relative h-[220px] min-w-0 max-w-full rounded-[20px] border border-zinc-200 bg-white shadow-sm",
-        rola && "shrink-0",
+        "relative flex min-h-[290px] min-w-0 max-w-full rounded-[20px] border border-zinc-200 bg-white",
+        largo ? "flex-row gap-4 p-3" : "flex-col",
+        rola && "shrink-0 max-[359px]:!w-[145px]",
       )}
     >
       <div
+        data-foto-oferta
         className={cn(
-          "absolute left-[5px] top-[5px] overflow-hidden rounded-[14px] bg-slate-100",
-          largo ? "h-[208px] w-[168px]" : "right-[5px] h-[120px]",
+          "relative shrink-0 overflow-hidden bg-zinc-100",
+          largo
+            ? "min-h-[264px] w-[44%] self-stretch rounded-[14px]"
+            : "h-[136px] w-full rounded-t-[19px]",
         )}
       >
         {product.images[0] ? (
           <LazyImage
             src={product.images[0]}
             alt={product.name}
-            sizes="170px"
+            sizes="165px"
             className="size-full object-cover"
           />
         ) : (
           <div
             data-sem-foto
-            className="flex size-full items-center justify-center"
+            className="flex size-full min-h-[136px] flex-col items-center justify-center gap-2 text-zinc-500"
           >
-            <ImageIcon aria-hidden="true" className="size-7 text-slate-400" />
+            <ImageIcon aria-hidden="true" className="size-6" />
+            <span className="text-xs">Sem foto</span>
           </div>
         )}
-        {esgotado && <div className="absolute inset-0 bg-white/70" />}
+        {esgotado && (
+          <div className="pointer-events-none absolute inset-0 bg-white/70" />
+        )}
+        {!largo && (
+          <>
+            <div className="pointer-events-none absolute left-3 top-3">
+              {desconto}
+            </div>
+            <div className="pointer-events-none absolute bottom-2 left-3">
+              {estoque}
+            </div>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={handleFavoriteClick}
+          aria-label={rotuloDeFavoritar(product.name, isFavorite)}
+          aria-pressed={isFavorite}
+          className={cn(
+            "absolute right-1 top-1 z-20 flex size-11 items-center justify-center rounded-xl bg-white focus-visible:ring-2 focus-visible:ring-zinc-950",
+            isFavorite ? "text-zinc-950" : "text-zinc-500",
+          )}
+        >
+          <Heart
+            aria-hidden="true"
+            className={cn("size-6", isFavorite && "fill-current")}
+          />
+        </button>
       </div>
-      {precoAntigo && discount > 0 && (
-        <div className="pointer-events-none absolute left-[11px] top-[11px] flex h-[22px] overflow-hidden rounded-full bg-emerald-50 text-[11px] font-extrabold text-emerald-700">
-          <span className="flex w-[26px] items-center justify-center bg-zinc-950 text-white">
-            <Flame className="size-3 fill-current" />
-          </span>
-          <span className="px-1.5 leading-[22px]">{discount}% OFF</span>
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={handleFavoriteClick}
-        aria-label={rotuloDeFavoritar(product.name, isFavorite)}
-        className={cn(
-          "absolute top-[7px] z-10 flex size-11 items-center justify-center",
-          largo ? "left-[125px]" : "right-[7px]",
-        )}
-      >
-        <span
-          className={cn(
-            "flex size-8 items-center justify-center rounded-full",
-            isFavorite ? "bg-red-50 text-red-500" : "bg-white text-slate-500",
-          )}
-        >
-          <Heart className={cn("size-[18px]", isFavorite && "fill-current")} />
-        </span>
-      </button>
-      {(esgotado || product.stock <= 10) && (
-        <span
-          className={cn(
-            "pointer-events-none absolute left-[11px] flex h-[22px] items-center rounded-full px-1.5 text-[11px] font-extrabold",
-            largo ? "bottom-[13px]" : "top-[95px]",
-            esgotado ? "bg-zinc-950 text-white" : "bg-red-50 text-red-700",
-          )}
-        >
-          {esgotado
-            ? "Esgotado"
-            : product.stock === 1
-              ? "Resta 1!"
-              : `Restam ${product.stock}`}
-        </span>
-      )}
-      {!largo && botao}
-      <div
-        className={cn(
-          "absolute",
-          largo
-            ? "bottom-[9px] left-[183px] right-[11px] top-[15px] flex flex-col"
-            : "bottom-[9px] left-[9px] right-[9px]",
-        )}
-      >
+      <div className={cn("flex min-w-0 flex-1 flex-col", !largo && "p-2.5")}>
+        {largo && <div className="mb-3">{desconto}</div>}
         <h3
           className={cn(
-            "text-[13px] font-semibold leading-[17px]",
-            largo ? "mb-auto line-clamp-3" : "mb-1 h-[34px] line-clamp-2",
-            esgotado ? "text-zinc-500" : "text-zinc-900",
+            "mb-1.5 min-h-8 break-words text-[13px] font-medium leading-4 text-zinc-950",
+            largo && "mb-auto pb-3",
           )}
         >
           {product.name}
         </h3>
-        <div
-          className={cn(
-            "h-[14px] text-[11px] font-medium leading-[14px] line-through",
-            esgotado ? "text-zinc-500" : "text-slate-500",
-          )}
-        >
+        <div className="min-h-3.5 text-[11px] leading-[14px] text-zinc-500 line-through">
           {precoAntigo ? `De: ${formatCurrency(precoAntigo)}` : null}
         </div>
-        <div
+        <span
+          data-preco-oferta
           className={cn(
-            "flex h-6 items-baseline gap-1 whitespace-nowrap font-extrabold",
+            "break-words text-[22px] font-extrabold leading-7 tracking-tight",
             esgotado
-              ? "text-zinc-500"
+              ? "text-zinc-950"
               : precoAntigo
-                ? "text-emerald-700"
+                ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
                 : "text-slate-900",
           )}
         >
-          {precoAntigo && product.price < 1000 && (
-            <span className="text-[11px] leading-[14px]">Por:</span>
-          )}
-          <span className="text-[18px] leading-6 -tracking-wide">
-            {formatCurrency(product.price)}
-          </span>
-        </div>
+          {formatCurrency(product.price)}
+        </span>
         {largo && savings > 0 && (
-          <span className="mb-2 mt-1 w-fit rounded bg-emerald-50 px-1.5 text-[11px] font-extrabold leading-[22px] text-emerald-700">
+          <span
+            className={cn(
+              "mt-2 break-words text-[11px] font-bold leading-4",
+              CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+            )}
+          >
             Economize {formatCurrency(savings)}
           </span>
         )}
-        {largo && botao}
+        {largo && <div className="mt-2">{estoque}</div>}
+        <button
+          type="button"
+          onClick={handleAddToCartClick}
+          data-compra-oferta
+          aria-label={
+            esgotado
+              ? `Esgotado: ${product.name}`
+              : hasActiveVariant
+                ? `Escolher opções de ${product.name}`
+                : cartStatus === "success"
+                  ? `Adicionado ao carrinho: ${product.name}`
+                  : `${rotuloCompra} ${product.name} ao carrinho`
+          }
+          disabled={esgotado || cartStatus !== "idle"}
+          className={cn(
+            "relative z-10 mt-2 flex min-h-11 min-w-11 w-full shrink-0 items-center justify-center gap-1 rounded-xl border px-2 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2",
+            esgotado
+              ? "border-zinc-100 bg-zinc-100 text-zinc-500"
+              : cartStatus === "success"
+                ? "border-zinc-200 bg-white text-emerald-700"
+                : "border-zinc-950 bg-zinc-950 text-white",
+          )}
+        >
+          {cartStatus === "success" ? (
+            <Check aria-hidden="true" className="size-4 shrink-0" />
+          ) : cartStatus === "loading" ? (
+            <Loader2
+              aria-hidden="true"
+              className="size-4 shrink-0 animate-spin"
+            />
+          ) : !esgotado && !hasActiveVariant ? (
+            <ShoppingCart aria-hidden="true" className="size-[18px] shrink-0" />
+          ) : null}
+          <span aria-live="polite">{rotuloCompra}</span>
+        </button>
       </div>
       <button
         type="button"
         aria-label={`Ver ${product.name}`}
         onClick={handleCardClick}
-        className="absolute inset-0 rounded-[20px] focus-visible:ring-2 focus-visible:ring-primary"
+        className="absolute inset-0 min-h-11 min-w-11 rounded-[20px] focus-visible:ring-2 focus-visible:ring-zinc-950"
       />
     </article>
   );
