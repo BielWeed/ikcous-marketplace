@@ -1,3 +1,8 @@
+import {
+  AcaoDeResumo,
+  CartaoDeResumo,
+  QuadradinhoDoIcone,
+} from "@/components/checkout/CartoesDeResumo";
 import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
 import type { CartaoEmCurso } from "@/components/checkout/PagamentoComCartao";
 import {
@@ -139,6 +144,7 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
+  ChevronRight,
   Clock,
   CreditCard,
   FileText,
@@ -2251,6 +2257,32 @@ export function CheckoutViewDaConta({
   const [identificacaoAbertaManual, setIdentificacaoAbertaManual] =
     useState(false);
   const identificacaoExpandida = identificacaoAbertaManual;
+  // PASSO A1 (22/10/2026): recolhida, a seção mostra dois resumos compactos
+  // ("Seus dados" e "Endereço de entrega"); aberta, mostra o cabeçalho de
+  // recolher + os formulários de sempre. O botão que o dedo tocou some na
+  // troca — o foco vai para o botão que assume o lugar dele (cabeçalho ao
+  // abrir pelo resumo; "Editar" ao recolher pelo cabeçalho). Só os dois
+  // gestos abaixo pedem isso: outras aberturas (submit inválido, aviso da
+  // barra) já levam o foco ao campo que precisa de correção.
+  const focoAposAlternarRef = useRef<"cabecalho" | "resumo" | null>(null);
+  useEffect(() => {
+    if (focoAposAlternarRef.current === "cabecalho" && identificacaoExpandida)
+      document.getElementById("cabecalho-dados-e-entrega")?.focus();
+    else if (
+      focoAposAlternarRef.current === "resumo" &&
+      !identificacaoExpandida
+    )
+      document.getElementById("resumo-editar-dados")?.focus();
+    focoAposAlternarRef.current = null;
+  }, [identificacaoExpandida]);
+  const abrirPeloResumo = () => {
+    focoAposAlternarRef.current = "cabecalho";
+    setIdentificacaoAbertaManual(true);
+  };
+  const recolherPeloCabecalho = () => {
+    focoAposAlternarRef.current = "resumo";
+    setIdentificacaoAbertaManual(false);
+  };
   // Último CEP que a calculadora DESTA tela gravou como cotado. Ao voltar
   // para um endereço já cotado, a calculadora serve do cache NO MESMO commit
   // da troca (síncrono) — e este efeito, que roda depois do dela, ainda vê o
@@ -5505,150 +5537,180 @@ export function CheckoutViewDaConta({
           }
         }}
       >
-        {/* CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
-            Endereços" viraram UMA seção — "Seus dados e entrega" — com
-            cabeçalho clicável (`aria-expanded`/`aria-controls`) e resumo
-            compacto quando os dados estão completos. Nunca dois cartões
-            altos independentes (pedido do dono: tela de Finalizar comprida
-            demais no celular). */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <button
-            type="button"
-            id="cabecalho-dados-e-entrega"
-            aria-expanded={identificacaoExpandida}
-            aria-controls="secao-dados-e-entrega"
-            onClick={() =>
-              setIdentificacaoAbertaManual(!identificacaoExpandida)
-            }
-            // `min-h-11` = 44px, o piso de alvo de toque do laudo de
-            // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não só
-            // o texto.
-            className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
-          >
-            <span className="flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-                <User className="size-4" />
-              </span>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                Seus dados e entrega
-              </span>
-            </span>
-            <ChevronDown
-              aria-hidden="true"
-              className={cn(
-                "size-4 shrink-0 text-zinc-400 transition-transform",
-                identificacaoExpandida && "rotate-180",
-              )}
-            />
-          </button>
-
-          {/* RESUMO COMPACTO: só aparece com a seção recolhida — nunca ao
-              mesmo tempo que o formulário aberto, que traz os mesmos dados
-              editáveis logo abaixo. */}
-          {!identificacaoExpandida && (
-            <div className="space-y-3 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 space-y-0.5">
-                  {faltaNome ? (
-                    <p
-                      className="text-xs font-bold text-red-600"
-                      data-testid="checkout-resumo-falta-nome"
-                    >
-                      Informe seu nome
-                    </p>
-                  ) : (
-                    <p className="truncate text-sm font-bold text-zinc-800">
-                      {nomeAtual}
-                    </p>
-                  )}
-                  {faltaWhatsapp ? (
-                    <p
-                      className="text-xs font-bold text-red-600"
-                      data-testid="checkout-resumo-falta-whatsapp"
-                    >
-                      Informe seu WhatsApp
-                    </p>
-                  ) : (
-                    <p className="text-xs font-medium text-zinc-500">
-                      {abreviarWhatsapp(whatsappAtual ?? "")}
-                    </p>
-                  )}
-                  {exigeCpfDoDestinatario &&
-                    (faltaCpf ? (
-                      <p
-                        className="text-xs font-bold text-red-600"
-                        data-testid="checkout-resumo-falta-cpf"
-                      >
-                        Informe o CPF de quem recebe
-                      </p>
-                    ) : (
-                      <p className="text-xs font-medium text-zinc-500">
-                        CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
-                      </p>
-                    ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIdentificacaoAbertaManual(true)}
-                  className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
+        {/* PASSO A1 (22/10/2026): recolhida, a seção vira DOIS resumos
+            compactos — "Seus dados" e "Endereço de entrega" —, cada um com o
+            selo de ok quando está completo e uma ação discreta ("Editar"/
+            "Trocar") que abre os MESMOS formulários de sempre (logo abaixo,
+            sempre montados, só escondidos: nada do que se digita se perde).
+            Nunca os dois resumos ao mesmo tempo que o formulário aberto, que
+            traz os mesmos dados editáveis. As pendências continuam apontadas
+            uma a uma (mesmos `data-testid`). */}
+        {!identificacaoExpandida && (
+          <>
+            <CartaoDeResumo
+              rotulo="Seus dados"
+              icone={<User className="size-5" />}
+              ok={!faltaNome && !faltaWhatsapp && !faltaCpf}
+              acao={
+                <AcaoDeResumo
+                  id="resumo-editar-dados"
+                  controla="secao-dados-e-entrega"
+                  onClick={abrirPeloResumo}
                 >
                   Editar
-                </button>
-              </div>
-              <div className="border-t border-zinc-100/70 pt-3">
-                {user && enderecoEfetivo ? (
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="truncate text-xs font-bold uppercase tracking-wide text-zinc-500">
-                        {enderecoEfetivo.name}
-                      </p>
-                      <p className="text-xs font-medium text-zinc-500">
-                        {resumoDoEndereco(enderecoEfetivo)}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIdentificacaoAbertaManual(true)}
-                      className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
-                    >
-                      Trocar
-                    </button>
-                  </div>
-                ) : user ? (
-                  <button
-                    type="button"
-                    onClick={() => setIdentificacaoAbertaManual(true)}
-                    className="text-xs font-bold text-red-600 underline"
-                    data-testid="checkout-resumo-falta-endereco"
+                </AcaoDeResumo>
+              }
+            >
+              <div className="min-w-0 space-y-0.5">
+                {faltaNome ? (
+                  <p
+                    className="text-sm font-bold text-red-600"
+                    data-testid="checkout-resumo-falta-nome"
                   >
-                    Cadastre um endereço de entrega
-                  </button>
-                ) : enderecoConvidadoCompleto ? (
-                  <p className="text-xs font-medium text-zinc-500">
-                    {resumoDoEndereco({
-                      street: ruaAtual ?? "",
-                      number: numeroAtual ?? "",
-                      neighborhood: bairroAtual ?? "",
-                      city: cidadeAtual ?? "",
-                      state: estadoAtual ?? "",
-                      cep: cepDigitadoNoFormulario ?? "",
-                    })}
+                    Informe seu nome
                   </p>
                 ) : (
-                  <p
-                    className="text-xs font-bold text-red-600"
-                    data-testid="checkout-resumo-falta-endereco"
-                  >
-                    Informe o endereço de entrega
+                  <p className="truncate text-base font-bold text-zinc-900">
+                    {nomeAtual}
                   </p>
                 )}
+                {faltaWhatsapp ? (
+                  <p
+                    className="text-sm font-bold text-red-600"
+                    data-testid="checkout-resumo-falta-whatsapp"
+                  >
+                    Informe seu WhatsApp
+                  </p>
+                ) : (
+                  <p className="text-sm font-medium text-zinc-600">
+                    {abreviarWhatsapp(whatsappAtual ?? "")}
+                  </p>
+                )}
+                {exigeCpfDoDestinatario &&
+                  (faltaCpf ? (
+                    <p
+                      className="text-sm font-bold text-red-600"
+                      data-testid="checkout-resumo-falta-cpf"
+                    >
+                      Informe o CPF de quem recebe
+                    </p>
+                  ) : (
+                    <p className="text-sm font-medium text-zinc-600">
+                      CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
+                    </p>
+                  ))}
               </div>
-            </div>
+            </CartaoDeResumo>
+
+            <CartaoDeResumo
+              rotulo="Endereço de entrega"
+              icone={<MapPin className="size-5" />}
+              ok={user ? !!enderecoEfetivo : enderecoConvidadoCompleto}
+              acao={
+                user && !enderecoEfetivo ? undefined : (
+                  <AcaoDeResumo
+                    controla="secao-dados-e-entrega"
+                    onClick={abrirPeloResumo}
+                  >
+                    {user ? "Trocar" : "Editar"}
+                  </AcaoDeResumo>
+                )
+              }
+            >
+              {user && enderecoEfetivo ? (
+                <div className="min-w-0 space-y-0.5">
+                  <p className="truncate text-base font-bold text-zinc-900">
+                    {enderecoEfetivo.name}
+                  </p>
+                  <p className="line-clamp-2 text-sm font-medium text-zinc-600">
+                    {resumoDoEndereco(enderecoEfetivo)}
+                  </p>
+                </div>
+              ) : user ? (
+                <button
+                  type="button"
+                  onClick={abrirPeloResumo}
+                  aria-expanded={false}
+                  aria-controls="secao-dados-e-entrega"
+                  className="flex min-h-11 w-full items-center gap-1.5 text-left text-sm font-bold text-amber-800"
+                  data-testid="checkout-resumo-falta-endereco"
+                >
+                  <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    Cadastre um endereço de entrega
+                  </span>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-zinc-500"
+                  />
+                </button>
+              ) : enderecoConvidadoCompleto ? (
+                <p className="line-clamp-2 text-sm font-medium text-zinc-600">
+                  {resumoDoEndereco({
+                    street: ruaAtual ?? "",
+                    number: numeroAtual ?? "",
+                    neighborhood: bairroAtual ?? "",
+                    city: cidadeAtual ?? "",
+                    state: estadoAtual ?? "",
+                    cep: cepDigitadoNoFormulario ?? "",
+                  })}
+                </p>
+              ) : (
+                <p
+                  className="flex items-center gap-1.5 text-sm font-bold text-amber-800"
+                  data-testid="checkout-resumo-falta-endereco"
+                >
+                  <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
+                  Informe o endereço de entrega
+                </p>
+              )}
+            </CartaoDeResumo>
+          </>
+        )}
+
+        {/* Formulários de "Seus dados e entrega": SEMPRE montados (escondidos
+            quando recolhida) — o cabeçalho de recolher só existe com a seção
+            aberta, e quem a abre é o "Editar"/"Trocar" dos resumos acima (ou
+            o submit inválido / o aviso da barra, que também focam o campo). */}
+        <div
+          hidden={!identificacaoExpandida}
+          className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm"
+        >
+          {identificacaoExpandida && (
+            <button
+              type="button"
+              id="cabecalho-dados-e-entrega"
+              aria-expanded={true}
+              aria-controls="secao-dados-e-entrega"
+              onClick={recolherPeloCabecalho}
+              // `min-h-11` = 44px, o piso de alvo de toque do laudo de
+              // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não
+              // só o texto.
+              className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+            >
+              <span className="flex items-center gap-2">
+                <QuadradinhoDoIcone>
+                  <User className="size-4" />
+                </QuadradinhoDoIcone>
+                <span className="text-base font-semibold text-zinc-900">
+                  Seus dados e entrega
+                </span>
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className="size-4 shrink-0 rotate-180 text-zinc-500"
+              />
+            </button>
           )}
 
           <div
             id="secao-dados-e-entrega"
-            aria-labelledby="cabecalho-dados-e-entrega"
+            aria-labelledby={
+              identificacaoExpandida ? "cabecalho-dados-e-entrega" : undefined
+            }
+            aria-label={
+              identificacaoExpandida ? undefined : "Seus dados e entrega"
+            }
             hidden={!identificacaoExpandida}
             className="space-y-4 p-4"
           >
