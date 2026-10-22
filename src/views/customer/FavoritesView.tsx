@@ -134,25 +134,58 @@ export const FavoritesView = React.memo(function FavoritesView({
     ? categoriaAtiva
     : (secoes[0]?.nome ?? "");
 
-  // O atalho ativo acompanha a seção que está no topo da tela.
+  // O atalho ativo acompanha a seção que está na tela, nos DOIS sentidos da
+  // rolagem. Calculado por POSIÇÃO a cada rolagem (e não por "seção que
+  // entrou"): um observador de interseção só avisa de quem entra, e rolando
+  // para cima a seção de cima nunca "entra" de novo. Regra: ativa é a última
+  // seção cujo topo já passou de 35% da altura da tela; no fim da página, a
+  // última (seções curtas no fim nunca chegariam ao topo). A rolagem pode ser
+  // da janela ou de um contêiner: o `capture` pega as duas.
   useEffect(() => {
-    if (!mostrarAtalhos || typeof IntersectionObserver === "undefined") return;
-    const observador = new IntersectionObserver(
-      (entradas) => {
-        const noTopo = entradas
-          .filter((entrada) => entrada.isIntersecting)
-          .sort(
-            (a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
-          )[0];
-        const nome = (noTopo?.target as HTMLElement | undefined)?.dataset.secao;
-        if (nome) setCategoriaAtiva(nome);
-      },
-      { rootMargin: "0px 0px -65% 0px" },
-    );
-    for (const el of listaRef.current?.querySelectorAll("[data-secao]") ?? []) {
-      observador.observe(el);
-    }
-    return () => observador.disconnect();
+    if (!mostrarAtalhos) return;
+    let quadro = 0;
+    let pendente = false;
+    const calcular = (alvo: EventTarget | null) => {
+      const secoesEl =
+        listaRef.current?.querySelectorAll<HTMLElement>("[data-secao]");
+      if (!secoesEl || secoesEl.length === 0) return;
+      // Rolagem de algo que não contém a lista (ex.: a faixa de atalhos
+      // andando de lado) não diz nada sobre a seção em vista.
+      if (alvo instanceof Element && !alvo.contains(listaRef.current)) return;
+      const rolado = alvo instanceof Element ? alvo : document.documentElement;
+      const noFim =
+        rolado.scrollHeight > rolado.clientHeight + 2 &&
+        rolado.scrollTop + rolado.clientHeight >= rolado.scrollHeight - 2;
+      let ativa = secoesEl[0];
+      if (noFim) {
+        ativa = secoesEl[secoesEl.length - 1];
+      } else {
+        const linha = window.innerHeight * 0.35;
+        for (const el of secoesEl) {
+          if (el.getBoundingClientRect().top <= linha) ativa = el;
+        }
+      }
+      const nome = ativa.dataset.secao;
+      if (nome) setCategoriaAtiva(nome);
+    };
+    const agendar = (evento: Event) => {
+      if (pendente) return;
+      pendente = true;
+      quadro = window.requestAnimationFrame(() => {
+        pendente = false;
+        calcular(evento.target);
+      });
+    };
+    document.addEventListener("scroll", agendar, {
+      capture: true,
+      passive: true,
+    });
+    window.addEventListener("resize", agendar, { passive: true });
+    return () => {
+      document.removeEventListener("scroll", agendar, { capture: true });
+      window.removeEventListener("resize", agendar);
+      if (pendente) window.cancelAnimationFrame(quadro);
+    };
   }, [mostrarAtalhos, chaveDasSecoes]);
 
   const irParaSecao = (nome: string, indice: number) => {

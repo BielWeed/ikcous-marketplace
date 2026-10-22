@@ -343,3 +343,77 @@ describe("Favoritos — estado vazio", () => {
     ).toBeNull();
   });
 });
+
+describe("Favoritos — o atalho ativo acompanha a rolagem nos dois sentidos", () => {
+  const quatro = [
+    produto("a", "Bola", 10, "Brinquedos"),
+    produto("b", "Bloco", 10, "Papelaria"),
+    produto("c", "Camisa", 10, "Roupas"),
+    produto("d", "Solto", 10, "Cozinha"),
+  ];
+
+  /** Posiciona as seções (topo de cada uma na tela) e avisa a rolagem. */
+  function rolarPara(topos: number[], fim = false) {
+    const secoesEl = [...container.querySelectorAll("section")];
+    secoesEl.forEach((sec, i) => {
+      sec.getBoundingClientRect = () =>
+        ({ top: topos[i], bottom: topos[i] + 100, height: 100 }) as DOMRect;
+    });
+    const raiz = document.documentElement;
+    Object.defineProperty(raiz, "scrollHeight", {
+      value: 3000,
+      configurable: true,
+    });
+    Object.defineProperty(raiz, "clientHeight", {
+      value: 800,
+      configurable: true,
+    });
+    Object.defineProperty(raiz, "scrollTop", {
+      value: fim ? 2200 : 0,
+      configurable: true,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("scroll"));
+    });
+  }
+  const ativo = () =>
+    [...container.querySelectorAll('nav[aria-label="Categorias"] button')]
+      .filter((b) => b.getAttribute("aria-current") === "true")
+      .map((b) => b.textContent);
+
+  beforeEach(() => {
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    montar(quatro);
+  });
+
+  it("rolando para baixo e depois para cima, o chip preto volta para a seção da tela", () => {
+    expect(ativo()).toEqual(["Brinquedos 1"]);
+    rolarPara([-500, -100, 300, 700]);
+    expect(ativo()).toEqual(["Papelaria 1"]);
+    rolarPara([-900, -500, -100, 300]);
+    expect(ativo()).toEqual(["Roupas 1"]);
+    rolarPara([-500, -100, 300, 700]);
+    expect(ativo()).toEqual(["Papelaria 1"]);
+    rolarPara([0, 400, 800, 1200]);
+    expect(ativo()).toEqual(["Brinquedos 1"]);
+  });
+
+  it("no fim da página a última seção fica ativa, mesmo curta demais para chegar ao topo", () => {
+    rolarPara([-600, -450, 300, 450], true);
+    expect(ativo()).toEqual(["Cozinha 1"]);
+    // subindo um pouco, deixa de ser o fim da página
+    rolarPara([-500, -350, 400, 550], false);
+    expect(ativo()).toEqual(["Papelaria 1"]);
+  });
+
+  it("não escuta mais a rolagem depois de sair da tela", () => {
+    const remover = vi.spyOn(document, "removeEventListener");
+    act(() => raiz.unmount());
+    expect(remover.mock.calls.some(([tipo]) => tipo === "scroll")).toBe(true);
+    raiz = createRoot(container);
+  });
+});
