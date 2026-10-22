@@ -1,6 +1,6 @@
 import { Pencil } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 
 import {
   Sheet,
@@ -10,6 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
 import { useTelaLarga } from "@/hooks/useFinanceiro";
 import { cn } from "@/lib/utils";
 import { SeloFinanceiro } from "./partes";
@@ -41,6 +42,30 @@ export function FolhaFinanceira({
   readonly matiz?: string;
 }) {
   const larga = useTelaLarga();
+  const teclado = useAlturaDoTeclado();
+  // O teclado do celular se sobrepõe à página: a folha sobe acima dele e,
+  // ao focar um campo, ele é trazido à vista dentro do corpo que rola.
+  useEffect(() => {
+    if (larga) return;
+    let timer: number | undefined;
+    const aoFocar = (evento: FocusEvent) => {
+      const alvo = evento.target;
+      if (!(alvo instanceof HTMLElement)) return;
+      if (alvo.tagName !== "INPUT" && alvo.tagName !== "TEXTAREA") return;
+      if (!alvo.closest("[data-folha-financeira]")) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(
+        () => alvo.scrollIntoView({ block: "nearest" }),
+        150,
+      );
+    };
+    document.addEventListener("focusin", aoFocar);
+    return () => {
+      document.removeEventListener("focusin", aoFocar);
+      window.clearTimeout(timer);
+    };
+  }, [larga]);
+  const comTeclado = !larga && teclado > 0;
   return (
     <Sheet
       open
@@ -50,6 +75,15 @@ export function FolhaFinanceira({
     >
       <SheetContent
         side={larga ? "right" : "bottom"}
+        data-folha-financeira=""
+        style={
+          comTeclado
+            ? {
+                bottom: teclado,
+                maxHeight: `calc(100dvh - (${teclado}px + 1rem))`,
+              }
+            : undefined
+        }
         className={cn(
           "gap-0 border-admin-border bg-admin-bg p-0 text-white [&>button]:flex [&>button]:size-11 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full [&>button]:bg-admin-raised [&>button]:text-zinc-300",
           larga ? "w-full sm:max-w-md" : "max-h-[94dvh] rounded-t-3xl",
