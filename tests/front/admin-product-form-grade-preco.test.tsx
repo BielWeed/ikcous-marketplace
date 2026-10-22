@@ -28,6 +28,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   addProduct: vi.fn(),
   updateProduct: vi.fn(),
+  salvarProdutoComGrade: vi
+    .fn()
+    .mockResolvedValue({ produto: undefined, recusadas: [] }),
   upsertVariants: vi.fn(),
   fetchProduct: vi.fn(),
   rpc: vi.fn(),
@@ -40,6 +43,7 @@ vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct: mocks.addProduct,
     updateProduct: mocks.updateProduct,
+    salvarProdutoComGrade: mocks.salvarProdutoComGrade,
     upsertVariants: mocks.upsertVariants,
     deleteVariants: vi.fn().mockResolvedValue(undefined),
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -189,6 +193,8 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     mocks.loja.produtos = [];
     mocks.addProduct.mockResolvedValue({ id: "novo-1" });
     mocks.updateProduct.mockResolvedValue({ id: "prod-1" });
@@ -620,11 +626,14 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       await act(async () => {
         clicarObrigatorio("Salvar");
       });
-      expect(mocks.updateProduct).toHaveBeenCalledTimes(1);
+      expect(mocks.salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+      expect(mocks.updateProduct).not.toHaveBeenCalled();
       expect(
-        (mocks.updateProduct.mock.calls[0]?.[1] as { price: number }).price,
+        (mocks.salvarProdutoComGrade.mock.calls[0]?.[1] as { price: number })
+          .price,
       ).toBe(89.9);
-      const lote = mocks.upsertVariants.mock.calls[0]?.[1] as Array<{
+      const lote = mocks.salvarProdutoComGrade.mock.calls[0]?.[2]
+        .variantes as Array<{
         value: string;
         priceOverride?: number;
       }>;

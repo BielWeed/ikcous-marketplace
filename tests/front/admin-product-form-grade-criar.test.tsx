@@ -21,6 +21,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fetchProduct = vi.fn();
 const upsertVariants = vi.fn().mockResolvedValue(undefined);
 const updateProduct = vi.fn().mockResolvedValue(undefined);
+const salvarProdutoComGrade = vi
+  .fn()
+  .mockResolvedValue({ produto: undefined, recusadas: [] });
 const addProduct = vi.fn().mockResolvedValue(undefined);
 // A lista da loja alimenta a checagem de SKU (UNIQUE global da tabela).
 let produtosDaLoja: Array<Record<string, unknown>> = [];
@@ -29,6 +32,7 @@ vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct,
     updateProduct,
+    salvarProdutoComGrade,
     upsertVariants,
     deleteVariants: vi.fn().mockResolvedValue(undefined),
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -168,6 +172,8 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     produtosDaLoja = [];
     armazem = new Map();
     vi.stubGlobal("localStorage", {
@@ -361,7 +367,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
   });
 });
 
-describe("AdminProductFormView — grade gravando pelo upsertVariants (produto existente)", () => {
+describe("AdminProductFormView — grade gravando pela RPC (produto existente)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let armazem: Map<string, string>;
@@ -403,6 +409,8 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     upsertVariants.mockResolvedValue(undefined);
     updateProduct.mockResolvedValue(undefined);
     produtosDaLoja = [];
@@ -482,7 +490,7 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
     });
   }
 
-  it("payload do upsertVariants: nova linha com preço/estoque/SKU certos e a existente intacta", async () => {
+  it("payload da RPC: nova linha com preço/estoque/SKU certos e a existente intacta", async () => {
     await montarEmEdicao();
     await adicionarAmarelaP();
 
@@ -497,12 +505,11 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
     });
 
     expect(toastError).not.toHaveBeenCalled();
-    expect(upsertVariants).toHaveBeenCalledTimes(1);
-    const [idNoUpsert, lote] = upsertVariants.mock.calls[0] as [
-      string,
-      Array<Record<string, unknown>>,
-    ];
-    expect(idNoUpsert).toBe("prod-1");
+    expect(upsertVariants).not.toHaveBeenCalled();
+    expect(salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+    const [id, , opcoes] = salvarProdutoComGrade.mock.calls[0];
+    const lote = opcoes.variantes as Array<Record<string, unknown>>;
+    expect(id).toBe("prod-1");
     expect(lote).toHaveLength(2);
 
     const existente = lote.find((v) => v.value === "Branca / PP");
