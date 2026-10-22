@@ -1010,10 +1010,12 @@ describe("CheckoutView — gatilho do resumo no topo, painel e barra de baixo co
     const barra = botaoFinalizar!.closest(".bottom-docked-navigation")!;
     expect(barra.textContent).toContain("Entrega");
     expect(barra.textContent).toContain("R$ 8,00");
-    // Uma quebra só, após "com os": a frase ocupa 2 linhas juntas (os dois
+    // A frase de aceite fica no fim da tela, FORA da barra do botão (dono,
+    // 22/10/2026). Uma quebra só, após "com os": 2 linhas juntas (os dois
     // links na 2ª), sem o buraco que os alvos de 44px em linha abriam.
+    expect(barra.querySelector("[data-testid=frase-de-aceite]")).toBeNull();
     expect(
-      barra.querySelectorAll("[data-testid=frase-de-aceite] br"),
+      document.querySelectorAll("[data-testid=frase-de-aceite] br"),
     ).toHaveLength(1);
     expect(botaoFinalizar!.textContent).toContain("Finalizar Pedido");
 

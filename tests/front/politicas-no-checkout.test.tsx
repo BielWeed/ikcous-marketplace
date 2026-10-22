@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 //
-// CHECKOUT: ao lado do botão "Finalizar" a cliente lê "Ao finalizar você
-// concorda com os Termos de uso e a Política de Privacidade", com os dois
-// links. O que se prova, com o CheckoutView REAL (harness herdado de
+// CHECKOUT: no fim da tela do pedido (fora da barra fixa do botão
+// "Finalizar") a cliente lê "Ao finalizar você concorda com os Termos de uso
+// e a Política de Privacidade", com os dois links. O que se prova, com o CheckoutView REAL (harness herdado de
 // `checkout-retirada-na-loja`):
-//   1. a frase está na barra fixa do botão, e NÃO é caixa de marcar: o
-//      Finalizar não depende dela;
+//   1. a frase está no corpo da tela, rolando com o conteúdo, e NÃO dentro da
+//      barra fixa do botão; não é caixa de marcar: o Finalizar não depende
+//      dela;
 //   2. abrir um link NÃO navega (o checkout não sai de cena): a folha abre
 //      por cima e, ao fechar, a escolha de frete, o meio de pagamento e o
 //      carrinho continuam os mesmos — o pedido sai idêntico;
@@ -264,7 +265,7 @@ describe("CheckoutView — termos e privacidade ao lado do Finalizar", () => {
     await drenar();
   }
 
-  it("a frase está na MESMA barra fixa do botão Finalizar, com os dois links, sem caixa de marcar", async () => {
+  it("a frase está no corpo da tela, FORA da barra fixa do botão Finalizar, com os dois links, sem caixa de marcar", async () => {
     await montar();
     expect(frase()).not.toBeNull();
     expect(frase().textContent).toBe(
@@ -272,7 +273,8 @@ describe("CheckoutView — termos e privacidade ao lado do Finalizar", () => {
     );
     const barra = finalizar().closest(".fixed");
     expect(barra).not.toBeNull();
-    expect(barra?.contains(frase())).toBe(true);
+    expect(barra?.contains(frase())).toBe(false);
+    expect(frase().closest(".fixed")).toBeNull();
     expect(frase().querySelectorAll("button")).toHaveLength(2);
     // Uma quebra só, após "com os": os dois links juntos na 2ª linha.
     expect(frase().querySelectorAll("br")).toHaveLength(1);
