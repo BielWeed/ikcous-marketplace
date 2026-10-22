@@ -57,6 +57,16 @@ async function prepararCheckout(page: Page, comCupom: boolean) {
   await instalarSessaoClienteFixtura(page, {
     enderecos: enderecosFixtura(1),
   });
+  // A conta fixture não tem CPF guardado: a RPC real `get_my_cpf` devolve
+  // `text|null`, aqui `null` (igual ao `pagamento-kit.ts`). Sem isto a guarda de
+  // rede do kit reprova a chamada que a tela do checkout faz.
+  await page.route("**/rest/v1/rpc/get_my_cpf", async (rota) => {
+    await rota.fulfill({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: "null",
+    });
+  });
   // Registradas DEPOIS das rotas do kit: o Playwright roda a última primeiro, e
   // o `fallback()` devolve a resposta ao stub do próprio kit.
   await page.route("**/functions/v1/calculate-shipping", async (rota) => {
