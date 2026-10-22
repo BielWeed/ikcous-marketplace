@@ -24,21 +24,32 @@ function carregarConfigDoProjeto() {
 }
 const configDoProjeto = carregarConfigDoProjeto();
 
-const ARQUIVO = resolve(__dirname, "../../src/views/admin/AdminPushView.tsx");
+// `ARQUIVO_DA_VIEW` só existe para provar o detector com uma cópia descartável.
+const ARQUIVO =
+  process.env.ARQUIVO_DA_VIEW ??
+  resolve(__dirname, "../../src/views/admin/AdminPushView.tsx");
 const PREFIXOS =
   /^(?:bg|text|border|ring|outline|divide|fill|stroke|from|to|via)-/;
 
+// Pega TODO literal de texto do arquivo (aspas duplas, simples e crases) e
+// separa em palavras: assim as classes escritas dentro de condicionais
+// (`${x ? "a b" : "c"}`) também entram — apagar o que está dentro de `${...}`
+// deixava esse caso cego. Só palavras com cara de classe de cor/borda ficam.
 function classesDaView(): string[] {
   const fonte = readFileSync(ARQUIVO, "utf-8");
-  const blocos = [
-    ...fonte.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g),
-  ].map((m) => (m[1] ?? m[2] ?? "").replace(/\$\{[^}]*\}/g, " "));
-  const tokens = blocos.flatMap((b) => b.split(/\s+/)).filter(Boolean);
+  const literais = [
+    ...fonte.matchAll(/"([^"\n]*)"|'([^'\n]*)'|`([^`]*)`/g),
+  ].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
+  const tokens = literais
+    .flatMap((l) => l.split(/[\s"'`${}?]+/))
+    .filter(Boolean);
+  const pareceClasse = /^[A-Za-z0-9:\-/[\]&>.%_#()*=,~]+$/;
   return [
     ...new Set(
       tokens.filter(
         (t) =>
-          PREFIXOS.test(t.slice(t.lastIndexOf(":") + 1)) && !t.includes("[&"),
+          pareceClasse.test(t) &&
+          PREFIXOS.test(t.slice(t.lastIndexOf(":") + 1)),
       ),
     ),
   ];

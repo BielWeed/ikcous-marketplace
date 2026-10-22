@@ -429,6 +429,15 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
         (b.textContent ?? "").includes("Ao tocar na mensagem"),
       )?.textContent,
     ).toContain("Busca de produtos");
+    // E, com o bloco aberto, o seletor de destino mostra o valor do modelo.
+    await act(async () => {
+      Array.from(hospedeiro.querySelectorAll("button"))
+        .find((b) => (b.textContent ?? "").includes("Ao tocar na mensagem"))
+        ?.click();
+    });
+    expect(
+      hospedeiro.querySelector("#push-destination")?.textContent,
+    ).toContain("Página de Busca de Produtos");
     expect(
       hospedeiro.querySelector('[data-testid="aviso-codigo-pendente"]'),
     ).not.toBeNull();

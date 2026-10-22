@@ -140,8 +140,6 @@ const SOMBRA = "véu escuro translúcido: escurece em qualquer tema";
 const CORTINA = "cortina de modal: escurece o fundo em qualquer tema";
 const INEXISTENTE = "tom que não existe no Tailwind do projeto: sem efeito";
 const SERIE = "cor de série de gráfico/legenda: identidade, não superfície";
-const MEDALHA =
-  "medalha prateada (1º/2º lugar) com texto escuro: identidade, igual nos três temas";
 const PREVIA_ESCURA =
   "pré-visualização de banner sem imagem: bloco escuro marcado com data-tema-fixo";
 const CINZA_NEUTRO = "cinza médio translúcido: legível sobre claro e escuro";
@@ -176,8 +174,6 @@ const MANTIDAS = new Map<string, string>([
   ["fill-black", ESCURO_SOBRE_CLARO],
   ["border-black/20", ESCURO_SOBRE_CLARO],
   ["border-zinc-950", ESCURO_SOBRE_CLARO],
-  ["border-zinc-950/25", ESCURO_SOBRE_CLARO],
-  ["border-t-zinc-950", ESCURO_SOBRE_CLARO],
   ["bg-black", SOMBRA],
   ["bg-black/10", SOMBRA],
   ["bg-black/20", SOMBRA],
@@ -186,8 +182,6 @@ const MANTIDAS = new Map<string, string>([
   ["bg-zinc-300", SERIE],
   ["bg-zinc-400", SERIE],
   ["data-[state=checked]:bg-zinc-300", SERIE],
-  ["disabled:from-zinc-300", MEDALHA],
-  ["disabled:to-zinc-400", MEDALHA],
   ["via-zinc-900", PREVIA_ESCURA],
   ["to-black", PREVIA_ESCURA],
   ["[&_.bg-admin-gold]:bg-zinc-300", SERIE],

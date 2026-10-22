@@ -71,6 +71,19 @@ vi.mock("@/lib/supabase", () => ({
       }
       // vw_produtos_public, public_profiles: sem linha — não é o que este
       // arquivo mede.
+      if (tabela === "vw_produtos_public") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () =>
+                Promise.resolve({
+                  data: [{ id: "p1", nome: "Tênis Veloz" }],
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
       return {
         select: () => ({
           order: () => ({
@@ -350,5 +363,63 @@ describe("AdminPushView — tela organizada e compacta", () => {
     expect(botaoCom("Ao tocar na mensagem")!.textContent).toContain(
       "Página inicial",
     );
+  });
+
+  it("o destino recolhido mostra o NOME do produto escolhido, e não só 'Um produto'", async () => {
+    await abrirTela();
+    await act(async () => {
+      botaoCom("Ao tocar na mensagem")!.click();
+    });
+    await act(async () => {
+      botaoCom("Avançado: abrir outra página")!.click();
+    });
+    const campo =
+      hospedeiro.querySelector<HTMLInputElement>("#push-custom-path")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(campo, "/product-detail?id=p1");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await esperar(400);
+    });
+    expect(botaoCom("Ao tocar na mensagem")!.textContent).toContain(
+      "Tênis Veloz",
+    );
+  });
+
+  it("o carrossel tem nome próprio para leitor de tela e respiro para o anel de foco", async () => {
+    await abrirTela();
+    const faixa = hospedeiro.querySelector(
+      '[data-testid="carrossel-publico"]',
+    )!;
+    expect(faixa.getAttribute("role")).toBe("group");
+    expect(faixa.getAttribute("aria-label")).toBeTruthy();
+    expect(faixa.className).toMatch(/(?:^|\s)p-1(?:\s|$)/);
+    expect(faixa.className).toContain("-m-1");
+  });
+
+  it("o modelo escolhido ganha o check (além da borda forte) e perde ao trocar de modelo", async () => {
+    await abrirTela();
+    const grupo = (nome: string) =>
+      Array.from(hospedeiro.querySelectorAll("button")).find(
+        (b) => b.textContent === nome,
+      )!;
+    const oferta = grupo("Oferta com cupom");
+    const carrinho = grupo("Lembrete de Carrinho");
+    const temCheck = (b: HTMLElement) =>
+      b.querySelector("svg.lucide-check") !== null;
+    expect(temCheck(oferta)).toBe(false);
+    await act(async () => {
+      oferta.click();
+    });
+    expect(temCheck(oferta)).toBe(true);
+    await act(async () => {
+      carrinho.click();
+    });
+    expect(temCheck(oferta)).toBe(false);
+    expect(temCheck(carrinho)).toBe(true);
   });
 });

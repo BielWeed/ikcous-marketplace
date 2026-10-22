@@ -523,7 +523,6 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     // o botão deixou de ser "Enviar Notificação Agora (N aparelhos)" e virou
     // "Enviar agora para N aparelhos" — mesmo número honesto, frase nova.
     expect(texto()).toContain("Enviar agora para 8 aparelhos");
-    expect(texto()).toContain("Enviar agora para 8 aparelhos");
     expect(texto()).not.toMatch(/Enviar agora para\s*\d+\s*clientes/);
     expect(texto()).not.toMatch(/Enviar agora para \d+ clientes/);
   });
@@ -564,7 +563,6 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
       expect(numeroDoBadgeTodosOsClientes()).toContain("—");
 
-      expect(texto()).toContain("Enviar agora para — aparelhos");
       expect(texto()).toContain("Enviar agora para — aparelhos");
 
       // O ponto mais importante desta tarefa: total desconhecido não pode

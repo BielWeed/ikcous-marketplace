@@ -47,6 +47,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -1156,7 +1157,7 @@ export const AdminPushView = memo(function AdminPushView({
               acoes={
                 <span
                   data-testid="selo-no-ar"
-                  className="inline-flex min-h-8 items-center gap-2 rounded-full border border-admin-border bg-admin-surface px-3 text-sm font-semibold text-admin-accent"
+                  className="inline-flex min-h-8 items-center gap-2 rounded-full border border-admin-border bg-admin-surface px-3 text-sm font-semibold text-zinc-200"
                 >
                   <span
                     aria-hidden="true"
@@ -1195,7 +1196,9 @@ export const AdminPushView = memo(function AdminPushView({
                   de antes: o preenchimento, o registro VOR e o toast não mudam —
                   só a forma (cartão grande → pílula de um clique). */}
               <div className="relative min-w-0">
-                <div className="flex gap-2 overflow-x-auto pb-1 pr-5">
+                {/* `-m-1 p-1`: respiro para o anel de foco do teclado não ser cortado
+                    pela rolagem, sem empurrar o layout. */}
+                <div className="-m-1 flex gap-2 overflow-x-auto p-1 pb-2 pr-6">
                   {/* Os textos dos modelos moram em `lib/modelos-de-campanha.ts`:
                       nenhum traz código de cupom, percentual, valor ou prazo
                       inventado — onde vai o cupom da lojista fica o MARCADOR, e o
@@ -1253,7 +1256,13 @@ export const AdminPushView = memo(function AdminPushView({
                       }}
                     >
                       <SeloDeIcone
-                        icone={arch.Icone}
+                        icone={
+                          notification.title === arch.mensagem.title &&
+                          notification.body === arch.mensagem.body &&
+                          notification.url === arch.mensagem.url
+                            ? Check
+                            : arch.Icone
+                        }
                         className="size-8 rounded-full"
                       />
                       {arch.title}
@@ -1443,7 +1452,9 @@ export const AdminPushView = memo(function AdminPushView({
                 <div className="relative min-w-0">
                   <div
                     data-testid="carrossel-publico"
-                    className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 pr-6"
+                    role="group"
+                    aria-label="Escolha quem recebe a mensagem"
+                    className="-m-1 flex snap-x snap-mandatory gap-2 overflow-x-auto p-1 pb-2 pr-6"
                   >
                     {[
                       {
@@ -1556,8 +1567,11 @@ export const AdminPushView = memo(function AdminPushView({
               icone={MousePointer2}
               forcaAberta={destType === "custom"}
               extra={
-                <span className="text-xs text-zinc-400">
-                  {ROTULO_CURTO_DO_DESTINO[destType] ?? "Outra página"}
+                <span className="max-w-[9rem] truncate text-xs text-zinc-400">
+                  {destType === "product"
+                    ? (products.find((p) => p.id === selectedProductId)?.nome ??
+                      ROTULO_CURTO_DO_DESTINO.product)
+                    : (ROTULO_CURTO_DO_DESTINO[destType] ?? "Outra página")}
                 </span>
               }
             >
