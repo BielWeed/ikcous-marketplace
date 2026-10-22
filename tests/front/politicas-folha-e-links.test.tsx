@@ -166,6 +166,9 @@ describe("folha e links das políticas", () => {
     expect(botoes[1].previousElementSibling).toBe(botoes[0]);
     expect(frase.classList.contains("text-[11px]")).toBe(true);
     expect(frase.classList.contains("leading-snug")).toBe(true);
+    // O alvo de 44px desce ~14px abaixo da linha: o respiro embaixo o mantém
+    // longe do botão seguinte (AuthView e identificação do checkout).
+    expect(frase.classList.contains("pb-2.5")).toBe(true);
     expect(botoes[1].parentElement).toBe(botoes[0].parentElement);
   });
 

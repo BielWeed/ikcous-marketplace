@@ -49,7 +49,12 @@ export function FraseDeAceite({
     <>
       <p
         data-testid="frase-de-aceite"
-        className={cn("text-[11px] leading-snug text-zinc-500", className)}
+        // pb-2.5: o alvo de 44px desce ~14px abaixo da linha dos links; este
+        // respiro (mais a margem do vizinho) o mantém longe do botão seguinte.
+        className={cn(
+          "pb-2.5 text-[11px] leading-snug text-zinc-500",
+          className,
+        )}
       >
         Ao {acao} você concorda com os <br />
         {/* A 2ª linha nunca quebra: a 320px o ponto final caía sozinho numa 3ª
