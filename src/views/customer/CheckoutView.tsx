@@ -6385,7 +6385,7 @@ export function CheckoutViewDaConta({
         <FraseDeAceite
           acao="finalizar"
           emLinha
-          className="mx-auto mt-6 max-w-md text-center"
+          className="mx-auto max-w-md pt-2 text-center"
         />
       </div>
 
