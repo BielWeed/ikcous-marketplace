@@ -1613,9 +1613,18 @@ export const AdminBannersView = memo(function AdminBannersView({
     setIsDialogOpen(true);
   };
 
+  // O ouvinte vive a vida toda da tela, mas precisa da lista e da aba de AGORA
+  // (posicao e ordem do banner novo): chama sempre o handler da ultima
+  // renderizacao. Com a lista ainda carregando nao abre nada (ordem duplicada).
+  const abrirNovoBannerRef = useRef<() => void>(() => {});
+  abrirNovoBannerRef.current = () => {
+    if (!isLoaded) return;
+    handleOpenDialog();
+  };
+
   useEffect(() => {
     const handleTriggerNewBanner = () => {
-      handleOpenDialog();
+      abrirNovoBannerRef.current();
     };
     window.addEventListener(
       "admin:open-new-banner-dialog",
