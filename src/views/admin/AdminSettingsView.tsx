@@ -639,7 +639,7 @@ function GrupoDeAjustes({
     <section
       id={`grupo-de-ajustes-${chave}`}
       aria-label={grupo.titulo}
-      className={`${CARTAO_AJUSTES} scroll-mt-24 !p-0`}
+      className={`${CARTAO_AJUSTES} scroll-mt-4 !p-0`}
     >
       <h2>
         <button
@@ -943,27 +943,25 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
   return (
     <div className="ajustes pb-admin h-auto duration-200 animate-in fade-in lg:pb-12">
-      {/* Elite Header */}
-      <div className="sticky top-0 z-30 mb-3 border-b border-admin-border bg-admin-bg/95 p-5 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
-          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-settings"]}>
-            <button
-              type="button"
-              onClick={() => setShowHelpModal(true)}
-              className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
-              title="Guia de Configurações e Ajuda"
-              aria-label="Guia de Configurações e Ajuda"
-            >
-              <span
-                aria-hidden="true"
-                className="flex size-11 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-300 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
-              >
-                <HelpCircle aria-hidden="true" className="size-5" />
-              </span>
-            </button>
-          </AdminPageHeader>
+      <header className="admin-topo-cabecalho mx-auto flex h-[76px] w-full max-w-2xl items-center justify-between gap-3 px-5">
+        <div className="min-w-0 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-settings"]} />
         </div>
-      </div>
+        <button
+          type="button"
+          onClick={() => setShowHelpModal(true)}
+          className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
+          title="Guia de Configurações e Ajuda"
+          aria-label="Guia de Configurações e Ajuda"
+        >
+          <span
+            aria-hidden="true"
+            className="flex size-11 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-300 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
+          >
+            <HelpCircle aria-hidden="true" className="size-5" />
+          </span>
+        </button>
+      </header>
 
       <div className="mx-auto max-w-2xl space-y-3 px-5 pb-8">
         {isOffline && (

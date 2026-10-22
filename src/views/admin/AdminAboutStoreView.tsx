@@ -127,7 +127,7 @@ function BlocoNumerado({
           id={idDoTitulo}
           ref={refDoTitulo}
           tabIndex={-1}
-          className="scroll-mt-24 rounded text-[15px] font-black tracking-tight text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-admin-gold"
+          className="scroll-mt-4 rounded text-[15px] font-black tracking-tight text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-admin-gold"
         >
           {titulo}
         </h2>
@@ -451,12 +451,11 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
 
   return (
     <div className="pb-admin relative min-h-screen bg-admin-bg font-sans text-zinc-400 lg:pb-12">
-      {/* Elite Header */}
-      <div className="sticky top-0 z-30 mb-3 border-b border-admin-border bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
+      <header className="admin-topo-cabecalho mx-auto flex h-[76px] w-full max-w-4xl items-center justify-between gap-3 px-5">
+        <div className="min-w-0 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-about-store"]} />
         </div>
-      </div>
+      </header>
 
       <fieldset
         ref={formulario}
