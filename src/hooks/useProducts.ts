@@ -1055,7 +1055,9 @@ export function useProducts({ autoFetch = true } = {}) {
   // inteiro) percorre todas as páginas dos produtos ativos e filtra aqui com a
   // regra do selo. NÃO mexe em `products` (a página normal fica como está) e
   // devolve `null` em qualquer falha — nunca uma lista pela metade como se
-  // fosse completa. Uma busca mais nova (desta ou de `loadProducts`) vence:
+  // fosse completa. Se o total do catálogo mudar entre duas páginas (produto
+  // apagado/cadastrado no meio desloca as linhas e pularia uma), refaz a
+  // leitura desde a página 0, até 3 varreduras. Uma busca mais nova (desta ou de `loadProducts`) vence:
   // a resposta velha é descartada.
   const loadProductsSemCusto = useCallback(
     async (filters?: { search?: string; category?: string }) => {
@@ -1065,43 +1067,63 @@ export function useProducts({ autoFetch = true } = {}) {
       const loadId = ++lastLoadId.current;
       const TAMANHO_DA_PAGINA = 200;
       const LIMITE_DE_PAGINAS = 50;
+      const VARREDURAS_MAXIMAS = 3;
       try {
         if (!isAdmin) throw new Error("lista de custo é só do painel");
         setLoading(true);
         // Por id: um cadastro no meio da leitura pode repetir uma linha.
-        const semCusto = new Map<string, Product>();
+        let semCusto = new Map<string, Product>();
         let terminou = false;
-        for (let pagina = 0; pagina < LIMITE_DE_PAGINAS; pagina++) {
-          const { data, error } = await callRpcWithRetry<any>(async () =>
-            (supabase.rpc as any)("get_admin_products_paged", {
-              p_search: filters?.search || "",
-              p_category: filters?.category || "all",
-              p_status: "active",
-              p_stock: "all",
-              p_page: pagina,
-              p_page_size: TAMANHO_DA_PAGINA,
-            }).abortSignal(signal),
-          );
-          if (error) throw error;
-          if (loadId !== lastLoadId.current) return null;
-          if (!data || !Array.isArray(data.data)) {
-            throw new Error("resposta sem lista de produtos");
-          }
-          for (const linha of data.data) {
-            const produto = mapProductFromDB(linha);
-            if (produtoSemCustoEmEstoque(produto)) {
-              semCusto.set(produto.id, produto);
+        let estavel = false;
+        for (
+          let varredura = 0;
+          varredura < VARREDURAS_MAXIMAS && !estavel;
+          varredura++
+        ) {
+          semCusto = new Map<string, Product>();
+          terminou = false;
+          let totalDaPrimeira: number | null = null;
+          let mudou = false;
+          for (let pagina = 0; pagina < LIMITE_DE_PAGINAS; pagina++) {
+            const { data, error } = await callRpcWithRetry<any>(async () =>
+              (supabase.rpc as any)("get_admin_products_paged", {
+                p_search: filters?.search || "",
+                p_category: filters?.category || "all",
+                p_status: "active",
+                p_stock: "all",
+                p_page: pagina,
+                p_page_size: TAMANHO_DA_PAGINA,
+              }).abortSignal(signal),
+            );
+            if (error) throw error;
+            if (loadId !== lastLoadId.current) return null;
+            if (!data || !Array.isArray(data.data)) {
+              throw new Error("resposta sem lista de produtos");
+            }
+            const total = Number(data.total_count) || 0;
+            if (totalDaPrimeira === null) totalDaPrimeira = total;
+            else if (total !== totalDaPrimeira) {
+              mudou = true;
+              break;
+            }
+            for (const linha of data.data) {
+              const produto = mapProductFromDB(linha);
+              if (produtoSemCustoEmEstoque(produto)) {
+                semCusto.set(produto.id, produto);
+              }
+            }
+            if (
+              data.data.length === 0 ||
+              (pagina + 1) * TAMANHO_DA_PAGINA >= total
+            ) {
+              terminou = true;
+              break;
             }
           }
-          const total = Number(data.total_count) || 0;
-          if (
-            data.data.length === 0 ||
-            (pagina + 1) * TAMANHO_DA_PAGINA >= total
-          ) {
-            terminou = true;
-            break;
-          }
+          estavel = !mudou;
         }
+        if (!estavel)
+          throw new Error("catálogo mudou durante a leitura, tente de novo");
         if (!terminou)
           throw new Error("catálogo maior que o limite de leitura");
         return { products: [...semCusto.values()], total: semCusto.size };
