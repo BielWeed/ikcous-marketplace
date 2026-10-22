@@ -52,22 +52,26 @@ export function FraseDeAceite({
         className={cn("text-[11px] leading-snug text-zinc-500", className)}
       >
         Ao {acao} você concorda com os <br />
-        <button
-          type="button"
-          onClick={() => abrir("termos")}
-          className={LINK_NA_FRASE}
-        >
-          {nomeDaPolitica("termos")}
-        </button>{" "}
-        e a{" "}
-        <button
-          type="button"
-          onClick={() => abrir("privacidade")}
-          className={LINK_NA_FRASE}
-        >
-          {nomeDaPolitica("privacidade")}
-        </button>
-        .
+        {/* A 2ª linha nunca quebra: a 320px o ponto final caía sozinho numa 3ª
+            linha (e o alvo de 44px de um link cobriria o outro). */}
+        <span className="whitespace-nowrap max-[340px]:tracking-tight">
+          <button
+            type="button"
+            onClick={() => abrir("termos")}
+            className={LINK_NA_FRASE}
+          >
+            {nomeDaPolitica("termos")}
+          </button>{" "}
+          e a{" "}
+          <button
+            type="button"
+            onClick={() => abrir("privacidade")}
+            className={LINK_NA_FRASE}
+          >
+            {nomeDaPolitica("privacidade")}
+          </button>
+          .
+        </span>
       </p>
       <PoliticaEmFolhaSobDemanda
         tipo={aberta}

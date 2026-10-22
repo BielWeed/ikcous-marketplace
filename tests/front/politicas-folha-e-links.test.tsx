@@ -160,7 +160,9 @@ describe("folha e links das políticas", () => {
     // Quebra única após "com os": os dois links ficam juntos na 2ª linha, e o
     // alvo de 44px de um não cobre o texto do outro.
     expect(frase.querySelectorAll("br")).toHaveLength(1);
-    expect(botoes[0].previousElementSibling?.tagName).toBe("BR");
+    // Os dois links moram num span sem quebra, logo depois do <br />.
+    expect(botoes[0].parentElement?.previousElementSibling?.tagName).toBe("BR");
+    expect(botoes[0].parentElement?.className).toContain("whitespace-nowrap");
     expect(botoes[1].previousElementSibling).toBe(botoes[0]);
     expect(frase.classList.contains("text-[11px]")).toBe(true);
     expect(frase.classList.contains("leading-snug")).toBe(true);

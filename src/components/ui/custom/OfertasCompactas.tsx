@@ -220,12 +220,12 @@ function CartaoOfertaCompacta({
           <>
             {/* Pastilha branca: o texto fica legivel sobre qualquer foto (clara ou escura). */}
             {desconto && (
-              <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-white/90 px-1.5 py-0.5">
+              <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-white px-1.5 py-0.5">
                 {desconto}
               </div>
             )}
             {estoque && (
-              <div className="pointer-events-none absolute bottom-2 left-3 rounded-md bg-white/90 px-1.5 py-0.5">
+              <div className="pointer-events-none absolute bottom-2 left-3 rounded-md bg-white px-1.5 py-0.5">
                 {estoque}
               </div>
             )}
@@ -235,7 +235,6 @@ function CartaoOfertaCompacta({
           type="button"
           onClick={handleFavoriteClick}
           aria-label={rotuloDeFavoritar(product.name, isFavorite)}
-          aria-pressed={isFavorite}
           className={cn(
             "absolute right-1 top-1 z-20 flex size-11 items-center justify-center rounded-xl bg-white focus-visible:ring-2 focus-visible:ring-zinc-950",
             isFavorite ? "text-zinc-950" : "text-zinc-500",
