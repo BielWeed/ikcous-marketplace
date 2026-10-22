@@ -6,6 +6,7 @@ import {
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { abrirNovoBannerPelaBarra } from "../helpers/editor-de-banner";
 import { adiar } from "./apoio";
 
 vi.mock("@/components/ui/custom/ImageAdjuster", () => ({
@@ -188,9 +189,7 @@ describe("banners vetam a atualização durante upload e gravação", () => {
 
   async function abrir() {
     await montar();
-    await act(async () =>
-      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click(),
-    );
+    await abrirNovoBannerPelaBarra();
     await act(async () =>
       localizarBotaoPorTexto(hospedeiro, "Usar minha imagem")!.click(),
     );

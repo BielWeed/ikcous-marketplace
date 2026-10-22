@@ -34,7 +34,10 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { escolherImagemPropria } from "./helpers/editor-de-banner";
+import {
+  abrirNovoBannerPelaBarra,
+  escolherImagemPropria,
+} from "./helpers/editor-de-banner";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -236,12 +239,7 @@ describe("AdminBannersView — remoção de Duplicar preserva Criar e Editar", (
       "https://proj.supabase.co/storage/v1/object/public/banners/imagem-recem-enviada.jpg";
     uploadBannerImage.mockResolvedValue(urlNova);
 
-    const botaoNovoBanner = localizarBotaoPorTexto(hospedeiro, "Novo Banner")!;
-    expect(botaoNovoBanner).toBeDefined();
-
-    await act(async () => {
-      botaoNovoBanner.click();
-    });
+    await abrirNovoBannerPelaBarra();
     await escolherImagemPropria();
 
     // Dialog aberto para CRIAR: editingBanner é null, formData.imageUrl

@@ -35,7 +35,10 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // @vitest-environment jsdom
-import { escolherImagemPropria } from "./helpers/editor-de-banner";
+import {
+  abrirNovoBannerPelaBarra,
+  escolherImagemPropria,
+} from "./helpers/editor-de-banner";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -221,12 +224,7 @@ describe("AdminBannersView — Voltar do celular com o diálogo aberto fecha só
   }
 
   async function abrirDialogoNovoBanner() {
-    const botaoNovoBanner = localizarBotaoPorTexto(hospedeiro, "Novo Banner")!;
-    expect(botaoNovoBanner).toBeDefined();
-    await act(async () => {
-      botaoNovoBanner.click();
-      await esperarMicrotarefas();
-    });
+    await abrirNovoBannerPelaBarra();
     await escolherImagemPropria();
     // Editor aberto depois da escolha de criação.
     expect(localizarBotaoPorTexto(hospedeiro, "Salvar Banner")).toBeDefined();
@@ -339,10 +337,7 @@ describe("AdminBannersView — Voltar do celular com o diálogo aberto fecha só
     window.addEventListener("admin:banner-dialog-state", ouvir);
 
     await montar();
-    await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
-      await esperarMicrotarefas();
-    });
+    await abrirNovoBannerPelaBarra();
 
     // Só o Voltar da barra superior existe (o da barra mora no AdminLayout).
     expect(hospedeiro.querySelector('[aria-label="Voltar"]')).toBeNull();
@@ -357,10 +352,7 @@ describe("AdminBannersView — Voltar do celular com o diálogo aberto fecha só
 
   it("em Modelo pronto, o Voltar da barra volta UMA etapa; na etapa seguinte fecha", async () => {
     await montar();
-    await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
-      await esperarMicrotarefas();
-    });
+    await abrirNovoBannerPelaBarra();
     await act(async () => {
       localizarBotaoPorTexto(hospedeiro, "Modelo pronto")!.click();
       await esperarMicrotarefas();
@@ -382,10 +374,7 @@ describe("AdminBannersView — Voltar do celular com o diálogo aberto fecha só
 
   it("no Voltar físico em Modelo pronto, volta uma etapa e devolve a entrada do editor", async () => {
     await montar();
-    await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
-      await esperarMicrotarefas();
-    });
+    await abrirNovoBannerPelaBarra();
     await act(async () => {
       localizarBotaoPorTexto(hospedeiro, "Modelo pronto")!.click();
       await esperarMicrotarefas();
@@ -409,10 +398,7 @@ describe("AdminBannersView — Voltar do celular com o diálogo aberto fecha só
 
   it("no Voltar da barra em Modelo pronto, não empurra outra entrada", async () => {
     await montar();
-    await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
-      await esperarMicrotarefas();
-    });
+    await abrirNovoBannerPelaBarra();
     await act(async () => {
       localizarBotaoPorTexto(hospedeiro, "Modelo pronto")!.click();
       await esperarMicrotarefas();
