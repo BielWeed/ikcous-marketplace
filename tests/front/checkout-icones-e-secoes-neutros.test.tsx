@@ -390,6 +390,17 @@ describe("CheckoutView — PASSO A5: ícones e seleção neutros nas seções", 
       ).not.toBeNull();
     }
     for (const r of radios()) expect(r.outerHTML).not.toContain("primary");
+    // As opções são <button>: sem `border-solid` o reset do index.css apaga a
+    // borda no celular (medido: none 0px) — todas precisam dela.
+    for (const r of radios()) expect(r.className).toContain("border-solid");
+    // Bolinha vazia com contraste ao menos 3:1 (zinc-300 dá só 1,48:1).
+    for (const outra of radios().filter((r) => r !== marcada)) {
+      const vazia = outra.querySelector(
+        '[data-testid="bolinha-vazia"]',
+      ) as HTMLElement;
+      expect(vazia.className).toContain("border-zinc-500");
+      expect(vazia.className).not.toContain("border-zinc-300");
+    }
   });
 
   it("a escolha continua valendo: tocar em outro meio troca a marcada (mesma lógica de antes)", async () => {

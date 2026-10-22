@@ -249,6 +249,17 @@ describe("ShippingCalculator — PASSO A2: Entrega e frete mais limpa no checkou
     expect(outra.className).not.toContain("border-zinc-900");
     expect(outra.querySelector('[data-testid="selo-de-escolhida"]')).toBeNull();
     expect(outra.querySelector('[data-testid="bolinha-vazia"]')).not.toBeNull();
+
+    // As opções são <button>: sem `border-solid` o reset do index.css apaga a
+    // borda (medido: none 0px). Marcada e não marcada precisam dela.
+    expect(marcada.className).toContain("border-solid");
+    expect(outra.className).toContain("border-solid");
+    // A bolinha vazia contrasta ao menos 3:1 (zinc-300 dá só 1,48:1).
+    const bolinha = outra.querySelector(
+      '[data-testid="bolinha-vazia"]',
+    ) as HTMLElement;
+    expect(bolinha.className).toContain("border-zinc-500");
+    expect(bolinha.className).not.toContain("border-zinc-300");
   });
 
   it("escolher outra opção continua recolhendo de volta ao resumo, já com a nova opção", async () => {
@@ -320,6 +331,8 @@ describe("ShippingCalculator — PASSO A2: Entrega e frete mais limpa no checkou
     await montar(undefined);
     const marcada = botaoDe("Entrega econômica") as HTMLButtonElement;
     expect(marcada.className).toContain("bg-primary");
+    // O carrinho não ganha moldura nova: segue exatamente como era.
+    expect(marcada.className).not.toContain("border-solid");
     expect(botaoDe("Trocar")).toBeUndefined();
     expect(secao().querySelector("h2")).toBeNull();
     expect(secao().textContent).toContain("Entrega para Casa");

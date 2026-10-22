@@ -281,6 +281,54 @@ describe("CuponsDoCheckout — PASSO A3: cartões tocáveis e código atrás de 
     );
   });
 
+  it("o link FECHA o campo mesmo com o erro na tela (sem ficar preso em aberto), e um erro novo reabre", () => {
+    const erro = "Cupom inválido ou expirado.";
+    montar({ couponError: erro });
+    expect(link().getAttribute("aria-expanded")).toBe("true");
+    act(() => link().click());
+    expect(link().getAttribute("aria-expanded")).toBe("false");
+    expect(campo().hidden).toBe(true);
+    // Tocar de novo abre (e o erro volta a aparecer dentro do campo).
+    act(() => link().click());
+    expect(link().getAttribute("aria-expanded")).toBe("true");
+    expect(campo().hidden).toBe(false);
+    act(() => link().click());
+    expect(campo().hidden).toBe(true);
+    // A mesma mensagem de uma tentativa NOVA (o erro some e volta) reabre o
+    // campo sozinho: dispensar um erro não esconde os próximos.
+    montar({ couponError: "" });
+    montar({ couponError: erro });
+    expect(link().getAttribute("aria-expanded")).toBe("true");
+    expect(campo().hidden).toBe(false);
+  });
+
+  it("botões do cupom: o cartão tocável tem borda de verdade (border-solid — o reset de button do index.css apaga a borda sem ele) e a bolinha vazia contrasta ao menos 3:1", () => {
+    montar();
+    const alvo = cartoes()[0].querySelector("button") as HTMLElement;
+    expect(alvo.className).toContain("border-2");
+    expect(alvo.className).toContain("border-solid");
+    const bolinha = alvo.querySelector(
+      '[data-testid="bolinha-vazia"]',
+    ) as HTMLElement;
+    // zinc-300 sobre branco dá 1,48:1; zinc-500 dá 4,8:1.
+    expect(bolinha.className).toContain("border-zinc-500");
+    expect(bolinha.className).not.toContain("border-zinc-300");
+  });
+
+  it("código longo no cartão: o código quebra em qualquer letra, nunca invade a bolinha nem sai do cartão", () => {
+    montar({
+      cupons: [cupom({ codigo: "CUPOMCOMUMCODIGOENORMEDE39LETRASSEMPAUSA" })],
+    });
+    // O span mais interno que tem só o código (os de fora também o contêm).
+    const codigo = Array.from(hospedeiro.querySelectorAll("span"))
+      .filter(
+        (s) => s.textContent === "CUPOMCOMUMCODIGOENORMEDE39LETRASSEMPAUSA",
+      )
+      .pop() as HTMLElement;
+    expect(codigo).toBeDefined();
+    expect(codigo.className).toContain("break-all");
+  });
+
   it("com cupom aplicado o link e o campo somem (como o campo sumia antes)", () => {
     montar({ appliedCoupon: { code: "VIP15", discount: 15 } });
     expect(hospedeiro.textContent).not.toContain("Tenho um código de cupom");

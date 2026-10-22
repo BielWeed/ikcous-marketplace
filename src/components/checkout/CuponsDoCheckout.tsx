@@ -104,7 +104,7 @@ const CartaoDeCupom = memo(function CartaoDeCupom({
         {descricaoDoCupom(cupom)}
       </span>
       <span className="block text-xs text-zinc-600">
-        <span className="font-mono font-semibold tracking-wide text-zinc-800">
+        <span className="break-all font-mono font-semibold tracking-wide text-zinc-800">
           {cupom.codigo}
         </span>
         {validade && (
@@ -162,7 +162,7 @@ const CartaoDeCupom = memo(function CartaoDeCupom({
         disabled={travado}
         aria-label={`Aplicar o cupom ${cupom.codigo}`}
         aria-describedby={idDaDescricao}
-        className="flex min-h-11 w-full items-center gap-3 rounded-2xl border-2 border-zinc-200 bg-white p-3 text-left transition-colors hover:border-zinc-300 disabled:cursor-not-allowed"
+        className="flex min-h-11 w-full items-center gap-3 rounded-2xl border-2 border-solid border-zinc-200 bg-white p-3 text-left transition-colors hover:border-zinc-300 disabled:cursor-not-allowed"
       >
         <CanhotoDoCupom cupom={cupom} />
         {textos}
@@ -174,7 +174,7 @@ const CartaoDeCupom = memo(function CartaoDeCupom({
           <span
             data-testid="bolinha-vazia"
             aria-hidden="true"
-            className="size-6 shrink-0 rounded-full border-2 border-zinc-300"
+            className="size-6 shrink-0 rounded-full border-2 border-zinc-500"
           />
         )}
       </button>
@@ -206,15 +206,23 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
 }: CuponsDoCheckoutProps) {
   const [verTodos, setVerTodos] = useState(false);
   // "Tenho um código de cupom": o campo de digitar fica atrás do link. Uma
-  // recusa do código abre o campo sozinho — o erro nunca fica escondido.
+  // recusa do código abre o campo sozinho — o erro nunca fica escondido — mas
+  // o link sempre FECHA o campo: tocar nele dispensa o erro que está na tela
+  // (`erroDispensado`), sem precisar limpar o estado do pai. Quando o erro
+  // some (nova tentativa) a dispensa é esquecida, e o próximo erro reabre.
   const [campoAberto, setCampoAberto] = useState(false);
-  const campoVisivel = campoAberto || Boolean(couponError);
+  const [erroDispensado, setErroDispensado] = useState("");
+  const erroPendente = Boolean(couponError) && couponError !== erroDispensado;
+  const campoVisivel = campoAberto || erroPendente;
   const focarOCampoRef = useRef(false);
   useEffect(() => {
     if (focarOCampoRef.current && campoAberto)
       document.getElementById("coupon-code-input")?.focus();
     focarOCampoRef.current = false;
   }, [campoAberto]);
+  useEffect(() => {
+    if (!couponError) setErroDispensado("");
+  }, [couponError]);
 
   // O aplicado aparece em cima (bloco verde) — não se repete na lista.
   const codigoAplicado = appliedCoupon?.code.toUpperCase() ?? null;
@@ -350,8 +358,13 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
               aria-expanded={campoVisivel}
               aria-controls="campo-de-cupom"
               onClick={() => {
-                focarOCampoRef.current = !campoAberto;
-                setCampoAberto(!campoAberto);
+                if (campoVisivel) {
+                  setCampoAberto(false);
+                  setErroDispensado(couponError);
+                  return;
+                }
+                focarOCampoRef.current = true;
+                setCampoAberto(true);
               }}
               className="flex min-h-11 w-full items-center gap-2 rounded-xl text-left text-sm font-semibold text-zinc-800"
             >

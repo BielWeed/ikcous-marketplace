@@ -404,6 +404,21 @@ describe("CheckoutView — PASSO A1: resumos compactos de dados e endereço", ()
     expect(document.getElementById("cabecalho-dados-e-entrega")).toBeNull();
   });
 
+  it("o endereço do resumo quebra em quantas linhas precisar: cidade e CEP nunca somem atrás de reticências", async () => {
+    cotacoesControladas({ "38500000": [LOCAL] });
+    await montar();
+    await preencherNomeEWhatsapp();
+    const linha = Array.from(cartaoDeEndereco().querySelectorAll("p")).find(
+      (p) => p.textContent?.includes("Rua Principal"),
+    ) as HTMLElement;
+    expect(linha).toBeDefined();
+    expect(linha.textContent).toContain("Monte Carmelo");
+    expect(linha.textContent).toContain("38500-000");
+    expect(linha.className).not.toContain("line-clamp");
+    // Palavra comprida (avenida, bairro) quebra em vez de estourar o cartão.
+    expect(linha.className).toContain("break-words");
+  });
+
   it("os formulários continuam no DOM (escondidos) com o resumo na tela — nada foi removido", async () => {
     cotacoesControladas({ "38500000": [LOCAL] });
     await montar();
@@ -568,6 +583,11 @@ describe("CheckoutView — PASSO A1: resumos compactos de dados e endereço", ()
     const endereco = cartaoDeEndereco();
     expect(endereco.textContent).toContain("Rua Nova");
     expect(selosDeOk(endereco)).toBe(1);
+    const linhaDoEndereco = Array.from(endereco.querySelectorAll("p")).find(
+      (p) => p.textContent?.includes("Rua Nova"),
+    ) as HTMLElement;
+    expect(linhaDoEndereco.className).not.toContain("line-clamp");
+    expect(linhaDoEndereco.className).toContain("break-words");
     expect(botaoDentro(endereco, "Editar")).toBeDefined();
   });
 });

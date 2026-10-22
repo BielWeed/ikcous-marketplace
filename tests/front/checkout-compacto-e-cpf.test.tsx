@@ -421,7 +421,6 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     // Recolhida desde o primeiro paint, mesmo com nome/WhatsApp vazios —
     // não existe mais heurística "abre se incompleto".
     expect(corpoDaSecao().hidden).toBe(true);
-    expect(corpoDaSecao().hidden).toBe(true);
 
     await act(async () => {
       digitar("checkout-name", "Maria Teste");
@@ -431,7 +430,6 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     });
     await drenar();
 
-    expect(corpoDaSecao().hidden).toBe(true);
     expect(corpoDaSecao().hidden).toBe(true);
     const resumo = hospedeiro.textContent ?? "";
     expect(resumo).toContain("Maria Teste");
@@ -645,7 +643,6 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     // sempre, mesmo com o CPF passando a faltar — o resumo recolhido é
     // quem avisa a pendência (substitui a revisão anterior que forçava a
     // seção aberta nesse caso).
-    expect(corpoDaSecao().hidden).toBe(true);
     expect(corpoDaSecao().hidden).toBe(true);
     expect(
       document.querySelector('[data-testid="checkout-resumo-falta-cpf"]'),

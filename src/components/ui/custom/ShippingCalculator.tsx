@@ -982,8 +982,8 @@ export function ShippingCalculator({
         className={`flex w-full select-none items-center justify-between rounded-2xl p-3 text-left transition-all duration-200 ${
           neutro
             ? isSelected
-              ? "border-2 border-zinc-900 bg-white text-zinc-900"
-              : "border-2 border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300"
+              ? "border-2 border-solid border-zinc-900 bg-white text-zinc-900"
+              : "border-2 border-solid border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300"
             : isSelected
               ? "border border-primary bg-primary text-primary-foreground shadow-md shadow-black/10"
               : "border border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
@@ -1179,7 +1179,7 @@ export function ShippingCalculator({
             <span
               data-testid="bolinha-vazia"
               aria-hidden="true"
-              className="ml-3 size-6 shrink-0 rounded-full border-2 border-zinc-300"
+              className="ml-3 size-6 shrink-0 rounded-full border-2 border-zinc-500"
             />
           ))}
       </button>

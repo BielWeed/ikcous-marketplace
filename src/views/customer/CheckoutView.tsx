@@ -5419,7 +5419,7 @@ export function CheckoutViewDaConta({
         // quadradinho cinza claro (o Pix com o glifo oficial que a casa já
         // tem), marcada = borda forte + bolinha escura com check, e as outras
         // com bolinha vazia. Nada de cor de bandeira nem da marca da loja.
-        className={`flex min-h-11 w-full items-center gap-3 rounded-2xl border-2 p-3 transition-colors active:scale-[0.99] ${
+        className={`flex min-h-11 w-full items-center gap-3 rounded-2xl border-2 border-solid p-3 transition-colors active:scale-[0.99] ${
           bloqueadaPorFaltaDeConta
             ? "border-zinc-100 bg-zinc-50/60"
             : isSelected
@@ -5470,7 +5470,7 @@ export function CheckoutViewDaConta({
           <span
             data-testid="bolinha-vazia"
             aria-hidden="true"
-            className="ml-auto size-6 shrink-0 rounded-full border-2 border-zinc-300"
+            className="ml-auto size-6 shrink-0 rounded-full border-2 border-zinc-500"
           />
         )}
       </button>
@@ -5627,7 +5627,7 @@ export function CheckoutViewDaConta({
                   <p className="truncate text-base font-bold text-zinc-900">
                     {enderecoEfetivo.name}
                   </p>
-                  <p className="line-clamp-2 text-sm font-medium text-zinc-600">
+                  <p className="break-words text-sm font-medium text-zinc-600">
                     {resumoDoEndereco(enderecoEfetivo)}
                   </p>
                 </div>
@@ -5650,7 +5650,7 @@ export function CheckoutViewDaConta({
                   />
                 </button>
               ) : enderecoConvidadoCompleto ? (
-                <p className="line-clamp-2 text-sm font-medium text-zinc-600">
+                <p className="break-words text-sm font-medium text-zinc-600">
                   {resumoDoEndereco({
                     street: ruaAtual ?? "",
                     number: numeroAtual ?? "",
