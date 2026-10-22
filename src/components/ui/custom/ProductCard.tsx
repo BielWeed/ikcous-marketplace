@@ -697,7 +697,7 @@ export const ProductCard = memo(function ProductCard({
       }}
       className={cn(
         layout === "linha"
-          ? "relative flex min-h-[112px] cursor-pointer items-center gap-3 border-b border-border py-3 active:bg-muted/50"
+          ? "relative flex min-h-[112px] cursor-pointer items-center gap-3 border-b border-border py-2 active:bg-muted/50"
           : // Bug relatado pelo Gabriel (12/09): o painel "Escolha as opções"
             // crescia DENTRO do fluxo do card e empurrava o resto para baixo --
             // a grade de 2 colunas (align-items: stretch por padrão) esticava o
@@ -847,7 +847,7 @@ export const ProductCard = memo(function ProductCard({
             </div>
           </div>
 
-          <div className="relative z-10 flex shrink-0 flex-col items-center gap-2">
+          <div className="relative z-10 flex shrink-0 flex-col items-center gap-1.5">
             <BotaoDeFavorito
               nome={product.name}
               favorito={isFavorite}

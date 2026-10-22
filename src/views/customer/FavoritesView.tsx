@@ -226,7 +226,7 @@ export const FavoritesView = React.memo(function FavoritesView({
           {Array.from({ length: 4 }).map((_, idx) => (
             <div
               key={idx}
-              className="flex min-h-[112px] items-center gap-3 border-b border-border py-3"
+              className="flex min-h-[112px] items-center gap-3 border-b border-border py-2"
             >
               <div className="size-[88px] shrink-0 animate-pulse rounded-xl bg-muted motion-reduce:animate-none" />
               <div className="flex-1 space-y-2">
@@ -342,7 +342,7 @@ export const FavoritesView = React.memo(function FavoritesView({
 
   return (
     <div className="pb-customer min-h-full min-w-0 overflow-x-hidden bg-background text-foreground">
-      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3 px-4 pb-3 pt-5">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-5">
         <div className="min-w-0">
           <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -470,22 +470,24 @@ export const FavoritesView = React.memo(function FavoritesView({
                 ))}
               </ul>
               {temMais && (
-                <button
-                  type="button"
-                  className="favorites-chip mx-auto mt-3"
-                  aria-expanded={aberta}
-                  aria-controls={idLista}
-                  onClick={() => alternarSecao(secao.nome)}
-                >
-                  {aberta
-                    ? "Mostrar menos"
-                    : `Ver todos (${secao.itens.length})`}
-                  {aberta ? (
-                    <ChevronUp aria-hidden="true" className="size-4" />
-                  ) : (
-                    <ChevronDown aria-hidden="true" className="size-4" />
-                  )}
-                </button>
+                <div className="mt-3 flex justify-center">
+                  <button
+                    type="button"
+                    className="favorites-chip"
+                    aria-expanded={aberta}
+                    aria-controls={idLista}
+                    onClick={() => alternarSecao(secao.nome)}
+                  >
+                    {aberta
+                      ? "Mostrar menos"
+                      : `Ver todos (${secao.itens.length})`}
+                    {aberta ? (
+                      <ChevronUp aria-hidden="true" className="size-4" />
+                    ) : (
+                      <ChevronDown aria-hidden="true" className="size-4" />
+                    )}
+                  </button>
+                </div>
               )}
             </section>
           );

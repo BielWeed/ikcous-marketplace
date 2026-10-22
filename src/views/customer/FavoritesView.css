@@ -19,27 +19,32 @@
   font-weight: 600;
   white-space: nowrap;
 }
+
 .favorites-chip[aria-pressed="true"],
 .favorites-chip[aria-current="true"] {
   border-color: hsl(var(--foreground));
   background: hsl(var(--foreground));
   color: hsl(var(--background));
 }
+
 .favorites-chip:focus-visible,
 .favorites-product-card button:focus-visible,
 .favorites-chip:has(> select:focus-visible) {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
+
 /* "Ver todos" e "Mostrar menos" são pílulas suaves, sem borda, como no desenho. */
 .favorites-chip[aria-expanded] {
   border-color: transparent;
   background: hsl(var(--muted));
   font-size: 14px;
 }
+
 .favorites-atalhos {
   scrollbar-width: none;
 }
+
 .favorites-atalhos::-webkit-scrollbar {
   display: none;
 }
@@ -49,12 +54,15 @@
 .favorites-product-card button:not([data-botao-favorito]) {
   touch-action: manipulation;
 }
+
 .favorites-product-card button[title]:not([data-botao-favorito]) {
   box-shadow: none;
 }
+
 .favorites-product-card:hover {
   transform: none;
 }
+
 @media (prefers-reduced-motion: reduce) {
   .favorites-product-card,
   .favorites-chip {
