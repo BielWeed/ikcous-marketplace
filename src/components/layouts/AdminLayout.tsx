@@ -95,6 +95,13 @@ export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = STATUS_PARA_PREPARAR;
 const RETENTATIVA_BASE_MS = 4000;
 const RETENTATIVA_MAX_TENTATIVAS = 3;
 
+const ABA_ATIVA = "text-white";
+const ICONE_ABA_ATIVA = "border-admin-gold text-admin-gold";
+const TRACO_ABA_ATIVA =
+  "absolute left-1/2 top-0 h-[3px] w-5 -translate-x-1/2 rounded-full bg-admin-gold";
+const BOTAO_ABA_INFERIOR =
+  "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95";
+
 interface AdminLayoutProps {
   children: React.ReactNode;
   currentView: View;
@@ -870,23 +877,30 @@ export function AdminLayout({
               onMouseLeave={handleMouseLeave}
               onTouchStart={() => handleMouseEnter("admin-pdv", true)}
               className={cn(
-                "mb-3 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-admin-border-strong px-3 text-left text-sm font-semibold transition-transform active:scale-95",
+                "relative mb-3 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-admin-border-strong px-3 text-left text-sm font-semibold transition-transform active:scale-95",
                 currentView === "admin-pdv"
-                  ? "bg-[#3B3016] text-admin-gold"
+                  ? ABA_ATIVA
                   : "bg-admin-raised text-zinc-50",
               )}
             >
+              {currentView === "admin-pdv" && (
+                <span aria-hidden="true" className={TRACO_ABA_ATIVA} />
+              )}
               <span
                 className={cn(
                   "flex size-8 items-center justify-center rounded-xl border",
                   currentView === "admin-pdv"
-                    ? "border-transparent"
+                    ? ICONE_ABA_ATIVA
                     : "border-emerald-400/20 bg-emerald-400/10 text-emerald-400",
                 )}
               >
                 <ScanBarcode aria-hidden="true" className="size-5" />
               </span>
-              Vender
+              <span
+                className={currentView === "admin-pdv" ? "font-bold" : undefined}
+              >
+                Vender
+              </span>
             </button>
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -915,19 +929,24 @@ export function AdminLayout({
                   className={cn(
                     "relative flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-[color,transform] active:scale-95",
                     isActive
-                      ? "bg-[#3B3016] font-semibold text-admin-gold"
+                      ? ABA_ATIVA
                       : "text-[#A1A1AD] hover:text-white",
                   )}
                 >
+                  {isActive && (
+                    <span aria-hidden="true" className={TRACO_ABA_ATIVA} />
+                  )}
                   <span
                     className={cn(
                       "flex size-8 shrink-0 items-center justify-center rounded-xl border",
-                      isActive ? "border-transparent" : item.cor,
+                      isActive ? ICONE_ABA_ATIVA : item.cor,
                     )}
                   >
                     <Icon aria-hidden="true" className="size-5" />
                   </span>
-                  <span className="flex-1">{item.label}</span>
+                  <span className={cn("flex-1", isActive && "font-bold")}>
+                    {item.label}
+                  </span>
                   {item.view === "admin-orders" && pendingOrdersCount > 0 && (
                     <span
                       aria-hidden="true"
@@ -1300,21 +1319,29 @@ export function AdminLayout({
                       onMouseLeave={handleMouseLeave}
                       onTouchStart={() => handleMouseEnter(item.view, true)}
                       className={cn(
-                        "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
+                        BOTAO_ABA_INFERIOR,
                         isActive
-                          ? "bg-[#3B3016] text-admin-gold"
+                          ? ABA_ATIVA
                           : "text-[#A1A1AD] hover:text-white",
                       )}
                     >
+                      {isActive && (
+                        <span aria-hidden="true" className={TRACO_ABA_ATIVA} />
+                      )}
                       <span
                         className={cn(
                           "flex size-6 items-center justify-center rounded-lg border",
-                          isActive ? "border-transparent" : item.cor,
+                          isActive ? ICONE_ABA_ATIVA : item.cor,
                         )}
                       >
                         <Icon aria-hidden="true" className="size-[18px]" />
                       </span>
-                      <span className="text-center text-[11px] font-medium leading-3">
+                      <span
+                        className={cn(
+                          "text-center text-[11px] leading-3",
+                          isActive ? "font-bold" : "font-medium",
+                        )}
+                      >
                         {item.label}
                       </span>
                       {item.view === "admin-orders" &&
@@ -1346,23 +1373,31 @@ export function AdminLayout({
                   onTouchStart={() => handleMouseEnter("admin-pdv", true)}
                   aria-label="Vender"
                   className={cn(
-                    "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
+                    BOTAO_ABA_INFERIOR,
                     currentView === "admin-pdv"
-                      ? "bg-[#3B3016] text-admin-gold"
+                      ? ABA_ATIVA
                       : "text-[#A1A1AD] hover:text-white",
                   )}
                 >
+                  {currentView === "admin-pdv" && (
+                    <span aria-hidden="true" className={TRACO_ABA_ATIVA} />
+                  )}
                   <span
                     className={cn(
                       "flex size-6 items-center justify-center rounded-lg border",
                       currentView === "admin-pdv"
-                        ? "border-transparent"
+                        ? ICONE_ABA_ATIVA
                         : "border-emerald-400/20 bg-emerald-400/10 text-emerald-400",
                     )}
                   >
                     <ScanBarcode aria-hidden="true" className="size-[18px]" />
                   </span>
-                  <span className="text-center text-[11px] font-medium leading-3">
+                  <span
+                    className={cn(
+                      "text-center text-[11px] leading-3",
+                      currentView === "admin-pdv" ? "font-bold" : "font-medium",
+                    )}
+                  >
                     Vender
                   </span>
                 </button>
