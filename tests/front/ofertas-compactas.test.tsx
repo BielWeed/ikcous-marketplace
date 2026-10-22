@@ -167,6 +167,11 @@ describe("Ofertas Compactas", () => {
       "esgotado",
     ]);
     expect(cartoes()[0].textContent).toContain("50% OFF");
+    // Etiqueta sobre a foto fica numa pastilha branca: legivel em foto escura.
+    const etiqueta = [...cartoes()[0].querySelectorAll("span")].find((el) =>
+      el.textContent?.includes("50% OFF"),
+    );
+    expect(etiqueta?.parentElement?.className).toContain("bg-white/90");
     expect(cartoes()[0].textContent).toContain("50,00");
     expect(cartoes()[0].textContent).toContain("100,00");
   });

@@ -218,12 +218,17 @@ function CartaoOfertaCompacta({
         )}
         {!largo && (
           <>
-            <div className="pointer-events-none absolute left-3 top-3">
-              {desconto}
-            </div>
-            <div className="pointer-events-none absolute bottom-2 left-3">
-              {estoque}
-            </div>
+            {/* Pastilha branca: o texto fica legivel sobre qualquer foto (clara ou escura). */}
+            {desconto && (
+              <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-white/90 px-1.5 py-0.5">
+                {desconto}
+              </div>
+            )}
+            {estoque && (
+              <div className="pointer-events-none absolute bottom-2 left-3 rounded-md bg-white/90 px-1.5 py-0.5">
+                {estoque}
+              </div>
+            )}
           </>
         )}
         <button
