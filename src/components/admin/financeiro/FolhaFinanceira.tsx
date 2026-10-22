@@ -42,7 +42,7 @@ export function FolhaFinanceira({
   readonly matiz?: string;
 }) {
   const larga = useTelaLarga();
-  const teclado = useAlturaDoTeclado();
+  const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
   // O teclado do celular se sobrepõe à página: a folha sobe acima dele e,
   // ao focar um campo, ele é trazido à vista dentro do corpo que rola.
   useEffect(() => {
@@ -65,6 +65,16 @@ export function FolhaFinanceira({
       window.clearTimeout(timer);
     };
   }, [larga]);
+  // O teclado leva um tempo para abrir: refaz a rolagem quando a altura muda
+  // com um campo da folha em foco (o de 150ms acima pode chegar cedo demais).
+  useEffect(() => {
+    if (larga || teclado === 0) return;
+    const ativo = document.activeElement;
+    if (!(ativo instanceof HTMLElement)) return;
+    if (ativo.tagName !== "INPUT" && ativo.tagName !== "TEXTAREA") return;
+    if (!ativo.closest("[data-folha-financeira]")) return;
+    ativo.scrollIntoView({ block: "nearest" });
+  }, [larga, teclado]);
   const comTeclado = !larga && teclado > 0;
   return (
     <Sheet
@@ -80,7 +90,7 @@ export function FolhaFinanceira({
           comTeclado
             ? {
                 bottom: teclado,
-                maxHeight: `calc(100dvh - (${teclado}px + 1rem))`,
+                maxHeight: `calc(${alturaVisivel}px - 1rem)`,
               }
             : undefined
         }

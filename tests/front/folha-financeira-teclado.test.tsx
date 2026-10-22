@@ -13,11 +13,15 @@ import { FolhaFinanceira } from "@/components/admin/financeiro/FolhaFinanceira";
 
 let mockLarga = false;
 let mockTeclado = 0;
+let mockVisivel = 0;
 vi.mock("@/hooks/useFinanceiro", () => ({
   useTelaLarga: () => mockLarga,
 }));
 vi.mock("@/hooks/useAlturaDoTeclado", () => ({
-  useAlturaDoTeclado: () => mockTeclado,
+  useAlturaDoTeclado: () => ({
+    altura: mockTeclado,
+    alturaVisivel: mockVisivel,
+  }),
 }));
 
 let raiz: Root;
@@ -46,6 +50,7 @@ function folha(): HTMLElement {
 beforeEach(() => {
   mockLarga = false;
   mockTeclado = 0;
+  mockVisivel = 0;
   contedor = document.createElement("div");
   document.body.appendChild(contedor);
   raiz = createRoot(contedor);
@@ -58,11 +63,12 @@ afterEach(() => {
 });
 
 describe("FolhaFinanceira com teclado", () => {
-  it("no celular, teclado de 320px sobe a folha 320px e limita a altura", () => {
+  it("no celular, teclado de 320px sobe a folha 320px e limita a altura à área visível", () => {
     mockTeclado = 320;
+    mockVisivel = 480;
     montar();
     expect(folha().style.bottom).toBe("320px");
-    expect(folha().style.maxHeight).toBe("calc(100dvh - (320px + 1rem))");
+    expect(folha().style.maxHeight).toBe("calc(480px - 1rem)");
   });
 
   it("no celular, sem teclado, não desloca nada", () => {
@@ -92,6 +98,23 @@ describe("FolhaFinanceira com teclado", () => {
     act(() => {
       vi.advanceTimersByTime(160);
     });
+    expect(rolar).toHaveBeenCalledWith({ block: "nearest" });
+  });
+
+  it("refaz a rolagem quando o teclado termina de abrir com o campo em foco", () => {
+    vi.useFakeTimers();
+    montar();
+    const campo = document.querySelector<HTMLInputElement>("input");
+    if (!campo) throw new Error("campo não montou");
+    const rolar = vi.fn();
+    campo.scrollIntoView = rolar;
+    act(() => {
+      campo.focus();
+    });
+    expect(rolar).not.toHaveBeenCalled();
+    mockTeclado = 320;
+    mockVisivel = 480;
+    montar();
     expect(rolar).toHaveBeenCalledWith({ block: "nearest" });
   });
 });
