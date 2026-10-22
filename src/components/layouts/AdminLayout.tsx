@@ -24,6 +24,7 @@ import {
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import { pedirNovoBanner } from "@/lib/novo-banner-pendente";
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
@@ -1119,9 +1120,7 @@ export function AdminLayout({
                       }
                       onClick={() => {
                         haptic.light();
-                        window.dispatchEvent(
-                          new CustomEvent("admin:open-new-banner-dialog"),
-                        );
+                        pedirNovoBanner();
                       }}
                       className={cn(
                         "flex h-11 min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-nav",
