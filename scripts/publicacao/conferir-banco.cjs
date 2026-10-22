@@ -2514,7 +2514,16 @@ const ROL_DA_84B = [
   "is_admin() e is_admin_atual() existem (a funcao nova as chama)",
   "gatilhos de versao: set_ultima_atualizacao em produtos e sync_produto_ultima_atualizacao em variacoes ligados",
 ];
+// Lote 85 (20261380000000, o aviso de cancelados antigos conta so pendencia real: get_admin_orders_cancelados_recentes).
+const ROL_DA_85 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_orders_cancelados_recentes: corpo exato (md5)",
+  "get_admin_orders_cancelados_recentes: assinatura e atributos conhecidos",
+  "get_admin_orders_cancelados_recentes: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "85a-conferir-aviso-de-cancelados-antigos-aplicado": ROL_DA_85,
+  "85b-antes-aviso-de-cancelados-antigos-base-vigente": ROL_DA_85,
   "83a-conferir-caixa-so-na-conta-da-loja-aplicado": [
     "controle: funcoes de public visiveis a este papel",
     "fin_caixa_abrir: corpo exato (md5)",

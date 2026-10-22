@@ -307,6 +307,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/cartao-online-viva.cjs",
     // 20261370: conta de sistema, legado preservado e rollback do caixa.
     "tests/banco/caixa-conta-da-loja-viva.cjs",
+    // 20261380: o aviso de cancelados antigos conta so pendencia real (pedido a pedido, mutantes, rollback e consultas 85a/85b).
+    "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -414,6 +416,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/cartao-online-viva.cjs",
     // 20261370: conta de sistema, legado preservado e rollback do caixa.
     "tests/banco/caixa-conta-da-loja-viva.cjs",
+    // 20261380: o aviso de cancelados antigos conta so pendencia real (pedido a pedido, mutantes, rollback e consultas 85a/85b).
+    "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

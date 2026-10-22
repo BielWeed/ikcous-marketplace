@@ -243,6 +243,8 @@ on:
           - 83b-antes-caixa-so-na-conta-da-loja-base-vigente
           - 84a-conferir-produto-com-grade-aplicado
           - 84b-antes-produto-com-grade-ausente
+          - 85a-conferir-aviso-de-cancelados-antigos-aplicado
+          - 85b-antes-aviso-de-cancelados-antigos-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

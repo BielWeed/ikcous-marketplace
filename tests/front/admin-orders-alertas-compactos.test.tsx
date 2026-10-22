@@ -448,18 +448,47 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     ).toBe("3");
 
     await expandir();
+    // Português de balcão: nada de "janela" nem de "varredura enxuta".
     expect(hospedeiro.textContent).toContain(
-      "cancelamentos anteriores à janela de 90 dias",
+      "3 pedidos cancelados há mais de 90 dias ainda estão pendentes",
     );
+    expect(hospedeiro.textContent).toContain(
+      "Têm dinheiro a devolver ao cliente ou produto que ainda não voltou para a loja.",
+    );
+    expect(hospedeiro.textContent).not.toContain("janela");
+    expect(hospedeiro.textContent).not.toContain("varredura");
 
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.textContent?.trim() === "Buscar também os antigos",
+      (b) => b.textContent?.trim() === "Mostrar esses pedidos",
     );
     expect(botao).toBeTruthy();
     await act(async () => {
       botao!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(mockBuscarTambemAntigos).toHaveBeenCalledTimes(1);
+  });
+
+  it("pedidos antigos pendentes: com UM pedido o título vai para o singular e o texto não força caixa alta", async () => {
+    mockAnalyticsStats = statsFake(0);
+    mockCanceladosForaDaJanela = 1;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+
+    await expandir();
+    const titulo = Array.from(hospedeiro.querySelectorAll("h3")).find((h) =>
+      h.textContent?.includes("há mais de 90 dias"),
+    );
+    expect(titulo?.textContent?.trim()).toBe(
+      "1 pedido cancelado há mais de 90 dias ainda está pendente",
+    );
+    // O bloco usa texto normal: sem uppercase nem tracking largo.
+    const bloco = titulo!.closest("div")!.parentElement!.parentElement!;
+    expect(bloco.innerHTML).not.toContain("uppercase");
+    expect(bloco.innerHTML).not.toContain("tracking-widest");
+    expect(hospedeiro.textContent).not.toContain("1 pedidos");
   });
 
   it("cancelado que nunca foi pago, com mercadoria fora: badge conta o pedido e o resumo fala de PRODUTO, não de estorno", async () => {

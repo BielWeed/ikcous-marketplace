@@ -72,6 +72,21 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261380: o aviso de cancelados antigos (fora_da_janela) conta so pendencia real. Os gates de admin, a regra dos dois
+  // baldes (mercadoria a voltar; dinheiro que entrou e ainda sobra) e o retorno ficam no corpo; o resto e o da 20261199.
+  "20261380000000_o_aviso_de_cancelados_antigos_conta_so_pendencia_real.sql": {
+    funcao: "get_admin_orders_cancelados_recentes",
+    esperado: [
+      "IF NOT public.is_admin() THEN",
+      "IF NOT public.is_admin_atual() THEN",
+      "AND pendente",
+      "(o.cancelled_after_shipping IS TRUE AND o.returned_to_seller_at IS NULL)",
+      "WHEN o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')",
+      "- COALESCE((SELECT sum(d.valor_reembolso)",
+      "- COALESCE(o.valor_estornado, 0) > 0",
+      "'fora_da_janela', v_fora_da_janela",
+    ],
+  },
   "20261360000000_ex_admin_perde_o_acesso_na_hora_nas_demais_tabelas.sql": [
     {
       funcao: "answer_question_atomic",

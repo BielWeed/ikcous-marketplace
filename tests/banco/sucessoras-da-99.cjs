@@ -88,6 +88,8 @@ const NOMES = [
   "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
   // F1: fin_caixa_abrir aceita somente a conta que recebe vendas; desfazer antes de medir a 99.
   "20261370000000_o_caixa_abre_so_na_conta_da_loja.sql",
+  // O aviso de cancelados antigos: get_admin_orders_cancelados_recentes sucede o corpo da 99 (so o bloco do fora_da_janela muda).
+  "20261380000000_o_aviso_de_cancelados_antigos_conta_so_pendencia_real.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
