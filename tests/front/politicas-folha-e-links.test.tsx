@@ -91,13 +91,13 @@ describe("folha e links das políticas", () => {
     expect(frase?.querySelectorAll("button")).toHaveLength(2);
   });
 
-  it("alvo de toque de 44px com caixa REAL: sem margem negativa, sem remendo de padding, links na mesma linha", async () => {
+  it.each([false, true])("alvo vertical de 44px (%s)", async (emLinha) => {
     const { FraseDeAceite, LinkDeTrocas } = await import(
       "@/components/politicas/LinksDasPoliticas"
     );
     await renderizar(
       <>
-        <FraseDeAceite acao="finalizar" />
+        <FraseDeAceite acao="finalizar" emLinha={emLinha} />
         <LinkDeTrocas />
       </>,
     );
@@ -122,9 +122,34 @@ describe("folha e links das políticas", () => {
     expect(botoes).toHaveLength(2);
     for (const b of botoes) {
       const classes = (b.getAttribute("class") ?? "").split(/\s+/);
-      // A altura de 44px é da própria caixa do botão, não de padding que
-      // vaza para fora dela.
-      expect(classes).toContain("min-h-11");
+      // jsdom não mede layout: o contrato CSS mantém 44px no pseudo-elemento
+      // absoluto, sem aumentar a linha nem avançar sobre o outro link.
+      for (const classe of [
+        "relative",
+        "inline-block",
+        "p-0",
+        "align-baseline",
+        "after:absolute",
+        "after:inset-x-0",
+        "after:top-1/2",
+        "after:h-11",
+        "after:-translate-y-1/2",
+        "after:content-['']",
+        "focus-visible:outline-none",
+        "focus-visible:ring-2",
+        "focus-visible:ring-zinc-900",
+        "focus-visible:ring-offset-2",
+        "rounded-sm",
+        "cursor-pointer",
+        "font-semibold",
+        "text-zinc-900",
+        "underline",
+        "underline-offset-2",
+      ]) {
+        expect(classes).toContain(classe);
+      }
+      expect(classes).not.toContain("min-h-11");
+      expect(classes).not.toContain("inline-flex");
       expect(classes.filter((c) => /^py-/.test(c))).toEqual([]);
     }
     // O link do produto também tem caixa de 44px.
@@ -132,14 +157,18 @@ describe("folha e links das políticas", () => {
       '[data-testid="link-trocas-e-devolucoes"]',
     ) as HTMLElement;
     expect(trocas.getAttribute("class")).toContain("min-h-11");
-    // Os dois links da frase dividem a MESMA linha: uma quebra de linha só,
-    // ANTES do primeiro, e nenhuma entre eles (senão uma linha de 44px viraria
-    // duas, e a frase cresceria no checkout).
-    const filhos = [...(botoes[0].parentElement?.childNodes ?? [])];
-    const posicao = (n: Node) => filhos.indexOf(n as ChildNode);
-    const quebras = filhos.filter((n) => n.nodeName === "BR");
-    expect(quebras).toHaveLength(1);
-    expect(posicao(quebras[0])).toBeLessThan(posicao(botoes[0]));
+    // Quebra única após "com os": os dois links ficam juntos na 2ª linha, e o
+    // alvo de 44px de um não cobre o texto do outro.
+    expect(frase.querySelectorAll("br")).toHaveLength(1);
+    // Os dois links moram num span sem quebra, logo depois do <br />.
+    expect(botoes[0].parentElement?.previousElementSibling?.tagName).toBe("BR");
+    expect(botoes[0].parentElement?.className).toContain("whitespace-nowrap");
+    expect(botoes[1].previousElementSibling).toBe(botoes[0]);
+    expect(frase.classList.contains("text-[11px]")).toBe(true);
+    expect(frase.classList.contains("leading-snug")).toBe(true);
+    // O alvo de 44px desce ~14px abaixo da linha: o respiro embaixo o mantém
+    // longe do botão seguinte (AuthView e identificação do checkout).
+    expect(frase.classList.contains("pb-2.5")).toBe(true);
     expect(botoes[1].parentElement).toBe(botoes[0].parentElement);
   });
 
