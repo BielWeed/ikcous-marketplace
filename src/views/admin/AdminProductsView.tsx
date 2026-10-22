@@ -487,6 +487,9 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   const abrirVisaoSemCusto = () => {
     if (!modoSemCusto) {
+      // Uma busca da lista normal ainda em andamento não pode gravar o erro
+      // dela na visão que está abrindo.
+      geracaoDaRecarga.current += 1;
       filtrosAntesDaVisao.current = {
         busca: searchTerm,
         categoria: filterCategory,
@@ -505,6 +508,9 @@ export const AdminProductsView = memo(function AdminProductsView({
   const verTodos = () => {
     const antes = filtrosAntesDaVisao.current;
     filtrosAntesDaVisao.current = null;
+    // Uma varredura "Sem custo" ainda em andamento (ou nos 320 ms antes da
+    // recarga) chega depois da saída: com a geração nova, é descartada.
+    geracaoDaRecarga.current += 1;
     setModoSemCusto(false);
     setSemCusto(null);
     setPaginaSemCusto(0);
@@ -1037,7 +1043,12 @@ export const AdminProductsView = memo(function AdminProductsView({
                 >
                   {isOffline && (
                     <>
-                      Sem conexão ·{" "}
+                      {/* Com o selo-botão a faixa tem 28 px e não quebra linha:
+                        o aviso de conexão já está no cabeçalho, aqui só o
+                        leitor de tela o lê. */}
+                      <span className={financialStats.parcial ? "sr-only" : ""}>
+                        Sem conexão ·{" "}
+                      </span>
                       <span className="sr-only">
                         ações indisponíveis até a internet voltar ·{" "}
                       </span>
@@ -1051,11 +1062,11 @@ export const AdminProductsView = memo(function AdminProductsView({
                       disabled={isOffline}
                       aria-label={
                         financialStats.produtosSemCusto === 1
-                          ? "Ver o produto sem custo"
+                          ? "1 produto sem custo, ver"
                           : `Ver os ${financialStats.produtosSemCusto} produtos sem custo`
                       }
                       onClick={abrirVisaoSemCusto}
-                      className="relative inline-flex max-w-full cursor-pointer rounded-full align-middle after:absolute after:-inset-y-2 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="relative inline-flex max-w-full cursor-pointer rounded-full align-middle after:absolute after:inset-x-0 after:inset-y-[-11px] after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <SeloDeStatus
                         tom="atencao"

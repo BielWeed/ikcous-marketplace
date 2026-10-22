@@ -217,7 +217,7 @@ describe("Produtos: tocar no selo 'sem custo' leva aos produtos sem custo", () =
 
   const botaoDoSelo = () =>
     hospedeiro.querySelector<HTMLButtonElement>(
-      'button[aria-label^="Ver o"][aria-label$="sem custo"]',
+      'button[aria-label$="sem custo"], button[aria-label$="sem custo, ver"]',
     );
   const botaoVerTodos = () =>
     [...hospedeiro.querySelectorAll<HTMLButtonElement>("button")].find(
@@ -241,7 +241,7 @@ describe("Produtos: tocar no selo 'sem custo' leva aos produtos sem custo", () =
     expect(botao?.type).toBe("button");
     // Foco visível e área de toque estendida (a faixa do selo tem 28 px).
     expect(botao?.className).toMatch(/focus-visible:ring-2/);
-    expect(botao?.className).toMatch(/after:-inset-y-2/);
+    expect(botao?.className).toMatch(/after:inset-y-\[-11px\]/);
     // Ainda é a lista normal.
     expect(faixa()).toBeNull();
     expect(h.loadProductsSemCusto).not.toHaveBeenCalled();
@@ -251,9 +251,12 @@ describe("Produtos: tocar no selo 'sem custo' leva aos produtos sem custo", () =
     h.catalogo = [CATALOGO[0], CATALOGO[4]];
     h.stats = estatisticas(h.catalogo);
     await montar();
-    expect(botaoDoSelo()?.getAttribute("aria-label")).toBe(
-      "Ver o produto sem custo",
-    );
+    // O nome acessível CONTÉM o texto visível ("1 produto sem custo"), para
+    // quem comanda o celular por voz.
+    const botao = botaoDoSelo();
+    expect(botao?.getAttribute("aria-label")).toBe("1 produto sem custo, ver");
+    expect(botao?.textContent).toContain("1 produto sem custo");
+    expect(botao?.getAttribute("aria-label")).toContain("1 produto sem custo");
   });
 
   it("sem produto sem custo (N = 0) não há botão: o aviso verde continua igual", async () => {
@@ -457,6 +460,103 @@ describe("Produtos: tocar no selo 'sem custo' leva aos produtos sem custo", () =
     const botao = botaoDoSelo();
     expect(botao?.disabled).toBe(true);
   });
+
+  it("sem internet, o aviso 'Sem conexão ·' sai da faixa de 28 px (só leitor de tela) para o selo caber sem quebrar linha", async () => {
+    h.offline = true;
+    await montar();
+    const nota = hospedeiro.querySelector(".metricas-painel-nota")!;
+    const visiveis = [...nota.querySelectorAll("span")].filter(
+      (el) =>
+        el.children.length === 0 &&
+        el.textContent?.includes("Sem conexão") &&
+        !el.classList.contains("sr-only"),
+    );
+    expect(visiveis).toHaveLength(0);
+    expect(nota.textContent).toContain("Sem conexão ·");
+    // A faixa não quebra linha e só corta na horizontal.
+    expect(nota.className).toMatch(/whitespace-nowrap/);
+    expect(nota.className).toMatch(/overflow-x-clip/);
+    expect(nota.className).not.toMatch(/overflow-hidden|truncate/);
+  });
+
+  it("'Ver todos' com a varredura ainda em andamento: a resposta que chega depois é descartada", async () => {
+    let terminar!: (valor: unknown) => void;
+    h.loadProductsSemCusto.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          terminar = resolve;
+        }),
+    );
+    await montar();
+    await act(async () => botaoDoSelo()!.click());
+    await esperar(360); // a varredura começou e não terminou
+    expect(h.loadProductsSemCusto).toHaveBeenCalledTimes(1);
+    await act(async () => botaoVerTodos()!.click());
+    // Antes de a recarga normal (320 ms) rodar, a varredura velha falha.
+    await act(async () => {
+      terminar(null);
+    });
+    expect(faixa()).toBeNull();
+    // O erro dela não vaza para a lista normal.
+    expect(hospedeiro.textContent).not.toContain("Não sincronizou");
+    await esperar(360);
+    expect(nomesNaLista()).toEqual(["Produto brinde", "Produto pago"]);
+    expect(hospedeiro.textContent).not.toContain("Não sincronizou");
+  });
+
+  it("varredura que termina com sucesso depois de 'Ver todos' não traz a lista sem custo de volta", async () => {
+    let terminar!: (valor: unknown) => void;
+    h.loadProductsSemCusto.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          terminar = resolve;
+        }),
+    );
+    await montar();
+    await act(async () => botaoDoSelo()!.click());
+    await esperar(360);
+    await act(async () => botaoVerTodos()!.click());
+    await act(async () => {
+      terminar({ products: [CATALOGO[0]], total: 1 });
+    });
+    await esperar(360);
+    expect(faixa()).toBeNull();
+    expect(nomesNaLista()).toEqual(["Produto brinde", "Produto pago"]);
+    // Abrir de novo começa do zero: não mostra a lista velha enquanto busca.
+    h.loadProductsSemCusto.mockImplementation(() => new Promise(() => {}));
+    await act(async () => botaoDoSelo()!.click());
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Procurando os produtos sem custo…",
+    );
+  });
+
+  it("busca da lista normal em andamento ao abrir a visão não deixa o erro dela na visão", async () => {
+    await montar();
+    // A recarga normal falha, mas só chega DEPOIS de o lojista abrir a visão.
+    let falhar!: (valor: unknown) => void;
+    h.loadProducts.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          falhar = resolve;
+        }),
+    );
+    await renderizar(false);
+    await renderizar(true);
+    await esperar(360); // recarga normal em andamento
+    await act(async () => botaoDoSelo()!.click());
+    await act(async () => {
+      falhar(null);
+    });
+    // Logo depois da falha velha, a visão segue "procurando" (sem erro nem
+    // lista vazia falsa) até a varredura dela terminar.
+    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Procurando os produtos sem custo…",
+    );
+    await esperar(360);
+    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+    expect(nomesNaLista()).toEqual(["Produto a", "Produto b", "Produto c"]);
+  });
 });
 
 describe("MetricasDoPainel: nota acionável não é cortada", () => {
@@ -493,6 +593,10 @@ describe("MetricasDoPainel: nota acionável não é cortada", () => {
     );
     const nota = caixa.querySelector(".metricas-painel-nota")!;
     expect(nota.className).toContain("h-7");
+    // Não quebra linha (não invade os cartões) e só corta na horizontal: o
+    // `truncate`/`overflow-hidden` cortariam também a área de toque estendida.
+    expect(nota.className).toMatch(/whitespace-nowrap/);
+    expect(nota.className).toMatch(/overflow-x-clip/);
     expect(nota.className).not.toMatch(/truncate|overflow-hidden/);
     act(() => r.unmount());
     caixa.remove();

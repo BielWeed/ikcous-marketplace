@@ -87,7 +87,8 @@ export function MetricasDoPainel({
   readonly onEntender?: () => void;
   readonly indicesDoRodape?: readonly [number, number];
   /** A nota tem um botão cuja área de toque (44 px) passa da faixa de 28 px:
-   * a faixa deixa de cortar o que sobra (sem `truncate` nem rolagem). */
+   * a faixa não quebra linha e só corta na horizontal (`overflow-x: clip`,
+   * a vertical fica livre para a área de toque); o conteúdo tem de caber. */
   readonly notaAcionavel?: boolean;
   /** Resumo fixo dos relatórios: a expansão pertence ao carrossel, não a este cartão. */
   readonly relatorio?: {
@@ -230,8 +231,18 @@ export function MetricasDoPainel({
           className={cn(
             "metricas-painel-nota border-b border-admin-border px-3 text-[11px] text-zinc-400",
             expandido
-              ? cn("h-7 leading-[14px]", !notaAcionavel && "overflow-y-auto")
-              : cn("h-7 leading-7", !notaAcionavel && "truncate"),
+              ? cn(
+                  "h-7 leading-[14px]",
+                  notaAcionavel
+                    ? "overflow-x-clip whitespace-nowrap"
+                    : "overflow-y-auto",
+                )
+              : cn(
+                  "h-7 leading-7",
+                  notaAcionavel
+                    ? "overflow-x-clip whitespace-nowrap"
+                    : "truncate",
+                ),
           )}
         >
           {nota}
