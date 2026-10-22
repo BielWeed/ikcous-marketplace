@@ -76,9 +76,9 @@ describe("classes do desenho Lateral das Ofertas", () => {
     expect(classes.size).toBeGreaterThan(40);
     // As classes que a especificação exige têm de estar entre as lidas.
     for (const t of [
-      "bg-foreground",
-      "text-background",
-      "border-foreground",
+      "bg-zinc-950",
+      "text-white",
+      "border-zinc-950",
       "focus-visible:ring-ring",
       "text-amber-700",
       "text-red-800",

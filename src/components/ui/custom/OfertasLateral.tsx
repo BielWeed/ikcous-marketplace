@@ -95,7 +95,7 @@ export default function OfertasLateral({
               aria-label={`Oferta ${i + 1} de ${ofertas.length}`}
               className={cn(
                 "h-1.5 rounded-full",
-                pagina === i ? "w-6 bg-foreground" : "w-1.5 bg-zinc-200",
+                pagina === i ? "w-6 bg-zinc-950" : "w-1.5 bg-zinc-200",
               )}
             />
           ))}
@@ -252,7 +252,7 @@ function CartaoOfertaLateral({
                 ? "border-zinc-100 bg-zinc-100 text-zinc-500"
                 : cartStatus === "success"
                   ? "border-zinc-200 bg-white text-emerald-700"
-                  : "border-foreground bg-foreground text-background",
+                  : "border-zinc-950 bg-zinc-950 text-white",
             )}
           >
             {cartStatus === "success" ? (

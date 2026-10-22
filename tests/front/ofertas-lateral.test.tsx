@@ -197,8 +197,8 @@ describe("Ofertas Lateral", () => {
     expect(botao.textContent).not.toContain("Adicionar");
     expect(botao.className).toContain("size-11");
     expect(botao.className).toContain("rounded-full");
-    expect(botao.className).toContain("bg-foreground");
-    expect(botao.className).toContain("text-background");
+    expect(botao.className).toContain("bg-zinc-950");
+    expect(botao.className).toContain("text-white");
     expect(botao.className).toContain("focus-visible:ring-2");
     await clicar(botao);
     expect(adicionar).toHaveBeenCalledWith(p);
