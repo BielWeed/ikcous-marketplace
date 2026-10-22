@@ -216,11 +216,16 @@ describe("ProductView -- o aviso de variação faltando diz O QUE falta", () => 
     grupo: string,
     valor: string,
   ) {
-    const rotulo = Array.from(hospedeiroEl.querySelectorAll("legend")).find(
-      (s) => s.textContent === grupo,
+    const container = Array.from(
+      hospedeiroEl.querySelectorAll<HTMLElement>(
+        '[role="group"][aria-labelledby]',
+      ),
+    ).find(
+      (g) =>
+        document.getElementById(g.getAttribute("aria-labelledby")!)
+          ?.textContent === grupo,
     );
-    if (!rotulo) throw new Error(`grupo "${grupo}" não encontrado na tela`);
-    const container = rotulo.parentElement as HTMLElement;
+    if (!container) throw new Error(`grupo "${grupo}" não encontrado na tela`);
     const botaoValor = Array.from(container.querySelectorAll("button")).find(
       (b) => b.textContent?.startsWith(valor),
     );
