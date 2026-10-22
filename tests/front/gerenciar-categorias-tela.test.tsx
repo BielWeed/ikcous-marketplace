@@ -186,7 +186,7 @@ describe("Gerenciar categorias", () => {
     await abrirSeletor(linha);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const classicos = linha.querySelector('section[aria-label="Clássicos"]');
-    expect(classicos?.querySelectorAll("button")).toHaveLength(15);
+    expect(classicos?.querySelectorAll("button")).toHaveLength(14);
     await act(async () => {
       botao("Ícone Moda para Brinquedos").click();
     });

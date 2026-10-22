@@ -72,7 +72,23 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
   });
 
   it("b. o seletor de setor tem min-h-11", () => {
-    const gatilho = tagDe("SelectTrigger", 'id="product-category"');
+    // O campo de categoria mora em `CampoDeCategoria` (o ponto de integração
+    // do formulário); o gatilho é a tag entre `<SelectTrigger` e `<SelectValue`.
+    const fonteDaCategoria = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "src/components/admin/products/CampoDeCategoria.tsx",
+      ),
+      "utf8",
+    );
+    const inicio = fonteDaCategoria.indexOf("<SelectTrigger");
+    const fim = fonteDaCategoria.indexOf("<SelectValue");
+    expect(inicio).toBeGreaterThan(-1);
+    expect(fim).toBeGreaterThan(inicio);
+    const gatilho = fonteDaCategoria.slice(inicio, fim);
+    expect(gatilho).toContain('id="product-category"');
     expect(gatilho).toContain("min-h-11");
   });
 

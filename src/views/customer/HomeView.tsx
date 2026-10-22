@@ -7,6 +7,10 @@ import { useCategories } from "@/hooks/useCategories";
 import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
 import { categoriaValidaDaHome } from "@/lib/categoria-valida-da-home";
 import { identidadeLegalDaLoja } from "@/lib/identidade-legal-da-loja";
+import {
+  type LayoutDeOfertas,
+  normalizarLayoutDeOfertas,
+} from "@/lib/layout-de-ofertas";
 import { ordenacaoValida } from "@/lib/ordenacao-da-home";
 import { cn } from "@/lib/utils";
 import { ordenarParaVitrine } from "@/lib/vitrine";
@@ -24,6 +28,7 @@ import React, { useCallback, useState, useMemo } from "react";
 import { FreeShippingBlock } from "@/components/ui/custom/FreeShippingBlock";
 import { InfoBlockCarousel } from "@/components/ui/custom/InfoBlockCarousel";
 import { OfertasCompactasEsqueleto } from "@/components/ui/custom/OfertasCompactasEsqueleto";
+import { OfertasLateralEsqueleto } from "@/components/ui/custom/OfertasLateralEsqueleto";
 import { PremiumOffers } from "@/components/ui/custom/PremiumOffers";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
 import { ProductCarousel } from "@/components/ui/custom/ProductCarousel";
@@ -129,9 +134,9 @@ export const HomeView = React.memo(function HomeView({
   // e das seções derivadas por filtro antes de qualquer paint.
   const memoriaDaUltimaVisita = useMemoriaDaHome();
   const layoutOfertas = configLoaded
-    ? config.homeSections?.find((s) => s.id === "offers")?.layout === "compacto"
-      ? "compacto"
-      : "padrao"
+    ? normalizarLayoutDeOfertas(
+        config.homeSections?.find((s) => s.id === "offers")?.layout,
+      )
     : (memoriaDaUltimaVisita?.layoutOfertas ?? "padrao");
 
   React.useEffect(() => {
@@ -877,9 +882,10 @@ function SecaoCarrosselEsqueleto() {
 }
 
 /** Espelho do PremiumOffers (seção offers): header compacto + card herói. */
-function SecaoOfertasEsqueleto({ layout }: { layout?: "padrao" | "compacto" }) {
+function SecaoOfertasEsqueleto({ layout }: { layout?: LayoutDeOfertas }) {
   // A reserva de 392px mínimos é a mesma do fallback lazy do Compacto.
   if (layout === "compacto") return <OfertasCompactasEsqueleto />;
+  if (layout === "lateral") return <OfertasLateralEsqueleto />;
   return (
     // data-testid: âncora do teste comportamental "sem ofertas → nenhum
     // esqueleto de ofertas montado" (laudo edj3ka, E2) — sem efeito visual.

@@ -1,3 +1,8 @@
+import {
+  AcaoDeResumo,
+  CartaoDeResumo,
+  QuadradinhoDoIcone,
+} from "@/components/checkout/CartoesDeResumo";
 import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
 import type { CartaoEmCurso } from "@/components/checkout/PagamentoComCartao";
 import {
@@ -139,6 +144,7 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
+  ChevronRight,
   Clock,
   CreditCard,
   FileText,
@@ -2251,6 +2257,32 @@ export function CheckoutViewDaConta({
   const [identificacaoAbertaManual, setIdentificacaoAbertaManual] =
     useState(false);
   const identificacaoExpandida = identificacaoAbertaManual;
+  // PASSO A1 (22/10/2026): recolhida, a seção mostra dois resumos compactos
+  // ("Seus dados" e "Endereço de entrega"); aberta, mostra o cabeçalho de
+  // recolher + os formulários de sempre. O botão que o dedo tocou some na
+  // troca — o foco vai para o botão que assume o lugar dele (cabeçalho ao
+  // abrir pelo resumo; "Editar" ao recolher pelo cabeçalho). Só os dois
+  // gestos abaixo pedem isso: outras aberturas (submit inválido, aviso da
+  // barra) já levam o foco ao campo que precisa de correção.
+  const focoAposAlternarRef = useRef<"cabecalho" | "resumo" | null>(null);
+  useEffect(() => {
+    if (focoAposAlternarRef.current === "cabecalho" && identificacaoExpandida)
+      document.getElementById("cabecalho-dados-e-entrega")?.focus();
+    else if (
+      focoAposAlternarRef.current === "resumo" &&
+      !identificacaoExpandida
+    )
+      document.getElementById("resumo-editar-dados")?.focus();
+    focoAposAlternarRef.current = null;
+  }, [identificacaoExpandida]);
+  const abrirPeloResumo = () => {
+    focoAposAlternarRef.current = "cabecalho";
+    setIdentificacaoAbertaManual(true);
+  };
+  const recolherPeloCabecalho = () => {
+    focoAposAlternarRef.current = "resumo";
+    setIdentificacaoAbertaManual(false);
+  };
   // Último CEP que a calculadora DESTA tela gravou como cotado. Ao voltar
   // para um endereço já cotado, a calculadora serve do cache NO MESMO commit
   // da troca (síncrono) — e este efeito, que roda depois do dela, ainda vê o
@@ -5264,7 +5296,6 @@ export function CheckoutViewDaConta({
     metodoOnline?: MetodoOnline;
     label: string;
     icon: ComponentType<{ className?: string }>;
-    color: string;
     requerConta: boolean;
   }
 
@@ -5283,7 +5314,6 @@ export function CheckoutViewDaConta({
           // prometia ao cliente o que o código negava.
           label: "Pagar agora com PIX",
           icon: IconePix,
-          color: "text-[#32BCAD] bg-[#32BCAD]/10",
           // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) —
           // só as opções "no app" carregam a exigência; as outras (entrega)
           // continuam abertas a convidado.
@@ -5298,7 +5328,6 @@ export function CheckoutViewDaConta({
                 // "Cartão de débito" ou os dois.
                 label: rotuloDaOpcaoDeCartao(configDoCartao),
                 icon: IconeCartao,
-                color: "text-blue-500 bg-blue-50",
                 requerConta: true,
               } satisfies OpcaoDePagamento,
             ]
@@ -5324,21 +5353,18 @@ export function CheckoutViewDaConta({
         value: "pix",
         label: `Pix ${quandoPaga}`,
         icon: IconePix,
-        color: "text-[#32BCAD] bg-[#32BCAD]/10",
         requerConta: false,
       },
       {
         value: "card",
         label: `Cartão ${quandoPaga}`,
         icon: IconeCartao,
-        color: "text-blue-500 bg-blue-50",
         requerConta: false,
       },
       {
         value: "cash",
         label: `Dinheiro ${quandoPaga}`,
         icon: IconeDinheiro,
-        color: "text-amber-600 bg-amber-50",
         requerConta: false,
       },
     ] satisfies OpcaoDePagamento[]
@@ -5388,26 +5414,29 @@ export function CheckoutViewDaConta({
         // justamente o único item da lista que precisa ser LIDO, porque
         // explica o que fazer. Quem diz "indisponível" aqui é o fundo
         // cinza, o cadeado e a cor do rótulo, não a transparência.
-        className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
+        //
+        // PASSO A5 (22/10/2026): marca NEUTRA — ícone cinza-escuro em
+        // quadradinho cinza claro (o Pix com o glifo oficial que a casa já
+        // tem), marcada = borda forte + bolinha escura com check, e as outras
+        // com bolinha vazia. Nada de cor de bandeira nem da marca da loja.
+        className={`flex min-h-11 w-full items-center gap-3 rounded-2xl border-2 border-solid p-3 transition-colors active:scale-[0.99] ${
           bloqueadaPorFaltaDeConta
             ? "border-zinc-100 bg-zinc-50/60"
             : isSelected
-              ? "z-10 border-zinc-900 bg-white shadow-md"
-              : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
+              ? "border-zinc-900 bg-white"
+              : "border-zinc-200 bg-white hover:border-zinc-300"
         }`}
       >
-        <div
-          className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
-        >
+        <QuadradinhoDoIcone grande>
           <Icon className="size-5" />
-        </div>
-        <div className="flex min-w-0 flex-col items-start gap-1.5 text-left">
+        </QuadradinhoDoIcone>
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5 text-left">
           {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de pagamento
               não escolhidos ficavam ilegíveis, com cara de desabilitados.
               `zinc-600` (7:1) mantém a hierarquia (escolhido continua
               sendo o mais escuro) sem apagar as outras opções. */}
           <span
-            className={`text-xs font-bold uppercase tracking-wider ${
+            className={`text-sm font-semibold ${
               bloqueadaPorFaltaDeConta
                 ? "text-zinc-500"
                 : isSelected
@@ -5429,12 +5458,20 @@ export function CheckoutViewDaConta({
         </div>
         {bloqueadaPorFaltaDeConta ? (
           <Lock className="ml-auto size-4 shrink-0 text-zinc-500" />
-        ) : (
-          <div
-            className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
+        ) : isSelected ? (
+          <span
+            data-testid="selo-de-escolhida"
+            aria-hidden="true"
+            className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white"
           >
-            {isSelected && <Check className="size-3 text-primary-foreground" />}
-          </div>
+            <Check className="size-3.5" strokeWidth={3} />
+          </span>
+        ) : (
+          <span
+            data-testid="bolinha-vazia"
+            aria-hidden="true"
+            className="ml-auto size-6 shrink-0 rounded-full border-2 border-zinc-500"
+          />
         )}
       </button>
     );
@@ -5505,150 +5542,180 @@ export function CheckoutViewDaConta({
           }
         }}
       >
-        {/* CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
-            Endereços" viraram UMA seção — "Seus dados e entrega" — com
-            cabeçalho clicável (`aria-expanded`/`aria-controls`) e resumo
-            compacto quando os dados estão completos. Nunca dois cartões
-            altos independentes (pedido do dono: tela de Finalizar comprida
-            demais no celular). */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <button
-            type="button"
-            id="cabecalho-dados-e-entrega"
-            aria-expanded={identificacaoExpandida}
-            aria-controls="secao-dados-e-entrega"
-            onClick={() =>
-              setIdentificacaoAbertaManual(!identificacaoExpandida)
-            }
-            // `min-h-11` = 44px, o piso de alvo de toque do laudo de
-            // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não só
-            // o texto.
-            className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
-          >
-            <span className="flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-                <User className="size-4" />
-              </span>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                Seus dados e entrega
-              </span>
-            </span>
-            <ChevronDown
-              aria-hidden="true"
-              className={cn(
-                "size-4 shrink-0 text-zinc-400 transition-transform",
-                identificacaoExpandida && "rotate-180",
-              )}
-            />
-          </button>
-
-          {/* RESUMO COMPACTO: só aparece com a seção recolhida — nunca ao
-              mesmo tempo que o formulário aberto, que traz os mesmos dados
-              editáveis logo abaixo. */}
-          {!identificacaoExpandida && (
-            <div className="space-y-3 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 space-y-0.5">
-                  {faltaNome ? (
-                    <p
-                      className="text-xs font-bold text-red-600"
-                      data-testid="checkout-resumo-falta-nome"
-                    >
-                      Informe seu nome
-                    </p>
-                  ) : (
-                    <p className="truncate text-sm font-bold text-zinc-800">
-                      {nomeAtual}
-                    </p>
-                  )}
-                  {faltaWhatsapp ? (
-                    <p
-                      className="text-xs font-bold text-red-600"
-                      data-testid="checkout-resumo-falta-whatsapp"
-                    >
-                      Informe seu WhatsApp
-                    </p>
-                  ) : (
-                    <p className="text-xs font-medium text-zinc-500">
-                      {abreviarWhatsapp(whatsappAtual ?? "")}
-                    </p>
-                  )}
-                  {exigeCpfDoDestinatario &&
-                    (faltaCpf ? (
-                      <p
-                        className="text-xs font-bold text-red-600"
-                        data-testid="checkout-resumo-falta-cpf"
-                      >
-                        Informe o CPF de quem recebe
-                      </p>
-                    ) : (
-                      <p className="text-xs font-medium text-zinc-500">
-                        CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
-                      </p>
-                    ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIdentificacaoAbertaManual(true)}
-                  className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
+        {/* PASSO A1 (22/10/2026): recolhida, a seção vira DOIS resumos
+            compactos — "Seus dados" e "Endereço de entrega" —, cada um com o
+            selo de ok quando está completo e uma ação discreta ("Editar"/
+            "Trocar") que abre os MESMOS formulários de sempre (logo abaixo,
+            sempre montados, só escondidos: nada do que se digita se perde).
+            Nunca os dois resumos ao mesmo tempo que o formulário aberto, que
+            traz os mesmos dados editáveis. As pendências continuam apontadas
+            uma a uma (mesmos `data-testid`). */}
+        {!identificacaoExpandida && (
+          <>
+            <CartaoDeResumo
+              rotulo="Seus dados"
+              icone={<User className="size-5" />}
+              ok={!faltaNome && !faltaWhatsapp && !faltaCpf}
+              acao={
+                <AcaoDeResumo
+                  id="resumo-editar-dados"
+                  controla="secao-dados-e-entrega"
+                  onClick={abrirPeloResumo}
                 >
                   Editar
-                </button>
-              </div>
-              <div className="border-t border-zinc-100/70 pt-3">
-                {user && enderecoEfetivo ? (
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="truncate text-xs font-bold uppercase tracking-wide text-zinc-500">
-                        {enderecoEfetivo.name}
-                      </p>
-                      <p className="text-xs font-medium text-zinc-500">
-                        {resumoDoEndereco(enderecoEfetivo)}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIdentificacaoAbertaManual(true)}
-                      className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
-                    >
-                      Trocar
-                    </button>
-                  </div>
-                ) : user ? (
-                  <button
-                    type="button"
-                    onClick={() => setIdentificacaoAbertaManual(true)}
-                    className="text-xs font-bold text-red-600 underline"
-                    data-testid="checkout-resumo-falta-endereco"
+                </AcaoDeResumo>
+              }
+            >
+              <div className="min-w-0 space-y-0.5">
+                {faltaNome ? (
+                  <p
+                    className="text-sm font-bold text-red-600"
+                    data-testid="checkout-resumo-falta-nome"
                   >
-                    Cadastre um endereço de entrega
-                  </button>
-                ) : enderecoConvidadoCompleto ? (
-                  <p className="text-xs font-medium text-zinc-500">
-                    {resumoDoEndereco({
-                      street: ruaAtual ?? "",
-                      number: numeroAtual ?? "",
-                      neighborhood: bairroAtual ?? "",
-                      city: cidadeAtual ?? "",
-                      state: estadoAtual ?? "",
-                      cep: cepDigitadoNoFormulario ?? "",
-                    })}
+                    Informe seu nome
                   </p>
                 ) : (
-                  <p
-                    className="text-xs font-bold text-red-600"
-                    data-testid="checkout-resumo-falta-endereco"
-                  >
-                    Informe o endereço de entrega
+                  <p className="truncate text-base font-bold text-zinc-900">
+                    {nomeAtual}
                   </p>
                 )}
+                {faltaWhatsapp ? (
+                  <p
+                    className="text-sm font-bold text-red-600"
+                    data-testid="checkout-resumo-falta-whatsapp"
+                  >
+                    Informe seu WhatsApp
+                  </p>
+                ) : (
+                  <p className="text-sm font-medium text-zinc-600">
+                    {abreviarWhatsapp(whatsappAtual ?? "")}
+                  </p>
+                )}
+                {exigeCpfDoDestinatario &&
+                  (faltaCpf ? (
+                    <p
+                      className="text-sm font-bold text-red-600"
+                      data-testid="checkout-resumo-falta-cpf"
+                    >
+                      Informe o CPF de quem recebe
+                    </p>
+                  ) : (
+                    <p className="text-sm font-medium text-zinc-600">
+                      CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
+                    </p>
+                  ))}
               </div>
-            </div>
+            </CartaoDeResumo>
+
+            <CartaoDeResumo
+              rotulo="Endereço de entrega"
+              icone={<MapPin className="size-5" />}
+              ok={user ? !!enderecoEfetivo : enderecoConvidadoCompleto}
+              acao={
+                user && !enderecoEfetivo ? undefined : (
+                  <AcaoDeResumo
+                    controla="secao-dados-e-entrega"
+                    onClick={abrirPeloResumo}
+                  >
+                    {user ? "Trocar" : "Editar"}
+                  </AcaoDeResumo>
+                )
+              }
+            >
+              {user && enderecoEfetivo ? (
+                <div className="min-w-0 space-y-0.5">
+                  <p className="truncate text-base font-bold text-zinc-900">
+                    {enderecoEfetivo.name}
+                  </p>
+                  <p className="break-words text-sm font-medium text-zinc-600">
+                    {resumoDoEndereco(enderecoEfetivo)}
+                  </p>
+                </div>
+              ) : user ? (
+                <button
+                  type="button"
+                  onClick={abrirPeloResumo}
+                  aria-expanded={false}
+                  aria-controls="secao-dados-e-entrega"
+                  className="flex min-h-11 w-full items-center gap-1.5 text-left text-sm font-bold text-amber-800"
+                  data-testid="checkout-resumo-falta-endereco"
+                >
+                  <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    Cadastre um endereço de entrega
+                  </span>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-zinc-500"
+                  />
+                </button>
+              ) : enderecoConvidadoCompleto ? (
+                <p className="break-words text-sm font-medium text-zinc-600">
+                  {resumoDoEndereco({
+                    street: ruaAtual ?? "",
+                    number: numeroAtual ?? "",
+                    neighborhood: bairroAtual ?? "",
+                    city: cidadeAtual ?? "",
+                    state: estadoAtual ?? "",
+                    cep: cepDigitadoNoFormulario ?? "",
+                  })}
+                </p>
+              ) : (
+                <p
+                  className="flex items-center gap-1.5 text-sm font-bold text-amber-800"
+                  data-testid="checkout-resumo-falta-endereco"
+                >
+                  <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
+                  Informe o endereço de entrega
+                </p>
+              )}
+            </CartaoDeResumo>
+          </>
+        )}
+
+        {/* Formulários de "Seus dados e entrega": SEMPRE montados (escondidos
+            quando recolhida) — o cabeçalho de recolher só existe com a seção
+            aberta, e quem a abre é o "Editar"/"Trocar" dos resumos acima (ou
+            o submit inválido / o aviso da barra, que também focam o campo). */}
+        <div
+          hidden={!identificacaoExpandida}
+          className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm"
+        >
+          {identificacaoExpandida && (
+            <button
+              type="button"
+              id="cabecalho-dados-e-entrega"
+              aria-expanded={true}
+              aria-controls="secao-dados-e-entrega"
+              onClick={recolherPeloCabecalho}
+              // `min-h-11` = 44px, o piso de alvo de toque do laudo de
+              // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não
+              // só o texto.
+              className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+            >
+              <span className="flex items-center gap-2">
+                <QuadradinhoDoIcone>
+                  <User className="size-4" />
+                </QuadradinhoDoIcone>
+                <span className="text-base font-semibold text-zinc-900">
+                  Seus dados e entrega
+                </span>
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className="size-4 shrink-0 rotate-180 text-zinc-500"
+              />
+            </button>
           )}
 
           <div
             id="secao-dados-e-entrega"
-            aria-labelledby="cabecalho-dados-e-entrega"
+            aria-labelledby={
+              identificacaoExpandida ? "cabecalho-dados-e-entrega" : undefined
+            }
+            aria-label={
+              identificacaoExpandida ? undefined : "Seus dados e entrega"
+            }
             hidden={!identificacaoExpandida}
             className="space-y-4 p-4"
           >
@@ -6108,7 +6175,7 @@ export function CheckoutViewDaConta({
                       setEditingAddressId(null);
                       setIsAddressModalOpen(true);
                     }}
-                    className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-primary-foreground transition-all hover:opacity-90"
+                    className="flex h-11 items-center gap-1 rounded-xl bg-zinc-900 px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:bg-black"
                   >
                     <Plus className="size-3" /> Novo
                   </Button>
@@ -6122,7 +6189,7 @@ export function CheckoutViewDaConta({
                     className="flex min-h-[112px] flex-col items-center justify-center py-8"
                   >
                     <span className="sr-only">Carregando endereços</span>
-                    <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
+                    <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-zinc-900" />
                     <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                       Sincronizando endereços...
                     </p>
@@ -6243,14 +6310,20 @@ export function CheckoutViewDaConta({
         )}
 
         {/* Payment Method */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+        <section
+          aria-labelledby="titulo-pagamento"
+          className="rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm"
+        >
+          <div className="flex items-center gap-2">
+            <QuadradinhoDoIcone>
               <CreditCard className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-              Meio de Pagamento
-            </span>
+            </QuadradinhoDoIcone>
+            <h2
+              id="titulo-pagamento"
+              className="text-base font-semibold text-zinc-900"
+            >
+              Meio de pagamento
+            </h2>
           </div>
           {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
               são uma escolha ÚNICA, mas nada anunciava qual estava marcada —
@@ -6263,11 +6336,11 @@ export function CheckoutViewDaConta({
           <div
             role="radiogroup"
             aria-label="Meio de pagamento"
-            className="space-y-4 p-4"
+            className="mt-3 space-y-4"
           >
             {opcoesNoApp.length > 0 && (
               <div className="space-y-2.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
                   No app
                 </span>
                 <div className="grid grid-cols-1 gap-2.5">
@@ -6353,7 +6426,7 @@ export function CheckoutViewDaConta({
             {(!selectedShippingOption || ehEntregaLocal) &&
               opcoesNaEntrega.length > 0 && (
                 <div className="space-y-2.5">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
                     {ehRetirada ? "Na retirada" : "Na entrega"}
                   </span>
                   <div className="grid grid-cols-1 gap-2.5">
@@ -6376,29 +6449,29 @@ export function CheckoutViewDaConta({
                       haptic.light();
                       onNavigate("auth");
                     }}
-                    className="flex min-h-[40px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                    className="flex min-h-11 items-center rounded-lg bg-zinc-900 px-4 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-black"
                   >
                     Entrar ou criar conta
                   </button>
                 </div>
               )}
           </div>
-        </div>
+        </section>
 
         {/* Notes */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+        <section className="rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <QuadradinhoDoIcone>
               <FileText className="size-4" />
-            </div>
+            </QuadradinhoDoIcone>
             <label
               htmlFor="order-notes"
-              className="text-[11px] font-bold uppercase tracking-wider text-zinc-500"
+              className="text-base font-semibold text-zinc-900"
             >
               Notas Adicionais (Opcional)
             </label>
           </div>
-          <div className="p-4">
+          <div className="mt-3">
             <textarea
               id="order-notes"
               name="order_notes"
@@ -6406,11 +6479,11 @@ export function CheckoutViewDaConta({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
               rows={2}
-              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-primary focus:bg-white md:text-sm"
+              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
               autoComplete="off"
             />
           </div>
-        </div>
+        </section>
 
         {/* Location Notice — exige cobertura LOCAL porque a frase afirma
             EXCLUSIVIDADE de entrega na cidade (#525): com cobertura

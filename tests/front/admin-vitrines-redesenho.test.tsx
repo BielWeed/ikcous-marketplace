@@ -32,7 +32,7 @@ type Secao = {
   maxItems?: number;
   productIds?: string[];
   isCustom?: boolean;
-  layout?: "padrao" | "compacto";
+  layout?: "padrao" | "compacto" | "lateral";
 };
 
 const secaoLancamentos: Secao = {
@@ -240,12 +240,14 @@ describe("layout da vitrine de Ofertas", () => {
   const opcao = (nome: string) =>
     porRotulo(`Layout ${nome}`) as HTMLButtonElement;
 
-  it("só Ofertas mostra as duas opções e grava a lista inteira pelo caminho confirmado", async () => {
+  it("só Ofertas mostra as três opções e grava a lista inteira pelo caminho confirmado", async () => {
     configDaLoja.homeSections = [secaoLancamentos, ofertas, secaoKits];
     await montar();
-    expect(document.querySelectorAll("[aria-pressed]")).toHaveLength(2);
+    expect(document.querySelectorAll("[aria-pressed]")).toHaveLength(3);
     expect(opcao("Padrão").getAttribute("aria-pressed")).toBe("true");
     expect(opcao("Compacto").getAttribute("aria-pressed")).toBe("false");
+    expect(opcao("Lateral").getAttribute("aria-pressed")).toBe("false");
+    expect(opcao("Lateral").className).toContain("h-11");
     expect(opcao("Compacto").className).toContain("h-11");
     await clicar(opcao("Compacto"));
     expect(ultimaGravacao().homeSections).toEqual([
@@ -259,6 +261,25 @@ describe("layout da vitrine de Ofertas", () => {
     expect(opcao("Compacto").getAttribute("aria-pressed")).toBe("true");
     await clicar(opcao("Padrão"));
     expect(ultimaGravacao().homeSections[1].layout).toBe("padrao");
+  });
+
+  it("escolher Lateral grava o valor lateral; valor desconhecido da config aparece como Padrão", async () => {
+    configDaLoja.homeSections = [ofertas];
+    await montar();
+    await clicar(opcao("Lateral"));
+    expect(ultimaGravacao().homeSections).toEqual([
+      { ...ofertas, layout: "lateral" },
+    ]);
+    configDaLoja.homeSections = [
+      { ...ofertas, layout: "xyz" as unknown as "padrao" },
+    ];
+    await montar();
+    expect(opcao("Padrão").getAttribute("aria-pressed")).toBe("true");
+    expect(opcao("Lateral").getAttribute("aria-pressed")).toBe("false");
+    configDaLoja.homeSections = [{ ...ofertas, layout: "lateral" }];
+    await montar();
+    expect(opcao("Lateral").getAttribute("aria-pressed")).toBe("true");
+    expect(opcao("Padrão").getAttribute("aria-pressed")).toBe("false");
   });
 
   it("não grava nem abre edição offline; mostra o aviso de conexão", async () => {

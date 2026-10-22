@@ -4,8 +4,8 @@ import { formaAparece, palavrasDaBusca } from "@/lib/busca-de-produtos";
  *
  * São ~100 desenhos originais em `public/icons/categorias.json` (fonte de revisão em
  * `docs/design/icones-de-categoria/`). O JSON NÃO entra no pacote de JavaScript: o painel o busca
- * por `fetch` só quando o seletor de ícone abre e o guarda em memória. A vitrine nunca o baixa; ela
- * desenha a forma que a própria categoria guarda (`categorias.icone_forma`).
+ * por `fetch` só quando o seletor de ícone abre e o guarda em memória. A vitrine só o baixa se alguma categoria não tem ícone salvo (para sugerir pelo
+ * nome); o que a categoria guarda ela desenha direto (`categorias.icone_forma`).
  *
  * Falhou (sem internet, arquivo ausente, resposta que não é o catálogo)? O seletor segue com os 14
  * ícones clássicos e com o que a categoria já tem gravado; nada aqui lança para a tela.

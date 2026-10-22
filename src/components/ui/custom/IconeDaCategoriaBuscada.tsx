@@ -1,4 +1,5 @@
 import { categoriasEmMemoria } from "@/hooks/useCategories";
+import { useIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { DataVault } from "@/lib/dataVault";
 import {
   IconeDaCategoria,
@@ -33,14 +34,17 @@ export function IconeDaCategoriaBuscada({
   }, [lista]);
 
   const categoria = lista?.find((item) => item.name === nome);
-  const forma = formaDeIconeValida(categoria?.iconeForma)
+  // Sem ícone salvo, o do catálogo pelo nome (o mesmo da vitrine).
+  const sugerido = useIconesPeloNome(categoria ? [categoria] : []).get(nome);
+  const salva = formaDeIconeValida(categoria?.iconeForma)
     ? categoria?.iconeForma
     : null;
   const chave = categoria ? iconeEscolhido(categoria) : null;
-  if (!forma && !chave) return <Tag className={className} />;
+  const forma = salva ?? (chave ? null : (sugerido?.forma ?? null));
+  if (!forma && !chave && !sugerido) return <Tag className={className} />;
   return (
     <IconeDaCategoria
-      icone={chave ?? "etiqueta"}
+      icone={chave ?? (forma ? "etiqueta" : (sugerido?.icone ?? "etiqueta"))}
       forma={forma}
       className={className}
     />

@@ -558,7 +558,7 @@ describe("App + AuthProvider — o PIX pendente sobrevive à recarga com a sess�
 
   // O checkout de carrinho vazio (visitante, sem pedido): o formulário de
   // dados e a escolha da forma de pagamento. Era o que a recarga mostrava.
-  const checkoutVazioNaTela = () => textoDaTela().includes("Meio de Pagamento");
+  const checkoutVazioNaTela = () => textoDaTela().includes("Meio de pagamento");
 
   const carregandoNaTela = () =>
     textoDaTela().includes("Carregando marketplace...");

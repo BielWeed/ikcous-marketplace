@@ -385,3 +385,156 @@ body:has(.produto-formulario) [role="dialog"] h2 {
 body:has(.produto-formulario) [role="dialog"] button.bg-admin-gold {
   min-height: 56px;
 }
+
+/* Nada fica coberto: um campo que recebe foco (ou é levado à vista) não pode
+   parar atrás do cabeçalho de cima nem da barra Publicar/Salvar de baixo. A
+   reserva de baixo é a mesma do AdminLayout (`--admin-tab-pb`: a pílula + a
+   prateleira medida + o teclado aberto); a de cima é o cabeçalho pegajoso. */
+.produto-formulario
+  :is(input, textarea, select, button, summary, [role="combobox"]) {
+  scroll-margin-top: 7rem;
+  scroll-margin-bottom: var(--admin-tab-pb, 6.25rem);
+}
+
+/* Chave de liga/desliga: a linha toda é o botão. Ligado = neutro e forte
+   (texto do painel + visto), nunca cor de marca; funciona nos 3 temas porque
+   só usa tokens `admin-*`. */
+.produto-interruptor-botao {
+  display: flex;
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.produto-interruptor-botao:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.produto-interruptor + .produto-interruptor {
+  border-top: 1px solid hsl(var(--admin-border));
+}
+
+.produto-interruptor-texto {
+  display: block;
+  min-width: 0;
+}
+
+.produto-interruptor-titulo {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-interruptor-descricao {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
+}
+
+.produto-interruptor-trilho {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 52px;
+  height: 30px;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid hsl(var(--admin-border-strong));
+  border-radius: 999px;
+  background: hsl(var(--admin-raised));
+  transition: background-color 0.15s ease;
+}
+
+.produto-interruptor-pino {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: hsl(var(--admin-text-soft, 240 5% 65%));
+  color: hsl(var(--admin-bg));
+  transition: transform 0.15s ease;
+}
+
+.produto-interruptor-botao[aria-checked="true"] .produto-interruptor-trilho {
+  border-color: hsl(var(--admin-text, 0 0% 98%));
+  background: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-interruptor-botao[aria-checked="true"] .produto-interruptor-pino {
+  transform: translateX(22px);
+  background: hsl(var(--admin-bg));
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-interruptor-botao:focus-visible,
+.produto-codigo-gerado-outro:focus-visible {
+  outline: 2px solid var(--lit-t-8bb4ff, #8bb4ff);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .produto-interruptor-trilho,
+  .produto-interruptor-pino {
+    transition: none;
+  }
+}
+
+/* O código gerado: um cartão neutro com o código em destaque e o "Outro". */
+.produto-codigo-gerado {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid hsl(var(--admin-border-strong));
+  border-radius: 18px;
+  background: hsl(var(--admin-raised));
+}
+
+.produto-codigo-gerado-rotulo {
+  display: block;
+  font-size: 12px;
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
+}
+
+.produto-codigo-gerado-valor {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-codigo-gerado-outro {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: 1px solid hsl(var(--admin-border-strong));
+  border-radius: 999px;
+  background: hsl(var(--admin-surface));
+  font-size: 13px;
+  font-weight: 700;
+  color: hsl(var(--admin-text, 0 0% 98%));
+  cursor: pointer;
+}
