@@ -173,21 +173,21 @@ type EstadoDoFrete =
   | "ocioso";
 
 /** Status que a calculadora (dublê) reporta em cada estado. */
-const STATUS_DA_CALCULADORA: Record<EstadoDoFrete, string> = {
-  cotando: "cotando",
-  pronto: "pronto",
+const STATUS_DA_CALCULADORA = new Map<EstadoDoFrete, string>([
+  ["cotando", "cotando"],
+  ["pronto", "pronto"],
   // Há opções, nenhuma marcada.
-  escolher: "pronto",
-  "loja-configurando": "pronto",
-  vazio: "vazio",
+  ["escolher", "pronto"],
+  ["loja-configurando", "pronto"],
+  ["vazio", "vazio"],
   // Status velho de um instante antes da cotação começar.
-  ocioso: "ocioso",
-};
+  ["ocioso", "ocioso"],
+]);
 
 /** Põe o dublê do carrinho e da calculadora no estado pedido. */
 function prepararFrete(estado: EstadoDoFrete) {
   mockConfig.originCep = estado === "loja-configurando" ? "" : "38500-000";
-  mockFrete.status = STATUS_DA_CALCULADORA[estado];
+  mockFrete.status = STATUS_DA_CALCULADORA.get(estado) ?? "ocioso";
   if (estado === "pronto") {
     mockUseCartOverrides.selectedShippingOption = LOCAL;
     mockUseCartOverrides.freteIndefinido = false;

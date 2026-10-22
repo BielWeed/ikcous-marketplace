@@ -3510,11 +3510,11 @@ export function CheckoutViewDaConta({
   // isso no alto da tela. Repetir em vermelho na barra do Finalizar só a
   // engordava (pedido do dono, 22/10/2026): o texto fica na página só para o
   // leitor de tela (continua explicando o botão apagado), sem ocupar a barra.
+  // Sem destino: nada para cotar, e o frete está travado por isso.
+  const semDestinoDeEntrega =
+    semFreteSelecionado && !freteEmCotacao && !cepDoDestinoDaCotacao;
   const avisoDeFreteSoParaLeitorDeTela =
-    semFreteSelecionado &&
-    !lojaConfigurandoOFrete &&
-    !freteEmCotacao &&
-    !cepDoDestinoDaCotacao;
+    semDestinoDeEntrega && !lojaConfigurandoOFrete;
 
   // `SaidaDaRecusa` promete, por escrito, que `conferir_antes` nunca oferece
   // "tentar de novo" — é o caso em que não se sabe se o pedido nasceu, e
@@ -6850,9 +6850,13 @@ export function CheckoutViewDaConta({
                         )}
                       </button>
                     </div>
-                    {/* Independe do frete (22/10/2026): antes sumia durante a
-                        cotação e aparecia depois — mais um salto da barra. */}
-                    {!isOffline &&
+                    {/* Com destino, independe do estado do frete (22/10/2026):
+                        antes sumia durante a cotação e aparecia depois — mais
+                        um salto da barra. SEM destino continua escondida, como
+                        na base (1.5.50, commit 38c52de4): o card do alto já pede
+                        o endereço, e repetir em vermelho aqui engordava a barra. */}
+                    {!semDestinoDeEntrega &&
+                      !isOffline &&
                       !pagamentoIncompativel &&
                       !isSubmitting &&
                       pendenciaDeIdentificacao && (
