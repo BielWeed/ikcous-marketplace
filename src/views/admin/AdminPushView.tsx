@@ -1454,7 +1454,7 @@ export const AdminPushView = memo(function AdminPushView({
                     data-testid="carrossel-publico"
                     role="group"
                     aria-label="Escolha quem recebe a mensagem"
-                    className="-m-1 flex snap-x snap-mandatory gap-2 overflow-x-auto p-1 pb-2 pr-6"
+                    className="-m-1 flex snap-x snap-mandatory scroll-pl-1 gap-2 overflow-x-auto p-1 pb-2 pr-6"
                   >
                     {[
                       {
