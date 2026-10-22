@@ -448,7 +448,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     temBanner: boolean;
     temOfertas: boolean;
     temBestsellers: boolean;
-    layoutOfertas?: "padrao" | "compacto";
+    layoutOfertas?: "padrao" | "compacto" | "lateral";
   }) => {
     window.localStorage.setItem(
       "ikcous_home_memoria",
@@ -540,6 +540,41 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     configCarregada = true;
     await montar([], true);
     expect(esqueletoDeOfertas()?.className).toContain("min-h-[392px]");
+  });
+
+  it("Lateral reserva o mesmo espaço do cartão Lateral já no primeiro desenho (memória e config)", async () => {
+    configCarregada = false;
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+      layoutOfertas: "lateral",
+    });
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).toContain("min-h-[280px]");
+    expect(
+      esqueletoDeOfertas()?.querySelector("[data-cartao-esqueleto]")?.className,
+    ).toContain("min-h-[176px]");
+    configDaLoja = {
+      homeSections: [
+        { id: "offers", title: "Ofertas", active: true, layout: "lateral" },
+      ],
+    };
+    configCarregada = true;
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).toContain("min-h-[280px]");
+  });
+
+  it("layout desconhecido na config cai no Padrão", async () => {
+    configDaLoja = {
+      homeSections: [
+        { id: "offers", title: "Ofertas", active: true, layout: "xyz" },
+      ],
+    };
+    configCarregada = true;
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.className).not.toContain("min-h-[280px]");
+    expect(esqueletoDeOfertas()?.className).not.toContain("min-h-[392px]");
   });
 
   it("sem memória nem config mantém o Padrão; config Compacta reserva 392 px mínimos", async () => {

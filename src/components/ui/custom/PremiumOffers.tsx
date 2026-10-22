@@ -11,6 +11,7 @@ import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
+import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -19,10 +20,11 @@ import useEmblaCarousel from "embla-carousel-react";
 import { Check, Flame, Loader2, ShoppingCart, Truck } from "lucide-react";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { OfertasCompactasEsqueleto } from "./OfertasCompactasEsqueleto";
+import { OfertasLateralEsqueleto } from "./OfertasLateralEsqueleto";
 import { StarRating } from "./StarRating";
 
 export interface PremiumOffersProps {
-  layout?: "padrao" | "compacto";
+  layout?: LayoutDeOfertas;
   products: Product[];
   favorites: string[];
   onToggleFavorite: (product: Product) => void;
@@ -33,17 +35,24 @@ export interface PremiumOffersProps {
 }
 
 const OfertasCompactas = React.lazy(() => import("./OfertasCompactas"));
+const OfertasLateral = React.lazy(() => import("./OfertasLateral"));
 
 export const PremiumOffers = React.memo(function PremiumOffers(
   props: PremiumOffersProps,
 ) {
-  return props.layout === "compacto" ? (
-    <React.Suspense fallback={<OfertasCompactasEsqueleto />}>
-      <OfertasCompactas {...props} />
-    </React.Suspense>
-  ) : (
-    <PremiumOffersPadrao {...props} />
-  );
+  if (props.layout === "compacto")
+    return (
+      <React.Suspense fallback={<OfertasCompactasEsqueleto />}>
+        <OfertasCompactas {...props} />
+      </React.Suspense>
+    );
+  if (props.layout === "lateral")
+    return (
+      <React.Suspense fallback={<OfertasLateralEsqueleto />}>
+        <OfertasLateral {...props} />
+      </React.Suspense>
+    );
+  return <PremiumOffersPadrao {...props} />;
 });
 
 const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
