@@ -24,6 +24,8 @@ const mock = vi.hoisted(() => ({
   erroDesdeAPagina: 0,
   /** Se definido, a RPC espera esta promessa antes de responder. */
   segura: null as null | Promise<void>,
+  /** `total_count` a devolver em cada chamada (pela ordem); sem entrada, o real. */
+  totais: [] as number[],
 }));
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: true }) }));
@@ -46,6 +48,7 @@ vi.mock("@/lib/supabase", () => ({
       if (nome !== "get_admin_products_paged") {
         throw new Error(`RPC não mockada neste teste: ${nome}`);
       }
+      const indice = mock.chamadas.length;
       mock.chamadas.push(args);
       return {
         abortSignal: async () => {
@@ -57,7 +60,7 @@ vi.mock("@/lib/supabase", () => ({
           return {
             data: {
               data: mock.linhas.slice(de, de + args.p_page_size),
-              total_count: mock.linhas.length,
+              total_count: mock.totais.at(indice) ?? mock.linhas.length,
             },
             error: null,
           };
@@ -104,6 +107,7 @@ describe("useProducts.loadProductsSemCusto: lista completa, mesma regra do selo"
     mock.erro = null;
     mock.erroDesdeAPagina = 0;
     mock.segura = null;
+    mock.totais = [];
     vi.spyOn(console, "error").mockImplementation(() => {});
     // O efeito da fila offline agenda um timer real quando online.
     vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
@@ -212,6 +216,39 @@ describe("useProducts.loadProductsSemCusto: lista completa, mesma regra do selo"
     const r = await api.loadProductsSemCusto();
     expect(mock.chamadas.map((c) => c.p_page)).toEqual([0, 1]);
     expect(r).toBeNull();
+  });
+
+  it("catálogo mudou no meio (total_count diferente): refaz a leitura desde a página 0", async () => {
+    mock.linhas = Array.from({ length: 400 }, (_, i) =>
+      produto(i, { custo: 1 }),
+    );
+    mock.linhas[0] = produto(0);
+    mock.linhas[399] = produto(399);
+    // 1ª varredura: a página 0 diz 401, a página 1 diz 400 (alguém mexeu).
+    mock.totais = [401, 400];
+    await montar();
+    const r = await api.loadProductsSemCusto();
+    expect(mock.chamadas.map((c) => c.p_page)).toEqual([0, 1, 0, 1]);
+    expect(r?.products.map((p) => p.id)).toEqual(["p0", "p399"]);
+    expect(mock.toastError).not.toHaveBeenCalled();
+  });
+
+  it("catálogo estável: uma varredura só", async () => {
+    mock.linhas = Array.from({ length: 400 }, (_, i) => produto(i));
+    await montar();
+    const r = await api.loadProductsSemCusto();
+    expect(mock.chamadas.map((c) => c.p_page)).toEqual([0, 1]);
+    expect(r?.total).toBe(400);
+  });
+
+  it("catálogo muda nas 3 varreduras: null e aviso, nunca lista possivelmente incompleta", async () => {
+    mock.linhas = Array.from({ length: 400 }, (_, i) => produto(i));
+    mock.totais = [401, 400, 401, 400, 401, 400];
+    await montar();
+    const r = await api.loadProductsSemCusto();
+    expect(mock.chamadas).toHaveLength(6);
+    expect(r).toBeNull();
+    expect(mock.toastError).toHaveBeenCalledWith("Erro ao listar produtos");
   });
 
   it("chamada concorrente: a resposta da busca antiga é descartada (null)", async () => {

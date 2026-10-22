@@ -407,7 +407,7 @@ export interface StoreConfig {
     active: boolean;
     type?: "new_arrivals" | "offers" | "bestsellers" | "custom";
     maxItems?: number;
-    layout?: "padrao" | "compacto";
+    layout?: "padrao" | "compacto" | "lateral";
     productIds?: string[];
     isCustom?: boolean;
   }[];

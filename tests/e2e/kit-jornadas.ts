@@ -375,6 +375,9 @@ export async function exigirRedeSemImprevistos({
 const ESTATICOS_DA_RAIZ: ReadonlySet<string> = new Set<string>([
   "/loading.css",
   "/silent-guardian.js",
+  // Catálogo de ícones de categoria (1.5.54): arquivo do build, buscado só
+  // quando alguma categoria usa ícone da galeria.
+  "/icons/categorias.json",
 ]);
 
 /**

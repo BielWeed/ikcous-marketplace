@@ -420,7 +420,6 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
 
     // Recolhida desde o primeiro paint, mesmo com nome/WhatsApp vazios —
     // não existe mais heurística "abre se incompleto".
-    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
     expect(corpoDaSecao().hidden).toBe(true);
 
     await act(async () => {
@@ -431,7 +430,6 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     });
     await drenar();
 
-    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
     expect(corpoDaSecao().hidden).toBe(true);
     const resumo = hospedeiro.textContent ?? "";
     expect(resumo).toContain("Maria Teste");
@@ -448,7 +446,7 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     cotacoesControladas({ "38500000": [LOCAL] });
     await montar();
 
-    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
+    expect(corpoDaSecao().hidden).toBe(true);
     expect(
       document.querySelector('[data-testid="checkout-resumo-falta-nome"]'),
     ).not.toBeNull();
@@ -472,21 +470,18 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     ).not.toBeNull();
   });
 
-  it("cabeçalho é um <button type=button> com aria-expanded/aria-controls corretos, e clicar alterna — a MESMA seção que o teclado nativo de um <button> já ativa por Enter/Espaço", async () => {
+  it("recolhida, 'Editar' abre a seção; aberta, o cabeçalho é um <button type=button> com aria-expanded/aria-controls corretos e clicar recolhe — o teclado nativo de um <button> já ativa por Enter/Espaço (PASSO A1: o cabeçalho só existe com a seção aberta)", async () => {
     cotacoesControladas({ "38500000": [LOCAL] });
     await montar();
 
-    const cabecalho = cabecalhoDaSecao();
-    expect(cabecalho.tagName).toBe("BUTTON");
-    expect(cabecalho.getAttribute("type")).toBe("button");
-    expect(cabecalho.getAttribute("aria-controls")).toBe(
-      "secao-dados-e-entrega",
-    );
-    expect(corpoDaSecao().getAttribute("aria-labelledby")).toBe(
-      "cabecalho-dados-e-entrega",
-    );
+    // Recolhida: o gatilho é o "Editar" do resumo de dados, que anuncia o
+    // painel que abre.
+    expect(document.getElementById("cabecalho-dados-e-entrega")).toBeNull();
+    const editar = botaoPorTexto("Editar");
+    expect(editar?.getAttribute("aria-expanded")).toBe("false");
+    expect(editar?.getAttribute("aria-controls")).toBe("secao-dados-e-entrega");
 
-    // Preenche até recolher sozinho...
+    // Preenche até o resumo ficar completo...
     await act(async () => {
       digitar("checkout-name", "Maria Teste");
     });
@@ -494,22 +489,32 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
       digitar("checkout-tel", "34999998888");
     });
     await drenar();
-    expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
+    expect(corpoDaSecao().hidden).toBe(true);
 
-    // ...e o clique no cabeçalho reabre.
+    // ...e o "Editar" abre.
     await act(async () => {
-      cabecalho.click();
+      botaoPorTexto("Editar")?.click();
     });
     await drenar();
+    const cabecalho = cabecalhoDaSecao();
+    expect(cabecalho.tagName).toBe("BUTTON");
+    expect(cabecalho.getAttribute("type")).toBe("button");
     expect(cabecalho.getAttribute("aria-expanded")).toBe("true");
+    expect(cabecalho.getAttribute("aria-controls")).toBe(
+      "secao-dados-e-entrega",
+    );
+    expect(corpoDaSecao().getAttribute("aria-labelledby")).toBe(
+      "cabecalho-dados-e-entrega",
+    );
     expect(corpoDaSecao().hidden).toBe(false);
 
-    // Clicar de novo recolhe.
+    // Clicar no cabeçalho recolhe.
     await act(async () => {
       cabecalho.click();
     });
     await drenar();
-    expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
+    expect(corpoDaSecao().hidden).toBe(true);
+    expect(document.getElementById("cabecalho-dados-e-entrega")).toBeNull();
   });
 
   it("trocar de endereço pelo resumo recota: o calculate-shipping recebe o CEP novo", async () => {
@@ -525,7 +530,7 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
       digitar("checkout-tel", "34999998888");
     });
     await drenar();
-    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
+    expect(corpoDaSecao().hidden).toBe(true);
     expect(espelho.selecionada?.id).toBe("local-delivery");
 
     // "Trocar" do resumo do endereço reabre a seção para escolher outro.
@@ -578,7 +583,7 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     // Nasce recolhida mesmo com nome/WhatsApp vazios (revisão do dono,
     // 23/09/2026) — é o SUBMIT que reabre, não uma heurística de
     // completude.
-    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
+    expect(corpoDaSecao().hidden).toBe(true);
 
     const botao = botaoFinalizar();
     expect(botao.disabled).toBe(true);
@@ -638,7 +643,6 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     // sempre, mesmo com o CPF passando a faltar — o resumo recolhido é
     // quem avisa a pendência (substitui a revisão anterior que forçava a
     // seção aberta nesse caso).
-    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
     expect(corpoDaSecao().hidden).toBe(true);
     expect(
       document.querySelector('[data-testid="checkout-resumo-falta-cpf"]'),
