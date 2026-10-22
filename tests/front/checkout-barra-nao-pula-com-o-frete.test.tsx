@@ -12,10 +12,12 @@
 //      do botão;
 //   2. cotando: nenhum `role="alert"`, o aviso é `role="status"`, e o botão
 //      Finalizar continua travado;
-//   3. "Calculando…" mora na linha Entrega, e o Total vira uma faixa cinza
-//      de altura fixa;
+//   3. "Calculando" (texto puro, sem ícone nem reticências, para a linha não
+//      quebrar em tela estreita) mora na linha Entrega, e o Total vira uma
+//      faixa cinza de altura fixa;
 //   4. "escolha uma opção" e "loja configurando" moram na seção de entrega,
-//      não na barra (a barra diz "ver acima" / "indisponível");
+//      não na barra (a barra diz "ver acima" / "indisponível"), e o leitor de
+//      tela continua ouvindo o motivo (região `status` escondida da barra);
 //   5. a pendência de identificação aparece igual com o frete cotando e com
 //      o frete pronto.
 //
@@ -162,20 +164,56 @@ function produto(): Product {
 }
 const CART: CartItem[] = [{ product: produto(), quantity: 1 }];
 
-type EstadoDoFrete = "cotando" | "pronto" | "escolher" | "loja-configurando";
+type EstadoDoFrete =
+  | "cotando"
+  | "pronto"
+  | "escolher"
+  | "loja-configurando"
+  | "vazio"
+  | "ocioso";
+
+/** Status que a calculadora (dublê) reporta em cada estado. */
+const STATUS_DA_CALCULADORA: Record<EstadoDoFrete, string> = {
+  cotando: "cotando",
+  pronto: "pronto",
+  // Há opções, nenhuma marcada.
+  escolher: "pronto",
+  "loja-configurando": "pronto",
+  vazio: "vazio",
+  // Status velho de um instante antes da cotação começar.
+  ocioso: "ocioso",
+};
 
 /** Põe o dublê do carrinho e da calculadora no estado pedido. */
 function prepararFrete(estado: EstadoDoFrete) {
   mockConfig.originCep = estado === "loja-configurando" ? "" : "38500-000";
+  mockFrete.status = STATUS_DA_CALCULADORA[estado];
   if (estado === "pronto") {
-    mockFrete.status = "pronto";
     mockUseCartOverrides.selectedShippingOption = LOCAL;
     mockUseCartOverrides.freteIndefinido = false;
     return;
   }
-  mockFrete.status = estado === "cotando" ? "cotando" : "pronto";
   mockUseCartOverrides.selectedShippingOption = null;
   mockUseCartOverrides.freteIndefinido = true;
+}
+
+function digitar(id: string, valor: string) {
+  const el = document.getElementById(id) as HTMLInputElement;
+  const setter = Object.getOwnPropertyDescriptor(
+    globalThis.HTMLInputElement.prototype,
+    "value",
+  )!.set!;
+  setter.call(el, valor);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** Texto que a pessoa VÊ: o que é só para leitor de tela (`sr-only`) fica de fora. */
+function textoVisivel(raiz: HTMLElement): string {
+  const copia = raiz.cloneNode(true) as HTMLElement;
+  for (const escondido of copia.querySelectorAll(".sr-only")) {
+    escondido.remove();
+  }
+  return copia.textContent ?? "";
 }
 
 describe("CheckoutView — a barra de baixo não pula com o frete", () => {
@@ -183,7 +221,13 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
   let hospedeiro: HTMLDivElement;
   let slotDoHeader: HTMLDivElement;
 
-  const montar = async (estado: EstadoDoFrete) => {
+  /** `identificado`: preenche nome e WhatsApp, para que o ÚNICO motivo que
+   * pode deixar o Finalizar apagado seja o frete (sem isso o formulário
+   * incompleto já o apaga e a checagem de "botão apagado" nada provaria). */
+  const montar = async (
+    estado: EstadoDoFrete,
+    { identificado = false }: { identificado?: boolean } = {},
+  ) => {
     prepararFrete(estado);
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await act(async () => {
@@ -201,6 +245,19 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 420));
     });
+    if (identificado) {
+      await act(async () => {
+        digitar("checkout-name", "Cliente Teste");
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await act(async () => {
+        digitar("checkout-tel", "34999999999");
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+    }
   };
 
   const botaoFinalizar = () =>
@@ -307,8 +364,14 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
   });
 
   it("(2) cotando: nenhum role=alert, o aviso para leitor de tela é role=status, e o Finalizar continua travado", async () => {
-    await montar("cotando");
+    await montar("cotando", { identificado: true });
 
+    // Formulário completo: só o frete pode estar apagando o botão.
+    expect(
+      document.querySelector(
+        "[data-testid='checkout-pendencia-identificacao']",
+      ),
+    ).toBeNull();
     expect(botaoFinalizar().disabled).toBe(true);
     expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
     const status = barra().querySelector('[role="status"]');
@@ -320,23 +383,29 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
     expect(botaoFinalizar().textContent).toContain("Finalizar Pedido");
   });
 
-  it("(2b) pronto: o aviso de espera some (a região continua lá, vazia)", async () => {
-    await montar("pronto");
+  it("(2b) pronto: o aviso de espera some (a região continua lá, vazia) e, com o formulário completo, o Finalizar abre", async () => {
+    await montar("pronto", { identificado: true });
 
+    // Controle das checagens de "botão apagado": sem o frete travando, o
+    // mesmo formulário libera o botão.
+    expect(botaoFinalizar().disabled).toBe(false);
     expect(barra().querySelector('[role="status"]')?.textContent?.trim()).toBe(
       "",
     );
     expect(document.body.textContent).not.toContain("Calculando");
   });
 
-  it("(3) 'Calculando…' fica na linha Entrega, em cinza com ícone girando; o Total vira uma faixa de altura fixa", async () => {
+  it("(3) 'Calculando' fica na linha Entrega em cinza, só texto (sem ícone nem reticências: não quebra a linha em tela estreita); o Total vira uma faixa de altura fixa", async () => {
     await montar("cotando");
 
     const entrega = linhaEntrega();
-    expect(entrega.textContent).toContain("Calculando…");
-    expect(entrega.querySelector(".animate-spin")).not.toBeNull();
+    expect(textoVisivel(entrega)).toBe("EntregaCalculando");
+    // Nada que mude a altura da linha: sem ícone, sem flex em linha.
+    expect(entrega.querySelector("svg")).toBeNull();
+    expect(entrega.querySelector(".animate-spin")).toBeNull();
+    expect(entrega.innerHTML).not.toContain("inline-flex");
     const textoCalculando = [...entrega.querySelectorAll("span")].find(
-      (s) => s.textContent?.includes("Calculando…") && !s.querySelector("span"),
+      (s) => s.textContent === "Calculando" && !s.querySelector("span"),
     );
     expect(textoCalculando?.className).toContain("text-zinc-500");
     expect(entrega.className).not.toContain("red");
@@ -352,8 +421,8 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
     expect(grupoDeValores().textContent).not.toMatch(/R\$\s*85/);
   });
 
-  it("(4) 'escolha uma opção': o motivo mora na seção de entrega, a barra diz 'ver acima', e o Finalizar segue travado", async () => {
-    await montar("escolher");
+  it("(4) 'escolha uma opção': o motivo mora na seção de entrega (em caixa clara, com contraste), a barra diz 'ver acima', o leitor de tela ainda ouve o motivo, e o Finalizar segue travado", async () => {
+    await montar("escolher", { identificado: true });
 
     const motivo = document.querySelector(
       "[data-testid='checkout-motivo-frete']",
@@ -363,6 +432,10 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
       "Escolha uma opção de frete para continuar",
     );
     expect(barra().contains(motivo)).toBe(false);
+    // Caixa clara PRÓPRIA (a mesma do aviso de cupom): em loja de tema escuro
+    // ou vidro o texto não pode herdar um fundo escuro.
+    expect(motivo!.className).toContain("bg-amber-50");
+    expect(motivo!.className).toContain("text-amber-900");
     // O motivo fica logo depois da seção "Entrega e frete".
     expect(
       document.querySelector("section[aria-label='Entrega e frete']")
@@ -370,14 +443,19 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
     ).toBe(motivo);
 
     expect(linhaEntrega().textContent).toContain("ver acima");
-    expect(barra().textContent).not.toContain("Escolha uma opção");
+    expect(textoVisivel(barra())).not.toContain("Escolha uma opção");
+    // Antes um `role="alert"` falava o motivo; agora é a região `status` da
+    // barra (sem custo de altura) que o diz ao leitor de tela.
+    expect(barra().querySelector('[role="status"]')?.textContent).toBe(
+      "Escolha uma opção de frete para continuar",
+    );
     expect(elementosDepoisDoBotao()).toHaveLength(0);
     expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
     expect(botaoFinalizar().disabled).toBe(true);
   });
 
   it("(4b) loja sem origem de frete: a frase simples mora na seção e a barra diz 'indisponível'", async () => {
-    await montar("loja-configurando");
+    await montar("loja-configurando", { identificado: true });
 
     const motivo = document.querySelector(
       "[data-testid='checkout-motivo-frete']",
@@ -387,7 +465,10 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
     );
     expect(barra().contains(motivo)).toBe(false);
     expect(linhaEntrega().textContent).toContain("indisponível");
-    expect(barra().textContent).not.toContain("configurando");
+    expect(textoVisivel(barra())).not.toContain("loja");
+    expect(barra().querySelector('[role="status"]')?.textContent).toBe(
+      "Esta loja ainda não calcula o frete pelo app. Fale com a loja.",
+    );
     expect(elementosDepoisDoBotao()).toHaveLength(0);
     expect(botaoFinalizar().disabled).toBe(true);
   });
@@ -399,6 +480,31 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
       document.querySelector("[data-testid='checkout-motivo-frete']"),
     ).toBeNull();
     expect(linhaEntrega().textContent).toContain("R$ 5,00");
+  });
+
+  it("(4d) a calculadora diz que não há opção nenhuma: a barra diz 'ver acima', 'Escolha uma opção' NÃO aparece (o texto é da calculadora) e o leitor de tela ouve o motivo", async () => {
+    await montar("vazio", { identificado: true });
+
+    expect(
+      document.querySelector("[data-testid='checkout-motivo-frete']"),
+    ).toBeNull();
+    expect(linhaEntrega().textContent).toContain("ver acima");
+    expect(barra().querySelector('[role="status"]')?.textContent).toBe(
+      "Nenhuma opção de entrega para este endereço. Combine a entrega com a loja.",
+    );
+    expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    expect(botaoFinalizar().disabled).toBe(true);
+  });
+
+  it("(4e) status velho ('ocioso') por um instante: 'Escolha uma opção' NÃO pisca, e o botão segue travado do mesmo jeito", async () => {
+    await montar("ocioso", { identificado: true });
+
+    expect(
+      document.querySelector("[data-testid='checkout-motivo-frete']"),
+    ).toBeNull();
+    expect(barra().querySelector('[role="status"]')?.textContent).toBe("");
+    // A apresentação não decide o bloqueio: sem opção marcada, travado.
+    expect(botaoFinalizar().disabled).toBe(true);
   });
 
   it("(5) a pendência de identificação aparece igual com o frete cotando e com o frete pronto", async () => {

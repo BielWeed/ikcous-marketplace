@@ -165,7 +165,7 @@ export async function fichaDaLojaFixtura(): Promise<string> {
 }
 
 /** Linha de `v_store_config` no molde de tests/browser-identity-app (publicRow). */
-function linhaConfig() {
+export function linhaConfig() {
   const identity = construirIdentidade();
   return {
     id: 1,

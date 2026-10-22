@@ -563,6 +563,11 @@ const DESTINO_POR_ACAO = new Map(
 // última vira "+N" (pedido do Gabriel, D1 refinado, 12/09/2026).
 const MAX_MINIATURAS_DO_GATILHO = 3;
 
+/** Loja sem CEP de origem: quem resolve é a loja. Uma frase só, usada na seção
+ * de entrega e na região `status` da barra. */
+const FRASE_LOJA_SEM_FRETE =
+  "Esta loja ainda não calcula o frete pelo app. Fale com a loja.";
+
 interface GatilhoDoResumoDoPedidoProps {
   readonly cart: CartItem[];
   readonly isOpen: boolean;
@@ -3482,11 +3487,24 @@ export function CheckoutViewDaConta({
     !freteEmCotacao &&
     !!cepDoDestinoDaCotacao;
   // Erro e "nenhuma opção" já têm o texto PRÓPRIO dentro da calculadora; só
-  // falta dizer "escolha uma" quando há opções e nenhuma está marcada.
+  // falta dizer "escolha uma" quando há opções e nenhuma está marcada — e isso
+  // só é verdade com a cotação `pronto`: um status velho ("ocioso"/
+  // "sem-destino") de um instante antes da cotação não pode piscar o motivo.
   const escolhaDeFreteNaSecao =
-    freteComMotivoNaSecao &&
-    statusDoFrete !== "erro" &&
-    statusDoFrete !== "vazio";
+    freteComMotivoNaSecao && statusDoFrete === "pronto";
+  // O que o leitor de tela ouve, na MESMA região `status` da barra (escondida,
+  // sem custo de altura): antes um `role="alert"` falava estes motivos (laudo
+  // de acessibilidade 03/09, achado 9); eles saíram da barra, a voz não pode
+  // sair junto. `status` (educado), nunca `alert`: espera não é falha.
+  const avisoDoFreteParaLeitorDeTela = lojaConfigurandoOFrete
+    ? FRASE_LOJA_SEM_FRETE
+    : barraCalculandoOFrete
+      ? "Calculando o frete do endereço de entrega..."
+      : escolhaDeFreteNaSecao
+        ? "Escolha uma opção de frete para continuar"
+        : freteComMotivoNaSecao && statusDoFrete === "vazio"
+          ? "Nenhuma opção de entrega para este endereço. Combine a entrega com a loja."
+          : "";
 
   // Sem endereço de entrega, o card "Entrega" e o aviso de "Seus dados" JÁ dizem
   // isso no alto da tela. Repetir em vermelho na barra do Finalizar só a
@@ -6178,17 +6196,19 @@ export function CheckoutViewDaConta({
             não na barra de baixo (22/10/2026: a barra não muda de altura com o
             frete). Texto neutro, sem vermelho: ainda não é falha. A falha real
             (erro, "tentar de novo", nenhuma opção) é da própria calculadora.
-            Sem `role`: o texto existe na página para o leitor de tela, e quem
-            anuncia a espera é a região `status` da barra. */}
+            Sem `role`: quem ANUNCIA o motivo ao leitor de tela é a região
+            `status` da barra. Caixa clara PRÓPRIA (a mesma do aviso de cupom
+            logo abaixo): sem fundo, em loja de tema escuro ou vidro o texto
+            herdava um fundo escuro e caía para ~2,1:1 de contraste. */}
         {cart.length > 0 &&
           (lojaConfigurandoOFrete || escolhaDeFreteNaSecao) && (
             <p
               data-testid="checkout-motivo-frete"
-              className="flex items-start gap-1.5 px-1 text-[12px] font-medium leading-snug text-zinc-600"
+              className="flex items-start gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
             >
               <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
               {lojaConfigurandoOFrete
-                ? "Esta loja ainda não calcula o frete pelo app. Fale com a loja."
+                ? FRASE_LOJA_SEM_FRETE
                 : "Escolha uma opção de frete para continuar"}
             </p>
           )}
@@ -6705,14 +6725,12 @@ export function CheckoutViewDaConta({
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
                     <div className="mx-auto flex max-w-md flex-col gap-3">
-                      {/* Anuncia a espera do frete SEM interromper (`status`,
-                          nunca `alert`) e SEM ocupar lugar (`sr-only` fica
-                          fora do fluxo). A região existe sempre, com o mesmo
-                          formato; só o texto entra e sai. */}
+                      {/* Anuncia a espera e o motivo do frete SEM interromper
+                          (`status`, nunca `alert`) e SEM ocupar lugar
+                          (`sr-only` fica fora do fluxo). A região existe
+                          sempre, com o mesmo formato; só o texto entra e sai. */}
                       <span role="status" className="sr-only">
-                        {barraCalculandoOFrete
-                          ? "Calculando o frete do endereço de entrega..."
-                          : ""}
+                        {avisoDoFreteParaLeitorDeTela}
                       </span>
                       <div
                         role="group"
@@ -6732,14 +6750,15 @@ export function CheckoutViewDaConta({
                               {lojaConfigurandoOFrete ? (
                                 "indisponível"
                               ) : barraCalculandoOFrete ? (
-                                // Espera, não erro: cinza neutro e um ícone
-                                // girando, na MESMA linha de sempre.
-                                <span className="inline-flex items-center gap-1 text-zinc-500">
-                                  <Loader2
-                                    aria-hidden="true"
-                                    className="size-3 animate-spin"
-                                  />
-                                  Calculando…
+                                // Espera, não erro: cinza neutro. TEXTO PURO, de
+                                // propósito: sem ícone, sem `inline-flex` e sem
+                                // reticências. Medido em navegador (22/10/2026),
+                                // "Calculando…" com ícone quebrava esta linha
+                                // abaixo de 360px (a barra pulava 14px) e o
+                                // `inline-flex` a deixava em 18px com cupom. A
+                                // faixa pulsando no Total já diz que carrega.
+                                <span className="text-zinc-500">
+                                  Calculando
                                 </span>
                               ) : freteComMotivoNaSecao ? (
                                 "ver acima"
