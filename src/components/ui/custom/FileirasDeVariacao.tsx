@@ -30,7 +30,10 @@ export function FileirasDeVariacao({
             className="flex min-w-0 items-start gap-2"
           >
             <div className="flex min-h-11 w-20 shrink-0 flex-col justify-center">
-              <span id={idNome} className="text-sm font-bold text-foreground">
+              <span
+                id={idNome}
+                className="break-words text-sm font-bold text-foreground"
+              >
                 {nome}
               </span>
               <span className="text-xs text-muted-foreground">
