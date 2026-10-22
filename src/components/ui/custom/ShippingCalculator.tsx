@@ -1,3 +1,4 @@
+import { QuadradinhoDoIcone } from "@/components/checkout/CartoesDeResumo";
 import {
   LogoDaTransportadora,
   SeloDoAgregador,
@@ -910,6 +911,22 @@ export function ShippingCalculator({
 
   function renderizarCartaoDeOpcao(option: ShippingOption) {
     const isSelected = selectedOption?.id === option.id;
+    // CHECKOUT (modoResumo, redesenho de 22/10/2026): marca NEUTRA — a opção
+    // marcada ganha borda forte + bolinha escura com check, nunca o fundo da
+    // cor da marca; o apoio sobe de 9px/zinc-400 para 11px/zinc-600. O
+    // carrinho (sem `modoResumo`) segue exatamente como era.
+    const neutro = !!modoResumo;
+    const comCorDaMarca = isSelected && !neutro;
+    const tamanhoApoio = neutro ? "text-[11px]" : "text-[9px]";
+    const corApoio = comCorDaMarca
+      ? "text-primary-foreground/80"
+      : "text-zinc-500";
+    const corFraca = comCorDaMarca
+      ? "text-primary-foreground/70"
+      : neutro
+        ? "text-zinc-600"
+        : "text-zinc-400";
+    const verdeDoPreco = neutro ? "text-emerald-700" : "text-emerald-500";
     // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
     // há entrega) e sem "pronto agora" — o endereço REAL da loja
     // que a edge mandou e o aviso neutro de esperar a loja.
@@ -962,13 +979,17 @@ export function ShippingCalculator({
           // recolher manualmente depois de decidir.
           if (modoResumo) setDetalhesAbertosNoResumo(false);
         }}
-        className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
-          isSelected
-            ? "border-primary bg-primary text-primary-foreground shadow-md shadow-black/10"
-            : "border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
+        className={`flex w-full select-none items-center justify-between rounded-2xl p-3 text-left transition-all duration-200 ${
+          neutro
+            ? isSelected
+              ? "border-2 border-solid border-zinc-900 bg-white text-zinc-900"
+              : "border-2 border-solid border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300"
+            : isSelected
+              ? "border border-primary bg-primary text-primary-foreground shadow-md shadow-black/10"
+              : "border border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
         }`}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           {marca?.transportadora ? (
             <span className="relative shrink-0">
               <LogoDaTransportadora
@@ -977,7 +998,7 @@ export function ShippingCalculator({
                 tamanho={28}
                 className="w-12 border border-zinc-100"
               />
-              {isSelected && (
+              {comCorDaMarca && (
                 <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-white text-primary shadow-sm">
                   <Check className="size-3" aria-hidden="true" />
                 </span>
@@ -985,13 +1006,17 @@ export function ShippingCalculator({
             </span>
           ) : (
             <div
-              className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
-                isSelected
-                  ? "border-white/20 bg-white/20 text-primary-foreground"
-                  : "border-zinc-100 bg-zinc-50 text-zinc-500"
+              className={`flex items-center justify-center transition-colors ${
+                neutro
+                  ? "size-9 shrink-0 rounded-xl bg-zinc-100 text-zinc-700"
+                  : `size-7 rounded-lg border ${
+                      isSelected
+                        ? "border-white/20 bg-white/20 text-primary-foreground"
+                        : "border-zinc-100 bg-zinc-50 text-zinc-500"
+                    }`
               }`}
             >
-              {isSelected ? (
+              {comCorDaMarca ? (
                 <Check className="size-4" />
               ) : retirada ? (
                 <Store className="size-4" />
@@ -1000,14 +1025,14 @@ export function ShippingCalculator({
               )}
             </div>
           )}
-          <div>
+          <div className="min-w-0">
             {selos.length > 0 && (
               <div className="mb-0.5 flex flex-wrap gap-1">
                 {selos.map((selo) => (
                   <span
                     key={selo}
                     className={`rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${
-                      isSelected
+                      comCorDaMarca
                         ? "bg-white/20 text-primary-foreground"
                         : "bg-emerald-100 text-emerald-700"
                     }`}
@@ -1017,7 +1042,11 @@ export function ShippingCalculator({
                 ))}
               </div>
             )}
-            <span className="block text-[11px] font-bold leading-snug">
+            <span
+              className={`block font-bold leading-snug ${
+                neutro ? "text-sm" : "text-[11px]"
+              }`}
+            >
               {titulo}
             </span>
             {/* Subtítulo SÓ quando acrescenta (Correios · PAC atrás de
@@ -1025,9 +1054,7 @@ export function ShippingCalculator({
                 agregador — nunca a transportadora de novo. */}
             {(marca?.subtitulo || marca?.agregador) && (
               <span
-                className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[9px] leading-snug ${
-                  isSelected ? "text-primary-foreground/80" : "text-zinc-500"
-                }`}
+                className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 leading-snug ${tamanhoApoio} ${corApoio}`}
               >
                 {marca.subtitulo && <span>{marca.subtitulo}</span>}
                 {marca.subtitulo && marca.agregador && (
@@ -1037,7 +1064,7 @@ export function ShippingCalculator({
                   <SeloDoAgregador
                     slug={marca.agregador.slug}
                     nome={marca.agregador.nome}
-                    className={`text-[9px] ${isSelected ? "text-primary-foreground/80" : "text-zinc-500"}`}
+                    className={`${tamanhoApoio} ${corApoio}`}
                   />
                 )}
               </span>
@@ -1046,28 +1073,22 @@ export function ShippingCalculator({
               <>
                 {option.pickupAddress && (
                   <span
-                    className={`mt-0.5 block text-[10px] leading-snug ${
-                      isSelected
-                        ? "text-primary-foreground/80"
-                        : "text-zinc-500"
-                    }`}
+                    className={`mt-0.5 block leading-snug ${
+                      neutro ? "text-[11px]" : "text-[10px]"
+                    } ${corApoio}`}
                   >
                     Retire em: {option.pickupAddress}
                   </span>
                 )}
                 <span
-                  className={`mt-0.5 block text-[9px] leading-snug ${
-                    isSelected ? "text-primary-foreground/70" : "text-zinc-400"
-                  }`}
+                  className={`mt-0.5 block leading-snug ${tamanhoApoio} ${corFraca}`}
                 >
                   Aguarde a confirmação da loja para retirar
                 </span>
               </>
             ) : (
               <span
-                className={`mt-0.5 block text-[9px] leading-none ${
-                  isSelected ? "text-primary-foreground/70" : "text-zinc-400"
-                }`}
+                className={`mt-0.5 block leading-none ${tamanhoApoio} ${corFraca}`}
               >
                 {/* Prazo 0 (release 1.5.7, EMENDA R1-4): "no mesmo dia" —
                     nunca "até 0 dia útil", um prazo que não existe. */}
@@ -1084,9 +1105,7 @@ export function ShippingCalculator({
                 é um erro. */}
             {naoBeneficiadaComAvisoDeAlcance && (
               <span
-                className={`mt-0.5 block text-[9px] leading-snug ${
-                  isSelected ? "text-primary-foreground/70" : "text-zinc-400"
-                }`}
+                className={`mt-0.5 block leading-snug ${tamanhoApoio} ${corFraca}`}
               >
                 O benefício da loja vale só na opção mais barata.
               </span>
@@ -1094,24 +1113,32 @@ export function ShippingCalculator({
           </div>
         </div>
 
-        <div className="flex flex-col items-end justify-center text-right">
+        <div className="ml-2 flex shrink-0 flex-col items-end justify-center text-right">
           {retirada ? (
-            <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
+            <span
+              className={`text-xs font-black uppercase tracking-wider ${verdeDoPreco}`}
+            >
               Grátis
             </span>
           ) : gratisDesteCartao ? (
             <div className="flex items-center gap-1">
-              <Sparkles className="size-3 fill-emerald-500/20 text-emerald-500" />
-              <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
+              <Sparkles
+                className={`size-3 ${
+                  neutro
+                    ? "fill-emerald-700/20 text-emerald-700"
+                    : "fill-emerald-500/20 text-emerald-500"
+                }`}
+              />
+              <span
+                className={`text-xs font-black uppercase tracking-wider ${verdeDoPreco}`}
+              >
                 GRÁTIS
               </span>
             </div>
           ) : temDescontoNaoGratis ? (
             <div className="flex flex-col items-end">
               <span
-                className={`text-[9px] font-semibold leading-none line-through ${
-                  isSelected ? "text-primary-foreground/70" : "text-zinc-400"
-                }`}
+                className={`font-semibold leading-none line-through ${tamanhoApoio} ${corFraca}`}
               >
                 {formatCurrency(precoCheio as number)}
               </span>
@@ -1119,8 +1146,14 @@ export function ShippingCalculator({
                 {formatCurrency(precoFinal)}
               </span>
               <span
-                className={`text-[8px] font-black uppercase tracking-wide ${
-                  isSelected ? "text-primary-foreground/80" : "text-emerald-600"
+                className={`font-black uppercase tracking-wide ${
+                  neutro ? "text-[11px]" : "text-[8px]"
+                } ${
+                  comCorDaMarca
+                    ? "text-primary-foreground/80"
+                    : neutro
+                      ? "text-emerald-700"
+                      : "text-emerald-600"
                 }`}
               >
                 Desconto da loja
@@ -1132,6 +1165,23 @@ export function ShippingCalculator({
             </span>
           )}
         </div>
+        {neutro &&
+          (isSelected ? (
+            <span
+              data-testid="selo-de-escolhida"
+              role="img"
+              aria-label="Escolhida"
+              className="ml-3 flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white"
+            >
+              <Check aria-hidden="true" className="size-3.5" strokeWidth={3} />
+            </span>
+          ) : (
+            <span
+              data-testid="bolinha-vazia"
+              aria-hidden="true"
+              className="ml-3 size-6 shrink-0 rounded-full border-2 border-zinc-500"
+            />
+          ))}
       </button>
     );
   }
@@ -1154,80 +1204,74 @@ export function ShippingCalculator({
     const precoExibido = precoFinalDaOpcao(option, contextoDoPreco);
 
     return (
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-100 bg-white p-3">
-        <div className="flex min-w-0 items-center gap-3">
-          {marca?.transportadora ? (
-            <LogoDaTransportadora
-              slug={marca.transportadora.slug}
-              nome={marca.transportadora.nome}
-              tamanho={28}
-              className="w-12 shrink-0 border border-zinc-100"
-            />
-          ) : (
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-100 bg-zinc-50 text-zinc-500">
-              {retirada ? (
-                <Store className="size-4" />
-              ) : (
-                <Truck className="size-4" />
-              )}
-            </div>
-          )}
-          <div className="min-w-0">
-            <span className="block truncate text-[11px] font-bold leading-snug text-zinc-800">
-              {tituloDaOpcao}
-            </span>
-            {(marca?.subtitulo || marca?.agregador) && (
-              <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[9px] leading-snug text-zinc-500">
-                {marca?.subtitulo && <span>{marca.subtitulo}</span>}
-                {marca?.subtitulo && marca?.agregador && (
-                  <span aria-hidden="true">·</span>
-                )}
-                {marca?.agregador && (
-                  <SeloDoAgregador
-                    slug={marca.agregador.slug}
-                    nome={marca.agregador.nome}
-                    className="text-[9px] text-zinc-500"
-                  />
-                )}
-              </span>
+      <div
+        data-testid="opcao-de-frete-escolhida"
+        className="flex items-center gap-3 rounded-2xl border-2 border-zinc-900 bg-white p-3"
+      >
+        {marca?.transportadora ? (
+          <LogoDaTransportadora
+            slug={marca.transportadora.slug}
+            nome={marca.transportadora.nome}
+            tamanho={28}
+            className="w-12 shrink-0 border border-zinc-100"
+          />
+        ) : (
+          <QuadradinhoDoIcone grande>
+            {retirada ? (
+              <Store className="size-5" />
+            ) : (
+              <Truck className="size-5" />
             )}
-            <span className="mt-0.5 block text-[9px] leading-snug text-zinc-400">
-              {retirada
-                ? option.pickupAddress
-                  ? `Retire em: ${option.pickupAddress}`
-                  : "Aguarde a confirmação da loja para retirar"
-                : option.deliveryDays === 0
-                  ? "Entrega no mesmo dia"
-                  : `Entrega em até ${option.deliveryDays} ${
-                      option.deliveryDays > 1 ? "dias úteis" : "dia útil"
-                    }`}
-            </span>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {retirada || precoExibido === 0 ? (
-            <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
-              Grátis
-            </span>
-          ) : (
-            <span className="text-xs font-black tracking-tight text-zinc-800">
-              {formatCurrency(precoExibido)}
+          </QuadradinhoDoIcone>
+        )}
+        <div className="min-w-0 flex-1">
+          <span className="block text-sm font-bold leading-snug text-zinc-900">
+            {tituloDaOpcao}
+          </span>
+          {(marca?.subtitulo || marca?.agregador) && (
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] leading-snug text-zinc-600">
+              {marca?.subtitulo && <span>{marca.subtitulo}</span>}
+              {marca?.subtitulo && marca?.agregador && (
+                <span aria-hidden="true">·</span>
+              )}
+              {marca?.agregador && (
+                <SeloDoAgregador
+                  slug={marca.agregador.slug}
+                  nome={marca.agregador.nome}
+                  className="text-[11px] text-zinc-600"
+                />
+              )}
             </span>
           )}
-          {/* Alvo ≥44px (laudo de acessibilidade — toque confiável no
-              celular): `min-h-11` = 44px na escala do Tailwind deste
-              projeto. */}
-          <button
-            type="button"
-            onClick={() => {
-              haptic.light();
-              setDetalhesAbertosNoResumo(true);
-            }}
-            className="flex min-h-11 items-center rounded-xl bg-zinc-900 px-3 text-[10px] font-black uppercase tracking-wider text-white transition-opacity hover:opacity-90"
-          >
-            Trocar
-          </button>
+          <span className="mt-0.5 block text-[11px] leading-snug text-zinc-600">
+            {retirada
+              ? option.pickupAddress
+                ? `Retire em: ${option.pickupAddress}`
+                : "Aguarde a confirmação da loja para retirar"
+              : option.deliveryDays === 0
+                ? "Entrega no mesmo dia"
+                : `Entrega em até ${option.deliveryDays} ${
+                    option.deliveryDays > 1 ? "dias úteis" : "dia útil"
+                  }`}
+          </span>
         </div>
+        {retirada || precoExibido === 0 ? (
+          <span className="shrink-0 text-xs font-black uppercase tracking-wider text-emerald-700">
+            Grátis
+          </span>
+        ) : (
+          <span className="shrink-0 text-sm font-black tracking-tight text-zinc-900">
+            {formatCurrency(precoExibido)}
+          </span>
+        )}
+        <span
+          data-testid="selo-de-escolhida"
+          role="img"
+          aria-label="Escolhida"
+          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white"
+        >
+          <Check aria-hidden="true" className="size-3.5" strokeWidth={3} />
+        </span>
       </div>
     );
   }
@@ -1235,24 +1279,70 @@ export function ShippingCalculator({
   return (
     <section
       aria-label="Entrega e frete"
-      className="w-full space-y-3 rounded-3xl border border-zinc-100 bg-zinc-50/50 p-4"
+      className={
+        modoResumo
+          ? "w-full space-y-3 rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm"
+          : "w-full space-y-3 rounded-3xl border border-zinc-100 bg-zinc-50/50 p-4"
+      }
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-2">
-          <MapPin className="mt-0.5 size-4 shrink-0 text-zinc-500" />
-          <div className="min-w-0">
-            <span className="block text-[11px] font-black uppercase tracking-wider text-zinc-700">
-              {titulo}
-            </span>
-            {destinoValido && resumo && (
-              <span className="mt-0.5 block text-[11px] font-medium leading-snug text-zinc-500">
-                {resumo}
-              </span>
+      {modoResumo ? (
+        <>
+          {/* CHECKOUT (redesenho de 22/10/2026): título em texto normal, "Trocar"
+              discreto no cabeçalho (só com a opção já escolhida) e o destino
+              numa linha de apoio — o mesmo texto de sempre, só mais quieto. */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <QuadradinhoDoIcone>
+                <Truck className="size-4" />
+              </QuadradinhoDoIcone>
+              <h2 className="text-base font-semibold text-zinc-900">
+                Entrega e frete
+              </h2>
+            </div>
+            {exibindoResumoDaOpcao ? (
+              // Alvo ≥44px (laudo de acessibilidade — toque confiável no
+              // celular): `min-h-11` = 44px na escala do Tailwind deste
+              // projeto.
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.light();
+                  setDetalhesAbertosNoResumo(true);
+                }}
+                className="min-h-11 min-w-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-200"
+              >
+                Trocar
+              </button>
+            ) : (
+              acaoDoEndereco && <div className="shrink-0">{acaoDoEndereco}</div>
             )}
           </div>
+          {destinoValido && resumo && (
+            <p className="text-sm leading-snug text-zinc-600">
+              <span className="font-semibold text-zinc-800">{titulo}</span>
+              {" · "}
+              {resumo}
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <MapPin className="mt-0.5 size-4 shrink-0 text-zinc-500" />
+            <div className="min-w-0">
+              <span className="block text-[11px] font-black uppercase tracking-wider text-zinc-700">
+                {titulo}
+              </span>
+              {destinoValido && resumo && (
+                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-zinc-500">
+                  {resumo}
+                </span>
+              )}
+            </div>
+          </div>
+          {acaoDoEndereco && <div className="shrink-0">{acaoDoEndereco}</div>}
         </div>
-        {acaoDoEndereco && <div className="shrink-0">{acaoDoEndereco}</div>}
-      </div>
+      )}
 
       {exibindoResumoDaOpcao ? (
         renderizarResumoDaOpcao()
@@ -1325,7 +1415,11 @@ export function ShippingCalculator({
                 <button
                   type="button"
                   onClick={() => setOutrasExpandidas((v) => !v)}
-                  className="w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline"
+                  className={
+                    modoResumo
+                      ? "min-h-11 w-full select-none py-2 text-center text-xs font-semibold text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline"
+                      : "w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline"
+                  }
                 >
                   {outrasExpandidas
                     ? "Ver menos opções"

@@ -143,7 +143,7 @@ describe("SeletorDeIcone", () => {
     expect(tem("Ícone Blusa para Vestuário")).toBe(true);
   });
 
-  it("os grupos filtram: um grupo mostra só os dele; Clássicos mostra só os 14 e o Automático", async () => {
+  it("os grupos filtram: um grupo mostra só os dele; Clássicos mostra só os 14", async () => {
     await montar();
     await abrir();
     await act(async () => botao("Calçados").click());
@@ -152,7 +152,7 @@ describe("SeletorDeIcone", () => {
     expect(tem("Ícone Moda para Vestuário")).toBe(false); // clássico fora do grupo
     expect(botao("Calçados").getAttribute("aria-pressed")).toBe("true");
     await act(async () => botao("Clássicos").click());
-    expect(rotulosDasPecas()).toHaveLength(15);
+    expect(rotulosDasPecas()).toHaveLength(14);
     expect(tem("Ícone Tênis para Vestuário")).toBe(false);
     await act(async () => botao("Todos").click());
     expect(tem("Ícone Blusa para Vestuário")).toBe(true);
@@ -209,7 +209,7 @@ describe("SeletorDeIcone", () => {
       const grupo = host.querySelector(
         '[role="group"][aria-label^="Sugestão"]',
       );
-      expect(grupo?.textContent).toContain("Sugestão para “Calças”");
+      expect(grupo?.textContent).toContain("Sugerimos pelo nome “Calças”");
       expect(grupo?.textContent).toContain("Calça");
       await act(async () => botao("Usar sugestão").click());
       expect(aoEscolher).toHaveBeenCalledWith({
@@ -221,9 +221,9 @@ describe("SeletorDeIcone", () => {
     it("acompanha o nome que a lojista digita", async () => {
       await montar({ nomeParaSugerir: "Bolsas" });
       await abrir();
-      expect(host.textContent).toContain("Sugestão para “Bolsas”");
+      expect(host.textContent).toContain("Sugerimos pelo nome “Bolsas”");
       await montar({ nomeParaSugerir: "Tênis" });
-      expect(host.textContent).toContain("Sugestão para “Tênis”");
+      expect(host.textContent).toContain("Sugerimos pelo nome “Tênis”");
       await act(async () => botao("Usar sugestão").click());
       expect(aoEscolher).toHaveBeenCalledWith({
         icone: null,
@@ -251,6 +251,21 @@ describe("SeletorDeIcone", () => {
       expect(aoEscolher).not.toHaveBeenCalled();
     });
 
+    it("se a lojista escolheu o ícone sugerido, a faixa fica marcada 'Usado' e sem ação", async () => {
+      await montar({
+        nomeParaSugerir: "Calças",
+        gravado: { forma: d("calca") },
+      });
+      await abrir();
+      const faixa = host.querySelector(
+        '[role="group"][aria-label^="Sugestão"]',
+      );
+      expect(faixa?.textContent).toContain("Usado");
+      expect((botao("Usado: sugestão") as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    });
+
     it("nome sem sugestão possível não mostra o bloco", async () => {
       await montar({ nomeParaSugerir: "Xpto" });
       await abrir();
@@ -274,6 +289,27 @@ describe("SeletorDeIcone", () => {
     });
   });
 
+  describe("prévia do Automático", () => {
+    it("sem escolha, a prévia grande mostra o ícone do catálogo que combina com o nome (Bolsas femininas -> Bolsa)", async () => {
+      await montar({
+        nomeDaCategoria: "Bolsas femininas",
+        nomeParaSugerir: "Bolsas femininas",
+      });
+      await abrir();
+      const previa = host.querySelector("svg.size-10");
+      expect(previa?.getAttribute("data-icone")).toBe("forma");
+      expect(previa?.querySelector("path")?.getAttribute("d")).toBe(d("bolsa"));
+    });
+
+    it("nome que o catálogo não conhece: a prévia fica com o ícone genérico", async () => {
+      await montar({ nomeDaCategoria: "Xpto", nomeParaSugerir: "Xpto" });
+      await abrir();
+      expect(
+        host.querySelector("svg.size-10")?.getAttribute("data-icone"),
+      ).toBe("etiqueta");
+    });
+  });
+
   describe("catálogo que não chega", () => {
     it("sem internet: avisa, mantém os 14 clássicos e o ícone já gravado, e deixa tentar de novo", async () => {
       fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
@@ -282,7 +318,7 @@ describe("SeletorDeIcone", () => {
       expect(host.querySelector('[role="alert"]')?.textContent).toMatch(
         /Não deu para carregar os ícones novos agora/,
       );
-      expect(rotulosDasPecas()).toHaveLength(15);
+      expect(rotulosDasPecas()).toHaveLength(14);
       // o que já estava gravado continua na prévia, mesmo sem o catálogo
       expect(
         host.querySelector("svg[data-icone='forma'] path")?.getAttribute("d"),
@@ -309,14 +345,14 @@ describe("SeletorDeIcone", () => {
       await montar();
       await abrir();
       expect(host.querySelector('[role="alert"]')).not.toBeNull();
-      expect(rotulosDasPecas()).toHaveLength(15);
+      expect(rotulosDasPecas()).toHaveLength(14);
     });
 
     it("sem catálogo ainda sugere o clássico do nome", async () => {
       fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
       await montar({ nomeParaSugerir: "Calçados" });
       await abrir();
-      expect(host.textContent).toContain("Sugestão para “Calçados”");
+      expect(host.textContent).toContain("Sugerimos pelo nome “Calçados”");
       await act(async () => botao("Usar sugestão").click());
       expect(aoEscolher).toHaveBeenCalledWith({
         icone: "calcados",
@@ -332,7 +368,7 @@ describe("SeletorDeIcone", () => {
       expect(host.querySelector('[role="status"]')?.textContent).toMatch(
         /Carregando/,
       );
-      expect(rotulosDasPecas()).toHaveLength(15);
+      expect(rotulosDasPecas()).toHaveLength(14);
       await act(async () => {
         liberar({ ok: true, json: async () => CATALOGO });
         await espera();
@@ -354,6 +390,35 @@ describe("SeletorDeIcone", () => {
       expect(rotulo?.className).toContain("break-words");
       expect(rotulo?.className).not.toContain("anywhere");
     }
+  });
+
+  it("modo direto: a galeria já vem aberta, sem o botão 'Escolher ícone', e pede o catálogo", async () => {
+    await montar({ modo: "direto" });
+    await act(async () => {
+      await espera();
+    });
+    expect(tem("Escolher ícone")).toBe(false);
+    expect(host.textContent).toContain("Ícone da categoria");
+    expect(tem("Ícone Blusa para Vestuário")).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("cada grupo mostra quantos ícones tem", async () => {
+    await montar({ modo: "direto" });
+    await act(async () => {
+      await espera();
+    });
+    const calcados = host.querySelector('section[aria-label="Calçados"]');
+    const n = CATALOGO.filter((i) => i.grupo === "Calçados").length;
+    expect(calcados?.textContent).toContain(`${n} ícones`);
+  });
+
+  it("sem cor de marca: nada de amarelo/dourado nem texto em caixa-alta no seletor", async () => {
+    await montar({ modo: "direto", nomeParaSugerir: "Calças" });
+    await act(async () => {
+      await espera();
+    });
+    expect(host.innerHTML).not.toMatch(/admin-gold|amber-|yellow-|uppercase/);
   });
 
   it("gravação em andamento: nenhuma peça responde (fieldset desabilitado) e todas têm toque de 44px", async () => {

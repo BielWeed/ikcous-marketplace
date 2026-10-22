@@ -128,7 +128,8 @@ describe("CuponsDoCheckout", () => {
   it("com uma validação em voo, todos os botões travam e o certo diz Aplicando…", () => {
     montar({ aplicando: "VIP15" });
     const vip = botao("Aplicar o cupom VIP15")!;
-    expect(vip.textContent).toBe("Aplicando…");
+    // PASSO A3: o cartão inteiro é o botão — o "Aplicando…" fica DENTRO dele.
+    expect(vip.textContent).toContain("Aplicando…");
     expect(vip.disabled).toBe(true);
     expect(botao("Aplicar o cupom VITRINE10")!.disabled).toBe(true);
   });

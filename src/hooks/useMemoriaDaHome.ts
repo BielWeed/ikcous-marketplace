@@ -1,3 +1,7 @@
+import {
+  type LayoutDeOfertas,
+  normalizarLayoutDeOfertas,
+} from "@/lib/layout-de-ofertas";
 import { useState } from "react";
 
 // Memória da última visita da home (frente cls-ressalva1-0409, desenho da
@@ -22,7 +26,7 @@ export interface MemoriaDaHome {
   temBanner: boolean;
   temOfertas: boolean;
   temBestsellers: boolean;
-  layoutOfertas?: "padrao" | "compacto";
+  layoutOfertas?: LayoutDeOfertas;
   gravadoEm: number;
 }
 
@@ -56,7 +60,7 @@ function parseMemoria(bruto: string | null): MemoriaDaHome | null {
       temBanner: memo.temBanner,
       temOfertas: memo.temOfertas,
       temBestsellers: memo.temBestsellers,
-      layoutOfertas: memo.layoutOfertas === "compacto" ? "compacto" : "padrao",
+      layoutOfertas: normalizarLayoutDeOfertas(memo.layoutOfertas),
       gravadoEm,
     };
   } catch {

@@ -84,7 +84,11 @@ module.exports = [
     // por código arriscado): 556 -> 560 kB para acomodar o redesenho da tela de
     // produto (fileiras de variação e folha de opções) junto da barra única da
     // Home. Medido no lote: 556,27 kB, ou seja, 270 B acima do teto anterior.
-    limit: "560 kB",
+    // 22/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 560 -> 564 kB para acomodar as telas pedidas da 1.5.54 (Finalizar com resumos
+    // compactos, ofertas no layout lateral e icones de categoria). Medido na
+    // integracao: 563,72 kB, 3,72 kB acima do teto anterior.
+    limit: "564 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
