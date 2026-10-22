@@ -6,7 +6,13 @@
 // Recharts. jsdom NAO faz layout: este teste prova texto e estrutura (sem
 // caixa alta, sem itálico, numeros certos), nunca posicao nem transbordo na
 // tela do celular.
-import { BalaoDoGrafico } from "@/components/admin/dashboard/BalaoDoGrafico";
+import {
+  ALTURA_LUCRO,
+  ALTURA_VENDAS,
+  BalaoDoGrafico,
+  MARGEM_TOPO_LUCRO,
+  MARGEM_TOPO_VENDAS,
+} from "@/components/admin/dashboard/BalaoDoGrafico";
 import type { ReactElement } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -101,5 +107,25 @@ describe("BalaoDoGrafico - apresentacao", () => {
       expect(c.firstElementChild?.className).toContain("pointer-events-none");
       expect(c.firstElementChild?.className).toMatch(/max-w-\[\d+px\]/);
     }
+  });
+});
+
+describe("BalaoDoGrafico - cabe na faixa reservada", () => {
+  it("a linha de vendas nao quebra nem com valor de 5 digitos", () => {
+    const { container } = render(
+      <BalaoDoGrafico tipo="vendas" data="d" receita={12346} pedidos={12} />,
+    );
+    const linha = container.querySelector(".items-baseline");
+    expect(linha?.className).toContain("flex-nowrap");
+    expect(linha?.className).toContain("whitespace-nowrap");
+    expect(linha?.className).not.toContain("flex-wrap");
+    expect(texto(container)).toContain("R$ 12.346");
+  });
+
+  it("margens e alturas guardam balao + folga e a area util de antes", () => {
+    expect(MARGEM_TOPO_VENDAS).toBeGreaterThanOrEqual(66);
+    expect(MARGEM_TOPO_LUCRO).toBeGreaterThanOrEqual(84);
+    expect(ALTURA_VENDAS - MARGEM_TOPO_VENDAS).toBe(140);
+    expect(ALTURA_LUCRO - MARGEM_TOPO_LUCRO).toBe(150);
   });
 });

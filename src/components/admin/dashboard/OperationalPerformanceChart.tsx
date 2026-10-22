@@ -1,6 +1,12 @@
 import { ExplicacaoDoRelatorio } from "@/components/admin/crm/ExplicacaoDoRelatorio";
 import { SUPERFICIE_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
-import { BalaoDoGrafico } from "@/components/admin/dashboard/BalaoDoGrafico";
+import {
+  ALTURA_LUCRO,
+  ALTURA_VENDAS,
+  BalaoDoGrafico,
+  MARGEM_TOPO_LUCRO,
+  MARGEM_TOPO_VENDAS,
+} from "@/components/admin/dashboard/BalaoDoGrafico";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -312,9 +318,11 @@ export const OperationalPerformanceChart = memo(
         <div
           className={cn(
             "relative z-10 w-full min-w-0 shrink-0 overflow-hidden transition-opacity duration-300",
-            chartMode === "roi" ? "h-[224px]" : "h-[190px]",
             isPending && "opacity-60",
           )}
+          style={{
+            height: chartMode === "roi" ? ALTURA_LUCRO : ALTURA_VENDAS,
+          }}
         >
           {loading || !isChartReady ? (
             <Skeleton className="size-full animate-pulse rounded-3xl bg-white/5" />
@@ -338,7 +346,12 @@ export const OperationalPerformanceChart = memo(
               >
                 <BarChart
                   data={filteredRevenueHistory}
-                  margin={{ top: 50, right: 10, left: -8, bottom: 0 }}
+                  margin={{
+                    top: MARGEM_TOPO_VENDAS,
+                    right: 10,
+                    left: -8,
+                    bottom: 0,
+                  }}
                 >
                   <CartesianGrid
                     vertical={false}
@@ -422,7 +435,12 @@ export const OperationalPerformanceChart = memo(
               >
                 <AreaChart
                   data={processedRoiData}
-                  margin={{ top: 74, right: 10, left: -8, bottom: 0 }}
+                  margin={{
+                    top: MARGEM_TOPO_LUCRO,
+                    right: 10,
+                    left: -8,
+                    bottom: 0,
+                  }}
                 >
                   <defs>
                     <linearGradient
