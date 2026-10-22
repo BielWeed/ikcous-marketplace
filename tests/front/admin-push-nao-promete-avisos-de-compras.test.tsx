@@ -180,11 +180,11 @@ describe("Avisar clientes — não promete o que a loja não faz", () => {
     });
   }
 
-  it("o resto da tela continua: composição, histórico, métrica e o teste de recebimento", async () => {
+  it("o resto da tela continua: composição, histórico e o teste de recebimento", async () => {
     await abrirTela();
 
     expect(texto()).toContain("O que já foi ao ar");
-    expect(texto()).toContain("Celulares Cadastrados");
+    expect(texto()).toContain("Enviar agora para");
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
     expect(hospedeiro.querySelector("#push-body")).not.toBeNull();
 

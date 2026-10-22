@@ -242,15 +242,14 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     expect(numeroDoChip(chipVip)).toBe("2");
     expect(numeroDoChip(chipInativo)).toBe("0");
     expect(chipVip?.textContent).toContain("Só compras pagas");
-    expect(chipInativo?.textContent).toContain(
-      "Sem pedidos de qualquer status",
-    );
+    // Zero: o motivo toma o lugar da descrição (e "Indisponível" fica para
+    // leitor de tela).
     expect(chipInativo?.textContent).toContain("Indisponível");
 
     // O chip do segmento selecionado ("all" por padrão) tem destaque; os
     // outros não.
-    expect(chipTodos?.className).toContain("border-admin-gold");
-    expect(chipVip?.className).not.toContain("border-admin-gold");
+    expect(chipTodos?.className).toContain("border-foreground");
+    expect(chipVip?.className).not.toContain("border-foreground");
 
     // A linha de unidade embaixo do número — parte do chip da direção B
     // ("9 / aparelhos"), que o botão antigo não tinha.
@@ -281,8 +280,8 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       await esperar(50);
     });
 
-    expect(chipInativo!.className).not.toContain("border-admin-gold");
-    expect(texto()).toContain("Receberão: 8 aparelhos");
+    expect(chipInativo!.className).not.toContain("border-foreground");
+    expect(texto()).toContain("Enviar agora para 8 aparelhos");
   });
 
   it("contagem zero desatualizada REMEDE ao voltar o foco: cliente novo com a tela aberta destrava o chip (achado 3 da revisão do PR 549)", async () => {
@@ -423,7 +422,19 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       modelo.click();
     });
     expect(modelo.getAttribute("aria-pressed")).toBe("true");
-    expect(modelo.className).toContain("border-admin-gold");
+    expect(modelo.className).toContain("border-foreground");
+    // O destino fica recolhido: o cabeçalho do bloco já diz para onde vai.
+    expect(
+      Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+        (b.textContent ?? "").includes("Ao tocar na mensagem"),
+      )?.textContent,
+    ).toContain("Busca de produtos");
+    // E, com o bloco aberto, o seletor de destino mostra o valor do modelo.
+    await act(async () => {
+      Array.from(hospedeiro.querySelectorAll("button"))
+        .find((b) => (b.textContent ?? "").includes("Ao tocar na mensagem"))
+        ?.click();
+    });
     expect(
       hospedeiro.querySelector("#push-destination")?.textContent,
     ).toContain("Página de Busca de Produtos");
@@ -490,6 +501,9 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
 
   it("histórico sem envios mostra o estado vazio desenhado — com o que vai aparecer lá", async () => {
     await abrirTela();
+    await act(async () => {
+      cabecalhoDeSecao("O que já foi ao ar")!.click();
+    });
 
     expect(texto()).toContain("O que já foi ao ar");
     expect(texto()).toContain("Nenhuma mensagem enviada até agora");
