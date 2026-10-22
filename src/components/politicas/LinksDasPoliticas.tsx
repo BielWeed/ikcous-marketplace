@@ -5,12 +5,13 @@ import { type TipoDePolitica, nomeDaPolitica } from "@/lib/nomes-das-politicas";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
 
-// Por padrão, os links ficam na segunda linha e têm caixa de 44px
-// (`inline-flex min-h-11`), sem invadir o botão Finalizar com margem negativa.
-// Em `emLinha` (checkout), os links seguem dentro da frase, sem o <br />.
-// Mesmo com `inline p-0`, o <button> funciona como inline-block e
-// `min-h-11` mantém o alvo de toque de 44px. Preservamos esse alvo:
-// ele deixa a frase e a barra mais altas; não é altura apenas de texto.
+// A linha acompanha só o texto: o alvo de 44px fica no pseudo-elemento
+// absoluto, centralizado verticalmente. Sem expansão horizontal, para não
+// sobrepor os alvos dos dois links quando estiverem na mesma linha.
+// A quebra após "com os" é fixa: os dois links ficam JUNTOS na 2ª linha
+// ("Termos de uso e a Política de Privacidade."), então a extensão vertical de
+// um alvo nunca cobre o texto do outro (se os links ficassem em linhas
+// seguidas de 15px, o alvo de 44px de um taparia o do vizinho).
 //
 // CORES: estes dois componentes moram sobre superfícies BRANCAS fixas (a barra
 // do Finalizar, o cartão do cadastro, a página do produto — todas `bg-white`
@@ -18,7 +19,7 @@ import { haptic } from "@/utils/haptic";
 // `text-muted-foreground` no tema escuro vira cinza-claro sobre branco, abaixo
 // de 3:1. zinc-500 sobre branco dá 4,8:1 e zinc-900 dá 17:1.
 const LINK_NA_FRASE =
-  "inline-flex min-h-11 cursor-pointer items-center rounded-sm font-semibold text-zinc-900 underline underline-offset-2";
+  "relative inline-block cursor-pointer rounded-sm p-0 align-baseline font-semibold text-zinc-900 underline underline-offset-2 after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2";
 
 /**
  * "Ao finalizar você concorda com os Termos de uso e a Política de
@@ -30,8 +31,8 @@ const LINK_NA_FRASE =
 export function FraseDeAceite({
   acao,
   className,
-  emLinha = false,
 }: {
+  /** Compatibilidade: a frase agora sempre quebra naturalmente. */
   readonly emLinha?: boolean;
   /** O que a cliente está prestes a fazer: "finalizar", "entrar", "criar sua conta". */
   readonly acao: string;
@@ -50,11 +51,11 @@ export function FraseDeAceite({
         data-testid="frase-de-aceite"
         className={cn("text-[11px] leading-snug text-zinc-500", className)}
       >
-        Ao {acao} você concorda com os {!emLinha && <br />}
+        Ao {acao} você concorda com os <br />
         <button
           type="button"
           onClick={() => abrir("termos")}
-          className={cn(LINK_NA_FRASE, emLinha && "inline p-0")}
+          className={LINK_NA_FRASE}
         >
           {nomeDaPolitica("termos")}
         </button>{" "}
@@ -62,7 +63,7 @@ export function FraseDeAceite({
         <button
           type="button"
           onClick={() => abrir("privacidade")}
-          className={cn(LINK_NA_FRASE, emLinha && "inline p-0")}
+          className={LINK_NA_FRASE}
         >
           {nomeDaPolitica("privacidade")}
         </button>
