@@ -1,9 +1,14 @@
-/* Somente a grade de Favoritos: o card compartilhado mantém seus fluxos e estilos nas outras telas. */
-.favorites-filters > button {
-  display: flex;
+/* Somente a tela de Favoritos: a linha do produto é o ProductCard em layout "linha";
+   o card em grade das outras telas não muda. */
+
+/* Chip compacto: "Com desconto", "Ordem", atalhos de categoria e "Ver todos".
+   Alvo de toque de 44px; marca neutra (preto/branco), cor só com significado. */
+.favorites-chip {
+  display: inline-flex;
   min-height: 44px;
   flex-shrink: 0;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   border: 1px solid hsl(var(--border));
   border-radius: 999px;
@@ -12,102 +17,47 @@
   color: hsl(var(--card-foreground));
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
-.favorites-filters > button[aria-pressed="true"] {
+.favorites-chip[aria-pressed="true"],
+.favorites-chip[aria-current="true"] {
   border-color: hsl(var(--foreground));
   background: hsl(var(--foreground));
   color: hsl(var(--background));
 }
-.favorites-filters > button:focus-visible,
+.favorites-chip:focus-visible,
 .favorites-product-card button:focus-visible,
-label:has(> select[aria-label="Ordem dos favoritos"]:focus-visible) {
+.favorites-chip:has(> select:focus-visible) {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
-.favorites-product-card {
-  min-width: 0;
-  border-color: hsl(var(--border));
-  border-radius: 24px;
-  background: hsl(var(--card));
-  color: hsl(var(--card-foreground));
+/* "Ver todos" e "Mostrar menos" são pílulas suaves, sem borda, como no desenho. */
+.favorites-chip[aria-expanded] {
+  border-color: transparent;
+  background: hsl(var(--muted));
+  font-size: 14px;
+}
+.favorites-atalhos {
+  scrollbar-width: none;
+}
+.favorites-atalhos::-webkit-scrollbar {
+  display: none;
+}
+
+/* Botões genéricos da linha (nome, carrinho) não herdam estilo do coração:
+   o BotaoDeFavorito tem o próprio desenho e é excluído por data-botao-favorito. */
+.favorites-product-card button:not([data-botao-favorito]) {
+  touch-action: manipulation;
+}
+.favorites-product-card button[title]:not([data-botao-favorito]) {
+  box-shadow: none;
 }
 .favorites-product-card:hover {
   transform: none;
-  background: hsl(var(--card));
 }
-.favorites-product-card > div:first-child > div:first-child {
-  aspect-ratio: 1;
-  border-radius: 23px;
-  background: hsl(var(--muted));
-}
-.favorites-product-card > div:first-child > div:last-child {
-  padding: 12px 12px 4px;
-}
-.favorites-product-card > div:last-child {
-  padding: 8px 12px 12px;
-}
-.favorites-product-card p,
-.favorites-product-card span {
-  font-size: 11px;
-}
-.favorites-product-card p,
-.favorites-product-card .text-slate-400,
-.favorites-product-card .text-zinc-500 {
-  color: hsl(var(--muted-foreground));
-}
-.dark .favorites-product-card .text-emerald-700 {
-  @apply text-emerald-400;
-}
-.dark .favorites-product-card .text-rose-600 {
-  @apply text-rose-400;
-}
-.favorites-product-card h3 button {
-  min-height: 44px;
-  color: hsl(var(--card-foreground));
-  font-size: 14px;
-  font-weight: 700;
-}
-.favorites-product-card button:not([data-botao-favorito]) {
-  min-height: 44px;
-  font-size: 11px;
-}
-.favorites-product-card button[title]:not([data-botao-favorito]) {
-  min-width: 44px;
-  border-color: hsl(var(--border));
-  background: hsl(var(--card));
-  color: hsl(var(--card-foreground));
-  box-shadow: none;
-}
-.favorites-product-card > div:last-child > div:first-child {
-  flex-wrap: wrap;
-}
-.favorites-product-card > div:last-child > div:first-child > div:first-child {
-  color: hsl(var(--card-foreground));
-}
-.favorites-product-card
-  > div:last-child
-  > div:first-child
-  > div:first-child
-  > div
-  > span:last-child {
-  font-size: 20px;
-}
-.favorites-product-card
-  > div:last-child
-  > div:first-child
-  > div:first-child
-  > div
-  > span:only-child {
-  color: inherit;
-}
-.favorites-product-card > div:last-child > div:first-child > div:last-child {
-  min-width: 0;
-  flex-shrink: 1;
-  flex-wrap: wrap;
-}
-.favorites-product-card > div:last-child button {
-  border-radius: 999px;
-  padding-inline: 8px;
-  text-transform: none;
-  letter-spacing: normal;
+@media (prefers-reduced-motion: reduce) {
+  .favorites-product-card,
+  .favorites-chip {
+    transition: none;
+  }
 }
