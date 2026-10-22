@@ -55,7 +55,8 @@ export function FolhaFinanceira({
       if (!alvo.closest("[data-folha-financeira]")) return;
       window.clearTimeout(timer);
       timer = window.setTimeout(
-        () => alvo.scrollIntoView({ block: "nearest" }),
+        // `?.`: navegador sem a função (e o jsdom dos testes) não quebra.
+        () => alvo.scrollIntoView?.({ block: "nearest" }),
         150,
       );
     };
@@ -73,7 +74,7 @@ export function FolhaFinanceira({
     if (!(ativo instanceof HTMLElement)) return;
     if (ativo.tagName !== "INPUT" && ativo.tagName !== "TEXTAREA") return;
     if (!ativo.closest("[data-folha-financeira]")) return;
-    ativo.scrollIntoView({ block: "nearest" });
+    ativo.scrollIntoView?.({ block: "nearest" });
   }, [larga, teclado]);
   const comTeclado = !larga && teclado > 0;
   return (
