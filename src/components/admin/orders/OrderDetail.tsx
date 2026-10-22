@@ -524,6 +524,8 @@ function OrderActionBar({
 interface OrderStepperPipelineProps {
   orderStatus: OrderStatus;
   retiradaNaLoja?: boolean;
+  /** Venda de balcão: a trilha mostra só "Novo" e "Finalizado". */
+  vendaDeBalcao?: boolean;
 }
 
 const statusesStepper: { key: OrderStatus; label: string }[] = [
@@ -539,14 +541,33 @@ const statusesStepper: { key: OrderStatus; label: string }[] = [
 function OrderStepperPipeline({
   orderStatus,
   retiradaNaLoja,
+  vendaDeBalcao,
 }: Readonly<OrderStepperPipelineProps>) {
   if (orderStatus === "cancelled") return null;
 
-  const currentStepperIndex = statusFlow.indexOf(orderStatus);
+  const posicaoNoFluxo = statusFlow.indexOf(orderStatus);
+  // Venda de balcão não separa nem despacha: só "Novo" → "Finalizado". Cada
+  // passo guarda a posição que tem no fluxo completo; o passo ativo é o
+  // último já alcançado, então "Separação"/"Trânsito" (se existirem num
+  // balcão) continuam marcando "Novo" e a trilha nunca fica sem passo ativo.
+  const passos = statusesStepper
+    .map((step, posicao) => ({ step, posicao }))
+    .filter(
+      ({ step }) =>
+        !vendaDeBalcao || step.key === "pending" || step.key === "delivered",
+    );
+  const indiceAtivo =
+    posicaoNoFluxo < 0
+      ? -1
+      : passos.reduce(
+          (ativo, { posicao }, i) => (posicao <= posicaoNoFluxo ? i : ativo),
+          -1,
+        );
+  const currentStepperIndex = indiceAtivo;
 
   return (
     <ol aria-label="Etapas do pedido" className="flex w-full items-start px-1">
-      {statusesStepper.map((step, idx) => {
+      {passos.map(({ step }, idx) => {
         const isCompleted = idx < currentStepperIndex;
         const isActive = idx === currentStepperIndex;
 
@@ -2006,6 +2027,7 @@ export const OrderDetail = memo(function OrderDetail({
         <OrderStepperPipeline
           orderStatus={order.status}
           retiradaNaLoja={order.retiradaNaLoja}
+          vendaDeBalcao={tipoDeEntregaDoPedido(order) === "balcao"}
         />
 
         <OrderFinanceCard
@@ -2065,7 +2087,10 @@ export const OrderDetail = memo(function OrderDetail({
               Admin > Frete (busca/seleção global) para o pedido já aberto.
               Venda de balcão (`canal === "presencial"`) não tem envio: a
               cliente leva o produto na hora, não existe etiqueta para gerar. */}
-          {order.canal !== "presencial" && (
+          {/* Só envio tem etiqueta. Exceção: pedido que JÁ tem código de
+              rastreio (etiqueta gerada) continua mostrando o cartão. */}
+          {(tipoDeEntregaDoPedido(order) === "envio" ||
+            localTrackingCode !== "") && (
             <EtiquetaDoPedidoCard
               // `key={order.id}` aqui NÃO é o que impede o vazamento entre
               // pedidos — 2ª rodada da revisão Opus sobre aadbf4c corrigiu um

@@ -162,4 +162,63 @@ describe("ficha do pedido por tipo de entrega", () => {
     expect(envio().textContent).toContain("Código de rastreio");
     expect(envio().textContent).toContain("Adicionar");
   });
+
+  const passos = () => [
+    ...hospedeiro.querySelectorAll('[aria-label="Etapas do pedido"] li'),
+  ];
+  const etiqueta = () => hospedeiro.querySelector("#etiqueta-do-pedido");
+
+  it("balcão: trilha com 2 passos (Novo, Finalizado); entregue marca Finalizado", async () => {
+    await renderizar(pedido(TIPOS.balcao));
+    expect(passos().map((li) => li.textContent)).toEqual([
+      "Novo",
+      "Finalizado",
+    ]);
+    expect(
+      passos()
+        .filter((li) => li.getAttribute("aria-current") === "step")
+        .map((li) => li.textContent),
+    ).toEqual(["Finalizado"]);
+  });
+
+  it("balcão em qualquer status da trilha sempre tem exatamente 1 passo ativo", async () => {
+    const esperado = {
+      pending: "Novo",
+      processing: "Novo",
+      shipping: "Novo",
+      delivered: "Finalizado",
+    } as const;
+    for (const [status, rotulo] of Object.entries(esperado)) {
+      await renderizar(
+        pedido({ ...TIPOS.balcao, status: status as Order["status"] }),
+      );
+      const ativos = passos().filter(
+        (li) => li.getAttribute("aria-current") === "step",
+      );
+      expect(ativos.map((li) => li.textContent)).toEqual([rotulo]);
+    }
+  });
+
+  it("envio, retirada e entrega local: trilha com os 4 passos de sempre", async () => {
+    for (const t of ["envio", "retirada", "entrega-local"]) {
+      await renderizar(pedido(TIPOS[t]));
+      expect(passos()).toHaveLength(4);
+    }
+  });
+
+  it("etiqueta só no envio; nos outros tipos não renderiza", async () => {
+    await renderizar(pedido(TIPOS.envio));
+    expect(etiqueta()).not.toBeNull();
+    for (const t of ["balcao", "retirada", "entrega-local"]) {
+      await renderizar(pedido(TIPOS[t]));
+      expect(etiqueta()).toBeNull();
+    }
+  });
+
+  it("pedido que já tem código de rastreio mantém a etiqueta visível mesmo fora do envio", async () => {
+    await renderizar(
+      pedido({ ...TIPOS["entrega-local"], trackingCode: "DD1BR" }),
+    );
+    expect(etiqueta()).not.toBeNull();
+  });
 });
