@@ -17,7 +17,6 @@ import {
   iconeEscolhido,
   nomeDoIcone,
 } from "@/lib/icones-de-categoria";
-import { normalizeText } from "@/lib/utils";
 import { Check, ChevronDown, Search, Sparkles, Wand2 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 
