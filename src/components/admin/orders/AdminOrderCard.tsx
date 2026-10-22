@@ -44,7 +44,8 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 interface AdminOrderCardProps {
   readonly order: Order;
@@ -57,6 +58,7 @@ interface AdminOrderCardProps {
   readonly onStatusChange?: (
     orderId: string,
     status: OrderStatus,
+    statusEsperado?: OrderStatus,
   ) => Promise<void>;
   /** A mesma gravação da ficha: deve rejeitar para impedir o avanço se falhar. */
   readonly onReceberAntesDeAvancar?: (
@@ -102,7 +104,10 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     "acoes" | "cancelar" | "receber" | "avancar" | "entregar" | null
   >(null);
   const [processando, setProcessando] = useState(false);
-  const [destinoConfirmado, setDestinoConfirmado] = useState<OrderStatus>();
+  const [destinoConfirmado, setDestinoConfirmado] = useState<{
+    status: OrderStatus;
+    statusOrigem: OrderStatus;
+  }>();
   const [anulando, setAnulando] = useState(false);
   const [anulada, setAnulada] = useState(false);
   const emVoo = useRef(false);
@@ -162,7 +167,22 @@ export const AdminOrderCard = memo(function AdminOrderCard({
               ? "Pagamento expirado · pagamento não recebido"
               : avisoDeEspera;
 
-  async function executar(status?: OrderStatus, receber = false) {
+  useEffect(() => {
+    if (
+      (painel === "avancar" || painel === "entregar") &&
+      destinoConfirmado &&
+      destinoConfirmado.statusOrigem !== order.status
+    ) {
+      setPainel(null);
+      toast.warning("O pedido mudou de situação. Confira antes de avançar.");
+    }
+  }, [painel, destinoConfirmado, order.status]);
+
+  async function executar(
+    status?: OrderStatus,
+    receber = false,
+    statusEsperado = order.status,
+  ) {
     if (bloqueado || emVoo.current) return;
     if (status === "cancelled" && !podeCancelar) return;
     if (receber && !registra) return;
@@ -177,7 +197,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
       } else if (receber) {
         await onRegistrarPagamento(order.id, true);
       }
-      if (status) await onStatusChange?.(order.id, status);
+      if (status) await onStatusChange?.(order.id, status, statusEsperado);
     } catch {
       // O hook já traduziu e mostrou o erro. Não duplicar aviso.
     } finally {
@@ -188,7 +208,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
 
   function avancar() {
     if (!proximo || bloqueado) return;
-    setDestinoConfirmado(proximo);
+    setDestinoConfirmado({ status: proximo, statusOrigem: order.status });
     if (pagamentoNaoConfirmado) {
       setPainel("avancar");
       return;
@@ -698,7 +718,11 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   type="button"
                   onClick={() =>
                     painel === "entregar"
-                      ? void executar(destinoConfirmado)
+                      ? void executar(
+                          destinoConfirmado?.status,
+                          false,
+                          destinoConfirmado?.statusOrigem,
+                        )
                       : setPainel(null)
                   }
                   className={SECUNDARIO}
@@ -715,10 +739,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                     bloqueado || (painel === "cancelar" && !podeCancelar)
                   }
                   onClick={() =>
-                    void executar(
-                      painel === "cancelar" ? "cancelled" : destinoConfirmado,
-                      painel === "entregar",
-                    )
+                    painel === "cancelar"
+                      ? void executar("cancelled")
+                      : void executar(
+                          destinoConfirmado?.status,
+                          painel === "entregar",
+                          destinoConfirmado?.statusOrigem,
+                        )
                   }
                   className={
                     painel === "cancelar"

@@ -165,7 +165,10 @@ describe("ProductCard -- a folha de opções mora em PORTAL, e abrir opções n�
     vi.unstubAllGlobals();
   });
 
-  async function renderizarCard(overrides: Partial<Product> = {}) {
+  async function renderizarCard(
+    overrides: Partial<Product> = {},
+    adicionar = vi.fn(),
+  ) {
     const { ProductCard } = await import("@/components/ui/custom/ProductCard");
     await act(async () => {
       raiz.render(
@@ -175,7 +178,7 @@ describe("ProductCard -- a folha de opções mora em PORTAL, e abrir opções n�
           onToggleFavorite={() => {}}
           onClick={vi.fn()}
           showRating={false}
-          onAddToCartWithVariants={vi.fn()}
+          onAddToCartWithVariants={adicionar}
         />,
       );
     });
@@ -391,14 +394,45 @@ describe("ProductCard -- a folha de opções mora em PORTAL, e abrir opções n�
     expect(document.body.textContent).toContain("Sabor");
   });
 
-  it("todas as variações sem estoque: a folha mostra um estado vazio honesto, em vez de só chips riscados", async () => {
-    await renderizarCard({
-      id: "prod-sem-estoque",
-      variants: criarVariantesTodasSemEstoque(),
-    });
-    await abrirFolha();
+  it("todas as variações sem estoque: o card fica esgotado e não abre a folha nem compra", async () => {
+    const adicionar = vi.fn();
+    await renderizarCard(
+      {
+        id: "prod-sem-estoque",
+        variants: criarVariantesTodasSemEstoque(),
+      },
+      adicionar,
+    );
 
-    expect(document.body.textContent).toContain("Sem opções disponíveis");
+    expect(botaoAcao().textContent).toContain("Esgotado");
+    expect(botaoAcao().disabled).toBe(true);
+    await abrirFolha();
+    expect(folha()).toBeNull();
+    expect(adicionar).not.toHaveBeenCalled();
+  });
+
+  it("estoque acaba com a folha aberta: mostra Sem opções disponíveis e não compra a escolha antiga", async () => {
+    const adicionar = vi.fn();
+    await renderizarCard({}, adicionar);
+    await abrirFolha();
+    const chipP = Array.from(
+      document.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((b) => b.textContent?.trim() === "P")!;
+    await act(async () => chipP.click());
+
+    await renderizarCard(
+      {
+        variants: criarVariantes().map((v) => ({ ...v, stockIncrement: 0 })),
+      },
+      adicionar,
+    );
+
+    expect(folha()).not.toBeNull();
+    expect(folha().textContent).toContain("Sem opções disponíveis");
+    expect(botaoAcao().textContent).toContain("Esgotado");
+    expect(botaoAcao().disabled).toBe(true);
+    await act(async () => ctaDaFolha().click());
+    expect(adicionar).not.toHaveBeenCalled();
   });
 
   // A folha é MODAL: com ela aberta, o card inteiro (favoritar, nome,

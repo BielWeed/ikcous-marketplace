@@ -25,6 +25,7 @@ const { rpcFalso, servidor } = vi.hoisted(() => ({
   rpcFalso: vi.fn(),
   servidor: {
     caixa: null as Record<string, unknown> | null,
+    contas: null as Record<string, unknown>[] | null,
     falhasMovimento: [] as unknown[],
     falhasFechamento: [] as unknown[],
     falhasLeituraCaixa: [] as unknown[],
@@ -110,7 +111,7 @@ const CAIXA_ABERTO = {
 rpcFalso.mockImplementation(async (nome: string) => {
   switch (nome) {
     case "fin_contas_listar":
-      return { data: CONTAS, error: null };
+      return { data: servidor.contas ?? CONTAS, error: null };
     case "fin_categorias_listar":
       return { data: [], error: null };
     case "fin_resumo":
@@ -235,6 +236,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     };
     vi.stubGlobal("localStorage", armazenamento);
     servidor.caixa = null;
+    servidor.contas = null;
     servidor.falhasMovimento = [];
     servidor.falhasFechamento = [];
     servidor.falhasLeituraCaixa = [];
@@ -293,6 +295,82 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
+
+  it("explica o estorno externo em dinheiro sem descontar novamente do esperado", async () => {
+    servidor.caixa = {
+      ...CAIXA_ABERTO,
+      valor_abertura: 100,
+      vendas_dinheiro: 200,
+      estornos_externos_dinheiro: 200,
+      esperado: 100,
+    };
+    await remontar();
+    const composicao = hospedeiro.querySelector("#fin-composicao-do-caixa");
+    expect(normalizar(composicao?.textContent)).toContain(
+      "Estornos em dinheiro−R$ 200,00",
+    );
+    expect(normalizar(composicao?.textContent)).toContain("EsperadoR$ 100,00");
+  });
+
+  it.each([
+    { entra: false, tipo: "entrada", sinal: "−", cor: "text-red-300" },
+    { entra: true, tipo: "saida", sinal: "+", cor: "text-emerald-300" },
+    { entra: undefined, tipo: "saida", sinal: "−", cor: "text-red-300" },
+    { entra: undefined, tipo: "entrada", sinal: "+", cor: "text-emerald-300" },
+  ])(
+    "movimento respeita entra=$entra e mantém fallback tipo=$tipo",
+    async ({ entra, tipo, sinal, cor }) => {
+      servidor.caixa = {
+        ...CAIXA_ABERTO,
+        movimentos: [
+          {
+            id: "transferencia-1",
+            tipo,
+            entra,
+            origem: "manual",
+            descricao: "Transferência entre contas",
+            valor: 100,
+          },
+        ],
+      };
+      await remontar();
+      const movimento = [...hospedeiro.querySelectorAll("li")].find((el) =>
+        el.textContent?.includes("Transferência entre contas"),
+      );
+      expect(normalizar(movimento?.textContent)).toContain(`${sinal}R$ 100,00`);
+      expect(movimento?.querySelector(`span.${cor}`)).not.toBeNull();
+      expect(
+        movimento?.querySelector("svg")?.parentElement?.classList.contains(cor),
+      ).toBe(true);
+    },
+  );
+
+  it.each([true, false])(
+    "abre somente a conta de sistema mesmo com caixa personalizado (sistema listado: %s)",
+    async (comSistema) => {
+      const personalizadas = [
+        {
+          ...CONTAS[0],
+          id: "f1000000-0000-4000-8000-000000000099",
+          nome: "Caixa reserva",
+          sistema: false,
+        },
+        ...(comSistema ? CONTAS : []),
+      ];
+      servidor.contas = personalizadas;
+      await remontar();
+      await clicar(botaoEm(hospedeiro, "Abrir caixa"));
+      const abertura = folha() as HTMLElement;
+      expect(abertura.querySelector("#fin-caixa-conta")).toBeNull();
+      expect(abertura.textContent).not.toContain("Caixa reserva");
+      await digitar("fin-caixa-abertura", "15000");
+      await clicar(botaoEm(abertura, "Abrir caixa"));
+      expect(rpcFalso).toHaveBeenCalledWith("fin_caixa_abrir", {
+        p_valor_abertura: 150,
+        p_conta_id: CONTA_CAIXA_DA_LOJA,
+      });
+    },
+  );
 
   it("abre com o contado na conta Caixa da loja e fecha mostrando a quebra", async () => {
     expect(normalizar(hospedeiro.textContent)).toContain("Caixa fechado");

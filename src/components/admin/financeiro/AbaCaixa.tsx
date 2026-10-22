@@ -180,6 +180,11 @@ function CaixaAberto({
               sentido={-1}
             />
             <LinhaDaConta
+              rotulo="Estornos em dinheiro"
+              valor={caixa.estornosExternosDinheiro}
+              sentido={-1}
+            />
+            <LinhaDaConta
               rotulo="Suprimentos e entradas"
               valor={caixa.entradasManuais}
               sentido={1}

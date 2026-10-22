@@ -291,6 +291,25 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  it("O1: situação capturada pelo diálogo prevalece sobre pedido já cancelado em memória", async () => {
+    const { updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("cancelled"),
+    );
+    respostaDaReleitura = { data: { status: "cancelled" }, error: null };
+    await act(async () => {
+      await expect(
+        updateOrderStatus(
+          "pedido-1",
+          "processing",
+          undefined,
+          false,
+          "pending",
+        ),
+      ).rejects.toMatchObject({ statusVerdadeiro: "cancelled" });
+    });
+    expect(chamadasUpdateOrderStatus).toHaveLength(0);
+  });
+
   it("critério 2 — servidor CONFIRMA o status em memória (processing): a RPC é chamada uma vez com p_new_status/p_silent corretos, comportamento de hoje preservado", async () => {
     respostaDaReleitura = { data: { status: "processing" }, error: null };
 

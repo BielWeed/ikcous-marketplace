@@ -305,6 +305,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/admin-atual-rls-viva.cjs",
     "tests/banco/devolucoes-viva.cjs",
     "tests/banco/cartao-online-viva.cjs",
+    // 20261370: conta de sistema, legado preservado e rollback do caixa.
+    "tests/banco/caixa-conta-da-loja-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -395,6 +397,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/mototaxi-viva.cjs",
     // 20261340000000: as politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete exigem o admin de agora (papeis reais, controle, sem recursao, rollback, consultas 64a/64b).
     "tests/banco/admin-atual-perfis-viva.cjs",
+    "tests/banco/ex-admin-demais-tabelas-viva.cjs",
     // 20261341000000 e 20261342000000: o codigo do convidado trava a linha na tentativa (corridas reais, controle) e o rastreio nao devolve a nota do pedido (rollback, pre-voo, consultas 65a/65b e 66a/66b).
     "tests/banco/rastreio-do-convidado-viva.cjs",
     // 20261252: sessao explicita, chave idempotente, corridas e mutantes do caixa.
@@ -407,6 +410,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/faturamento-potencial-viva.cjs",
     "tests/banco/devolucoes-viva.cjs",
     "tests/banco/cartao-online-viva.cjs",
+    // 20261370: conta de sistema, legado preservado e rollback do caixa.
+    "tests/banco/caixa-conta-da-loja-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

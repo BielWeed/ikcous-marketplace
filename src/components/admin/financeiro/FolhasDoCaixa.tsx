@@ -6,7 +6,7 @@ import {
   CircleCheck,
   Info,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   LocalBufferedInput,
@@ -47,15 +47,6 @@ import {
   chaveDaTentativaDoCaixa,
   esquecerTentativaDoCaixa,
 } from "./tentativasDoCaixa";
-
-/** Contas que podem ser gaveta: as do tipo caixa (a de sistema primeiro). */
-function contasDeCaixa(contas: readonly ContaFinanceira[]): ContaFinanceira[] {
-  const caixas = contas.filter((c) => c.ativa && c.tipo === "caixa");
-  return [
-    ...caixas.filter((c) => c.id === CONTA_CAIXA_DA_LOJA),
-    ...caixas.filter((c) => c.id !== CONTA_CAIXA_DA_LOJA),
-  ];
-}
 
 function RodapeDeAcao({
   erro,
@@ -144,10 +135,9 @@ export function AbrirCaixaFolha({
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
-  const caixas = useMemo(() => contasDeCaixa(contas), [contas]);
-  const contaPadrao = caixas.at(0)?.id ?? CONTA_CAIXA_DA_LOJA;
+  const nomeDaConta =
+    contas.find((c) => c.id === CONTA_CAIXA_DA_LOJA)?.nome ?? "Caixa da loja";
   const [valor, setValor] = useState("");
-  const [contaId, setContaId] = useState(contaPadrao);
   const [tentou, setTentou] = useState(false);
   const { enviando, erro, enviar } = useEnvio();
 
@@ -167,11 +157,13 @@ export function AbrirCaixaFolha({
     setTentou(true);
     if (numero === null || numero < 0 || numero > VALOR_MAXIMO) return;
     void enviar(async () => {
-      await abrirCaixa({ valorAbertura: numero, contaId });
+      await abrirCaixa({
+        valorAbertura: numero,
+        contaId: CONTA_CAIXA_DA_LOJA,
+      });
       confirmarVisualmente({
         titulo: "Caixa aberto.",
-        descricao:
-          caixas.find((c) => c.id === contaId)?.nome ?? "Caixa da loja",
+        descricao: nomeDaConta,
         valor: numero,
         rotuloValor: "Troco inicial",
         linhas: [
@@ -184,8 +176,6 @@ export function AbrirCaixaFolha({
       aoSalvar("Caixa aberto.");
     });
   }
-
-  const nomeDaConta = caixas.find((c) => c.id === contaId)?.nome;
 
   return (
     <FolhaFinanceira
@@ -223,29 +213,9 @@ export function AbrirCaixaFolha({
             className={`${CLASSE_CAMPO} text-xl font-black tabular-nums`}
           />
         </Campo>
-        {caixas.length > 1 ? (
-          <Campo id="fin-caixa-conta" rotulo="Qual caixa">
-            <select
-              id="fin-caixa-conta"
-              value={contaId}
-              onChange={(e) => setContaId(e.target.value)}
-              className={CLASSE_CAMPO}
-            >
-              {caixas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-          </Campo>
-        ) : (
-          <p className="text-xs text-zinc-400">
-            Conta:{" "}
-            <strong className="text-zinc-300">
-              {nomeDaConta ?? "Caixa da loja"}
-            </strong>
-          </p>
-        )}
+        <p className="text-xs text-zinc-400">
+          Conta: <strong className="text-zinc-300">{nomeDaConta}</strong>
+        </p>
       </div>
     </FolhaFinanceira>
   );

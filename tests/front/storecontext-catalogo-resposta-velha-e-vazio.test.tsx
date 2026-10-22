@@ -143,12 +143,15 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let retrato: Retrato;
+  let incluirProduto: ReturnType<typeof useStore>["incluirProduto"];
 
   function Capturador() {
-    const { products, loadingProducts, catalogoErro } = useStore();
+    const store = useStore();
+    const { products, loadingProducts, catalogoErro } = store;
     useEffect(() => {
+      incluirProduto = store.incluirProduto;
       retrato = { products, loadingProducts, catalogoErro };
-    }, [products, loadingProducts, catalogoErro]);
+    }, [products, loadingProducts, catalogoErro, store.incluirProduto]);
     return null;
   }
 
@@ -226,6 +229,20 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
     hospedeiro.remove();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("inclui o produto do link sem duplicar nem sobrescrever o produto já carregado", async () => {
+    await renderizar();
+    await responder(0, { data: [linhaDaView(20)], error: null });
+    const produto = produtoDoCofre();
+    await act(async () => {
+      incluirProduto(produto);
+      incluirProduto(produto);
+      incluirProduto({ ...produto, id: "p1", price: 999 });
+    });
+    expect(retrato.products).toHaveLength(2);
+    expect(retrato.products[0].price).toBe(20);
+    expect(retrato.products[1]).toEqual(produto);
   });
 
   it("cache lento não sobrescreve o preço e o estoque já atualizados pela rede", async () => {
