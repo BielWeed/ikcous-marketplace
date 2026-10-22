@@ -5,12 +5,8 @@
 // produto, com o estoque DELA e o preço DELA — e a compra tem de levar o
 // variant_id da combinação certa, que é o que o servidor baixa do estoque.
 //
-// Prova de MENOR INVASÃO: este teste EXIGE que `ProductView` não precise de
-// nenhuma mudança — ele renderiza a lista plana de variantes agrupando por
-// `name`; a linha composta (name="Cor / Tamanho", value="Branca / PP") já
-// vira um grupo com um botão por combinação. O desenho está em
-// `src/utils/variante-composta.ts`; a tela do cliente é território da
-// peça 18 e está intocada.
+// O redesenho separa a escolha em Cor e Tamanho, mas preserva o contrato:
+// só a combinação completa entrega o MESMO id, estoque, preço e rótulo cru.
 //
 // Modelo estrutural copiado de product-view-estoque-contraste-aa.test.tsx
 // (mesmos dublês e stubs de jsdom).
@@ -112,10 +108,21 @@ function botaoPorTexto(raiz: ParentNode, texto: string) {
  *  casaria com o botão "Branca / PP" primeiro (o valor mora num span próprio
  *  dentro do botão). */
 function botaoDaCombinacao(raiz: ParentNode, valor: string) {
-  const span = [...raiz.querySelectorAll("button span")].find(
-    (el) => el.textContent === valor,
-  );
-  return span?.closest("button") as HTMLButtonElement | undefined;
+  const tamanho = valor.split(" / ")[1];
+  return [...raiz.querySelectorAll("button")].find(
+    (el) => el.getAttribute("aria-label") === tamanho,
+  ) as HTMLButtonElement | undefined;
+}
+
+async function escolherBrancaPP(raiz: ParentNode) {
+  await act(async () => {
+    (
+      raiz.querySelector('button[aria-label="Branca"]') as HTMLButtonElement
+    )?.click();
+  });
+  await act(async () => {
+    botaoDaCombinacao(raiz, "Branca / PP")?.click();
+  });
 }
 
 describe("ProductView — a combinação de atributos vira UMA opção com estoque próprio", () => {
@@ -170,32 +177,22 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
     });
   }
 
-  it("um grupo só, um botão por combinação, estoque de cada uma no botão", async () => {
+  it("duas fileiras por dimensão sem perder as opções da combinação", async () => {
     await montar();
 
-    // A variante composta é UM grupo ("Selecione Cor / Tamanho") — não dois.
-    const rotulosDeGrupo = [...hospedeiro.querySelectorAll("span")].filter(
-      (el) => el.textContent?.startsWith("Selecione "),
-    );
-    expect(rotulosDeGrupo.map((el) => el.textContent)).toEqual([
-      "Selecione Cor / Tamanho",
-    ]);
-
-    // Cada combinação é um botão com o ESTOQUE DELA.
-    const botaoPP = botaoDaCombinacao(hospedeiro, "Branca / PP");
-    const botaoP = botaoDaCombinacao(hospedeiro, "Branca / P");
-    expect(botaoPP).toBeDefined();
-    expect(botaoPP?.textContent).toContain("(3 un.)");
-    expect(botaoP).toBeDefined();
-    expect(botaoP?.textContent).toContain("(10 un.)");
+    const grupos = [...hospedeiro.querySelectorAll("fieldset legend")];
+    expect(grupos.map((el) => el.textContent)).toEqual(["Cor", "Tamanho"]);
+    expect(
+      hospedeiro.querySelector('button[aria-label="Branca"]'),
+    ).not.toBeNull();
+    expect(botaoDaCombinacao(hospedeiro, "Branca / PP")).toBeDefined();
+    expect(botaoDaCombinacao(hospedeiro, "Branca / P")).toBeDefined();
   });
 
   it("escolher a branca PP mostra o estoque e o preço DA COMBINAÇÃO", async () => {
     await montar();
 
-    await act(async () => {
-      botaoDaCombinacao(hospedeiro, "Branca / PP")?.click();
-    });
+    await escolherBrancaPP(hospedeiro);
 
     // 3 unidades: rótulo de estoque baixo com o número da PP.
     expect(hospedeiro.textContent).toContain("Restam apenas 3!");
@@ -206,9 +203,7 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
   it("comprar a branca PP leva o variant_id da combinação certa ao carrinho", async () => {
     await montar();
 
-    await act(async () => {
-      botaoDaCombinacao(hospedeiro, "Branca / PP")?.click();
-    });
+    await escolherBrancaPP(hospedeiro);
     const botaoComprar = botaoPorTexto(hospedeiro, "Adicionar ao Carrinho");
     expect(botaoComprar).toBeDefined();
     await act(async () => {

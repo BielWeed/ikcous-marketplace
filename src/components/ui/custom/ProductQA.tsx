@@ -4,7 +4,7 @@ import { useQuestions } from "@/hooks/useQuestions";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Check, Lock, MessageSquare, Reply, Send } from "lucide-react";
+import { Check, MessageSquare, Reply, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { Question } from "@/hooks/useQuestions";
@@ -25,9 +25,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     addAnswer,
     subscribeToQuestions,
   } = useQuestions();
-  const { user, profile, isAdmin } = useAuth();
-  const currentUserAvatar =
-    profile?.avatar_url || user?.user_metadata?.avatar_url;
+  const { user, isAdmin } = useAuth();
   const [newQuestion, setNewQuestion] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -125,40 +123,13 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
             "lg:text-3xl",
           )}
         >
-          Perguntas e Respostas
+          Perguntas ao vendedor
         </h3>
-        <p className={cn("text-xs text-zinc-500", "lg:text-sm")}>
-          Tem alguma dúvida sobre o produto? Pergunte ao vendedor.
-        </p>
       </div>
 
       {/* Ask Section */}
       {user ? (
-        <div className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm transition-all duration-300 hover:shadow-md">
-          <div className="mb-4 flex items-center gap-3">
-            <Avatar className="size-9 border border-zinc-200/50 shadow-sm transition-transform duration-300 hover:scale-105">
-              <AvatarImage
-                src={currentUserAvatar || undefined}
-                className="object-cover"
-              />
-              <AvatarFallback className="flex select-none items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-xs font-bold text-zinc-700">
-                {getInitials(
-                  profile?.full_name ||
-                    user?.user_metadata?.full_name ||
-                    user?.email ||
-                    "",
-                )}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900">
-                Nova Pergunta
-              </h4>
-              <p className="text-[10px] text-zinc-400">
-                Nossa equipe responde rápido
-              </p>
-            </div>
-          </div>
+        <div>
           <div className="relative flex items-center">
             <input
               id="qa-new-question"
@@ -171,12 +142,12 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
               }}
               placeholder="Escreva sua dúvida sobre o produto..."
               aria-label="Sua dúvida sobre o produto"
-              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50/50 px-4 py-3.5 pr-12 text-sm transition-all duration-300 placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/10"
+              className="min-h-[52px] w-full rounded-full border border-border bg-background px-4 py-3 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <button
               onClick={handleAsk}
               disabled={!newQuestion.trim()}
-              className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-all duration-300 hover:opacity-90 hover:shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-20"
+              className="absolute right-1 top-1 flex size-11 items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 disabled:opacity-30"
               title="Enviar pergunta"
               aria-label="Enviar pergunta"
             >
@@ -185,10 +156,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-zinc-50/50 p-6 text-center shadow-sm">
-          <div className="mb-3 flex size-10 items-center justify-center rounded-2xl border border-zinc-200/50 bg-zinc-100">
-            <Lock className="size-4 text-zinc-400" />
-          </div>
+        <div className="rounded-2xl border border-border bg-muted/30 p-4">
           <h4 className="text-sm font-bold text-zinc-950">
             Quer tirar uma dúvida?
           </h4>
@@ -239,13 +207,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
             </button>
           </div>
         ) : questions.length === 0 ? (
-          <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
-            <div className="relative mb-4 flex size-14 items-center justify-center">
-              <div className="absolute inset-0 animate-pulse rounded-full bg-zinc-100/50" />
-              <div className="flex size-10 items-center justify-center rounded-full border border-zinc-200/60 bg-white shadow-sm">
-                <MessageSquare className="size-4 text-zinc-400" />
-              </div>
-            </div>
+          <div className="rounded-2xl border border-border bg-muted/30 px-4 py-3">
             <p className="text-sm font-bold tracking-tight text-zinc-900">
               Sem perguntas ainda
             </p>

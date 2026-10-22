@@ -57,6 +57,8 @@
     --header-height: 52px;
     --nav-height: 64px;
     --customer-nav-offset: 0px;
+    --folha-acima-da-barra: 0px;
+    --folha-folga-segura: var(--safe-area-bottom, 0px);
     --safe-area-top: var(--safe-area-top-fixed, env(safe-area-inset-top, 0px));
     --safe-area-bottom: var(
       --safe-area-bottom-fixed,
@@ -99,6 +101,19 @@
 
     /* Emerald */
     --admin-gold: 47 95% 50%;
+  }
+
+  /* Só a folha de opções usa estes recuos; sem navegação montada ela
+     volta ao fundo e assume a área segura, sem contá-la duas vezes. */
+  :root:has(nav[aria-label="Navegação principal"]) {
+    --folha-acima-da-barra: calc(64px + var(--safe-area-bottom, 0px));
+    --folha-folga-segura: 0px;
+  }
+
+  @media (min-width: 768px) {
+    :root:has(nav[aria-label="Navegação principal"]) {
+      --folha-acima-da-barra: calc(64px + 24px + 12px);
+    }
   }
 
   .dark {

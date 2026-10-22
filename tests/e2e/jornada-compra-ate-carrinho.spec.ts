@@ -42,7 +42,9 @@ test("compra: categoria filtra, tela do produto abre e o item chega ao carrinho"
 
   // 3. Produto: escolher a variação obrigatória — a tela recusa comprar sem
   // escolher (tests/front/card-nao-deixa-comprar-sem-escolher-a-variacao).
-  await page.getByRole("button", { name: "M (5 un.)" }).click();
+  // A fileira do redesenho nomeia o botão só pelo valor ("M"); o estoque de
+  // cada tamanho deixou de aparecer na etiqueta.
+  await page.getByRole("button", { name: "M", exact: true }).click();
   await page.getByRole("button", { name: "Adicionar ao Carrinho" }).click();
 
   // 4. Item no carrinho, pela navegação de baixo (como o cliente faz).

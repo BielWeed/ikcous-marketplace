@@ -45,11 +45,12 @@ vi.mock("@/lib/supabase", () => {
 vi.mock("@/hooks/useBanners", () => ({
   useBanners: () => ({ getBannersByPosition: () => [], isLoaded: true }),
 }));
-vi.mock("@/hooks/useCategories", () => ({
-  useCategories: () => ({ categories: [], isLoading: false }),
+const categoriasDaLoja = vi.hoisted(() => ({
+  categories: [{ id: "geral", name: "Geral", isActive: true }],
+  isLoading: false,
 }));
-vi.mock("@/components/ui/custom/CategoryFilter", () => ({
-  CategoryFilter: () => null,
+vi.mock("@/hooks/useCategories", () => ({
+  useCategories: () => categoriasDaLoja,
 }));
 vi.mock("@/components/ui/custom/ProductCarousel", () => ({
   ProductCarousel: () => null,
@@ -95,6 +96,10 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    categoriasDaLoja.categories = [
+      { id: "geral", name: "Geral", isActive: true },
+    ];
+    categoriasDaLoja.isLoading = false;
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
     vi.stubGlobal("CSS", { escape: (valor: string) => valor });
     hospedeiro = document.createElement("div");
@@ -111,11 +116,13 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
   const montar = async (
     sortBy: SortOption | string,
     aoMudar: (ordem: SortOption) => void = () => {},
+    isLoading = false,
   ) => {
     await act(async () => {
       raiz.render(
         <HomeView
           products={PRODUTOS}
+          isLoading={isLoading}
           favorites={[]}
           onToggleFavorite={() => {}}
           onProductClick={() => {}}
@@ -137,7 +144,7 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
 
   const abrirMenu = async () => {
     const botao = hospedeiro.querySelector<HTMLButtonElement>(
-      'button[title="Filtrar e Ordenar"]',
+      'button[aria-haspopup="listbox"]',
     );
     expect(botao).not.toBeNull();
     await act(async () => {
@@ -147,6 +154,99 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
 
   const opcoes = () =>
     Array.from(hospedeiro.querySelectorAll('[role="option"]'));
+
+  it("categorias e Filtros ficam na mesma faixa e a contagem só é lida", async () => {
+    await montar("default");
+    const faixa = hospedeiro.querySelector(
+      '[data-testid="faixa-categorias-filtros"]',
+    );
+    const categoria = hospedeiro.querySelector(
+      'button[aria-label="Selecionar categoria Todas"]',
+    );
+    const filtros = hospedeiro.querySelector('button[aria-haspopup="listbox"]');
+    expect(faixa).not.toBeNull();
+    expect(faixa?.contains(categoria)).toBe(true);
+    expect(faixa?.contains(filtros)).toBe(true);
+    expect(faixa?.classList.contains("flex")).toBe(true);
+    expect(filtros?.parentElement?.parentElement).toBe(faixa);
+    expect(
+      categoria?.parentElement?.parentElement?.parentElement?.parentElement,
+    ).toBe(faixa);
+    const contagem = hospedeiro.querySelector(
+      '[data-testid="resultado-categoria"]',
+    );
+    expect(contagem?.className).toBe("sr-only");
+    expect(contagem?.getAttribute("aria-live")).toBe("polite");
+    expect(contagem?.textContent).toBe("Todas · 4 produtos");
+  });
+
+  it("avisa a ordenação alterada no nome acessível e no indicador", async () => {
+    await montar("price-asc");
+    const filtros = hospedeiro.querySelector('button[aria-haspopup="listbox"]');
+    expect(filtros?.getAttribute("aria-label")).toBe(
+      "Filtros, ordenado por Menor Preço",
+    );
+    expect(filtros?.getAttribute("title")).toBe(
+      "Filtros, ordenado por Menor Preço",
+    );
+    expect(
+      filtros?.querySelector('[data-testid="ordenacao-ativa"]'),
+    ).not.toBeNull();
+    await montar("default");
+    expect(filtros?.getAttribute("aria-label")).toBe("Filtros");
+    expect(
+      filtros?.querySelector('[data-testid="ordenacao-ativa"]'),
+    ).toBeNull();
+  });
+
+  it("abre o menu e Esc fecha devolvendo o foco a Filtros", async () => {
+    await montar("default");
+    await abrirMenu();
+    const filtros = hospedeiro.querySelector('button[aria-haspopup="listbox"]');
+    const menu = hospedeiro.querySelector<HTMLElement>('[role="listbox"]');
+    expect(document.activeElement).toBe(menu);
+    await act(async () => {
+      menu?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(hospedeiro.querySelector('[role="listbox"]')).toBeNull();
+    expect(document.activeElement).toBe(filtros);
+    expect(filtros?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("reserva a mesma faixa com Filtros durante o carregamento e sem categorias", async () => {
+    await montar("default", undefined, true);
+    const faixa = hospedeiro.querySelector(
+      '[data-testid="faixa-categorias-filtros"]',
+    );
+    expect(faixa?.classList.contains("h-[88px]")).toBe(true);
+    expect(
+      faixa?.querySelectorAll('[data-testid="categoria-skeleton"]'),
+    ).toHaveLength(5);
+    expect(faixa?.querySelector('button[aria-label="Filtros"]')).not.toBeNull();
+    const classes = faixa?.className;
+    await montar("default");
+    expect(
+      hospedeiro.querySelector('[data-testid="faixa-categorias-filtros"]')
+        ?.className,
+    ).toBe(classes);
+    expect(faixa?.querySelector('button[aria-label="Filtros"]')).not.toBeNull();
+    expect(
+      faixa?.querySelector('button[aria-label="Selecionar categoria Geral"]'),
+    ).not.toBeNull();
+    categoriasDaLoja.categories = [];
+    await montar("default");
+    expect(faixa?.className).toBe(classes);
+    expect(faixa?.querySelector('button[aria-label="Filtros"]')).not.toBeNull();
+    categoriasDaLoja.isLoading = true;
+    await montar("default");
+    expect(faixa?.className).toBe(classes);
+    expect(
+      faixa?.querySelectorAll('[data-testid="categoria-skeleton"]'),
+    ).toHaveLength(5);
+    expect(faixa?.querySelector('button[aria-label="Filtros"]')).not.toBeNull();
+  });
 
   it("o menu oferece só Relevância, Menor Preço e Maior Preço", async () => {
     await montar("default");

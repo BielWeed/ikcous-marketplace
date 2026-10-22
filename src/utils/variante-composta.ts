@@ -49,7 +49,11 @@ export interface IdentidadeDeVariante {
  * cliente: "Branca / PP"); dentro do campo, espaços das pontas são cortados
  * antes de juntar, para " PP" não virar parte do valor gravado.
  */
-export const SEPARADOR_DE_ATRIBUTOS = " / ";
+import { SEPARADOR_DE_ATRIBUTOS } from "./atributos-da-variacao";
+export {
+  SEPARADOR_DE_ATRIBUTOS,
+  dividirEmAtributos,
+} from "./atributos-da-variacao";
 
 /**
  * N pares digitados → a identidade da linha. Um par só sai CRU (o caso
@@ -73,17 +77,6 @@ export function juntarAtributos(pares: ParDeAtributo[]): IdentidadeDeVariante {
  * coisa (linha legada, valor com " / " digitado à mão) volta como um par
  * com o texto bruto, que round-tripa idêntico.
  */
-export function dividirEmAtributos(
-  name: string,
-  value: string,
-): ParDeAtributo[] {
-  const nomes = name.split(SEPARADOR_DE_ATRIBUTOS);
-  const valores = value.split(SEPARADOR_DE_ATRIBUTOS);
-  if (nomes.length === valores.length) {
-    return nomes.map((nome, i) => ({ name: nome, value: valores.at(i) ?? "" }));
-  }
-  return [{ name: name, value: value }];
-}
 
 /**
  * A última trava antes de juntar: devolve a mensagem de erro do primeiro
