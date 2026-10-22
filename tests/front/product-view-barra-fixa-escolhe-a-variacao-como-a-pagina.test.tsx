@@ -391,7 +391,9 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     const folha = document.querySelector('[role="dialog"]')!;
     const conteudo = folha.querySelector(".overflow-y-auto")!;
     expect(
-      conteudo.classList.contains("pb-[calc(20px+var(--folha-folga-segura))]"),
+      conteudo.classList.contains(
+        "pb-[calc(20px+var(--safe-area-bottom,0px))]",
+      ),
     ).toBe(true);
   });
 

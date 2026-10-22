@@ -1573,7 +1573,7 @@ export const ProductView = React.memo(function ProductView({
         >
           <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
         </button>
-        <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain px-5 pb-[calc(20px+var(--folha-folga-segura))]">
+        <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain px-5 pb-[calc(20px+var(--safe-area-bottom,0px))]">
           <SheetTitle className="text-lg font-bold">{product.name}</SheetTitle>
           <SheetDescription>
             Escolha as opções para adicionar ao carrinho.
@@ -1691,7 +1691,7 @@ export const ProductView = React.memo(function ProductView({
                       : handleAddToCart(e)
                   }
                   className={cn(
-                    "ml-auto min-h-[52px] max-w-full shrink-0 rounded-full px-4 py-3 text-sm font-bold text-primary-foreground [overflow-wrap:anywhere] disabled:opacity-40",
+                    "ml-auto min-h-[52px] max-w-full shrink-0 rounded-full px-4 py-3 text-sm font-bold text-primary-foreground [overflow-wrap:anywhere]",
                     cartStatus === "idle"
                       ? "bg-primary hover:bg-primary/90"
                       : "bg-primary/80",
