@@ -96,7 +96,11 @@ import {
   tipoDoPagamentoDaOrder,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
-import { avisarJurosSemParcelaConferida, conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
+import {
+  avisarJurosSemParcelaConferida,
+  conferirValorDoPagamento,
+  estornoIntegralComJurosComprovado,
+} from "../_shared/prova-de-pagamento.ts";
 import { devolucaoParcialProvaPagamento } from "../_shared/devolucao-parcial.ts";
 import { registrarDiagnosticoDoCartao } from "../_shared/diagnostico-do-cartao.ts";
 import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
@@ -1330,12 +1334,10 @@ async function handler(
     // carimba no PRÓPRIO pedido ao ocupar a vaga — lido do banco, não do
     // JSON que pode vir incompleto.
     //
-    // Só entra quando o PRIMEIRO sinal (a forma da resposta) NÃO decidiu
-    // cartão (`!liberarAVaga`), e só para 'recusado': 'expirado' já sai sem
-    // chamar RPC nenhuma (nem confirmar, nem liberar) três linhas abaixo,
-    // qualquer que seja o método — não tem o mesmo risco, e gastar a leitura
-    // aqui não mudaria nada.
-    if (!liberarAVaga && statusBanco === "recusado" && pareceUuid(order.external_reference)) {
+    // Só entra quando o PRIMEIRO sinal não decidiu cartão, na recusa ou
+    // expiração. Cartão expirado também solta a vaga dentro da reserva;
+    // PIX expirado continua saindo sem RPC depois desta conferência.
+    if (!liberarAVaga && (statusBanco === "recusado" || statusBanco === "expirado") && pareceUuid(order.external_reference)) {
       const { data: metodoRow, error: erroMetodo } = await supabase
         .from("marketplace_orders")
         .select("metodo_online, gateway_payment_id")
@@ -1355,31 +1357,14 @@ async function handler(
       }
       const metodoGravado = (metodoRow as Record<string, unknown> | null)?.metodo_online;
       const vagaGravada = (metodoRow as Record<string, unknown> | null)?.gateway_payment_id;
-      if (metodoGravado === "credito" || metodoGravado === "debito") {
+      liberarAVaga = recusaLiberaAVaga(order, statusBanco, {
+        metodo_online: metodoGravado, gateway_payment_id: vagaGravada,
+      });
+      if (liberarAVaga) {
         console.warn(
-          "webhook-mercadopago: recusa de order sem payment_method.type legível — decidida pelo metodo_online gravado no pedido (cartão), liberando a vaga em vez de confirmar_pagamento",
+          "webhook-mercadopago: recusa sem tipo legível — método gravado ou sentinela de cartão libera a vaga sem cancelar o pedido",
           { idOrder: String(order.id ?? ""), metodoGravado },
         );
-        liberarAVaga = true;
-      } else if (
-        metodoGravado == null &&
-        typeof vagaGravada === "string" &&
-        vagaEmVerificacao(vagaGravada)
-      ) {
-        // Frente 9 (29/09/2026): o metodo_online NÃO cobre o SENTINELA — ele
-        // deixa a coluna NULL por desenho (fechamento S3: o sentinela nunca
-        // carimba método), então a recusa ilegível de um cartão sob sentinela
-        // caía no caminho de PIX: confirmar_pagamento('recusado') CANCELAVA o
-        // pedido e devolvia o estoque com o cliente na tela de retry (venda
-        // perdida). O sentinela é mecanismo EXCLUSIVO do cartão (Achado B2 —
-        // o PIX não gera sentinela), então vaga sentinela + método
-        // desconhecido decide CARTÃO: liberar a vaga; quem solta o sentinela
-        // de verdade é o resolverVagaEmVerificacao no retry do cliente.
-        console.warn(
-          "webhook-mercadopago: recusa de order sem payment_method.type legível — vaga em SENTINELA (mecanismo exclusivo do cartão), liberando em vez de confirmar_pagamento cancelar o pedido",
-          { idOrder: String(order.id ?? "") },
-        );
-        liberarAVaga = true;
       }
     }
 
@@ -1969,6 +1954,23 @@ async function handler(
     return json({ error: "Estorno ainda não confirmado no ledger." }, 500);
   }
 
+  const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
+    (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
+  const estadoDoPedido = (linhaDoPedido as Record<string, unknown> | null)?.payment_status;
+  const estornoDePedidoConfirmado = statusMapeado === "estornado" && linhaDoPedido &&
+    (linhaDoPedido.paid_at != null || ["pago", "pago_apos_expirar", "estornado"].includes(estadoDoPedido));
+  // L3a-W1: o status agregado não prova refund concluído. Só o ledger altera
+  // o pedido, EXCETO a devolução integral COM JUROS: ela excede o principal
+  // que cabe no ledger. A prova exige juros conferidos e refunds terminais
+  // cobrindo a captura toda na cobrança GRAVADA; reentrega já estornada para.
+  const estornoIntegralFinanciado = estornoDePedidoConfirmado && estadoDoPedido !== "estornado" &&
+    corpoConfiavelParaEstorno !== null && estornoIntegralComJurosComprovado(
+      corpoConfiavelParaEstorno, brutoTotal, refundsDaOrder(corpoConfiavelParaEstorno), STATUS_REFUND_CONCLUIDO_ORDERS,
+    );
+  if (estornoDePedidoConfirmado && !estornoIntegralFinanciado) {
+    return json({ ok: true, resultado: "estorno_tratado_pelo_ledger" }, 200);
+  }
+
   // RECUSA PELA ROTA `payment` DE UMA COBRANÇA DA ORDERS API (Fase 3.5): o
   // pagamento clássico que o MP notifica por dentro de uma order (cartão
   // recusado, PIX cancelado na troca para cartão) chegaria aqui como
@@ -1995,17 +1997,14 @@ async function handler(
 
   // A mesma regra base da prova imediata e do cron. Aprovação sem valor ou
   // total válido nunca alcança adoção/RPC; o pedido segue elegível no cron.
-  // Estorno de order já confirmada usa a mesma prova dos juros da aprovação.
   // Contestação já foi tratada pelo ledger acima, nunca por confirmar_pagamento.
   // Fora de aprovação, divergência mantém o 200 silencioso de antes.
-  const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
-    (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
   const aprovado = statusMapeado === "pago" || statusMapeado === "pago_apos_expirar";
-  const estadoDoPedido = (linhaDoPedido as Record<string, unknown> | null)?.payment_status;
-  const estornoDePedidoConfirmado = statusMapeado === "estornado" &&
-    (estadoDoPedido === "pago" || estadoDoPedido === "pago_apos_expirar" || estadoDoPedido === "estornado");
+  const orderDaConferencia = estornoDePedidoConfirmado ? corpoConfiavelParaEstorno
+    : aprovado && rota === "order" ? corpoConsultado : null;
   const conferencia = conferirValorDoPagamento(
-    valorPagoMp, brutoTotal, (aprovado || estornoDePedidoConfirmado) && rota === "order" ? corpoConsultado ?? undefined : undefined,
+    estornoDePedidoConfirmado && corpoConfiavelParaEstorno ? extrairValorDaOrder(corpoConfiavelParaEstorno) : valorPagoMp,
+    brutoTotal, orderDaConferencia ?? undefined,
   );
   if (!conferencia.provado && (aprovado || (linhaDoPedido && conferencia.motivo === "valor_divergente"))) {
     if (!aprovado) return json({ ok: true, ignorado: "valor divergente" }, 200);

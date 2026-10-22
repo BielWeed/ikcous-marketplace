@@ -2108,6 +2108,30 @@ Deno.test("recusaLiberaAVaga: cartão recusado/cancelado/expirado libera; PIX re
   assertEquals(recusaLiberaAVaga({ id: "ORD1", status: "canceled" }, "recusado"), true);
 });
 
+Deno.test("L3a-W3 - recusaLiberaAVaga usa método gravado e sentinela sem autorizar outros status", () => {
+  const order = { status: "failed" };
+  const sentinela = montarSentinela("pedido", 0, 1700000000000);
+  assertEquals(recusaLiberaAVaga(order, "recusado", { metodo_online: "credito" }), true);
+  assertEquals(recusaLiberaAVaga(order, "recusado", { metodo_online: "debito" }), true);
+  assertEquals(recusaLiberaAVaga(order, "recusado", { metodo_online: null, gateway_payment_id: sentinela }), true);
+  assertEquals(recusaLiberaAVaga(order, "recusado", { metodo_online: "pix", gateway_payment_id: sentinela }), false);
+  assertEquals(recusaLiberaAVaga(order, "recusado", { gateway_payment_id: "ORDCOMUM" }), false);
+  for (const status of ["pago", "estornado", "aguardando", null]) {
+    assertEquals(recusaLiberaAVaga(order, status, { metodo_online: "credito" }), false);
+  }
+});
+
+Deno.test("BOT-P2: expiração sem tipo usa método gravado ou sentinela, nunca PIX", () => {
+  const order = { status: "expired" };
+  const sentinela = montarSentinela("pedido", 0, 1700000000000);
+  for (const metodo of ["credito", "debito", null, "pix"]) {
+    assertEquals(recusaLiberaAVaga(order, "expirado", {
+      metodo_online: metodo, gateway_payment_id: sentinela,
+    }), metodo !== "pix", `método ${metodo}`);
+  }
+  assertEquals(recusaLiberaAVaga(order, "expirado", { gateway_payment_id: "ORDCOMUM" }), false);
+});
+
 // --- resolverSentinela: decide o sentinela por FATO (Ponto 1, 4ª revisão de
 // risco, 26/09/2026; B1, 5ª revisão, 26/09/2026) --------------------------
 

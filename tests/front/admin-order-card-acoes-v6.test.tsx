@@ -4,6 +4,7 @@ import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import type { Order } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 (
@@ -94,6 +95,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 it("a leitura segue status, identificação, cliente/produto, total/pagamento e ação; o nome longo não corta", () => {
@@ -134,7 +136,11 @@ it.each(["aguardando", "recusado", "estornado"] as const)(
     await clicar("Avançar mesmo assim");
     await clicar("Avançar mesmo assim");
     expect(avancar).toHaveBeenCalledTimes(1);
-    expect(avancar).toHaveBeenCalledWith("pedido-abc123", "processing");
+    expect(avancar).toHaveBeenCalledWith(
+      "pedido-abc123",
+      "processing",
+      "pending",
+    );
     expect(selecionar).not.toHaveBeenCalled();
   },
 );
@@ -184,11 +190,65 @@ it("finalizar sem recebimento preserva a pergunta e registra o dinheiro antes do
   expect(avancar).not.toHaveBeenCalled();
   await clicar("Recebi");
   expect(receber).toHaveBeenCalledWith("pedido-abc123", true);
-  expect(avancar).toHaveBeenCalledWith("pedido-abc123", "delivered");
+  expect(avancar).toHaveBeenCalledWith(
+    "pedido-abc123",
+    "delivered",
+    "shipping",
+  );
   expect(receber.mock.invocationCallOrder[0]).toBeLessThan(
     avancar.mock.invocationCallOrder[0],
   );
 });
+
+const casosDeConfirmacao = [
+  { status: "pending", paymentStatus: "aguardando", paymentMethod: "online" },
+  { status: "shipping", paymentStatus: null, paymentMethod: "cash" },
+] as const;
+
+async function abrirConfirmacao(order: Order) {
+  montar(order);
+  if (order.status === "shipping") {
+    await abrirAcoes();
+    await clicar("Avançar → Finalizado");
+  } else {
+    await clicar("Avançar mesmo assim");
+  }
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+}
+
+it.each(casosDeConfirmacao)(
+  "O1: filtro Todos mantém cartão $status montado; cancelar por props fecha a confirmação sem avançar",
+  async (sobre) => {
+    const aviso = vi.spyOn(toast, "warning");
+    const order = pedido(sobre);
+    await abrirConfirmacao(order);
+    // Simula a atualização de tempo real no filtro Todos: MESMA instância.
+    montar({ ...order, status: "cancelled" });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(aviso).toHaveBeenCalledWith(
+      "O pedido mudou de situação. Confira antes de avançar.",
+    );
+    expect(avancar).not.toHaveBeenCalled();
+    expect(receber).not.toHaveBeenCalled();
+  },
+);
+
+it.each(casosDeConfirmacao)(
+  "O1: confirmação legítima em $status envia a origem capturada",
+  async (sobre) => {
+    const order = pedido(sobre);
+    await abrirConfirmacao(order);
+    montar({ ...order, total: 19 });
+    await clicar(
+      order.status === "shipping" ? "Recebi" : "Avançar mesmo assim",
+    );
+    expect(avancar).toHaveBeenCalledWith(
+      order.id,
+      order.status === "shipping" ? "delivered" : "processing",
+      order.status,
+    );
+  },
+);
 
 it("se registrar o dinheiro falhar, não finaliza", async () => {
   receber.mockRejectedValue(new Error("falha simulada"));
@@ -209,7 +269,11 @@ it("Ainda não finaliza sem gravar recebimento, como na ficha", async () => {
   await clicar("Avançar → Finalizado");
   await clicar("Ainda não");
   expect(receber).not.toHaveBeenCalled();
-  expect(avancar).toHaveBeenCalledWith("pedido-abc123", "delivered");
+  expect(avancar).toHaveBeenCalledWith(
+    "pedido-abc123",
+    "delivered",
+    "shipping",
+  );
 });
 
 it("confirmar cancelamento executa só depois do segundo clique", async () => {
@@ -218,7 +282,7 @@ it("confirmar cancelamento executa só depois do segundo clique", async () => {
   expect(avancar).not.toHaveBeenCalled();
   await clicar("Cancelar pedido");
   expect(avancar).toHaveBeenCalledTimes(1);
-  expect(avancar).toHaveBeenCalledWith("pedido-abc123", "cancelled");
+  expect(avancar).toHaveBeenCalledWith("pedido-abc123", "cancelled", "pending");
 });
 
 it("pagamento fora do fluxo destaca a conferência na ficha", async () => {

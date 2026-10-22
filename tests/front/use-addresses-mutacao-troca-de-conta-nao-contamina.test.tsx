@@ -236,6 +236,21 @@ describe("useAddresses — mutação em voo não atravessa troca de conta", () =
     });
   }
 
+  it.each(["M", "ZZ", "12"])(
+    "não grava UF inválida %s na inclusão nem na edição",
+    async (state) => {
+      await renderizar();
+      const antes = resolvidores.length;
+      const inclusao = espelho.hook!.addAddress({ ...NOVO_A, state });
+      expect(resolvidores).toHaveLength(antes);
+      expect(await inclusao).toBeNull();
+      const edicao = espelho.hook!.updateAddress("end-a1", { state });
+      expect(resolvidores).toHaveLength(antes);
+      expect(await edicao).toBe(false);
+      expect(toast.success).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(["add", "update", "delete"] as const)(
     "resposta de %s da conta A não muda B, não grava disco, não avisa, não retorna sucesso",
     async (op) => {

@@ -62,6 +62,7 @@ interface StoreContextType {
   config: StoreConfig;
   isLoaded: boolean;
   products: Product[];
+  incluirProduto: (produto: Product) => void;
   loadingProducts: boolean;
   /**
    * `true` quando a ÚLTIMA consulta do catálogo falhou (rede, servidor) e
@@ -390,6 +391,11 @@ export function StoreProvider({
   const [config, setConfig] = useState<StoreConfig>(configInicial);
   const [isLoaded, setIsLoaded] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const incluirProduto = useCallback((produto: Product) => {
+    setProducts((atuais) =>
+      atuais.some((p) => p.id === produto.id) ? atuais : [...atuais, produto],
+    );
+  }, []);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [catalogoErro, setCatalogoErro] = useState(false);
   // Novas tentativas automáticas do catálogo (rede ruim na 1ª visita): no
@@ -1598,6 +1604,7 @@ export function StoreProvider({
       config,
       isLoaded,
       products,
+      incluirProduto,
       loadingProducts,
       catalogoErro,
       updateConfig,
@@ -1609,6 +1616,7 @@ export function StoreProvider({
       config,
       isLoaded,
       products,
+      incluirProduto,
       loadingProducts,
       catalogoErro,
       updateConfig,

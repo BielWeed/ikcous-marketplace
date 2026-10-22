@@ -1250,6 +1250,10 @@ async function main() {
         "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
         "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
       ],
+      [
+        "20261370000000_o_caixa_abre_so_na_conta_da_loja.sql",
+        "public.fin_caixa_abrir(numeric,uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

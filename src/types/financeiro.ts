@@ -200,6 +200,7 @@ export interface CaixaAtual {
   readonly valorAbertura: number;
   readonly vendasDinheiro: number;
   readonly devolucoesDinheiro: number;
+  readonly estornosExternosDinheiro: number;
   readonly entradasManuais: number;
   readonly saidasManuais: number;
   readonly esperado: number;

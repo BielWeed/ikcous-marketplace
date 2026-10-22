@@ -313,6 +313,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return false;
   });
 
+  const contaDaRecuperacaoRef = useRef<string | null>(
+    cachedSession?.user.id ?? null,
+  );
+
   // Revisão de segurança (23/09/2026): o TTL de 24 h do CPF pendente do
   // cadastro só era cobrado dentro da retomada, que exige sessão. Num
   // aparelho compartilhado onde ninguém volta a entrar numa conta, o
@@ -921,7 +925,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (event === "PASSWORD_RECOVERY") {
         console.log("[Auth] Recovery event detected");
+        contaDaRecuperacaoRef.current = currentUserId;
         setIsPasswordRecovery(true);
+      } else if (
+        event === "SIGNED_OUT" ||
+        ((contaDaRecuperacaoRef.current ?? previousUserId) !== null &&
+          (contaDaRecuperacaoRef.current ?? previousUserId) !== currentUserId)
+      ) {
+        contaDaRecuperacaoRef.current = null;
+        setIsPasswordRecovery(false);
+      } else if (currentUserId && contaDaRecuperacaoRef.current === null) {
+        // Também vincula o modo iniciado pelo endereço antes do evento recovery.
+        contaDaRecuperacaoRef.current = currentUserId;
       }
 
       if (session?.user) {

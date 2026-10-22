@@ -77,7 +77,10 @@ module.exports = [
     // conforme o build — os hashes dos chunks entram no pacote de entrada e não
     // comprimem. Com folga menor que esse ruído, o portão vira loteria: um PR só
     // do painel reprovou "Build e tamanho" por 239 B no teto do cliente.
-    limit: "552 kB",
+    // 21/10/2026 (aprovado pelo dono no chat): 552 -> 556 kB para acomodar o
+    // redesenho dos cards compactos de frete grátis (anel de progresso) e de
+    // Ofertas Imperdíveis. O card de frete sozinho mediu +99 B sobre a base.
+    limit: "556 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem

@@ -219,6 +219,7 @@ interface OrderDetailProps {
   onStatusChange: (
     orderId: string,
     status: OrderStatus,
+    statusEsperado?: OrderStatus,
   ) => Promise<void> | void;
   isOffline?: boolean;
   /**
@@ -1437,17 +1438,30 @@ export const OrderDetail = memo(function OrderDetail({
   const [pendingAdvance, setPendingAdvance] = useState<{
     orderId: string;
     status: OrderStatus;
+    statusOrigem: OrderStatus;
     perguntaRecebimento: boolean;
   } | null>(null);
+
+  useEffect(() => {
+    if (
+      pendingAdvance &&
+      (pendingAdvance.orderId !== order.id ||
+        pendingAdvance.statusOrigem !== order.status)
+    ) {
+      setPendingAdvance(null);
+      toast.warning("O pedido mudou de situação. Confira antes de avançar.");
+    }
+  }, [pendingAdvance, order.id, order.status]);
 
   const handleStatusChange = async (
     orderId: string,
     nextStatus: OrderStatus,
+    statusEsperado = order.status,
   ) => {
     if (isUpdatingStatus) return;
     setIsUpdatingStatus(true);
     try {
-      await onStatusChange(orderId, nextStatus);
+      await onStatusChange(orderId, nextStatus, statusEsperado);
     } catch {
       // parent component handles error
     } finally {
@@ -1472,6 +1486,7 @@ export const OrderDetail = memo(function OrderDetail({
   const registrarRecebimentoEAvancar = async (
     orderId: string,
     status: OrderStatus,
+    statusEsperado?: OrderStatus,
   ) => {
     if (!onRegistrarPagamento) return;
     if (registrandoEAvancandoRef.current) return;
@@ -1486,7 +1501,7 @@ export const OrderDetail = memo(function OrderDetail({
         );
         return;
       }
-      await handleStatusChange(orderId, status);
+      await handleStatusChange(orderId, status, statusEsperado);
     } finally {
       registrandoEAvancandoRef.current = false;
     }
@@ -1506,6 +1521,7 @@ export const OrderDetail = memo(function OrderDetail({
       setPendingAdvance({
         orderId,
         status: nextStatus,
+        statusOrigem: order.status,
         perguntaRecebimento: false,
       });
       return;
@@ -1543,6 +1559,7 @@ export const OrderDetail = memo(function OrderDetail({
       setPendingAdvance({
         orderId,
         status: nextStatus,
+        statusOrigem: order.status,
         perguntaRecebimento: true,
       });
       return;
@@ -1556,17 +1573,17 @@ export const OrderDetail = memo(function OrderDetail({
   // true) — os dois só avançam o status, sem gravar nada.
   const confirmPendingAdvance = () => {
     if (!pendingAdvance) return;
-    const { orderId, status } = pendingAdvance;
+    const { orderId, status, statusOrigem } = pendingAdvance;
     setPendingAdvance(null);
-    handleStatusChange(orderId, status);
+    handleStatusChange(orderId, status, statusOrigem);
   };
 
   // "Recebi" da pergunta: tira a caixinha da tela e segue o mesmo caminho.
   const confirmarRecebimentoEAvancar = async () => {
     if (!pendingAdvance) return;
-    const { orderId, status } = pendingAdvance;
+    const { orderId, status, statusOrigem } = pendingAdvance;
     setPendingAdvance(null);
-    await registrarRecebimentoEAvancar(orderId, status);
+    await registrarRecebimentoEAvancar(orderId, status, statusOrigem);
   };
 
   // Task 4b — botão "Marcar como recebido"/"Desfazer" DENTRO da ficha
