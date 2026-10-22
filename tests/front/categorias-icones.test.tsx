@@ -62,6 +62,23 @@ it("mostra Todas primeiro, só categorias ativas e ícone explícito antes da de
   expect(mudar).toHaveBeenCalledWith("Todas");
 });
 
+it("usa blocos compactos sem mudar o rótulo e o indicador de seleção", () => {
+  renderizar([categoria("Brinquedo")]);
+  for (const botao of host.querySelectorAll("button")) {
+    expect(botao.classList.contains("h-[80px]")).toBe(true);
+    expect(botao.classList.contains("w-[68px]")).toBe(true);
+    const [bloco, rotulo, indicador] = botao.children;
+    expect(bloco.classList.contains("size-12")).toBe(true);
+    expect(bloco.classList.contains("rounded-2xl")).toBe(true);
+    expect(bloco.querySelector("svg")?.classList.contains("size-6")).toBe(true);
+    expect(rotulo.classList.contains("mt-1.5")).toBe(true);
+    expect(rotulo.classList.contains("text-xs")).toBe(true);
+    expect(rotulo.classList.contains("line-clamp-1")).toBe(true);
+    expect(indicador.classList.contains("mt-1")).toBe(true);
+    expect(indicador.classList.contains("size-1")).toBe(true);
+  }
+});
+
 it.each([
   ["Auto cuidado", "cuidado"],
   ["Beleza e perfumes", "beleza"],
@@ -101,9 +118,16 @@ it("reserva a mesma altura dos blocos e anuncia carregamento", () => {
   expect(
     host.querySelectorAll('[data-testid="categoria-skeleton"]'),
   ).toHaveLength(5);
-  expect(
-    host.querySelector('[data-testid="categoria-skeleton"]')?.className,
-  ).toContain("h-[108px]");
+  for (const skeleton of host.querySelectorAll(
+    '[data-testid="categoria-skeleton"]',
+  )) {
+    expect(skeleton.classList.contains("h-[80px]")).toBe(true);
+    expect(skeleton.classList.contains("w-[68px]")).toBe(true);
+    expect(skeleton.children[0].classList.contains("size-12")).toBe(true);
+    expect(skeleton.children[0].classList.contains("rounded-2xl")).toBe(true);
+    expect(skeleton.children[1].classList.contains("mt-1.5")).toBe(true);
+    expect(skeleton.children[1].classList.contains("h-4")).toBe(true);
+  }
   expect(host.querySelector("button")).toBeNull();
 });
 

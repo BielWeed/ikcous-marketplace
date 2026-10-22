@@ -62,6 +62,9 @@ const {
 } = require("./desfazer-recebimento-posterior.cjs");
 const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
 const { PERFIS_ADMIN_ATUAL } = require("./admin-atual-perfis-posterior.cjs");
+const {
+  EX_ADMIN_DEMAIS_TABELAS,
+} = require("./ex-admin-demais-tabelas-posterior.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(
@@ -377,6 +380,7 @@ const POSTERIORES_A_97 = [
   // 20261197000000 ainda usam ..."). O rollback-manual dela so devolve as 13 expressoes a is_admin(). Definicao unica em
   // tests/banco/admin-atual-perfis-posterior.cjs. No FIM da lista de proposito.
   PERFIS_ADMIN_ATUAL,
+  EX_ADMIN_DEMAIS_TABELAS,
   // 20261352000000: o produto e a grade salvam numa transacao so. A RPC salvar_produto_com_grade usa is_admin_atual():
   // sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "funcoes fora da 20261197000000 ainda usam ...").
   // O rollback-manual dela so apaga a funcao (nenhum produto, estoque ou variacao muda). No FIM da lista de proposito.

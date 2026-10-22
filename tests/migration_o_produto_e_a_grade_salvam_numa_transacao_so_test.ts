@@ -79,8 +79,8 @@ Deno.test("352: RPC registrada nos inventários e consultas de rol fechado", asy
     "../scripts/frota/publicar-release.mjs"
   );
   const canais = JSON.parse(ler("scripts/frota/canais-de-backend.json"));
-  const a = "82a-conferir-produto-com-grade-aplicado";
-  const b = "82b-antes-produto-com-grade-ausente";
+  const a = "84a-conferir-produto-com-grade-aplicado";
+  const b = "84b-antes-produto-com-grade-ausente";
   const lote = canais.provasDeObjetos.filter((p: { versoes?: string[] }) =>
     p.versoes?.includes("20261352000000"),
   );

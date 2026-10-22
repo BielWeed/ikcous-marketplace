@@ -86,6 +86,8 @@ const NOMES = [
   // dos corpos da 244. Nenhuma e' um dos 42 da 99, mas o rollback da 244 recusa com o corpo novo no ar: ela entra aqui
   // para cair ANTES dela (a CADEIA 229/236 -> 244 -> 350: o `hashVigente` da 350 e o `hashDesta` da 244).
   "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
+  // F1: fin_caixa_abrir aceita somente a conta que recebe vendas; desfazer antes de medir a 99.
+  "20261370000000_o_caixa_abre_so_na_conta_da_loja.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

@@ -875,7 +875,7 @@ prova(
 );
 
 prova(
-  "I. CONSULTAS 82a/82b: rol exato, positivas no estado certo e cada desvio no item certo",
+  "I. CONSULTAS 84a/84b: rol exato, positivas no estado certo e cada desvio no item certo",
   async () => {
     const {
       ROL_FECHADO_POR_CONSULTA,
@@ -886,13 +886,13 @@ prova(
         path.join(RAIZ, "scripts", "publicacao", "consultas", `${n}.sql`),
         "utf8",
       );
-    const A = "82a-conferir-produto-com-grade-aplicado";
-    const B = "82b-antes-produto-com-grade-ausente";
+    const A = "84a-conferir-produto-com-grade-aplicado";
+    const B = "84b-antes-produto-com-grade-ausente";
     const rodar = async (n) => (await ADM.query(consulta(n))).rows;
     const itensVerdes = (rows) => rows.filter((r) => r.ok).map((r) => r.item);
     const itensVermelhos = (rows) =>
       rows.filter((r) => !r.ok).map((r) => r.item);
-    // DEPOIS: a 82a positiva com o rol exato; a 82b negativa SO no item da funcao.
+    // DEPOIS: a 84a positiva com o rol exato; a 84b negativa SO no item da funcao.
     const a1 = await rodar(A);
     assert.equal(estruturaDoRolFechado(a1, ROL_FECHADO_POR_CONSULTA[A]), null);
     assert.deepEqual(itensVermelhos(a1), []);
@@ -901,7 +901,7 @@ prova(
     assert.deepEqual(itensVermelhos(b1), [
       "salvar_produto_com_grade: ainda NAO existe",
     ]);
-    // Desvios na 82a: corpo trocado, ACL aberta ao anon, gatilho desligado.
+    // Desvios na 84a: corpo trocado, ACL aberta ao anon, gatilho desligado.
     await ADM.query(
       corpoDaMigration().replace("Acesso negado.", "Acesso negado!"),
     );
@@ -925,7 +925,7 @@ prova(
         "ALTER TABLE public.product_variants ENABLE TRIGGER sync_produto_ultima_atualizacao",
       );
     }
-    // ANTES (depois do rollback): a 82b positiva; a 82a negativa em tudo que depende da funcao.
+    // ANTES (depois do rollback): a 84b positiva; a 84a negativa em tudo que depende da funcao.
     await ADM.query(ROLLBACK);
     try {
       const b2 = await rodar(B);

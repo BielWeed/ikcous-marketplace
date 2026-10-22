@@ -18,6 +18,9 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   ACL fechada, chamadas por nome e só com dois obrigatórios, reaplicação, rollback para a 249
   e controle negativo sem a guarda. Só clone efêmero; não prova loja nem PostgREST.
 
+- **Ex-admin nas demais tabelas (`ex-admin-demais-tabelas-viva.cjs`)**: migration 20261360; 28 politicas, view gravavel com CHECK OPTION e quatro RPCs. JWT antigo nas duas fontes do papel, controle antigo, admin atual, cliente e vitrine anonima. OTP permanece sem GRANT direto; a emulacao de service_role nao prova o BYPASSRLS do Supabase. Consultas 82a/82b (36 itens), OID/ACL, reaplicacao LF/CRLF, onze sabotagens de preflight e rollback exato. So clone efemero. Provas da 97 e da 240 desfazem antes esta sucessora pelo modulo `ex-admin-demais-tabelas-posterior.cjs`.
+- **Caixa na conta que recebe vendas (`caixa-conta-da-loja-viva.cjs`)**: migration 20261370. Novas aberturas personalizadas recusam 22023 sem gravar; caixa personalizado ja aberto fica intacto; argumento omitido, NULL e UUID de sistema continuam funcionando. Reaplicacao/CRLF, rollback byte a byte, atributos/OID/ACL preservados, preflight divergente, consultas 83a/83b e controle negativo sem a guarda. So Postgres efemero do CI; nao prova lojas reais. As provas A1-09/A1-13 do Financeiro mantem as assercoes do classificador historico usando o corpo da 99 e restaurando o atual ao terminar.
+
 ## As provas (`invariantes-dinheiro.cjs`)
 
 - **(a) cupom**: `usage_limit` nunca fica negativo; a vaga do cupom não volta
@@ -84,7 +87,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   sobrevive; SKU de variação apagada reaproveitado na mesma chamada; variação de outro produto não é reparentada; anon sem
   EXECUTE, cliente e admin rebaixado recusados (42501), chave fora da lista branca (22023); 20 rodadas contra compras de
   carrinho misto sem 40P01; reaplicar 2x e CRLF, sobrecarga recusa, rollback só apaga a função e repetido é no-op; consultas
-  `82a`/`82b` (rol exato, cada desvio no item certo). **Não prova** a IKCOUS nem a Savy.
+  `84a`/`84b` (rol exato, cada desvio no item certo). **Não prova** a IKCOUS nem a Savy.
 - **admin atual (`admin-atual-viva.cjs`, via `rodar-isolado.cjs`)**: a
   migration 20261197000000 — admin rebaixado com JWT de admin ainda válido
   (só no `profiles`, só no `auth.users`, nos dois) é recusado nas seis RPCs

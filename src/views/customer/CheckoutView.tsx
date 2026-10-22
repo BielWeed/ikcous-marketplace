@@ -120,6 +120,7 @@ import {
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
+import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { arredondarParaCentavos, cn, formatCurrency } from "@/lib/utils";
 import type {
   Address,
@@ -1015,7 +1016,7 @@ export function CheckoutViewDaConta({
               path: ["city"],
             });
           }
-          if (!data.state || data.state.trim() === "") {
+          if (!ufBrasileiraValida(data.state)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Estado inválido",
@@ -2234,7 +2235,7 @@ export function CheckoutViewDaConta({
     !!numeroAtual?.trim() &&
     !!bairroAtual?.trim() &&
     !!cidadeAtual?.trim() &&
-    !!estadoAtual?.trim();
+    ufBrasileiraValida(estadoAtual);
   const faltaCpf = exigeCpfDoDestinatario && !cpfValido(cpfAtual ?? "");
   // Só uma ação EXPLÍCITA abre a seção: cabeçalho, "Editar"/"Trocar"/
   // "Cadastre um endereço" do resumo, ou o submit inválido (que também foca
@@ -3458,6 +3459,18 @@ export function CheckoutViewDaConta({
   // mexe em `finalizarBloqueadoPorFrete` nem no CartContext, só na exibição.
   const totalExibido = semFreteSelecionado ? null : finalTotal;
 
+  // Sem endereço de entrega, o card "Entrega" e o aviso de "Seus dados" JÁ dizem
+  // isso no alto da tela. Repetir em vermelho na barra do Finalizar só a
+  // engordava (pedido do dono, 22/10/2026): o texto fica na página só para o
+  // leitor de tela (continua explicando o botão apagado), sem ocupar a barra.
+  // Os outros motivos (frete em configuração, calculando, escolher opção)
+  // seguem visíveis: o card do alto não os repete.
+  const avisoDeFreteSoParaLeitorDeTela =
+    semFreteSelecionado &&
+    !(ctxFreteIndefinido && !config.originCep?.trim()) &&
+    !freteEmCotacao &&
+    !cepDoDestinoDaCotacao;
+
   // `SaidaDaRecusa` promete, por escrito, que `conferir_antes` nunca oferece
   // "tentar de novo" — é o caso em que não se sabe se o pedido nasceu, e
   // repetir debita estoque duas vezes e queima cupom de uso único. Mas o
@@ -3483,6 +3496,7 @@ export function CheckoutViewDaConta({
   // exigência entra num lugar, não em dois.
   const botaoFinalizarDesabilitado =
     cart.length === 0 ||
+    !!aplicandoCupom ||
     leituraDaRetomadaPendente ||
     !isValid ||
     isSubmitting ||
@@ -3648,7 +3662,8 @@ export function CheckoutViewDaConta({
 
   const handleSubmitEvent = async () => {
     // Este handler cria uma compra nova; retomada paga o pedido já existente.
-    if (cart.length === 0) return;
+    if (cart.length === 0 || aplicandoCupom || aplicacaoDoCupomEmVooRef.current)
+      return;
     const contaEsperada = user?.id ?? null;
     // Pedido retomado com a primeira leitura em voo: o pedido JÁ existe, e
     // este envio criaria um segundo. Antes da trava de envio de propósito —
@@ -6732,7 +6747,7 @@ export function CheckoutViewDaConta({
                     <FraseDeAceite
                       acao="finalizar"
                       emLinha
-                      className="mx-auto mt-2 max-w-md pb-1 text-center"
+                      className="mx-auto mt-2 max-w-md text-center"
                     />
                     {!semFreteSelecionado &&
                       !isOffline &&
@@ -6779,7 +6794,11 @@ export function CheckoutViewDaConta({
                       // padrão da casa (SaidaDaRecusa.tsx:82).
                       <p
                         role="alert"
-                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
+                        className={
+                          avisoDeFreteSoParaLeitorDeTela
+                            ? "sr-only"
+                            : "mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
+                        }
                       >
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                         {semFreteSelecionado &&

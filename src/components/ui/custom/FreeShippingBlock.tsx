@@ -14,7 +14,7 @@ import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
-import { CheckCircle2, Sparkles, Truck } from "lucide-react";
+import { Check, CheckCircle2, Sparkles, Truck } from "lucide-react";
 
 interface FreeShippingBlockProps {
   /** Mantida no contrato público — a frente visual da Home ainda passa, mas
@@ -49,53 +49,87 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
   const progressPercent = Math.min((totalCartValue / minShipping) * 100, 100);
 
   if (config.freeShippingCardStyle === "compacto") {
+    const sempre = preset === "sempre";
+    const liberado = isGoalReached || sempre;
+    const Icone = liberado ? Check : Truck;
+    // O SVG gira -90° em torno da origem: o centro (26,26) vira (-26,26) e
+    // o arco começa no topo. pathLength=100 deixa o traço em porcentagem.
+    const anel = { cx: -26, cy: 26, r: 24, pathLength: 100 };
+    const progresso = liberado ? 100 : Math.max(0, progressPercent || 0);
     return (
-      <div className="flex min-h-[76px] items-center gap-3 rounded-[20px] border border-zinc-800 bg-zinc-950 p-3.5 text-white">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-zinc-900">
-          <Truck aria-hidden="true" className="size-5 text-emerald-400" />
+      <div className="flex w-full min-h-[84px] items-center gap-3.5 rounded-[22px] border border-zinc-800 bg-zinc-950 px-4 py-3 text-white">
+        <div
+          {...(sempre
+            ? {}
+            : {
+                role: "progressbar",
+                "aria-label": "Progresso para o frete grátis",
+                "aria-valuemin": 0,
+                "aria-valuemax": 100,
+                "aria-valuenow": Math.floor(progressPercent),
+                "aria-valuetext": `${formatCurrency(totalCartValue)} de ${formatCurrency(minShipping)} para o frete grátis`,
+              })}
+          className="relative shrink-0"
+        >
+          <svg
+            aria-hidden="true"
+            width="52"
+            height="52"
+            fill="none"
+            strokeWidth="4"
+          >
+            <g transform="rotate(-90)">
+              <circle {...anel} stroke="#27272A" />
+              <circle
+                {...anel}
+                stroke="#10B981"
+                strokeLinecap="round"
+                strokeDasharray={100}
+                strokeDashoffset={100 - progresso}
+              />
+            </g>
+          </svg>
+          <Icone
+            aria-hidden="true"
+            size={22}
+            className="absolute inset-0 m-auto text-emerald-400"
+          />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-[13px] font-bold leading-[18px]">
-            {isGoalReached || preset === "sempre" ? (
-              <span className="text-emerald-400">
-                Frete grátis{soLocal ? " na cidade" : ""} liberado
-              </span>
-            ) : (
-              <>
-                Faltam{" "}
-                <span className="text-emerald-400">
-                  {formatCurrency(remaining)}
-                </span>{" "}
-                p/ frete grátis{soLocal ? " na cidade" : ""}
-              </>
-            )}
+          <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+            Frete grátis{soLocal ? " na cidade" : ""}
+          </p>
+          <h3
+            className={`text-[17px] font-bold leading-[22px]${liberado ? " text-emerald-400" : ""}`}
+          >
+            {liberado ? "Liberado" : `Faltam ${formatCurrency(remaining)}`}
           </h3>
-          {preset !== "sempre" && (
-            <div className="mt-1.5 flex items-center gap-3">
-              <div
-                role="progressbar"
-                aria-label="Progresso para o frete grátis"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.floor(progressPercent)}
-                aria-valuetext={`${formatCurrency(totalCartValue)} de ${formatCurrency(minShipping)} para o frete grátis`}
-                className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-800"
-              >
-                <div
-                  className="h-full rounded-full bg-emerald-500"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <span className="shrink-0 text-[11px] tabular-nums text-zinc-300">
-                {formatCurrency(totalCartValue).replace(/^R\$\s*/, "")} /{" "}
-                {formatCurrency(minShipping).replace(/^R\$\s*/, "")}
-              </span>
-            </div>
-          )}
+          <p className="text-[11.5px] text-zinc-400">
+            {sempre
+              ? soLocal
+                ? "Pedido com entrega local sai grátis."
+                : "Qualquer pedido sai com entrega grátis."
+              : liberado
+                ? `Seu carrinho já ganhou entrega${soLocal ? " local" : ""} grátis!`
+                : totalCartValue > 0
+                  ? `${formatCurrency(totalCartValue)} de ${formatCurrency(minShipping)}`
+                  : `A partir de ${formatCurrency(minShipping)} em compras${soLocal ? ", na entrega local" : ""}.`}
+          </p>
         </div>
       </div>
     );
   }
+
+  // Selo "Liberado" dos dois cards premium (o mesmo markup, escrito uma vez).
+  const seloLiberado = (
+    <div className="flex h-5 shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-2.5 shadow-2xs">
+      <Sparkles
+        aria-hidden="true"
+        className="size-3 text-emerald-400 motion-safe:animate-pulse"
+      />
+      <span className="text-[11px] font-bold text-emerald-400">Liberado</span>
+    </div>
+  );
 
   if (preset === "sempre") {
     return (
@@ -137,15 +171,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
           >
             <div className="h-full w-full rounded-full bg-emerald-500" />
           </div>
-          <div className="flex h-5 shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-2.5 shadow-2xs">
-            <Sparkles
-              aria-hidden="true"
-              className="size-3 text-emerald-400 motion-safe:animate-pulse"
-            />
-            <span className="text-[11px] font-bold text-emerald-400">
-              Liberado
-            </span>
-          </div>
+          {seloLiberado}
         </div>
       </div>
     );
@@ -286,15 +312,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
           />
         </div>
         {isGoalReached ? (
-          <div className="flex h-5 shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-2.5 shadow-2xs">
-            <Sparkles
-              aria-hidden="true"
-              className="size-3 text-emerald-400 motion-safe:animate-pulse"
-            />
-            <span className="text-[11px] font-bold text-emerald-400">
-              Liberado
-            </span>
-          </div>
+          seloLiberado
         ) : (
           <span className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-white">
             {formatCurrency(totalCartValue)}{" "}

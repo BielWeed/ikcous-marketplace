@@ -649,6 +649,9 @@ prova(
     emTransacao(async () => {
       await semear();
       await C.query("SAVEPOINT antes_da_view");
+      await require("./ex-admin-demais-tabelas-posterior.cjs").desfazerExAdminNaTransacao(
+        C,
+      );
       await voltarParaAntes();
       const antes = await como(
         "anon",

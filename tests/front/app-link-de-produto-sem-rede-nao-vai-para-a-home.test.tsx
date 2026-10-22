@@ -174,11 +174,23 @@ vi.mock("@/components/ui/alert-dialog", () => {
   };
 });
 
-vi.mock("@/contexts/StoreContext", () => ({
-  StoreProvider: ({ children }: { readonly children?: unknown }) =>
-    children as never,
-  useStore: () => ({ config: null }),
-}));
+vi.mock("@/contexts/StoreContext", async () => {
+  const { useCallback, useState } = await import("react");
+  return {
+    StoreProvider: ({ children }: { readonly children?: unknown }) =>
+      children as never,
+    useStore: () => {
+      const [, atualizar] = useState(0);
+      const incluirProduto = useCallback((produto: { id: string }) => {
+        if (!catalogo.products.some((p) => p.id === produto.id)) {
+          catalogo.products = [...catalogo.products, produto];
+          atualizar((v) => v + 1);
+        }
+      }, []);
+      return { config: null, incluirProduto };
+    },
+  };
+});
 vi.mock("@/contexts/CartContext", () => ({
   CartProvider: ({ children }: { readonly children?: unknown }) =>
     children as never,
@@ -413,6 +425,44 @@ describe("link de produto aberto sem rede nao vai para a Home", () => {
     Array.from(container?.querySelectorAll("button") ?? []).find((b) =>
       b.textContent?.includes("Tentar de novo"),
     );
+
+  it("carrega produto fora dos 200 iniciais com suas variações", async () => {
+    catalogo.products = Array.from({ length: 200 }, (_, i) => ({
+      id: `produto-${i}`,
+    }));
+    catalogo.respostaDoProduto = {
+      data: {
+        id: "produto-Z",
+        nome: "Produto antigo",
+        preco: 25,
+        product_variants: [
+          {
+            id: "var-z",
+            product_id: "produto-Z",
+            name: "Tamanho",
+            value: "M",
+            active: true,
+            stock_increment: 3,
+          },
+        ],
+      },
+      error: null,
+    };
+    await abrir();
+    await clicar("produto-inexistente");
+    await assentar(20);
+    expect(
+      container?.querySelector('[data-testid="tela-produto"]'),
+    ).not.toBeNull();
+    expect(catalogo.products).toHaveLength(201);
+    expect(catalogo.products.at(-1)).toMatchObject({
+      id: "produto-Z",
+      variants: [{ id: "var-z", stockIncrement: 3 }],
+    });
+    await clicar("inicio");
+    await clicar("produto-inexistente");
+    expect(catalogo.products).toHaveLength(201);
+  });
 
   it("falha de REDE na checagem do link: o cliente NÃO é mandado para a Home", async () => {
     catalogo.respostaDoProduto = { data: null, error: FALHA_DE_REDE };
