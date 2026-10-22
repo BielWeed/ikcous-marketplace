@@ -1770,7 +1770,13 @@ export function OrderDetailsView({
       {reviewingItem &&
         typeof document !== "undefined" &&
         createPortal(
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
+          // A folha termina ACIMA da barra de navegação (mesma régua da folha
+          // de opções do card: --folha-acima-da-barra). Em inset-0 ela ia até
+          // o fundo da tela, por baixo da barra (z-120 contra z-50), e o
+          // botão Publicar avaliação sumia atrás dela. Ficar acima da barra,
+          // e não por cima, mantém o aviso de descarte (AlertDialog, z-50)
+          // na frente da folha.
+          <div className="fixed inset-x-0 top-0 bottom-[var(--folha-acima-da-barra)] z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
             <div
               className="fixed inset-0"
               onClick={fecharAvaliacaoPerguntando}
@@ -1787,7 +1793,7 @@ export function OrderDetailsView({
             <div
               ref={avaliacaoFolhaRef}
               tabIndex={-1}
-              className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom"
+              className="relative z-10 max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom"
               role="dialog"
               aria-modal="true"
               aria-labelledby="titulo-avaliacao"

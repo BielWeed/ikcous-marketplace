@@ -5,7 +5,9 @@
       "A tela de produto foi redesenhada: cor e tamanho aparecem em fileiras, e o botão de comprar fica sempre à mão e abre uma folha para escolher as opções.",
       "Nos cartões da vitrine, a folha de opções mostra o preço, o desconto e o estoque de cada combinação."
     ],
-    "correcoes": [],
+    "correcoes": [
+      "Ao avaliar um produto de um pedido entregue, a folha de avaliação agora para acima da barra de baixo, e o botão Publicar avaliação não some mais atrás dela."
+    ],
     "melhorias": [
       "Na página inicial, as categorias e o botão Filtros ficam na mesma barra, e a contagem de produtos saiu. O Filtros mostra um pontinho quando a lista está ordenada."
     ]
