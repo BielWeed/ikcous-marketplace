@@ -655,11 +655,9 @@ export function recusaLiberaAVaga(
   if (orderEhDeCartao(order) || orderCancelada(order)) return true;
   // Segundo sinal compartilhado por webhook e cron: a resposta do MP pode
   // omitir o tipo. Sentinela sem método é exclusivo da tentativa de cartão.
-  return statusMapeado === "recusado" && (
-    pedido?.metodo_online === "credito" || pedido?.metodo_online === "debito" ||
+  return pedido?.metodo_online === "credito" || pedido?.metodo_online === "debito" ||
     (pedido?.metodo_online == null &&
-      typeof pedido?.gateway_payment_id === "string" && vagaEmVerificacao(pedido.gateway_payment_id))
-  );
+      typeof pedido?.gateway_payment_id === "string" && vagaEmVerificacao(pedido.gateway_payment_id));
 }
 
 /**
