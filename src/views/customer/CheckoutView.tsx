@@ -6735,7 +6735,7 @@ export function CheckoutViewDaConta({
                     <FraseDeAceite
                       acao="finalizar"
                       emLinha
-                      className="mx-auto mt-2 max-w-md pb-1 text-center"
+                      className="mx-auto mt-2 max-w-md text-center"
                     />
                     {!semFreteSelecionado &&
                       !isOffline &&

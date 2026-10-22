@@ -10,8 +10,8 @@ interface CategoryFilterProps {
   isLoading?: boolean;
 }
 
-// Mesma altura nos estados vazio, carregando e pronto: o catálogo não salta.
-// A largura de 80px deixa o próximo bloco cortado no celular, indicando rolagem.
+// Mesma altura de 80px nos estados vazio, carregando e pronto: o catálogo não salta.
+// Com 68px cabem ~5 categorias e meia em 390px; a próxima cortada indica rolagem.
 const FAIXA =
   "scrollbar-hide flex w-full min-w-0 gap-0 overflow-x-auto overscroll-x-contain px-1 py-1";
 
@@ -30,10 +30,10 @@ export const CategoryFilter = memo(function CategoryFilter({
             <div
               key={i}
               data-testid="categoria-skeleton"
-              className="flex h-[108px] w-20 shrink-0 flex-col items-center gap-2"
+              className="flex h-[80px] w-[68px] shrink-0 flex-col items-center"
             >
-              <div className="size-16 animate-pulse rounded-[20px] bg-muted" />
-              <div className="h-4 w-14 animate-pulse rounded bg-muted" />
+              <div className="size-12 animate-pulse rounded-2xl bg-muted" />
+              <div className="mt-1.5 h-4 w-14 animate-pulse rounded bg-muted" />
             </div>
           ))}
         </div>
@@ -60,10 +60,10 @@ export const CategoryFilter = memo(function CategoryFilter({
               }}
               aria-label={`Selecionar categoria ${category.name}`}
               aria-pressed={isActive}
-              className="group flex h-[108px] w-20 shrink-0 flex-col items-center rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-white/70"
+              className="group flex h-[80px] w-[68px] shrink-0 flex-col items-center rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-white/70"
             >
               <span
-                className={`flex size-16 shrink-0 items-center justify-center rounded-[20px] border transition-colors ${
+                className={`flex size-12 shrink-0 items-center justify-center rounded-2xl border transition-colors ${
                   isActive
                     ? "border-foreground bg-foreground text-card"
                     : "border-border bg-card text-muted-foreground group-hover:border-muted-foreground"
@@ -72,11 +72,11 @@ export const CategoryFilter = memo(function CategoryFilter({
                 <IconeDaCategoria
                   icone={iconeDaCategoria(category)}
                   forma={category.iconeForma}
-                  className="size-9"
+                  className="size-6"
                 />
               </span>
               <span
-                className={`mt-2 line-clamp-1 w-full px-0.5 text-xs ${isActive ? "font-extrabold text-foreground" : "font-medium text-muted-foreground"}`}
+                className={`mt-1.5 line-clamp-1 w-full px-0.5 text-xs ${isActive ? "font-extrabold text-foreground" : "font-medium text-muted-foreground"}`}
               >
                 {category.name}
               </span>

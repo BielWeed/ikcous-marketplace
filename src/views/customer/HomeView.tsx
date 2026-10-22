@@ -855,6 +855,7 @@ function SecaoCarrosselEsqueleto() {
 
 /** Espelho do PremiumOffers (seção offers): header compacto + card herói. */
 function SecaoOfertasEsqueleto({ layout }: { layout?: "padrao" | "compacto" }) {
+  // A reserva de 392px mínimos é a mesma do fallback lazy do Compacto.
   if (layout === "compacto") return <OfertasCompactasEsqueleto />;
   return (
     // data-testid: âncora do teste comportamental "sem ofertas → nenhum
