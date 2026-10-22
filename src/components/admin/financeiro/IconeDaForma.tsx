@@ -10,8 +10,7 @@ import {
 import { IconePix } from "@/components/admin/primitivos/IconePix";
 
 /**
- * Cor da forma de pagamento — UMA só, usada pela barra e pelo ícone para
- * nunca divergirem. Pix teal, crédito roxo, o resto azul.
+ * Cor da BARRA de proporção da forma. Pix teal, crédito roxo, o resto azul.
  */
 export function corDaForma(forma: string | null | undefined): string {
   if (forma === "pix") return "#2DD4BF";
@@ -32,18 +31,16 @@ export function IconeDaForma({
   readonly forma: string | null | undefined;
   readonly className?: string;
 }) {
+  // Só o Pix leva cor (teal do tema, remapeada no tema claro); as demais são
+  // neutras, no mesmo cinza dos textos secundários do módulo.
+  const cor = forma === "pix" ? "text-teal-300" : "text-zinc-400";
   const props = {
     "aria-hidden": true,
-    className: `${CLASSE} ${className}`.trim(),
-    style: { color: corDaForma(forma) },
+    className: `${CLASSE} ${cor} ${className}`.trim(),
   } as const;
   switch (forma) {
     case "pix":
-      return (
-        <span aria-hidden="true" style={props.style} className="contents">
-          <IconePix className={props.className} />
-        </span>
-      );
+      return <IconePix className={props.className} />;
     case "credito":
     case "cartao_credito":
     case "debito":

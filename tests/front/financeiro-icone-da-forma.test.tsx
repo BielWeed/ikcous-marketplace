@@ -101,7 +101,7 @@ it("cores: pix teal, crédito roxo, demais azul", () => {
   expect(corDaForma(null)).toBe("#7AA2FF");
 });
 
-it("na aba Visão cada linha tem ícone, com a mesma cor da barra", async () => {
+it("na aba Visão cada linha tem ícone: Pix na classe de tema, demais neutros; barra com corDaForma", async () => {
   estado.formas = [
     { forma: "pix", valor: 40 },
     { forma: "credito", valor: 30 },
@@ -118,11 +118,15 @@ it("na aba Visão cada linha tem ícone, com a mesma cor da barra", async () => 
     const barra = li.querySelector("[data-barra-da-forma]") as HTMLElement;
     expect(icone).not.toBeNull();
     const forma = barra.getAttribute("data-barra-da-forma") || null;
-    const cor = corDaForma(forma);
-    expect(barra.style.backgroundColor).toBe(corParaRgb(cor));
-    expect((icone.style.color || icone.parentElement?.style.color) ?? "").toBe(
-      corParaRgb(cor),
-    );
+    expect(barra.style.backgroundColor).toBe(corParaRgb(corDaForma(forma)));
+    const classe = icone.getAttribute("class") ?? "";
+    expect(icone.style.color).toBe("");
+    if (forma === "pix") {
+      expect(classe).toContain("text-teal-300");
+    } else {
+      expect(classe).toContain("text-zinc-400");
+      expect(classe).not.toMatch(/text-(teal|violet|purple|blue|sky)/);
+    }
   }
 });
 
