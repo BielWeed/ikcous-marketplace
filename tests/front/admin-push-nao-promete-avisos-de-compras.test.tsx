@@ -146,7 +146,7 @@ describe("Avisar clientes — não promete o que a loja não faz", () => {
   async function abrirAjustes() {
     const ajustes = Array.from(
       hospedeiro.querySelectorAll<HTMLButtonElement>("button[aria-expanded]"),
-    ).find((b) => (b.textContent ?? "").includes("Teste e ajustes"));
+    ).find((b) => (b.textContent ?? "").includes("Ajustes"));
     expect(ajustes).toBeTruthy();
     await act(async () => {
       ajustes!.click();
@@ -183,8 +183,8 @@ describe("Avisar clientes — não promete o que a loja não faz", () => {
   it("o resto da tela continua: composição, histórico e o teste de recebimento", async () => {
     await abrirTela();
 
-    expect(texto()).toContain("Envios anteriores");
-    expect(texto()).toContain("No ar ·");
+    expect(texto()).toContain("O que já foi ao ar");
+    expect(texto()).toContain("Enviar agora para");
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
     expect(hospedeiro.querySelector("#push-body")).not.toBeNull();
 

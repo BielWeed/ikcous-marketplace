@@ -140,7 +140,7 @@ describe("Avisar clientes — o nome pertence ao destinatário atual", () => {
     )!;
     await act(async () => modelo.click());
     const enviar = [...hospedeiro.querySelectorAll("button")].find((botao) =>
-      botao.textContent?.includes("Enviar para"),
+      botao.textContent?.includes("Enviar agora para"),
     )!;
     expect(enviar.disabled).toBe(false);
     await act(async () => enviar.click());

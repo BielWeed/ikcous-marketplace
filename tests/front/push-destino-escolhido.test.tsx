@@ -216,6 +216,12 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     await act(async () => {
       raiz.render(<AdminPushView onNavigate={vi.fn()} />);
     });
+    // O destino fica recolhido na tela compacta: abre antes de mexer nele.
+    await act(async () => {
+      Array.from(hospedeiro.querySelectorAll("button"))
+        .find((b) => (b.textContent ?? "").includes("Ao tocar na mensagem"))
+        ?.click();
+    });
     await act(async () => {
       await esperar(80);
     });
@@ -263,7 +269,7 @@ describe("Avisar clientes — destino escolhido por lista", () => {
 
   async function enviar() {
     const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").includes("Enviar para"),
+      (b.textContent ?? "").includes("Enviar agora para"),
     ) as HTMLButtonElement;
     expect(botao.disabled).toBe(false);
     await act(async () => {
