@@ -67,7 +67,6 @@ import type { Banner, View } from "@/types";
 import { AnimatePresence } from "framer-motion";
 import {
   ArrowDown,
-  ArrowLeft,
   ArrowUp,
   Edit,
   ExternalLink,
@@ -1352,11 +1351,36 @@ export const AdminBannersView = memo(function AdminBannersView({
   // segunda chamada um no-op em vez de repetir a limpeza de
   // `handleOpenChange` (ex.: apagar upload órfão duas vezes).
   const efetuouFechamentoRef = useRef(false);
+  // Em Modelos ou IA, o Voltar da barra volta UMA etapa (para "Como criar"),
+  // como fazia a seta que saiu do cabeçalho do editor; só nas outras fecha.
+  const telaRef = useRef(tela);
+  useEffect(() => {
+    telaRef.current = tela;
+  }, [tela]);
+  // Avisa a barra superior (AdminLayout) que o editor está aberto: lá o botão
+  // "Novo Banner" some enquanto a pessoa já está criando um.
+  useEffect(() => {
+    if (!isDialogOpen) return;
+    window.dispatchEvent(
+      new CustomEvent("admin:banner-dialog-state", { detail: { open: true } }),
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("admin:banner-dialog-state", {
+          detail: { open: false },
+        }),
+      );
+    };
+  }, [isDialogOpen]);
   useEffect(() => {
     if (onSetBackOverride) {
       if (isDialogOpen) {
         efetuouFechamentoRef.current = false;
         onSetBackOverride(() => () => {
+          if (telaRef.current === "modelos" || telaRef.current === "ia") {
+            setTela("jeito");
+            return;
+          }
           if (efetuouFechamentoRef.current) return;
           efetuouFechamentoRef.current = true;
           handleOpenChange(false);
@@ -2303,19 +2327,10 @@ export const AdminBannersView = memo(function AdminBannersView({
             }}
             className="space-y-6"
           >
+            {/* Sem seta de voltar aqui: o "Voltar" da barra superior do painel
+                (backOverride, mais abaixo) é o único e já fecha este editor,
+                ou volta uma etapa quando a pessoa está em Modelos ou IA. */}
             <header className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                className="min-h-11 min-w-11 border-admin-border bg-admin-surface text-white"
-                disabled={isSubmitting}
-                onClick={() => {
-                  if (tela === "modelos" || tela === "ia") setTela("jeito");
-                  else handleCloseDialog();
-                }}
-                aria-label="Voltar"
-              >
-                <ArrowLeft className="size-5" />
-              </Button>
               <AdminPageHeader
                 titulo={editingBanner ? "Editar Banner" : "Novo Banner"}
                 tituloEncolhe
