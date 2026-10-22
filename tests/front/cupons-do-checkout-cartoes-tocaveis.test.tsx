@@ -203,6 +203,19 @@ describe("CuponsDoCheckout — PASSO A3: cartões tocáveis e código atrás de 
     expect(onRemove).toHaveBeenCalled();
   });
 
+  it("aplicado com código longo: o nome do cupom quebra linha em tela estreita, nunca some atrás de reticências", () => {
+    montar({ appliedCoupon: { code: "BEMVINDO10", discount: 12.97 } });
+    const selecionado = hospedeiro.querySelector(
+      '[data-testid="cupom-aplicado"]',
+    ) as HTMLElement;
+    const linhaDoCodigo = Array.from(selecionado.querySelectorAll("p")).find(
+      (p) => p.textContent?.includes("BEMVINDO10 aplicado"),
+    );
+    expect(linhaDoCodigo).toBeDefined();
+    expect(linhaDoCodigo?.className).not.toContain("truncate");
+    expect(linhaDoCodigo?.className).toContain("break-words");
+  });
+
   it("aplicado por código secreto (fora da lista): mesmo cartão selecionado, sem canhoto inventado", () => {
     montar({ appliedCoupon: { code: "SECRETO5", discount: 5 } });
     const selecionado = hospedeiro.querySelector(

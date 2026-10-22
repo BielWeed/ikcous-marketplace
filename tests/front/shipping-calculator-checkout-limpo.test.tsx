@@ -169,6 +169,13 @@ describe("ShippingCalculator — PASSO A2: Entrega e frete mais limpa no checkou
     // O destino segue na seção (nada some): "Entrega para Casa" + endereço.
     expect(secao().textContent).toContain("Entrega para Casa");
     expect(secao().textContent).toContain("Rua A, 10");
+    // O endereço inteiro (com o CEP) é o que a cliente confere antes de pagar:
+    // a linha de destino quebra em quantas linhas precisar, nunca corta com "…".
+    const linhaDeDestino = Array.from(secao().querySelectorAll("p")).find((p) =>
+      p.textContent?.includes("Entrega para Casa"),
+    );
+    expect(linhaDeDestino).toBeDefined();
+    expect(linhaDeDestino?.className).not.toContain("line-clamp");
 
     const trocar = botaoDe("Trocar");
     expect(trocar).toBeDefined();
@@ -268,6 +275,45 @@ describe("ShippingCalculator — PASSO A2: Entrega e frete mais limpa no checkou
     expect(botaoDe("Tentar de novo")).toBeDefined();
     expect(botaoDe("Trocar")).toBeUndefined();
     expect(secao().querySelector("h2")?.textContent).toBe("Entrega e frete");
+  });
+
+  it("'+ Ver outras opções' no checkout é um alvo de toque de 44 px e legível (AA); no carrinho segue discreto como era", async () => {
+    const JADLOG: ShippingOption = {
+      id: "melhor-envio-3",
+      name: "Entrega Jadlog",
+      price: 40,
+      deliveryDays: 6,
+      provider: "melhor_envio",
+      transportadora: "Jadlog",
+      servico: ".Package",
+      provedorRotulo: "Melhor Envio",
+    };
+    const cotacao = {
+      data: { options: [PAC, SEDEX, JADLOG], cotacaoIncompleta: false },
+      error: null,
+    };
+    invoke.mockResolvedValue(cotacao);
+    await montar(true);
+    await act(async () => {
+      botaoDe("Trocar")?.click();
+    });
+    const verOutras = botaoDe("Ver outras opções");
+    expect(verOutras).toBeDefined();
+    expect(verOutras?.className).toContain("min-h-11");
+    // zinc-400 sobre branco não passa de 2,5:1; texto de ação usa zinc-600.
+    expect(verOutras?.className).toContain("text-zinc-600");
+    expect(verOutras?.className).not.toContain("text-zinc-400");
+    expect(verOutras?.className).not.toContain("text-[10px]");
+
+    // Carrinho: o botão antigo, intocado.
+    act(() => {
+      raiz.unmount();
+    });
+    raiz = createRoot(hospedeiro);
+    await montar(undefined);
+    const antigo = botaoDe("Ver outras opções");
+    expect(antigo?.className).toContain("text-[10px]");
+    expect(antigo?.className).toContain("text-zinc-400");
   });
 
   it("CARRINHO (sem modoResumo) não muda: cartão marcado segue com a cor da marca e o cabeçalho segue 'Entrega para <apelido>'", async () => {

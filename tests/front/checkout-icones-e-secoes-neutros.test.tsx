@@ -324,6 +324,17 @@ describe("CheckoutView — PASSO A5: ícones e seleção neutros nas seções", 
     ).toBe("Meio de pagamento");
   });
 
+  it("o rótulo do grupo 'Na entrega' é legível (AA): cinza escuro, nunca o zinc-400 de 2,5:1", async () => {
+    cotacoesControladas({ "38500000": [LOCAL] });
+    await montar();
+    const rotulo = [...document.querySelectorAll("span")].find(
+      (s) => s.textContent === "Na entrega",
+    );
+    expect(rotulo).toBeDefined();
+    expect(rotulo?.className).toContain("text-zinc-600");
+    expect(rotulo?.className).not.toContain("text-zinc-400");
+  });
+
   it("cada meio de pagamento tem o ícone cinza-escuro em quadradinho cinza claro — nenhuma cor de marca ou de bandeira", async () => {
     cotacoesControladas({ "38500000": [LOCAL] });
     await montar();

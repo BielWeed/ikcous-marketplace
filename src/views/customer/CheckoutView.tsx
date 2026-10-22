@@ -6340,7 +6340,7 @@ export function CheckoutViewDaConta({
           >
             {opcoesNoApp.length > 0 && (
               <div className="space-y-2.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
                   No app
                 </span>
                 <div className="grid grid-cols-1 gap-2.5">
@@ -6426,7 +6426,7 @@ export function CheckoutViewDaConta({
             {(!selectedShippingOption || ehEntregaLocal) &&
               opcoesNaEntrega.length > 0 && (
                 <div className="space-y-2.5">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
                     {ehRetirada ? "Na retirada" : "Na entrega"}
                   </span>
                   <div className="grid grid-cols-1 gap-2.5">

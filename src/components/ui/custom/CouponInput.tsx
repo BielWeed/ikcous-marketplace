@@ -62,7 +62,7 @@ export const CouponInput = memo(function CouponInput({
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-zinc-900">
+          <p className="break-words text-sm font-bold text-zinc-900">
             {appliedCoupon.code}{" "}
             <span className="font-medium text-emerald-700">aplicado</span>
           </p>
@@ -139,7 +139,7 @@ export const CouponInput = memo(function CouponInput({
         <button
           type="submit"
           disabled={!code.trim() || aplicando}
-          className="flex min-h-[44px] min-w-[70px] shrink-0 items-center justify-center rounded-lg bg-zinc-900 px-2 py-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
+          className="flex min-h-[44px] min-w-[70px] shrink-0 items-center justify-center rounded-lg bg-zinc-900 p-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
         >
           {aplicando ? "Aplicando…" : "Aplicar"}
         </button>

@@ -1318,7 +1318,7 @@ export function ShippingCalculator({
             )}
           </div>
           {destinoValido && resumo && (
-            <p className="line-clamp-2 text-sm leading-snug text-zinc-600">
+            <p className="text-sm leading-snug text-zinc-600">
               <span className="font-semibold text-zinc-800">{titulo}</span>
               {" · "}
               {resumo}
@@ -1415,7 +1415,11 @@ export function ShippingCalculator({
                 <button
                   type="button"
                   onClick={() => setOutrasExpandidas((v) => !v)}
-                  className="w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline"
+                  className={
+                    modoResumo
+                      ? "min-h-11 w-full select-none py-2 text-center text-xs font-semibold text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline"
+                      : "w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline"
+                  }
                 >
                   {outrasExpandidas
                     ? "Ver menos opções"
