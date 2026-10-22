@@ -251,10 +251,23 @@ export function AlertasCancelados({
         )}
       </button>
 
+      {/* Celular (< sm): véu leve atrás do painel; o toque nele fecha. */}
+      {aberto && (
+        <div
+          aria-hidden="true"
+          data-testid="alertas-cancelados-veu"
+          onClick={() => setAberto(false)}
+          className="fixed inset-0 z-40 bg-black/50 sm:hidden"
+        />
+      )}
+
       {aberto && (
         <div
           id="alertas-cancelados-conteudo"
-          className="absolute right-0 top-full z-50 mt-3 max-h-[min(70vh,640px)] w-[min(calc(100vw-3rem),640px)] space-y-4 overflow-y-auto rounded-[2rem] border border-admin-border bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl"
+          // Celular: folha fixa inteira DENTRO da tela (12px de cada lado),
+          // rolável. De `sm` pra cima volta ao dropdown ancorado à direita
+          // do botão (o `right-0` sozinho cortava o painel no celular).
+          className="fixed inset-x-3 top-[10dvh] z-50 max-h-[70dvh] space-y-4 overflow-y-auto rounded-[2rem] border border-admin-border bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-3 sm:max-h-[min(70vh,640px)] sm:w-[min(calc(100vw-3rem),640px)]"
         >
           {avisoIncompleto}
 

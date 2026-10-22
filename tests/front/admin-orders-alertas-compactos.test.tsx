@@ -328,6 +328,57 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     expect(botaoAlerta()!.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("celular: o painel aberto é fixo na tela com margem de 12px dos dois lados e véu que fecha no toque; de sm pra cima segue ancorado no botão", async () => {
+    // Defeito do dono (celular real): o dropdown ancorado `right-0` saía
+    // cortado na borda esquerda. jsdom NÃO mede layout nem aplica media
+    // query: este teste prova só as CLASSES de posicionamento e o véu; que o
+    // painel caiba de fato na tela de 375px só o navegador mostra.
+    mockAnalyticsStats = statsFake(1);
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+
+    expect(
+      hospedeiro.querySelector('[data-testid="alertas-cancelados-veu"]'),
+    ).toBeNull();
+    await expandir();
+
+    const painel = hospedeiro.querySelector<HTMLElement>(
+      "#alertas-cancelados-conteudo",
+    )!;
+    const classes = painel.className.split(/\s+/);
+    for (const c of [
+      "fixed",
+      "inset-x-3",
+      "overflow-y-auto",
+      "max-h-[70dvh]",
+      "sm:absolute",
+      "sm:right-0",
+      "sm:top-full",
+      "sm:inset-x-auto",
+    ]) {
+      expect(classes).toContain(c);
+    }
+    expect(classes).not.toContain("absolute");
+    expect(classes).not.toContain("right-0");
+
+    // Toque no véu fecha.
+    const veu = hospedeiro.querySelector<HTMLElement>(
+      '[data-testid="alertas-cancelados-veu"]',
+    );
+    expect(veu).toBeTruthy();
+    expect(veu!.className.split(/\s+/)).toContain("sm:hidden");
+    await act(async () => {
+      veu!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(botaoAlerta()!.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      hospedeiro.querySelector('[data-testid="alertas-cancelados-veu"]'),
+    ).toBeNull();
+  });
+
   it("lista incompleta: o botão nasce MESMO sem pendência, com '!' pulsante e o aviso no dropdown (sucessor do R3 da revisão)", async () => {
     // O R3 original exigia o aviso SEMPRE visível no fluxo porque, com as
     // listas podendo estar vazias por erro, escondê-lo era silenciar o único
