@@ -44,7 +44,7 @@ import { soFotosReais } from "@/lib/foto-do-produto";
 import { mesmaCategoria } from "@/lib/gestao-de-categorias";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
-import type { View } from "@/types";
+import type { Product, View } from "@/types";
 import {
   LIMIAR_PADRAO_DE_ESTOQUE,
   precisaDeReposicao,
@@ -129,6 +129,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     toggleProductStatus,
     addProduct,
     loadProducts,
+    loadProductsSemCusto,
     copiarImagemParaDuplicacao,
   } = useProducts({ autoFetch: false });
   const { stats, fetchExecutiveSummary } = useAnalytics();
@@ -202,6 +203,37 @@ export const AdminProductsView = memo(function AdminProductsView({
   );
   const pageSize = 12;
 
+  // Visão "Sem custo": tocar no selo âmbar das métricas lista SÓ os produtos
+  // sem custo (a mesma regra do número do selo: ativos, com estoque e custo
+  // ausente; custo 0 é brinde de propósito e fica de fora). A lista vem
+  // completa de `loadProductsSemCusto` (todas as páginas) e é paginada aqui,
+  // sem nova consulta. `null` = ainda buscando. Não é guardada no aparelho:
+  // vale só até "Ver todos".
+  const [modoSemCusto, setModoSemCusto] = useState(false);
+  const [semCusto, setSemCusto] = useState<Product[] | null>(null);
+  const [paginaSemCusto, setPaginaSemCusto] = useState(0);
+  const [pedidoDeRolagem, setPedidoDeRolagem] = useState(0);
+  const filtrosAntesDaVisao = useRef<{
+    busca: string;
+    categoria: string;
+  } | null>(null);
+  const faixaDaVisaoRef = useRef<HTMLDivElement>(null);
+  const totalDaLista = modoSemCusto ? (semCusto?.length ?? 0) : totalProducts;
+  const totalPages = Math.ceil(totalDaLista / pageSize);
+  const paginaAtual = modoSemCusto
+    ? Math.min(paginaSemCusto, Math.max(0, totalPages - 1))
+    : currentPage;
+  const lista = useMemo(
+    () =>
+      modoSemCusto
+        ? (semCusto ?? []).slice(
+            paginaAtual * pageSize,
+            (paginaAtual + 1) * pageSize,
+          )
+        : products,
+    [modoSemCusto, semCusto, paginaAtual, products],
+  );
+
   const [showVisualLoading, setShowVisualLoading] = useState(false);
   useEffect(() => {
     if (loading) {
@@ -252,7 +284,8 @@ export const AdminProductsView = memo(function AdminProductsView({
   // diferente, mesma gravidade.
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const effectiveLoading = loading || !hasLoadedOnce;
+  const buscandoSemCusto = modoSemCusto && semCusto === null && !loadError;
+  const effectiveLoading = loading || !hasLoadedOnce || buscandoSemCusto;
   const shouldScrollToTop = useRef(false);
 
   // Logo depois de CADASTRAR um produto novo, a lista abre na página 1 e sem
@@ -266,6 +299,10 @@ export const AdminProductsView = memo(function AdminProductsView({
     setSearchTerm("");
     setFilterCategory("all");
     setCurrentPage(0);
+    // O produto novo é o mais recente e tem de aparecer na lista normal.
+    setModoSemCusto(false);
+    setSemCusto(null);
+    filtrosAntesDaVisao.current = null;
     shouldScrollToTop.current = true;
   }, [active, setSearchTerm, setFilterCategory, setCurrentPage]);
 
@@ -280,7 +317,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       }
       shouldScrollToTop.current = false;
     }
-  }, [products, viewRef]);
+  }, [lista, viewRef]);
 
   const geracaoDaRecarga = useRef(0);
   const catalogoMontado = useRef(false);
@@ -297,10 +334,23 @@ export const AdminProductsView = memo(function AdminProductsView({
       if (!catalogoMontado.current) return;
       const geracao = ++geracaoDaRecarga.current;
       try {
-        const result = await loadProducts(pageToFetch, pageSize, {
+        const filtros = {
           search: searchTerm || undefined,
           category: filterCategory === "all" ? undefined : filterCategory,
-        });
+        };
+        if (modoSemCusto) {
+          const achados = await loadProductsSemCusto(filtros);
+          if (
+            !catalogoMontado.current ||
+            geracao !== geracaoDaRecarga.current
+          ) {
+            return;
+          }
+          setLoadError(!achados);
+          if (achados) setSemCusto(achados.products);
+          return;
+        }
+        const result = await loadProducts(pageToFetch, pageSize, filtros);
         if (!catalogoMontado.current || geracao !== geracaoDaRecarga.current) {
           return;
         }
@@ -324,7 +374,15 @@ export const AdminProductsView = memo(function AdminProductsView({
         }
       }
     },
-    [loadProducts, pageSize, searchTerm, filterCategory, setCurrentPage],
+    [
+      loadProducts,
+      loadProductsSemCusto,
+      modoSemCusto,
+      pageSize,
+      searchTerm,
+      filterCategory,
+      setCurrentPage,
+    ],
   );
 
   useEffect(() => {
@@ -407,8 +465,6 @@ export const AdminProductsView = memo(function AdminProductsView({
     setExpandedHelp((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const totalPages = Math.ceil(totalProducts / pageSize);
-
   // "Nenhum produto" com busca ou categoria escolhida é o filtro que não achou
   // nada — não o catálogo vazio. A tela diz o que está filtrado e oferece sair.
   const temBuscaOuFiltro = !!searchTerm || filterCategory !== "all";
@@ -418,12 +474,57 @@ export const AdminProductsView = memo(function AdminProductsView({
   ]
     .filter(Boolean)
     .join(" e ");
+  const irParaAPrimeiraPagina = () => {
+    setCurrentPage(0);
+    setPaginaSemCusto(0);
+    shouldScrollToTop.current = true;
+  };
   const limparBuscaEFiltros = () => {
     setSearchTerm("");
     setFilterCategory("all");
-    setCurrentPage(0);
-    shouldScrollToTop.current = true;
+    irParaAPrimeiraPagina();
   };
+
+  const abrirVisaoSemCusto = () => {
+    if (!modoSemCusto) {
+      filtrosAntesDaVisao.current = {
+        busca: searchTerm,
+        categoria: filterCategory,
+      };
+      // A visão olha o catálogo inteiro: busca e categoria saem (voltam em
+      // "Ver todos").
+      setSearchTerm("");
+      setFilterCategory("all");
+      setSemCusto(null);
+      setPaginaSemCusto(0);
+      setLoadError(false);
+      setModoSemCusto(true);
+    }
+    setPedidoDeRolagem((n) => n + 1);
+  };
+  const verTodos = () => {
+    const antes = filtrosAntesDaVisao.current;
+    filtrosAntesDaVisao.current = null;
+    setModoSemCusto(false);
+    setSemCusto(null);
+    setPaginaSemCusto(0);
+    setLoadError(false);
+    if (antes && !searchTerm && filterCategory === "all") {
+      // Nada foi mexido dentro da visão: a lista volta como estava.
+      setSearchTerm(antes.busca);
+      setFilterCategory(antes.categoria);
+    } else {
+      setCurrentPage(0);
+    }
+  };
+  useEffect(() => {
+    if (pedidoDeRolagem === 0) return;
+    const reduzir = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    faixaDaVisaoRef.current?.scrollIntoView?.({
+      behavior: reduzir?.matches ? "auto" : "smooth",
+      block: "start",
+    });
+  }, [pedidoDeRolagem]);
 
   // Lógica de cálculo financeiro global (SWR / Server-Side)
   const financialStats = useMemo(() => {
@@ -594,23 +695,30 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "produtos-cadastrados",
         label: "Produtos no Catálogo",
-        value: `${totalProducts} ${totalProducts === 1 ? "item" : "itens"}`,
+        value:
+          modoSemCusto && semCusto === null
+            ? "—"
+            : `${totalDaLista} ${totalDaLista === 1 ? "item" : "itens"}`,
         icon: ShoppingBag,
         accent: "text-indigo-300",
         // PAINEL-09: o número é o total FILTRADO (total_count da RPC com
         // busca), não o catálogo geral — o subtítulo mentia. Vale também para
         // o filtro de categoria, não só para a busca.
-        subValue: searchTerm
-          ? "Resultados da busca"
-          : filterCategory !== "all"
-            ? "Só desta categoria"
-            : "Catálogo Geral",
+        subValue: modoSemCusto
+          ? "Só sem custo"
+          : searchTerm
+            ? "Resultados da busca"
+            : filterCategory !== "all"
+              ? "Só desta categoria"
+              : "Catálogo Geral",
       },
     ],
     [
       financialStats,
       liquidoEstimado,
-      totalProducts,
+      totalDaLista,
+      modoSemCusto,
+      semCusto,
       searchTerm,
       filterCategory,
     ],
@@ -663,9 +771,12 @@ export const AdminProductsView = memo(function AdminProductsView({
       const sucesso = await toggleProductStatus(id, active);
       if (sucesso) {
         refreshFinancialStats();
+        // Na visão "Sem custo" a lista é esta tela que guarda: sem recarregar,
+        // o produto pausado continuaria nela.
+        if (modoSemCusto) recarregarAtualRef.current();
       }
     },
-    [toggleProductStatus, isOffline, refreshFinancialStats],
+    [toggleProductStatus, isOffline, refreshFinancialStats, modoSemCusto],
   );
 
   const handleDelete = useCallback(
@@ -885,7 +996,9 @@ export const AdminProductsView = memo(function AdminProductsView({
                   ? "Não sincronizou"
                   : effectiveLoading
                     ? "Recarregando..."
-                    : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
+                    : modoSemCusto
+                      ? `Sincronizado · ${totalDaLista} sem custo`
+                      : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
             </span>
           </div>
         </div>
@@ -911,6 +1024,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               titulo="Métricas de Produtos"
               indicesDoRodape={[4, 5]}
               onEntender={() => toggleHelp("financial-values")}
+              notaAcionavel={financialStats.parcial}
               nota={
                 <span
                   role={
@@ -932,16 +1046,28 @@ export const AdminProductsView = memo(function AdminProductsView({
                   {!financialStats.coberturaConferida ? (
                     "Conferindo custos…"
                   ) : financialStats.parcial ? (
-                    <SeloDeStatus
-                      tom="atencao"
-                      className="max-w-full py-0 align-middle text-[11px] leading-5 text-amber-400"
+                    <button
+                      type="button"
+                      disabled={isOffline}
+                      aria-label={
+                        financialStats.produtosSemCusto === 1
+                          ? "Ver o produto sem custo"
+                          : `Ver os ${financialStats.produtosSemCusto} produtos sem custo`
+                      }
+                      onClick={abrirVisaoSemCusto}
+                      className="relative inline-flex max-w-full cursor-pointer rounded-full align-middle after:absolute after:-inset-y-2 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {financialStats.produtosSemCusto}{" "}
-                      {financialStats.produtosSemCusto === 1
-                        ? "produto sem custo"
-                        : "produtos sem custo"}{" "}
-                      · lucro parcial
-                    </SeloDeStatus>
+                      <SeloDeStatus
+                        tom="atencao"
+                        className="max-w-full py-0 align-middle text-[11px] leading-5 text-amber-400"
+                      >
+                        {financialStats.produtosSemCusto}{" "}
+                        {financialStats.produtosSemCusto === 1
+                          ? "produto sem custo"
+                          : "produtos sem custo"}{" "}
+                        · lucro parcial
+                      </SeloDeStatus>
+                    </button>
                   ) : (
                     <span className="text-emerald-300">
                       Todos os produtos em estoque têm custo cadastrado.
@@ -1120,8 +1246,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           value={searchTerm}
           onChange={(val) => {
             setSearchTerm(val);
-            setCurrentPage(0);
-            shouldScrollToTop.current = true;
+            irParaAPrimeiraPagina();
           }}
           onTyping={setIsTyping}
           carregando={loading || isTyping}
@@ -1137,8 +1262,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             selecionada: filterCategory === cat,
             onClick: () => {
               setFilterCategory(cat);
-              setCurrentPage(0);
-              shouldScrollToTop.current = true;
+              irParaAPrimeiraPagina();
             },
           }))}
           onLimpar={temBuscaOuFiltro ? limparBuscaEFiltros : undefined}
@@ -1155,8 +1279,33 @@ export const AdminProductsView = memo(function AdminProductsView({
 
         <div className="admin-topo-lista">
           {/* Grid view of Products as Assets */}
+          {modoSemCusto && (
+            <div
+              ref={faixaDaVisaoRef}
+              data-visao-sem-custo=""
+              className="mb-3 flex scroll-mt-4 flex-wrap items-center justify-between gap-2 rounded-2xl border border-admin-border bg-admin-surface p-3"
+            >
+              <p
+                role="status"
+                className="min-w-0 flex-1 text-sm font-semibold text-zinc-50"
+              >
+                {semCusto !== null
+                  ? `Mostrando só produtos sem custo · ${semCusto.length}`
+                  : loadError
+                    ? "Não deu para buscar os produtos sem custo"
+                    : "Procurando os produtos sem custo…"}
+              </p>
+              <button
+                type="button"
+                onClick={verTodos}
+                className="produto-secundario min-h-11 shrink-0 px-4"
+              >
+                Ver todos
+              </button>
+            </div>
+          )}
           <LocalErrorBoundary>
-            {!effectiveLoading && products?.length === 0 ? null : (
+            {!effectiveLoading && lista?.length === 0 ? null : (
               <div className="relative" aria-busy={effectiveLoading}>
                 {(effectiveLoading || showVisualLoading) && (
                   <div className="admin-sync-progress-bar" />
@@ -1166,7 +1315,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     key="detailed-grid"
                     className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3"
                   >
-                    {effectiveLoading && products.length === 0
+                    {effectiveLoading && lista.length === 0
                       ? Array.from({ length: 8 }).map((_, i) => (
                           <div
                             key={i}
@@ -1181,7 +1330,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                             <Skeleton className="h-10 w-full bg-white/5" />
                           </div>
                         ))
-                      : products?.map((product) => (
+                      : lista?.map((product) => (
                           <AdminProductCard
                             key={product.id}
                             product={product}
@@ -1200,7 +1349,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     key="compact-grid"
                     className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
                   >
-                    {effectiveLoading && products.length === 0
+                    {effectiveLoading && lista.length === 0
                       ? Array.from({ length: 12 }).map((_, i) => (
                           <div
                             key={i}
@@ -1216,7 +1365,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                             </div>
                           </div>
                         ))
-                      : products?.map((product) => (
+                      : lista?.map((product) => (
                           <AdminProductCard
                             key={product.id}
                             product={product}
@@ -1239,19 +1388,20 @@ export const AdminProductsView = memo(function AdminProductsView({
             {/* Missão 06 (C2): paginação única do painel */}
             <PaginacaoAdmin
               className="produtos-paginacao"
-              pagina={currentPage}
+              pagina={paginaAtual}
               totalPaginas={totalPages}
-              totalItens={totalProducts}
+              totalItens={totalDaLista}
               itensPorPagina={pageSize}
               aoMudar={(nova) => {
-                setCurrentPage(nova);
+                if (modoSemCusto) setPaginaSemCusto(nova);
+                else setCurrentPage(nova);
                 shouldScrollToTop.current = true;
               }}
             />
-            {totalProducts > 0 &&
+            {totalDaLista > 0 &&
               (totalPages > 1 ? (
                 <p className="produtos-pagina text-xs font-semibold">
-                  {Math.min(currentPage + 1, totalPages)} de {totalPages}
+                  {Math.min(paginaAtual + 1, totalPages)} de {totalPages}
                 </p>
               ) : (
                 <>
@@ -1280,39 +1430,24 @@ export const AdminProductsView = memo(function AdminProductsView({
           </div>
 
           {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
-          {!effectiveLoading && !loadError && products?.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-3xl border border-admin-border bg-admin-surface px-5 py-7 text-center">
-              <div className="relative z-10 mb-3 rounded-full border border-admin-border bg-admin-surface p-4 shadow-xl">
-                {temBuscaOuFiltro ? (
-                  <Search
-                    aria-hidden="true"
-                    className="size-6 text-indigo-300"
-                  />
-                ) : (
-                  <ShoppingBag
-                    aria-hidden="true"
-                    className="size-6 text-indigo-300"
-                  />
-                )}
-              </div>
-              <h3 className="text-lg font-bold text-zinc-50">
-                {temBuscaOuFiltro
-                  ? "Nenhum produto encontrado"
-                  : "Nenhum produto cadastrado"}
-              </h3>
-              {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
-                diz o que está filtrado e dá a saída. */}
-              {!temBuscaOuFiltro && (
+          {/* Visão "Sem custo" vazia: ou o último produto sem custo ganhou
+            custo (boa notícia), ou nenhum combina com a busca. */}
+          {!effectiveLoading &&
+            !loadError &&
+            modoSemCusto &&
+            lista.length === 0 && (
+              <div className="flex flex-col items-center justify-center rounded-3xl border border-admin-border bg-admin-surface px-5 py-7 text-center">
+                <h3 className="text-lg font-bold text-zinc-50">
+                  {temBuscaOuFiltro
+                    ? "Nenhum produto sem custo encontrado"
+                    : "Nenhum produto sem custo"}
+                </h3>
                 <p className="mt-3 text-sm text-zinc-400">
-                  Cadastre seu primeiro produto pelo botão Novo produto.
+                  {temBuscaOuFiltro
+                    ? `Nenhum produto sem custo combina com ${descricaoDoFiltro}.`
+                    : "Todos os produtos em estoque têm custo cadastrado."}
                 </p>
-              )}
-              {temBuscaOuFiltro && (
-                <>
-                  <p className="mt-3 text-sm text-zinc-400">
-                    Nada combina com {descricaoDoFiltro}. Seus produtos
-                    continuam cadastrados.
-                  </p>
+                {temBuscaOuFiltro && (
                   <button
                     type="button"
                     onClick={limparBuscaEFiltros}
@@ -1320,15 +1455,61 @@ export const AdminProductsView = memo(function AdminProductsView({
                   >
                     Limpar busca e filtros
                   </button>
-                </>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          {!effectiveLoading &&
+            !loadError &&
+            !modoSemCusto &&
+            lista?.length === 0 && (
+              <div className="flex flex-col items-center justify-center rounded-3xl border border-admin-border bg-admin-surface px-5 py-7 text-center">
+                <div className="relative z-10 mb-3 rounded-full border border-admin-border bg-admin-surface p-4 shadow-xl">
+                  {temBuscaOuFiltro ? (
+                    <Search
+                      aria-hidden="true"
+                      className="size-6 text-indigo-300"
+                    />
+                  ) : (
+                    <ShoppingBag
+                      aria-hidden="true"
+                      className="size-6 text-indigo-300"
+                    />
+                  )}
+                </div>
+                <h3 className="text-lg font-bold text-zinc-50">
+                  {temBuscaOuFiltro
+                    ? "Nenhum produto encontrado"
+                    : "Nenhum produto cadastrado"}
+                </h3>
+                {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
+                diz o que está filtrado e dá a saída. */}
+                {!temBuscaOuFiltro && (
+                  <p className="mt-3 text-sm text-zinc-400">
+                    Cadastre seu primeiro produto pelo botão Novo produto.
+                  </p>
+                )}
+                {temBuscaOuFiltro && (
+                  <>
+                    <p className="mt-3 text-sm text-zinc-400">
+                      Nada combina com {descricaoDoFiltro}. Seus produtos
+                      continuam cadastrados.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={limparBuscaEFiltros}
+                      className="produto-secundario mt-4 w-full"
+                    >
+                      Limpar busca e filtros
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
           {/* Erro ao carregar — estado distinto do vazio real e do
             carregamento: achado 11 avisava que trocar a mentira "vazio" por
             um esqueleto eterno na falha seria trocar uma mentira por outra. */}
-          {!effectiveLoading && loadError && products?.length === 0 && (
+          {!effectiveLoading && loadError && lista?.length === 0 && (
             <div
               role="alert"
               className="rounded-3xl border border-admin-border bg-admin-surface p-6 text-center"
@@ -1486,7 +1667,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       icone: ShoppingBag,
                       cor: "text-indigo-300",
                       descricao:
-                        "O total muda com o recorte: Catálogo Geral, Resultados da busca ou Só desta categoria.",
+                        "O total muda com o recorte: Catálogo Geral, Resultados da busca, Só desta categoria ou Só sem custo.",
                       formula: "Total de produtos do recorte consultado",
                     },
                     {
@@ -1801,7 +1982,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               </AlertDialogTitle>
               <AlertDialogDescription className="text-xs text-zinc-400">
                 “
-                {products.find((p) => p.id === productToDelete)?.name ??
+                {lista.find((p) => p.id === productToDelete)?.name ??
                   "Este produto"}
                 ” sai do catálogo para sempre. Não dá para desfazer.
               </AlertDialogDescription>

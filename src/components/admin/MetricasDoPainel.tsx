@@ -77,6 +77,7 @@ export function MetricasDoPainel({
   onEntender,
   indicesDoRodape = [2, 3],
   relatorio,
+  notaAcionavel = false,
 }: {
   readonly titulo: string;
   readonly legendasDoResumo: readonly string[];
@@ -85,6 +86,9 @@ export function MetricasDoPainel({
   readonly nota?: ReactNode;
   readonly onEntender?: () => void;
   readonly indicesDoRodape?: readonly [number, number];
+  /** A nota tem um botão cuja área de toque (44 px) passa da faixa de 28 px:
+   * a faixa deixa de cortar o que sobra (sem `truncate` nem rolagem). */
+  readonly notaAcionavel?: boolean;
   /** Resumo fixo dos relatórios: a expansão pertence ao carrossel, não a este cartão. */
   readonly relatorio?: {
     readonly rodape: ReactNode;
@@ -226,8 +230,8 @@ export function MetricasDoPainel({
           className={cn(
             "metricas-painel-nota border-b border-admin-border px-3 text-[11px] text-zinc-400",
             expandido
-              ? "h-7 overflow-y-auto leading-[14px]"
-              : "h-7 truncate leading-7",
+              ? cn("h-7 leading-[14px]", !notaAcionavel && "overflow-y-auto")
+              : cn("h-7 leading-7", !notaAcionavel && "truncate"),
           )}
         >
           {nota}
