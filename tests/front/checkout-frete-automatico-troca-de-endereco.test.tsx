@@ -521,5 +521,11 @@ describe("CheckoutView — frete automático pelo endereço de entrega", () => {
     expect(document.body.textContent).toContain(
       "Informe o endereço de entrega para calcular o frete",
     );
+    // O texto só existe para o leitor de tela: o card do alto já pede o
+    // endereço, e repetir em vermelho engordava a barra do Finalizar.
+    const aviso = [...document.querySelectorAll('[role="alert"]')].find((el) =>
+      el.textContent?.includes("Informe o endereço de entrega"),
+    );
+    expect(aviso?.className).toContain("sr-only");
   });
 });
