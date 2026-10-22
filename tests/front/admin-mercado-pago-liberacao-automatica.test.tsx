@@ -308,7 +308,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     expect(estado).toContain("Receber pelo app (Pix e cartão)");
     expect(estado).toContain("Pausado por você");
     expect(estado).toContain(
-      "Nenhum cliente consegue pagar com Pix ou cartão pelo app enquanto estiver pausado.",
+      "Nenhum cliente consegue começar um pagamento com Pix ou cartão pelo app enquanto estiver pausado.",
     );
     expect(estado).not.toContain("Receber PIX no app");
   });

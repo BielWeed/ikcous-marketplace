@@ -1240,9 +1240,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 </button>
               </div>
               <p className="text-[11px] leading-relaxed text-orange-200/90">
-                Nenhum cliente consegue pagar com Pix ou cartão pelo app
-                enquanto estiver pausado. Salvar ou testar as chaves não religa:
-                toque em Retomar.
+                Nenhum cliente consegue começar um pagamento com Pix ou cartão
+                pelo app enquanto estiver pausado. Salvar ou testar as chaves
+                não religa: toque em Retomar.
               </p>
               {listaDoQueFalta.length > 0 && (
                 <p className="text-[11px] leading-relaxed text-orange-200/90">
