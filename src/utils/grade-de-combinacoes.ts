@@ -33,7 +33,8 @@ import {
 } from "@/utils/variante-composta";
 
 /** Teto aprovado de dimensões da grade (Shopify e Nuvemshop: 3 também). */
-export const MAX_ATRIBUTOS_DA_GRADE = 3;
+import { MAX_ATRIBUTOS_DA_GRADE } from "./atributos-da-variacao";
+export { MAX_ATRIBUTOS_DA_GRADE } from "./atributos-da-variacao";
 
 /** Teto aprovado de linhas POR PRODUTO (existentes + novas da grade). */
 export const MAX_LINHAS_DA_GRADE = 60;

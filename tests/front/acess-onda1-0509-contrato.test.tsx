@@ -132,7 +132,11 @@ describe("M3 — anel de foco reposto nos 11 pontos que apagavam", () => {
   it("todos os 11 pontos têm anel visível para teclado", () => {
     for (const [nome, caminho, esperado] of pontos) {
       const src = fonte(caminho);
-      const quantidade = src.split(CAMINHO_ANEL).length - 1;
+      const anel =
+        caminho === PRODUCT_VIEW
+          ? "focus-visible:ring-2 focus-visible:ring-ring"
+          : CAMINHO_ANEL;
+      const quantidade = src.split(anel).length - 1;
       expect(
         quantidade,
         `${nome} (${caminho}): esperado ${esperado} anel(is), achei ${quantidade}`,

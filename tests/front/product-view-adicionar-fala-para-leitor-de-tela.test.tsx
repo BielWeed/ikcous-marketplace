@@ -146,7 +146,9 @@ describe("ProductView — adicionar ao carrinho fala para o leitor de tela", () 
         /adicionar ao carrinho|adicionando|adicionado/i.test(nomeAcessivel(b)),
     )!;
   const ctaDaBarraFixa = () =>
-    botoes().find((b) => !hospedeiro.contains(b) && b.textContent === "+") ??
+    botoes().find(
+      (b) => !hospedeiro.contains(b) && b.textContent === "Adicionar",
+    ) ??
     botoes().find(
       (b) =>
         !hospedeiro.contains(b) &&

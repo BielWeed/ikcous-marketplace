@@ -149,6 +149,22 @@ async function digitar(texto: string) {
   });
 }
 
+describe("OrderDetailsView — a folha de avaliação termina acima da barra", () => {
+  it("o véu e a folha acabam acima da navegação, não por baixo dela", async () => {
+    await abrirAFolhaDeAvaliacao();
+    const veu = folha()?.parentElement;
+    expect(
+      veu?.classList.contains("bottom-[var(--folha-acima-da-barra)]"),
+    ).toBe(true);
+    expect(veu?.classList.contains("inset-0")).toBe(false);
+    expect(
+      folha()?.classList.contains(
+        "max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)]",
+      ),
+    ).toBe(true);
+  });
+});
+
 describe("OrderDetailsView — fechar a avaliação não joga fora o texto", () => {
   it("só estrelas, sem texto: o X fecha direto", async () => {
     await abrirAFolhaDeAvaliacao();

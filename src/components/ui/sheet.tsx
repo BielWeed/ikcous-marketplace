@@ -101,6 +101,7 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  overlayClassName,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
@@ -109,6 +110,7 @@ function SheetContent({
   // embutido. O default mantém o X em todo consumidor que não decidir nada
   // (ex.: folha de filtros da busca) — leitor de tela nunca fica sem saída.
   showCloseButton?: boolean;
+  overlayClassName?: string;
 }) {
   // Callback ref, não useRef: o Portal do Radix nasce `mounted=false` e só
   // renderiza os filhos DEPOIS do primeiro layout-effect — um useRef lido no
@@ -246,7 +248,7 @@ function SheetContent({
 
   return (
     <SheetPortal>
-      <SheetOverlay />
+      <SheetOverlay className={overlayClassName} />
       <SheetPrimitive.Content
         ref={setNoConteudo}
         data-slot="sheet-content"

@@ -310,6 +310,10 @@ export const HomeView = React.memo(function HomeView({
     { value: "price-asc", label: "Menor Preço", icon: ArrowDown },
     { value: "price-desc", label: "Maior Preço", icon: ArrowUp },
   ];
+  const rotuloFiltros =
+    sortBy === "default"
+      ? "Filtros"
+      : `Filtros, ordenado por ${sortOptions.find((option) => option.value === sortBy)?.label}`;
 
   // A cidade da loja vem do StoreConfig, não do código. `undefined` = a
   // loja ainda não configurou, e o trecho de localização some inteiro — sem
@@ -604,123 +608,142 @@ export const HomeView = React.memo(function HomeView({
               : "border-b border-transparent",
           )}
         >
-          <CategoryFilter
-            categories={categories}
-            selectedCategory={selectedCategory}
-            onCategoryChange={onCategoryChange}
-            isLoading={isLoading || isLoadingCategories}
-          />
-          <div className="flex min-h-14 items-center justify-between gap-3 border-t border-border py-2">
-            <p
-              data-testid="resultado-categoria"
-              aria-live="polite"
-              className="min-w-0 text-sm text-foreground"
-            >
-              <span className="font-bold">{selectedCategory}</span>
-              <span className="text-muted-foreground">
-                {isLoading
-                  ? " · Carregando produtos…"
-                  : ` · ${filteredProducts.length} ${filteredProducts.length === 1 ? "produto" : "produtos"}`}
-              </span>
-            </p>
-            <div className="flex flex-shrink-0 items-center gap-2">
-              <div className="relative">
-                <button
-                  ref={sortButtonRef}
-                  onClick={() => {
-                    haptic.light();
-                    setShowSortMenu(!showSortMenu);
-                  }}
-                  // Rodada 2 (Codex, 08/09, item 2): antes de tabular até
-                  // uma opção, o próprio gatilho já responde ao Esc.
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape" && showSortMenu) {
-                      setShowSortMenu(false);
-                    }
-                  }}
-                  className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-bold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
-                  aria-expanded={showSortMenu}
-                  aria-haspopup="listbox"
-                  title="Filtrar e Ordenar"
-                >
-                  <SlidersHorizontal aria-hidden="true" className="size-4" />
-                  Filtros
-                </button>
-
-                {showSortMenu && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setShowSortMenu(false)}
-                      role="button"
-                      aria-label="Fechar menu"
-                      tabIndex={-1}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          setShowSortMenu(false);
-                        }
-                      }}
+          <p
+            data-testid="resultado-categoria"
+            aria-live="polite"
+            className="sr-only"
+          >
+            <span className="font-bold">{selectedCategory}</span>
+            <span className="text-muted-foreground">
+              {isLoading
+                ? " · Carregando produtos…"
+                : ` · ${filteredProducts.length} ${filteredProducts.length === 1 ? "produto" : "produtos"}`}
+            </span>
+          </p>
+          <div
+            data-testid="faixa-categorias-filtros"
+            className="flex h-[88px] items-start"
+          >
+            <div className="min-w-0 flex-1">
+              <CategoryFilter
+                categories={categories}
+                selectedCategory={selectedCategory}
+                onCategoryChange={onCategoryChange}
+                isLoading={isLoading || isLoadingCategories}
+              />
+            </div>
+            <div
+              aria-hidden="true"
+              className="mx-2 mt-1 h-12 w-px shrink-0 bg-border"
+            />
+            <div className="relative shrink-0 py-1">
+              <button
+                ref={sortButtonRef}
+                onClick={() => {
+                  haptic.light();
+                  setShowSortMenu(!showSortMenu);
+                }}
+                // Rodada 2 (Codex, 08/09, item 2): antes de tabular até
+                // uma opção, o próprio gatilho já responde ao Esc.
+                onKeyDown={(e) => {
+                  if (e.key === "Escape" && showSortMenu) {
+                    setShowSortMenu(false);
+                  }
+                }}
+                className="flex h-[80px] w-[68px] flex-col items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
+                aria-expanded={showSortMenu}
+                aria-haspopup="listbox"
+                aria-label={rotuloFiltros}
+                title={rotuloFiltros}
+              >
+                <span className="relative flex size-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-card text-muted-foreground">
+                  <SlidersHorizontal aria-hidden="true" className="size-6" />
+                  {sortBy !== "default" && (
+                    <span
+                      aria-hidden="true"
+                      data-testid="ordenacao-ativa"
+                      className="absolute right-1 top-1 size-2 rounded-full bg-foreground"
                     />
-                    <div
-                      ref={listboxOrdenarRef}
-                      className="absolute right-0 top-full z-50 mt-3 w-56 rounded-3xl border border-white/20 bg-white/95 p-2 shadow-2xl backdrop-blur-2xl duration-300 animate-in fade-in zoom-in"
-                      role="listbox"
-                      // tabIndex={-1}: programaticamente focável (exigência
-                      // do jsx-a11y para role interativo com onKeyDown) sem
-                      // entrar na ordem de Tab — quem navega chega pelas
-                      // opções (role="option") dentro dele. Rodada 2 (Codex,
-                      // 08/09, item 2): o próprio -1 também é o que permite
-                      // o .focus() programático do useEffect logo acima.
-                      tabIndex={-1}
-                      // Laudo de acessibilidade 05/09 (onda 3, item B5): o
-                      // Esc vivia no overlay acima (tabIndex={-1}, nunca
-                      // alcançado por teclado — o bug real). A escuta que
-                      // funciona de verdade mora aqui, ligada aos itens
-                      // focáveis do próprio menu, e devolve o foco a quem
-                      // abriu.
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") {
-                          setShowSortMenu(false);
-                          sortButtonRef.current?.focus();
-                        }
-                      }}
-                    >
-                      <div className="mb-1 border-b border-zinc-50 px-4 py-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                          Ordenar por
-                        </span>
-                      </div>
-                      {sortOptions.map((option) => {
-                        const Icon = option.icon;
-                        return (
-                          <button
-                            key={option.value}
-                            role="option"
-                            aria-selected={sortBy === option.value}
-                            onClick={() => {
-                              onSortByChange(option.value);
-                              setShowSortMenu(false);
-                            }}
-                            className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                              sortBy === option.value
-                                ? "translate-x-1 bg-primary text-primary-foreground"
-                                : "text-zinc-400 hover:bg-zinc-50 hover:text-zinc-900"
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <Icon className="size-4" />
-                              {option.label}
-                            </div>
-                            {sortBy === option.value && (
-                              <div className="size-1.5 animate-pulse rounded-full bg-white" />
-                            )}
-                          </button>
-                        );
-                      })}
+                  )}
+                </span>
+                <span className="mt-1.5 text-xs font-medium text-muted-foreground">
+                  Filtros
+                </span>
+              </button>
+
+              {showSortMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowSortMenu(false)}
+                    role="button"
+                    aria-label="Fechar menu"
+                    tabIndex={-1}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        setShowSortMenu(false);
+                      }
+                    }}
+                  />
+                  <div
+                    ref={listboxOrdenarRef}
+                    className="absolute right-0 top-full z-50 mt-1.5 w-56 rounded-3xl border border-white/20 bg-white/95 p-2 shadow-2xl backdrop-blur-2xl duration-300 animate-in fade-in zoom-in"
+                    role="listbox"
+                    // tabIndex={-1}: programaticamente focável (exigência
+                    // do jsx-a11y para role interativo com onKeyDown) sem
+                    // entrar na ordem de Tab — quem navega chega pelas
+                    // opções (role="option") dentro dele. Rodada 2 (Codex,
+                    // 08/09, item 2): o próprio -1 também é o que permite
+                    // o .focus() programático do useEffect logo acima.
+                    tabIndex={-1}
+                    // Laudo de acessibilidade 05/09 (onda 3, item B5): o
+                    // Esc vivia no overlay acima (tabIndex={-1}, nunca
+                    // alcançado por teclado — o bug real). A escuta que
+                    // funciona de verdade mora aqui, ligada aos itens
+                    // focáveis do próprio menu, e devolve o foco a quem
+                    // abriu.
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setShowSortMenu(false);
+                        sortButtonRef.current?.focus();
+                      }
+                    }}
+                  >
+                    <div className="mb-1 border-b border-zinc-50 px-4 py-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                        Ordenar por
+                      </span>
                     </div>
-                  </>
-                )}
-              </div>
+                    {sortOptions.map((option) => {
+                      const Icon = option.icon;
+                      return (
+                        <button
+                          key={option.value}
+                          role="option"
+                          aria-selected={sortBy === option.value}
+                          onClick={() => {
+                            onSortByChange(option.value);
+                            setShowSortMenu(false);
+                          }}
+                          className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                            sortBy === option.value
+                              ? "translate-x-1 bg-primary text-primary-foreground"
+                              : "text-zinc-400 hover:bg-zinc-50 hover:text-zinc-900"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Icon className="size-4" />
+                            {option.label}
+                          </div>
+                          {sortBy === option.value && (
+                            <div className="size-1.5 animate-pulse rounded-full bg-white" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
