@@ -165,8 +165,11 @@ module.exports = [
     // repeticao.
     // REGRA: dai em diante o painel nao sobe mais; cada kB novo e pago com um
     // kB tirado de outro lugar (primeira fonte: a biblioteca de graficos).
+    // 22/10/2026 (autorizado pelo dono): 472 -> 476 kB. O excesso vem das telas
+    // pedidas pelo dono no painel redesenhado (Avisar clientes, Financeiro,
+    // Banners, ficha do pedido e alertas), lote da versao 1.5.53.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "472 kB",
+    limit: "476 kB",
     webpack: false,
     running: false,
   },
