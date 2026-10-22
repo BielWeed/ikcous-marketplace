@@ -1,4 +1,8 @@
 import { Switch } from "@/components/ui/switch";
+import {
+  type LayoutDeOfertas,
+  normalizarLayoutDeOfertas,
+} from "@/lib/layout-de-ofertas";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
 import { Reorder, useDragControls } from "framer-motion";
@@ -19,6 +23,19 @@ import {
 
 /** Miniaturas que cabem na linha do cartão no celular; o resto vira "+N". */
 const MINIATURAS_VISIVEIS = 5;
+
+const NOME_DO_LAYOUT: Record<LayoutDeOfertas, string> = {
+  padrao: "Padrão",
+  compacto: "Compacto",
+  lateral: "Lateral",
+};
+/** Miniatura de cada desenho (viewBox 30x20). */
+const ICONE_DO_LAYOUT: Record<LayoutDeOfertas, string> = {
+  padrao: "M2 1h26v18H2zM5 4h20v9H5zM5 16h12m3 0h5",
+  compacto:
+    "M1 1h10v18H1zM14 1h10v18H14zM27 1h3M27 1v18h3M3 4h6v8H3zM16 4h6v8h-6zM3 15h6m7 0h6",
+  lateral: "M1 2h28v16H1zM4 5h9v10H4zM16 6h10M16 10h7M16 14h4",
+};
 
 /**
  * O cartão de UMA vitrine — o mesmo molde para todas (de fábrica ou
@@ -50,7 +67,7 @@ export function CartaoDaVitrine({
   readonly aoAlternarAtiva: (id: string) => void;
   readonly aoMover: (indice: number, direcao: "up" | "down") => void;
   readonly aoSoltar: () => void;
-  readonly aoAlterarLayout: (id: string, layout: "padrao" | "compacto") => void;
+  readonly aoAlterarLayout: (id: string, layout: LayoutDeOfertas) => void;
   /** Ordem sendo gravada: nada no cartão responde até o banco confirmar. */
   readonly travado: boolean;
 }) {
@@ -235,13 +252,12 @@ export function CartaoDaVitrine({
           </div>
         </div>
         {secao.id === "offers" && (
-          <div className="relative -mb-1.5 ml-7 mt-1.5 flex items-center gap-1 text-xs font-semibold text-zinc-300">
+          <div className="relative -mb-1.5 ml-7 mt-1.5 flex flex-wrap items-center gap-1 text-xs font-semibold text-zinc-300">
             Layout
-            {(["padrao", "compacto"] as const).map((layout) => {
+            {(["padrao", "compacto", "lateral"] as const).map((layout) => {
               const marcado =
-                (secao.layout === "compacto" ? "compacto" : "padrao") ===
-                layout;
-              const nome = layout === "padrao" ? "Padrão" : "Compacto";
+                normalizarLayoutDeOfertas(secao.layout) === layout;
+              const nome = NOME_DO_LAYOUT[layout];
               return (
                 <button
                   type="button"
@@ -268,13 +284,7 @@ export function CartaoDaVitrine({
                       fill="none"
                       stroke="currentColor"
                     >
-                      <path
-                        d={
-                          layout === "padrao"
-                            ? "M2 1h26v18H2zM5 4h20v9H5zM5 16h12m3 0h5"
-                            : "M1 1h10v18H1zM14 1h10v18H14zM27 1h3M27 1v18h3M3 4h6v8H3zM16 4h6v8h-6zM3 15h6m7 0h6"
-                        }
-                      />
+                      <path d={ICONE_DO_LAYOUT[layout]} />
                     </svg>
                     {nome}
                     {marcado && " ✓"}

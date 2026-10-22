@@ -28,6 +28,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
+import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { View } from "@/types";
 import { Reorder } from "framer-motion";
@@ -284,10 +285,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     handleUpdateHomeSections(updated, false);
   };
 
-  const handleUpdateLayout = (
-    sectionId: string,
-    layout: "padrao" | "compacto",
-  ) => {
+  const handleUpdateLayout = (sectionId: string, layout: LayoutDeOfertas) => {
     if (isOffline) {
       toast.error("Sem conexão", { description: "Você precisa estar online." });
       return;
