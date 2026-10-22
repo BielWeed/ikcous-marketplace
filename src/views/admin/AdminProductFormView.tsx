@@ -6,6 +6,9 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { PhoneSimulator } from "@/components/admin/PhoneSimulator";
+import { CampoDeCategoria } from "@/components/admin/products/CampoDeCategoria";
+import { CodigoDoProduto } from "@/components/admin/products/CodigoDoProduto";
+import { InterruptorDoProduto } from "@/components/admin/products/InterruptorDoProduto";
 import { SecaoDoProduto } from "@/components/admin/products/SecaoDoProduto";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import "@/components/admin/products/formulario-produto.css";
@@ -24,13 +27,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ImageAdjuster } from "@/components/ui/custom/ImageAdjuster";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
@@ -44,6 +40,11 @@ import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
+import {
+  type ConfigDeFrete,
+  produtoTemFreteGratisPrometido,
+  promessasDeFrete,
+} from "@/lib/estrategias-de-frete";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import {
   ErroDeCategoria,
@@ -77,6 +78,11 @@ import {
 import { precoProprioDaVariacao } from "@/utils/preco-da-variacao";
 import { avisarProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import {
+  montarCodigoAutomatico,
+  prefixoDoCodigo,
+  sufixoLivre,
+} from "@/utils/sku-automatico";
+import {
   gruposDeVariacao,
   temGrupoDemais,
   travaDeUmGrupoSo,
@@ -107,6 +113,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Smartphone,
+  Store,
   Trash2,
   X,
 } from "lucide-react";
@@ -669,6 +676,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [chaveDasVariacoes, setChaveDasVariacoes] = useState(0);
 
   const [skuError, setSkuError] = useState("");
+  // Código interno AUTOMÁTICO (ver `utils/sku-automatico.ts`). O valor mora em
+  // `formData.sku`, como sempre — estas três peças só decidem QUEM o escreve:
+  // `skuAutomatico` liga o gerador; `skuManualGuardado` é o que a lojista tinha
+  // (digitado ou já salvo) para voltar se ela desligar; `sufixoAuto` é o final
+  // aleatório do código (o começo acompanha a categoria).
+  const [skuAutomatico, setSkuAutomatico] = useState(false);
+  const [sufixoAuto, setSufixoAuto] = useState("");
+  const skuManualGuardado = useRef("");
   // C5.2 — três estados para o código de barras do PRODUTO: `ErroLocal`
   // (formato + duplicidade DENTRO da tela, sem rede) e `ErroRede`
   // (duplicidade no CATÁLOGO inteiro, achada pela RPC no blur) ficam
@@ -2536,6 +2551,61 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     };
   }, []);
 
+  // --- Código interno automático -------------------------------------------
+  // Códigos que a loja já usa (os das variações são ÚNICOS na loja; os dos
+  // produtos podem repetir, mas evitar também deixa tudo mais legível), para o
+  // automático não nascer igual a um existente. Melhor esforço: a lista pode
+  // não ter chegado — a grade e o salvar conferem de novo.
+  const codigosOcupados = useMemo(
+    () => [
+      ...skusDaLoja,
+      ...products.map((p: { sku?: string | null }) => p.sku ?? ""),
+    ],
+    [skusDaLoja, products],
+  );
+  const prefixoAuto = prefixoDoCodigo(formData.category ?? "", formData.name);
+  const codigoAuto =
+    skuAutomatico && sufixoAuto !== ""
+      ? montarCodigoAutomatico(prefixoAuto, sufixoAuto)
+      : "";
+
+  const alternarSkuAutomatico = () => {
+    if (skuAutomatico) {
+      // Desligar devolve o que ela tinha (digitado ou já salvo).
+      setSkuAutomatico(false);
+      setFormData((prev) => ({ ...prev, sku: skuManualGuardado.current }));
+      return;
+    }
+    skuManualGuardado.current = formData.sku;
+    setSufixoAuto(sufixoLivre(prefixoAuto, codigosOcupados));
+    setSkuAutomatico(true);
+  };
+  const gerarOutroSku = () =>
+    setSufixoAuto(sufixoLivre(prefixoAuto, codigosOcupados));
+
+  // Enquanto o automático está ligado, o código vale no formulário (e por isso
+  // vai no rascunho, no "tem alteração" e no salvar, sem caminho próprio).
+  // Só roda por ação dela: desligado, nunca escreve em `formData.sku`.
+  useEffect(() => {
+    if (codigoAuto === "") return;
+    setFormData((prev) =>
+      prev.sku === codigoAuto ? prev : { ...prev, sku: codigoAuto },
+    );
+  }, [codigoAuto]);
+
+  // A marca "frete grátis" do produto só vale com a regra "Só produtos
+  // marcados" em algum canal (cidade ou Brasil). Sem a configuração da loja
+  // carregada (ou em teste), não afirma nada.
+  const freteDeProdutoSemEfeito = useMemo(
+    () =>
+      typeof config?.freeShippingMin === "number" &&
+      !produtoTemFreteGratisPrometido(
+        promessasDeFrete(config as ConfigDeFrete),
+        true,
+      ),
+    [config],
+  );
+
   // Combina os dois estados de erro do código de barras do produto (ver o
   // comentário perto das declarações de estado, acima) para o render e para
   // este gate — a duplicidade de REDE não bloqueia sozinha por mais tempo do
@@ -3369,6 +3439,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         )}
         grupoUnicoEmUso={gruposDeVariacao(formData.variants).at(0) ?? null}
         skusDaLoja={skusDaLoja}
+        skuBaseSugerida={skuAutomatico ? formData.sku : ""}
         precoDoProduto={precoDoProdutoTexto}
         onEfetivar={handleEfetivarGrade}
       />
@@ -3442,7 +3513,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 formData.images.length === 0 && "sr-only",
               )}
             >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-teal-400/20 bg-teal-400/10 text-teal-300">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-raised text-zinc-300">
                 <Camera className="size-5" />
               </span>
               <span className="min-w-0 flex-1">
@@ -3623,7 +3694,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 <button
                                   type="button"
                                   onClick={() => openAdjuster(image, index)}
-                                  className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-blue-400/10 px-3 text-xs text-blue-300"
+                                  className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-admin-surface px-3 text-xs text-zinc-200"
                                   title="Ajustar e Cortar"
                                 >
                                   <Scissors className="size-5" />
@@ -3644,7 +3715,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                     onClick={() => tornarPrincipal(index)}
                                     disabled={isImageUploading || isSubmitting}
                                     aria-label={`Tornar principal: foto ${index + 1} de ${formData.images.length}`}
-                                    className="min-h-11 w-full rounded-xl border border-admin-border px-2.5 text-[11px] font-bold text-violet-300 disabled:opacity-40"
+                                    className="min-h-11 w-full rounded-xl border border-admin-border px-2.5 text-[11px] font-bold text-zinc-200 disabled:opacity-40"
                                   >
                                     Tornar principal
                                   </button>
@@ -3839,7 +3910,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <button
               type="button"
               onClick={() => toggleHelp("productData")}
-              className="ml-auto flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-400/10 text-blue-300 active:scale-95"
+              className="ml-auto flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-2xl border border-admin-border bg-admin-raised text-zinc-300 active:scale-95"
               title="Ajuda / Guia de Dados do Produto"
               aria-label="Guia de Cadastro e Informações"
             >
@@ -3981,77 +4052,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               />
             </div>
 
-            <div className="produto-campo col-span-2 space-y-1">
-              <label
-                htmlFor="product-category"
-                className="ml-1 block text-[11px] text-zinc-400"
-              >
-                Setor / Categoria *
-              </label>
-              <div className="group relative">
-                <Select
-                  name="category"
-                  value={formData.category || ""}
-                  onValueChange={async (val) => {
-                    if (val === "NEW_CATEGORY") {
-                      setShowCategoryForm(true);
-                    } else if (val === "MANAGE_CATEGORIES") {
-                      setGerenciandoCategorias(true);
-                    } else {
-                      setFormData((prev) => ({ ...prev, category: val }));
-                    }
-                  }}
-                >
-                  <SelectTrigger
-                    id="product-category"
-                    className="h-auto min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all hover:border-admin-border-strong hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 [&>svg]:opacity-50"
-                  >
-                    <SelectValue placeholder="Selecionar Setor" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-admin-border bg-zinc-900/95 p-2 shadow-[0_10px_40px_rgba(0,0,0,0.8)] backdrop-blur-xl">
-                    {dbCategories.map((category) => (
-                      <SelectItem
-                        key={category.id}
-                        value={category.name}
-                        className="cursor-pointer rounded-lg px-4 py-3 font-bold text-zinc-300 focus:bg-white/5 focus:text-emerald-400"
-                      >
-                        {category.name.toUpperCase()}
-                      </SelectItem>
-                    ))}
-                    <div className="mx-1 my-2 h-px bg-white/10" />
-                    <SelectItem
-                      value="NEW_CATEGORY"
-                      className="cursor-pointer rounded-lg px-4 py-3 font-black text-emerald-500 focus:bg-emerald-500/10 focus:text-emerald-400"
-                    >
-                      <span className="flex items-center gap-2">
-                        ➕ CRIAR NOVA CATEGORIA
-                      </span>
-                    </SelectItem>
-                    <SelectItem
-                      value="MANAGE_CATEGORIES"
-                      className="cursor-pointer rounded-lg px-4 py-3 font-black text-zinc-300 focus:bg-white/5 focus:text-white"
-                    >
-                      <span className="flex items-center gap-2">
-                        ✏️ RENOMEAR, ESCONDER OU APAGAR
-                      </span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 text-zinc-600 transition-colors group-hover:text-emerald-500">
-                  <Layers className="size-5" />
-                </div>
-              </div>
-              {categoriaDoRascunhoSumiu && formData.category === "" ? (
-                <p
-                  role="alert"
-                  data-testid="categoria-do-rascunho-sumiu"
-                  className="ml-1 text-xs font-bold text-amber-300"
-                >
-                  A categoria “{categoriaDoRascunhoSumiu}” do rascunho não
-                  existe mais. Escolha a categoria de novo.
-                </p>
-              ) : null}
-            </div>
+            {/* PONTO DE INTEGRAÇÃO DA CATEGORIA: o seletor novo (galeria de
+                ícones) entra trocando este componente — contrato no
+                comentário de `CampoDeCategoria`. */}
+            <CampoDeCategoria
+              valor={formData.category || ""}
+              nomes={dbCategories.map((c) => ({ id: c.id, nome: c.name }))}
+              aoEscolher={(nome) =>
+                setFormData((prev) => ({ ...prev, category: nome }))
+              }
+              aoCriar={() => setShowCategoryForm(true)}
+              aoGerenciar={() => setGerenciandoCategorias(true)}
+              categoriaDoRascunhoQueSumiu={categoriaDoRascunhoSumiu}
+            />
 
             {/* Preço de venda: sobe da antiga "Precificação" para o básico —
                 é o que toda lojista preenche. Só mudou de lugar no JSX; o
@@ -4820,43 +4833,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           temErro={!!skuError || !!codigoBarrasError || !!estoqueMinimoError}
         >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-            <div className="space-y-1.5 md:space-y-3">
-              <label
-                htmlFor="product-sku"
-                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Código interno (SKU)
-              </label>
-              <div className="group relative">
-                <LocalBufferedInput
-                  id="product-sku"
-                  aria-invalid={!!skuError}
-                  aria-describedby={skuError ? "product-sku-error" : undefined}
-                  name="product-sku"
-                  type="text"
-                  value={formData.sku}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      sku: val.trim().toUpperCase().replace(/\s+/g, "-"),
-                    }))
-                  }
-                  placeholder="Ex: CAMISETA-BASE"
-                  className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
-                />
-                <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
-                  <Layers className="size-5" />
-                </div>
-              </div>
-              {skuError && (
-                <span
-                  id="product-sku-error"
-                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
-                >
-                  {skuError}
-                </span>
-              )}
-            </div>
+            <CodigoDoProduto
+              automatico={skuAutomatico}
+              onAlternar={alternarSkuAutomatico}
+              codigoGerado={codigoAuto}
+              onOutro={gerarOutroSku}
+              valorManual={formData.sku}
+              onManual={(val) => setFormData((prev) => ({ ...prev, sku: val }))}
+              erro={skuError}
+              rotuloDoCampo="Código interno (SKU)"
+            />
 
             <div className="space-y-1.5 md:space-y-3">
               <label
@@ -4968,20 +4954,76 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             </div>
           </div>
         </SecaoDoProduto>
-        <div className="space-y-3 text-xs text-zinc-400">
-          <button
-            type="button"
-            onClick={() => setShowHelpModal(true)}
-            className="flex min-h-11 items-center gap-3 text-left text-sm text-zinc-300"
-          >
-            <HelpCircle className="size-5 text-blue-300" />
-            Como cadastrar um produto
-          </button>
-          <p>Ambiente de Gerenciamento Unificado</p>
-          <p className="break-all">
-            ID do Sistema · {productId || "NEW_ENTRY"}
-          </p>
-        </div>
+
+        {/* Na loja: três chaves que o modelo já tinha e o salvar já gravava
+            (`ativo`, `is_bestseller`, `frete_gratis`) — só não tinham tela.
+            MONTADA e FECHADA, como as outras. */}
+        <SecaoDoProduto
+          titulo="Na loja"
+          icone={Store}
+          cor="border-admin-border bg-admin-raised text-zinc-300"
+          resumo={[
+            formData.isActive ? "Aparece na loja" : "Escondido da loja",
+            formData.isBestseller ? "Em destaque" : null,
+            formData.freeShipping ? "Frete grátis" : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        >
+          <div className="space-y-1">
+            <InterruptorDoProduto
+              rotulo="Aparece na loja"
+              descricao="Desligue para guardar o produto sem mostrar aos clientes."
+              ligado={formData.isActive}
+              onAlternar={() =>
+                setFormData((prev) => ({ ...prev, isActive: !prev.isActive }))
+              }
+            />
+            <InterruptorDoProduto
+              rotulo="Em destaque"
+              descricao="Mostra o selo “Em alta” e põe o produto na vitrine de destaques."
+              ligado={formData.isBestseller}
+              onAlternar={() =>
+                setFormData((prev) => ({
+                  ...prev,
+                  isBestseller: !prev.isBestseller,
+                }))
+              }
+            />
+            <InterruptorDoProduto
+              rotulo="Frete grátis neste produto"
+              descricao="Marca o produto para a regra “Só produtos marcados” do frete."
+              ligado={formData.freeShipping}
+              onAlternar={() =>
+                setFormData((prev) => ({
+                  ...prev,
+                  freeShipping: !prev.freeShipping,
+                }))
+              }
+            >
+              {formData.freeShipping && freteDeProdutoSemEfeito ? (
+                <p
+                  data-testid="aviso-frete-por-produto"
+                  role="status"
+                  className="mt-2 flex items-start gap-2 px-1 text-xs text-amber-300"
+                >
+                  <AlertTriangle
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0"
+                  />
+                  Hoje a loja não usa “Só produtos marcados”. A marca fica
+                  guardada, mas só vale quando você escolher essa regra em{" "}
+                  {NOMES_DO_PAINEL["admin-shipping"]}.
+                </p>
+              ) : null}
+            </InterruptorDoProduto>
+          </div>
+        </SecaoDoProduto>
+        {/* O guia "Como cadastrar um produto" já tem o botão "?" do
+            cabeçalho (o mesmo `setShowHelpModal`): aqui só resta o ID. */}
+        <p className="break-all text-xs text-zinc-400">
+          ID do Sistema · {productId || "NEW_ENTRY"}
+        </p>
       </motion.form>
 
       {/* Image Cropper Modal */}
