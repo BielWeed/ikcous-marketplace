@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 
-import { IconePix } from "@/components/admin/primitivos/IconePix";
 import { useResumoFinanceiro } from "@/hooks/useFinanceiro";
 import {
   formatarDataHora,
@@ -33,6 +32,7 @@ import type {
   TotaisPrevistos,
 } from "@/types/financeiro";
 import { FluxoDeCaixaGrafico } from "./FluxoDeCaixaGrafico";
+import { IconeDaForma, corDaForma } from "./IconeDaForma";
 import { IconeDoTipoDeConta, matizDoTipoDeConta } from "./icones";
 import type { AbaDoFinanceiro, LadoDosPrevistos } from "./navegacao";
 import {
@@ -153,9 +153,7 @@ function RecebimentosPorForma({
               >
                 <div className="flex items-baseline justify-between gap-3 text-xs">
                   <span className="break-words font-bold text-zinc-200">
-                    {forma.forma === "pix" && (
-                      <IconePix className="mr-1 inline-block size-4 align-text-bottom text-teal-300" />
-                    )}
+                    <IconeDaForma forma={forma.forma} className="mr-1.5" />
                     {rotuloDaForma(forma.forma)}
                   </span>
                   <span className="shrink-0 tabular-nums text-zinc-400">
@@ -169,14 +167,10 @@ function RecebimentosPorForma({
                 <div className="h-2 w-full overflow-hidden rounded-full bg-white/5">
                   <div
                     className="h-full rounded-full"
+                    data-barra-da-forma={forma.forma ?? ""}
                     style={{
                       width: `${Math.max(pct, 1.5)}%`,
-                      backgroundColor:
-                        forma.forma === "pix"
-                          ? "#2DD4BF"
-                          : forma.forma === "credito"
-                            ? "#BA9AFF"
-                            : "#7AA2FF",
+                      backgroundColor: corDaForma(forma.forma),
                     }}
                   />
                 </div>
@@ -186,6 +180,38 @@ function RecebimentosPorForma({
         </ul>
       )}
     </CartaoSecao>
+  );
+}
+
+function ColunaDoCanal({
+  nome,
+  cor,
+  valor,
+  percentual,
+}: {
+  readonly nome: string;
+  readonly cor: string;
+  readonly valor: number;
+  readonly percentual: number;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="flex items-center gap-1.5 text-sm font-medium text-zinc-400">
+        <span
+          data-ponto-do-canal
+          aria-hidden="true"
+          className="size-2 shrink-0 rounded-sm"
+          style={{ background: cor }}
+        />
+        <span className="min-w-0 break-words">{nome}</span>
+      </dt>
+      <dd className="mt-1 whitespace-nowrap text-lg font-black tabular-nums text-white max-[360px]:text-base">
+        <Dinheiro valor={valor} />
+      </dd>
+      <dd className="text-xs tabular-nums text-zinc-400">
+        {formatarPercentual(percentual)}
+      </dd>
+    </div>
   );
 }
 
@@ -211,48 +237,35 @@ function AppVersusLoja({ resumo }: { readonly resumo: ResumoFinanceiro }) {
           >
             {online > 0 ? (
               <div
+                data-trecho-do-canal
                 className="h-full rounded-l-full"
                 style={{ width: `${pctApp}%`, background: COR_APP }}
               />
             ) : null}
             {presencial > 0 ? (
               <div
+                data-trecho-do-canal
                 className="h-full rounded-r-full"
                 style={{ width: `${pctLoja}%`, background: COR_LOJA }}
               />
             ) : null}
           </div>
-          <dl className="grid grid-cols-1 gap-5">
-            <div>
-              <dt className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                <span
-                  className="size-2 rounded-sm"
-                  style={{ background: COR_APP }}
-                />
-                App
-              </dt>
-              <dd className="mt-1 text-base font-black text-white">
-                <Dinheiro valor={online} />
-              </dd>
-              <dd className="text-xs text-zinc-400">
-                {formatarPercentual(pctApp)}
-              </dd>
-            </div>
-            <div>
-              <dt className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                <span
-                  className="size-2 rounded-sm"
-                  style={{ background: COR_LOJA }}
-                />
-                Loja física
-              </dt>
-              <dd className="mt-1 text-base font-black text-white">
-                <Dinheiro valor={presencial} />
-              </dd>
-              <dd className="text-xs text-zinc-400">
-                {formatarPercentual(pctLoja)}
-              </dd>
-            </div>
+          <dl
+            data-canais-lado-a-lado
+            className="grid grid-cols-2 gap-3 min-[400px]:gap-4"
+          >
+            <ColunaDoCanal
+              nome="App"
+              cor={COR_APP}
+              valor={online}
+              percentual={pctApp}
+            />
+            <ColunaDoCanal
+              nome="Loja física"
+              cor={COR_LOJA}
+              valor={presencial}
+              percentual={pctLoja}
+            />
           </dl>
         </div>
       )}
