@@ -43,6 +43,7 @@ import {
 } from "@/utils/admin_cache";
 import { haptic } from "@/utils/haptic";
 import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
+import { avancarTrilha, origemDaTrilha } from "@/utils/trilha-do-painel";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -776,26 +777,29 @@ export function AdminLayout({
     globalThis.location &&
     new URLSearchParams(globalThis.location.search).has("id");
 
-  // Guarda a view ANTERIOR a `currentView`, para o botão "Voltar" de
-  // "admin-push" saber de onde a pessoa veio (sidebar, menu do cliente,
-  // banner...) em vez de sempre cair em "admin-settings". O sino NÃO está
-  // mais nessa lista: ele leva às Notificações do lojista, não ao envio para
-  // clientes. Só
-  // atualiza quando a view muda de fato — a origem tem que continuar
-  // apontando para a tela anterior enquanto "admin-push" está em foco.
+  // Guarda DE ONDE a pessoa veio até `currentView`, para o botão "Voltar" de
+  // "admin-push", "admin-notifications" e "admin-whatsapp-config" saber a
+  // porta por onde ela entrou (sidebar, menu do cliente, banner, sino...) em
+  // vez de um pai fixo.
+  //
+  // A origem NÃO é "a tela anterior a cada troca": isso gravava origem também
+  // quando a troca era um Voltar, e Avisar clientes <-> Notificações viravam
+  // origem uma da outra, num laço sem saída (dono, 22/10/2026). A trilha de
+  // `trilha-do-painel.ts` trata a troca para a tela anterior como VOLTA e não
+  // grava nada — vale igual para o botão do topo e para o Voltar do celular.
   //
   // `origemDaView` fica em estado, não em ref: `getParentView` é chamado
   // durante a renderização (aqui embaixo, e dentro dos dois `navItems.map`
   // da sidebar), e a regra `react-hooks/refs` do eslint proíbe ler
-  // `ref.current` em render — só em efeito ou handler. O `useRef` que o
-  // efeito usa para lembrar a view anterior fica isolado dentro do próprio
-  // `useEffect`, nunca lido em render.
+  // `ref.current` em render — só em efeito ou handler. O `useRef` da trilha
+  // fica isolado dentro do próprio `useEffect`, nunca lido em render.
   const [origemDaView, setOrigemDaView] = React.useState<View | null>(null);
-  const viewAnteriorRef = React.useRef<View>(currentView);
+  const trilhaRef = React.useRef<readonly View[]>([currentView]);
   React.useEffect(() => {
-    if (viewAnteriorRef.current !== currentView) {
-      setOrigemDaView(viewAnteriorRef.current);
-      viewAnteriorRef.current = currentView;
+    const proxima = avancarTrilha(trilhaRef.current, currentView);
+    if (proxima !== trilhaRef.current) {
+      trilhaRef.current = proxima;
+      setOrigemDaView(origemDaTrilha(proxima));
     }
   }, [currentView]);
 
