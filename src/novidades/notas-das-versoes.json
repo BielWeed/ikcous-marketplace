@@ -1,4 +1,17 @@
 {
+  "1.5.49": {
+    "titulo": "Início mais enxuto e Finalizar compra mais compacto",
+    "novidades": [
+      "As Ofertas Imperdíveis ganharam um cartão novo no modo Compacto: foto grande, preço e botão em linhas separadas, e as etiquetas de desconto e de estoque ficam legíveis sobre qualquer foto."
+    ],
+    "correcoes": [
+      "Os links de Termos de uso e Política de Privacidade não cobrem mais o botão logo abaixo da frase."
+    ],
+    "melhorias": [
+      "Os ícones das categorias na página inicial ficaram menores e deixam mais espaço para os produtos.",
+      "No Finalizar compra e no cadastro, a frase dos Termos de uso e da Política de Privacidade ocupa só duas linhas, e os links continuam fáceis de tocar."
+    ]
+  },
   "1.5.48": {
     "titulo": "Relatórios novos, ícones de categoria, favoritos e pagamentos mais seguros",
     "novidades": [
