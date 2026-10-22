@@ -563,6 +563,11 @@ const DESTINO_POR_ACAO = new Map(
 // última vira "+N" (pedido do Gabriel, D1 refinado, 12/09/2026).
 const MAX_MINIATURAS_DO_GATILHO = 3;
 
+/** Loja sem CEP de origem: quem resolve é a loja. Uma frase só, usada na seção
+ * de entrega e na região `status` da barra. */
+const FRASE_LOJA_SEM_FRETE =
+  "Esta loja ainda não calcula o frete pelo app. Fale com a loja.";
+
 interface GatilhoDoResumoDoPedidoProps {
   readonly cart: CartItem[];
   readonly isOpen: boolean;
@@ -3459,17 +3464,57 @@ export function CheckoutViewDaConta({
   // mexe em `finalizarBloqueadoPorFrete` nem no CartContext, só na exibição.
   const totalExibido = semFreteSelecionado ? null : finalTotal;
 
+  // A loja não tem de onde despachar (sem CEP de origem): o frete não será
+  // calculado pelo app, e quem resolve é a loja, não a cliente.
+  const lojaConfigurandoOFrete =
+    semFreteSelecionado && ctxFreteIndefinido && !config.originCep?.trim();
+
+  // A BARRA DE BAIXO TEM SEMPRE O MESMO FORMATO, QUALQUER QUE SEJA O ESTADO DO
+  // FRETE (pedido do dono, celular real, 22/10/2026): antes, a ESPERA da
+  // cotação virava uma linha vermelha embaixo do botão, a barra crescia e
+  // encolhia, e a página pulava junto (a altura da barra é o espaço reservado
+  // no fim da página). Espera não é erro. Agora a barra só troca o TEXTO da
+  // linha Entrega e do Total, sem nunca ganhar nem perder uma linha; o motivo
+  // de uma trava que a cliente resolve mora na seção de entrega, onde ela age.
+  // Só APRESENTAÇÃO: as condições que travam o Finalizar (`semFreteSelecionado`
+  // e `botaoFinalizarDesabilitado`) não mudam.
+  const barraCalculandoOFrete = freteEmCotacao && !lojaConfigurandoOFrete;
+  // Há destino e a cotação não está em voo: o motivo (escolher uma opção, o
+  // erro com "Tentar de novo", "nenhuma opção") está na seção de entrega.
+  const freteComMotivoNaSecao =
+    semFreteSelecionado &&
+    !lojaConfigurandoOFrete &&
+    !freteEmCotacao &&
+    !!cepDoDestinoDaCotacao;
+  // Erro e "nenhuma opção" já têm o texto PRÓPRIO dentro da calculadora; só
+  // falta dizer "escolha uma" quando há opções e nenhuma está marcada — e isso
+  // só é verdade com a cotação `pronto`: um status velho ("ocioso"/
+  // "sem-destino") de um instante antes da cotação não pode piscar o motivo.
+  const escolhaDeFreteNaSecao =
+    freteComMotivoNaSecao && statusDoFrete === "pronto";
+  // O que o leitor de tela ouve, na MESMA região `status` da barra (escondida,
+  // sem custo de altura): antes um `role="alert"` falava estes motivos (laudo
+  // de acessibilidade 03/09, achado 9); eles saíram da barra, a voz não pode
+  // sair junto. `status` (educado), nunca `alert`: espera não é falha.
+  const avisoDoFreteParaLeitorDeTela = lojaConfigurandoOFrete
+    ? FRASE_LOJA_SEM_FRETE
+    : barraCalculandoOFrete
+      ? "Calculando o frete do endereço de entrega..."
+      : escolhaDeFreteNaSecao
+        ? "Escolha uma opção de frete para continuar"
+        : freteComMotivoNaSecao && statusDoFrete === "vazio"
+          ? "Nenhuma opção de entrega para este endereço. Combine a entrega com a loja."
+          : "";
+
   // Sem endereço de entrega, o card "Entrega" e o aviso de "Seus dados" JÁ dizem
   // isso no alto da tela. Repetir em vermelho na barra do Finalizar só a
   // engordava (pedido do dono, 22/10/2026): o texto fica na página só para o
   // leitor de tela (continua explicando o botão apagado), sem ocupar a barra.
-  // Os outros motivos (frete em configuração, calculando, escolher opção)
-  // seguem visíveis: o card do alto não os repete.
+  // Sem destino: nada para cotar, e o frete está travado por isso.
+  const semDestinoDeEntrega =
+    semFreteSelecionado && !freteEmCotacao && !cepDoDestinoDaCotacao;
   const avisoDeFreteSoParaLeitorDeTela =
-    semFreteSelecionado &&
-    !(ctxFreteIndefinido && !config.originCep?.trim()) &&
-    !freteEmCotacao &&
-    !cepDoDestinoDaCotacao;
+    semDestinoDeEntrega && !lojaConfigurandoOFrete;
 
   // `SaidaDaRecusa` promete, por escrito, que `conferir_antes` nunca oferece
   // "tentar de novo" — é o caso em que não se sabe se o pedido nasceu, e
@@ -6146,6 +6191,28 @@ export function CheckoutViewDaConta({
           />
         )}
 
+        {/* Por que o Finalizar está apagado por causa do frete, quando é algo
+            que a cliente (ou a loja) resolve — fica aqui, perto das opções, e
+            não na barra de baixo (22/10/2026: a barra não muda de altura com o
+            frete). Texto neutro, sem vermelho: ainda não é falha. A falha real
+            (erro, "tentar de novo", nenhuma opção) é da própria calculadora.
+            Sem `role`: quem ANUNCIA o motivo ao leitor de tela é a região
+            `status` da barra. Caixa clara PRÓPRIA (a mesma do aviso de cupom
+            logo abaixo): sem fundo, em loja de tema escuro ou vidro o texto
+            herdava um fundo escuro e caía para ~2,1:1 de contraste. */}
+        {cart.length > 0 &&
+          (lojaConfigurandoOFrete || escolhaDeFreteNaSecao) && (
+            <p
+              data-testid="checkout-motivo-frete"
+              className="flex items-start gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
+            >
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+              {lojaConfigurandoOFrete
+                ? FRASE_LOJA_SEM_FRETE
+                : "Escolha uma opção de frete para continuar"}
+            </p>
+          )}
+
         {/* CUPONS DESLIGADOS (#645): o campo de cupom some com a chave
             desligada, então o motivo de o desconto ter saído mora FORA dele.
             Fixo na tela (toast some antes de a pessoa ler). */}
@@ -6658,6 +6725,13 @@ export function CheckoutViewDaConta({
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
                     <div className="mx-auto flex max-w-md flex-col gap-3">
+                      {/* Anuncia a espera e o motivo do frete SEM interromper
+                          (`status`, nunca `alert`) e SEM ocupar lugar
+                          (`sr-only` fica fora do fluxo). A região existe
+                          sempre, com o mesmo formato; só o texto entra e sai. */}
+                      <span role="status" className="sr-only">
+                        {avisoDoFreteParaLeitorDeTela}
+                      </span>
                       <div
                         role="group"
                         aria-label="Valores do pedido"
@@ -6673,7 +6747,22 @@ export function CheckoutViewDaConta({
                           <div className="checkout-delivery">
                             <span>Entrega</span>
                             <span>
-                              {semFreteSelecionado ? (
+                              {lojaConfigurandoOFrete ? (
+                                "indisponível"
+                              ) : barraCalculandoOFrete ? (
+                                // Espera, não erro: cinza neutro. TEXTO PURO, de
+                                // propósito: sem ícone, sem `inline-flex` e sem
+                                // reticências. Medido em navegador (22/10/2026),
+                                // "Calculando…" com ícone quebrava esta linha
+                                // abaixo de 360px (a barra pulava 14px) e o
+                                // `inline-flex` a deixava em 18px com cupom. A
+                                // faixa pulsando no Total já diz que carrega.
+                                <span className="text-zinc-500">
+                                  Calculando
+                                </span>
+                              ) : freteComMotivoNaSecao ? (
+                                "ver acima"
+                              ) : semFreteSelecionado ? (
                                 "a calcular"
                               ) : (
                                 <>
@@ -6711,9 +6800,20 @@ export function CheckoutViewDaConta({
                         <div>
                           <p>Total</p>
                           <p>
-                            {totalExibido === null
-                              ? "a calcular"
-                              : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
+                            {barraCalculandoOFrete ? (
+                              // Faixa cinza com a altura da linha do número
+                              // (text-2xl = 2rem = h-8): o Total não muda de
+                              // altura quando o frete fica pronto.
+                              <span
+                                data-testid="checkout-total-calculando"
+                                aria-hidden="true"
+                                className="block h-8 w-24 animate-pulse rounded-md bg-zinc-200"
+                              />
+                            ) : totalExibido === null ? (
+                              "a calcular"
+                            ) : (
+                              `R$ ${totalExibido.toFixed(2).replace(".", ",")}`
+                            )}
                           </p>
                         </div>
                       </div>
@@ -6750,7 +6850,12 @@ export function CheckoutViewDaConta({
                         )}
                       </button>
                     </div>
-                    {!semFreteSelecionado &&
+                    {/* Com destino, independe do estado do frete (22/10/2026):
+                        antes sumia durante a cotação e aparecia depois — mais
+                        um salto da barra. SEM destino continua escondida, como
+                        na base (1.5.50, commit 38c52de4): o card do alto já pede
+                        o endereço, e repetir em vermelho aqui engordava a barra. */}
+                    {!semDestinoDeEntrega &&
                       !isOffline &&
                       !pagamentoIncompativel &&
                       !isSubmitting &&
@@ -6783,34 +6888,19 @@ export function CheckoutViewDaConta({
                           {pendenciaDeIdentificacao}
                         </button>
                       )}
-                    {semFreteSelecionado && (
-                      // Motivo visível: botão apagado sem explicação faz a
-                      // pessoa desistir sem saber por quê. Cenário real: a
-                      // loja não configurou de onde despacha, a cotação de
-                      // frete recusa, e sem este aviso o cliente só via um
-                      // botão cinza sem saber que precisa voltar ao
-                      // carrinho e calcular o frete.
-                      // Laudo de acessibilidade 03/09, achado 9: este aviso
-                      // RECUSA o pagamento — role="alert" fala na hora,
-                      // padrão da casa (SaidaDaRecusa.tsx:82).
-                      <p
-                        role="alert"
-                        className={
-                          avisoDeFreteSoParaLeitorDeTela
-                            ? "sr-only"
-                            : "mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
-                        }
-                      >
-                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                        {semFreteSelecionado &&
-                        ctxFreteIndefinido &&
-                        !config.originCep?.trim()
-                          ? "A loja ainda está configurando o frete — fale com a loja para combinar a entrega"
-                          : freteEmCotacao
-                            ? "Calculando o frete do endereço de entrega..."
-                            : cepDoDestinoDaCotacao
-                              ? "Escolha uma opção de frete para continuar"
-                              : "Informe o endereço de entrega para calcular o frete"}
+                    {avisoDeFreteSoParaLeitorDeTela && (
+                      // Sem endereço de entrega o botão fica apagado e o
+                      // texto só existe para o leitor de tela (o card do alto
+                      // já pede o endereço; nada visível aqui). Laudo de
+                      // acessibilidade 03/09, achado 9: este aviso RECUSA o
+                      // pagamento — role="alert" fala na hora, padrão da casa
+                      // (SaidaDaRecusa.tsx:82).
+                      // Os outros motivos de frete NÃO moram mais na barra
+                      // (22/10/2026): a espera é o `status` e a linha Entrega
+                      // lá em cima; "escolha uma opção" e "loja configurando"
+                      // moram na seção de entrega.
+                      <p role="alert" className="sr-only">
+                        Informe o endereço de entrega para calcular o frete
                       </p>
                     )}
                     {!semFreteSelecionado && totalZero.travaPor && (
