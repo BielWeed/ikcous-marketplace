@@ -90,6 +90,9 @@ const {
 const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
 const { PERFIS_ADMIN_ATUAL } = require("./admin-atual-perfis-posterior.cjs");
 const {
+  EX_ADMIN_DEMAIS_TABELAS,
+} = require("./ex-admin-demais-tabelas-posterior.cjs");
+const {
   desfazerReconciliacaoDoEntregueNaTransacao,
 } = require("./reconciliacao-do-entregue-posterior.cjs");
 
@@ -1808,6 +1811,7 @@ const POSTERIORES_A_97 = [
   // 20261197000000 ainda usam ..."). O rollback-manual dela so devolve as 13 expressoes a is_admin(). Definicao unica em
   // tests/banco/admin-atual-perfis-posterior.cjs. No FIM da lista de proposito.
   PERFIS_ADMIN_ATUAL,
+  EX_ADMIN_DEMAIS_TABELAS,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

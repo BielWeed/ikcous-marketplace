@@ -245,7 +245,11 @@ describe("ficha do pedido — pedido de R$ 0,00 (sem valor a pagar)", () => {
     expect(onRegistrarPagamentoMock).toHaveBeenCalledTimes(1);
     expect(onRegistrarPagamentoMock).toHaveBeenCalledWith("ped-zero", true);
     expect(onStatusChangeMock).toHaveBeenCalledTimes(1);
-    expect(onStatusChangeMock).toHaveBeenCalledWith("ped-zero", "delivered");
+    expect(onStatusChangeMock).toHaveBeenCalledWith(
+      "ped-zero",
+      "delivered",
+      "shipping",
+    );
     // Dinheiro primeiro, status depois — a mesma ordem do botão "Recebi".
     expect(ordem).toEqual(["recebido:true", "status:delivered"]);
   });
@@ -303,7 +307,11 @@ describe("ficha do pedido — pedido de R$ 0,00 (sem valor a pagar)", () => {
 
     expect(onRegistrarPagamentoMock).toHaveBeenCalledTimes(2);
     expect(onStatusChangeMock).toHaveBeenCalledTimes(1);
-    expect(onStatusChangeMock).toHaveBeenCalledWith("ped-zero", "delivered");
+    expect(onStatusChangeMock).toHaveBeenCalledWith(
+      "ped-zero",
+      "delivered",
+      "shipping",
+    );
   });
 
   it("total 0 mas a conta não bate (subtotal 150 + frete 20, sem coluna total): NÃO é 'Sem valor a pagar' e NÃO grava 'Recebi' sozinha", async () => {
@@ -335,7 +343,11 @@ describe("ficha do pedido — pedido de R$ 0,00 (sem valor a pagar)", () => {
     await clicarAvancar();
 
     expect(onRegistrarPagamentoMock).not.toHaveBeenCalled();
-    expect(onStatusChangeMock).toHaveBeenCalledWith("ped-zero", "delivered");
+    expect(onStatusChangeMock).toHaveBeenCalledWith(
+      "ped-zero",
+      "delivered",
+      "shipping",
+    );
   });
 
   it("CONTROLE: entregar um pedido de total 100 continua abrindo a pergunta 'Recebeu os R$ 100,00'", async () => {

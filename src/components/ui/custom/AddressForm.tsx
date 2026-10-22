@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
+import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { cn } from "@/lib/utils";
 import type { Address } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -43,7 +44,10 @@ const addressSchema = z.object({
     .string()
     .refine((v) => v.trim().length > 0, "Bairro é obrigatório"),
   city: z.string().refine((v) => v.trim().length > 0, "Cidade é obrigatória"),
-  state: z.string().refine((v) => v.trim().length > 0, "Estado é obrigatório"),
+  state: z
+    .string()
+    .refine((v) => v.trim().length > 0, "Estado é obrigatório")
+    .refine((v) => !v.trim() || ufBrasileiraValida(v), "Estado inválido"),
   reference: z.string().optional().or(z.literal("")),
   recipient_name: z
     .string()

@@ -248,6 +248,39 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     });
   }
 
+  it("reabre opções se P esgotou depois da escolha mas M ainda tem estoque", async () => {
+    const adicionar = vi.fn();
+    const produto = criarProduto({ variants: criarVariantes() });
+    await renderizarCard(produto, { onAddToCartWithVariants: adicionar });
+    await abrirFolha();
+    await act(async () => chip("P").click());
+    await act(async () => alcaDaFolha().click());
+    await renderizarCard(
+      {
+        ...produto,
+        variants: criarVariantes().map((v) =>
+          v.value === "P" ? { ...v, stockIncrement: 0 } : v,
+        ),
+      },
+      { onAddToCartWithVariants: adicionar },
+    );
+
+    expect(botaoDeAcao().disabled).toBe(false);
+    expect(botaoDeAcao().textContent).toContain("Escolher opções");
+    await abrirFolha();
+    expect(folha()).not.toBeNull();
+    await act(async () => ctaDaFolha().click());
+    expect(adicionar).not.toHaveBeenCalled();
+    await act(async () => chip("M").click());
+    await act(async () => ctaDaFolha().click());
+    expect(adicionar).toHaveBeenCalledWith(
+      expect.anything(),
+      "var-m",
+      expect.stringContaining("M"),
+      1,
+    );
+  });
+
   it("clicar em 'Escolher opções' abre a FOLHA por portal (fora do card) e não navega", async () => {
     const onProductClick = vi.fn();
     await renderizarCard(criarProduto({ variants: criarVariantes() }), {

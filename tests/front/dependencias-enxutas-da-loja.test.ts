@@ -418,6 +418,7 @@ describe("zod enxuto — regras reais de formulários", () => {
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cpfValido } from "@/lib/cpf";
+import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { celularBrasileiroCompleto, mensagemDeWhatsappIncompleto } from "@/lib/telefone-br";
 const addressSchema = ${endereco};
 const reviewSchema = ${avaliacao};

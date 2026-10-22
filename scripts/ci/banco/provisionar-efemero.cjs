@@ -209,6 +209,13 @@ async function main() {
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
       )`);
+    // No Supabase de verdade `storage.objects` nasce com RLS LIGADO pela
+    // plataforma (mesma emulação de tests/banco/provisionar.cjs). A 20261360
+    // recusa (B1_BASELINE_DIVERGENT) uma loja em que ela esteja desligada ou
+    // com FORCE; sem isto o job "Migrations do zero" reprovava aqui.
+    await cliente.query(
+      "ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY",
+    );
     console.log(
       "[provisionar] storage.buckets + storage.objects mínimos criados (fábrica do serviço de storage, emulada).",
     );

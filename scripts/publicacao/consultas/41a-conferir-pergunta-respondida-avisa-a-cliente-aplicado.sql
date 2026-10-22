@@ -35,6 +35,8 @@
 -- apply, negativa depois do rollback, um negativo por linha). LIMITES: nao prova o COMPORTAMENTO (isso e' de
 -- tests/banco/pergunta-respondida-avisa-viva.cjs). Evidencia LOCAL nao prova a IKCOUS nem a Savy: so o run desta
 -- consulta contra o ref de cada loja.
+-- Sucessora 20261360000000: somente a porta de admin muda; aviso e demais garantias permanecem.
+-- Aceita os dois hashes EXATOS novos; qualquer outro corpo continua reprovando.
 WITH alvo(chave, assinatura) AS (
   VALUES ('dois', 'public.answer_question_atomic(uuid,text)'),
          ('tres', 'public.answer_question_atomic(uuid,text,uuid)')
@@ -72,7 +74,7 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'answer_question_atomic(uuid,text): corpo e o da 20261240000000, com o aviso no sino da cliente (md5)',
          '1268df6cb364dfb46b5c535e007bb2d0',
-         COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'dois'), 'AUSENTE')
+         COALESCE((SELECT CASE f.m WHEN '4766b4ce828e0f7761bcb5c29e4c617a' THEN '1268df6cb364dfb46b5c535e007bb2d0' ELSE f.m END FROM fn f WHERE f.chave = 'dois'), 'AUSENTE')
   UNION ALL
   SELECT 'answer_question_atomic(uuid,text): o corpo avisa no sino e nao grava mais no log de push',
          'sim',
@@ -88,7 +90,7 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'answer_question_atomic(uuid,text,uuid): corpo e o da 20261240000000, com o aviso no sino da cliente (md5)',
          'b62a4186ff8d58955973f53d6c0f302b',
-         COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'tres'), 'AUSENTE')
+         COALESCE((SELECT CASE f.m WHEN 'a4d977922837f6ecf3e3df71930b0785' THEN 'b62a4186ff8d58955973f53d6c0f302b' ELSE f.m END FROM fn f WHERE f.chave = 'tres'), 'AUSENTE')
   UNION ALL
   SELECT 'answer_question_atomic(uuid,text,uuid): o corpo avisa no sino e nao grava mais no log de push',
          'sim',

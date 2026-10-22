@@ -134,6 +134,27 @@ describe("AddressForm — campos obrigatórios só com espaços", () => {
     },
   );
 
+  it.each(["M", "ZZ", "12"])("recusa UF inexistente %s", async (state) => {
+    const onSubmit = await abrirFormulario();
+    await act(async () => {
+      for (const [campo, valor] of Object.entries({
+        name: "Casa",
+        street: "Rua Teste",
+        number: "1",
+        neighborhood: "Centro",
+        city: "Cidade Teste",
+        state,
+        recipient_name: "Pessoa Teste",
+      }))
+        digitar(campo, valor);
+    });
+    await enviar();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(hospedeiro.querySelector("#erro-state")?.textContent).toBe(
+      "Estado inválido",
+    );
+  });
+
   it("mantém os valores válidos com espaços nas pontas e complemento opcional", async () => {
     const onSubmit = await abrirFormulario();
     const valores = {
