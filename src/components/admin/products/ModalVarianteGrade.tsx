@@ -80,6 +80,10 @@ interface ModalVarianteGradeProps {
    *  Melhor esforço: pode vir vazio se a lista de produtos não carregou —
    *  aí a guarda final é a conferência do salvar e a UNIQUE do banco. */
   skusDaLoja: string[];
+  /** Base do código interno que a grade já traz preenchida ao abrir (hoje: o
+   *  código automático do produto). Vazio/ausente = a base nasce vazia, como
+   *  sempre. A colisão com a loja continua sendo conferida no "Efetivar". */
+  skuBaseSugerida?: string;
   /** O campo Preço de Venda do formulário, como está agora (vazio = a lojista
    *  ainda não preencheu). Decide se o preço digitado na grade vira o do
    *  produto (campo vazio) ou vale só para as combinações novas (já tem). */
@@ -178,6 +182,7 @@ export function ModalVarianteGrade({
   sugestoesDeAtributo,
   grupoUnicoEmUso,
   skusDaLoja,
+  skuBaseSugerida = "",
   precoDoProduto,
   onEfetivar,
 }: ModalVarianteGradeProps) {
@@ -201,7 +206,7 @@ export function ModalVarianteGrade({
       setLinhas([]);
       setAplicarEstoque("");
       setAplicarPreco("");
-      setSkuBase("");
+      setSkuBase(skuBaseSugerida);
       jaEfetivouRef.current = false;
     }
     // O estado inicial lê as variantes NO MOMENTO de abrir; mudanças depois
