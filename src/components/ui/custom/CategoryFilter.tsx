@@ -1,3 +1,4 @@
+import { useIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { IconeDaCategoria, iconeDaCategoria } from "@/lib/icones-de-categoria";
 import type { Category } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -21,6 +22,8 @@ export const CategoryFilter = memo(function CategoryFilter({
   onCategoryChange,
   isLoading,
 }: CategoryFilterProps) {
+  // Sem ícone salvo na categoria, o do catálogo que combina com o nome (chega depois; antes vale o de sempre).
+  const pelosNomes = useIconesPeloNome(categories, !isLoading);
   if (isLoading) {
     return (
       <div role="status" className="flex w-full items-center">
@@ -50,6 +53,7 @@ export const CategoryFilter = memo(function CategoryFilter({
       <div className={FAIXA}>
         {allCategories.map((category) => {
           const isActive = selectedCategory === category.name;
+          const sugerido = pelosNomes.get(category.name);
           return (
             <button
               type="button"
@@ -70,8 +74,8 @@ export const CategoryFilter = memo(function CategoryFilter({
                 }`}
               >
                 <IconeDaCategoria
-                  icone={iconeDaCategoria(category)}
-                  forma={category.iconeForma}
+                  icone={sugerido?.icone ?? iconeDaCategoria(category)}
+                  forma={category.iconeForma ?? sugerido?.forma}
                   className="size-6"
                 />
               </span>

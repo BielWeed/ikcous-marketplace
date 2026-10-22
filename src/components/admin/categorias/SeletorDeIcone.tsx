@@ -18,7 +18,7 @@ import {
   nomeDoIcone,
 } from "@/lib/icones-de-categoria";
 import { normalizeText } from "@/lib/utils";
-import { ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, Search, Sparkles, Wand2 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 
 // Seletor de ícone de uma categoria (Gerenciar categorias). Mostra os 14 clássicos de sempre e, quando o
@@ -47,6 +47,11 @@ interface SeletorDeIconeProps {
   };
   /** Uma gravação em andamento: nenhum botão responde até ela terminar. */
   readonly desabilitado: boolean;
+  /**
+   * `gaveta` (padrão): um botão "Escolher ícone" abre e fecha a galeria, como em Gerenciar categorias.
+   * `direto`: a galeria já vem aberta, para dentro de uma folha (ex.: "Nova categoria" no formulário de produto).
+   */
+  readonly modo?: "gaveta" | "direto";
   readonly aoEscolher: (escolha: EscolhaDeIcone) => void;
 }
 
@@ -57,16 +62,16 @@ type Catalogo =
 
 const TODOS = "Todos";
 const BOTAO =
-  "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 disabled:pointer-events-none disabled:opacity-40";
-const BOTAO_NEUTRO = `${BOTAO} border-admin-border bg-admin-surface text-zinc-300 hover:bg-zinc-800 hover:text-white`;
-const BOTAO_DOURADO = `${BOTAO} border-admin-gold bg-admin-gold text-black hover:brightness-110`;
+  "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-text-soft disabled:pointer-events-none disabled:opacity-40";
+const BOTAO_SECUNDARIO = `${BOTAO} border-admin-border-strong bg-admin-raised text-admin-text hover:bg-admin-hover`;
 const PECA =
-  "flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-center text-[11px] font-bold leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 disabled:opacity-40";
+  "relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-center text-xs font-bold leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-text-soft disabled:opacity-40";
 const PECA_COMUM =
-  "border-admin-border bg-admin-surface text-zinc-300 hover:bg-zinc-800 hover:text-white";
-const PECA_ESCOLHIDA = "border-admin-gold bg-admin-gold/10 text-admin-gold";
+  "border-admin-border bg-admin-surface text-admin-text-soft hover:bg-admin-hover hover:text-admin-text";
+const PECA_ESCOLHIDA =
+  "border-2 border-admin-text bg-admin-raised text-admin-text";
 const FICHA =
-  "min-h-11 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50";
+  "min-h-11 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-text-soft";
 
 function Peca({
   rotulo,
@@ -92,6 +97,14 @@ function Peca({
       onClick={aoTocar}
       className={`${PECA} ${escolhida ? PECA_ESCOLHIDA : PECA_COMUM}`}
     >
+      {escolhida ? (
+        <span
+          aria-hidden="true"
+          className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-admin-text text-admin-bg"
+        >
+          <Check className="size-3" strokeWidth={3} />
+        </span>
+      ) : null}
       {children}
       <span className="line-clamp-2 w-full break-words">{rotulo}</span>
     </button>
@@ -100,13 +113,17 @@ function Peca({
 
 function Secao({
   titulo,
+  quantidade,
   children,
-}: Readonly<{ titulo: string; children: ReactNode }>) {
+}: Readonly<{ titulo: string; quantidade: number; children: ReactNode }>) {
   return (
     <section aria-label={titulo}>
-      <h4 className="mb-2 text-[11px] font-black uppercase tracking-widest text-zinc-500">
-        {titulo}
-      </h4>
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <h4 className="text-sm font-bold text-admin-text-soft">{titulo}</h4>
+        <span className="text-xs text-admin-text-soft">
+          {quantidade === 1 ? "1 ícone" : `${quantidade} ícones`}
+        </span>
+      </div>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
         {children}
       </div>
@@ -119,10 +136,12 @@ export function SeletorDeIcone({
   nomeParaSugerir,
   gravado,
   desabilitado,
+  modo = "gaveta",
   aoEscolher,
 }: SeletorDeIconeProps) {
   const id = useId();
-  const [aberto, setAberto] = useState(false);
+  const [gavetaAberta, setAberto] = useState(false);
+  const aberto = modo === "direto" || gavetaAberta;
   const [busca, setBusca] = useState("");
   const [grupo, setGrupo] = useState(TODOS);
   const [catalogo, setCatalogo] = useState<Catalogo>(() => {
@@ -154,16 +173,20 @@ export function SeletorDeIcone({
 
   const itemGravado = lista?.find((item) => item.d === formaGravada);
   // (o React Compiler do projeto já memoiza estas contas)
-  const sugestao = semEscolha
-    ? sugerirPeloNome(lista ?? [], nomeParaSugerir)
-    : null;
+  const sugerida = sugerirPeloNome(lista ?? [], nomeParaSugerir);
+  // A faixa some quando a lojista escolheu OUTRO ícone; se escolheu o sugerido, ela fica marcada "Usado".
+  const sugestaoUsada =
+    sugerida !== null &&
+    !semEscolha &&
+    (sugerida.tipo === "catalogo"
+      ? formaGravada === sugerida.item.d
+      : classicoGravado === sugerida.chave && formaGravada === null);
+  const sugestao = semEscolha || sugestaoUsada ? sugerida : null;
 
   const termo = busca.trim();
   const classicos = CHAVES_DE_ICONES.filter((c) =>
     classicoCombinaComBusca(c, termo),
   );
-  const automaticoApareceu =
-    termo === "" || normalizeText("Automático").includes(normalizeText(termo));
   const doCatalogo = lista ? buscarNoCatalogo(lista, termo) : [];
   const grupos = lista ? gruposDoCatalogo(lista) : [];
   const gruposAExibir =
@@ -172,7 +195,7 @@ export function SeletorDeIcone({
       : grupos.filter((g) => grupo === TODOS || grupo === g);
   const mostraClassicos = grupo === TODOS || grupo === GRUPO_DOS_CLASSICOS;
   const algumResultado =
-    (mostraClassicos && (classicos.length > 0 || automaticoApareceu)) ||
+    (mostraClassicos && classicos.length > 0) ||
     gruposAExibir.some((g) => doCatalogo.some((item) => item.grupo === g));
 
   const previa = iconeDaCategoria({
@@ -192,27 +215,29 @@ export function SeletorDeIcone({
 
   return (
     <div>
-      <button
-        type="button"
-        aria-expanded={aberto}
-        aria-controls={`${id}-painel`}
-        onClick={() => setAberto((a) => !a)}
-        className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg text-left text-sm font-bold text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
-      >
-        Escolher ícone
-        <ChevronDown
-          aria-hidden="true"
-          className={`size-4 shrink-0 transition-transform ${aberto ? "rotate-180" : ""}`}
-        />
-      </button>
+      {modo === "gaveta" ? (
+        <button
+          type="button"
+          aria-expanded={aberto}
+          aria-controls={`${id}-painel`}
+          onClick={() => setAberto((a) => !a)}
+          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg text-left text-sm font-bold text-admin-text-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-text-soft"
+        >
+          Escolher ícone
+          <ChevronDown
+            aria-hidden="true"
+            className={`size-4 shrink-0 transition-transform ${aberto ? "rotate-180" : ""}`}
+          />
+        </button>
+      ) : null}
 
       {aberto ? (
         <div
           id={`${id}-painel`}
-          className="mt-2 min-w-0 space-y-3 rounded-xl border border-admin-border bg-zinc-950/60 p-3"
+          className="mt-2 min-w-0 space-y-3 rounded-xl border border-admin-border bg-admin-bg p-3"
         >
           <div className="flex items-center gap-3">
-            <span className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-admin-border bg-admin-surface text-zinc-200">
+            <span className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-admin-border bg-admin-surface text-admin-text">
               <IconeDaCategoria
                 icone={previa}
                 forma={formaGravada}
@@ -220,10 +245,8 @@ export function SeletorDeIcone({
               />
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500">
-                Ícone atual
-              </p>
-              <p className="break-words text-sm font-bold text-white">
+              <p className="text-xs text-admin-text-soft">Ícone atual</p>
+              <p className="break-words text-sm font-bold text-admin-text">
                 {rotuloAtual}
               </p>
             </div>
@@ -233,9 +256,9 @@ export function SeletorDeIcone({
             <div
               role="group"
               aria-label={`Sugestão de ícone para ${nomeParaSugerir}`}
-              className="flex flex-wrap items-center gap-3 rounded-xl border border-admin-gold/40 bg-admin-gold/10 p-3"
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-admin-border-strong bg-admin-surface p-3"
             >
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-gold/40 text-admin-gold">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-raised text-admin-text">
                 <IconeDaCategoria
                   icone={
                     sugestao.tipo === "classico" ? sugestao.chave : "etiqueta"
@@ -244,8 +267,11 @@ export function SeletorDeIcone({
                   className="size-7"
                 />
               </span>
-              <p className="min-w-0 flex-1 basis-40 text-sm text-white">
-                Sugestão para “{nomeParaSugerir}”:{" "}
+              <p className="min-w-0 flex-1 basis-40 text-sm text-admin-text">
+                <span className="flex items-center gap-1 text-xs text-admin-text-soft">
+                  <Sparkles aria-hidden="true" className="size-3.5" />
+                  Sugerimos pelo nome “{nomeParaSugerir}”
+                </span>
                 <strong className="font-black">
                   {sugestao.tipo === "classico"
                     ? nomeDoIcone(sugestao.chave)
@@ -254,23 +280,47 @@ export function SeletorDeIcone({
               </p>
               <button
                 type="button"
-                disabled={desabilitado}
-                className={BOTAO_DOURADO}
+                disabled={desabilitado || sugestaoUsada}
+                aria-label={sugestaoUsada ? "Sugestão usada" : "Usar sugestão"}
+                className={BOTAO_SECUNDARIO}
                 onClick={() =>
                   sugestao.tipo === "classico"
                     ? escolherClassico(sugestao.chave)
                     : escolherDoCatalogo(sugestao.item)
                 }
               >
-                Usar sugestão
+                {sugestaoUsada ? (
+                  <Check aria-hidden="true" className="size-4" />
+                ) : null}
+                {sugestaoUsada ? "Usado" : "Usar"}
               </button>
             </div>
           ) : null}
 
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-base font-bold text-admin-text">
+              Ícone da categoria
+            </h3>
+            <button
+              type="button"
+              aria-label={`Ícone Automático para ${nomeDaCategoria}`}
+              aria-pressed={semEscolha}
+              disabled={desabilitado}
+              onClick={() => escolherClassico(null)}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2 text-sm font-bold text-admin-text-2 hover:text-admin-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-text-soft disabled:opacity-40"
+            >
+              <Wand2 aria-hidden="true" className="size-4" />
+              Automático
+              {semEscolha ? (
+                <Check aria-hidden="true" className="size-4" />
+              ) : null}
+            </button>
+          </div>
+
           <div className="relative">
             <Search
               aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-admin-text-soft"
             />
             <label htmlFor={`${id}-busca`} className="sr-only">
               Buscar ícone para {nomeDaCategoria}
@@ -281,9 +331,9 @@ export function SeletorDeIcone({
               value={busca}
               maxLength={40}
               autoComplete="off"
-              placeholder="Buscar: blusa, bolsa…"
+              placeholder="Buscar ícone: bolsa, tênis, vestido…"
               onChange={(e) => setBusca(e.target.value)}
-              className="min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950 pl-9 pr-3 text-sm font-bold text-white placeholder:font-normal placeholder:text-zinc-500 focus:border-admin-gold focus:outline-none focus:ring-2 focus:ring-admin-gold/30"
+              className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface pl-9 pr-3 text-sm font-bold text-admin-text placeholder:font-normal placeholder:text-admin-text-soft focus:border-admin-text-soft focus:outline-none focus:ring-2 focus:ring-admin-text-soft"
             />
           </div>
 
@@ -300,8 +350,8 @@ export function SeletorDeIcone({
                 onClick={() => setGrupo(nome)}
                 className={`${FICHA} ${
                   grupo === nome
-                    ? "border-admin-gold bg-admin-gold/10 text-admin-gold"
-                    : "border-admin-border bg-admin-surface text-zinc-400 hover:text-white"
+                    ? "border-admin-text bg-admin-text text-admin-bg"
+                    : "border-admin-border bg-admin-surface text-admin-text-soft hover:text-admin-text"
                 }`}
               >
                 {nome}
@@ -310,14 +360,14 @@ export function SeletorDeIcone({
           </div>
 
           {catalogo.estado === "carregando" ? (
-            <p role="status" className="text-xs text-zinc-400">
+            <p role="status" className="text-xs text-admin-text-soft">
               Carregando mais ícones…
             </p>
           ) : null}
           {catalogo.estado === "erro" ? (
             <div
               role="alert"
-              className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+              className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/40 px-3 py-2 text-xs text-admin-text"
             >
               <p className="min-w-0 flex-1 basis-40">
                 Não deu para carregar os ícones novos agora. Os ícones clássicos
@@ -325,7 +375,7 @@ export function SeletorDeIcone({
               </p>
               <button
                 type="button"
-                className={BOTAO_NEUTRO}
+                className={BOTAO_SECUNDARIO}
                 onClick={() => setTentativa((n) => n + 1)}
               >
                 Tentar de novo
@@ -339,22 +389,8 @@ export function SeletorDeIcone({
           >
             <legend className="sr-only">Ícone de {nomeDaCategoria}</legend>
 
-            {mostraClassicos && (classicos.length > 0 || automaticoApareceu) ? (
-              <Secao titulo={GRUPO_DOS_CLASSICOS}>
-                {automaticoApareceu ? (
-                  <Peca
-                    rotulo="Automático"
-                    categoria={nomeDaCategoria}
-                    escolhida={semEscolha}
-                    desabilitada={desabilitado}
-                    aoTocar={() => escolherClassico(null)}
-                  >
-                    <IconeDaCategoria
-                      icone={iconeDaCategoria({ name: nomeDaCategoria })}
-                      className="size-6"
-                    />
-                  </Peca>
-                ) : null}
+            {mostraClassicos && classicos.length > 0 ? (
+              <Secao titulo={GRUPO_DOS_CLASSICOS} quantidade={classicos.length}>
                 {classicos.map((chave) => (
                   <Peca
                     key={chave}
@@ -378,7 +414,11 @@ export function SeletorDeIcone({
               );
               if (itens.length === 0) return null;
               return (
-                <Secao key={nomeDoGrupo} titulo={nomeDoGrupo}>
+                <Secao
+                  key={nomeDoGrupo}
+                  titulo={nomeDoGrupo}
+                  quantidade={itens.length}
+                >
                   {itens.map((item) => (
                     <Peca
                       key={item.chave}
@@ -400,7 +440,7 @@ export function SeletorDeIcone({
             })}
 
             {!algumResultado && catalogo.estado !== "carregando" ? (
-              <p role="status" className="text-sm text-zinc-400">
+              <p role="status" className="text-sm text-admin-text-soft">
                 Nenhum ícone com “{termo}”. Tente outra palavra ou escolha um
                 grupo.
               </p>

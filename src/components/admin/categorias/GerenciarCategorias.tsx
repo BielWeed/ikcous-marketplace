@@ -1,5 +1,6 @@
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
 import { useCategories } from "@/hooks/useCategories";
+import { useIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { useUsoDasCategorias } from "@/hooks/useUsoDasCategorias";
 import {
   type CategoriaComUso,
@@ -40,9 +41,9 @@ interface GerenciarCategoriasProps {
 }
 
 const BOTAO =
-  "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 disabled:pointer-events-none disabled:opacity-40";
-const BOTAO_NEUTRO = `${BOTAO} border-admin-border bg-admin-surface text-zinc-300 hover:bg-zinc-800 hover:text-white`;
-const BOTAO_DOURADO = `${BOTAO} border-admin-gold bg-admin-gold text-black hover:brightness-110`;
+  "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-text-soft disabled:pointer-events-none disabled:opacity-40";
+const BOTAO_NEUTRO = `${BOTAO} border-admin-border-strong bg-admin-raised text-admin-text hover:bg-admin-hover`;
+const BOTAO_DOURADO = `${BOTAO} border-admin-text bg-admin-text text-admin-bg hover:opacity-90`;
 const BOTAO_PERIGO = `${BOTAO} border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20`;
 
 export function GerenciarCategorias({
@@ -72,6 +73,8 @@ function ConteudoDaGestao() {
     updateCategory,
   } = useCategories();
 
+  // Sem ícone salvo, a linha mostra o do catálogo que combina com o nome (o mesmo que a vitrine desenha).
+  const pelosNomes = useIconesPeloNome(categories);
   const [editando, setEditando] = useState<{
     readonly id: string;
     readonly valor: string;
@@ -249,15 +252,17 @@ function ConteudoDaGestao() {
             >
               <div className="flex flex-wrap items-center gap-2">
                 <IconeDaCategoria
-                  icone={iconeDaCategoria(categoria)}
-                  forma={categoria.iconeForma}
+                  icone={
+                    pelosNomes.get(c.nome)?.icone ?? iconeDaCategoria(categoria)
+                  }
+                  forma={categoria.iconeForma ?? pelosNomes.get(c.nome)?.forma}
                   className="size-6 shrink-0 text-zinc-300"
                 />
                 <span className="min-w-0 break-words text-base font-black text-white">
                   {c.nome}
                 </span>
                 {c.ativa ? null : (
-                  <span className="rounded-md border border-zinc-600 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-zinc-400">
+                  <span className="rounded-md border border-admin-border-strong px-2 py-0.5 text-xs font-bold text-admin-text-soft">
                     Escondida da vitrine
                   </span>
                 )}
@@ -299,7 +304,7 @@ function ConteudoDaGestao() {
                 >
                   <label
                     htmlFor={`nome-da-categoria-${c.id}`}
-                    className="block text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                    className="block text-xs font-bold text-admin-text-soft"
                   >
                     Novo nome
                   </label>
@@ -317,7 +322,7 @@ function ConteudoDaGestao() {
                     onChange={(e) =>
                       setEditando({ id: c.id, valor: e.target.value })
                     }
-                    className="min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950 px-4 text-sm font-bold text-white focus:border-admin-gold focus:outline-none focus:ring-2 focus:ring-admin-gold/30"
+                    className="min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950 px-4 text-sm font-bold text-white focus:border-admin-text-soft focus:outline-none focus:ring-2 focus:ring-admin-text-soft"
                   />
                   {nomeReservado ? (
                     <p
