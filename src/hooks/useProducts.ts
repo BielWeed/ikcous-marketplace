@@ -19,6 +19,7 @@ import { supabase } from "@/lib/supabase";
 import type { Product, ProductVariant } from "@/types";
 import type { Database } from "@/types/database.types";
 import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
+import { produtoSemCustoEmEstoque } from "@/utils/produtos-sem-custo";
 import { TruthGate } from "@/utils/truth_gate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -624,10 +625,13 @@ function traduzirRecusaConhecida(error: unknown): string | null {
  * a si mesmo. A exceção é só para as linhas do próprio produto que o lote
  * regrava (mesmo `id`): uma irmã do mesmo produto que fica de fora do lote
  * continua dona do SKU depois do salvar, então segue contando como colisão.
+ * Na RPC, `idsQueSaem` isenta também as irmãs apagadas na mesma transação;
+ * uma exclusão recusada ainda será protegida pelo índice único do banco.
  */
 async function conferirSkusDasVariacoes(
   variantes: ReadonlyArray<{ id?: string | null; sku?: string | null }>,
   ignorarProdutoId?: string,
+  idsQueSaem: readonly string[] = [],
 ): Promise<string | null> {
   const skus = variantes
     .map((v) => (typeof v.sku === "string" ? v.sku.trim() : ""))
@@ -657,12 +661,13 @@ async function conferirSkusDasVariacoes(
             typeof id === "string" && id !== "" && !id.startsWith("temp-"),
         ),
     );
+    const idsApagados = new Set(idsQueSaem);
     const linha = ((data ?? []) as any[]).find(
       (l) =>
         !(
           ignorarProdutoId !== undefined &&
           l.product_id === ignorarProdutoId &&
-          idsRegravados.has(l.id)
+          (idsRegravados.has(l.id) || idsApagados.has(l.id))
         ),
     );
     if (!linha) return null;
@@ -681,6 +686,64 @@ async function conferirSkusDasVariacoes(
     console.warn("[useProducts] Não consegui conferir os SKUs agora:", err);
     return null;
   }
+}
+
+function atualizacoesDoProdutoParaBanco(updates: Partial<Product>) {
+  const dbUpdates: any = {};
+  if (updates.name !== undefined) dbUpdates.nome = updates.name;
+  if (updates.description !== undefined)
+    dbUpdates.descricao = updates.description;
+  if (updates.price !== undefined) dbUpdates.preco_venda = updates.price;
+  if (updates.costPrice !== undefined) dbUpdates.custo = updates.costPrice;
+  if (updates.originalPrice !== undefined)
+    dbUpdates.preco_original = updates.originalPrice;
+  if (updates.stock !== undefined) dbUpdates.estoque = updates.stock;
+  // Mesma regra da fila offline acima: `null` limpa, zero vale.
+  if (updates.estoqueMinimo !== undefined)
+    dbUpdates.estoque_minimo = updates.estoqueMinimo;
+  if (updates.category !== undefined) dbUpdates.categoria = updates.category;
+  if (updates.images !== undefined) {
+    dbUpdates.imagem_urls = updates.images;
+    dbUpdates.imagem_url = updates.images[0] || null;
+  }
+  if (updates.isActive !== undefined) dbUpdates.ativo = updates.isActive;
+  if (updates.isBestseller !== undefined)
+    dbUpdates.is_bestseller = updates.isBestseller;
+  if (updates.freeShipping !== undefined)
+    dbUpdates.frete_gratis = updates.freeShipping;
+  if (updates.metaTitle !== undefined) dbUpdates.meta_title = updates.metaTitle;
+  if (updates.metaDescription !== undefined)
+    dbUpdates.meta_description = updates.metaDescription;
+  if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
+  if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
+  if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
+  if (updates.codigoBarras !== undefined)
+    dbUpdates.codigo_barras = updates.codigoBarras || null;
+  if (updates.weightKg !== undefined) dbUpdates.peso_kg = updates.weightKg;
+  if (updates.widthCm !== undefined) dbUpdates.largura_cm = updates.widthCm;
+  if (updates.heightCm !== undefined) dbUpdates.altura_cm = updates.heightCm;
+  if (updates.lengthCm !== undefined)
+    dbUpdates.comprimento_cm = updates.lengthCm;
+  return dbUpdates;
+}
+
+function variacoesParaBanco(variants: Array<any>, productId?: string) {
+  return variants.map((v) => {
+    const item: any = {
+      name: v.name,
+      value: v.value,
+      sku: v.sku || null,
+      codigo_barras: v.codigoBarras || null,
+      price_override: v.priceOverride ?? null,
+      active: v.active,
+      image_url: v.imageUrl || null,
+    };
+    if (productId !== undefined) item.product_id = productId;
+    // Ausência preserva o estoque vendido; null e o número antigo não.
+    if (v.stockIncrement !== undefined) item.stock_increment = v.stockIncrement;
+    if (v.id && !v.id.startsWith("temp-")) item.id = v.id;
+    return item;
+  });
 }
 
 export function useProducts({ autoFetch = true } = {}) {
@@ -984,6 +1047,81 @@ export function useProducts({ autoFetch = true } = {}) {
       }
     },
     [isAdmin, autoFetch],
+  );
+
+  // Lista "Sem custo" da tela Produtos. A lista do painel é paginada no
+  // servidor e `get_admin_products_paged` não filtra por custo: para a lista
+  // ser COMPLETA (e bater com o número do selo, que o banco conta no catálogo
+  // inteiro) percorre todas as páginas dos produtos ativos e filtra aqui com a
+  // regra do selo. NÃO mexe em `products` (a página normal fica como está) e
+  // devolve `null` em qualquer falha — nunca uma lista pela metade como se
+  // fosse completa. Uma busca mais nova (desta ou de `loadProducts`) vence:
+  // a resposta velha é descartada.
+  const loadProductsSemCusto = useCallback(
+    async (filters?: { search?: string; category?: string }) => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
+      const loadId = ++lastLoadId.current;
+      const TAMANHO_DA_PAGINA = 200;
+      const LIMITE_DE_PAGINAS = 50;
+      try {
+        if (!isAdmin) throw new Error("lista de custo é só do painel");
+        setLoading(true);
+        // Por id: um cadastro no meio da leitura pode repetir uma linha.
+        const semCusto = new Map<string, Product>();
+        let terminou = false;
+        for (let pagina = 0; pagina < LIMITE_DE_PAGINAS; pagina++) {
+          const { data, error } = await callRpcWithRetry<any>(async () =>
+            (supabase.rpc as any)("get_admin_products_paged", {
+              p_search: filters?.search || "",
+              p_category: filters?.category || "all",
+              p_status: "active",
+              p_stock: "all",
+              p_page: pagina,
+              p_page_size: TAMANHO_DA_PAGINA,
+            }).abortSignal(signal),
+          );
+          if (error) throw error;
+          if (loadId !== lastLoadId.current) return null;
+          if (!data || !Array.isArray(data.data)) {
+            throw new Error("resposta sem lista de produtos");
+          }
+          for (const linha of data.data) {
+            const produto = mapProductFromDB(linha);
+            if (produtoSemCustoEmEstoque(produto)) {
+              semCusto.set(produto.id, produto);
+            }
+          }
+          const total = Number(data.total_count) || 0;
+          if (
+            data.data.length === 0 ||
+            (pagina + 1) * TAMANHO_DA_PAGINA >= total
+          ) {
+            terminou = true;
+            break;
+          }
+        }
+        if (!terminou)
+          throw new Error("catálogo maior que o limite de leitura");
+        return { products: [...semCusto.values()], total: semCusto.size };
+      } catch (err: any) {
+        if (
+          err?.name === "AbortError" ||
+          err?.message === "Fetch is aborted" ||
+          err?.message?.includes("aborted")
+        ) {
+          return null;
+        }
+        console.error("Error loading products without cost:", err);
+        if (loadId === lastLoadId.current)
+          toast.error("Erro ao listar produtos");
+        return null;
+      } finally {
+        if (loadId === lastLoadId.current) setLoading(false);
+      }
+    },
+    [isAdmin],
   );
 
   // We rely on the context for autoFetch now
@@ -1377,47 +1515,7 @@ export function useProducts({ autoFetch = true } = {}) {
           );
         }
 
-        const dbUpdates: any = {};
-        if (updates.name !== undefined) dbUpdates.nome = updates.name;
-        if (updates.description !== undefined)
-          dbUpdates.descricao = updates.description;
-        if (updates.price !== undefined) dbUpdates.preco_venda = updates.price;
-        if (updates.costPrice !== undefined)
-          dbUpdates.custo = updates.costPrice;
-        if (updates.originalPrice !== undefined)
-          dbUpdates.preco_original = updates.originalPrice;
-        if (updates.stock !== undefined) dbUpdates.estoque = updates.stock;
-        // Mesma regra da fila offline acima: `null` limpa, zero vale.
-        if (updates.estoqueMinimo !== undefined)
-          dbUpdates.estoque_minimo = updates.estoqueMinimo;
-        if (updates.category !== undefined)
-          dbUpdates.categoria = updates.category;
-        if (updates.images !== undefined) {
-          dbUpdates.imagem_urls = updates.images;
-          dbUpdates.imagem_url = updates.images[0] || null;
-        }
-        if (updates.isActive !== undefined) dbUpdates.ativo = updates.isActive;
-        if (updates.isBestseller !== undefined)
-          dbUpdates.is_bestseller = updates.isBestseller;
-        if (updates.freeShipping !== undefined)
-          dbUpdates.frete_gratis = updates.freeShipping;
-        if (updates.metaTitle !== undefined)
-          dbUpdates.meta_title = updates.metaTitle;
-        if (updates.metaDescription !== undefined)
-          dbUpdates.meta_description = updates.metaDescription;
-        if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
-        if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
-        if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
-        if (updates.codigoBarras !== undefined)
-          dbUpdates.codigo_barras = updates.codigoBarras || null;
-        if (updates.weightKg !== undefined)
-          dbUpdates.peso_kg = updates.weightKg;
-        if (updates.widthCm !== undefined)
-          dbUpdates.largura_cm = updates.widthCm;
-        if (updates.heightCm !== undefined)
-          dbUpdates.altura_cm = updates.heightCm;
-        if (updates.lengthCm !== undefined)
-          dbUpdates.comprimento_cm = updates.lengthCm;
+        const dbUpdates = atualizacoesDoProdutoParaBanco(updates);
 
         let gravacao = (supabase.from("vw_produtos_admin") as any)
           .update(dbUpdates)
@@ -1488,6 +1586,137 @@ export function useProducts({ autoFetch = true } = {}) {
       fetchProduct,
       user?.id,
     ],
+  );
+
+  const salvarProdutoComGrade = useCallback(
+    async (
+      id: string,
+      updates: Partial<Product>,
+      {
+        baseUpdatedAt,
+        variantes,
+        apagar,
+      }: { baseUpdatedAt?: string; variantes: Array<any>; apagar: string[] },
+    ) => {
+      if (!isAdmin) {
+        toast.error("Permissão negada");
+        return;
+      }
+
+      let gradeGravada = false;
+      try {
+        const atual =
+          products.find((p) => p.id === id) || (await fetchProduct(id));
+        const mesclado = atual ? { ...atual, ...updates } : updates;
+        TruthGate.verifyProductAxiom(mesclado);
+        for (const variante of variantes) {
+          TruthGate.verifyVariantAxiom(variante, {
+            costPrice: mesclado.costPrice,
+          });
+        }
+        const recusaDeSku = await conferirSkusDasVariacoes(
+          variantes,
+          id,
+          apagar,
+        );
+        if (recusaDeSku) throw new RecusaDoCadastroDeProduto(recusaDeSku);
+
+        // A base ausente só é permitida quando nenhum estoque foi enviado.
+        if (
+          !baseUpdatedAt &&
+          (updates.stock !== undefined ||
+            variantes.some((v) => v.stockIncrement !== undefined))
+        ) {
+          throw new RecusaDoCadastroDeProduto(
+            "Não consegui conferir a versão do estoque. Recarregue o produto antes de salvar de novo.",
+          );
+        }
+        const imagensDasApagadas =
+          apagar.length > 0
+            ? await supabase
+                .from("product_variants")
+                .select("id, image_url")
+                .eq("product_id", id)
+                .in("id", apagar)
+            : null;
+        if (imagensDasApagadas?.error) throw imagensDasApagadas.error;
+
+        // O tipo da RPC chega junto com a migration na integração do backend.
+        const { data, error } = await (supabase.rpc as any)(
+          "salvar_produto_com_grade",
+          {
+            p_produto_id: id,
+            p_base_atualizado_em: baseUpdatedAt ?? null,
+            p_produto: atualizacoesDoProdutoParaBanco(updates),
+            p_variantes: variacoesParaBanco(variantes),
+            p_apagar: apagar,
+          },
+        );
+        if (error?.code === "PRD01") {
+          const produtoAtual = await fetchProduct(id).catch(() => null);
+          throw Object.assign(
+            new RecusaDoCadastroDeProduto(
+              "O produto mudou enquanto você editava. Recarregue a página e confira antes de salvar de novo.",
+            ),
+            { produtoAtual },
+          );
+        }
+        if (error) throw error;
+        gradeGravada = true;
+
+        const resultado = data as {
+          ultima_atualizacao: string;
+          apagadas: string[];
+          recusadas: string[];
+        };
+        for (const imagem of atual?.images ?? []) {
+          if (
+            updates.images !== undefined &&
+            !updates.images.includes(imagem)
+          ) {
+            await backupStorageFile(imagem);
+          }
+        }
+        for (const variante of imagensDasApagadas?.data ?? []) {
+          if (variante.image_url && resultado.apagadas.includes(variante.id)) {
+            await backupStorageFile(variante.image_url);
+          }
+        }
+
+        // Reler inclui os ids das novas variações e a versão depois dos gatilhos.
+        // Se a leitura falhar, a tela precisa travar a repetição do INSERT.
+        const produto = await fetchProduct(id);
+        if (!produto)
+          throw new Error("Produto não encontrado após salvar a grade.");
+        cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
+          p.id === id ? produto : p,
+        );
+        setLocalProducts((prev) =>
+          prev.map((p) => (p.id === id ? produto : p)),
+        );
+        clearAnalyticsCache();
+        await refreshContext();
+        if (resultado.recusadas.length === 0)
+          toast.success("Produto atualizado!");
+        return { produto, recusadas: resultado.recusadas };
+      } catch (err) {
+        console.error("Error saving product and variants:", err);
+        if (gradeGravada) {
+          // A transação já comitou: não oferecer um segundo INSERT às novas.
+          const recusa = Object.assign(
+            new RecusaDoCadastroDeProduto(
+              "As variações novas já foram gravadas, mas não consegui reler o produto. Recarregue a tela antes de salvar de novo: salvar agora repetiria essas variações.",
+            ),
+            { gradeGravada: true },
+          );
+          toast.error(recusa.message);
+          throw recusa;
+        }
+        toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
+        throw err;
+      }
+    },
+    [isAdmin, products, fetchProduct, backupStorageFile, refreshContext],
   );
 
   // #99 (ADMIN-070): mídia é movida para backup/ DEPOIS do soft-delete já
@@ -2266,41 +2495,7 @@ export function useProducts({ autoFetch = true } = {}) {
         const recusaDeSku = await conferirSkusDasVariacoes(variants, productId);
         if (recusaDeSku) throw new RecusaDoCadastroDeProduto(recusaDeSku);
 
-        const dbVariants = variants.map((v) => {
-          const item: any = {
-            product_id: productId,
-            name: v.name,
-            value: v.value,
-            sku: v.sku || null,
-            // Mesma regra do `sku` acima, não a de `price_override` logo
-            // abaixo: `codigoBarras` é texto (como o sku), não número — não
-            // existe "zero legítimo" a proteger, então vazio vira NULL direto.
-            codigo_barras: v.codigoBarras || null,
-            // `stock_increment` NÃO entra aqui: ver o `if` logo depois do
-            // objeto. Estoque é dinheiro e só vai quando veio informado.
-            // `?? null` (laudo 0109, A1): `undefined` some na serialização do
-            // supabase-js, o UPDATE da variante existente saía SEM a coluna e
-            // o override antigo sobrevivia — a tela dizia "Variantes salvas"
-            // e a loja seguia cobrando o preço substituto apagado. Mesmo
-            // tratamento que `sku`/`image_url` já tinham: vazio vira NULL
-            // de verdade (0 legítimo continua 0).
-            price_override: v.priceOverride ?? null,
-            active: v.active,
-            image_url: v.imageUrl || null,
-          };
-          // O formulário omite `stockIncrement` da variação cujo número a
-          // lojista NÃO mexeu (o que a tela leu ao abrir pode já estar velho:
-          // uma venda desconta o estoque no banco). Sem a chave, o UPDATE não
-          // leva a coluna e o número que o banco tem hoje sobrevive — nunca
-          // `null` (zeraria) nem o valor da tela (desfaria a venda).
-          if (v.stockIncrement !== undefined) {
-            item.stock_increment = v.stockIncrement;
-          }
-          if (v.id && !v.id.startsWith("temp-")) {
-            item.id = v.id;
-          }
-          return item;
-        });
+        const dbVariants = variacoesParaBanco(variants, productId);
 
         // useProducts-1591: um `.upsert()` só com o lote misto (linhas com e
         // sem `id`) quebrava TUDO. O postgrest-js monta `columns` com a UNIÃO
@@ -2373,10 +2568,12 @@ export function useProducts({ autoFetch = true } = {}) {
     isLoaded: !currentLoading, // Derived property for backward compatibility
     fetchProducts,
     loadProducts,
+    loadProductsSemCusto,
     fetchAdminProducts: loadProducts, // Alias for backward compatibility if needed
     getProductById,
     addProduct,
     updateProduct,
+    salvarProdutoComGrade,
     deleteProduct,
     deleteProducts,
     updateProductsStatus,

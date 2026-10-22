@@ -1,11 +1,11 @@
 import { LazyImage } from "@/components/LazyImage";
+import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
-import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
-import { Check, Heart, ImageIcon, Loader2, ShoppingCart } from "lucide-react";
+import { Check, ImageIcon, Loader2, ShoppingCart } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   type PremiumOffersProps,
@@ -231,20 +231,12 @@ function CartaoOfertaCompacta({
             )}
           </>
         )}
-        <button
-          type="button"
+        <BotaoDeFavorito
+          nome={product.name}
+          favorito={isFavorite}
           onClick={handleFavoriteClick}
-          aria-label={rotuloDeFavoritar(product.name, isFavorite)}
-          className={cn(
-            "absolute right-1 top-1 z-20 flex size-11 items-center justify-center rounded-xl bg-white focus-visible:ring-2 focus-visible:ring-zinc-950",
-            isFavorite ? "text-zinc-950" : "text-zinc-500",
-          )}
-        >
-          <Heart
-            aria-hidden="true"
-            className={cn("size-6", isFavorite && "fill-current")}
-          />
-        </button>
+          className="absolute right-1 top-1 z-20"
+        />
       </div>
       <div className={cn("flex min-w-0 flex-1 flex-col", !largo && "p-2.5")}>
         {largo && <div className="mb-3">{desconto}</div>}

@@ -290,18 +290,25 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       undefined,
       campo,
     );
-  // A 350 vem DEPOIS da 244; a 360 e a 370 foram anexadas logo depois dela
+  // A 350 vem DEPOIS da 244; a 360, a 370, a 352 e a 380 foram anexadas logo depois dela
   // (lotes novos no fim, nesta ordem).
   const versoes = canais.provasDeObjetos.flatMap((p) => p.versoes ?? []);
   assert(versoes.indexOf("20261244000000") < versoes.indexOf("20261350000000"));
   assertEquals(
-    canais.provasDeObjetos.slice(-3).map((p) => p.consulta),
+    canais.provasDeObjetos.filter((p) => p.consulta === A81).length,
+    1,
+    "a 81a entra uma vez",
+  );
+  assertEquals(
+    canais.provasDeObjetos.slice(-5).map((p) => p.consulta),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
       "83a-conferir-caixa-so-na-conta-da-loja-aplicado",
+      "84a-conferir-produto-com-grade-aplicado",
+      "85a-conferir-aviso-de-cancelados-antigos-aplicado",
     ],
-    "a 82a e a 83a sucedem a 81a no fim, sem reordenar lotes anteriores",
+    "a 82a, a 83a, a 84a e a 85a sucedem a 81a no fim, sem reordenar lotes anteriores",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(

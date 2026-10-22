@@ -1143,7 +1143,8 @@ async function main() {
   // posteriores sao a 20261227 (crm_visao), a 20261228 (que sucede a 12 em painel_inicio) e a 20261230 e a
   // 20261231 (a busca de clientes: get_admin_customers_paged e crm_clientes, funcoes de fora destas tres),
   // a 20261232 (que sucede a 27 em crm_visao), a 20261234 (que sucede a 14 em get_admin_analytics_v2) e a
-  // 20261239 (a identidade legal da loja: upsert_store_config, tambem fora destas tres)
+  // 20261239 (a identidade legal da loja: upsert_store_config, tambem fora destas tres) e a 20261380 (o aviso de
+  // cancelados antigos: get_admin_orders_cancelados_recentes, que ela SUCEDE a 99 e tambem fica fora destas tres)
   assert.deepEqual(
     SUCESSORAS_DO_LOTE.map((s) => [s.nome, s.assinatura, s.hashDesta]).sort(),
     [F.painel, F.analytics].map((f) => [f.arq, f.sig, f.md5.depois]).sort(),
@@ -1253,6 +1254,13 @@ async function main() {
       [
         "20261370000000_o_caixa_abre_so_na_conta_da_loja.sql",
         "public.fin_caixa_abrir(numeric,uuid)",
+      ],
+      // A 20261380 (o aviso de cancelados antigos): recria get_admin_orders_cancelados_recentes sobre o corpo da 99 (so o
+      // bloco do fora_da_janela muda). Funcao de fora destas tres, que a 17a e a 17b nao leem: o mesmo caso da 39 e da 44
+      // acima. O rollback dela devolve o corpo da 99 (o molde, abaixo, desfaz e mede).
+      [
+        "20261380000000_o_aviso_de_cancelados_antigos_conta_so_pendencia_real.sql",
+        "public.get_admin_orders_cancelados_recentes(integer,integer,integer)",
       ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",

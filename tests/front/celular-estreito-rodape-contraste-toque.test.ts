@@ -139,11 +139,17 @@ describe("checkout: texto pequeno sem zinc-400 / red-500", () => {
     expect(contraste("zinc-600", "white")).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("os 5 avisos role=alert de 11px usam red-700, nenhum red-500", () => {
+  it("os 4 avisos vermelhos de 11px usam red-700, nenhum red-500", () => {
+    // Eram 5. O aviso de frete deixou de ser vermelho (pedido do dono,
+    // 22/10/2026: a espera do frete não é erro e a barra não pode crescer):
+    // a espera virou texto cinza na linha Entrega, os motivos moram na seção de
+    // entrega e o leitor de tela os ouve na região `status` da barra. Sobram
+    // pagamento indisponível, forma desligada, sem conexão e o "como destravar"
+    // da recusa. A checagem de "nenhum red-500" segue valendo.
     const base =
       "mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase";
     expect(CHECKOUT.split(`${base} text-red-500`).length - 1).toBe(0);
-    expect(CHECKOUT.split(`${base} text-red-700`).length - 1).toBe(5);
+    expect(CHECKOUT.split(`${base} text-red-700`).length - 1).toBe(4);
   });
 });
 

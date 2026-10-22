@@ -94,6 +94,7 @@ describe("FavoritesView — erro de carregamento não é 'tão vazia'", () => {
     expect(texto).toContain("Não conseguimos carregar");
     expect(texto).toContain("Tentar de novo");
     expect(texto).not.toContain("tão vazia");
+    expect(texto).not.toContain("Você ainda não tem favoritos");
 
     const retry = [...hospedeiro.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Tentar de novo"),
@@ -105,11 +106,11 @@ describe("FavoritesView — erro de carregamento não é 'tão vazia'", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
-  it("sem erro e lista vazia DE VERDADE: o 'tão vazia' continua lá", async () => {
+  it("sem erro e lista vazia DE VERDADE: o estado vazio continua lá", async () => {
     erroDaVez = null;
     const texto = await renderizar();
 
-    expect(texto).toContain("tão vazia");
+    expect(texto).toContain("Você ainda não tem favoritos");
     expect(texto).not.toContain("Tentar de novo");
   });
 });

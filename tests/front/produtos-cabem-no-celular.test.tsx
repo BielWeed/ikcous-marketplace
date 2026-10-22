@@ -521,7 +521,11 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       const metricas = hospedeiro.querySelector<HTMLElement>(
         'section[aria-label="Métricas de Produtos"]',
       )!;
-      const atalho = metricas.querySelector<HTMLButtonElement>("button");
+      // O selo "sem custo" da nota agora é botão e vem antes no documento:
+      // o atalho Expandir/Recolher é o botão que expande.
+      const atalho = metricas.querySelector<HTMLButtonElement>(
+        "button[aria-expanded]",
+      );
       expect(atalho).not.toBeNull();
       expect(metricas.hidden).toBe(false);
       expect(metricas.closest("[hidden]")).toBeNull();

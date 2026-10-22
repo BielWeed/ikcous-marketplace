@@ -174,7 +174,7 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     }
   });
 
-  it("offline mantém a explicação abaixo do cabeçalho e explica Novo Banner indisponível", async () => {
+  it("offline mantém a explicação abaixo do cabeçalho e explica Novo banner indisponível", async () => {
     diagnostico.atual = { isOffline: true, quality: "offline", latency: 0 };
     await montar("admin-banners");
     const faixa = hospedeiro.querySelector('[role="alert"]');
@@ -183,24 +183,24 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     );
     expect(hospedeiro.querySelector("header")?.nextElementSibling).toBe(faixa);
     const novo = Array.from(hospedeiro.querySelectorAll("header button")).find(
-      (b) => b.textContent?.includes("Novo Banner"),
+      (b) => b.textContent?.includes("Indisponível offline"),
     ) as HTMLButtonElement;
     expect(novo.disabled).toBe(true);
-    expect(novo.textContent).toContain("Novo Banner indisponível");
+    expect(novo.textContent).toContain("Indisponível offline");
     expect(
       document.getElementById(novo.getAttribute("aria-describedby")!)
         ?.textContent,
     ).toBe("Disponível quando a conexão retornar.");
   });
 
-  it("online preserva a ação Novo Banner e o evento que abre o formulário", async () => {
+  it("online preserva a ação Novo banner e o evento que abre o formulário", async () => {
     const abrir = vi.fn();
     window.addEventListener("admin:open-new-banner-dialog", abrir);
     try {
       await montar("admin-banners");
       const novo = Array.from(
         hospedeiro.querySelectorAll("header button"),
-      ).find((b) => b.textContent === "Novo Banner") as HTMLButtonElement;
+      ).find((b) => b.textContent === "Novo banner") as HTMLButtonElement;
       expect(novo.disabled).toBe(false);
       act(() => novo.click());
       expect(abrir).toHaveBeenCalledTimes(1);

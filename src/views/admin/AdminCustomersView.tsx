@@ -775,22 +775,24 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           <button
             type="button"
             onClick={() => handleLocalNavigate("admin-qa")}
-            className={`flex min-h-14 min-w-0 flex-[0.8] items-center justify-center gap-2 rounded-[1.125rem] border border-admin-border bg-admin-raised p-2 text-left text-xs font-bold text-white ${FOCO_CLIENTES}`}
+            className={`flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2.5 rounded-[1.125rem] border border-admin-border bg-admin-raised px-3.5 py-2 text-left text-sm font-bold leading-tight text-white ${FOCO_CLIENTES}`}
           >
             <MessageSquare
               aria-hidden="true"
-              className="size-7 shrink-0 rounded-lg border border-violet-300/20 bg-violet-300/10 p-1 text-violet-300"
+              className="size-[22px] shrink-0 text-violet-300"
+              strokeWidth={1.9}
             />
             <span className="min-w-0">Perguntas e avaliações</span>
           </button>
           <button
             type="button"
             onClick={() => handleLocalNavigate("admin-push")}
-            className={`admin-barra-principal flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2 rounded-[1.125rem] bg-gradient-to-b from-[#F9D65C] to-[#E4AF16] p-2 text-sm font-bold text-[#1B1300] ${FOCO_CLIENTES}`}
+            className={`admin-barra-principal flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2.5 rounded-[1.125rem] bg-gradient-to-b from-[#F9D65C] to-[#E4AF16] px-3.5 py-2 text-left text-sm font-bold leading-tight text-[#1B1300] ${FOCO_CLIENTES}`}
           >
             <Megaphone
               aria-hidden="true"
-              className="size-8 shrink-0 rounded-xl border border-sky-300/30 bg-sky-950 p-1.5 text-sky-200"
+              className="size-[22px] shrink-0 text-[#1B1300]"
+              strokeWidth={1.9}
             />
             <span>{NOMES_DO_PAINEL["admin-push"]}</span>
           </button>

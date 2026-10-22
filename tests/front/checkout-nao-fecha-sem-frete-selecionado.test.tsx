@@ -44,10 +44,23 @@ const { mockConfig } = vi.hoisted(() => ({
 // A calculadora de frete do checkout (cotação automática pelo endereço)
 // tem suíte própria (shipping-calculator-*.test.tsx e
 // checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
-// mexe na opção de frete que o teste preparou e não reporta status.
-vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
-  ShippingCalculator: () => null,
-}));
+// mexe na opção de frete que o teste preparou. Reporta só `pronto` (há opções,
+// nenhuma marcada): é o estado em que a seção de entrega diz "escolha uma
+// opção" — a barra de baixo não repete o motivo (22/10/2026), ela diz "ver
+// acima" e o leitor de tela ouve o motivo na região `status`.
+vi.mock("@/components/ui/custom/ShippingCalculator", async () => {
+  const { useEffect } = await import("react");
+  function CalculadoraDeTeste(props: {
+    onStatusChange?: (status: string) => void;
+  }) {
+    const { onStatusChange } = props;
+    useEffect(() => {
+      onStatusChange?.("pronto");
+    }, [onStatusChange]);
+    return null;
+  }
+  return { ShippingCalculator: CalculadoraDeTeste };
+});
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -269,10 +282,20 @@ describe("CheckoutView — não fecha pedido sem opção de frete selecionada", 
     expect(botaoFinalizar.disabled).toBe(true);
 
     // Motivo visível — botão apagado sem explicação faz a pessoa desistir
-    // sem saber por quê.
+    // sem saber por quê. Mora na seção de entrega (não mais embaixo do
+    // botão), e o leitor de tela o ouve na região `status` da barra.
     expect(document.body.textContent).toContain(
       "Escolha uma opção de frete para continuar",
     );
+    expect(
+      document.querySelector("[data-testid='checkout-motivo-frete']")
+        ?.textContent,
+    ).toContain("Escolha uma opção de frete para continuar");
+    expect(
+      botaoFinalizar
+        .closest(".bottom-docked-navigation")
+        ?.querySelector('[role="status"]')?.textContent,
+    ).toBe("Escolha uma opção de frete para continuar");
 
     // Clique no botão desabilitado não deve criar pedido nenhum — nem pelo
     // `disabled` do DOM, nem pela segunda trava dentro de

@@ -17,6 +17,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  abrirNovoBannerPelaBarra,
   configurarTextos,
   escolherImagemPropria,
 } from "./helpers/editor-de-banner";
@@ -273,7 +274,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
   }
 
   const abrirNovo = async () => {
-    await clicar(botao("Novo Banner"));
+    await abrirNovoBannerPelaBarra();
     await escolherImagemPropria();
   };
   const abrirEdicao = () =>

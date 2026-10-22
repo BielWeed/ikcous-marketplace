@@ -23,12 +23,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchProduct = vi.fn();
 const updateProduct = vi.fn();
+const salvarProdutoComGrade = vi
+  .fn()
+  .mockResolvedValue({ produto: undefined, recusadas: [] });
 const upsertVariants = vi.fn();
 const deleteVariants = vi.fn();
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct: vi.fn(),
     updateProduct,
+    salvarProdutoComGrade,
     upsertVariants,
     deleteVariants,
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -117,6 +121,8 @@ describe("AdminProductFormView — desligar e religar variação na linha", () =
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     updateProduct.mockResolvedValue(undefined);
     upsertVariants.mockResolvedValue(undefined);
     deleteVariants.mockResolvedValue(undefined);
@@ -255,11 +261,12 @@ describe("AdminProductFormView — desligar e religar variação na linha", () =
     });
 
     expect(deleteVariants).not.toHaveBeenCalled();
-    expect(upsertVariants).toHaveBeenCalledTimes(1);
-    const [, enviadas] = upsertVariants.mock.calls[0] as [
-      string,
-      Array<{ id: string; active: boolean }>,
-    ];
+    expect(upsertVariants).not.toHaveBeenCalled();
+    expect(salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+    const enviadas = salvarProdutoComGrade.mock.calls[0][2].variantes as Array<{
+      id: string;
+      active: boolean;
+    }>;
     expect(enviadas.map((v) => [v.id, v.active])).toEqual([
       ["v1", false],
       ["v2", true],

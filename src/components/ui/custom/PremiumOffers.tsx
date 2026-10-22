@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import {
@@ -10,20 +11,12 @@ import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
-import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
 import { haptic } from "@/utils/haptic";
 import useEmblaCarousel from "embla-carousel-react";
-import {
-  Check,
-  Flame,
-  Heart,
-  Loader2,
-  ShoppingCart,
-  Truck,
-} from "lucide-react";
+import { Check, Flame, Loader2, ShoppingCart, Truck } from "lucide-react";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { OfertasCompactasEsqueleto } from "./OfertasCompactasEsqueleto";
 import { StarRating } from "./StarRating";
@@ -406,7 +399,7 @@ function HeroOfferCard({
       <div className="pointer-events-none absolute bottom-0 left-0 size-24 rounded-full bg-amber-200/10 blur-3xl" />
 
       {/* Clean Premium Tag Header (Does NOT overlap image) */}
-      <div className="relative z-10 flex w-full items-center justify-center border-b border-zinc-100/50 pb-3">
+      <div className="relative z-10 flex w-full items-center justify-between gap-1.5 border-b border-zinc-100/50 pb-3">
         <div className="flex select-none items-center rounded-full border border-zinc-200/30 bg-zinc-100/80 p-0.5 text-[10px] font-black uppercase tracking-wider shadow-sm transition-transform duration-300 group-hover:scale-[1.02]">
           <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-0.5 text-primary-foreground shadow-[0_2px_4px_rgba(24,24,27,0.1)]">
             <Flame className="size-3 animate-pulse fill-primary-foreground text-primary-foreground" />
@@ -425,18 +418,11 @@ function HeroOfferCard({
         </div>
 
         {/* Favorite Button */}
-        <button
+        <BotaoDeFavorito
+          nome={product.name}
+          favorito={isFavorite}
           onClick={handleFavoriteClick}
-          className={cn(
-            "absolute right-0 p-2 rounded-full transition-all active:scale-75 hover:bg-zinc-50 z-20 border border-transparent hover:border-zinc-100/30",
-            isFavorite
-              ? "text-red-500 bg-red-50/50 shadow-sm"
-              : "text-slate-400 hover:text-red-500 bg-slate-50/40",
-          )}
-          aria-label={rotuloDeFavoritar(product.name, isFavorite)}
-        >
-          <Heart className={`size-4 ${isFavorite ? "fill-current" : ""}`} />
-        </button>
+        />
       </div>
 
       {/* Main columns for Image & Details */}

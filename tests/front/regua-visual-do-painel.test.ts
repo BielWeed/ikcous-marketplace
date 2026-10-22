@@ -7,8 +7,10 @@
 //   - `fixed inset-0` numa tag sem role="dialog" (camada de tela cheia que o
 //     leitor de tela não anuncia como diálogo). Não contam: o `<X.Overlay>` do
 //     Radix (o role="dialog" nasce no Content, e pô-lo no Overlay faria o
-//     leitor de tela anunciar dois diálogos) e o fundo decorativo com
-//     `pointer-events-none` (não é camada interativa).
+//     leitor de tela anunciar dois diálogos), o fundo decorativo com
+//     `pointer-events-none` (não é camada interativa) e o véu com
+//     `aria-hidden="true"` na própria tag (escondido do leitor, igual ao
+//     Overlay do Radix: o diálogo de verdade é o irmão dele).
 // Linha de comentário não conta (só a linha inteira; comentário no fim de uma
 // linha de código conta como código). A soma de cada arquivo tem que ser IGUAL
 // ao teto de regua-visual-do-painel.json: passou = falha; abaixo = falha com
@@ -92,6 +94,8 @@ const TEM_ROLE_DIALOG = /role=(?:\{\s*)?["']dialog["']/;
 /** `<DialogPrimitive.Overlay …>`: o Overlay do Radix. */
 const ABRE_OVERLAY_DO_RADIX = /^<\w+\.Overlay\b/;
 const FUNDO_DECORATIVO = /pointer-events-none/;
+/** Véu que o leitor de tela não anuncia (o diálogo real é o irmão dele). */
+const ESCONDIDO_DO_LEITOR = /aria-hidden=(?:\{\s*)?["']true["']/;
 
 function contarFixedSemDialog(texto: string): number {
   let total = 0;
@@ -100,7 +104,8 @@ function contarFixedSemDialog(texto: string): number {
     if (
       TEM_ROLE_DIALOG.test(tag) ||
       ABRE_OVERLAY_DO_RADIX.test(tag) ||
-      FUNDO_DECORATIVO.test(tag)
+      FUNDO_DECORATIVO.test(tag) ||
+      ESCONDIDO_DO_LEITOR.test(tag)
     ) {
       continue;
     }
@@ -234,6 +239,27 @@ describe("contagem da régua visual", () => {
     // Sem pointer-events-none a camada pode capturar toque: conta.
     const camada = contarRegua('<div className="fixed inset-0 z-[-1]">');
     expect(camada["fixed inset-0 sem role=dialog"]).toBe(1);
+  });
+
+  it('véu com aria-hidden="true" na mesma tag não conta; sem ele (ou aria-hidden em outra tag) conta', () => {
+    const veu = contarRegua(
+      '<div aria-hidden="true" onClick={fechar} className="fixed inset-0 z-40 bg-black/50 sm:hidden" />',
+    );
+    expect(veu["fixed inset-0 sem role=dialog"]).toBe(0);
+    // CONTROLE: o mesmo véu sem aria-hidden e sem role continua contando.
+    const semEscudo = contarRegua(
+      '<div onClick={fechar} className="fixed inset-0 z-40 bg-black/50 sm:hidden" />',
+    );
+    expect(semEscudo["fixed inset-0 sem role=dialog"]).toBe(1);
+    // aria-hidden="false" não esconde nada; aria-hidden só no pai não vale.
+    const falso = contarRegua(
+      '<div aria-hidden="false" className="fixed inset-0 z-40" />',
+    );
+    expect(falso["fixed inset-0 sem role=dialog"]).toBe(1);
+    const noPai = contarRegua(
+      '<div aria-hidden="true"><div className="fixed inset-0 z-40" /></div>',
+    );
+    expect(noPai["fixed inset-0 sem role=dialog"]).toBe(1);
   });
 
   it("ignora linha de comentário", () => {

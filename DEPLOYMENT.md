@@ -312,8 +312,8 @@ derruba a cobrança) — **nenhum token, nenhum segredo, nunca**.
 lojista cola as três chaves (Public Key, Access Token e a Chave de notificações — a assinatura
 do webhook) e toca em "Salvar chaves": o servidor testa a conexão na hora e, se as três chaves
 estão salvas e o teste passou, liga `pagamento_online` (Pix **e** cartão pelo app) sem botão
-nenhum. O bloco **"Receber PIX no app"** da tela só MOSTRA o estado que o servidor devolveu
-("Recebendo pelo app", "Pausado por você" ou "Falta para receber pelo app:" com a lista) e tem
+nenhum. O bloco **"Receber pelo app (Pix e cartão)"** da tela só MOSTRA o estado que o servidor devolveu
+(recebendo, "Pausado por você" ou "Falta para receber pelo app:" com a lista) e tem
 **Pausar** e **Retomar**; a pausa vence o automático (salvar ou testar não religam). Falta
 qualquer uma das três chaves, ou o teste falhou: desliga sozinho. O checkout do cliente só
 oferece PIX quando a ficha pública da loja traz `pagamento_online = true` **e** `mp_public_key`

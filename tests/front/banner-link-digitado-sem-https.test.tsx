@@ -23,6 +23,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   abrirMaisOpcoes,
+  abrirNovoBannerPelaBarra,
   configurarTextos,
   escolherImagemPropria,
 } from "./helpers/editor-de-banner";
@@ -249,9 +250,7 @@ describe("AdminBannersView: o link digitado chega corrigido ao salvar", () => {
     await act(async () => {
       await esperar();
     });
-    await act(async () => {
-      botaoComTexto(hospedeiro, "Novo Banner")?.click();
-    });
+    await abrirNovoBannerPelaBarra();
     await escolherImagemPropria();
     // O link só se edita no modo Completo (passo 3: Destino).
     await configurarTextos(true);

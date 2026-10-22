@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
@@ -11,7 +12,6 @@ import {
   fraseDoSeloDeFreteGratis,
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada } from "@/lib/imageUrl";
-import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant } from "@/types";
@@ -27,14 +27,7 @@ import {
   preselecionarCor,
   resolverSelecaoDosEixos,
 } from "@/utils/eixos-da-variacao";
-import {
-  Check,
-  Flame,
-  Heart,
-  Loader2,
-  ShoppingCart,
-  Truck,
-} from "lucide-react";
+import { Check, Flame, Loader2, ShoppingCart, Truck } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CorpoDaFolhaDeOpcoes, focarEscolhaDaFolha } from "./FolhaDeOpcoes";
@@ -104,6 +97,14 @@ interface ProductCardProps {
    * "na cidade"/"para todo o Brasil" sem saber a config da loja.
    */
   promessasDeFrete?: PromessasDeFrete;
+  /**
+   * "card" (padrão, vitrine em grade) ou "linha": item compacto de lista
+   * vertical (tela Favoritos, 22/10/2026) — miniatura à esquerda, nome,
+   * preço e estoque no meio, coração e carrinho à direita. É a MESMA lógica
+   * do card (carrinho, folha de opções, abrir produto); muda só a
+   * apresentação, para a tela não manter uma cópia do fluxo de compra.
+   */
+  layout?: "card" | "linha";
 }
 
 /**
@@ -140,6 +141,7 @@ export const ProductCard = memo(function ProductCard({
   selectedProductId,
   showRating,
   promessasDeFrete,
+  layout = "card",
 }: Readonly<ProductCardProps>) {
   const instanceId = useId();
   const { prefetchImage } = usePrefetchOnHover();
@@ -449,6 +451,24 @@ export const ProductCard = memo(function ProductCard({
             ? `Ver produto ${product.name}`
             : `Adicionar ${product.name} ao carrinho`;
 
+  const promocional =
+    !!product.originalPrice && product.originalPrice > precoAtual;
+  const textoDoBotao = semEstoqueNoCard
+    ? "Esgotado"
+    : hasActiveVariant
+      ? "Escolher opções"
+      : soAbreAPagina
+        ? "Ver produto"
+        : cartStatus === "idle"
+          ? "Carrinho"
+          : cartStatus === "loading"
+            ? "Salvando..."
+            : "Salvo!";
+  // Layout "linha": o nome do produto é o ÚNICO alvo focável de abrir; preço e
+  // estoque entram no anúncio dele (aria-describedby), então cada linha é
+  // lida como "nome, preço, estoque".
+  const idDaInfoDaLinha = `${instanceId}-info`;
+
   // Aviso falado de "entrou no carrinho" (região `role="status"` abaixo).
   // Espelha EXATAMENTE o "Salvo!" que quem enxerga vê -- mesmo gatilho, mesmo
   // momento -- e nasce VAZIO: leitor de tela só anuncia mudança de conteúdo em
@@ -676,293 +696,445 @@ export const ProductCard = memo(function ProductCard({
         if (onTouchStart) onTouchStart(product.id);
       }}
       className={cn(
-        // Bug relatado pelo Gabriel (12/09): o painel "Escolha as opções"
-        // crescia DENTRO do fluxo do card e empurrava o resto para baixo --
-        // a grade de 2 colunas (align-items: stretch por padrão) esticava o
-        // card VIZINHO da mesma linha para casar essa altura, e o `mt-auto`
-        // do bloco de preço absorvia o espaço extra como uma faixa em
-        // branco entre o estoque e o preço/botão.
-        //
-        // A correção de 12/09 tirou o painel do FLUXO (virou camada
-        // `absolute` sobre a faixa foto+meta) e devolveu `h-full`/`flex-1`.
-        // O redesenho de 13/09 (folha que desliza de baixo, direção B
-        // escolhida pelo Gabriel) tornou a garantia ESTRUTURAL: a escolha
-        // não é mais descendente do card -- a folha renderiza em portal,
-        // fora desta árvore, e abrir as opções não insere nenhum nó aqui.
-        // As classes ficam: a altura de conteúdo do card não muda com a
-        // folha aberta, só o efeito estático normal de grid (nome de 1
-        // linha vs. 2 linhas), que sempre existiu e nunca foi o bug.
-        "group bg-zinc-50/30 rounded-[2rem] overflow-hidden hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:bg-white transition-[transform,box-shadow,background-color] duration-300 ease-out cursor-pointer border border-zinc-200/60 flex h-full flex-1 flex-col relative active:scale-[0.98] gpu-accelerated",
+        layout === "linha"
+          ? "relative flex min-h-[112px] cursor-pointer items-center gap-3 border-b border-border py-2 active:bg-muted/50"
+          : // Bug relatado pelo Gabriel (12/09): o painel "Escolha as opções"
+            // crescia DENTRO do fluxo do card e empurrava o resto para baixo --
+            // a grade de 2 colunas (align-items: stretch por padrão) esticava o
+            // card VIZINHO da mesma linha para casar essa altura, e o `mt-auto`
+            // do bloco de preço absorvia o espaço extra como uma faixa em
+            // branco entre o estoque e o preço/botão.
+            //
+            // A correção de 12/09 tirou o painel do FLUXO (virou camada
+            // `absolute` sobre a faixa foto+meta) e devolveu `h-full`/`flex-1`.
+            // O redesenho de 13/09 (folha que desliza de baixo, direção B
+            // escolhida pelo Gabriel) tornou a garantia ESTRUTURAL: a escolha
+            // não é mais descendente do card -- a folha renderiza em portal,
+            // fora desta árvore, e abrir as opções não insere nenhum nó aqui.
+            // As classes ficam: a altura de conteúdo do card não muda com a
+            // folha aberta, só o efeito estático normal de grid (nome de 1
+            // linha vs. 2 linhas), que sempre existiu e nunca foi o bug.
+            "group bg-zinc-50/30 rounded-[2rem] overflow-hidden hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:bg-white transition-[transform,box-shadow,background-color] duration-300 ease-out cursor-pointer border border-zinc-200/60 flex h-full flex-1 flex-col relative active:scale-[0.98] gpu-accelerated",
         className,
       )}
     >
-      {/* Foto + metadados: faixa que o painel de opções cobria até 13/09;
+      {layout === "linha" ? (
+        <>
+          {/* Miniatura 88px. O `ref` segue sendo o ponto de partida da bolinha
+              do voo até o carrinho. Esgotado: foto apagada. */}
+          <div
+            ref={fotoDoCardRef}
+            data-testid="product-card-photo"
+            className={cn(
+              "relative size-[88px] shrink-0 overflow-hidden rounded-xl bg-muted",
+              semEstoqueNoCard && "opacity-50",
+            )}
+          >
+            <LazyImage
+              src={srcImagem}
+              alt=""
+              className="size-full object-cover"
+              priority={priority}
+              sizes="88px"
+              style={
+                shouldApplyTransitionName
+                  ? { viewTransitionName: "product-image" }
+                  : undefined
+              }
+            />
+          </div>
+
+          <div className="min-w-0 flex-1 self-center">
+            {/* O botão do nome estica o alvo de toque até a linha inteira
+                (after:absolute); coração e carrinho ficam acima (z-10). */}
+            <h3>
+              <button
+                type="button"
+                aria-describedby={idDaInfoDaLinha}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  abrirProduto();
+                }}
+                className={cn(
+                  "line-clamp-2 w-full break-words text-left text-sm font-semibold leading-tight after:absolute after:inset-0 after:content-['']",
+                  semEstoqueNoCard
+                    ? "text-muted-foreground"
+                    : "text-foreground",
+                )}
+              >
+                {product.name}
+              </button>
+            </h3>
+            <div id={idDaInfoDaLinha} className="mt-1 min-w-0">
+              {promocional && (
+                <p className="text-xs leading-tight text-muted-foreground">
+                  <span>De </span>
+                  <span className="line-through">
+                    {formatCurrency(product.originalPrice ?? 0)}
+                  </span>
+                </p>
+              )}
+              <p
+                className={cn(
+                  "text-[17px] font-bold leading-tight",
+                  semEstoqueNoCard
+                    ? "text-muted-foreground"
+                    : promocional
+                      ? "text-emerald-700 dark:text-emerald-400"
+                      : "text-foreground",
+                )}
+              >
+                {promocional && <span className="sr-only">Por </span>}
+                {formatCurrency(precoAtual)}
+              </p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs leading-tight">
+                {discount > 0 && !semEstoqueNoCard && (
+                  <span className="flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
+                    <span
+                      aria-hidden="true"
+                      className="size-1.5 shrink-0 rounded-full bg-emerald-600"
+                    />
+                    {discount}% OFF
+                  </span>
+                )}
+                <span
+                  className={cn(
+                    "flex items-center gap-1",
+                    semEstoqueNoCard
+                      ? "font-semibold text-red-700 dark:text-red-400"
+                      : estoqueAtual <= 5
+                        ? "font-semibold text-amber-700 dark:text-amber-400"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "size-1.5 shrink-0 rounded-full",
+                      semEstoqueNoCard
+                        ? "bg-red-600"
+                        : estoqueAtual <= 5
+                          ? "bg-amber-500"
+                          : "bg-emerald-600",
+                    )}
+                  />
+                  {semEstoqueNoCard
+                    ? "Sem estoque"
+                    : estoqueAtual <= 5
+                      ? estoqueAtual === 1
+                        ? "Resta 1"
+                        : `Restam ${estoqueAtual}`
+                      : `Estoque: ${estoqueAtual}`}
+                </span>
+                {/* Nada some ao virar linha: selo de frete, nota e "em alta"
+                    seguem, só que em texto corrido no fim da mesma faixa. */}
+                {fraseDoSelo && (
+                  <span className="flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
+                    <Truck aria-hidden="true" className="size-3 shrink-0" />
+                    {fraseDoSelo}
+                  </span>
+                )}
+                {showRating && (product.reviewCount ?? 0) > 0 && (
+                  <StarRating rating={product.rating ?? 0} size={11} />
+                )}
+                {product.isBestseller && (
+                  <span className="flex items-center gap-1 font-semibold text-muted-foreground">
+                    <Flame aria-hidden="true" className="size-3 shrink-0" />
+                    Em alta
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="relative z-10 flex shrink-0 flex-col items-center gap-1.5">
+            <BotaoDeFavorito
+              nome={product.name}
+              favorito={isFavorite}
+              onClick={(e) => onToggleFavorite(product, e)}
+            />
+            <button
+              ref={botaoDeAcaoRef}
+              type="button"
+              data-testid="product-card-action"
+              onClick={handleAddToCartClick}
+              disabled={semEstoqueNoCard}
+              aria-disabled={
+                !semEstoqueNoCard && cartStatus !== "idle" ? true : undefined
+              }
+              aria-label={
+                rotuloAcessivelDoBotao ?? `${textoDoBotao} ${product.name}`
+              }
+              className={cn(
+                "grid size-11 shrink-0 place-items-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-95 aria-disabled:active:scale-100 motion-reduce:transition-none",
+                semEstoqueNoCard
+                  ? "cursor-not-allowed bg-muted text-muted-foreground"
+                  : cartStatus === "success"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-foreground text-background",
+              )}
+            >
+              {cartStatus === "loading" ? (
+                <Loader2 className="size-5 animate-spin motion-reduce:animate-none" />
+              ) : cartStatus === "success" ? (
+                <Check className="size-5" />
+              ) : (
+                <ShoppingCart className="size-5" />
+              )}
+              <span className="sr-only">{textoDoBotao}</span>
+            </button>
+            {!temFolhaDeOpcoes && (
+              <span role="status" aria-live="polite" className="sr-only">
+                {avisoDeAdicionado}
+              </span>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Foto + metadados: faixa que o painel de opções cobria até 13/09;
           hoje a folha é portal e nada a cobre -- o preço e o botão de ação
           continuam no bloco seguinte, fora daqui. O `relative` ancora o
           botão de favoritar (absolute) a esta caixa de foto. */}
-      <div className="relative">
-        {/* Image Container. O `ref` é o ponto de partida da bolinha do voo
+          <div className="relative">
+            {/* Image Container. O `ref` é o ponto de partida da bolinha do voo
             até o carrinho quando a escolha vem da folha (ver
             `soltarVooDoCard`). */}
-        <div
-          ref={fotoDoCardRef}
-          data-testid="product-card-photo"
-          className="relative aspect-[4/5] overflow-hidden bg-slate-50"
-        >
-          <LazyImage
-            src={srcImagem}
-            alt={product.name}
-            className="size-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
-            priority={priority}
-            // Grade de 2 colunas no celular, card fixo a partir do tablet.
-            sizes="(min-width: 640px) 280px, 50vw"
-            style={
-              shouldApplyTransitionName
-                ? { viewTransitionName: "product-image" }
-                : undefined
-            }
-          />
-
-          {/* Action Buttons */}
-          <div className="absolute right-3 top-3 flex translate-x-0 flex-col gap-2 opacity-100 transition-all duration-500 ease-out hover-hover:translate-x-12 hover-hover:opacity-0 hover-hover:group-hover:translate-x-0 hover-hover:group-hover:opacity-100">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleFavorite(product, e);
-              }}
-              aria-label={rotuloDeFavoritar(product.name, isFavorite)}
-              title={rotuloDeFavoritar(product.name, isFavorite)}
-              className={cn(
-                "p-2.5 rounded-full glass transition-all active:scale-75",
-                isFavorite
-                  ? "bg-red-500 text-white border-red-500/20 shadow-lg shadow-red-200/50"
-                  : "text-slate-600 hover:text-red-500",
-              )}
+            <div
+              ref={fotoDoCardRef}
+              data-testid="product-card-photo"
+              className="relative aspect-[4/5] overflow-hidden bg-slate-50"
             >
-              <Heart
-                className={cn(
-                  "size-4",
-                  isFavorite && "fill-current animate-heart-pop",
-                )}
+              <LazyImage
+                src={srcImagem}
+                alt={product.name}
+                className="size-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+                priority={priority}
+                // Grade de 2 colunas no celular, card fixo a partir do tablet.
+                sizes="(min-width: 640px) 280px, 50vw"
+                style={
+                  shouldApplyTransitionName
+                    ? { viewTransitionName: "product-image" }
+                    : undefined
+                }
               />
-            </button>
-          </div>
-        </div>
 
-        {/* Meta: categoria, nome, avaliação/estoque */}
-        <div className="space-y-0.5 p-2.5 pb-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <p className="max-w-[80%] truncate text-[9px] font-bold uppercase tracking-widest text-slate-400">
-              {product.category}
-            </p>
-            {/* ProductCard-520: o selo só pode afirmar o que a loja
+              {/* Action Buttons */}
+              <div className="absolute right-3 top-3 flex translate-x-0 flex-col gap-2 opacity-100 transition-all duration-500 ease-out hover-hover:translate-x-12 hover-hover:opacity-0 hover-hover:group-hover:translate-x-0 hover-hover:group-hover:opacity-100">
+                <BotaoDeFavorito
+                  nome={product.name}
+                  favorito={isFavorite}
+                  onClick={(e) => onToggleFavorite(product, e)}
+                />
+              </div>
+            </div>
+
+            {/* Meta: categoria, nome, avaliação/estoque */}
+            <div className="space-y-0.5 p-2.5 pb-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="max-w-[80%] truncate text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                  {product.category}
+                </p>
+                {/* ProductCard-520: o selo só pode afirmar o que a loja
                 realmente dá -- `product.freeShipping` sozinho não basta
                 mais, porque só vale dentro do preset "por_produto" (ou em
                 "sempre", que vale para qualquer produto). Fora disso é
                 marcação de campanha antiga que a loja já desligou. A
                 promessa por valor de compra mora no `FreeShippingBlock`
                 (Home), que compara contra o carrinho de verdade. */}
-            {fraseDoSelo && (
-              <div className="flex shrink-0 items-center gap-1 rounded-md border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
-                <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
-                <span className="truncate">{fraseDoSelo}</span>
+                {fraseDoSelo && (
+                  <div className="flex shrink-0 items-center gap-1 rounded-md border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
+                    <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
+                    <span className="truncate">{fraseDoSelo}</span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          {/* B3 (laudo de acessibilidade, 08/09): o wrapper do card deixou
+              {/* B3 (laudo de acessibilidade, 08/09): o wrapper do card deixou
               de ser `role="button"` -- o nome vira o ÚNICO alvo focável, um
               <button> nativo dentro do <h3> (nome acessível = nome do
               produto, ativação por Enter/Espaço de graça). O
               `stopPropagation` evita abrir o produto duas vezes (o clique
               bolhando pro wrapper, que também tem onClick). */}
-          <h3>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                abrirProduto();
-              }}
-              className="line-clamp-2 w-full text-left text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-[14px]"
-            >
-              {product.name}
-            </button>
-          </h3>
-          <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            {/* LOJA-01 (auditoria 26/08/2026): `produtos.rating` nasce com
+              <h3>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    abrirProduto();
+                  }}
+                  className="line-clamp-2 w-full text-left text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-[14px]"
+                >
+                  {product.name}
+                </button>
+              </h3>
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                {/* LOJA-01 (auditoria 26/08/2026): `produtos.rating` nasce com
                 DEFAULT 5 e nada recalcula esse campo a partir das
                 avaliações -- sem `reviewCount > 0` não existe avaliação de
                 verdade por trás do número, e mostrar a estrela seria
                 inventar nota. Calcular a nota certa é outra tarefa
                 (migration com gatilho); esta só impede a mentira. */}
-            {showRating && (product.reviewCount ?? 0) > 0 && (
-              <StarRating rating={product.rating ?? 0} size={11} />
-            )}
-            {/*
+                {showRating && (product.reviewCount ?? 0) > 0 && (
+                  <StarRating rating={product.rating ?? 0} size={11} />
+                )}
+                {/*
               ADMIN-091 (#202): com `showRating=false` a linha fica só com o
               indicador de estoque. Em vez de deixar a linha "pobre" (o que
               o plano pediu para evitar), ele ganha mais destaque -- ponto
               maior e texto um degrau maior -- reaproveitando um sinal que o
               card já tinha, em vez de inventar um selo novo.
             */}
-            <div
-              className={cn(
-                "flex items-center gap-1 font-bold",
-                showRating ? "text-[9px]" : "text-[10px]",
-              )}
-            >
-              <span
-                className={cn(
-                  "rounded-full animate-pulse",
-                  showRating ? "w-1 h-1" : "w-1.5 h-1.5",
-                  estoqueAtual <= 0
-                    ? "bg-zinc-400"
-                    : estoqueAtual <= 5
-                      ? "bg-rose-500"
-                      : "bg-emerald-500",
-                )}
-              />
-              <span
-                className={
-                  estoqueAtual <= 0
-                    ? "text-zinc-500"
-                    : estoqueAtual <= 5
-                      ? "text-rose-600"
-                      : "text-emerald-700"
-                }
-              >
-                {estoqueAtual <= 0
-                  ? "Esgotado"
-                  : estoqueAtual <= 5
-                    ? textoEstoqueBaixo(estoqueAtual)
-                    : `Estoque: ${estoqueAtual}`}
-              </span>
+                <div
+                  className={cn(
+                    "flex items-center gap-1 font-bold",
+                    showRating ? "text-[9px]" : "text-[10px]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "rounded-full animate-pulse",
+                      showRating ? "w-1 h-1" : "w-1.5 h-1.5",
+                      estoqueAtual <= 0
+                        ? "bg-zinc-400"
+                        : estoqueAtual <= 5
+                          ? "bg-rose-500"
+                          : "bg-emerald-500",
+                    )}
+                  />
+                  <span
+                    className={
+                      estoqueAtual <= 0
+                        ? "text-zinc-500"
+                        : estoqueAtual <= 5
+                          ? "text-rose-600"
+                          : "text-emerald-700"
+                    }
+                  >
+                    {estoqueAtual <= 0
+                      ? "Esgotado"
+                      : estoqueAtual <= 5
+                        ? textoEstoqueBaixo(estoqueAtual)
+                        : `Estoque: ${estoqueAtual}`}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Preço + botão: ficam fora do bloco foto+meta acima, sempre
+          {/* Preço + botão: ficam fora do bloco foto+meta acima, sempre
           visíveis e clicáveis. Com a folha em portal (13/09) nada os cobre
           nunca mais -- e o PREÇO continua dinâmico: reflete o
           `priceOverride` da escolha feita na folha, que é a promessa do
           card inteligente. */}
-      <div className="flex flex-1 flex-col gap-0.5 p-2.5 pt-1">
-        {/* Price */}
-        <div className="mt-auto flex w-full items-end justify-between gap-2 pt-1">
-          <div className="flex flex-col justify-end">
-            {/* Preço DINÂMICO: com variação escolhida no card, mostra o
+          <div className="flex flex-1 flex-col gap-0.5 p-2.5 pt-1">
+            {/* Price */}
+            <div className="mt-auto flex w-full items-end justify-between gap-2 pt-1">
+              <div className="flex flex-col justify-end">
+                {/* Preço DINÂMICO: com variação escolhida no card, mostra o
                 priceOverride da escolha (mesma semântica da página do
                 produto: `??` preserva override zero). */}
-            {product.originalPrice && product.originalPrice > precoAtual ? (
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold uppercase leading-none tracking-wider text-slate-400">
-                  De:{" "}
-                  <span className="line-through">
-                    {formatCurrency(product.originalPrice)}
-                  </span>
-                </span>
-                <span
-                  className={cn(
-                    "mt-1 text-[15px] font-black leading-none tracking-tight",
-                    CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
-                  )}
-                >
-                  Por: {formatCurrency(precoAtual)}
-                </span>
-              </div>
-            ) : (
-              <div className="flex flex-col">
-                <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
-                  {formatCurrency(precoAtual)}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Badges */}
-          <div className="flex shrink-0 items-center gap-1">
-            {discount > 0 && (
-              <span
-                className={cn(
-                  "shrink-0 select-none rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
-                  CLASSE_SELO_DESCONTO,
+                {product.originalPrice && product.originalPrice > precoAtual ? (
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold uppercase leading-none tracking-wider text-slate-400">
+                      De:{" "}
+                      <span className="line-through">
+                        {formatCurrency(product.originalPrice)}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        "mt-1 text-[15px] font-black leading-none tracking-tight",
+                        CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                      )}
+                    >
+                      Por: {formatCurrency(precoAtual)}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col">
+                    <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
+                      {formatCurrency(precoAtual)}
+                    </span>
+                  </div>
                 )}
-              >
-                {discount}% OFF
-              </span>
-            )}
-            {product.isBestseller && (
-              <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700">
-                <Flame className="size-2.5 shrink-0 fill-orange-500/20 text-orange-500" />
-                <span>EM ALTA</span>
-              </span>
-            )}
-          </div>
-        </div>
+              </div>
 
-        {/* Action Button: com variação, o rótulo é SEMPRE "Escolher opções"
+              {/* Badges */}
+              <div className="flex shrink-0 items-center gap-1">
+                {discount > 0 && (
+                  <span
+                    className={cn(
+                      "shrink-0 select-none rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
+                      CLASSE_SELO_DESCONTO,
+                    )}
+                  >
+                    {discount}% OFF
+                  </span>
+                )}
+                {product.isBestseller && (
+                  <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700">
+                    <Flame className="size-2.5 shrink-0 fill-orange-500/20 text-orange-500" />
+                    <span>EM ALTA</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Action Button: com variação, o rótulo é SEMPRE "Escolher opções"
             (13/09) -- ele só abre a folha; os estados de salvamento
             ("Salvando..."/"Salvo!") e o rótulo de valor moram no CTA do
             rodapé da folha. Peça 09 (14/09): SEM chevron/setinha — pedido
             do dono; o estado aberto/fechado é visível na própria folha. */}
-        <div className="mt-1.5">
-          <button
-            ref={botaoDeAcaoRef}
-            data-testid="product-card-action"
-            onClick={handleAddToCartClick}
-            // Esgotado é estado PERMANENTE: `disabled` de verdade. "Salvando..."/
-            // "Salvo!" é passageiro: `aria-disabled` mantém o botão na ordem de
-            // foco (com `disabled` o foco caía no body e o leitor de tela
-            // ficava mudo); o bloqueio do clique é a guarda de `cartStatus` no
-            // handler.
-            disabled={semEstoqueNoCard}
-            aria-disabled={
-              !semEstoqueNoCard && cartStatus !== "idle" ? true : undefined
-            }
-            aria-label={rotuloAcessivelDoBotao}
-            className={cn(
-              // `aria-disabled:active:scale-100`: o botão `disabled` não
-              // encolhia ao toque; aria-disabled não o desliga sozinho -- a
-              // classe mantém o visual de antes.
-              "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 aria-disabled:active:scale-100 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
-              semEstoqueNoCard
-                ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
-                : cartStatus === "success"
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                  : "bg-primary hover:opacity-90 text-primary-foreground",
-            )}
-          >
-            {cartStatus === "loading" && (
-              <Loader2 className="size-3 shrink-0 animate-spin" />
-            )}
-            {cartStatus === "success" && <Check className="size-3 shrink-0" />}
-            {cartStatus === "idle" && !semEstoqueNoCard && (
-              <ShoppingCart className="size-3 shrink-0" />
-            )}
-            <span className="truncate">
-              {semEstoqueNoCard
-                ? "Esgotado"
-                : hasActiveVariant
-                  ? "Escolher opções"
-                  : soAbreAPagina
-                    ? "Ver produto"
-                    : cartStatus === "idle"
-                      ? "Carrinho"
-                      : cartStatus === "loading"
-                        ? "Salvando..."
-                        : "Salvo!"}
-            </span>
-          </button>
-          {/* Região viva SEMPRE montada e invisível (sr-only): fala o
+            <div className="mt-1.5">
+              <button
+                ref={botaoDeAcaoRef}
+                data-testid="product-card-action"
+                onClick={handleAddToCartClick}
+                // Esgotado é estado PERMANENTE: `disabled` de verdade. "Salvando..."/
+                // "Salvo!" é passageiro: `aria-disabled` mantém o botão na ordem de
+                // foco (com `disabled` o foco caía no body e o leitor de tela
+                // ficava mudo); o bloqueio do clique é a guarda de `cartStatus` no
+                // handler.
+                disabled={semEstoqueNoCard}
+                aria-disabled={
+                  !semEstoqueNoCard && cartStatus !== "idle" ? true : undefined
+                }
+                aria-label={rotuloAcessivelDoBotao}
+                className={cn(
+                  // `aria-disabled:active:scale-100`: o botão `disabled` não
+                  // encolhia ao toque; aria-disabled não o desliga sozinho -- a
+                  // classe mantém o visual de antes.
+                  "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 aria-disabled:active:scale-100 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
+                  semEstoqueNoCard
+                    ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
+                    : cartStatus === "success"
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      : "bg-primary hover:opacity-90 text-primary-foreground",
+                )}
+              >
+                {cartStatus === "loading" && (
+                  <Loader2 className="size-3 shrink-0 animate-spin" />
+                )}
+                {cartStatus === "success" && (
+                  <Check className="size-3 shrink-0" />
+                )}
+                {cartStatus === "idle" && !semEstoqueNoCard && (
+                  <ShoppingCart className="size-3 shrink-0" />
+                )}
+                <span className="truncate">{textoDoBotao}</span>
+              </button>
+              {/* Região viva SEMPRE montada e invisível (sr-only): fala o
               "Adicionado ao carrinho" que o leitor de tela não ouvia
               (remover já era falado, pelo toast). Quem enxerga não vê nada. */}
-          {!temFolhaDeOpcoes && (
-            <span role="status" aria-live="polite" className="sr-only">
-              {avisoDeAdicionado}
-            </span>
-          )}
-        </div>
-      </div>
+              {!temFolhaDeOpcoes && (
+                <span role="status" aria-live="polite" className="sr-only">
+                  {avisoDeAdicionado}
+                </span>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── FOLHA DE OPÇÕES (13/09, direção B — mockup do Gabriel) ──────
           Bottom sheet em PORTAL: substitui o painel que expandia dentro do
