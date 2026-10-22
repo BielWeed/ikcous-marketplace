@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
+import { esquecerOsIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { esquecerOCatalogoCarregado } from "@/lib/catalogo-de-icones";
 import type { Category } from "@/types";
 import { act } from "react";
@@ -40,6 +41,7 @@ describe("CategoryFilter: ícone pelo nome", () => {
   let raiz: Root;
   beforeEach(() => {
     esquecerOCatalogoCarregado();
+    esquecerOsIconesPeloNome();
     fetchMock.mockReset();
     fetchMock.mockResolvedValue({ ok: true, json: async () => CATALOGO });
     vi.stubGlobal("fetch", fetchMock);
@@ -119,5 +121,21 @@ describe("CategoryFilter: ícone pelo nome", () => {
         .querySelector('button[aria-label="Selecionar categoria Xpto"] svg')
         ?.getAttribute("data-icone"),
     ).toBe("etiqueta");
+  });
+
+  it("depois da 1ª carga, quem monta de novo já nasce com o ícone certo (sem trocar o desenho depois)", async () => {
+    await montar([categoria("Bolsas femininas")]);
+    act(() => raiz.unmount());
+    raiz = createRoot(host);
+    act(() => {
+      raiz.render(
+        <CategoryFilter
+          categories={[categoria("Bolsas femininas")]}
+          selectedCategory="Todas"
+          onCategoryChange={() => {}}
+        />,
+      );
+    });
+    expect(caminhoDe("Bolsas femininas")).toBe(d("bolsa"));
   });
 });

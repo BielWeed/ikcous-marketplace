@@ -1,5 +1,6 @@
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
 import { useCategories } from "@/hooks/useCategories";
+import { useIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { useUsoDasCategorias } from "@/hooks/useUsoDasCategorias";
 import {
   type CategoriaComUso,
@@ -40,9 +41,9 @@ interface GerenciarCategoriasProps {
 }
 
 const BOTAO =
-  "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-text-soft disabled:pointer-events-none disabled:opacity-40";
-const BOTAO_NEUTRO = `${BOTAO} border-admin-border-strong bg-admin-raised text-admin-text hover:bg-admin-hover`;
-const BOTAO_DOURADO = `${BOTAO} border-admin-text bg-admin-text text-admin-bg hover:opacity-90`;
+  "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
+const BOTAO_NEUTRO = `${BOTAO} border-admin-border-strong bg-admin-raised text-foreground hover:bg-admin-hover`;
+const BOTAO_PRIMARIO = `${BOTAO} border-foreground bg-foreground text-background hover:opacity-90`;
 const BOTAO_PERIGO = `${BOTAO} border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20`;
 
 export function GerenciarCategorias({
@@ -72,6 +73,8 @@ function ConteudoDaGestao() {
     updateCategory,
   } = useCategories();
 
+  // Sem ícone salvo, a linha mostra o mesmo ícone da vitrine: o do catálogo que combina com o nome.
+  const pelosNomes = useIconesPeloNome(categories);
   const [editando, setEditando] = useState<{
     readonly id: string;
     readonly valor: string;
@@ -249,15 +252,23 @@ function ConteudoDaGestao() {
             >
               <div className="flex flex-wrap items-center gap-2">
                 <IconeDaCategoria
-                  icone={iconeDaCategoria(categoria)}
-                  forma={categoria.iconeForma}
+                  icone={
+                    (categoria.icone
+                      ? undefined
+                      : pelosNomes.get(c.nome)?.icone) ??
+                    iconeDaCategoria(categoria)
+                  }
+                  forma={
+                    categoria.iconeForma ??
+                    (categoria.icone ? null : pelosNomes.get(c.nome)?.forma)
+                  }
                   className="size-6 shrink-0 text-zinc-300"
                 />
                 <span className="min-w-0 break-words text-base font-black text-white">
                   {c.nome}
                 </span>
                 {c.ativa ? null : (
-                  <span className="rounded-md border border-admin-border-strong px-2 py-0.5 text-xs font-bold text-admin-text-soft">
+                  <span className="rounded-md border border-admin-border-strong px-2 py-0.5 text-xs font-bold text-muted-foreground">
                     Escondida da vitrine
                   </span>
                 )}
@@ -299,7 +310,7 @@ function ConteudoDaGestao() {
                 >
                   <label
                     htmlFor={`nome-da-categoria-${c.id}`}
-                    className="block text-xs font-bold text-admin-text-soft"
+                    className="block text-xs font-bold text-muted-foreground"
                   >
                     Novo nome
                   </label>
@@ -317,7 +328,7 @@ function ConteudoDaGestao() {
                     onChange={(e) =>
                       setEditando({ id: c.id, valor: e.target.value })
                     }
-                    className="min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950 px-4 text-sm font-bold text-white focus:border-admin-text-soft focus:outline-none focus:ring-2 focus:ring-admin-text-soft"
+                    className="min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950 px-4 text-sm font-bold text-white focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                   {nomeReservado ? (
                     <p
@@ -342,7 +353,7 @@ function ConteudoDaGestao() {
                         valor.trim() === "" ||
                         nomeReservado !== null
                       }
-                      className={BOTAO_DOURADO}
+                      className={BOTAO_PRIMARIO}
                     >
                       {nestaLinha ? "Salvando…" : "Salvar nome"}
                     </button>

@@ -261,7 +261,7 @@ describe("SeletorDeIcone", () => {
         '[role="group"][aria-label^="Sugestão"]',
       );
       expect(faixa?.textContent).toContain("Usado");
-      expect((botao("Sugestão usada") as HTMLButtonElement).disabled).toBe(
+      expect((botao("Usado: sugestão") as HTMLButtonElement).disabled).toBe(
         true,
       );
     });

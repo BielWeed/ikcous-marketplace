@@ -19,20 +19,51 @@ interface CategoriaParaSugerir {
   readonly iconeForma?: string | null;
 }
 
+type Modulo = typeof import("@/lib/catalogo-de-icones");
+// Guardado depois da 1ª carga: quem monta depois já nasce com o ícone certo, sem trocar o desenho.
+let carregado: {
+  m: Modulo;
+  lista: Awaited<ReturnType<Modulo["carregarCatalogo"]>>;
+} | null = null;
+
+const SEPARADOR = String.fromCharCode(0);
+
+/** Só para os testes. */
+export function esquecerOsIconesPeloNome() {
+  carregado = null;
+}
+
+function montarMapa(nomes: string): ReadonlyMap<string, IconeSugerido> {
+  const mapa = new Map<string, IconeSugerido>();
+  if (!carregado || nomes === "") return mapa;
+  for (const nome of nomes.split(SEPARADOR)) {
+    const s = carregado.m.sugerirPeloNome(carregado.lista, nome);
+    if (!s) continue;
+    mapa.set(
+      nome,
+      s.tipo === "catalogo"
+        ? { icone: "etiqueta", forma: s.item.d }
+        : { icone: s.chave, forma: null },
+    );
+  }
+  return mapa;
+}
+
 export function useIconesPeloNome(
   categorias: readonly CategoriaParaSugerir[],
   habilitado = true,
 ): ReadonlyMap<string, IconeSugerido> {
-  const [sugeridos, setSugeridos] = useState<
-    ReadonlyMap<string, IconeSugerido>
-  >(() => new Map());
   // Só os nomes das categorias sem escolha própria entram na conta (e na chave do efeito).
   const nomes = habilitado
     ? categorias
         .filter((c) => !c.icone && !c.iconeForma)
         .map((c) => c.name)
-        .join("\u0000")
+        .join(SEPARADOR)
     : "";
+
+  const [sugeridos, setSugeridos] = useState<
+    ReadonlyMap<string, IconeSugerido>
+  >(() => montarMapa(nomes));
 
   useEffect(() => {
     if (nomes === "") {
@@ -42,18 +73,8 @@ export function useIconesPeloNome(
     let vivo = true;
     import("@/lib/catalogo-de-icones")
       .then(async (m) => {
-        const lista = await m.carregarCatalogo();
-        const mapa = new Map<string, IconeSugerido>();
-        for (const nome of nomes.split("\u0000")) {
-          const s = m.sugerirPeloNome(lista, nome);
-          if (!s) continue;
-          mapa.set(
-            nome,
-            s.tipo === "catalogo"
-              ? { icone: "etiqueta", forma: s.item.d }
-              : { icone: s.chave, forma: null },
-          );
-        }
+        carregado = { m, lista: await m.carregarCatalogo() };
+        const mapa = montarMapa(nomes);
         if (vivo) setSugeridos(mapa);
       })
       .catch(() => {});

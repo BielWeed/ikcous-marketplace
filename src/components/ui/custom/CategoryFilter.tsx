@@ -53,7 +53,10 @@ export const CategoryFilter = memo(function CategoryFilter({
       <div className={FAIXA}>
         {allCategories.map((category) => {
           const isActive = selectedCategory === category.name;
-          const sugerido = pelosNomes.get(category.name);
+          const sugerido =
+            category.icone || category.iconeForma
+              ? undefined
+              : pelosNomes.get(category.name);
           return (
             <button
               type="button"
