@@ -73,7 +73,6 @@ import {
   HelpCircle,
   Layout,
   Loader2,
-  Plus,
   Sparkles,
   Trash,
 } from "lucide-react";
@@ -1614,9 +1613,18 @@ export const AdminBannersView = memo(function AdminBannersView({
     setIsDialogOpen(true);
   };
 
+  // O ouvinte vive a vida toda da tela, mas precisa da lista e da aba de AGORA
+  // (posicao e ordem do banner novo): chama sempre o handler da ultima
+  // renderizacao. Com a lista ainda carregando nao abre nada (ordem duplicada).
+  const abrirNovoBannerRef = useRef<() => void>(() => {});
+  abrirNovoBannerRef.current = () => {
+    if (!isLoaded) return;
+    handleOpenDialog();
+  };
+
   useEffect(() => {
     const handleTriggerNewBanner = () => {
-      handleOpenDialog();
+      abrirNovoBannerRef.current();
     };
     window.addEventListener(
       "admin:open-new-banner-dialog",
@@ -2173,14 +2181,6 @@ export const AdminBannersView = memo(function AdminBannersView({
               <p className="text-sm">
                 O que aparece no topo, meio e base da sua loja.
               </p>
-              <Button
-                className="min-h-12 w-full rounded-2xl bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current hover:bg-white"
-                disabled={isOffline || !isLoaded}
-                onClick={() => handleOpenDialog()}
-              >
-                <Plus className="mr-2 size-5" />
-                Novo Banner
-              </Button>
             </header>
             <details className="rounded-2xl border border-admin-border bg-admin-surface p-3">
               <summary className="flex min-h-11 cursor-pointer items-center text-sm text-white">

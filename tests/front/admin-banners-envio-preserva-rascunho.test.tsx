@@ -5,6 +5,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   abrirMaisOpcoes,
+  abrirNovoBannerPelaBarra,
   configurarTextos,
   escolherImagemPropria,
 } from "./helpers/editor-de-banner";
@@ -186,12 +187,7 @@ describe("AdminBannersView — envio preserva edição posterior", () => {
   async function abrirDialogoESubirImagem() {
     uploadBannerImage.mockResolvedValue(urlNova);
 
-    const botaoNovoBanner = localizarBotaoPorTexto(hospedeiro, "Novo Banner")!;
-    expect(botaoNovoBanner).toBeDefined();
-
-    await act(async () => {
-      botaoNovoBanner.click();
-    });
+    await abrirNovoBannerPelaBarra();
     await escolherImagemPropria();
 
     // Diálogo aberto (botão "Salvar Banner" só existe dentro dele) e em

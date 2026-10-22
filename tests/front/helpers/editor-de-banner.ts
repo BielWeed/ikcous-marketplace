@@ -29,3 +29,13 @@ export async function configurarTextos(ativo: boolean) {
     await act(async () => controle!.click());
   }
 }
+
+// O único "Novo banner" mora na barra ancorada do AdminLayout, que avisa a
+// tela pelo evento abaixo; os testes que montam só a AdminBannersView abrem o
+// editor do mesmo jeito que a barra.
+export async function abrirNovoBannerPelaBarra() {
+  await act(async () => {
+    window.dispatchEvent(new CustomEvent("admin:open-new-banner-dialog"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}

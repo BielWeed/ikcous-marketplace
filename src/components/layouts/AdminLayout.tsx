@@ -48,7 +48,6 @@ import {
   ArrowLeft,
   Bell,
   Layers,
-  LayoutGrid,
   Lock,
   Package,
   Plus,
@@ -1102,15 +1101,10 @@ export function AdminLayout({
             {/* Row 2: Coupled Sub-Header Bar (Admin Banners) */}
             {currentView === "admin-banners" && (
               <div className="border-t border-admin-border py-2">
-                <div className="flex min-h-14 items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-pink-300/20 bg-pink-300/10 text-pink-300">
-                      <LayoutGrid className="size-3" />
-                    </div>
-                    <h1 className="min-w-0 break-words text-sm font-semibold text-zinc-50">
-                      {NOMES_DO_PAINEL["admin-banners"]}
-                    </h1>
-                  </div>
+                <div className="flex min-h-11 items-center justify-between gap-3">
+                  <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-zinc-50">
+                    {NOMES_DO_PAINEL["admin-banners"]}
+                  </h1>
 
                   {!editorDeBannerAberto && (
                     <button
@@ -1126,10 +1120,10 @@ export function AdminLayout({
                         );
                       }}
                       className={cn(
-                        "flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-bold transition-transform active:scale-95",
+                        "flex h-11 min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-nav",
                         isOffline
-                          ? "border border-admin-border-strong bg-admin-raised text-[#A1A1AD]"
-                          : "bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] text-[#1B1300] shadow-lg",
+                          ? "border border-admin-border-strong bg-admin-raised text-zinc-400"
+                          : "bg-admin-gold text-black hover:bg-admin-gold/90",
                       )}
                     >
                       {isOffline ? (
@@ -1138,7 +1132,7 @@ export function AdminLayout({
                         <Plus aria-hidden="true" className="size-4 shrink-0" />
                       )}
                       <span>
-                        {isOffline ? "Novo Banner indisponível" : "Novo Banner"}
+                        {isOffline ? "Indisponível offline" : "Novo banner"}
                       </span>
                     </button>
                   )}
@@ -1146,7 +1140,7 @@ export function AdminLayout({
                 {isOffline && !editorDeBannerAberto && (
                   <p
                     id="motivo-banner-offline"
-                    className="mt-2 text-xs text-[#A1A1AD]"
+                    className="mt-1 text-xs text-zinc-400"
                   >
                     Disponível quando a conexão retornar.
                   </p>

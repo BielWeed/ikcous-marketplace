@@ -11,6 +11,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { abrirNovoBannerPelaBarra } from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn();
 const addBanner = vi.fn();
@@ -141,7 +142,7 @@ describe("novo editor de banners prontos", () => {
   }
   async function modelo() {
     await montar();
-    await clicar("Novo Banner");
+    await abrirNovoBannerPelaBarra();
     await clicar("Modelo pronto");
     await clicar("Destaque");
     await clicar("Usar o modelo Destaque");
@@ -209,7 +210,7 @@ describe("novo editor de banners prontos", () => {
   });
   it("botões principais e chips mantêm contorno independente da borda base", async () => {
     await montar();
-    await clicar("Novo Banner");
+    await abrirNovoBannerPelaBarra();
     const verificarAnel = (botao: Element) => {
       for (const classe of [
         "ring-1",
@@ -312,7 +313,7 @@ describe("novo editor de banners prontos", () => {
   it("imagem criada com IA passa pelo mesmo upload e vira imagem própria", async () => {
     uploadBannerImage.mockResolvedValueOnce("https://loja.test/ia.webp");
     await montar();
-    await clicar("Novo Banner");
+    await abrirNovoBannerPelaBarra();
     await clicar("Criar com IA");
     const entrada = host.querySelector<HTMLInputElement>('input[type="file"]')!;
     const arquivo = new File(["imagem"], "ia.webp", { type: "image/webp" });
@@ -346,7 +347,7 @@ describe("novo editor de banners prontos", () => {
   }
   it("imagem própria → produto sem modelo preserva o upload ao salvar", async () => {
     await montar();
-    await clicar("Novo Banner");
+    await abrirNovoBannerPelaBarra();
     await clicar("Usar minha imagem");
     await enviarFoto();
     await clicar("Abrir Produto");
@@ -454,7 +455,7 @@ describe("novo editor de banners prontos", () => {
       }),
     );
     await montar();
-    await clicar("Novo Banner");
+    await abrirNovoBannerPelaBarra();
     await clicar("Usar minha imagem");
     await clicar("Recuperar");
     await clicar("Cancelar");
