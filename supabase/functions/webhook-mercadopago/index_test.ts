@@ -8083,7 +8083,7 @@ Deno.test("REV1 webhook: estorno integral financiado concluído confirma uma vez
 // (20261195000000:175-223). O fechamento financeiro exige correção atômica
 // no banco; o ensaio que esperava 200 recebeu 500 nas duas reentregas.
 for (const principal of ["37.27", "40.86"]) {
-  Deno.test(`BOT-P1 diagnóstico: estorno financiado pendente ainda retorna 500, principal ${principal}`, async () => {
+  Deno.test(`DEFEITO CONHECIDO BOT-P1 (não é o comportamento desejado): estorno financiado antes da aprovação fica em 500 e nunca chama confirmar_pagamento, principal ${principal}`, async () => {
     ambienteDoWebhook();
     const pedido = {
       id: UUID_PEDIDO, total: 37.27, valor_estornado: 0, gateway_payment_id: ID_ORDER_CARTAO_MP,
