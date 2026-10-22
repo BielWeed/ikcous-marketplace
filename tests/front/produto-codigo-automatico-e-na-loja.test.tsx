@@ -167,7 +167,8 @@ describe("AdminProductFormView — código automático e Na loja", () => {
     vi.clearAllMocks();
     sorteio = 0;
     produtosDaLoja = [];
-    for (const k of Object.keys(configDaLoja)) delete configDaLoja[k];
+    for (const k of Object.keys(configDaLoja))
+      Reflect.deleteProperty(configDaLoja, k);
     configDaLoja.shippingCoverage = "national";
     // Sorteio previsível: cada caractere sai do próximo índice do alfabeto.
     vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation(((

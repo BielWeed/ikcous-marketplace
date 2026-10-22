@@ -57,7 +57,7 @@ describe("sufixoDoCodigo", () => {
     let i = 0;
     const sorteio = () => i++;
     expect(sufixoDoCodigo(sorteio)).toBe(
-      [0, 1, 2, 3].map((n) => ALFABETO_DO_CODIGO[n]).join(""),
+      [0, 1, 2, 3].map((n) => ALFABETO_DO_CODIGO.charAt(n)).join(""),
     );
   });
 });

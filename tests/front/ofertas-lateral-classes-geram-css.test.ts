@@ -4,6 +4,8 @@
 // não vê. Este teste COMPILA o Tailwind do projeto sobre os arquivos do desenho Lateral e exige uma regra para
 // TODA classe que o código usa em `className` (lidas do próprio código, sem lista fixa). Tem um controle: uma
 // classe inventada (`bg-admin-text`) precisa ser apanhada pelo mesmo método.
+/* eslint-disable security/detect-non-literal-fs-filename --
+   lê arquivos-fonte de caminho fixo do repositório */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -38,14 +40,14 @@ function trechosDeClassName(fonte: string): string[] {
   const trechos: string[] = [];
   for (const m of fonte.matchAll(/className=/g)) {
     let i = (m.index ?? 0) + m[0].length;
-    if (fonte[i] === '"') {
+    if (fonte.charAt(i) === '"') {
       trechos.push(fonte.slice(i + 1, fonte.indexOf('"', i + 1)));
-    } else if (fonte[i] === "{") {
+    } else if (fonte.charAt(i) === "{") {
       let nivel = 0;
       const ini = i;
       for (; i < fonte.length; i++) {
-        if (fonte[i] === "{") nivel++;
-        if (fonte[i] === "}" && --nivel === 0) break;
+        if (fonte.charAt(i) === "{") nivel++;
+        if (fonte.charAt(i) === "}" && --nivel === 0) break;
       }
       trechos.push(fonte.slice(ini, i + 1));
     }

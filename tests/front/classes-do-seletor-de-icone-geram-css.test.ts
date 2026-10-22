@@ -4,6 +4,8 @@
 // houve com `bg-admin-text` e `ring-admin-text-soft` (o token existe só como `.text-admin-text*`, escrito à
 // mão). Este teste COMPILA o Tailwind do projeto sobre os arquivos e exige uma regra para cada classe de cor do
 // painel (`admin-*`, `foreground`, `background`, `ring`); as escritas à mão, sem variante, valem se estão nos CSS.
+/* eslint-disable security/detect-non-literal-fs-filename --
+   lê arquivos-fonte de caminho fixo do repositório */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";

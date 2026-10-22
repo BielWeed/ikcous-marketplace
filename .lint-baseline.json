@@ -210,11 +210,19 @@
     "",
     "21/10/2026 — warnings de eslint de 405 para 311. Medido no CI do PR #1040,",
     "run 39609527051, job 119254423286, e confirmado pela catraca local. Os 11 erros",
-    "novos do Biome eram imports/formatação; corrigidos sem aumentar o teto de 13."
+    "novos do Biome eram imports/formatação; corrigidos sem aumentar o teto de 13.",
+    "",
+    "22/10/2026 — warnings de eslint de 304 para 303 (integração 1.5.54). Medido com a",
+    "catraca local: a integração chegou a 317 (+13) por 14 avisos de 6 testes NOVOS",
+    "(os arquivos de tela AdminProductFormView, AdminCarouselsView e CheckoutView já",
+    "tinham os mesmos 13 avisos na base). Corrigidos nos testes: 7 de object-injection",
+    "viraram charAt/Map/Reflect.deleteProperty, 6 de fs-filename ganharam o cabeçalho",
+    "com motivo que 87 testes da casa já usam, e 1 diretiva sobrando saiu. Resultado",
+    "303, um abaixo do teto antigo. Baixado antes do CI a pedido da hub."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 304
+    "warnings": 303
   },
   "biome": {
     "errors": 13,

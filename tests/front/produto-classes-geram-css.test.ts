@@ -3,7 +3,7 @@
 // projeto é COMPILADO com as classes dos componentes novos do formulário de
 // produto, e cada classe tem de aparecer como regra no resultado. As
 // variáveis `--admin-*` do CSS à mão também têm de existir (ou ter reserva).
-/* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection --
+/* eslint-disable security/detect-non-literal-fs-filename --
    lê arquivos-fonte de caminho fixo do repositório */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";

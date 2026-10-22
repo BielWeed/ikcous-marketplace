@@ -21,6 +21,8 @@
 // `JA_NAO_GERAVAM` é o retrato das classes que JÁ não geravam regra ANTES do
 // redesenho (dívida anterior, fora do escopo): o teste só impede que apareça
 // uma NOVA. Tirar um item da lista é sempre bem-vindo; pôr, nunca.
+/* eslint-disable security/detect-non-literal-fs-filename --
+   lê arquivos-fonte de caminho fixo do repositório */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -396,6 +398,7 @@ describe("redesenho do Finalizar — todas as classes viram regra no Tailwind do
     ]);
   });
 
+  const jaNaoGeravam = new Map(Object.entries(JA_NAO_GERAVAM));
   const antigosPorArquivo = new Map(
     Object.entries(BOTOES_ANTIGOS_SEM_BORDA_SOLIDA),
   );
@@ -410,7 +413,7 @@ describe("redesenho do Finalizar — todas as classes viram regra no Tailwind do
       ];
       expect(classes.length).toBeGreaterThan(0);
       const geradas = await classesGeradas(classes);
-      const permitidas = new Set(JA_NAO_GERAVAM[arquivo] ?? []);
+      const permitidas = new Set(jaNaoGeravam.get(arquivo) ?? []);
       const faltando = classes.filter(
         (c) => !geradas.has(c) && !permitidas.has(c),
       );
