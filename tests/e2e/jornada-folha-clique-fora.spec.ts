@@ -72,6 +72,21 @@ test.describe("toque de dedo real", () => {
     await page.getByRole("button", { name: "Escolher opções" }).first().tap();
     const folha = page.locator('[data-slot="sheet-content"]');
     await expect(folha).toBeVisible();
+    // A folha agora para ACIMA da barra e entra deslizando por baixo: enquanto
+    // anima, ela passa por cima do Carrinho e um toque ali cairia DENTRO dela.
+    // O gesto humano que este teste prova vem depois da folha parada.
+    let ultimoY = Number.NaN;
+    await expect
+      .poll(
+        async () => {
+          const y = (await folha.boundingBox())?.y;
+          const parou = y !== undefined && y === ultimoY;
+          ultimoY = y ?? Number.NaN;
+          return parou;
+        },
+        { intervals: [150], timeout: 5_000 },
+      )
+      .toBe(true);
     const carrinho = page.locator("#bottom-nav-cart");
     await expect(carrinho).toBeVisible();
     const alvo = await carrinho.boundingBox();
