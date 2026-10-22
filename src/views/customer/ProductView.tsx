@@ -1019,16 +1019,11 @@ export const ProductView = React.memo(function ProductView({
             </div>
 
             {fileiras.length > 0 && (
-              <div className="mb-5 rounded-3xl border border-border bg-muted/40 p-4">
-                <h2 className="mb-4 text-base font-bold text-foreground">
-                  Opções
-                </h2>
-                <FileirasDeVariacao
-                  fileiras={fileiras}
-                  escolha={selectedVariants}
-                  onEscolher={alternarVariante}
-                />
-              </div>
+              <FileirasDeVariacao
+                fileiras={fileiras}
+                escolha={selectedVariants}
+                onEscolher={alternarVariante}
+              />
             )}
 
             {variacaoIndisponivel && (

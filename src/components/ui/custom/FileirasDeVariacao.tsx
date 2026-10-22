@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { corDaVariacao } from "@/utils/cor-da-variacao";
 import type { FileiraDeVariacao } from "@/utils/fileiras-de-variacao";
+import { useId } from "react";
 
 export function FileirasDeVariacao({
   fileiras,
@@ -12,22 +13,31 @@ export function FileirasDeVariacao({
   onEscolher: (nome: string, valor: string) => void;
 }) {
   const selecionadas = new Map(Object.entries(escolha));
+  const idBase = useId();
   return (
-    <div className="space-y-5">
-      {fileiras.map(({ nome, valores }) => {
+    <div className="mb-4 space-y-1">
+      {fileiras.map(({ nome, valores }, indice) => {
         const bolinhas =
           /^(cor|cores|color)$/i.test(nome.trim()) &&
           valores.every((v) => corDaVariacao(v.valor));
         const selecionada = selecionadas.get(nome);
+        const idNome = `${idBase}-${indice}`;
         return (
-          <fieldset key={nome} className="min-w-0">
-            <legend className="float-left mb-3 text-sm font-bold text-foreground">
-              {nome}
-            </legend>
-            <div className="mb-3 flex min-h-5 items-center justify-between gap-2 pl-2 text-sm">
-              <span className="text-muted-foreground">{selecionada}</span>
+          <div
+            key={nome}
+            role="group"
+            aria-labelledby={idNome}
+            className="flex min-w-0 items-start gap-2"
+          >
+            <div className="flex min-h-11 w-20 shrink-0 flex-col justify-center">
+              <span id={idNome} className="text-sm font-bold text-foreground">
+                {nome}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {selecionada ?? "Escolha"}
+              </span>
             </div>
-            <div className="clear-both flex flex-wrap gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-1">
               {valores.map(({ valor, disponivel }) => {
                 const ativa = selecionada === valor;
                 return (
@@ -40,14 +50,10 @@ export function FileirasDeVariacao({
                     title={disponivel ? valor : `${valor} — Esgotado`}
                     onClick={() => onEscolher(nome, valor)}
                     className={cn(
-                      "relative flex min-h-11 items-center justify-center rounded-xl border text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
+                      "relative flex min-h-11 items-center justify-center bg-transparent text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
                       bolinhas
-                        ? "w-11 border-transparent bg-transparent disabled:opacity-60"
-                        : "min-w-[72px] px-3 py-2",
-                      !bolinhas &&
-                        (ativa
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-border bg-background text-foreground"),
+                        ? "w-11 rounded-xl border border-transparent disabled:opacity-60"
+                        : "min-w-[52px] rounded-full",
                       !disponivel && "line-through",
                     )}
                   >
@@ -56,7 +62,7 @@ export function FileirasDeVariacao({
                       <span
                         aria-hidden="true"
                         className={cn(
-                          "size-9 rounded-full border border-foreground",
+                          "size-7 rounded-full border border-foreground",
                           ativa &&
                             "ring-2 ring-foreground ring-offset-2 ring-offset-background",
                         )}
@@ -70,7 +76,16 @@ export function FileirasDeVariacao({
                       </span>
                     ) : (
                       <>
-                        <span>{valor}</span>
+                        <span
+                          className={cn(
+                            "flex h-9 min-w-[52px] items-center justify-center rounded-full border px-3",
+                            ativa
+                              ? "border-foreground bg-foreground text-background"
+                              : "border-border bg-background text-foreground",
+                          )}
+                        >
+                          {valor}
+                        </span>
                         {!disponivel && (
                           <span className="sr-only"> (Esgotado)</span>
                         )}
@@ -80,7 +95,7 @@ export function FileirasDeVariacao({
                 );
               })}
             </div>
-          </fieldset>
+          </div>
         );
       })}
     </div>
