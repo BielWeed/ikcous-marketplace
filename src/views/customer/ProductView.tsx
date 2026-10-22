@@ -522,8 +522,8 @@ export const ProductView = React.memo(function ProductView({
       });
     }
   };
-  // Só os botões da página desmarcam ao tocar de novo na escolhida; o menu da
-  // barra fixa nunca desmarcou e continua só escolhendo (`escolherVariante`).
+  // Página e folha desmarcam ao tocar de novo: permite sair de combinações
+  // incompatíveis sem escolher outra opção pela cliente.
   const alternarVariante = (grupo: string, valor: string) => {
     if (selectedVariants[grupo] !== valor) {
       escolherVariante(grupo, valor);
@@ -1082,6 +1082,11 @@ export const ProductView = React.memo(function ProductView({
 
               <button
                 onClick={handleAddToCart}
+                aria-label={
+                  !isOutOfStock && cartStatus === "idle"
+                    ? "Adicionar ao carrinho"
+                    : undefined
+                }
                 // Esgotado é PERMANENTE: `disabled` de verdade. "Adicionando…"/
                 // "Adicionado" é passageiro: `aria-disabled` mantém o botão na
                 // ordem de foco (com `disabled` o foco caía no body e o leitor
@@ -1092,14 +1097,14 @@ export const ProductView = React.memo(function ProductView({
                   !isOutOfStock && cartStatus !== "idle" ? true : undefined
                 }
                 className={cn(
-                  "flex min-h-[52px] min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-foreground px-3 py-2 text-center text-sm font-bold leading-tight text-background transition-colors",
+                  "flex min-h-[52px] min-w-0 flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-center text-sm font-bold leading-tight text-primary-foreground transition-colors",
                   // lg:basis-full: no desktop o CTA não divide a linha com
                   // nada -- largura inteira do cartão, rótulo nunca cortado
                   // (a jornada C12 a 1280 exige "Adicionar ao Carrinho" visível).
                   "lg:h-12 lg:basis-full lg:text-xs lg:tracking-wider",
                   cartStatus === "idle"
-                    ? "bg-foreground hover:opacity-90 active:scale-[0.98]"
-                    : "bg-foreground/80",
+                    ? "bg-primary hover:bg-primary/90 active:scale-[0.98]"
+                    : "bg-primary/80",
                   // "Adicionado" pinta de verde (não é a cor da loja): o texto
                   // sobre o verde é branco, não o da cor da loja.
                   cartStatus === "success" &&
@@ -1132,9 +1137,10 @@ export const ProductView = React.memo(function ProductView({
                   </>
                 ) : (
                   <>
-                    <span className="min-w-0 break-words">
+                    <span className="hidden min-[380px]:inline">
                       Adicionar ao Carrinho
                     </span>
+                    <span className="min-[380px]:hidden">Adicionar</span>
                   </>
                 )}
               </button>
@@ -1567,16 +1573,30 @@ export const ProductView = React.memo(function ProductView({
         >
           <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
         </button>
-        <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain px-5 pb-5">
+        <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain px-5 pb-[calc(20px+var(--folha-folga-segura))]">
           <SheetTitle className="text-lg font-bold">{product.name}</SheetTitle>
           <SheetDescription>
             Escolha as opções para adicionar ao carrinho.
           </SheetDescription>
-          <p className="text-xl font-bold">{reais(currentPrice)}</p>
+          {!!product.originalPrice && product.originalPrice > currentPrice && (
+            <span className="text-sm text-muted-foreground line-through">
+              De: {reais(product.originalPrice)}
+            </span>
+          )}
+          <p
+            className={cn(
+              "text-xl font-bold",
+              product.originalPrice && product.originalPrice > currentPrice
+                ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
+                : "text-foreground",
+            )}
+          >
+            {reais(currentPrice)}
+          </p>
           <FileirasDeVariacao
             fileiras={fileiras}
             escolha={selectedVariants}
-            onEscolher={escolherVariante}
+            onEscolher={alternarVariante}
           />
           <QuantitySelector
             quantity={quantity}
@@ -1592,9 +1612,13 @@ export const ProductView = React.memo(function ProductView({
               handleAddToCart(e);
               if (variante) setFolhaAberta(false);
             }}
-            className="min-h-[52px] w-full rounded-full bg-foreground px-4 py-3 text-sm font-bold text-background disabled:opacity-40"
+            className="min-h-[52px] w-full rounded-full bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-40"
           >
-            {isOutOfStock ? "Esgotado" : "Adicionar ao Carrinho"}
+            {isOutOfStock
+              ? variacaoIndisponivel
+                ? "Indisponível"
+                : "Esgotado"
+              : "Adicionar ao Carrinho"}
           </button>
         </div>
       </FolhaDeOpcoes>
@@ -1666,10 +1690,20 @@ export const ProductView = React.memo(function ProductView({
                       ? setFolhaAberta(true)
                       : handleAddToCart(e)
                   }
-                  className="ml-auto min-h-[52px] max-w-full shrink-0 rounded-full bg-foreground px-4 py-3 text-sm font-bold text-background [overflow-wrap:anywhere] disabled:opacity-40"
+                  className={cn(
+                    "ml-auto min-h-[52px] max-w-full shrink-0 rounded-full px-4 py-3 text-sm font-bold text-primary-foreground [overflow-wrap:anywhere] disabled:opacity-40",
+                    cartStatus === "idle"
+                      ? "bg-primary hover:bg-primary/90"
+                      : "bg-primary/80",
+                    cartStatus === "success" && "bg-emerald-600 text-white",
+                    isOutOfStock &&
+                      "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100",
+                  )}
                 >
                   {isOutOfStock
-                    ? "Esgotado"
+                    ? variacaoIndisponivel
+                      ? "Indisponível"
+                      : "Esgotado"
                     : cartStatus === "loading"
                       ? "Adicionando…"
                       : cartStatus === "success"

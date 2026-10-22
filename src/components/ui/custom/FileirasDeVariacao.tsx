@@ -19,7 +19,6 @@ export function FileirasDeVariacao({
           /^(cor|cores|color)$/i.test(nome.trim()) &&
           valores.every((v) => corDaVariacao(v.valor));
         const selecionada = selecionadas.get(nome);
-        const estoque = valores.find((v) => v.valor === selecionada)?.estoque;
         return (
           <fieldset key={nome} className="min-w-0">
             <legend className="float-left mb-3 text-sm font-bold text-foreground">
@@ -27,14 +26,9 @@ export function FileirasDeVariacao({
             </legend>
             <div className="mb-3 flex min-h-5 items-center justify-between gap-2 pl-2 text-sm">
               <span className="text-muted-foreground">{selecionada}</span>
-              {estoque !== undefined && (
-                <span className="text-xs text-emerald-700">
-                  {estoque} disponíveis
-                </span>
-              )}
             </div>
             <div className="clear-both flex flex-wrap gap-2">
-              {valores.map(({ valor, disponivel, estoque }) => {
+              {valores.map(({ valor, disponivel }) => {
                 const ativa = selecionada === valor;
                 return (
                   <button
@@ -43,11 +37,7 @@ export function FileirasDeVariacao({
                     aria-label={valor}
                     aria-pressed={ativa}
                     disabled={!disponivel && !ativa}
-                    title={
-                      disponivel
-                        ? `${valor} — ${estoque} un.`
-                        : `${valor} — Esgotado`
-                    }
+                    title={disponivel ? valor : `${valor} — Esgotado`}
                     onClick={() => onEscolher(nome, valor)}
                     className={cn(
                       "relative flex min-h-11 items-center justify-center rounded-xl border text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
@@ -81,10 +71,9 @@ export function FileirasDeVariacao({
                     ) : (
                       <>
                         <span>{valor}</span>
-                        <span className="sr-only">
-                          {" "}
-                          ({disponivel ? `${estoque} un.` : "Esgotado"})
-                        </span>
+                        {!disponivel && (
+                          <span className="sr-only"> (Esgotado)</span>
+                        )}
                       </>
                     )}
                   </button>

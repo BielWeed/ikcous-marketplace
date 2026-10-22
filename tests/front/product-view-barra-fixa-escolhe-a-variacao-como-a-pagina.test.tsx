@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 //
 // A barra de compra FIXA de baixo (aparece ao rolar, no celular) tem o
-// próprio menu de variações (CompactVariantDropdown). Achado do revisor no
+// próprio seletor de variações (hoje, a folha de opções). Achado do revisor no
 // Chromium a 375px: escolher a Vermelha (10), subir para 5, rolar até a barra
 // e trocar para a Azul (2) PELA BARRA deixava a quantidade em 5, sem o aviso
 // "Só restam 2", mandava onAddToCart(5, "v-azul") e a galeria não andava até
 // a foto da Azul. A escolha pela barra tem de ser a MESMA dos botões da
-// página -- só não desmarca ao tocar de novo (o menu nunca desmarcou).
+// página, inclusive desmarcando para permitir trocar combinações incompatíveis.
 //
 // O hospedeiro é um <main> real: o efeito que liga `scrolled` (a barra só
 // existe com `scrolled=true`) só se inscreve com `document.querySelector
@@ -164,7 +164,7 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
   const barra = () =>
     document.querySelector<HTMLElement>(".bottom-docked-navigation");
 
-  /** Botão de variação DA PÁGINA (os da barra não têm aria-pressed). */
+  /** Botão de variação DA PÁGINA, fora do portal da folha. */
   function opcaoDaPagina(valor: string) {
     const span = [...hospedeiro.querySelectorAll("button span")].find(
       (el) => el.textContent === valor,
@@ -255,7 +255,7 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     expect(opcaoDaPagina("Vermelha").getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("o menu da barra NÃO desmarca ao tocar na já escolhida (só a página desmarca)", async () => {
+  it("a folha desmarca ao tocar na opção já escolhida", async () => {
     await montar(
       blusa([cor("v-verm", "Vermelha", 10), cor("v-azul", "Azul", 2)]),
     );
@@ -263,7 +263,7 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
 
     await tocar(await itemDoMenuDaBarra("Azul", "Azul"));
 
-    expect(opcaoDaPagina("Azul").getAttribute("aria-pressed")).toBe("true");
+    expect(opcaoDaPagina("Azul").getAttribute("aria-pressed")).toBe("false");
   });
 
   it("Adicionar sem escolher abre a mesma folha; só a combinação completa envia id e preço", async () => {
@@ -299,6 +299,165 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
       "azul-p",
       "Cor / Tamanho: Azul / P",
     );
+  });
+
+  it.each([
+    ["Modelo / Tamanho", "A / P", "B / M", ["A", "P"], ["B", "M"]],
+    [
+      "Modelo / Tamanho / Estampa",
+      "A / P / Lisa",
+      "B / M / Listrada",
+      ["A", "P", "Lisa"],
+      ["B", "M", "Listrada"],
+    ],
+  ])(
+    "a folha permite sair da combinação A/P e comprar B/M em %s",
+    async (name, primeira, segunda, escolhasA, escolhasB) => {
+      await montar(
+        blusa([
+          { ...cor("a-p", primeira, 5), name },
+          { ...cor("b-m", segunda, 2), name, priceOverride: 25 },
+        ]),
+      );
+      await comprarPelaBarra();
+      const folha = document.querySelector('[role="dialog"]')!;
+      const opcao = (valor: string) =>
+        folha.querySelector<HTMLButtonElement>(
+          `button[aria-label="${valor}"]`,
+        )!;
+      const adicionar = () =>
+        [...folha.querySelectorAll("button")].find(
+          (b) => b.textContent === "Adicionar ao Carrinho",
+        );
+      for (const valor of escolhasA) await tocar(opcao(valor));
+      for (const valor of escolhasB) {
+        expect(opcao(valor).disabled).toBe(true);
+        await tocar(opcao(valor));
+        expect(opcao(valor).getAttribute("aria-pressed")).toBe("false");
+      }
+      for (const valor of escolhasA) {
+        await tocar(opcao(valor));
+        expect(opcao(valor).getAttribute("aria-pressed")).toBe("false");
+      }
+      await tocar(adicionar());
+      expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+      for (const valor of escolhasB) await tocar(opcao(valor));
+      expect(folha.textContent).toContain("R$ 25,00");
+      await tocar(adicionar());
+      expect(adicionarAoCarrinho).toHaveBeenCalledExactlyOnceWith(
+        1,
+        "b-m",
+        `${name}: ${segunda}`,
+      );
+    },
+  );
+
+  it("Azul/M não anuncia o total de todos os tamanhos como estoque da escolha", async () => {
+    await montar(
+      blusa([
+        { ...cor("azul-p", "Azul / P", 12), name: "Cor / Tamanho" },
+        { ...cor("azul-m", "Azul / M", 3), name: "Cor / Tamanho" },
+      ]),
+    );
+    await comprarPelaBarra();
+    const folha = document.querySelector('[role="dialog"]')!;
+    await tocar(folha.querySelector('button[aria-label="Azul"]'));
+    await tocar(folha.querySelector('button[aria-label="M"]'));
+    expect(folha.querySelector("fieldset")?.textContent).not.toContain(
+      "15 disponíveis",
+    );
+    expect(
+      folha.querySelector('button[aria-label="Azul"]')?.getAttribute("title"),
+    ).not.toContain("15 un.");
+    const mais = folha.querySelector(
+      'button[aria-label="Aumentar quantidade"]',
+    );
+    for (let i = 0; i < 4; i++) await tocar(mais);
+    await tocar(
+      [...folha.querySelectorAll("button")].find(
+        (b) => b.textContent === "Adicionar ao Carrinho",
+      ),
+    );
+    expect(adicionarAoCarrinho).toHaveBeenCalledExactlyOnceWith(
+      3,
+      "azul-m",
+      "Cor / Tamanho: Azul / M",
+    );
+  });
+
+  it("a área rolável da folha reserva a folga segura do rodapé", async () => {
+    await montar(blusa([cor("azul", "Azul", 2)]));
+    await comprarPelaBarra();
+    const folha = document.querySelector('[role="dialog"]')!;
+    const conteudo = folha.querySelector(".overflow-y-auto")!;
+    expect(
+      conteudo.classList.contains("pb-[calc(20px+var(--folha-folga-segura))]"),
+    ).toBe(true);
+  });
+
+  it("o botão principal tem rótulo curto abaixo de 380px sem perder o nome acessível", async () => {
+    await montar(blusa([]));
+    const botao = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-label="Adicionar ao carrinho"]',
+    );
+    expect(botao).not.toBeNull();
+    expect(botao?.classList.contains("min-h-[52px]")).toBe(true);
+    const curto = [...botao!.querySelectorAll("span")].find(
+      (el) => el.textContent === "Adicionar",
+    )!;
+    const completo = [...botao!.querySelectorAll("span")].find(
+      (el) => el.textContent === "Adicionar ao Carrinho",
+    )!;
+    expect(curto.classList.contains("min-[380px]:hidden")).toBe(true);
+    expect(completo.classList.contains("hidden")).toBe(true);
+    expect(completo.classList.contains("min-[380px]:inline")).toBe(true);
+  });
+
+  it("a barra distingue opção desligada de produto esgotado", async () => {
+    const produto = blusa([cor("azul", "Azul", 2)]);
+    await montar(produto);
+    await tocar(opcaoDaPagina("Azul"));
+    await montar({
+      ...produto,
+      variants: [{ ...produto.variants![0], active: false }],
+    });
+    const comprar =
+      barra()?.querySelector<HTMLButtonElement>("button:last-child");
+    expect(comprar?.disabled).toBe(true);
+    expect(comprar?.textContent).toBe("Indisponível");
+  });
+
+  it("a barra mantém Esgotado para o produto sem estoque", async () => {
+    await montar({ ...blusa([]), stock: 0 });
+    expect(barra()?.textContent).toContain("Esgotado");
+  });
+
+  it("a folha mostra De riscado e preço promocional só com desconto real", async () => {
+    const produto = blusa([cor("azul", "Azul", 2)]);
+    await montar({ ...produto, originalPrice: 100 });
+    await comprarPelaBarra();
+    const folha = document.querySelector('[role="dialog"]')!;
+    const anterior = [...folha.querySelectorAll("span")].find(
+      (el) => el.textContent === "De: R$ 100,00",
+    );
+    expect(anterior?.classList.contains("line-through")).toBe(true);
+    const preco = [...folha.querySelectorAll("p")].find(
+      (el) => el.textContent === "R$ 80,00",
+    )!;
+    expect(preco.classList.contains("text-emerald-700")).toBe(true);
+    await montar({ ...produto, originalPrice: 80 });
+    expect(folha.textContent).not.toContain("De:");
+    expect(preco.classList.contains("text-emerald-700")).toBe(false);
+  });
+
+  it("a folha mantém o botão de compra na cor da loja e com texto do tema", async () => {
+    await montar(blusa([cor("azul", "Azul", 2)]));
+    await comprarPelaBarra();
+    const botao = [...document.querySelectorAll('[role="dialog"] button')].at(
+      -1,
+    )!;
+    expect(botao.classList.contains("bg-primary")).toBe(true);
+    expect(botao.classList.contains("text-primary-foreground")).toBe(true);
   });
 
   it("os dois botões de quantidade da folha usam alvos de 44px", async () => {
