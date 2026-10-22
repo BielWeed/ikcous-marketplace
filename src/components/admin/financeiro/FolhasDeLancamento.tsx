@@ -7,7 +7,7 @@ import {
   ReceiptText,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { LocalBufferedTextarea } from "@/components/admin/LocalBufferedInput";
 import {
@@ -37,6 +37,7 @@ import type {
   LinhaDoExtrato,
 } from "@/types/financeiro";
 import { FolhaFinanceira } from "./FolhaFinanceira";
+import { IconeDaForma } from "./IconeDaForma";
 import { IconeDaOrigem } from "./icones";
 import type { AlvoDaBaixa, AlvoDoCancelamento } from "./navegacao";
 import {
@@ -71,7 +72,7 @@ export function DetalheDoLancamentoFolha({
   const podeMexer = linha.editavel && !cancelado;
   const doPedido = origemVemDoPedido(linha.origem);
 
-  const itens: { rotulo: string; valor: string }[] = [
+  const itens: { rotulo: string; valor: ReactNode }[] = [
     { rotulo: "Data", valor: formatarData(linha.data) },
     ...(linha.vencimento
       ? [{ rotulo: "Vencimento", valor: formatarData(linha.vencimento) }]
@@ -91,7 +92,17 @@ export function DetalheDoLancamentoFolha({
           },
         ]),
     ...(linha.formaPagamento
-      ? [{ rotulo: "Forma", valor: rotuloDaForma(linha.formaPagamento) }]
+      ? [
+          {
+            rotulo: "Forma",
+            valor: (
+              <>
+                <IconeDaForma forma={linha.formaPagamento} className="mr-1.5" />
+                {rotuloDaForma(linha.formaPagamento)}
+              </>
+            ),
+          },
+        ]
       : []),
     { rotulo: "Origem", valor: rotuloDaOrigem(linha.origem) },
     { rotulo: "Situação", valor: rotuloDoStatus(linha.status) },

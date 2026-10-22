@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 
-import { IconePix } from "@/components/admin/primitivos/IconePix";
 import { useResumoFinanceiro } from "@/hooks/useFinanceiro";
 import {
   formatarDataHora,
@@ -33,6 +32,7 @@ import type {
   TotaisPrevistos,
 } from "@/types/financeiro";
 import { FluxoDeCaixaGrafico } from "./FluxoDeCaixaGrafico";
+import { IconeDaForma, corDaForma } from "./IconeDaForma";
 import { IconeDoTipoDeConta, matizDoTipoDeConta } from "./icones";
 import type { AbaDoFinanceiro, LadoDosPrevistos } from "./navegacao";
 import {
@@ -153,9 +153,7 @@ function RecebimentosPorForma({
               >
                 <div className="flex items-baseline justify-between gap-3 text-xs">
                   <span className="break-words font-bold text-zinc-200">
-                    {forma.forma === "pix" && (
-                      <IconePix className="mr-1 inline-block size-4 align-text-bottom text-teal-300" />
-                    )}
+                    <IconeDaForma forma={forma.forma} className="mr-1.5" />
                     {rotuloDaForma(forma.forma)}
                   </span>
                   <span className="shrink-0 tabular-nums text-zinc-400">
@@ -169,14 +167,10 @@ function RecebimentosPorForma({
                 <div className="h-2 w-full overflow-hidden rounded-full bg-white/5">
                   <div
                     className="h-full rounded-full"
+                    data-barra-da-forma={forma.forma ?? ""}
                     style={{
                       width: `${Math.max(pct, 1.5)}%`,
-                      backgroundColor:
-                        forma.forma === "pix"
-                          ? "#2DD4BF"
-                          : forma.forma === "credito"
-                            ? "#BA9AFF"
-                            : "#7AA2FF",
+                      backgroundColor: corDaForma(forma.forma),
                     }}
                   />
                 </div>
