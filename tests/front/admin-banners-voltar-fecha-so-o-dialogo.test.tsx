@@ -379,4 +379,49 @@ describe("AdminBannersView — Voltar do celular com o diálogo aberto fecha só
     });
     expect(localizarBotaoPorTexto(hospedeiro, "Modelo pronto")).toBeUndefined();
   });
+
+  it("no Voltar físico em Modelo pronto, volta uma etapa e devolve a entrada do editor", async () => {
+    await montar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Modelo pronto")!.click();
+      await esperarMicrotarefas();
+    });
+    expect(window.history.state?.modal).toBe("banner");
+
+    // O navegador já tirou a entrada do editor antes de o App chamar o override.
+    window.history.replaceState(
+      { ...window.history.state, modal: undefined },
+      "",
+      window.location.pathname + window.location.search,
+    );
+    const pushStateSpy = vi.spyOn(window.history, "pushState");
+    await act(async () => {
+      overrideAtual?.();
+    });
+    expect(localizarBotaoPorTexto(hospedeiro, "Modelo pronto")).toBeDefined();
+    expect(pushStateSpy).toHaveBeenCalledTimes(1);
+    expect(window.history.state?.modal).toBe("banner");
+  });
+
+  it("no Voltar da barra em Modelo pronto, não empurra outra entrada", async () => {
+    await montar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Modelo pronto")!.click();
+      await esperarMicrotarefas();
+    });
+    const pushStateSpy = vi.spyOn(window.history, "pushState");
+    await act(async () => {
+      overrideAtual?.();
+    });
+    expect(localizarBotaoPorTexto(hospedeiro, "Modelo pronto")).toBeDefined();
+    expect(pushStateSpy).not.toHaveBeenCalled();
+  });
 });

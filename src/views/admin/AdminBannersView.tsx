@@ -1379,6 +1379,16 @@ export const AdminBannersView = memo(function AdminBannersView({
         onSetBackOverride(() => () => {
           if (telaRef.current === "modelos" || telaRef.current === "ia") {
             setTela("jeito");
+            // No Voltar FÍSICO o navegador já consumiu a entrada do editor
+            // antes de chegar aqui: sem devolvê-la, o segundo Voltar sairia
+            // da tela de Banners em vez de só fechar o editor.
+            if (window.history.state?.modal !== "banner") {
+              window.history.pushState(
+                { ...window.history.state, modal: "banner" },
+                "",
+                window.location.pathname + window.location.search,
+              );
+            }
             return;
           }
           if (efetuouFechamentoRef.current) return;
