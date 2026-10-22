@@ -1,4 +1,24 @@
 {
+  "1.5.54": {
+    "titulo": "Finalizar compra mais enxuto, ofertas com foto ao lado e produto com código automático",
+    "novidades": [
+      "Na seção Ofertas das vitrines, você escolhe um terceiro desenho, o Lateral: a foto fica ao lado do texto e o botão só coloca no carrinho.",
+      "Ao cadastrar um produto, o código interno agora é gerado sozinho, e você ainda pode trocá-lo se quiser.",
+      "Cada categoria pode ter um ícone escolhido numa galeria, com os ícones separados por grupo.",
+      "No Finalizar compra, o cupom fica atrás do link Tenho um código de cupom, e os cupons disponíveis aparecem em cartões que você toca para usar."
+    ],
+    "correcoes": [
+      "Categoria sem ícone salvo agora mostra na loja o ícone certo pelo nome dela.",
+      "No Finalizar compra, os botões têm borda visível e o endereço não aparece mais cortado.",
+      "No Finalizar compra, o texto não é mais cortado em tela estreita e as cores ficam mais fáceis de ler."
+    ],
+    "melhorias": [
+      "No Finalizar compra, Seus dados e o endereço de entrega viram resumos compactos, com o botão Editar para mudar.",
+      "No Finalizar compra, a entrega e o frete ficaram mais limpos, e a opção escolhida aparece em tom neutro.",
+      "O cadastro de produto foi redesenhado, com a seção na loja, a categoria e o código mais fáceis de achar.",
+      "O seletor de ícone usa as cores do painel, e o painel mostra o mesmo ícone que o cliente vê na loja."
+    ]
+  },
   "1.5.53": {
     "titulo": "Painel mais claro: Financeiro, Avisar clientes e Favoritos em lista",
     "novidades": [
