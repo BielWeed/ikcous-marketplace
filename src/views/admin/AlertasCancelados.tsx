@@ -65,10 +65,11 @@ interface AlertasCanceladosProps {
   /** A consulta de cancelados pode ter vindo truncada (erro/truncagem na
    * RPC) — o aviso fica dentro do dropdown, junto de quem ele descreve. */
   readonly incompleto: boolean;
-  /** pedidos-4 (20261164000000): cancelados com cancelamento ANTERIOR à
-   * janela da varredura enxuta — o servidor conta quem ficou fora
-   * ('fora_da_janela'). 0/undefined = nada ficou fora. Sem este número, o
-   * recorte de 90 dias esconderia pendência antiga em silêncio. */
+  /** Pedidos cancelados há mais de 90 dias que AINDA têm pendência real
+   * (dinheiro a devolver ou mercadoria que não voltou) — o servidor conta
+   * ('fora_da_janela', regra da 20261380000000). Cancelado antigo sem nada a
+   * fazer não entra. 0/undefined = nenhum. Sem este número, o recorte de 90
+   * dias esconderia pendência antiga em silêncio. */
   readonly foraDaJanela?: number;
   /** Pede a varredura completa (p_dias null no servidor): o dropdown fecha
    * e a lista recarrega incluindo os antigos. */
@@ -110,9 +111,10 @@ export function AlertasCancelados({
   const alavancaRef = useRef<HTMLButtonElement>(null);
 
   const temDinheiroPreso = pagoCanceladoCount > 0;
-  // pedidos-4: cancelados fora da janela são pendência em potencial (estorno
-  // devido, mercadoria a voltar) que as listas de baixo NÃO mostram — o
-  // botão nasce por eles do mesmo jeito, e o bloco de dentro explica.
+  // Os antigos pendentes (dinheiro a devolver ou mercadoria que não voltou,
+  // já filtrados pelo servidor) são pendência REAL que as listas de baixo
+  // ainda NÃO mostram — o botão nasce por eles do mesmo jeito, e o bloco de
+  // dentro explica e oferece "Mostrar esses pedidos".
   const temForaDaJanela = (foraDaJanela ?? 0) > 0;
   const temPendencia =
     temDinheiroPreso ||
@@ -174,20 +176,23 @@ export function AlertasCancelados({
         ? `${titulo}. ${resumoBadges}`
         : titulo;
 
-  // Badge = pedidos DISTINTOS com mercadoria/estorno pendentes. Quando a
-  // única pendência é o dinheiro preso (lista não derivada aqui, só a
-  // contagem do servidor), o badge mostra essa contagem — max dos dois
-  // nunca mostra 0 com pendência viva nem inventa pedido que não está
-  // em lista nenhuma. O número exato por balde segue no dropdown.
+  // Badge = pedidos DISTINTOS com pendência: os das listas (dentro da
+  // janela) MAIS os antigos pendentes (fora dela). Os dois grupos nunca se
+  // repetem — o servidor só conta como "fora" quem não está na lista, e com
+  // a busca completa (p_dias null) "fora" vira 0 e os antigos passam para as
+  // listas —, então SOMAM. O dinheiro preso (`paid_on_cancelled`) é histórico
+  // total, sem janela e sem descontar o que já foi devolvido: PODE conter os
+  // mesmos pedidos dos dois grupos, por isso não soma por cima; entra só como
+  // piso (max) para o badge nunca mostrar menos do que ele nem 0 com
+  // pendência viva. O número exato por balde segue no dropdown.
   const pedidosNasListas = new Set(
     [...pedidosEsperandoRetorno, ...pedidosParaDevolverAgora].map(
       (pedido) => pedido.id,
     ),
   ).size;
   const badge = Math.max(
-    pedidosNasListas,
+    pedidosNasListas + (foraDaJanela ?? 0),
     pagoCanceladoCount,
-    foraDaJanela ?? 0,
   );
 
   // O aviso de lista incompleta mora dentro do dropdown DESDE o desenho de
