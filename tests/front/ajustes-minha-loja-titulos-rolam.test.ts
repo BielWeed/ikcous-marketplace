@@ -22,10 +22,14 @@ describe("Ajustes e Minha loja — títulos acompanham a rolagem", () => {
       expect(cabecalho).toContain("[&_h1]:tracking-tight");
       expect(cabecalho).toContain("[&_h1_span]:not-italic");
       expect(cabecalho).toContain("<AdminPageHeader");
-      expect(cabecalho).not.toMatch(/\bsticky\b|\bfixed\b|backdrop-blur|border-b|bg-admin-bg\//);
+      expect(cabecalho).not.toMatch(
+        /\bsticky\b|\bfixed\b|backdrop-blur|border-b|bg-admin-bg\//,
+      );
       if (tela === "AdminSettingsView") {
         expect(cabecalho).toContain("max-w-2xl");
-        expect(cabecalho).toContain('aria-label="Guia de Configurações e Ajuda"');
+        expect(cabecalho).toContain(
+          'aria-label="Guia de Configurações e Ajuda"',
+        );
         expect(cabecalho).toContain("onClick={() => setShowHelpModal(true)}");
       }
     },

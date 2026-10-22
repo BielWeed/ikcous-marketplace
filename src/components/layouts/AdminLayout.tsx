@@ -897,7 +897,9 @@ export function AdminLayout({
                 <ScanBarcode aria-hidden="true" className="size-5" />
               </span>
               <span
-                className={currentView === "admin-pdv" ? "font-bold" : undefined}
+                className={
+                  currentView === "admin-pdv" ? "font-bold" : undefined
+                }
               >
                 Vender
               </span>
@@ -928,9 +930,7 @@ export function AdminLayout({
                   onTouchStart={() => handleMouseEnter(item.view, true)}
                   className={cn(
                     "relative flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm transition-[color,transform] active:scale-95",
-                    isActive
-                      ? ABA_ATIVA
-                      : "text-[#A1A1AD] hover:text-white",
+                    isActive ? ABA_ATIVA : "text-[#A1A1AD] hover:text-white",
                   )}
                 >
                   {isActive && (

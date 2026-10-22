@@ -150,7 +150,9 @@ describe("AdminLayout — na tela de venda, a barra marca o Vender e não a aba 
     expect(vender).toBeTruthy();
     expect(vender!.className).toContain("text-white");
     expect(vender!.className).not.toContain("bg-[#3B3016]");
-    expect(vender!.querySelector(".border-admin-gold.text-admin-gold")).toBeTruthy();
+    expect(
+      vender!.querySelector(".border-admin-gold.text-admin-gold"),
+    ).toBeTruthy();
     expect(vender!.getAttribute("aria-current")).toBe("page");
     expect(vender!.textContent).toBe("Vender");
   });
@@ -162,36 +164,43 @@ describe("AdminLayout — na tela de venda, a barra marca o Vender e não a aba 
     ["admin-customers", "Clientes"],
     ["admin-settings", "Ajustes"],
     ["admin-pdv", "Vender"],
-  ] as const)("em %s, destaca %s sem preencher a célula nas duas barras", async (view, rotulo) => {
-    const { AdminLayout } = await import("@/components/layouts/AdminLayout");
-    await act(async () => {
-      raiz.render(
-        <AdminLayout currentView={view} onNavigate={vi.fn()}>
-          <div />
-        </AdminLayout>,
-      );
-    });
+  ] as const)(
+    "em %s, destaca %s sem preencher a célula nas duas barras",
+    async (view, rotulo) => {
+      const { AdminLayout } = await import("@/components/layouts/AdminLayout");
+      await act(async () => {
+        raiz.render(
+          <AdminLayout currentView={view} onNavigate={vi.fn()}>
+            <div />
+          </AdminLayout>,
+        );
+      });
 
-    for (const nav of hospedeiro.querySelectorAll("nav")) {
-      const ativo = nav.querySelector('button[aria-current="page"]');
-      expect(ativo?.textContent?.trim()).toBe(rotulo);
-      expect(ativo?.className).not.toContain("bg-");
-      expect(ativo?.className).toContain("text-white");
-      const traco = ativo?.querySelector('span[aria-hidden="true"]');
-      expect(traco?.className).toContain("top-0");
-      expect(traco?.className).toContain("w-5");
-      expect(traco?.className).toContain("h-[3px]");
-      expect(traco?.className).toContain("bg-admin-gold");
-      expect(ativo?.querySelector(".border-admin-gold.text-admin-gold")).toBeTruthy();
-      const label = Array.from(ativo?.querySelectorAll("span") ?? []).find(
-        (span) => span.textContent?.trim() === rotulo,
-      );
-      expect(label?.className).toContain("font-bold");
-      for (const inativo of nav.querySelectorAll('button:not([aria-current="page"])')) {
-        expect(inativo.querySelector(".border-admin-gold")).toBeNull();
+      for (const nav of hospedeiro.querySelectorAll("nav")) {
+        const ativo = nav.querySelector('button[aria-current="page"]');
+        expect(ativo?.textContent?.trim()).toBe(rotulo);
+        expect(ativo?.className).not.toContain("bg-");
+        expect(ativo?.className).toContain("text-white");
+        const traco = ativo?.querySelector('span[aria-hidden="true"]');
+        expect(traco?.className).toContain("top-0");
+        expect(traco?.className).toContain("w-5");
+        expect(traco?.className).toContain("h-[3px]");
+        expect(traco?.className).toContain("bg-admin-gold");
+        expect(
+          ativo?.querySelector(".border-admin-gold.text-admin-gold"),
+        ).toBeTruthy();
+        const label = Array.from(ativo?.querySelectorAll("span") ?? []).find(
+          (span) => span.textContent?.trim() === rotulo,
+        );
+        expect(label?.className).toContain("font-bold");
+        for (const inativo of nav.querySelectorAll(
+          'button:not([aria-current="page"])',
+        )) {
+          expect(inativo.querySelector(".border-admin-gold")).toBeNull();
+        }
       }
-    }
-  });
+    },
+  );
 
   it("em admin-pdv, o botão do topo diz Perfil (a venda é aba da barra, não sub-tela)", async () => {
     const { AdminLayout } = await import("@/components/layouts/AdminLayout");
@@ -224,6 +233,8 @@ describe("AdminLayout — na tela de venda, a barra marca o Vender e não a aba 
       (b) => b.textContent?.trim() === "Clientes",
     );
     expect(clientes?.getAttribute("aria-current")).toBe("page");
-    expect(clientes?.querySelector(".border-admin-gold.text-admin-gold")).toBeTruthy();
+    expect(
+      clientes?.querySelector(".border-admin-gold.text-admin-gold"),
+    ).toBeTruthy();
   });
 });
