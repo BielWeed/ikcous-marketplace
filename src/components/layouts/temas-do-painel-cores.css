@@ -6,7 +6,6 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .bg-\[\#192A31\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:#e0f2fe}
 :where(html.admin-mode[data-admin-tema="confortavel"]) .bg-\[\#192A31\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-raised))}
 :where(html.admin-mode[data-admin-tema="claro"]) .bg-\[\#2B151D\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:#fff1f2}
-:where(html.admin-mode[data-admin-tema="claro"]) .bg-\[\#3B3016\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.2)}
 :where(html.admin-mode[data-admin-tema="claro"]) .bg-\[\#401A24\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:#ffe4e6}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill))}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold\/\[0\.02\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.02)}
