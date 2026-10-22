@@ -331,4 +331,97 @@ describe("AdminBannersView — Voltar do celular com o diálogo aberto fecha só
     // própria para consumir) — a segunda chamada foi um no-op.
     expect(backSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("o editor não tem seta de Voltar própria e avisa a barra do painel quando abre e fecha", async () => {
+    const eventos: boolean[] = [];
+    const ouvir = (e: Event) =>
+      eventos.push((e as CustomEvent<{ open: boolean }>).detail.open);
+    window.addEventListener("admin:banner-dialog-state", ouvir);
+
+    await montar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
+      await esperarMicrotarefas();
+    });
+
+    // Só o Voltar da barra superior existe (o da barra mora no AdminLayout).
+    expect(hospedeiro.querySelector('[aria-label="Voltar"]')).toBeNull();
+    expect(eventos).toEqual([true]);
+
+    await act(async () => {
+      overrideAtual?.();
+    });
+    expect(eventos).toEqual([true, false]);
+    window.removeEventListener("admin:banner-dialog-state", ouvir);
+  });
+
+  it("em Modelo pronto, o Voltar da barra volta UMA etapa; na etapa seguinte fecha", async () => {
+    await montar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Modelo pronto")!.click();
+      await esperarMicrotarefas();
+    });
+    expect(localizarBotaoPorTexto(hospedeiro, "Modelo pronto")).toBeUndefined();
+
+    await act(async () => {
+      overrideAtual?.();
+    });
+    // Voltou para "Como criar": o editor segue aberto.
+    expect(localizarBotaoPorTexto(hospedeiro, "Modelo pronto")).toBeDefined();
+    expect(overrideAtual).toBeInstanceOf(Function);
+
+    await act(async () => {
+      overrideAtual?.();
+    });
+    expect(localizarBotaoPorTexto(hospedeiro, "Modelo pronto")).toBeUndefined();
+  });
+
+  it("no Voltar físico em Modelo pronto, volta uma etapa e devolve a entrada do editor", async () => {
+    await montar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Modelo pronto")!.click();
+      await esperarMicrotarefas();
+    });
+    expect(window.history.state?.modal).toBe("banner");
+
+    // O navegador já tirou a entrada do editor antes de o App chamar o override.
+    window.history.replaceState(
+      { ...window.history.state, modal: undefined },
+      "",
+      window.location.pathname + window.location.search,
+    );
+    const pushStateSpy = vi.spyOn(window.history, "pushState");
+    await act(async () => {
+      overrideAtual?.();
+    });
+    expect(localizarBotaoPorTexto(hospedeiro, "Modelo pronto")).toBeDefined();
+    expect(pushStateSpy).toHaveBeenCalledTimes(1);
+    expect(window.history.state?.modal).toBe("banner");
+  });
+
+  it("no Voltar da barra em Modelo pronto, não empurra outra entrada", async () => {
+    await montar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Novo Banner")!.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Modelo pronto")!.click();
+      await esperarMicrotarefas();
+    });
+    const pushStateSpy = vi.spyOn(window.history, "pushState");
+    await act(async () => {
+      overrideAtual?.();
+    });
+    expect(localizarBotaoPorTexto(hospedeiro, "Modelo pronto")).toBeDefined();
+    expect(pushStateSpy).not.toHaveBeenCalled();
+  });
 });

@@ -69,6 +69,8 @@ it("cupom: o campo cede espaço e Aplicar não encolhe nem sai do fluxo", () => 
 it("uma conta única: navegação + área segura + rodapé medido + 16px, sem números por modo", () => {
   expect(css).toContain("--nav-height: 64px");
   expect(css).toContain(".checkout-values");
+  // O valor do Total alinha pela borda esquerda do rótulo, não no canto direito.
+  expect(css).toMatch(/\.checkout-values p:last-child \{\s*@apply text-left /);
   expect(css).toContain(".checkout-finalizar:disabled");
   expect(css).toContain("var(--customer-footer-height, 0px)");
   expect(css.match(/--customer-pb:/g)).toHaveLength(1);
