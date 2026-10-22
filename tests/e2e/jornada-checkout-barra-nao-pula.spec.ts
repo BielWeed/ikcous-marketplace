@@ -134,6 +134,13 @@ for (const { largura, comCupom } of CASOS) {
     if (comCupom) {
       // A linha "Desconto" entra na barra (ela a deixa mais alta, igual nos
       // dois estados do frete).
+      // Desde o redesenho (22/10/2026) o campo do código fica atrás do link
+      // "Tenho um código de cupom"; a validação e a barra são as de sempre.
+      const abrirCampo = page.getByRole("button", {
+        name: "Tenho um código de cupom",
+      });
+      await abrirCampo.click();
+      await expect(abrirCampo).toHaveAttribute("aria-expanded", "true");
       await page.getByLabel("Tem um código de cupom?").fill("JORNADA5");
       await page.getByRole("button", { name: "Aplicar", exact: true }).click();
       await expect(valores).toContainText("Desconto", { timeout: 15_000 });

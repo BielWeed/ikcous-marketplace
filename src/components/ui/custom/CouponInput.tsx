@@ -9,6 +9,8 @@ interface CouponInputProps {
   error?: string;
   /** Uma validação está em voo — o botão trava (toque duplo não valida duas vezes). */
   aplicando?: boolean;
+  /** O número grande do cupom aplicado ("10%", "R$ 15"), quando a lista o conhece. */
+  destaque?: string;
 }
 
 export const CouponInput = memo(function CouponInput({
@@ -17,6 +19,7 @@ export const CouponInput = memo(function CouponInput({
   appliedCoupon,
   error,
   aplicando = false,
+  destaque,
 }: CouponInputProps) {
   const [code, setCode] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -30,39 +33,62 @@ export const CouponInput = memo(function CouponInput({
   };
 
   if (appliedCoupon) {
-    // Frente B (28/09/2026): cores AA — o "-R$ X aplicado" em green-600 sobre
-    // green-50 media 3,15:1; emerald-800 sobre emerald-50 passa de 7:1.
-    // Cupom restaurado do rascunho chega com desconto 0 até a revalidação
-    // responder — "R$ 0,00 aplicado" era mentira; agora diz que está
-    // conferindo.
+    // Frente B (28/09/2026): cores AA — o verde do desconto é emerald-700
+    // sobre branco (5,2:1). Cupom restaurado do rascunho chega com desconto 0
+    // até a revalidação responder — "R$ 0,00 aplicado" era mentira; agora diz
+    // que está conferindo.
+    // PASSO A3 (22/10/2026): o cupom aplicado é o cartão SELECIONADO — borda
+    // forte + bolinha escura com check, no mesmo desenho dos cartões da lista.
     return (
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-600">
-            <Check className="size-4 text-white" strokeWidth={3} />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-emerald-900">
-              {appliedCoupon.code}{" "}
-              <span className="font-medium text-emerald-800">aplicado</span>
-            </p>
-            <p className="text-xs font-semibold text-emerald-800">
-              {appliedCoupon.discount > 0
-                ? `Você economiza ${formatCurrency(appliedCoupon.discount)}`
-                : "Conferindo o desconto…"}
-            </p>
-          </div>
-        </div>
-        {/* Laudo de acessibilidade 03/09, achado 2: o botão diz o que faz.
-            Frente B: o X virou a palavra "Remover" (alvo de 44px). */}
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Remover cupom"
-          className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-semibold text-emerald-900 underline underline-offset-2 transition-colors hover:bg-emerald-100"
+      <div
+        data-testid="cupom-aplicado"
+        className="flex items-center gap-3 rounded-2xl border-2 border-zinc-900 bg-white p-3"
+      >
+        <span
+          aria-hidden="true"
+          className="flex min-h-16 min-w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-zinc-100 p-2 text-center text-zinc-900"
         >
-          Remover
-        </button>
+          {destaque ? (
+            <>
+              <span className="text-base font-black leading-none tracking-tight">
+                {destaque}
+              </span>
+              <span className="mt-1 text-[11px] font-bold uppercase tracking-widest text-zinc-600">
+                OFF
+              </span>
+            </>
+          ) : (
+            <Tag className="size-5" />
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="break-words text-sm font-bold text-zinc-900">
+            {appliedCoupon.code}{" "}
+            <span className="font-medium text-emerald-700">aplicado</span>
+          </p>
+          <p className="text-xs font-semibold text-emerald-700">
+            {appliedCoupon.discount > 0
+              ? `Você economiza ${formatCurrency(appliedCoupon.discount)}`
+              : "Conferindo o desconto…"}
+          </p>
+          {/* Laudo de acessibilidade 03/09, achado 2: o botão diz o que faz.
+              Frente B: o X virou a palavra "Remover" (alvo de 44px). */}
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remover cupom"
+            className="-ml-2 min-h-11 rounded-lg px-2 text-sm font-semibold text-zinc-700 underline underline-offset-2 transition-colors hover:bg-zinc-100"
+          >
+            Remover
+          </button>
+        </div>
+        <span
+          data-testid="selo-de-escolhida"
+          aria-hidden="true"
+          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white"
+        >
+          <Check className="size-3.5" strokeWidth={3} />
+        </span>
       </div>
     );
   }
@@ -70,10 +96,7 @@ export const CouponInput = memo(function CouponInput({
   return (
     <form onSubmit={handleSubmit} className="space-y-1.5">
       {/* Frente B: o campo ganhou rótulo de verdade (antes só placeholder). */}
-      <label
-        htmlFor="coupon-code-input"
-        className="block text-xs font-semibold text-zinc-700"
-      >
+      <label htmlFor="coupon-code-input" className="sr-only">
         Tem um código de cupom?
       </label>
       {/* Uma classe de borda/fundo por estado (sem duas brigando na mesma
@@ -116,7 +139,7 @@ export const CouponInput = memo(function CouponInput({
         <button
           type="submit"
           disabled={!code.trim() || aplicando}
-          className="flex min-h-[44px] min-w-[70px] shrink-0 items-center justify-center rounded-lg bg-zinc-900 px-2 py-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
+          className="flex min-h-[44px] min-w-[70px] shrink-0 items-center justify-center rounded-lg bg-zinc-900 p-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
         >
           {aplicando ? "Aplicando…" : "Aplicar"}
         </button>

@@ -332,10 +332,19 @@ test("checkout preserva o documento ao alternar visibilidade e instala ao sair",
     .getByRole("button", { name: /Carrinho/ })
     .click();
   await page.getByRole("button", { name: "Continuar como Convidado" }).click();
+  // Desde o redesenho (22/10/2026) a tela abre com dois cartões compactos; o
+  // botão "Seus dados e entrega" só existe com a seção aberta. Abrir pelo
+  // "Editar" do cartão "Seus dados" deixa a mesma asserção valendo — e mais
+  // forte: uma recarga do documento fecharia a seção de novo.
+  const editarDados = page
+    .getByRole("region", { name: "Seus dados", exact: true })
+    .getByRole("button", { name: "Editar", exact: true });
+  await expect(editarDados).toBeVisible({ timeout: 30_000 });
+  await editarDados.click();
   const dadosDaCompra = page.getByRole("button", {
     name: "Seus dados e entrega",
   });
-  await expect(dadosDaCompra).toBeVisible({ timeout: 30_000 });
+  await expect(dadosDaCompra).toBeVisible();
 
   const versaoDois = await publicarVersaoDois(page, request, versao);
   await page.waitForTimeout(JANELA_SEM_RECARGA_MS);
