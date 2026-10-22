@@ -40,6 +40,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
+import { tipoDeEntregaDoPedido } from "@/lib/tipo-de-entrega-do-pedido";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus, PaymentStatus } from "@/types";
@@ -619,12 +620,17 @@ function OrderDeliveryCard({
         return forma ? `${forma.nome} · ${forma.prazo}` : null;
       })();
 
+  // Venda de balcão: a cliente levou na hora. Fica só quem comprou (nome e
+  // WhatsApp) — sem endereço, sem "Copiar/Maps", sem forma de entrega. O
+  // endereço, se existir, continua gravado no banco; só não é mostrado.
+  const ehBalcao = tipoDeEntregaDoPedido(order) === "balcao";
+
   return (
     <section
       data-testid="bloco-entrega"
       className={cn(blocoDaFicha, "space-y-4 p-5")}
     >
-      <h3 className={tituloDoBloco}>Entrega</h3>
+      <h3 className={tituloDoBloco}>{ehBalcao ? "Cliente" : "Entrega"}</h3>
 
       {/* T3 (lote B, 12/09): a comanda é de coluna única — nome e WhatsApp
           empilhados, e o botão verde do WhatsApp à direita. */}
@@ -650,7 +656,7 @@ function OrderDeliveryCard({
         )}
       </div>
 
-      {order.retiradaNaLoja && (
+      {!ehBalcao && order.retiradaNaLoja && (
         // Retirada na loja: a cliente BUSCA — nada a enviar nem etiqueta a
         // gerar. O endereço é o retrato da compra (customer_data).
         <div
@@ -666,60 +672,64 @@ function OrderDeliveryCard({
         </div>
       )}
 
-      <div className="space-y-2 border-t border-admin-border pt-4">
-        <p className="text-xs text-zinc-400">
-          {order.retiradaNaLoja ? "Endereço do cliente" : "Endereço de entrega"}
-        </p>
-        <p className="text-sm leading-relaxed text-zinc-200">
-          {order.customer.address}
-          {order.customer.number ? `, ${order.customer.number}` : ""}
-          {order.customer.complement ? ` - ${order.customer.complement}` : ""}
-          <br />
-          <span className="text-zinc-400">
-            {order.customer.neighborhood}
-            {order.customer.city
-              ? ` • ${order.customer.city}${order.customer.state ? `/${order.customer.state}` : ""}`
-              : ""}
-            {order.customer.cep ? ` • CEP: ${order.customer.cep}` : ""}
-            {order.customer.reference
-              ? ` • Ref: ${order.customer.reference}`
-              : ""}
-          </span>
-        </p>
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            onClick={onCopyAddress}
-            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
-            title="Copiar Endereço"
-          >
-            {copiedAddress ? (
-              <>
-                <Check className="size-[15px] text-emerald-400" />
-                Copiado
-              </>
-            ) : (
-              <>
-                <Copy className="size-[15px] text-zinc-400" />
-                Copiar endereço
-              </>
-            )}
-          </button>
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsUrlQuery)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
-            title="Ver no Google Maps"
-          >
-            <MapPin className="size-[15px] text-zinc-400" />
-            Ver no Maps
-          </a>
+      {!ehBalcao && (
+        <div className="space-y-2 border-t border-admin-border pt-4">
+          <p className="text-xs text-zinc-400">
+            {order.retiradaNaLoja
+              ? "Endereço do cliente"
+              : "Endereço de entrega"}
+          </p>
+          <p className="text-sm leading-relaxed text-zinc-200">
+            {order.customer.address}
+            {order.customer.number ? `, ${order.customer.number}` : ""}
+            {order.customer.complement ? ` - ${order.customer.complement}` : ""}
+            <br />
+            <span className="text-zinc-400">
+              {order.customer.neighborhood}
+              {order.customer.city
+                ? ` • ${order.customer.city}${order.customer.state ? `/${order.customer.state}` : ""}`
+                : ""}
+              {order.customer.cep ? ` • CEP: ${order.customer.cep}` : ""}
+              {order.customer.reference
+                ? ` • Ref: ${order.customer.reference}`
+                : ""}
+            </span>
+          </p>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={onCopyAddress}
+              className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+              title="Copiar Endereço"
+            >
+              {copiedAddress ? (
+                <>
+                  <Check className="size-[15px] text-emerald-400" />
+                  Copiado
+                </>
+              ) : (
+                <>
+                  <Copy className="size-[15px] text-zinc-400" />
+                  Copiar endereço
+                </>
+              )}
+            </button>
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsUrlQuery)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-admin-border bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+              title="Ver no Google Maps"
+            >
+              <MapPin className="size-[15px] text-zinc-400" />
+              Ver no Maps
+            </a>
+          </div>
         </div>
-      </div>
+      )}
 
-      <EnviarAoMototaxi order={order} loja={storeName ?? ""} />
+      {!ehBalcao && <EnviarAoMototaxi order={order} loja={storeName ?? ""} />}
 
-      {formaDeEntrega && (
+      {!ehBalcao && formaDeEntrega && (
         <p
           data-testid="forma-de-entrega"
           className="flex items-center gap-2 border-t border-admin-border pt-4 text-sm text-zinc-300"
@@ -835,16 +845,18 @@ function OrderItemsCard({
           </div>
         )}
 
-        <div className="flex justify-between text-zinc-300">
-          <span>Frete</span>
-          <span
-            className={(order?.shipping || 0) === 0 ? "text-emerald-400" : ""}
-          >
-            {(order?.shipping || 0) === 0
-              ? "Grátis"
-              : `R$ ${formatarValor(order?.shipping || 0)}`}
-          </span>
-        </div>
+        {tipoDeEntregaDoPedido(order) !== "balcao" && (
+          <div className="flex justify-between text-zinc-300">
+            <span>Frete</span>
+            <span
+              className={(order?.shipping || 0) === 0 ? "text-emerald-400" : ""}
+            >
+              {(order?.shipping || 0) === 0
+                ? "Grátis"
+                : `R$ ${formatarValor(order?.shipping || 0)}`}
+            </span>
+          </div>
+        )}
 
         <div className="flex justify-between border-t border-admin-border pt-2 text-base font-semibold text-white">
           <span>Total</span>
@@ -2069,18 +2081,23 @@ export const OrderDetail = memo(function OrderDetail({
               }}
             />
           )}
-          <OrderLogisticsCard
-            localTrackingCode={localTrackingCode}
-            isEditingTracking={isEditingTracking}
-            trackingValue={trackingValue}
-            isSavingTracking={isSavingTracking}
-            copiedTracking={copiedTracking}
-            isOffline={isOffline}
-            setTrackingValue={setTrackingValue}
-            setIsEditingTracking={setIsEditingTracking}
-            onSaveTracking={handleSaveTracking}
-            onCopyTracking={handleCopyTracking}
-          />
+          {/* Código dos Correios só faz sentido no envio. Balcão, retirada e
+              entrega local não pedem; mas código JÁ gravado nunca some. */}
+          {(tipoDeEntregaDoPedido(order) === "envio" ||
+            localTrackingCode !== "") && (
+            <OrderLogisticsCard
+              localTrackingCode={localTrackingCode}
+              isEditingTracking={isEditingTracking}
+              trackingValue={trackingValue}
+              isSavingTracking={isSavingTracking}
+              copiedTracking={copiedTracking}
+              isOffline={isOffline}
+              setTrackingValue={setTrackingValue}
+              setIsEditingTracking={setIsEditingTracking}
+              onSaveTracking={handleSaveTracking}
+              onCopyTracking={handleCopyTracking}
+            />
+          )}
           {order.notes && (
             <div className="space-y-2 px-4 py-3.5">
               <h3 className="text-sm font-medium text-zinc-200">
