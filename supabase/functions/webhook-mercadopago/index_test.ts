@@ -7070,6 +7070,34 @@ function orderDoMpSemTipoLegivel(status: string, statusDetail: string): Record<s
   };
 }
 
+for (const metodo of ["credito", "debito", null, "pix"]) {
+  Deno.test(`BOT-P2 webhook: expiração sem tipo com método ${metodo} e sentinela só-cartão`, async () => {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasLiberar: [] };
+    const sentinela = `verificando:${UUID_PEDIDO}:c0:1790000000000`;
+    const supabase = clienteFalso({
+      pedido: { id: UUID_PEDIDO, total: 149.9, metodo_online: metodo,
+        gateway_payment_id: metodo === null ? sentinela : ID_ORDER_CARTAO_MP },
+      registro, liberarResultado: metodo !== null,
+    });
+    const order = { id: ID_ORDER_CARTAO_MP, external_reference: UUID_PEDIDO,
+      status: "expired", status_detail: "expired", total_amount: "149.90" };
+    const resposta = await handler(
+      await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }),
+      { supabase, fetchImpl: fetchConsulta(200, order) },
+    );
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.chamadasRpc, []);
+    assertEquals(registro.chamadasLiberar, metodo !== "pix" ? [{
+      args: { p_order_id: UUID_PEDIDO, p_gateway_payment_id: ID_ORDER_CARTAO_MP },
+    }] : []);
+    const corpo = await resposta.json();
+    if (metodo === "pix") assertEquals(corpo.ignorado, "order expirada");
+    // Sentinela ilegível não libera sem a busca segura: mesma guarda da recusa.
+    if (metodo === null) assertEquals(corpo.resultado, "nada_a_liberar");
+  });
+}
+
 Deno.test("hardening — order recusada SEM payment_method.type legível, mas metodo_online='credito' no pedido -> ainda libera a vaga (nunca confirmar_pagamento)", async () => {
   ambienteDoWebhook();
   const registro = { chamadasRpc: [], chamadasLiberar: [] };
@@ -8049,6 +8077,40 @@ Deno.test("REV1 webhook: estorno integral financiado concluído confirma uma vez
   assertEquals((await entregar()).status, 200);
   assertEquals(registro.chamadasRpc.length, 1, "a guarda precisa barrar a reentrega já estornada");
 });
+
+// Diagnóstico pendente, NÃO prova de correção: liberar apenas a guarda abaixo
+// deixaria confirmar_pagamento('estornado') cancelar sem gravar paid_at
+// (20261195000000:175-223). O fechamento financeiro exige correção atômica
+// no banco; o ensaio que esperava 200 recebeu 500 nas duas reentregas.
+for (const principal of ["37.27", "40.86"]) {
+  Deno.test(`BOT-P1 diagnóstico: estorno financiado pendente ainda retorna 500, principal ${principal}`, async () => {
+    ambienteDoWebhook();
+    const pedido = {
+      id: UUID_PEDIDO, total: 37.27, valor_estornado: 0, gateway_payment_id: ID_ORDER_CARTAO_MP,
+      payment_status: "aguardando", paid_at: null, status: "pending",
+    };
+    const registro = { chamadasRpc: [], chamadasAviso: [], chamadasExternoDoMp: [] };
+    const supabase = clienteFalso({ rpcResultado: "estornado", registro, pedido });
+    const o = orderFinanciadaDevolvida("processed");
+    o.total_amount = principal;
+    o.transactions.payments[0].amount = principal;
+    const respostas = [];
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      const resposta = await handler(
+        await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }),
+        { supabase, fetchImpl: fetchConsulta(200, o), enviarPushContado: async () => 1 },
+      );
+      respostas.push(resposta.status);
+      assertEquals((await resposta.json()).error, "Estorno ainda não confirmado no ledger.");
+    }
+    assertEquals(respostas, [500, 500]);
+    assertEquals(registro.chamadasRpc, []);
+    assertEquals(registro.filaOrderRefunds, [], "40,86 não cabe no principal de 37,27");
+    assertEquals(pedido.paid_at, null);
+    assertEquals(pedido.payment_status, "aguardando");
+    assertEquals(pedido.status, "pending");
+  });
+}
 
 Deno.test("REV1 webhook: refund financiado processing nunca alcança confirmar_pagamento", async () => {
   ambienteDoWebhook();

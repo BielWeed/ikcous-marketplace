@@ -1334,12 +1334,10 @@ async function handler(
     // carimba no PRÓPRIO pedido ao ocupar a vaga — lido do banco, não do
     // JSON que pode vir incompleto.
     //
-    // Só entra quando o PRIMEIRO sinal (a forma da resposta) NÃO decidiu
-    // cartão (`!liberarAVaga`), e só para 'recusado': 'expirado' já sai sem
-    // chamar RPC nenhuma (nem confirmar, nem liberar) três linhas abaixo,
-    // qualquer que seja o método — não tem o mesmo risco, e gastar a leitura
-    // aqui não mudaria nada.
-    if (!liberarAVaga && statusBanco === "recusado" && pareceUuid(order.external_reference)) {
+    // Só entra quando o PRIMEIRO sinal não decidiu cartão, na recusa ou
+    // expiração. Cartão expirado também solta a vaga dentro da reserva;
+    // PIX expirado continua saindo sem RPC depois desta conferência.
+    if (!liberarAVaga && (statusBanco === "recusado" || statusBanco === "expirado") && pareceUuid(order.external_reference)) {
       const { data: metodoRow, error: erroMetodo } = await supabase
         .from("marketplace_orders")
         .select("metodo_online, gateway_payment_id")

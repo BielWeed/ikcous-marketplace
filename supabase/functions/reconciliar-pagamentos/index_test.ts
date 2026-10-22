@@ -3403,6 +3403,29 @@ for (const metodo of ["credito", "debito", null, "pix"]) {
   });
 }
 
+for (const metodo of ["credito", "debito", null, "pix"]) {
+  Deno.test(`BOT-P2 cron: expiração sem tipo usa método ${metodo} e preserva PIX`, async () => {
+    const idOrder = "ORDBOTP2EXPIROU";
+    const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+    const supabase = clienteFalso({
+      candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }], registro,
+      resolverPedidoFresco: () => ({ total: 149.9, metodo_online: metodo, gateway_payment_id: idOrder }),
+    });
+    const order = orderDoCandidato(idOrder, "expired", "expired", "");
+    delete order.transactions.payments[0].payment_method;
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, order) });
+    const corpo = await resposta.json();
+    const libera = metodo === "credito" || metodo === "debito";
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.falhas, 0);
+    assertEquals(registro.chamadasConfirmar, []);
+    assertEquals(registro.chamadasLiberar, libera ? [{
+      args: { p_order_id: UUID_PEDIDO_1, p_gateway_payment_id: idOrder },
+    }] : []);
+    assertEquals(corpo.cobrancasLiberadas, libera ? 1 : 0);
+  });
+}
+
 Deno.test("L3a-W3 - cron: erro ao ler método mantém candidato para reconsulta sem cancelar", async () => {
   const idOrder = "ORDL3AERROMETODO";
   const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };

@@ -797,7 +797,7 @@ async function handler(
         liberarAVaga = recusaLiberaAVaga(order, statusMapeado);
         // Mesma segunda evidência do webhook quando o GET omite o tipo.
         // Falha de leitura não pode transformar cartão em PIX: volta à fila.
-        if (!liberarAVaga && statusMapeado === "recusado") {
+        if (!liberarAVaga && (statusMapeado === "recusado" || statusMapeado === "expirado")) {
           const { data: pedidoDoMetodo, error: erroMetodo } = await supabase
             .from("marketplace_orders")
             .select("metodo_online, gateway_payment_id")
