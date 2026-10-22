@@ -142,6 +142,19 @@ export function AdminLayout({
   // primeira pintura; ao sair do painel os dois saem (a vitrine nunca os recebe).
   useTemaDoPainelNaRaiz();
 
+  // O editor de banner avisa quando está aberto (AdminBannersView): enquanto
+  // estiver, o botão "Novo Banner" da barra some (a pessoa já está criando um).
+  const [editorDeBannerAberto, setEditorDeBannerAberto] = React.useState(false);
+  React.useEffect(() => {
+    const aoMudar = (e: Event) =>
+      setEditorDeBannerAberto(
+        (e as CustomEvent<{ open?: boolean }>).detail?.open === true,
+      );
+    window.addEventListener("admin:banner-dialog-state", aoMudar);
+    return () =>
+      window.removeEventListener("admin:banner-dialog-state", aoMudar);
+  }, []);
+
   const [pendingOrdersCount, setPendingOrdersCount] = React.useState(0);
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
   const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
@@ -1080,36 +1093,38 @@ export function AdminLayout({
                     </h1>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={isOffline}
-                    aria-describedby={
-                      isOffline ? "motivo-banner-offline" : undefined
-                    }
-                    onClick={() => {
-                      haptic.light();
-                      window.dispatchEvent(
-                        new CustomEvent("admin:open-new-banner-dialog"),
-                      );
-                    }}
-                    className={cn(
-                      "flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-bold transition-transform active:scale-95",
-                      isOffline
-                        ? "border border-admin-border-strong bg-admin-raised text-[#A1A1AD]"
-                        : "bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] text-[#1B1300] shadow-lg",
-                    )}
-                  >
-                    {isOffline ? (
-                      <Lock aria-hidden="true" className="size-4 shrink-0" />
-                    ) : (
-                      <Plus aria-hidden="true" className="size-4 shrink-0" />
-                    )}
-                    <span>
-                      {isOffline ? "Novo Banner indisponível" : "Novo Banner"}
-                    </span>
-                  </button>
+                  {!editorDeBannerAberto && (
+                    <button
+                      type="button"
+                      disabled={isOffline}
+                      aria-describedby={
+                        isOffline ? "motivo-banner-offline" : undefined
+                      }
+                      onClick={() => {
+                        haptic.light();
+                        window.dispatchEvent(
+                          new CustomEvent("admin:open-new-banner-dialog"),
+                        );
+                      }}
+                      className={cn(
+                        "flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-4 text-xs font-bold transition-transform active:scale-95",
+                        isOffline
+                          ? "border border-admin-border-strong bg-admin-raised text-[#A1A1AD]"
+                          : "bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] text-[#1B1300] shadow-lg",
+                      )}
+                    >
+                      {isOffline ? (
+                        <Lock aria-hidden="true" className="size-4 shrink-0" />
+                      ) : (
+                        <Plus aria-hidden="true" className="size-4 shrink-0" />
+                      )}
+                      <span>
+                        {isOffline ? "Novo Banner indisponível" : "Novo Banner"}
+                      </span>
+                    </button>
+                  )}
                 </div>
-                {isOffline && (
+                {isOffline && !editorDeBannerAberto && (
                   <p
                     id="motivo-banner-offline"
                     className="mt-2 text-xs text-[#A1A1AD]"

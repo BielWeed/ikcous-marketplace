@@ -1,4 +1,15 @@
 {
+  "1.5.50": {
+    "titulo": "Finalizar compra mais enxuto e editor de banner mais limpo",
+    "novidades": [],
+    "correcoes": [
+      "No Finalizar compra, o valor do Total fica logo abaixo da palavra Total, ao lado da linha divisória, e não mais encostado no canto direito.",
+      "No painel, com o formulário de novo banner aberto, o botão Novo Banner da barra de cima some e sobra só um botão Voltar."
+    ],
+    "melhorias": [
+      "A barra do Finalizar compra deixou de repetir em vermelho o pedido de endereço de entrega, que já aparece no alto da tela, e ficou mais baixa."
+    ]
+  },
   "1.5.49": {
     "titulo": "Início mais enxuto e Finalizar compra mais compacto",
     "novidades": [
