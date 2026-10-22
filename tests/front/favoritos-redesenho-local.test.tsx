@@ -353,13 +353,17 @@ describe("Favoritos — o atalho ativo acompanha a rolagem nos dois sentidos", (
   ];
 
   /** Posiciona as seções (topo de cada uma na tela) e avisa a rolagem. */
-  function rolarPara(topos: number[], fim = false) {
+  function rolarPara(
+    topos: number[],
+    fim = false,
+    painel: HTMLElement | null = null,
+  ) {
     const secoesEl = [...container.querySelectorAll("section")];
     secoesEl.forEach((sec, i) => {
       sec.getBoundingClientRect = () =>
         ({ top: topos[i], bottom: topos[i] + 100, height: 100 }) as DOMRect;
     });
-    const raiz = document.documentElement;
+    const raiz = painel ?? document.documentElement;
     Object.defineProperty(raiz, "scrollHeight", {
       value: 3000,
       configurable: true,
@@ -369,11 +373,11 @@ describe("Favoritos — o atalho ativo acompanha a rolagem nos dois sentidos", (
       configurable: true,
     });
     Object.defineProperty(raiz, "scrollTop", {
-      value: fim ? 2200 : 0,
+      value: fim ? 2200 : -topos[0],
       configurable: true,
     });
     act(() => {
-      document.dispatchEvent(new Event("scroll"));
+      (painel ?? document).dispatchEvent(new Event("scroll"));
     });
   }
   const ativo = () =>
@@ -387,7 +391,11 @@ describe("Favoritos — o atalho ativo acompanha a rolagem nos dois sentidos", (
       return 1;
     });
     vi.stubGlobal("cancelAnimationFrame", () => {});
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     montar(quatro);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("rolando para baixo e depois para cima, o chip preto volta para a seção da tela", () => {
@@ -415,5 +423,151 @@ describe("Favoritos — o atalho ativo acompanha a rolagem nos dois sentidos", (
     act(() => raiz.unmount());
     expect(remover.mock.calls.some(([tipo]) => tipo === "scroll")).toBe(true);
     raiz = createRoot(container);
+  });
+
+  describe("depois de tocar num atalho", () => {
+    const rolar = vi.fn();
+    // Passo a passo de uma rolagem suave até "Roupas" (topo em 348): a
+    // posição vai de 0 até 348 em quadros sucessivos.
+    const quadros = [50, 120, 200, 280, 348].map((dy) => [
+      -dy,
+      174 - dy,
+      348 - dy,
+      522 - dy,
+    ]);
+    beforeEach(() => {
+      rolar.mockClear();
+      Element.prototype.scrollIntoView = rolar;
+      rolarPara([0, 174, 348, 522]);
+    });
+
+    it("o atalho tocado fica ativo do primeiro ao último quadro da rolagem suave e termina nele", () => {
+      tocar("Roupas 1");
+      expect(rolar).toHaveBeenCalledTimes(1);
+      expect(ativo()).toEqual(["Roupas 1"]);
+      for (const topos of quadros) {
+        rolarPara(topos);
+        expect(ativo()).toEqual(["Roupas 1"]);
+      }
+      act(() => vi.advanceTimersByTime(200));
+      expect(ativo()).toEqual(["Roupas 1"]);
+    });
+
+    it("funciona também quando a rolagem é de um painel interno, não da janela", () => {
+      const painel = container;
+      tocar("Roupas 1");
+      for (const topos of quadros) {
+        rolarPara(topos, false, painel);
+        expect(ativo()).toEqual(["Roupas 1"]);
+      }
+      act(() => vi.advanceTimersByTime(200));
+      expect(ativo()).toEqual(["Roupas 1"]);
+      // soltou o comando: a próxima rolagem manual no painel volta a mandar
+      rolarPara([-348, -174, 0, 174], false, painel);
+      expect(ativo()).toEqual(["Cozinha 1"]);
+    });
+
+    it("toque numa das últimas categorias que chega ao fim da página não passa o destaque para a última", () => {
+      tocar("Roupas 1");
+      rolarPara([-100, 74, 248, 422]);
+      rolarPara([-300, -126, 48, 222], true);
+      expect(ativo()).toEqual(["Roupas 1"]);
+      act(() => vi.advanceTimersByTime(200));
+      expect(ativo()).toEqual(["Roupas 1"]);
+    });
+
+    it("tocar na tela ou girar a roda durante a rolagem devolve o comando à rolagem manual", () => {
+      for (const tipo of ["touchstart", "wheel"]) {
+        tocar("Roupas 1");
+        rolarPara([-50, 124, 298, 472]);
+        expect(ativo()).toEqual(["Roupas 1"]);
+        act(() => {
+          document.dispatchEvent(new Event(tipo, { bubbles: true }));
+        });
+        rolarPara([-60, 114, 288, 462]);
+        expect(ativo()).toEqual(["Papelaria 1"]);
+        rolarPara([0, 174, 348, 522]);
+      }
+    });
+
+    it("tecla de rolagem também destrava", () => {
+      tocar("Roupas 1");
+      rolarPara([-50, 124, 298, 472]);
+      act(() => {
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "PageDown", bubbles: true }),
+        );
+      });
+      rolarPara([-60, 114, 288, 462]);
+      expect(ativo()).toEqual(["Papelaria 1"]);
+    });
+
+    it("com 'scrollend' destrava no fim da rolagem, sem recalcular por cima do tocado", () => {
+      tocar("Roupas 1");
+      for (const topos of quadros) rolarPara(topos);
+      act(() => {
+        document.dispatchEvent(new Event("scrollend"));
+      });
+      expect(ativo()).toEqual(["Roupas 1"]);
+      rolarPara([-348, -174, 0, 174]);
+      expect(ativo()).toEqual(["Cozinha 1"]);
+    });
+
+    it("um 'scrollend' espúrio no começo (antes de a posição andar) não solta o atalho", () => {
+      tocar("Roupas 1");
+      rolarPara([0, 174, 348, 522]);
+      act(() => {
+        document.dispatchEvent(new Event("scrollend"));
+      });
+      rolarPara([-50, 124, 298, 472]);
+      expect(ativo()).toEqual(["Roupas 1"]);
+    });
+
+    it("sem 'scrollend' destrava ~150ms depois do último scroll", () => {
+      tocar("Roupas 1");
+      rolarPara([-50, 124, 298, 472]);
+      act(() => vi.advanceTimersByTime(100));
+      rolarPara([-60, 114, 288, 462]);
+      expect(ativo()).toEqual(["Roupas 1"]);
+      act(() => vi.advanceTimersByTime(200));
+      rolarPara([-348, -174, 0, 174]);
+      expect(ativo()).toEqual(["Cozinha 1"]);
+    });
+
+    it("rolagem que nunca para destrava no teto de ~1 segundo", () => {
+      tocar("Roupas 1");
+      for (let t = 0; t < 12; t++) {
+        rolarPara([-50, 124, 298, 472]);
+        act(() => vi.advanceTimersByTime(100));
+      }
+      rolarPara([-348, -174, 0, 174]);
+      expect(ativo()).toEqual(["Cozinha 1"]);
+    });
+
+    it("tocar sem que a página role (já estava lá) destrava sozinho", () => {
+      tocar("Roupas 1");
+      expect(ativo()).toEqual(["Roupas 1"]);
+      act(() => vi.advanceTimersByTime(400));
+      rolarPara([-348, -174, 0, 174]);
+      expect(ativo()).toEqual(["Cozinha 1"]);
+    });
+
+    it("ao sair da tela não deixa temporizador nem escuta para trás", () => {
+      tocar("Roupas 1");
+      const remover = vi.spyOn(document, "removeEventListener");
+      act(() => raiz.unmount());
+      const tipos = remover.mock.calls.map(([tipo]) => tipo);
+      for (const esperado of [
+        "scroll",
+        "scrollend",
+        "touchstart",
+        "wheel",
+        "keydown",
+      ]) {
+        expect(tipos).toContain(esperado);
+      }
+      expect(vi.getTimerCount()).toBe(0);
+      raiz = createRoot(container);
+    });
   });
 });

@@ -50,6 +50,15 @@ const ITENS_POR_CATEGORIA = 3;
 /** Atalhos de categoria só valem a pena a partir de 3 categorias. */
 const CATEGORIAS_PARA_ATALHOS = 3;
 const SEM_CATEGORIA = "Outros";
+const TECLAS_DE_ROLAGEM = new Set([
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  "ArrowUp",
+  "ArrowDown",
+  " ",
+]);
 
 const textoDeProdutos = (n: number) =>
   `${n} ${n === 1 ? "produto" : "produtos"}`;
@@ -86,6 +95,7 @@ export const FavoritesView = React.memo(function FavoritesView({
     () => new Set(),
   );
   const [categoriaAtiva, setCategoriaAtiva] = useState("");
+  const travarRef = useRef<(() => void) | null>(null);
 
   const { descontos, secoes, total } = useMemo(() => {
     const promocionais = new Set<string>();
@@ -168,28 +178,106 @@ export const FavoritesView = React.memo(function FavoritesView({
       const nome = ativa.dataset.secao;
       if (nome) setCategoriaAtiva(nome);
     };
+    // Toque num atalho: o chip tocado vale até a rolagem suave ACABAR. Sem
+    // isso o chip perderia o destaque no primeiro quadro (a posição ainda é a
+    // antiga), passaria por todas as seções do caminho e, numa seção curta
+    // perto do fim, a última tomaria o destaque. Quem solta a trava: o evento
+    // `scrollend` (quando o navegador tem), ~150ms sem rolagem (nem todo
+    // celular dispara `scrollend`), o teto de ~1s, ou o usuário pegando o
+    // comando (toque, roda do mouse, tecla de rolagem). Soltar NÃO recalcula:
+    // a próxima rolagem manual é que volta a mandar.
+    // O Chrome dispara um `scrollend` ESPÚRIO logo no começo da rolagem suave
+    // (medido: 1ms depois do primeiro `scroll`, ainda na posição inicial); por
+    // isso o `scrollend` só vale depois que a posição realmente andou.
+    let travado = false;
+    let posicaoInicial: number | null = null;
+    let andou = false;
+    let ocioso: ReturnType<typeof setTimeout> | undefined;
+    let teto: ReturnType<typeof setTimeout> | undefined;
+    const liberar = () => {
+      travado = false;
+      clearTimeout(ocioso);
+      clearTimeout(teto);
+    };
+    const esperarFimDaRolagem = (ms: number) => {
+      clearTimeout(ocioso);
+      ocioso = setTimeout(liberar, ms);
+    };
+    travarRef.current = () => {
+      travado = true;
+      posicaoInicial = null;
+      andou = false;
+      clearTimeout(teto);
+      teto = setTimeout(liberar, 1000);
+      // Se a página nem chegar a rolar (já estava lá), nenhum scroll virá.
+      esperarFimDaRolagem(300);
+    };
+    const aoRolar = (evento: Event) => {
+      if (travado) {
+        const posicao = (
+          evento.target instanceof Element
+            ? evento.target
+            : document.documentElement
+        ).scrollTop;
+        if (posicaoInicial === null) posicaoInicial = posicao;
+        else if (posicao !== posicaoInicial) andou = true;
+        esperarFimDaRolagem(150);
+        return;
+      }
+      agendar(evento);
+    };
     const agendar = (evento: Event) => {
       if (pendente) return;
       pendente = true;
       quadro = window.requestAnimationFrame(() => {
         pendente = false;
-        calcular(evento.target);
+        // Um quadro agendado ANTES do toque não pode sobrescrevê-lo.
+        if (!travado) calcular(evento.target);
       });
     };
-    document.addEventListener("scroll", agendar, {
-      capture: true,
-      passive: true,
-    });
-    window.addEventListener("resize", agendar, { passive: true });
+    const aoFimDaRolagem = () => {
+      if (andou) liberar();
+    };
+    const aoAssumirComando = (evento: Event) => {
+      if (
+        evento.type === "keydown" &&
+        !TECLAS_DE_ROLAGEM.has((evento as KeyboardEvent).key)
+      ) {
+        return;
+      }
+      liberar();
+    };
+    const opcoes = { capture: true, passive: true } as const;
+    document.addEventListener("scroll", aoRolar, opcoes);
+    document.addEventListener("scrollend", aoFimDaRolagem, opcoes);
+    document.addEventListener("touchstart", aoAssumirComando, opcoes);
+    document.addEventListener("wheel", aoAssumirComando, opcoes);
+    document.addEventListener("keydown", aoAssumirComando, opcoes);
+    window.addEventListener("resize", aoRolar, { passive: true });
     return () => {
-      document.removeEventListener("scroll", agendar, { capture: true });
-      window.removeEventListener("resize", agendar);
+      document.removeEventListener("scroll", aoRolar, { capture: true });
+      document.removeEventListener("scrollend", aoFimDaRolagem, {
+        capture: true,
+      });
+      document.removeEventListener("touchstart", aoAssumirComando, {
+        capture: true,
+      });
+      document.removeEventListener("wheel", aoAssumirComando, {
+        capture: true,
+      });
+      document.removeEventListener("keydown", aoAssumirComando, {
+        capture: true,
+      });
+      window.removeEventListener("resize", aoRolar);
       if (pendente) window.cancelAnimationFrame(quadro);
+      liberar();
+      travarRef.current = null;
     };
   }, [mostrarAtalhos, chaveDasSecoes]);
 
   const irParaSecao = (nome: string, indice: number) => {
     setCategoriaAtiva(nome);
+    travarRef.current?.();
     const reduzir = window.matchMedia?.(
       "(prefers-reduced-motion: reduce)",
     ).matches;
