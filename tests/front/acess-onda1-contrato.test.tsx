@@ -148,8 +148,8 @@ describe("achado 2 — página de produto e cupom: botões de ícone com nome", 
 
 describe("achado 3 — escolha marcada: variantes e meio de pagamento", () => {
   it("variantes da página de produto usam aria-pressed", () => {
-    const src = fonte(PRODUCT_VIEW);
-    expect(src).toContain("aria-pressed={isSelected}");
+    const src = fonte("/src/components/ui/custom/FileirasDeVariacao.tsx");
+    expect(src).toContain("aria-pressed={ativa}");
   });
 
   it("variantes da folha do card usam aria-pressed", () => {

@@ -175,12 +175,14 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
   /** Abre o menu da barra (o botão que mostra a cor escolhida) e devolve o item. */
   async function itemDoMenuDaBarra(escolhidaAgora: string, valor: string) {
     const gatilho = [...(barra()?.querySelectorAll("button") ?? [])].find(
-      (b) => b.textContent === escolhidaAgora,
+      (b) => b.textContent?.trim() === `${escolhidaAgora} ›`,
     );
     await tocar(gatilho);
     // O item do menu vem DEPOIS do gatilho no DOM (que também tem um <span>
     // com o mesmo texto quando a cor aberta é a escolhida): o último vale.
-    const candidatos = [...(barra()?.querySelectorAll("button span") ?? [])];
+    const candidatos = [
+      ...document.querySelectorAll('[role="dialog"] button span'),
+    ];
     const item = candidatos.filter((el) => el.textContent === valor).at(-1);
     return item?.closest("button") as HTMLButtonElement;
   }
@@ -262,5 +264,79 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     await tocar(await itemDoMenuDaBarra("Azul", "Azul"));
 
     expect(opcaoDaPagina("Azul").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("Adicionar sem escolher abre a mesma folha; só a combinação completa envia id e preço", async () => {
+    await montar(
+      blusa([
+        {
+          ...cor("azul-p", "Azul / P", 2),
+          name: "Cor / Tamanho",
+          priceOverride: 25,
+        },
+        { ...cor("azul-m", "Azul / M", 0), name: "Cor / Tamanho" },
+        { ...cor("preto-m", "Preto / M", 4), name: "Cor / Tamanho" },
+      ]),
+    );
+    await comprarPelaBarra();
+    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+    const folha = document.querySelector('[role="dialog"]')!;
+    expect(folha).not.toBeNull();
+    await tocar(folha.querySelector('button[aria-label="Azul"]'));
+    expect(
+      (folha.querySelector('button[aria-label="M"]') as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    await tocar(folha.querySelector('button[aria-label="P"]'));
+    expect(folha.textContent).toContain("R$ 25,00");
+    await tocar(
+      [...folha.querySelectorAll("button")].find(
+        (b) => b.textContent === "Adicionar ao Carrinho",
+      ),
+    );
+    expect(adicionarAoCarrinho).toHaveBeenCalledWith(
+      1,
+      "azul-p",
+      "Cor / Tamanho: Azul / P",
+    );
+  });
+
+  it("os dois botões de quantidade da folha usam alvos de 44px", async () => {
+    await montar(blusa([cor("azul", "Azul", 2)]));
+    await comprarPelaBarra();
+    const folha = document.querySelector('[role="dialog"]')!;
+    expect(folha).not.toBeNull();
+    const botoes = [
+      ...folha.querySelectorAll('button[aria-label$="quantidade"]'),
+    ];
+    expect(botoes).toHaveLength(2);
+    for (const botao of botoes) {
+      expect(
+        botao.classList.contains("size-11"),
+        botao.getAttribute("aria-label") ?? undefined,
+      ).toBe(true);
+    }
+  });
+
+  it("trocar para uma cor sem o tamanho escolhido limpa o tamanho, não compra combinação inexistente", async () => {
+    await montar(
+      blusa([
+        { ...cor("azul-p", "Azul / P", 2), name: "Cor / Tamanho" },
+        { ...cor("preto-m", "Preto / M", 4), name: "Cor / Tamanho" },
+      ]),
+    );
+    await tocar(hospedeiro.querySelector('button[aria-label="Azul"]'));
+    await tocar(hospedeiro.querySelector('button[aria-label="P"]'));
+    expect(barra()?.textContent).toContain("Azul · P");
+    await tocar(hospedeiro.querySelector('button[aria-label="Preto"]'));
+    expect(
+      hospedeiro
+        .querySelector('button[aria-label="P"]')
+        ?.getAttribute("aria-pressed"),
+    ).toBe("false");
+    expect(barra()?.textContent).toContain("Escolher cor e tamanho");
+    await comprarPelaBarra();
+    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
   });
 });

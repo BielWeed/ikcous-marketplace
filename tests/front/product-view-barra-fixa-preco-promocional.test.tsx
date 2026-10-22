@@ -7,7 +7,7 @@
 // princípio do dono: vermelho é "negativo", não é o estado normal de um
 // preço. Agora a barra dockada segue a MESMA regra do bloco principal
 // (ProductView.tsx:976): com promoção, verde (contraste AA); sem promoção,
-// o neutro que a própria página já usa no preço sem desconto (`text-zinc-900`,
+// o neutro que a própria página já usa no preço sem desconto (`text-foreground`,
 // ProductView.tsx:991).
 //
 // Modelo estrutural copiado de product-view-estoque-contraste-aa.test.tsx
@@ -155,7 +155,7 @@ describe("ProductView — barra de compra fixa segue a mesma regra de cor do pre
     expect(preco?.classList.contains("text-rose-600")).toBe(false);
   });
 
-  it("sem promoção: o preço da barra fixa vira neutro (text-zinc-900), não vermelho", async () => {
+  it("sem promoção: o preço da barra fixa vira neutro (text-foreground), não vermelho", async () => {
     const { ProductView } = await import("@/views/customer/ProductView");
 
     await act(async () => {
@@ -172,7 +172,7 @@ describe("ProductView — barra de compra fixa segue a mesma regra de cor do pre
 
     const preco = encontraPrecoDaBarraFixa();
     expect(preco).not.toBeUndefined();
-    expect(preco?.classList.contains("text-zinc-900")).toBe(true);
+    expect(preco?.classList.contains("text-foreground")).toBe(true);
     expect(preco?.classList.contains("text-rose-600")).toBe(false);
     expect(preco?.classList.contains("text-emerald-700")).toBe(false);
   });

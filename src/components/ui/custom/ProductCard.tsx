@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { FolhaDeOpcoes, focarEscolhaDaFolha } from "./FolhaDeOpcoes";
+import { CorpoDaFolhaDeOpcoes, focarEscolhaDaFolha } from "./FolhaDeOpcoes";
 import { StarRating } from "./StarRating";
 
 interface ProductCardProps {
@@ -1055,7 +1055,7 @@ export const ProductCard = memo(function ProductCard({
               />
             </button>
             <div aria-hidden="true" className="h-5 shrink-0" />
-            <FolhaDeOpcoes
+            <CorpoDaFolhaDeOpcoes
               id={idDaFolha}
               product={product}
               modelo={modeloDeEixos}

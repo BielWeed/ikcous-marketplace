@@ -216,8 +216,8 @@ describe("ProductView -- o aviso de variação faltando diz O QUE falta", () => 
     grupo: string,
     valor: string,
   ) {
-    const rotulo = Array.from(hospedeiroEl.querySelectorAll("span")).find(
-      (s) => s.textContent === `Selecione ${grupo}`,
+    const rotulo = Array.from(hospedeiroEl.querySelectorAll("legend")).find(
+      (s) => s.textContent === grupo,
     );
     if (!rotulo) throw new Error(`grupo "${grupo}" não encontrado na tela`);
     const container = rotulo.parentElement as HTMLElement;

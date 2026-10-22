@@ -233,7 +233,12 @@ export default defineConfig(async (context): Promise<UserConfig> => {
             const normalizedId = id.replace(/\\/g, "/");
             // O cn() já faz parte do boot. Fixá-lo aqui impede que o Rollup
             // o absorva no chunk do painel e leve esse chunk para a vitrine.
-            if (normalizedId.endsWith("/src/lib/utils.ts")) {
+            if (
+              normalizedId.endsWith("/src/lib/utils.ts") ||
+              normalizedId.endsWith("/src/utils/atributos-da-variacao.ts")
+            ) {
+              // O parser agora é público. Não o deixar ser absorvido pelo
+              // painel-ui através dos módulos de cadastro que o importam.
               return "vendor-inicio";
             }
             // 21/10: a folha de opções passou a usar o parser de atributos.

@@ -168,8 +168,8 @@ describe("ProductView — Trocas e devoluções perto do botão de comprar", () 
   it("abrir e fechar a folha NÃO tira o tamanho escolhido nem adiciona nada", async () => {
     await montar();
     // Escolhe o tamanho P.
-    const rotulo = [...hospedeiro.querySelectorAll("span")].find(
-      (s) => s.textContent === "Selecione Tamanho",
+    const rotulo = [...hospedeiro.querySelectorAll("legend")].find(
+      (s) => s.textContent === "Tamanho",
     );
     const botaoP = [
       ...(rotulo?.parentElement?.querySelectorAll("button") ?? []),
@@ -209,8 +209,8 @@ describe("ProductView — Trocas e devoluções perto do botão de comprar", () 
     globalThis.addEventListener("popstate", roteadorDoApp);
     try {
       await montar();
-      const rotulo = [...hospedeiro.querySelectorAll("span")].find(
-        (s) => s.textContent === "Selecione Tamanho",
+      const rotulo = [...hospedeiro.querySelectorAll("legend")].find(
+        (s) => s.textContent === "Tamanho",
       );
       const botaoP = [
         ...(rotulo?.parentElement?.querySelectorAll("button") ?? []),

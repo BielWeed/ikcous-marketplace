@@ -1,5 +1,10 @@
 import { LazyImage } from "@/components/LazyImage";
-import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -18,6 +23,7 @@ import {
   Loader2,
   ShoppingCart,
 } from "lucide-react";
+import type { ComponentProps } from "react";
 import { QuantitySelector } from "./QuantitySelector";
 
 const cores = new Map([
@@ -85,7 +91,23 @@ export function focarEscolhaDaFolha(id: string, eixo: string | null) {
 }
 
 // Corpo estático: o estado e a entrega ao carrinho ficam no ProductCard.
+// A página usa o mesmo portal sem perder o corpo compacto das opções do card.
 export function FolhaDeOpcoes({
+  aberta,
+  onMudar,
+  ...props
+}: ComponentProps<typeof SheetContent> & {
+  aberta: boolean;
+  onMudar: (aberta: boolean) => void;
+}) {
+  return (
+    <Sheet open={aberta} onOpenChange={onMudar}>
+      <SheetContent side="bottom" showCloseButton={false} {...props} />
+    </Sheet>
+  );
+}
+
+export function CorpoDaFolhaDeOpcoes({
   id,
   product,
   modelo,
