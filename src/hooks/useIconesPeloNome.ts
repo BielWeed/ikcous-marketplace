@@ -49,6 +49,18 @@ function montarMapa(nomes: string): ReadonlyMap<string, IconeSugerido> {
   return mapa;
 }
 
+function mesmoConteudo(
+  a: ReadonlyMap<string, IconeSugerido>,
+  b: ReadonlyMap<string, IconeSugerido>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [nome, x] of a) {
+    const y = b.get(nome);
+    if (!y || x.icone !== y.icone || x.forma !== y.forma) return false;
+  }
+  return true;
+}
+
 export function useIconesPeloNome(
   categorias: readonly CategoriaParaSugerir[],
   habilitado = true,
@@ -75,7 +87,9 @@ export function useIconesPeloNome(
       .then(async (m) => {
         carregado = { m, lista: await m.carregarCatalogo() };
         const mapa = montarMapa(nomes);
-        if (vivo) setSugeridos(mapa);
+        // Mapa igual ao que já está na tela (catálogo em memória): devolver o mesmo objeto evita um render à toa.
+        if (vivo)
+          setSugeridos((atual) => (mesmoConteudo(atual, mapa) ? atual : mapa));
       })
       .catch(() => {});
     return () => {

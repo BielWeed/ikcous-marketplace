@@ -289,6 +289,27 @@ describe("SeletorDeIcone", () => {
     });
   });
 
+  describe("prévia do Automático", () => {
+    it("sem escolha, a prévia grande mostra o ícone do catálogo que combina com o nome (Bolsas femininas -> Bolsa)", async () => {
+      await montar({
+        nomeDaCategoria: "Bolsas femininas",
+        nomeParaSugerir: "Bolsas femininas",
+      });
+      await abrir();
+      const previa = host.querySelector("svg.size-10");
+      expect(previa?.getAttribute("data-icone")).toBe("forma");
+      expect(previa?.querySelector("path")?.getAttribute("d")).toBe(d("bolsa"));
+    });
+
+    it("nome que o catálogo não conhece: a prévia fica com o ícone genérico", async () => {
+      await montar({ nomeDaCategoria: "Xpto", nomeParaSugerir: "Xpto" });
+      await abrir();
+      expect(
+        host.querySelector("svg.size-10")?.getAttribute("data-icone"),
+      ).toBe("etiqueta");
+    });
+  });
+
   describe("catálogo que não chega", () => {
     it("sem internet: avisa, mantém os 14 clássicos e o ícone já gravado, e deixa tentar de novo", async () => {
       fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
