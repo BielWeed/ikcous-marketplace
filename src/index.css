@@ -342,7 +342,7 @@
   }
 
   .checkout-values p:last-child {
-    @apply text-right text-2xl font-bold tabular-nums tracking-tight text-zinc-900;
+    @apply text-left text-2xl font-bold tabular-nums tracking-tight text-zinc-900;
   }
 
   .checkout-finalizar {
