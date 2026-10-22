@@ -363,22 +363,39 @@ function OrderHeader({ order, avisoDeEspera }: Readonly<OrderHeaderProps>) {
 
   return (
     <header className="space-y-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className="text-[22px] font-medium leading-tight tracking-tight text-white">
-          Pedido{" "}
-          <span className="text-admin-gold">#{numeroDoPedido(order.id)}</span>
-        </h1>
-        {statusForaDaTrilha && (
-          <OrderStatusBadge
-            status={order.status}
-            retiradaNaLoja={order.retiradaNaLoja}
-            className={seloDaFicha}
-          />
-        )}
+      {/* Imprimir mora na linha do título, no canto direito (pedido do dono):
+          o texto à esquerda tem min-w-0 e pode quebrar; o botão é shrink-0
+          e nunca sai da tela, nem em 320px. */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="break-words text-[22px] font-medium leading-tight tracking-tight text-white">
+              Pedido{" "}
+              <span className="text-admin-gold">
+                #{numeroDoPedido(order.id)}
+              </span>
+            </h1>
+            {statusForaDaTrilha && (
+              <OrderStatusBadge
+                status={order.status}
+                retiradaNaLoja={order.retiradaNaLoja}
+                className={seloDaFicha}
+              />
+            )}
+          </div>
+          <p className="text-sm tabular-nums text-zinc-400">
+            {data} às {hora}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          onClick={() => globalThis.print()}
+          className="size-11 shrink-0 rounded-xl border border-admin-border bg-white/5 p-0 text-zinc-200 transition-colors hover:bg-white/10 active:scale-95"
+          title="Imprimir Pedido"
+        >
+          <Printer className="size-5" />
+        </Button>
       </div>
-      <p className="text-sm tabular-nums text-zinc-400">
-        {data} às {hora}
-      </p>
 
       {pagamentoPedeAtencao && (
         <PaymentStatusBadge
@@ -434,7 +451,7 @@ interface OrderActionBarProps {
 // exatamente sob a barra ADMIN (h-11, lg:hidden), e não depende de
 // containing block — a mesma lição do bug da barra que rolava junto. No
 // desktop a barra ADMIN não existe e ela gruda no topo do painel. São os
-// MESMOS botões e guardas de sempre: 🖨 imprime · ✕ Cancelar pedido
+// MESMOS botões e guardas de sempre (o 🖨 imprimir foi para o cabeçalho): ✕ Cancelar pedido
 // (texto vermelho suave, sem preenchimento) · Avançar → próxima etapa
 // (dourado, primária, ocupa o resto). Redesenho de 08/10: menos brilho e
 // sombra, letra de 14px em vez de 10–11px em caixa alta, alvo de toque de 44px.
@@ -452,6 +469,10 @@ function OrderActionBar({
     orderStatus !== "cancelled" && orderStatus !== "delivered";
   const podeAvancar = nextStatus !== null && orderStatus !== "cancelled";
 
+  // Sem ação nenhuma (pedido entregue ou cancelado) a barra não existe: o
+  // botão de imprimir mora no cabeçalho, e uma faixa vazia só gastaria tela.
+  if (!podeCancelar && !podeAvancar) return null;
+
   // z-40 basta: dentro do painel é o elemento mais alto ao rolar; a barra
   // ADMIN (z-50) e o menu inferior (z-[60]) vivem FORA do painel e não
   // competem. Linha separadora embaixo (border-b): ela é o teto da ficha.
@@ -459,15 +480,6 @@ function OrderActionBar({
   return (
     <div className="sticky top-0 z-40 border-b border-admin-border bg-admin-bg">
       <div className="mx-auto flex w-full max-w-[600px] items-center gap-2 px-4 py-3">
-        <Button
-          variant="ghost"
-          onClick={() => globalThis.print()}
-          className="size-11 shrink-0 rounded-xl border border-admin-border bg-white/5 p-0 text-zinc-200 transition-colors hover:bg-white/10 active:scale-95"
-          title="Imprimir Pedido"
-        >
-          <Printer className="size-5" />
-        </Button>
-
         {podeCancelar && (
           <Button
             onClick={() => onCancel(orderId)}
