@@ -250,7 +250,7 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
 
   const botaoEnviar = () =>
     Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      (b.textContent ?? "").includes("Enviar agora para"),
+      (b.textContent ?? "").includes("Enviar para"),
     ) as HTMLButtonElement;
 
   async function enviar() {

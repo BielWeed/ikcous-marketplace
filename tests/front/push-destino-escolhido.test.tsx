@@ -263,7 +263,7 @@ describe("Avisar clientes — destino escolhido por lista", () => {
 
   async function enviar() {
     const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").includes("Enviar agora para"),
+      (b.textContent ?? "").includes("Enviar para"),
     ) as HTMLButtonElement;
     expect(botao.disabled).toBe(false);
     await act(async () => {

@@ -375,13 +375,13 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
 
     // A composição é cartão FIXO: zero controle de colapso para ela — o
     // conteúdo (os campos, logo abaixo) está na árvore sem interação
-    // nenhuma. O histórico segue colapsável e nasce aberto.
+    // nenhuma. O histórico fica atrás do botão "Envios anteriores" (fechado).
     const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
     expect(mensagem).not.toBeNull();
     expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
-    const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar");
+    const historico = cabecalhoDeSecao(hospedeiro, "Envios anteriores");
     expect(historico).toBeTruthy();
-    expect(historico!.getAttribute("aria-expanded")).toBe("true");
+    expect(historico!.getAttribute("aria-expanded")).toBe("false");
 
     // Campos-chave do envio — nenhum sumiu no redesenho.
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
@@ -394,12 +394,14 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     ).toBeTruthy();
     expect(
       [...hospedeiro.querySelectorAll("button")].find((b) =>
-        (b.textContent ?? "").includes("Enviar agora para"),
+        (b.textContent ?? "").includes("Enviar para"),
       ),
     ).toBeTruthy();
 
-    // Cartão de métrica e ajuda da tela.
-    expect(hospedeiro.querySelector("h2.text-3xl")).not.toBeNull();
+    // Selo de estado e ajuda da tela.
+    expect(
+      hospedeiro.querySelector('[data-testid="selo-no-ar"]'),
+    ).not.toBeNull();
     expect(
       hospedeiro.querySelector('button[title="Ajuda e explicação desta tela"]'),
     ).not.toBeNull();
@@ -407,7 +409,7 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     // A seção "Ajustes" nasce FECHADA e guarda o teste de recebimento — o
     // interruptor de prova social está escondido (não promete o que a loja
     // não faz); expandir para provar as duas coisas na árvore.
-    const ajustes = cabecalhoDeSecao(hospedeiro, "Ajustes");
+    const ajustes = cabecalhoDeSecao(hospedeiro, "Teste e ajustes");
     expect(ajustes).toBeTruthy();
     expect(ajustes!.getAttribute("aria-expanded")).toBe("false");
     await act(async () => {
@@ -425,14 +427,23 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
   it("o histórico recolhe e reabre (o conteúdo sai e volta da árvore) — e a composição é fixa", async () => {
     await abrirAvisar();
 
-    const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar")!;
+    const historico = cabecalhoDeSecao(hospedeiro, "Envios anteriores")!;
+    expect(textoDaTela()).not.toContain("Não confirmada");
+
+    await act(async () => {
+      historico.click();
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+    expect(historico.getAttribute("aria-expanded")).toBe("true");
     expect(textoDaTela()).toContain("Não confirmada");
 
     await act(async () => {
       historico.click();
     });
     await act(async () => {
-      await esperar(350); // fim da animação de saída
+      await esperar(50);
     });
     expect(historico.getAttribute("aria-expanded")).toBe("false");
     expect(textoDaTela()).not.toContain("Não confirmada");

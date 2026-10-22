@@ -340,6 +340,16 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
     elemento.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
+  // O histórico fica atrás do botão "Envios anteriores" (tela compacta).
+  async function abrirEnviosAnteriores() {
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Envios anteriores"),
+    );
+    await act(async () => {
+      botao?.click();
+    });
+  }
+
   async function preencherMensagem(titulo: string, corpo: string) {
     const campoTitulo =
       hospedeiro.querySelector<HTMLInputElement>("#push-title");
@@ -361,7 +371,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
   function botaoEnviar(): HTMLButtonElement | undefined {
     return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      (b.textContent ?? "").includes("Enviar agora para"),
+      (b.textContent ?? "").includes("Enviar para"),
     ) as HTMLButtonElement | undefined;
   }
 
@@ -488,6 +498,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
       },
     ];
     await abrirTela();
+    await abrirEnviosAnteriores();
 
     // `\b` importa aqui: o cabeçalho fixo da seção diz "Histórico de
     // Mensagens Enviadas" (plural), que contém "Enviada" como substring —
@@ -674,6 +685,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
       },
     ];
     await abrirTela();
+    await abrirEnviosAnteriores();
 
     expect(texto()).toContain("1 aparelho");
     expect(texto()).not.toContain("1 clientes");

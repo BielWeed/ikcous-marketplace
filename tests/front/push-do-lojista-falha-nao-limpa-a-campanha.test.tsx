@@ -226,7 +226,7 @@ describe("Avisar clientes — falha não apaga a campanha", () => {
 
   async function enviar() {
     const botao = [...hospedeiro.querySelectorAll("button")].find((elemento) =>
-      elemento.textContent?.includes("Enviar agora para"),
+      elemento.textContent?.includes("Enviar para"),
     );
     expect(botao).toBeDefined();
     expect(botao!.disabled).toBe(false);

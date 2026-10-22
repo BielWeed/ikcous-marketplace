@@ -241,19 +241,15 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     expect(numeroDoChip(chipTodos)).toBe("8");
     expect(numeroDoChip(chipVip)).toBe("2");
     expect(numeroDoChip(chipInativo)).toBe("0");
-    expect(chipVip?.textContent).toContain("Só compras pagas");
-    expect(chipInativo?.textContent).toContain(
-      "Sem pedidos de qualquer status",
-    );
     expect(chipInativo?.textContent).toContain("Indisponível");
 
-    // O chip do segmento selecionado ("all" por padrão) tem destaque; os
-    // outros não.
-    expect(chipTodos?.className).toContain("border-admin-gold");
-    expect(chipVip?.className).not.toContain("border-admin-gold");
+    // O chip do segmento selecionado ("all" por padrão) tem destaque NEUTRO
+    // (cor do texto forte do tema, sem cor de marca); os outros não.
+    expect(chipTodos?.className).toContain("ring-current");
+    expect(chipTodos?.className).not.toContain("admin-gold");
+    expect(chipVip?.className).not.toContain("ring-current");
 
-    // A linha de unidade embaixo do número — parte do chip da direção B
-    // ("9 / aparelhos"), que o botão antigo não tinha.
+    // A unidade ("aparelhos") fica para leitor de tela, fora da vista.
     expect(chipTodos!.textContent).toContain("aparelhos");
 
     // Chip com gente pode ser clicado.
@@ -281,8 +277,8 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       await esperar(50);
     });
 
-    expect(chipInativo!.className).not.toContain("border-admin-gold");
-    expect(texto()).toContain("Receberão: 8 aparelhos");
+    expect(chipInativo!.className).not.toContain("ring-current");
+    expect(texto()).toContain("Enviar para 8 aparelhos");
   });
 
   it("contagem zero desatualizada REMEDE ao voltar o foco: cliente novo com a tela aberta destrava o chip (achado 3 da revisão do PR 549)", async () => {
@@ -384,35 +380,6 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     expect(previaDepois!.textContent).toContain("agora");
   });
 
-  it("o relógio da prévia acompanha o minuto e a data local, e limpa o intervalo ao desmontar", async () => {
-    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
-    vi.setSystemTime(new Date(2026, 9, 17, 23, 59));
-    const iniciarIntervalo = vi.spyOn(window, "setInterval");
-    const limparIntervalo = vi.spyOn(window, "clearInterval");
-    await abrirTela();
-
-    const previa = () =>
-      hospedeiro.querySelector('[data-testid="previa-celular"]')!.textContent;
-    expect(previa()).toContain("23:59");
-    expect(previa()).toContain("sábado, 17 de outubro");
-    const indice = iniciarIntervalo.mock.calls.findIndex(
-      ([, intervalo]) => intervalo === 60_000,
-    );
-    expect(indice).toBeGreaterThanOrEqual(0);
-    const relogio = iniciarIntervalo.mock.results.at(indice)?.value;
-
-    await act(async () => {
-      vi.advanceTimersByTime(60_000);
-    });
-    expect(previa()).toContain("00:00");
-    expect(previa()).toContain("domingo, 18 de outubro");
-
-    await act(async () => {
-      raiz.render(null);
-    });
-    expect(limparIntervalo).toHaveBeenCalledWith(relogio);
-  });
-
   it("o modelo aplicado fica selecionado e conserva o destino e o marcador de cupom", async () => {
     await abrirTela();
     const modelo = Array.from(hospedeiro.querySelectorAll("button")).find(
@@ -423,7 +390,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       modelo.click();
     });
     expect(modelo.getAttribute("aria-pressed")).toBe("true");
-    expect(modelo.className).toContain("border-admin-gold");
+    expect(modelo.className).toContain("ring-current");
     expect(
       hospedeiro.querySelector("#push-destination")?.textContent,
     ).toContain("Página de Busca de Produtos");
@@ -432,7 +399,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     ).not.toBeNull();
     expect(
       Array.from(hospedeiro.querySelectorAll("button")).find((botao) =>
-        botao.textContent?.includes("Enviar agora para"),
+        botao.textContent?.includes("Enviar para"),
       )?.disabled,
     ).toBe(true);
   });
@@ -462,7 +429,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     // prova social NÃO está nela nem em lugar visível nenhum.
     const ajustes = Array.from(
       hospedeiro.querySelectorAll<HTMLButtonElement>("button[aria-expanded]"),
-    ).find((b) => (b.textContent ?? "").includes("Ajustes"));
+    ).find((b) => (b.textContent ?? "").includes("Teste e ajustes"));
     expect(ajustes).toBeTruthy();
     expect(ajustes!.getAttribute("aria-expanded")).toBe("false");
     expect(
@@ -491,7 +458,10 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
   it("histórico sem envios mostra o estado vazio desenhado — com o que vai aparecer lá", async () => {
     await abrirTela();
 
-    expect(texto()).toContain("O que já foi ao ar");
+    await act(async () => {
+      cabecalhoDeSecao("Envios anteriores")!.click();
+    });
+    expect(texto()).toContain("Envios anteriores");
     expect(texto()).toContain("Nenhuma mensagem enviada até agora");
     expect(texto()).toContain("Quando você enviar, cada mensagem aparece aqui");
     // O texto antigo, seco, não sobrevive em lugar nenhum.
@@ -565,7 +535,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     // A guarda da view marcou: existe rascunho.
     expect(onSetDirty).toHaveBeenCalledWith(true);
 
-    const ajustes = cabecalhoDeSecao("Ajustes");
+    const ajustes = cabecalhoDeSecao("Teste e ajustes");
     expect(ajustes).toBeTruthy();
     await act(async () => {
       ajustes!.click();
@@ -579,7 +549,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       ajustes!.click();
     });
     await act(async () => {
-      await esperar(350); // fim da animação de saída
+      await esperar(50);
     });
     expect(ajustes!.getAttribute("aria-expanded")).toBe("false");
 

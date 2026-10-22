@@ -155,7 +155,7 @@ describe("Avisar clientes — a conclusão só limpa a mensagem enviada", () => 
     });
     await act(async () => botao("Lembrete de Carrinho").click());
     expect(titulo()).toBe(MODELOS_DE_CAMPANHA.auth.mensagem.title);
-    expect(botao("Enviar agora para").disabled).toBe(false);
+    expect(botao("Enviar para").disabled).toBe(false);
   }
 
   it("escolher Y enquanto X envia preserva Y após o sucesso de X", async () => {
@@ -165,7 +165,7 @@ describe("Avisar clientes — a conclusão só limpa a mensagem enviada", () => 
     }>();
     enviarPush.mockReturnValue(envio.promessa);
     await preparar();
-    await act(async () => botao("Enviar agora para").click());
+    await act(async () => botao("Enviar para").click());
     expect(enviarPush).toHaveBeenCalledWith("send-push", {
       body: expect.objectContaining(MODELOS_DE_CAMPANHA.auth.mensagem),
     });
@@ -191,7 +191,7 @@ describe("Avisar clientes — a conclusão só limpa a mensagem enviada", () => 
     }>();
     enviarPush.mockReturnValue(envio.promessa);
     await preparar();
-    await act(async () => botao("Enviar agora para").click());
+    await act(async () => botao("Enviar para").click());
     expect(enviarPush).toHaveBeenCalledTimes(1);
     await act(async () => {
       botao("Cupom de boas-vindas").click();
@@ -210,7 +210,7 @@ describe("Avisar clientes — a conclusão só limpa a mensagem enviada", () => 
     registrarAviso.mockReturnValue(aviso.promessa);
     buscarAlvos.mockResolvedValue({ data: [], error: null });
     await preparar("cliente-1");
-    await act(async () => botao("Enviar agora para").click());
+    await act(async () => botao("Enviar para").click());
     expect(registrarAviso).toHaveBeenCalledWith(
       expect.objectContaining({
         titulo: MODELOS_DE_CAMPANHA.auth.mensagem.title,

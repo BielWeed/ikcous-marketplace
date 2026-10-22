@@ -44,171 +44,41 @@ import {
   rotuloDaContagem,
   textoDeAlcanceEmAparelhos,
 } from "@/utils/contadores-de-push";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Clock,
-  Coins,
-  Gift,
   HelpCircle,
   History,
-  Home,
   Inbox,
-  LockKeyhole,
-  Moon,
-  MousePointer2,
-  Pencil,
-  Percent,
   Send,
   Settings,
-  Shield,
-  ShoppingCart,
-  Smartphone,
   Sparkles,
-  Target,
-  UserPlus,
   Users,
   Zap,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-/** Selos locais: a cor identifica a função, sem competir com a seleção. */
-function SeloDeIcone({
-  icone: Icone,
-  matiz,
-  indisponivel = false,
-  className = "size-[38px] rounded-xl",
-}: {
-  readonly icone: React.ElementType;
-  readonly matiz: string;
-  readonly indisponivel?: boolean;
-  readonly className?: string;
-}) {
-  const cor = indisponivel ? "#7E7E8A" : matiz;
-  return (
-    <span
-      aria-hidden="true"
-      className={`inline-flex shrink-0 items-center justify-center border ${className}`}
-      style={{
-        color: cor,
-        backgroundColor: `${cor}26`,
-        borderColor: `${cor}40`,
-      }}
-    >
-      <Icone className="size-5" strokeWidth={1.9} />
-    </span>
-  );
-}
-
-function TituloDeSecao({
-  icone: Icone,
-  children,
-}: {
-  readonly icone: React.ElementType;
-  readonly children: React.ReactNode;
-}) {
-  return (
-    <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-400">
-      <Icone aria-hidden="true" className="size-4 shrink-0" />
-      {children}
-    </h2>
-  );
-}
-
 /**
- * Seção colapsável da tela de Avisar clientes (frente
- * glm-visual-canais-avisar-0309): o mesmo padrão da `SecaoColapsavel` dos
- * Ajustes — cabeçalho clicável com `aria-expanded`, conteúdo montado só
- * quando aberta e trava de pendência ("Salve antes de fechar": fechar
- * desmonta o conteúdo e jogaria fora o que foi digitado). Local a este
- * arquivo de propósito, com a superfície neutra usada nesta tela.
- *
- * `extra`: selo exibido na linha do cabeçalho (ex.: o "Receberão: N
- * aparelhos" da seção de escrita — a informação fica à vista mesmo com o
- * conteúdo recolhido).
+ * Estado "selecionado" NEUTRO (sem cor de marca): realce com a cor do texto
+ * forte do tema (segue escuro, claro e confortável) e uma marca de check.
  */
-function SecaoColapsavel({
-  titulo,
-  descricao,
-  icone: Icone,
-  abertaPorPadrao = false,
-  comPendencia = false,
-  extra,
+const SELECIONADO = "border-current bg-admin-raised ring-1 ring-current";
+const NAO_SELECIONADO =
+  "border-admin-border bg-admin-card enabled:hover:border-admin-border-strong";
+
+/** Rótulo curto que apresenta um grupo de controles. */
+function RotuloDeGrupo({
   children,
 }: {
-  readonly titulo: string;
-  readonly descricao?: string;
-  readonly icone: React.ElementType;
-  readonly abertaPorPadrao?: boolean;
-  readonly comPendencia?: boolean;
-  readonly extra?: React.ReactNode;
   readonly children: React.ReactNode;
 }) {
-  const [aberta, setAberta] = useState(abertaPorPadrao);
-  const reduzirMovimento = useReducedMotion();
-
   return (
-    <div className="rounded-[20px] border border-admin-border bg-admin-card p-4">
-      <button
-        type="button"
-        onClick={() => {
-          if (aberta && comPendencia) return;
-          setAberta(!aberta);
-        }}
-        aria-expanded={aberta}
-        className="flex min-h-12 w-full flex-wrap items-center justify-between gap-3 text-left"
-      >
-        <span className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-admin-border bg-white/5 text-zinc-400">
-            <Icone className="size-4" />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-xs font-bold uppercase tracking-wider text-zinc-300">
-              {titulo}
-            </span>
-            {descricao ? (
-              <span className="mt-0.5 block text-xs text-zinc-400">
-                {descricao}
-              </span>
-            ) : null}
-          </span>
-        </span>
-        <span className="flex shrink-0 items-center gap-2">
-          {extra}
-          {aberta && comPendencia && (
-            <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">
-              Salve antes de fechar
-            </span>
-          )}
-          <ChevronDown
-            className={`size-4 shrink-0 text-zinc-400 transition-transform duration-200 motion-reduce:transition-none ${
-              aberta ? "rotate-180" : ""
-            }`}
-          />
-        </span>
-      </button>
-
-      <AnimatePresence initial={false}>
-        {aberta && (
-          <motion.div
-            initial={reduzirMovimento ? false : { height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{
-              duration: reduzirMovimento ? 0 : 0.22,
-              ease: "easeOut",
-            }}
-            className="overflow-hidden"
-          >
-            <div className="pt-3.5">{children}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <h2 className="px-1 text-sm font-semibold text-zinc-400">{children}</h2>
   );
 }
 
@@ -254,7 +124,7 @@ function IconeDaLoja({
   );
 }
 
-/** Prévia de apresentação: relógio local e a mesma identidade da loja. */
+/** Prévia: só o cartão da notificação, com a identidade da loja. */
 function PreviaNoCelular({
   title,
   body,
@@ -266,66 +136,34 @@ function PreviaNoCelular({
   readonly logoUrl?: string | null;
   readonly nomeLoja?: string | null;
 }) {
-  const [agora, setAgora] = useState(() => new Date());
-  useEffect(() => {
-    const relogio = window.setInterval(() => setAgora(new Date()), 60_000);
-    return () => window.clearInterval(relogio);
-  }, []);
-  const hora = agora.toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const data = agora.toLocaleDateString("pt-BR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
   const nome = (nomeLoja ?? "").trim() || "Sua loja";
 
   return (
     <div data-testid="previa-celular" className="min-w-0">
       <div
         data-tema-fixo=""
-        className="relative mx-auto min-w-0 w-full max-w-[360px] overflow-hidden rounded-[32px] border border-white/[0.14] bg-gradient-to-b from-[#2A2A33] to-[#0D0D11] p-4 shadow-[0_16px_40px_rgba(0,0,0,0.2)] sm:p-5"
+        className="relative min-w-0 w-full overflow-hidden rounded-[22px] border border-white/[0.14] bg-[#2A2A33] p-3.5"
       >
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-12 left-1/4 h-28 w-1/2 rounded-full bg-white/[0.13] blur-3xl"
-        />
-        <div className="relative">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-200">
-            <span className="size-1.5 rounded-full bg-admin-accent" />
-            <Smartphone aria-hidden="true" className="size-[13px]" />
-            Prévia ao vivo
-          </span>
-          <p className="mt-5 text-center text-sm text-zinc-300">{data}</p>
-          <p className="mt-1 text-center text-[52px] font-light leading-tight tabular-nums tracking-tight text-white">
-            {hora}
-          </p>
-          <div className="mt-5 flex items-start gap-3 rounded-[22px] border border-white/[0.17] bg-white/[0.12] p-3.5 shadow-lg backdrop-blur-xl">
-            <div className="size-11 shrink-0 overflow-hidden rounded-[11px] bg-black ring-1 ring-admin-border">
-              <IconeDaLoja logoUrl={logoUrl} nome={nome} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-2 text-xs text-zinc-200">
-                <span className="min-w-0 truncate">{nome}</span>
-                <span className="shrink-0">agora</span>
-              </div>
-              <p
-                className={`mt-1 break-words text-[15px] font-bold leading-snug [overflow-wrap:anywhere] ${title ? "text-white" : "text-zinc-200"}`}
-              >
-                {title || "Título da notificação aqui"}
-              </p>
-              <p
-                className={`mt-1 break-words text-sm leading-relaxed [overflow-wrap:anywhere] ${body ? "text-zinc-100" : "text-zinc-200"}`}
-              >
-                {body || "O texto digitado aparece aqui."}
-              </p>
-            </div>
+        <div className="flex items-start gap-3">
+          <div className="size-11 shrink-0 overflow-hidden rounded-[11px] bg-black ring-1 ring-admin-border">
+            <IconeDaLoja logoUrl={logoUrl} nome={nome} />
           </div>
-          <p className="mt-4 text-center text-xs leading-relaxed text-zinc-400">
-            É assim que chega no celular do cliente.
-          </p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-2 text-xs text-zinc-200">
+              <span className="min-w-0 truncate">{nome}</span>
+              <span className="shrink-0">agora</span>
+            </div>
+            <p
+              className={`mt-0.5 break-words text-[15px] font-bold leading-snug [overflow-wrap:anywhere] ${title ? "text-white" : "text-zinc-200"}`}
+            >
+              {title || "Título da notificação aqui"}
+            </p>
+            <p
+              className={`mt-0.5 break-words text-sm leading-snug [overflow-wrap:anywhere] ${body ? "text-zinc-100" : "text-zinc-200"}`}
+            >
+              {body || "O texto digitado aparece aqui."}
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -406,6 +244,9 @@ export const AdminPushView = memo(function AdminPushView({
   // sabe o que faz (o aviso é de apoio, a leitura do texto é heurística).
   const textoJaAvisadoDeCupom = useRef<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  // Os dois painéis que ficam atrás de um toque (fora do caminho da escrita).
+  const [enviosAbertos, setEnviosAbertos] = useState(false);
+  const [ajustesAbertos, setAjustesAbertos] = useState(false);
   // O quarto contador (achado do revisor sobre o commit 6e406b4, em
   // 20/08/2026): nascia em `useState(0)` e o `if (!error) setSubCount(...)`
   // não fazia nada quando a consulta falhava — ficava preso em 0 para
@@ -1135,892 +976,721 @@ export const AdminPushView = memo(function AdminPushView({
     reachDesconhecido ||
     (effectiveReach === 0 && !podeGravarAvisoSemPush);
 
+  // O bloco "Teste e ajustes" só existe quando há o que mostrar nele (a chave
+  // de avisos de compras está escondida): nunca um painel vazio.
+  const temAjustes =
+    MOSTRAR_AVISOS_DE_COMPRAS || (isSupported && !isTestSubscribed);
+
+  const modelosProntos = [
+    MODELOS_DE_CAMPANHA.fomo,
+    MODELOS_DE_CAMPANHA.auth,
+    MODELOS_DE_CAMPANHA.value,
+  ];
+
+  const segmentos = [
+    {
+      id: "all",
+      label: "Todos os clientes",
+      count: subCount,
+      motivoDoZero: "nenhum aparelho cadastrado ainda",
+    },
+    {
+      id: "inactive",
+      label: "Inativos há 30 dias",
+      count: (segment === "inactive"
+        ? reachExibido
+        : segmentCounts.inactive) as ContagemMedida,
+      motivoDoZero: "ninguém passou de 30 dias sem pedir",
+    },
+    {
+      id: "vip",
+      label: "Gastaram R$ 150+",
+      count: (segment === "vip"
+        ? reachExibido
+        : segmentCounts.vip) as ContagemMedida,
+      motivoDoZero: "nenhuma compra paga ainda",
+    },
+    {
+      id: "new",
+      label: "Novos em 7 dias",
+      count: (segment === "new"
+        ? reachExibido
+        : segmentCounts.new) as ContagemMedida,
+      motivoDoZero: "nenhum cadastro nos últimos 7 dias",
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-admin-bg pb-admin lg:pb-12 text-white motion-safe:duration-200 motion-safe:animate-in motion-safe:fade-in">
-      {/* Top Header Bar — fórmula "Elite Header" (AdminPageHeader), mesma
-          casca das ondas anteriores: o título padrão, a ajuda na linha do
-          título e os indicadores à direita. O subtítulo fica na view. */}
-      <div className="sticky top-0 z-20 border-b border-admin-border bg-admin-bg/90 px-4 py-3 backdrop-blur-xl">
-        <div className="mx-auto w-full max-w-4xl">
-          {/* `flex-wrap` (correção 23/09/2026, pedido do dono): título
-              (h1, shrink-0) e o wrapper de `acoes` (selo de status,
-              shrink-0 também — vem do próprio AdminPageHeader) são os DOIS
-              filhos desta linha. Nenhum encolhe, e sem quebra a soma das
-              duas larguras estourava a página inteira em 360-390px ("Enviar
-              Notificações" ~300px + selo ~160px > ~328px disponíveis). O
-              `AdminPageHeader` é compartilhado por 20 telas — a correção
-              fica aqui, local: o selo cai para uma segunda linha quando não
-              cabe, em vez de mudar o componente para todo mundo. */}
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
-            <AdminPageHeader
-              titulo={NOMES_DO_PAINEL["admin-push"]}
-              acoes={
-                <>
-                  {/* Indicadores no Topbar (os mesmos de antes) */}
-                  <div className="hidden sm:flex items-center gap-2 rounded-lg border border-admin-border bg-admin-surface px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
-                    <Smartphone className="size-3.5 text-admin-gold" />
-                    <span>
-                      <strong className="text-white font-bold">
-                        {rotuloDaContagem(subCount)}
-                      </strong>{" "}
-                      Celulares Cadastrados
-                    </span>
-                  </div>
-                  {MOSTRAR_AVISOS_DE_COMPRAS && (
-                    <div className="flex items-center gap-1.5 rounded-lg border border-admin-border bg-admin-surface px-2.5 py-1 text-[11px] font-semibold">
-                      <span
-                        className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-admin-gold animate-pulse" : "bg-zinc-600"}`}
-                      />
-                      <span className="text-zinc-400 uppercase tracking-wider text-[11px]">
-                        {config.realTimeSalesAlerts
-                          ? "Avisos de Vendas Ativos"
-                          : "Avisos Desativados"}
-                      </span>
-                    </div>
-                  )}
-                </>
-              }
-            >
-              <button
-                type="button"
-                onClick={() => setShowHelpModal(true)}
-                className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
-                title="Ajuda e explicação desta tela"
+      <div className="mx-auto w-full min-w-0 max-w-4xl space-y-4 px-5 pb-8 pt-4">
+        {/* Topo: título, ajuda e UM selo de estado. `flex-wrap` (pedido do
+            dono, 23/09/2026): em 320-390px o selo cai para a linha de baixo
+            em vez de alargar a página. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <AdminPageHeader
+            titulo={NOMES_DO_PAINEL["admin-push"]}
+            acoes={
+              <span
+                data-testid="selo-no-ar"
+                className="inline-flex min-h-8 items-center gap-2 rounded-full border border-admin-border bg-admin-surface px-3 text-sm font-semibold text-zinc-200"
               >
                 <span
                   aria-hidden="true"
-                  className="flex size-7 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
-                >
-                  <HelpCircle className="size-4" />
-                </span>
-              </button>
-            </AdminPageHeader>
-          </div>
-          <p className="mt-1 text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">
-            Envie mensagens e avisos direto no celular dos clientes
-          </p>
-        </div>
-      </div>
-
-      {/* Fluxo de composição v4; os controles e suas travas são os mesmos. */}
-      <div className="mx-auto w-full min-w-0 max-w-4xl space-y-8 px-5 pb-8 pt-4">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-400">
-          <span
-            aria-hidden="true"
-            className="size-2 shrink-0 rounded-full bg-admin-accent"
-          />
-          <span>No ar ·</span>
-          <span>Receberão: {textoDeAlcanceEmAparelhos(reachExibido)}</span>
-        </div>
-        <div className="min-w-0">
-          <div className="min-w-0 space-y-8">
-            <section className="min-w-0 space-y-4" aria-label="Mensagem">
-              <TituloDeSecao icone={Pencil}>Mensagem</TituloDeSecao>
-              {/* Mensagens Prontas — pílulas (direção B). Os mesmos 3 arquétipos
-                  de antes: o preenchimento, o registro VOR e o toast não mudam —
-                  só a forma (cartão grande → pílula de um clique). */}
-              <div className="relative min-w-0">
-                <div className="flex gap-2 overflow-x-auto pb-1 pr-5">
-                  {/* Os textos dos modelos moram em `lib/modelos-de-campanha.ts`:
-                      nenhum traz código de cupom, percentual, valor ou prazo
-                      inventado — onde vai o cupom da lojista fica o MARCADOR, e o
-                      envio trava até ela trocá-lo. */}
-                  {[
-                    {
-                      Icone: Percent,
-                      matiz: "#A78BFA",
-                      ...MODELOS_DE_CAMPANHA.fomo,
-                    },
-                    {
-                      Icone: ShoppingCart,
-                      matiz: "#FF9F5A",
-                      ...MODELOS_DE_CAMPANHA.auth,
-                    },
-                    {
-                      Icone: Gift,
-                      matiz: "#FF7AA8",
-                      ...MODELOS_DE_CAMPANHA.value,
-                    },
-                  ].map((arch) => (
-                    <button
-                      key={arch.id}
-                      type="button"
-                      title={arch.desc}
-                      aria-pressed={
-                        notification.title === arch.mensagem.title &&
-                        notification.body === arch.mensagem.body &&
-                        notification.url === arch.mensagem.url
-                      }
-                      className={`flex min-h-12 shrink-0 items-center gap-2 rounded-full border-[1.5px] py-1.5 pl-1.5 pr-4 text-sm font-medium text-zinc-200 transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60 ${
-                        notification.title === arch.mensagem.title &&
-                        notification.body === arch.mensagem.body &&
-                        notification.url === arch.mensagem.url
-                          ? "border-admin-gold bg-admin-gold/10"
-                          : "border-admin-border bg-admin-card hover:border-white/25"
-                      }`}
-                      onClick={() => {
-                        setNotification({ ...arch.mensagem });
-
-                        recordAction(
-                          "CAMPAIGN_TEMPLATE_LOAD",
-                          { template: arch.id, title: arch.title },
-                          {
-                            result: "applied",
-                            timestamp: new Date().toISOString(),
-                          },
-                        );
-
-                        toast.success(
-                          temMarcadorPendente(
-                            arch.mensagem.title,
-                            arch.mensagem.body,
-                          )
-                            ? `Mensagem pronta "${arch.title}" preenchida — troque ${MARCADOR_DO_CUPOM} pelo cupom que você criou em Cupons`
-                            : `Mensagem pronta "${arch.title}" preenchida!`,
-                        );
-                      }}
-                    >
-                      <SeloDeIcone
-                        icone={arch.Icone}
-                        matiz={arch.matiz}
-                        className="size-8 rounded-full"
-                      />
-                      {arch.title}
-                    </button>
-                  ))}
-                </div>
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-admin-bg to-transparent"
+                  className={`size-2 shrink-0 rounded-full ${subCount ? "bg-admin-accent" : "bg-zinc-500"}`}
                 />
+                {`No ar · ${textoDeAlcanceEmAparelhos(subCount)}`}
+              </span>
+            }
+          >
+            <button
+              type="button"
+              onClick={() => setShowHelpModal(true)}
+              className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current"
+              title="Ajuda e explicação desta tela"
+              aria-label="Ajuda e explicação desta tela"
+            >
+              <span
+                aria-hidden="true"
+                className="flex size-7 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
+              >
+                <HelpCircle className="size-4" />
+              </span>
+            </button>
+          </AdminPageHeader>
+        </div>
+
+        <section className="min-w-0 space-y-3" aria-label="Mensagem">
+          <RotuloDeGrupo>Começar de um modelo pronto</RotuloDeGrupo>
+          {/* Os 3 modelos num só cartão. Os textos moram em
+              `lib/modelos-de-campanha.ts`: nenhum traz código de cupom,
+              percentual, valor ou prazo inventado — onde vai o cupom da
+              lojista fica o MARCADOR, e o envio trava até ela trocá-lo. */}
+          <div
+            data-testid="modelos-prontos"
+            className="grid grid-cols-3 divide-x divide-admin-border overflow-hidden rounded-[20px] border border-admin-border bg-admin-card"
+          >
+            {modelosProntos.map((arch) => {
+              const aplicado =
+                notification.title === arch.mensagem.title &&
+                notification.body === arch.mensagem.body &&
+                notification.url === arch.mensagem.url;
+              return (
+                <button
+                  key={arch.id}
+                  type="button"
+                  title={arch.desc}
+                  aria-pressed={aplicado}
+                  className={`min-h-14 min-w-0 border-[1.5px] px-2 py-2 text-center text-sm font-semibold leading-snug transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-current ${
+                    aplicado
+                      ? `${SELECIONADO} text-white`
+                      : "border-transparent text-zinc-200 hover:bg-admin-raised"
+                  }`}
+                  onClick={() => {
+                    setNotification({ ...arch.mensagem });
+
+                    recordAction(
+                      "CAMPAIGN_TEMPLATE_LOAD",
+                      { template: arch.id, title: arch.title },
+                      {
+                        result: "applied",
+                        timestamp: new Date().toISOString(),
+                      },
+                    );
+
+                    toast.success(
+                      temMarcadorPendente(
+                        arch.mensagem.title,
+                        arch.mensagem.body,
+                      )
+                        ? `Mensagem pronta "${arch.title}" preenchida — troque ${MARCADOR_DO_CUPOM} pelo cupom que você criou em Cupons`
+                        : `Mensagem pronta "${arch.title}" preenchida!`,
+                    );
+                  }}
+                >
+                  {arch.title}
+                </button>
+              );
+            })}
+          </div>
+
+          {isOffline && (
+            <div className="flex items-center gap-2.5 rounded-[20px] border border-admin-border bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in">
+              <AlertCircle className="size-4 shrink-0" />
+              <div className="text-sm leading-relaxed">
+                <span className="font-bold uppercase">Você está offline:</span>{" "}
+                Conecte-se à internet para poder enviar notificações aos
+                clientes.
               </div>
+            </div>
+          )}
 
-              {isOffline && (
-                <div className="flex items-center gap-2.5 rounded-[20px] border border-admin-border bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in">
-                  <AlertCircle className="size-4 shrink-0" />
-                  <div className="text-sm leading-relaxed">
-                    <span className="font-bold uppercase">
-                      Você está offline:
-                    </span>{" "}
-                    Conecte-se à internet para poder enviar notificações aos
-                    clientes.
-                  </div>
-                </div>
-              )}
-
-              {/* Título & Mensagem — sobem para antes do público (direção B:
-                  primeiro se escreve, depois se escolhe quem lê). Contadores
-                  tabulares para o número não dançar enquanto digita. */}
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-admin-border bg-admin-card px-4 py-3 transition-shadow focus-within:border-white/[0.35] focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label
-                      htmlFor="push-title"
-                      className="text-xs text-zinc-400"
-                    >
-                      Título
-                    </Label>
-                    <span className="text-xs tabular-nums text-zinc-400">
-                      {notification.title.length}/60
-                    </span>
-                  </div>
-                  <LocalBufferedInput
-                    id="push-title"
-                    aria-label="Título da mensagem"
-                    name="title"
-                    autoComplete="off"
-                    // Trava da proposta (revisão do lote B, 12/09/2026): o
-                    // contador "{n}/60" só é honesto acompanhado do limite —
-                    // sem o atributo, o envio saía maior que 60.
-                    maxLength={60}
-                    value={notification.title}
-                    onFlush={(val) =>
-                      setNotification((prev) => ({ ...prev, title: val }))
-                    }
-                    disabled={isOffline || loading}
-                    placeholder={
-                      isOffline
-                        ? "Indisponível offline"
-                        : "Ex: Oferta especial liberada para você!"
-                    }
-                    useShadcn={true}
-                    className="h-auto min-h-10 rounded-none border-0 bg-transparent dark:bg-transparent px-0 py-1 text-[17px] md:text-[17px] font-medium text-white shadow-none motion-reduce:transition-none focus-visible:ring-0 placeholder:text-zinc-400 disabled:opacity-100 disabled:text-zinc-400"
-                  />
-                </div>
-
-                <div className="min-h-[112px] rounded-2xl border border-admin-border bg-admin-card px-4 py-3 transition-shadow focus-within:border-white/[0.35] focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label
-                      htmlFor="push-body"
-                      className="text-xs text-zinc-400"
-                    >
-                      Mensagem
-                    </Label>
-                    <span className="text-xs tabular-nums text-zinc-400">
-                      {notification.body.length}/140
-                    </span>
-                  </div>
-                  <LocalBufferedTextarea
-                    id="push-body"
-                    aria-label="Texto da mensagem"
-                    name="body"
-                    autoComplete="off"
-                    // Mesma trava do título: 140 é o que a notificação real
-                    // carrega — sem o atributo, a prévia mostrava inteiro o
-                    // que o SO do cliente trunca.
-                    maxLength={140}
-                    value={notification.body}
-                    onFlush={(val) =>
-                      setNotification((prev) => ({ ...prev, body: val }))
-                    }
-                    disabled={isOffline || loading}
-                    placeholder={
-                      isOffline
-                        ? "Indisponível offline"
-                        : "Escreva aqui a mensagem curta que o cliente vai ver no celular..."
-                    }
-                    rows={2}
-                    useShadcn={true}
-                    className="min-h-[72px] resize-none rounded-none border-0 bg-transparent dark:bg-transparent px-0 py-1 text-[17px] md:text-[17px] font-medium leading-relaxed text-white shadow-none motion-reduce:transition-none focus-visible:ring-0 placeholder:text-zinc-400 disabled:opacity-100 disabled:text-zinc-400"
-                  />
-                </div>
-
-                {/* Marcador do modelo pronto ainda no texto: o envio está
-                    travado e o motivo fica na cara, com o que fazer. */}
-                {marcadorDoCupomPendente && (
-                  <div
-                    data-testid="aviso-codigo-pendente"
-                    role="alert"
-                    className="flex items-start gap-2 rounded-[20px] border border-admin-border bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in"
-                  >
-                    <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                    <p className="text-sm leading-relaxed">
-                      Falta o cupom: troque{" "}
-                      <strong className="font-black">
-                        {MARCADOR_DO_CUPOM}
-                      </strong>{" "}
-                      pelo código do cupom que você criou em Cupons. O envio
-                      fica travado enquanto esse marcador estiver no texto.
-                    </p>
-                  </div>
-                )}
+          {/* Título e mensagem no MESMO cartão, separados por um fio.
+              Contadores tabulares para o número não dançar enquanto digita. */}
+          <div
+            data-testid="cartao-de-escrita"
+            className="rounded-[20px] border border-admin-border bg-admin-card px-4 transition-shadow focus-within:border-admin-border-strong focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none"
+          >
+            <div className="py-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label
+                  htmlFor="push-title"
+                  className="text-xs font-semibold text-zinc-400"
+                >
+                  Título
+                </Label>
+                <span className="text-xs tabular-nums text-zinc-400">
+                  {notification.title.length}/60
+                </span>
               </div>
-            </section>
-            <div className="min-w-0">
-              <PreviaNoCelular
-                title={notification.title}
-                body={notification.body}
-                logoUrl={config?.logoUrl}
-                nomeLoja={config?.storeName}
+              <LocalBufferedInput
+                id="push-title"
+                aria-label="Título da mensagem"
+                name="title"
+                autoComplete="off"
+                // Trava da proposta (revisão do lote B, 12/09/2026): o
+                // contador "{n}/60" só é honesto acompanhado do limite —
+                // sem o atributo, o envio saía maior que 60.
+                maxLength={60}
+                value={notification.title}
+                onFlush={(val) =>
+                  setNotification((prev) => ({ ...prev, title: val }))
+                }
+                disabled={isOffline || loading}
+                placeholder={
+                  isOffline
+                    ? "Indisponível offline"
+                    : "Ex: Oferta especial liberada para você!"
+                }
+                useShadcn={true}
+                className="h-auto min-h-10 rounded-none border-0 bg-transparent dark:bg-transparent px-0 py-1 text-[17px] md:text-[17px] font-medium text-white shadow-none motion-reduce:transition-none focus-visible:ring-0 placeholder:text-zinc-400 disabled:opacity-100 disabled:text-zinc-400"
               />
             </div>
-
-            {/* Zero medido continua desabilitado; desconhecido permite medir ao selecionar. */}
-            <section className="space-y-4" aria-label="Quem recebe">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <TituloDeSecao icone={Target}>Quem recebe</TituloDeSecao>
-                <span className="text-xs text-zinc-400">contado agora</span>
+            <div className="border-t border-admin-border py-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label
+                  htmlFor="push-body"
+                  className="text-xs font-semibold text-zinc-400"
+                >
+                  Mensagem
+                </Label>
+                <span className="text-xs tabular-nums text-zinc-400">
+                  {notification.body.length}/140
+                </span>
               </div>
+              <LocalBufferedTextarea
+                id="push-body"
+                aria-label="Texto da mensagem"
+                name="body"
+                autoComplete="off"
+                // Mesma trava do título: 140 é o que a notificação real
+                // carrega — sem o atributo, a prévia mostrava inteiro o
+                // que o SO do cliente trunca.
+                maxLength={140}
+                value={notification.body}
+                onFlush={(val) =>
+                  setNotification((prev) => ({ ...prev, body: val }))
+                }
+                disabled={isOffline || loading}
+                placeholder={
+                  isOffline
+                    ? "Indisponível offline"
+                    : "Escreva aqui a mensagem curta que o cliente vai ver no celular..."
+                }
+                rows={2}
+                useShadcn={true}
+                className="min-h-[72px] resize-none rounded-none border-0 bg-transparent dark:bg-transparent px-0 py-1 text-[17px] md:text-[17px] font-medium leading-relaxed text-white shadow-none motion-reduce:transition-none focus-visible:ring-0 placeholder:text-zinc-400 disabled:opacity-100 disabled:text-zinc-400"
+              />
+            </div>
+          </div>
 
-              {targetUserId ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-admin-gold bg-admin-gold/10 p-4">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-admin-gold" />
-                    <div>
-                      <p className="text-[11px] font-black uppercase tracking-wider text-admin-gold leading-tight">
-                        Mensagem para Cliente Específico
-                      </p>
-                      <p className="text-xs font-bold text-white mt-0.5">
-                        Cliente:{" "}
-                        {(targetUserName?.id === targetUserId &&
-                          targetUserName.nome) ||
-                          "Carregando..."}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onNavigate("admin-push")}
-                    disabled={isOffline}
-                    className="min-h-12 rounded-full border border-admin-border bg-white/5 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Mudar para todos os clientes
-                  </button>
-                </div>
-              ) : null}
+          {/* Marcador do modelo pronto ainda no texto: o envio está
+              travado e o motivo fica na cara, com o que fazer. */}
+          {marcadorDoCupomPendente && (
+            <div
+              data-testid="aviso-codigo-pendente"
+              role="alert"
+              className="flex items-start gap-2 rounded-[20px] border border-admin-border bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in"
+            >
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-400" />
+              <p className="text-sm leading-relaxed">
+                Falta o cupom: troque{" "}
+                <strong className="font-black">{MARCADOR_DO_CUPOM}</strong> pelo
+                código do cupom que você criou em Cupons. O envio fica travado
+                enquanto esse marcador estiver no texto.
+              </p>
+            </div>
+          )}
+        </section>
 
-              {/* Conserto 3: alcance MEDIDO como zero (nunca desconhecido)
-                      para um cliente específico — avisa ANTES do clique que
-                      não vai sair push, mas que a mensagem ainda vira aviso
-                      dentro do app (o botão está habilitado por isso).
-                      C4 (revisão de 20/08/2026): `podeGravarAvisoSemPush` já
-                      inclui `Boolean(targetUserId)` — o `targetUserId &&`
-                      daqui era o mesmo termo repetido duas vezes. */}
-              {podeGravarAvisoSemPush && (
-                <div className="mt-2 flex items-center gap-2 rounded-[20px] border border-admin-border bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in">
-                  <AlertCircle className="size-3.5 shrink-0" />
-                  <p className="text-sm leading-relaxed">
-                    Este cliente não tem aparelho inscrito para push — a
-                    mensagem será registrada como aviso dentro do app, e ele vai
-                    ver na próxima vez que abrir a loja.
+        {/* Zero medido continua desabilitado; desconhecido permite medir ao selecionar. */}
+        <section className="min-w-0 space-y-3" aria-label="Quem recebe">
+          <RotuloDeGrupo>Quem recebe</RotuloDeGrupo>
+
+          {targetUserId ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-admin-border-strong bg-admin-card p-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="size-4 text-admin-accent" />
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-wider text-zinc-300 leading-tight">
+                    Mensagem para Cliente Específico
+                  </p>
+                  <p className="mt-0.5 text-xs font-bold text-white">
+                    Cliente:{" "}
+                    {(targetUserName?.id === targetUserId &&
+                      targetUserName.nome) ||
+                      "Carregando..."}
                   </p>
                 </div>
-              )}
+              </div>
+              <button
+                onClick={() => onNavigate("admin-push")}
+                disabled={isOffline}
+                className="min-h-12 rounded-full border border-admin-border bg-white/5 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Mudar para todos os clientes
+              </button>
+            </div>
+          ) : null}
 
-              {!targetUserId && (
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    {
-                      id: "all",
-                      label: "Todos os clientes",
-                      detalhe: "Toda a base da loja",
-                      Icone: Users,
-                      matiz: "#6C8CFF",
-                      count: subCount,
-                      motivoDoZero: "nenhum aparelho cadastrado ainda",
-                    },
-                    {
-                      id: "inactive",
-                      label: "Inativos há 30 dias",
-                      detalhe: "Sem pedidos de qualquer status",
-                      Icone: Moon,
-                      matiz: "#2DD4BF",
-                      count: (segment === "inactive"
-                        ? reachExibido
-                        : segmentCounts.inactive) as ContagemMedida,
-                      motivoDoZero: "ninguém passou de 30 dias sem pedir",
-                    },
-                    {
-                      id: "vip",
-                      label: "Gastaram R$ 150+",
-                      detalhe: "Só compras pagas",
-                      Icone: Coins,
-                      matiz: "#3DDC97",
-                      count: (segment === "vip"
-                        ? reachExibido
-                        : segmentCounts.vip) as ContagemMedida,
-                      motivoDoZero: "nenhuma compra paga ainda",
-                    },
-                    {
-                      id: "new",
-                      label: "Novos em 7 dias",
-                      detalhe: "Cadastros dos últimos 7 dias",
-                      Icone: UserPlus,
-                      matiz: "#A3E635",
-                      count: (segment === "new"
-                        ? reachExibido
-                        : segmentCounts.new) as ContagemMedida,
-                      motivoDoZero: "nenhum cadastro nos últimos 7 dias",
-                    },
-                  ].map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSegment(s.id)}
-                      disabled={isOffline || s.count === 0}
-                      aria-pressed={segment === s.id}
-                      className={`flex min-h-[192px] min-w-0 flex-col items-start rounded-[20px] border-[1.5px] p-3.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60 ${
-                        segment === s.id && s.count !== 0 && !isOffline
-                          ? "border-admin-gold bg-gradient-to-b from-admin-gold/[0.16] to-admin-gold/[0.04]"
-                          : "border-admin-border bg-admin-card enabled:hover:border-white/25"
-                      } disabled:cursor-not-allowed`}
-                    >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <SeloDeIcone
-                          icone={s.Icone}
-                          matiz={s.matiz}
-                          indisponivel={s.count === 0 || isOffline}
+          {/* Conserto 3: alcance MEDIDO como zero (nunca desconhecido)
+              para um cliente específico — avisa ANTES do clique que
+              não vai sair push, mas que a mensagem ainda vira aviso
+              dentro do app (o botão está habilitado por isso). */}
+          {podeGravarAvisoSemPush && (
+            <div className="flex items-center gap-2 rounded-[20px] border border-admin-border bg-admin-card p-4 text-zinc-300 motion-safe:animate-in motion-safe:fade-in">
+              <AlertCircle className="size-3.5 shrink-0 text-amber-400" />
+              <p className="text-sm leading-relaxed">
+                Este cliente não tem aparelho inscrito para push — a mensagem
+                será registrada como aviso dentro do app, e ele vai ver na
+                próxima vez que abrir a loja.
+              </p>
+            </div>
+          )}
+
+          {!targetUserId && (
+            <div className="grid grid-cols-2 gap-2">
+              {segmentos.map((s) => {
+                const indisponivel = s.count === 0 || isOffline;
+                const escolhido = segment === s.id && !indisponivel;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSegment(s.id)}
+                    disabled={isOffline || s.count === 0}
+                    aria-pressed={segment === s.id}
+                    title={s.count === 0 ? s.motivoDoZero : undefined}
+                    className={`flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-full border-[1.5px] px-4 py-2 text-left text-sm font-semibold leading-snug transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-current disabled:cursor-not-allowed ${
+                      escolhido
+                        ? `${SELECIONADO} text-white`
+                        : `${NAO_SELECIONADO} ${indisponivel ? "text-zinc-500" : "text-zinc-200"}`
+                    }`}
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {escolhido && (
+                        <Check
+                          aria-hidden="true"
+                          className="size-4 shrink-0"
+                          strokeWidth={2.5}
                         />
-                        {s.count === 0 || isOffline ? (
-                          <LockKeyhole
-                            aria-hidden="true"
-                            className="size-[22px] text-[#7E7E8A]"
-                          />
-                        ) : segment === s.id ? (
-                          <CheckCircle2
-                            aria-hidden="true"
-                            className="size-[22px] fill-admin-gold text-admin-bg"
-                          />
-                        ) : null}
-                      </span>
-                      <span className="mt-4 flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
-                        <span
-                          className={`font-mono text-4xl font-bold tabular-nums leading-none tracking-tight ${s.count === 0 || isOffline ? "text-zinc-400" : segment === s.id ? "text-admin-gold" : "text-white"}`}
-                        >
-                          {rotuloDaContagem(s.count)}
-                        </span>
-                        <span className="text-xs text-zinc-400">
-                          {s.count === 1 ? "aparelho" : "aparelhos"}
-                        </span>
-                      </span>
-                      <span className="mt-3 w-full break-words text-sm font-bold leading-snug text-zinc-100">
-                        {s.label}
-                      </span>
-                      <span className="mt-1 text-xs leading-relaxed text-zinc-400">
-                        {s.detalhe}
-                      </span>
-                      {s.count === 0 && (
-                        <span className="mt-1 text-xs leading-relaxed text-zinc-300">
-                          <strong className="block font-bold">
-                            Indisponível
-                          </strong>
-                          {s.motivoDoZero}
-                        </span>
                       )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </section>
+                      <span className="min-w-0 break-words">
+                        {s.label}
+                        {s.count === 0 && (
+                          <span className="sr-only">
+                            . Indisponível: {s.motivoDoZero}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-w-7 shrink-0 items-center justify-center rounded-full bg-admin-raised px-2 py-0.5 font-mono text-sm font-bold tabular-nums">
+                      {rotuloDaContagem(s.count)}
+                    </span>
+                    <span className="sr-only">
+                      {s.count === 1 ? "aparelho" : "aparelhos"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-            {/* O cartão e a pílula Mudar acionam o mesmo Select de antes.
-                Os sete destinos e a trava PAINEL-07 permanecem; o caminho
-                manual continua dentro do Avançado. */}
-            <section className="space-y-4" aria-label="Ao tocar na mensagem">
-              <TituloDeSecao icone={MousePointer2}>
-                Ao tocar na mensagem
-              </TituloDeSecao>
+        {/* O destino é UMA linha: "Ao tocar, abre <tela> [Mudar]". Os sete
+            destinos e a trava PAINEL-07 permanecem; o caminho manual continua
+            dentro do Avançado. */}
+        <section
+          className="min-w-0 space-y-3"
+          aria-label="Ao tocar na mensagem"
+        >
+          <Select
+            name="destType"
+            // "custom" (caminho digitado no Avançado) não é item da lista:
+            // o seletor fica vazio e o placeholder diz onde está o destino.
+            value={destType === "custom" ? "" : destType}
+            onValueChange={handleDestTypeChange}
+            // PAINEL-07: sem o loadingProducts aqui, escolher
+            // "Produto" antes da lista carregar gerava um URL
+            // '/product-detail' sem id — que o efeito de
+            // sincronização reinterpretava como "custom page".
+            disabled={isOffline || loading || loadingProducts}
+          >
+            <SelectTrigger
+              id="push-destination"
+              aria-label="Para onde o cliente vai ao clicar"
+              className="h-auto min-h-14 w-full justify-between gap-3 whitespace-normal rounded-[20px] border-admin-border bg-admin-card dark:bg-admin-card px-4 py-2 text-left shadow-none motion-reduce:transition-none focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong disabled:opacity-60 [&>svg]:hidden"
+            >
+              <span className="min-w-0 flex-1 text-sm text-zinc-400">
+                Ao tocar, abre{" "}
+                <span className="font-bold text-white">
+                  <SelectValue
+                    placeholder={
+                      destType === "custom"
+                        ? "Outra página (veja Avançado)"
+                        : "Selecione a tela..."
+                    }
+                  />
+                </span>
+              </span>
+              <span className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-admin-raised px-4 text-sm font-bold text-zinc-200">
+                Mudar
+              </span>
+            </SelectTrigger>
+            <SelectContent className="rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
+              <SelectItem className="min-h-12" value="home">
+                Página Inicial da Loja
+              </SelectItem>
+              <SelectItem className="min-h-12" value="search">
+                Página de Busca de Produtos
+              </SelectItem>
+              <SelectItem className="min-h-12" value="cart">
+                Carrinho de Compras
+              </SelectItem>
+              <SelectItem className="min-h-12" value="favorites">
+                Lista de Favoritos
+              </SelectItem>
+              <SelectItem className="min-h-12" value="orders">
+                Meus Pedidos
+              </SelectItem>
+              <SelectItem className="min-h-12" value="profile">
+                Perfil do Cliente
+              </SelectItem>
+              <SelectItem className="min-h-12" value="product">
+                Abrir um Produto Específico
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          {destType === "product" && (
+            <div className="space-y-3 motion-safe:duration-200 motion-safe:animate-in motion-safe:fade-in">
+              <Label
+                htmlFor="push-product-select"
+                className="text-xs font-bold uppercase tracking-wider text-zinc-400"
+              >
+                Selecione o produto
+              </Label>
+              <Input
+                id="push-product-filter"
+                type="search"
+                autoComplete="off"
+                aria-label="Buscar produto pelo nome"
+                placeholder="Buscar pelo nome..."
+                value={filtroDeProduto}
+                onChange={(e) => setFiltroDeProduto(e.target.value)}
+                disabled={isOffline || loading || loadingProducts}
+                className="min-h-12 rounded-2xl border-admin-border bg-admin-card text-sm text-white placeholder:text-zinc-400 focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong"
+              />
               <Select
-                name="destType"
-                // "custom" (caminho digitado no Avançado) não é item da lista:
-                // o seletor fica vazio e o placeholder diz onde está o destino.
-                value={destType === "custom" ? "" : destType}
-                onValueChange={handleDestTypeChange}
-                // PAINEL-07: sem o loadingProducts aqui, escolher
-                // "Produto" antes da lista carregar gerava um URL
-                // '/product-detail' sem id — que o efeito de
-                // sincronização reinterpretava como "custom page".
+                name="productId"
+                value={selectedProductId}
+                onValueChange={handleProductChange}
                 disabled={isOffline || loading || loadingProducts}
               >
                 <SelectTrigger
-                  id="push-destination"
-                  aria-label="Para onde o cliente vai ao clicar"
-                  className="h-auto min-h-[88px] w-full justify-between gap-3 whitespace-normal rounded-[20px] border-admin-border bg-admin-card dark:bg-admin-card px-3.5 py-3 text-left shadow-none motion-reduce:transition-none focus-visible:border-white/35 focus-visible:ring-admin-border-strong disabled:opacity-60 [&>svg]:hidden"
+                  id="push-product-select"
+                  className="h-auto min-h-12 w-full rounded-2xl border border-admin-border bg-admin-card px-3 text-sm text-white focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong [&>svg]:opacity-50"
                 >
-                  <SeloDeIcone
-                    icone={Home}
-                    matiz="#38BDF8"
-                    className="size-11 rounded-xl"
+                  <SelectValue
+                    placeholder={
+                      loadingProducts ? "Carregando..." : "Escolha o produto..."
+                    }
                   />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-xs text-zinc-400">Abre a</span>
-                    <span className="mt-0.5 block break-words text-base font-bold leading-snug text-white">
-                      <SelectValue
-                        placeholder={
-                          destType === "custom"
-                            ? "Outra página (veja Avançado)"
-                            : "Selecione a tela..."
-                        }
-                      />
-                    </span>
-                  </span>
-                  <span className="inline-flex min-h-12 shrink-0 items-center rounded-full bg-white/[0.06] px-4 text-sm font-bold text-zinc-200">
-                    Mudar
-                  </span>
                 </SelectTrigger>
-                <SelectContent className="rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
-                  <SelectItem className="min-h-12" value="home">
-                    Página Inicial da Loja
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="search">
-                    Página de Busca de Produtos
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="cart">
-                    Carrinho de Compras
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="favorites">
-                    Lista de Favoritos
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="orders">
-                    Meus Pedidos
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="profile">
-                    Perfil do Cliente
-                  </SelectItem>
-                  <SelectItem className="min-h-12" value="product">
-                    Abrir um Produto Específico
-                  </SelectItem>
+                <SelectContent className="max-h-56 overflow-y-auto rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
+                  {produtosVisiveis.map((p) => (
+                    <SelectItem className="min-h-12" key={p.id} value={p.id}>
+                      {p.nome}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
 
-              {destType === "product" && (
-                <div className="space-y-3 motion-safe:duration-200 motion-safe:animate-in motion-safe:fade-in">
-                  <Label
-                    htmlFor="push-product-select"
-                    className="text-xs font-bold uppercase tracking-wider text-zinc-400"
-                  >
-                    Selecione o produto
-                  </Label>
-                  <Input
-                    id="push-product-filter"
-                    type="search"
-                    autoComplete="off"
-                    aria-label="Buscar produto pelo nome"
-                    placeholder="Buscar pelo nome..."
-                    value={filtroDeProduto}
-                    onChange={(e) => setFiltroDeProduto(e.target.value)}
-                    disabled={isOffline || loading || loadingProducts}
-                    className="min-h-12 rounded-2xl border-admin-border bg-admin-card text-sm text-white placeholder:text-zinc-400 focus-visible:border-white/35 focus-visible:ring-admin-border-strong"
-                  />
-                  <Select
-                    name="productId"
-                    value={selectedProductId}
-                    onValueChange={handleProductChange}
-                    disabled={isOffline || loading || loadingProducts}
-                  >
-                    <SelectTrigger
-                      id="push-product-select"
-                      className="h-auto min-h-12 w-full rounded-2xl border border-admin-border bg-admin-card px-3 text-sm text-white focus-visible:border-white/35 focus-visible:ring-admin-border-strong [&>svg]:opacity-50"
-                    >
-                      <SelectValue
-                        placeholder={
-                          loadingProducts
-                            ? "Carregando..."
-                            : "Escolha o produto..."
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-56 overflow-y-auto rounded-[20px] border border-admin-border bg-admin-card text-white shadow-2xl motion-reduce:animate-none">
-                      {produtosVisiveis.map((p) => (
-                        <SelectItem
-                          className="min-h-12"
-                          key={p.id}
-                          value={p.id}
-                        >
-                          {p.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Avançado: o caminho manual (mesmo `#push-custom-path` de
-                  antes). Recolhido por padrão; abre sozinho quando a URL de
-                  um modelo pronto não é uma das telas da lista (destino
-                  `custom`), para o caminho nunca ficar escondido. */}
-              <div className="[&>section>button]:min-h-12 [&>section>button]:rounded-[20px] [&>section>button]:border [&>section>button]:border-admin-border-strong [&>section>button]:bg-admin-card [&>section>button]:px-4 [&>section>button>svg]:motion-reduce:transition-none">
-                <SecaoRecolhivel
-                  titulo="Avançado: abrir outra página"
-                  temErro={destType === "custom"}
+          {/* Avançado: o caminho manual (mesmo `#push-custom-path` de
+              antes). Recolhido por padrão; abre sozinho quando a URL de
+              um modelo pronto não é uma das telas da lista (destino
+              `custom`), para o caminho nunca ficar escondido. */}
+          <div className="[&>section>button]:min-h-12 [&>section>button]:rounded-[20px] [&>section>button]:border [&>section>button]:border-admin-border-strong [&>section>button]:bg-admin-card [&>section>button]:px-4 [&>section>button>svg]:motion-reduce:transition-none">
+            <SecaoRecolhivel
+              titulo="Avançado: abrir outra página"
+              temErro={destType === "custom"}
+            >
+              <div className="space-y-1">
+                <Label
+                  htmlFor="push-custom-path"
+                  className="text-xs font-bold uppercase tracking-wider text-zinc-400"
                 >
-                  <div className="space-y-1">
-                    <Label
-                      htmlFor="push-custom-path"
-                      className="text-xs font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Endereço da página (comece com /)
-                    </Label>
-                    <LocalBufferedInput
-                      id="push-custom-path"
-                      name="customPath"
-                      autoComplete="off"
-                      value={customPath}
-                      onFlush={handleCustomPathChange}
-                      disabled={isOffline || loading}
-                      placeholder="/nome-da-pagina"
-                      useShadcn={true}
-                      className="min-h-12 rounded-2xl border-admin-border bg-admin-card font-mono text-sm text-white focus-visible:border-white/35 focus-visible:ring-admin-border-strong placeholder:text-zinc-400"
-                    />
-                  </div>
-                </SecaoRecolhivel>
+                  Endereço da página (comece com /)
+                </Label>
+                <LocalBufferedInput
+                  id="push-custom-path"
+                  name="customPath"
+                  autoComplete="off"
+                  value={customPath}
+                  onFlush={handleCustomPathChange}
+                  disabled={isOffline || loading}
+                  placeholder="/nome-da-pagina"
+                  useShadcn={true}
+                  className="min-h-12 rounded-2xl border-admin-border bg-admin-card font-mono text-sm text-white focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong placeholder:text-zinc-400"
+                />
               </div>
-            </section>
+            </SecaoRecolhivel>
           </div>
-        </div>
+        </section>
 
-        <div className="bg-gradient-to-b from-transparent to-admin-bg pt-6">
-          {/* Botão de Ação */}
-          <button
-            className="flex min-h-[60px] w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] p-3 text-base font-bold leading-snug text-zinc-950 shadow-[0_8px_28px_rgba(226,168,30,0.2)] transition-shadow motion-reduce:transition-none hover:shadow-[0_8px_32px_rgba(226,168,30,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-400 disabled:shadow-none"
-            onClick={handleSend}
-            disabled={botaoEnviarDesabilitado}
-          >
-            {loading ? (
-              <div className="flex items-center gap-2">
-                <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-zinc-950/25 border-t-zinc-950" />
-                <span>Enviando Notificação...</span>
-              </div>
-            ) : (
-              <>
-                <Send aria-hidden="true" className="size-[22px] shrink-0" />
-                {/* Direção B: um botão só, com o número real do segmento
-                    escolhido — `textoDeAlcanceEmAparelhos` mantém o
-                    singular e o traço do desconhecido, como sempre. */}
-                Enviar agora para {textoDeAlcanceEmAparelhos(reachExibido)}
-              </>
-            )}
-          </button>
-          <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs leading-relaxed text-zinc-400">
-            <Shield aria-hidden="true" className="size-4 shrink-0" />
-            Depois de enviar, não dá para desfazer.
-          </p>
-        </div>
+        <section className="min-w-0 space-y-2" aria-label="Prévia">
+          <RotuloDeGrupo>
+            Prévia · como chega no celular do cliente
+          </RotuloDeGrupo>
+          <PreviaNoCelular
+            title={notification.title}
+            body={notification.body}
+            logoUrl={config?.logoUrl}
+            nomeLoja={config?.storeName}
+          />
+        </section>
 
-        {/* Métrica + dica, lado a lado (direção B): os dois cartões de estado
-            viram um par compacto. A prova social e o botão de teste de
-            recebimento desceram para o bloco "Ajustes", no fim da tela —
-            fora do caminho da composição. */}
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-          {/* Metric Card - Celulares Cadastrados */}
-          {/*
-              Achado 7 da auditoria de 20/08/2026: este card tinha selos
-              "iOS: X" e "Android: Y" que eram 40% e 60% de `subCount`,
-              arredondados — não existe coluna de plataforma em
-              `push_subscriptions` (id, endpoint, p256dh, auth, user_id,
-              created_at), então não havia nada para medir. Sem dado, a
-              única saída honesta é não afirmar: os selos saíram, sem
-              inventar substituto.
-            */}
-          <div className="rounded-[20px] border border-admin-border bg-admin-card p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-400">
-                <Users className="size-3.5 text-zinc-300" /> Clientes Prontos
-                para Receber
-              </p>
-              <span className="text-[11px] font-mono text-zinc-300 font-bold uppercase">
-                Ativos
-              </span>
-            </div>
-
-            <div className="flex items-baseline justify-between border-b border-admin-border pb-2.5">
-              <div className="flex min-w-0 flex-wrap items-baseline gap-2">
-                <h2 className="text-3xl font-black tabular-nums tracking-tight text-white">
-                  {rotuloDaContagem(subCount)}
-                </h2>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
-                  Celulares e Computadores Cadastrados
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Dica de Vendas — a outra metade do par (o texto é o de antes) */}
-          <div className="flex items-start gap-3 rounded-[20px] border border-admin-border bg-admin-card p-4">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-admin-border bg-white/5 text-zinc-300">
-              <Clock className="size-3.5 text-zinc-300" />
-            </div>
-            <p className="text-sm leading-relaxed text-zinc-300">
-              <span className="font-bold text-zinc-300 uppercase tracking-wider">
-                Dica de Vendas:
-              </span>{" "}
-              Enviar mensagens entre{" "}
-              <strong className="text-white">10h e 12h</strong> costuma atrair{" "}
-              <span className="font-black text-zinc-300">
-                mais clientes e aumentar as vendas
-              </span>
-              .
-            </p>
-          </div>
-        </div>
-
-        {/* O que já foi ao ar — seção colapsável (consulta), nasce aberta.
-            Direção B: o estado vazio é DESENHADO (caixa postal vazia + o que
-            vai aparecer aqui quando houver envio) — não uma frase seca. */}
-        <SecaoColapsavel
-          titulo="O que já foi ao ar"
-          icone={History}
-          abertaPorPadrao
-          extra={
-            <span className="text-[11px] font-mono text-zinc-400">
-              Últimas 20 mensagens
-            </span>
-          }
+        {/* Histórico e teste: fora do caminho da escrita, atrás de um toque. */}
+        <div
+          className={`grid gap-2 ${temAjustes ? "grid-cols-2" : "grid-cols-1"}`}
         >
-          <div className="max-h-[350px] overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-zinc-700">
-            {history === null ? (
-              <div className="py-6 text-center italic text-zinc-400">
-                <p className="text-[11px] font-bold uppercase tracking-widest">
-                  Não foi possível carregar o histórico
-                </p>
-              </div>
-            ) : history.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-admin-border py-7 text-center">
-                <div className="mb-3 flex justify-center" aria-hidden="true">
-                  <Inbox className="size-8 text-zinc-400" />
-                </div>
-                <p className="text-sm font-bold text-zinc-300">
-                  Nenhuma mensagem enviada até agora
-                </p>
-                <span className="mt-1 block text-sm leading-relaxed text-zinc-400">
-                  Quando você enviar, cada mensagem aparece aqui — com quantos
-                  aparelhos receberam de verdade.
-                </span>
-              </div>
-            ) : (
-              history.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-[20px] border border-admin-border bg-admin-surface p-3.5"
-                >
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
-                    <span className="text-zinc-400 font-mono">
-                      {new Date(item.sent_at).toLocaleDateString()} às{" "}
-                      {new Date(item.sent_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    <span className="flex items-center gap-1 bg-zinc-800/80 px-1.5 py-0.5 rounded text-zinc-300">
-                      <Users className="size-2.5 text-zinc-400" />{" "}
-                      {textoDeAlcanceEmAparelhos(item.recipient_count)}
-                    </span>
-                  </div>
-                  <h4 className="text-sm font-bold text-white line-clamp-1">
-                    {item.title}
-                  </h4>
-                  <p className="mt-1 text-sm text-zinc-400 line-clamp-1">
-                    {item.body}
-                  </p>
-                  <div className="mt-1.5 flex items-center justify-between border-t border-admin-border pt-1 text-[11px]">
-                    <span className="min-w-0 flex-1 font-mono text-zinc-400 truncate">
-                      Ao clicar: {item.url}
-                    </span>
-                    {/* Achado 11 da auditoria de 20/08/2026: o registro
-                            nasce com `recipient_count: 0` até a edge function
-                            confirmar entrega (comentário acima, em
-                            `handleSend`) — 0 não é "falhou com certeza", é
-                            "ninguém confirmou ainda". O selo deixou de
-                            afirmar sucesso sem olhar o número. */}
-                    {item.recipient_count > 0 ? (
-                      <span className="shrink-0 pl-2 font-bold uppercase text-zinc-300">
-                        Entregue
-                      </span>
-                    ) : (
-                      <span className="shrink-0 pl-2 font-bold uppercase text-zinc-300">
-                        Não confirmada
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </SecaoColapsavel>
-
-        {/* Ajustes — o sacrifício aprovado do desenho (direção B): prova
-            social e teste de recebimento saíram do caminho da composição e
-            recolhem no fim da tela. A função é exatamente a de antes — o
-            interruptor grava na hora (updateConfig), nada aqui guarda texto
-            não enviado, então fechar o bloco não descarta rascunho nenhum; a
-            trava "Salve antes de fechar" continua na seção de escrita,
-            onde o rascunho vive. */}
-        {/* Sem a chave de avisos de compras (escondida), o bloco só existe
-            quando o botão de teste aparece — nunca um "Ajustes" vazio. */}
-        {(MOSTRAR_AVISOS_DE_COMPRAS || (isSupported && !isTestSubscribed)) && (
-          <SecaoColapsavel
-            titulo="Ajustes"
-            descricao={
-              MOSTRAR_AVISOS_DE_COMPRAS
-                ? "Prova social e teste de recebimento"
-                : "Teste de recebimento"
-            }
-            icone={Settings}
+          <button
+            type="button"
+            aria-expanded={enviosAbertos}
+            aria-controls="painel-envios-anteriores"
+            onClick={() => setEnviosAbertos((aberto) => !aberto)}
+            className={`flex min-h-12 items-center justify-center gap-2 rounded-full border-[1.5px] px-3 text-sm font-semibold text-zinc-200 transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-current ${enviosAbertos ? SELECIONADO : NAO_SELECIONADO}`}
           >
-            <div className="space-y-2.5">
-              {/* Avisos de Compras Recentes — cartão intocado, só mudou de
-                lugar (o conteúdo de dentro, inclusive a expansão de
-                explicação, é o de antes) */}
-              {MOSTRAR_AVISOS_DE_COMPRAS && configLoaded && (
-                <div
-                  className={`rounded-xl border p-3.5 transition-colors duration-300 motion-reduce:transition-none ${
-                    config.realTimeSalesAlerts
-                      ? "border-admin-border bg-admin-raised"
-                      : "border-admin-border bg-admin-surface"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-colors duration-300 motion-reduce:transition-none ${
-                          config.realTimeSalesAlerts
-                            ? "border-admin-border bg-white/5 text-zinc-300"
-                            : "border-admin-border bg-zinc-950 text-zinc-400"
-                        }`}
+            <History aria-hidden="true" className="size-5 shrink-0" />
+            Envios anteriores
+          </button>
+          {temAjustes && (
+            <button
+              type="button"
+              aria-expanded={ajustesAbertos}
+              aria-controls="painel-teste-e-ajustes"
+              onClick={() => setAjustesAbertos((aberto) => !aberto)}
+              className={`flex min-h-12 items-center justify-center gap-2 rounded-full border-[1.5px] px-3 text-sm font-semibold text-zinc-200 transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-current ${ajustesAbertos ? SELECIONADO : NAO_SELECIONADO}`}
+            >
+              <Settings aria-hidden="true" className="size-5 shrink-0" />
+              Teste e ajustes
+            </button>
+          )}
+        </div>
+
+        {enviosAbertos && (
+          <div
+            id="painel-envios-anteriores"
+            className="rounded-[20px] border border-admin-border bg-admin-card p-3 motion-safe:animate-in motion-safe:fade-in"
+          >
+            <p className="mb-2 px-1 text-xs text-zinc-400">
+              Últimas 20 mensagens
+            </p>
+            <div className="max-h-[350px] space-y-2 overflow-y-auto pr-1">
+              {history === null ? (
+                <div className="py-6 text-center italic text-zinc-400">
+                  <p className="text-[11px] font-bold uppercase tracking-widest">
+                    Não foi possível carregar o histórico
+                  </p>
+                </div>
+              ) : history.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-admin-border py-7 text-center">
+                  <div className="mb-3 flex justify-center" aria-hidden="true">
+                    <Inbox className="size-8 text-zinc-400" />
+                  </div>
+                  <p className="text-sm font-bold text-zinc-300">
+                    Nenhuma mensagem enviada até agora
+                  </p>
+                  <span className="mt-1 block px-3 text-sm leading-relaxed text-zinc-400">
+                    Quando você enviar, cada mensagem aparece aqui — com quantos
+                    aparelhos receberam de verdade.
+                  </span>
+                </div>
+              ) : (
+                history.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-[20px] border border-admin-border bg-admin-surface p-3.5"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+                      <span className="font-mono text-zinc-400">
+                        {new Date(item.sent_at).toLocaleDateString()} às{" "}
+                        {new Date(item.sent_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <span className="flex items-center gap-1 rounded bg-zinc-800/80 px-1.5 py-0.5 text-zinc-300">
+                        <Users className="size-2.5 text-zinc-400" />{" "}
+                        {textoDeAlcanceEmAparelhos(item.recipient_count)}
+                      </span>
+                    </div>
+                    <h4 className="line-clamp-1 text-sm font-bold text-white">
+                      {item.title}
+                    </h4>
+                    <p className="mt-1 line-clamp-1 text-sm text-zinc-400">
+                      {item.body}
+                    </p>
+                    <div className="mt-1.5 flex items-center justify-between border-t border-admin-border pt-1 text-[11px]">
+                      <span className="min-w-0 flex-1 truncate font-mono text-zinc-400">
+                        Ao clicar: {item.url}
+                      </span>
+                      {/* Achado 11 da auditoria de 20/08/2026: o registro
+                          nasce com `recipient_count: 0` até a edge function
+                          confirmar entrega (comentário acima, em
+                          `handleSend`) — 0 não é "falhou com certeza", é
+                          "ninguém confirmou ainda". O selo deixou de
+                          afirmar sucesso sem olhar o número. */}
+                      {item.recipient_count > 0 ? (
+                        <span className="shrink-0 pl-2 font-bold uppercase text-zinc-300">
+                          Entregue
+                        </span>
+                      ) : (
+                        <span className="shrink-0 pl-2 font-bold uppercase text-zinc-300">
+                          Não confirmada
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {ajustesAbertos && temAjustes && (
+          <div
+            id="painel-teste-e-ajustes"
+            className="space-y-2.5 rounded-[20px] border border-admin-border bg-admin-card p-3 motion-safe:animate-in motion-safe:fade-in"
+          >
+            {/* Avisos de Compras Recentes — escondido hoje (ver
+                MOSTRAR_AVISOS_DE_COMPRAS); o conteúdo é o de antes. */}
+            {MOSTRAR_AVISOS_DE_COMPRAS && configLoaded && (
+              <div className="rounded-xl border border-admin-border bg-admin-surface p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-admin-border bg-white/5 text-zinc-300">
+                      <Sparkles className="size-4" />
+                    </div>
+                    <div>
+                      <Label
+                        htmlFor="realtime-sales-alerts-switch"
+                        className="cursor-pointer text-xs font-bold text-white"
                       >
-                        <Sparkles className="size-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Label
-                            htmlFor="realtime-sales-alerts-switch"
-                            className="cursor-pointer text-xs font-bold text-white"
-                          >
-                            Avisos de Compras Recentes
-                          </Label>
-                          <span
-                            className={`size-1.5 rounded-full ${
-                              config.realTimeSalesAlerts
-                                ? "bg-zinc-300 motion-safe:animate-pulse"
-                                : "bg-zinc-600"
-                            }`}
-                          />
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <p className="text-[11px] text-zinc-400 leading-tight">
-                            Mostra na loja avisos de compras em tempo real.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setIsSocialProofExpanded(!isSocialProofExpanded)
-                            }
-                            className="flex min-h-12 min-w-12 items-center justify-center text-xs font-bold text-zinc-300 hover:text-zinc-300/80 leading-none"
-                          >
-                            {isSocialProofExpanded ? (
-                              <ChevronUp className="size-3" />
-                            ) : (
-                              <ChevronDown className="size-3" />
-                            )}
-                          </button>
-                        </div>
+                        Avisos de Compras Recentes
+                      </Label>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <p className="text-[11px] leading-tight text-zinc-400">
+                          Mostra na loja avisos de compras em tempo real.
+                        </p>
+                        <button
+                          type="button"
+                          aria-label="Mostrar explicação"
+                          aria-expanded={isSocialProofExpanded}
+                          onClick={() =>
+                            setIsSocialProofExpanded(!isSocialProofExpanded)
+                          }
+                          className="flex min-h-12 min-w-12 items-center justify-center text-xs font-bold leading-none text-zinc-300 hover:text-zinc-300/80"
+                        >
+                          {isSocialProofExpanded ? (
+                            <ChevronUp className="size-3" />
+                          ) : (
+                            <ChevronDown className="size-3" />
+                          )}
+                        </button>
                       </div>
                     </div>
-                    <Switch
-                      id="realtime-sales-alerts-switch"
-                      checked={config.realTimeSalesAlerts}
-                      onCheckedChange={handleToggleRealTimeSalesAlerts}
-                      className="scale-90 data-[state=checked]:bg-zinc-300"
-                      disabled={isOffline || isUpdatingConfig}
-                    />
                   </div>
-
-                  <AnimatePresence initial={false}>
-                    {isSocialProofExpanded && (
-                      <motion.div
-                        initial={false}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="mt-2.5 pt-2.5 border-t border-admin-border text-[11px] leading-relaxed text-zinc-400 space-y-1">
-                          <p>
-                            Esta opção exibe pequenas notificações discretas na
-                            loja quando alguém faz um pedido, passando mais
-                            segurança e confiança aos novos clientes.
-                          </p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  <Switch
+                    id="realtime-sales-alerts-switch"
+                    checked={config.realTimeSalesAlerts}
+                    onCheckedChange={handleToggleRealTimeSalesAlerts}
+                    className="scale-90"
+                    disabled={isOffline || isUpdatingConfig}
+                  />
                 </div>
-              )}
+                <AnimatePresence initial={false}>
+                  {isSocialProofExpanded && (
+                    <motion.div
+                      initial={false}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-2.5 space-y-1 border-t border-admin-border pt-2.5 text-[11px] leading-relaxed text-zinc-400">
+                        <p>
+                          Esta opção exibe pequenas notificações discretas na
+                          loja quando alguém faz um pedido, passando mais
+                          segurança e confiança aos novos clientes.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
-              {/* Teste de recebimento — o mesmo botão do cartão métrico, na
-                mesma condição (`isSupported && !isTestSubscribed`). */}
-              {isSupported && !isTestSubscribed && (
-                <button
-                  onClick={handleTestSubscription}
-                  disabled={isOffline}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-border bg-white/5 min-h-12 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10 motion-safe:active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Zap className="size-3 text-zinc-300" />
-                  Testar Recebimento Neste Aparelho
-                </button>
-              )}
-            </div>
-          </SecaoColapsavel>
+            {/* Teste de recebimento — mesma condição de antes
+                (`isSupported && !isTestSubscribed`). */}
+            {isSupported && !isTestSubscribed && (
+              <button
+                onClick={handleTestSubscription}
+                disabled={isOffline}
+                className="flex min-h-12 w-full items-center justify-center gap-1.5 rounded-full border border-admin-border bg-admin-raised py-2 text-xs font-bold uppercase tracking-wider text-zinc-200 hover:bg-admin-hover motion-safe:active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current"
+              >
+                <Zap className="size-3" />
+                Testar Recebimento Neste Aparelho
+              </button>
+            )}
+          </div>
         )}
+
+        {/* Ação principal: neutra, igual ao botão primário do resto do painel. */}
+        <button
+          type="button"
+          className="flex min-h-[60px] w-full flex-col items-center justify-center gap-0.5 rounded-[20px] bg-white p-3 text-base font-bold leading-snug text-zinc-950 ring-1 ring-inset ring-admin-border-strong transition-shadow motion-reduce:transition-none hover:ring-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={handleSend}
+          disabled={botaoEnviarDesabilitado}
+        >
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <span className="size-4 motion-safe:animate-spin rounded-full border-2 border-zinc-950/25 border-t-zinc-950" />
+              <span>Enviando Notificação...</span>
+            </span>
+          ) : (
+            <>
+              <span className="flex items-center gap-2">
+                <Send aria-hidden="true" className="size-[22px] shrink-0" />
+                Enviar para {textoDeAlcanceEmAparelhos(reachExibido)}
+              </span>
+              <span className="text-xs font-normal text-zinc-700">
+                Depois de enviar, não dá para desfazer
+              </span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* Modal de Ajuda Limpo */}
@@ -2036,13 +1706,13 @@ export const AdminPushView = memo(function AdminPushView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-border-strong pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               O que você pode fazer aqui
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Send className="size-3.5 text-admin-gold" />
+                  <Send className="size-3.5 text-zinc-300" />
                   Enviar Notificação
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -2053,7 +1723,7 @@ export const AdminPushView = memo(function AdminPushView({
 
               <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Sparkles className="size-3.5 text-admin-gold" />
+                  <Sparkles className="size-3.5 text-zinc-300" />
                   Mensagens Prontas
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -2064,7 +1734,7 @@ export const AdminPushView = memo(function AdminPushView({
 
               <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Users className="size-3.5 text-sky-500" />
+                  <Users className="size-3.5 text-zinc-300" />
                   Quem Vai Receber
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -2080,7 +1750,7 @@ export const AdminPushView = memo(function AdminPushView({
 
               <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <History className="size-3.5 text-purple-500" />
+                  <History className="size-3.5 text-zinc-300" />
                   Histórico de Envios
                 </div>
                 <p className="text-xs text-zinc-400">

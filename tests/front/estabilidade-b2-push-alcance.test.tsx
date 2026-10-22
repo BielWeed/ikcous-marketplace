@@ -116,16 +116,16 @@ it("uma contagem antiga não aparece durante a medição do público atual", asy
   h.rpc.mockReturnValueOnce(vip.promessa).mockReturnValueOnce(novos.promessa);
   await publico("Gastaram R$ 150+");
   await publico("Novos em 7 dias");
-  expect(hospedeiro.textContent).toContain("Receberão: — aparelhos");
+  expect(hospedeiro.textContent).toContain("Enviar para — aparelhos");
   await act(async () => {
     vip.resolver({ data: 31, error: null });
   });
-  expect(hospedeiro.textContent).toContain("Receberão: — aparelhos");
-  expect(hospedeiro.textContent).not.toContain("Receberão: 31 aparelhos");
+  expect(hospedeiro.textContent).toContain("Enviar para — aparelhos");
+  expect(hospedeiro.textContent).not.toContain("Enviar para 31 aparelhos");
   await act(async () => {
     novos.resolver({ data: 5, error: null });
   });
-  expect(hospedeiro.textContent).toContain("Receberão: 5 aparelhos");
+  expect(hospedeiro.textContent).toContain("Enviar para 5 aparelhos");
 });
 
 it.each([false, true])(
@@ -137,12 +137,12 @@ it.each([false, true])(
       .mockResolvedValueOnce({ data: 5, error: null });
     await publico("Gastaram R$ 150+");
     await publico("Novos em 7 dias");
-    expect(hospedeiro.textContent).toContain("Receberão: 5 aparelhos");
+    expect(hospedeiro.textContent).toContain("Enviar para 5 aparelhos");
     await act(async () => {
       if (falhar) vip.rejeitar(new Error("rede"));
       else vip.resolver({ data: 31, error: null });
     });
-    expect(hospedeiro.textContent).toContain("Receberão: 5 aparelhos");
+    expect(hospedeiro.textContent).toContain("Enviar para 5 aparelhos");
   },
 );
 
@@ -157,9 +157,9 @@ it("voltar para Todos invalida a consulta anterior mesmo voltando depois ao mesm
   await act(async () => {
     vip.resolver({ data: 31, error: null });
   });
-  expect(hospedeiro.textContent).toContain("Receberão: — aparelhos");
+  expect(hospedeiro.textContent).toContain("Enviar para — aparelhos");
   await act(async () => {
     atual.resolver({ data: 2, error: null });
   });
-  expect(hospedeiro.textContent).toContain("Receberão: 2 aparelhos");
+  expect(hospedeiro.textContent).toContain("Enviar para 2 aparelhos");
 });
