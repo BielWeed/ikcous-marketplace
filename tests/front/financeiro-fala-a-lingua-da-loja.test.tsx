@@ -262,8 +262,9 @@ describe("Financeiro fala a língua da loja", () => {
     expect(jargaoEm(texto)).toEqual([]);
     expect(texto).not.toMatch(/compet[êe]ncia/i);
 
-    // O v8 prioriza lucro líquido e deixa rótulos crescerem sem corte.
-    // O piso alinha os valores; jsdom confere classes, não largura física.
+    // O v8 prioriza lucro líquido e deixa rótulos crescerem sem corte. No
+    // redesenho de 23/10/2026 o rótulo não reserva mais duas linhas (o desenho
+    // aprovado tem os quadros compactos): ele só cresce se o texto pedir.
     const rotulos = [
       ...hospedeiro.querySelectorAll<HTMLElement>("[data-rotulo-do-kpi]"),
     ];
@@ -279,7 +280,7 @@ describe("Financeiro fala a língua da loja", () => {
       );
       expect(rotulo.classList.contains("line-clamp-2")).toBe(false);
       expect(rotulo.classList.contains("break-words")).toBe(true);
-      expect(rotulo.classList.contains("min-h-[2.5em]")).toBe(true);
+      expect(rotulo.classList.contains("min-h-[2.5em]")).toBe(false);
     }
   });
 
