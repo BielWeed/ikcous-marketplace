@@ -2600,6 +2600,18 @@ const ROL_DA_86B = [
   "varredura (antes): as 10 tabelas tem exatamente 21 politicas com is_admin()",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
+  "87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado": [
+    "controle: funcoes de public visiveis a este papel",
+    "fin_dre: corpo exato (md5)",
+    "fin_dre: assinatura e atributos conhecidos",
+    "fin_dre: EXECUTE authenticated, sem PUBLIC ou anon",
+  ],
+  "87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente": [
+    "controle: funcoes de public visiveis a este papel",
+    "fin_dre: corpo exato (md5)",
+    "fin_dre: assinatura e atributos conhecidos",
+    "fin_dre: EXECUTE authenticated, sem PUBLIC ou anon",
+  ],
   "86a-conferir-ex-admin-no-resto-do-painel-aplicado": ROL_DA_86A,
   "86b-antes-ex-admin-no-resto-do-painel-base-vigente": ROL_DA_86B,
   "85a-conferir-aviso-de-cancelados-antigos-aplicado": ROL_DA_85,

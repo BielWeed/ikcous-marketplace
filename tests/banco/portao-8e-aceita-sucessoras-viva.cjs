@@ -107,6 +107,10 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
   (s) =>
     s.nome !== "20261280000000_o_balcao_registra_so_o_total_conferido.sql" &&
     s.nome !== NOME_CUSTO_DO_DIA &&
+    // A 20261382000000 (o resultado mostra tarifa, juro e quebra como despesa) e a SEGUNDA sucessora de fin_dre (99 -> 42 -> 382): tem a
+    // PROVA PRÓPRIA do que a 8e e a 45a fazem com ela em tests/banco/fin-dre-sinal-viva.cjs; `devolverAoEstadoAnteriorAoCustoDoDia` a desfaz antes.
+    s.nome !==
+      "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql" &&
     s.nome !== "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql" &&
     s.nome !==
       "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql" &&
