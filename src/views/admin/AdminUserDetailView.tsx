@@ -35,6 +35,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { chaveDaLinha, separarChave } from "@/lib/escolhas-do-item";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { papel } from "@/lib/papeis-aria-da-tabela";
@@ -318,7 +319,14 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               product: itemProduct,
               quantity: dbItem.quantity,
             };
-            if (dbItem.variant_id) item.variantId = dbItem.variant_id;
+            // A coluna guarda a chave da linha: `idA~idB` quando o cliente
+            // escolheu cor e tamanho de um produto de cadastro antigo.
+            const { variantId, outrasVariantIds } = separarChave(
+              dbItem.variant_id,
+            );
+            if (variantId) item.variantId = variantId;
+            if (outrasVariantIds.length > 0)
+              item.outrasVariantIds = outrasVariantIds;
             return item;
           },
         );
@@ -1198,8 +1206,18 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       (v) => v.id === item.variantId,
                                     )
                                   : null;
+                                const outrasEscolhas = (
+                                  item.outrasVariantIds ?? []
+                                ).map((id) => ({
+                                  id,
+                                  variante: item.product.variants?.find(
+                                    (v) => v.id === id,
+                                  ),
+                                }));
                                 const isVariantMissing =
-                                  hasVariantId && !variant;
+                                  hasVariantId &&
+                                  (!variant ||
+                                    outrasEscolhas.some((o) => !o.variante));
                                 // Laudo 31/08 (menor E): `||` tratava o
                                 // override ZERO como ausência e exibia o
                                 // preço cheio de uma variação-brinde.
@@ -1237,10 +1255,22 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                               {variant.name}: {variant.value}
                                             </span>
                                           )}
+                                          {outrasEscolhas.map(
+                                            ({ id, variante }) =>
+                                              variante && (
+                                                <span
+                                                  key={id}
+                                                  className="mt-0.5 w-fit rounded bg-admin-gold/10 px-1 py-0.5 text-[11px] font-black uppercase tracking-widest text-admin-gold"
+                                                >
+                                                  {variante.name}:{" "}
+                                                  {variante.value}
+                                                </span>
+                                              ),
+                                          )}
                                           {isVariantMissing && (
                                             <>
                                               <span
-                                                title={`Código da variação: ${item.variantId}`}
+                                                title={`Código da variação: ${chaveDaLinha(item)}`}
                                                 className="mt-0.5 w-fit rounded border border-red-500/20 bg-red-500/10 px-1 py-0.5 text-[11px] font-black uppercase tracking-widest text-red-500"
                                               >
                                                 Esta variação não existe mais
@@ -1250,7 +1280,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                                   para a lojista passar ao
                                                   suporte. */}
                                               <span className="mt-0.5 break-all text-[11px] text-zinc-500">
-                                                Código: {item.variantId}
+                                                Código: {chaveDaLinha(item)}
                                               </span>
                                             </>
                                           )}
@@ -1298,7 +1328,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                         onClick={() =>
                                           handleRemoveCartItem(
                                             item.product.id,
-                                            item.variantId,
+                                            chaveDaLinha(item) || undefined,
                                           )
                                         }
                                         disabled={isOffline || !fichaCarregada}

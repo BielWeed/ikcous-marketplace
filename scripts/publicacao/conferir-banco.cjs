@@ -2599,7 +2599,52 @@ const ROL_DA_86B = [
   "RPC: public.swap_banner_order(uuid,uuid)",
   "varredura (antes): as 10 tabelas tem exatamente 21 politicas com is_admin()",
 ];
+// Lote 88 (20261383000000, so o dono da loja define cargo: tabelas dono_da_loja e cargo_log, a funcao definir_cargo e o gatilho que
+// barra mudanca de papel por qualquer outro caminho). A 88b NAO exige dono cadastrado nem a 88a: o cadastro do dono e passo manual.
+const ROL_DA_88A = [
+  "controle: catalogo publico visivel",
+  "definir_cargo: uma so, com o corpo da 20261383000000 (md5)",
+  "definir_cargo: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo, jsonb, uuid e text)",
+  "definir_cargo: EXECUTE so para authenticated (PUBLIC, anon e service_role nao)",
+  "papel_so_pelo_definir_cargo: uma so, com o corpo da 20261383000000 (md5), gatilho plpgsql sem SECURITY DEFINER e sem EXECUTE para ninguem",
+  "gatilho tr_papel_so_pelo_definir_cargo em profiles: BEFORE UPDATE por linha, ligado, e entre tr_ensure_role_protection e tr_prevent_role_change",
+  "dono_da_loja e cargo_log: tabelas comuns com RLS ligada sem FORCE, uma politica de SELECT (authenticated) cada",
+  "dono_da_loja e cargo_log: so SELECT para authenticated e service_role; nenhuma escrita para ninguem de aplicacao; anon e PUBLIC nada",
+  "dono_da_loja: no maximo uma linha por banco (chave primaria na coluna loja, CHECK loja) e user_id aponta para auth.users sem apagar em cascata",
+];
+const ROL_DA_88B = [
+  "controle: catalogo publico visivel",
+  "definir_cargo e papel_so_pelo_definir_cargo: ainda NAO existem",
+  "gatilho tr_papel_so_pelo_definir_cargo: ainda NAO existe em profiles",
+  "dono_da_loja e cargo_log: ainda NAO existem",
+  "as portas do admin atual existem com o corpo da 20261197000000 (md5) e rls_admin_atual() executavel pelo authenticated",
+  "os tres gatilhos de papel da 20261199000000 existem, ligados, com os corpos (md5) que a migration supoe",
+  "a ordem dos gatilhos BEFORE UPDATE de profiles deixa o nome novo entre tr_ensure_role_protection e tr_prevent_role_change",
+  "profiles.role e auth.users.raw_app_meta_data existem e profiles tem RLS ligada",
+];
+// Lote 89 (20261384000000, o pedido pago pelo app exige conta: create_marketplace_order_v24 recusa 'online' sem sessao). A 89a e a 89b
+// tem o MESMO rol; muda o esperado de duas linhas (o md5 do corpo da v24 e a presenca da recusa).
+const ROL_DA_89 = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v24: corpo exato (md5)",
+  "create_marketplace_order_v24: o corpo recusa o pagamento pelo app sem conta (uma vez)",
+  "create_marketplace_order_v23: corpo inalterado, o da 20261350000000 (md5)",
+  "create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "create_marketplace_order_v24: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "90a-conferir-busca-do-painel-por-codigo-aplicado": [
+    "controle: funcoes de public visiveis a este papel",
+    "get_admin_products_paged: corpo exato (md5)",
+    "get_admin_products_paged: assinatura e atributos conhecidos",
+    "get_admin_products_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+  ],
+  "90b-antes-busca-do-painel-por-codigo-base-vigente": [
+    "controle: funcoes de public visiveis a este papel",
+    "get_admin_products_paged: corpo exato (md5)",
+    "get_admin_products_paged: assinatura e atributos conhecidos",
+    "get_admin_products_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+  ],
   "87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado": [
     "controle: funcoes de public visiveis a este papel",
     "fin_dre: corpo exato (md5)",
@@ -2612,6 +2657,10 @@ const ROL_FECHADO_POR_CONSULTA = {
     "fin_dre: assinatura e atributos conhecidos",
     "fin_dre: EXECUTE authenticated, sem PUBLIC ou anon",
   ],
+  "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado": ROL_DA_89,
+  "89b-antes-o-pedido-pelo-app-exige-conta-base-vigente": ROL_DA_89,
+  "88a-conferir-so-o-dono-define-cargo-aplicado": ROL_DA_88A,
+  "88b-antes-so-o-dono-define-cargo-ausente": ROL_DA_88B,
   "86a-conferir-ex-admin-no-resto-do-painel-aplicado": ROL_DA_86A,
   "86b-antes-ex-admin-no-resto-do-painel-base-vigente": ROL_DA_86B,
   "85a-conferir-aviso-de-cancelados-antigos-aplicado": ROL_DA_85,

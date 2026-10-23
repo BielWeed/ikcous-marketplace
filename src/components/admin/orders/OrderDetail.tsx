@@ -804,7 +804,7 @@ function OrderItemsCard({
         </span>
       </div>
       <div className="mt-3 divide-y divide-admin-border">
-        {items.map((item) => {
+        {items.map((item, indice) => {
           const itemSku = item.variantId
             ? skus[`var-${item.variantId}`] || skus[`prod-${item.productId}`]
             : skus[`prod-${item.productId}`];
@@ -812,7 +812,7 @@ function OrderItemsCard({
 
           return (
             <div
-              key={`${item.productId}-${item.variantId || "default"}`}
+              key={`${item.productId}-${item.variantId || "default"}-${indice}`}
               className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
             >
               <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-admin-border">
@@ -2213,6 +2213,8 @@ export const OrderDetail = memo(function OrderDetail({
                   O dinheiro deste pedido não entrou. Se você avançar, a
                   mercadoria caminha para sair mesmo assim — e, depois de
                   finalizado, não dá mais para cancelar e devolver ao estoque.
+                  Se a cliente pagou na loja, feche este aviso, cancele o pedido
+                  (botão Cancelar pedido) e registre a venda em Vender.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter className="mt-4 gap-2">

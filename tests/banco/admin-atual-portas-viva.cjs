@@ -570,8 +570,12 @@ PROVAS.push({
       [U_CLIENTE],
     );
     assert.deepEqual(autopromo.papeis[U_CLIENTE], ["customer", "customer"]);
-    // CONTROLE: ensure_role_protection e prevent_role_change como antes.
+    // CONTROLE: ensure_role_protection e prevent_role_change como antes. A 20261383 acrescentou um terceiro gatilho que
+    // recusa QUALQUER mudança de papel fora de definir_cargo(); "as proteções antigas" é o estado sem ele (senão o
+    // controle mediria o gatilho novo e não os dois antigos). O gatilho novo tem prova própria em
+    // definir-cargo-so-o-dono-viva.cjs.
     const antes = [
+      "DROP TRIGGER IF EXISTS tr_papel_so_pelo_definir_cargo ON public.profiles",
       defNoArquivo(ROLLBACK, "ensure_role_protection"),
       defNoArquivo(ROLLBACK, "prevent_role_change"),
     ];
@@ -628,41 +632,59 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(1) R1 o caminho do painel continua: admin atual promove e rebaixa outro (as duas fontes acompanham), edita perfil alheio sem mexer em papel; service_role e postgres mudam papel; o INSERT sincroniza",
+  nome: "(1) R1 o caminho do painel continua: o admin atual edita perfil alheio sem mexer em papel; o papel só muda por definir_cargo() do dono (as duas fontes acompanham) e o PATCH direto do admin é recusado; service_role e postgres mudam papel; o INSERT sincroniza",
   corpo: async (c) => {
-    const promove = await papelDepois(c, "admin", PROMOVE_ALVO, [U_ALVO]);
+    // Desde a 20261383 o papel de outra pessoa NÃO muda mais por UPDATE direto em profiles, nem pelo admin atual: só
+    // pela função definir_cargo(), e só o dono da loja (tabela dono_da_loja) a usa. Aqui o admin da fixture vira dono
+    // (cadastro feito como postgres, antes de entrar) para provar que as DUAS fontes acompanham o caminho novo.
+    const DONO = [
+      `INSERT INTO public.dono_da_loja (user_id) VALUES ('${U_ADMIN}')`,
+    ];
+    const direto = await papelDepois(c, "admin", PROMOVE_ALVO, [U_ALVO]);
+    assert.equal(
+      direto.resultados[0].ok,
+      false,
+      "o PATCH direto do admin passou",
+    );
+    assert.equal(direto.resultados[0].code, "42501");
+    assert.deepEqual(
+      direto.papeis[U_ALVO],
+      ["customer", "customer"],
+      "o PATCH direto do admin promoveu",
+    );
+    const promove = await papelDepois(
+      c,
+      "admin",
+      [["SELECT public.definir_cargo($1::uuid, 'admin')", [U_ALVO]]],
+      [U_ALVO],
+      { antes: DONO },
+    );
     assert.equal(promove.resultados[0].ok, true, promove.resultados[0].message);
-    assert.equal(promove.resultados[0].n, 1);
     assert.deepEqual(
       promove.papeis[U_ALVO],
       ["admin", "admin"],
-      "o admin atual não promoveu",
+      "o dono não promoveu",
     );
     // Rebaixar o rebaixado-só-no-app_metadata de vez (as duas fontes).
     const rebaixa = await papelDepois(
       c,
       "admin",
-      [
-        [
-          "UPDATE public.profiles SET role = 'customer' WHERE id = $1",
-          [U_REB_AUTH],
-        ],
-      ],
+      [["SELECT public.definir_cargo($1::uuid, 'customer')", [U_REB_AUTH]]],
       [U_REB_AUTH],
+      { antes: DONO },
     );
+    assert.equal(rebaixa.resultados[0].ok, true, rebaixa.resultados[0].message);
     assert.deepEqual(rebaixa.papeis[U_REB_AUTH], ["customer", "customer"]);
     // E de volta, na mesma transação: promove e rebaixa.
     const ida = await papelDepois(
       c,
       "admin",
       [
-        ["UPDATE public.profiles SET role = 'admin' WHERE id = $1", [U_ALVO]],
-        [
-          "UPDATE public.profiles SET role = 'customer' WHERE id = $1",
-          [U_ALVO],
-        ],
+        ["SELECT public.definir_cargo($1::uuid, 'admin')", [U_ALVO]],
+        ["SELECT public.definir_cargo($1::uuid, 'customer')", [U_ALVO]],
       ],
       [U_ALVO],
+      { antes: DONO },
     );
     assert.deepEqual(ida.papeis[U_ALVO], ["customer", "customer"]);
     const nome = await papelDepois(

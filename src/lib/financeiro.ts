@@ -47,6 +47,8 @@ import type {
 
 /** Maior valor que cabe em `numeric(10,2)`. */
 export const VALOR_MAXIMO = 99_999_999.99;
+/** Mesmo limite que o banco aplica em `fin_lancamento_salvar` (140). */
+export const TAMANHO_MAXIMO_DA_DESCRICAO = 140;
 
 export const paraCentavos = (valor: number): number => Math.round(valor * 100);
 
@@ -1473,12 +1475,16 @@ export function sublinhasDaDre(
   return sublinhas;
 }
 
-/** % da receita líquida (base da análise vertical); sem base → `null`. */
+/**
+ * % da receita líquida (base da análise vertical); sem base → `null`.
+ * Base zero ou negativa (devoluções maiores que vendas) não tem margem
+ * que se leia: dividir por negativo inverte o sinal e infla o número.
+ */
 export function percentualDaReceita(
   valor: number,
   receitaLiquida: number,
 ): number | null {
-  if (paraCentavos(receitaLiquida) === 0) return null;
+  if (paraCentavos(receitaLiquida) <= 0) return null;
   return (valor / receitaLiquida) * 100;
 }
 
@@ -1590,8 +1596,8 @@ export function validarLancamento(
 
   const descricao = form.descricao.trim();
   if (descricao === "") erros.descricao = "Descreva o lançamento.";
-  else if (descricao.length > 200) {
-    erros.descricao = "Use no máximo 200 caracteres.";
+  else if (descricao.length > TAMANHO_MAXIMO_DA_DESCRICAO) {
+    erros.descricao = `Use no máximo ${TAMANHO_MAXIMO_DA_DESCRICAO} caracteres.`;
   }
 
   if (!form.contaId) {

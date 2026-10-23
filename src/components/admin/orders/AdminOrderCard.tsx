@@ -351,7 +351,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
         <ul className="mb-2 space-y-1.5 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm text-zinc-200">
           {itens.slice(0, 3).map((item, i) => (
             <li
-              key={`${item.productId}-${item.variantId ?? i}`}
+              key={`${item.productId}-${item.variantId ?? ""}-${i}`}
               className="flex items-start gap-2"
             >
               <span className="shrink-0 font-semibold">
@@ -710,7 +710,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 {painel === "cancelar"
                   ? textoCancelamento
                   : painel === "avancar"
-                    ? "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque."
+                    ? "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."
                     : "Pedido de pagamento na entrega. Se você já recebeu o dinheiro na mão, confirme abaixo — o registro fica salvo no pedido."}
               </p>
               <div className="flex flex-col gap-3">

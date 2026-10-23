@@ -21,7 +21,9 @@
 2. **Nunca apagar** a linha do login (`auth.users`) nem os pedidos
    (`marketplace_orders`). Os pedidos apontam para o login, sem cascata, e apagar
    levaria junto o histórico fiscal e financeiro da loja. A exclusão é
-   **anonimizar + bloquear a entrada**.
+   **anonimizar + bloquear a entrada**. (A conta do dono da loja, linha de
+   `dono_da_loja`, nem pode ser apagada: a chave estrangeira bloqueia; trocar o dono
+   é `DELETE FROM public.dono_da_loja` e novo `INSERT`, só com o "pode" dele.)
 3. **O prazo é de 15 dias**, contados do dia em que a cliente pediu. Como a loja
    é avisada: a **bolinha vermelha do sino** do painel acende enquanto houver
    pedido de privacidade esperando, a tela de Notificações lista quantos são, e

@@ -78,6 +78,48 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261385: a busca de produtos do painel (get_admin_products_paged) acha pelo codigo de barras do produto e da variacao ativa e
+  // pelo SKU da variacao ativa. O filtro entra IGUAL nos dois blocos (total_count e pagina): cada marcador vale 2 vezes. O resto e o
+  // corpo da 20261381. A consulta 90a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261385000000_a_busca_de_produtos_do_painel_acha_pelo_codigo_de_barras_e_da_variacao.sql":
+    {
+      funcao: "get_admin_products_paged",
+      esperado: [
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "unaccent(p.codigo) ILIKE unaccent('%' || v_clean_search || '%') OR",
+          vezes: 2,
+        },
+        { texto: "p.codigo_barras = v_clean_search OR", vezes: 2 },
+        {
+          texto: "WHERE vc.product_id = p.id AND vc.active",
+          vezes: 2,
+        },
+        { texto: "AND (vc.codigo_barras = v_clean_search", vezes: 2 },
+        {
+          texto:
+            "OR unaccent(vc.sku) ILIKE unaccent('%' || v_clean_search || '%'))",
+          vezes: 2,
+        },
+      ],
+    },
+  // 20261384: o pedido pago pelo app exige conta. So create_marketplace_order_v24 muda (o corpo da 20261350 mais UM bloco 0-ter, depois da
+  // idempotencia e da forma de pagamento aceita): 'online' sem sessao (auth.uid() nulo) e recusado antes de reservar estoque. A consulta
+  // 89a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql":
+    [
+      {
+        funcao: "create_marketplace_order_v24",
+        esperado: [
+          {
+            texto: "IF p_payment_method = 'online' AND v_user_id IS NULL THEN",
+            vezes: 1,
+          },
+          { texto: "pedido_pelo_app_exige_conta:", vezes: 1 },
+        ],
+      },
+    ],
   // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
   // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {
@@ -111,6 +153,51 @@ const VERIFICACOES = {
     ["reorder_banners_atomic", "IF NOT public.is_admin_atual() THEN"],
     ["swap_banner_order", "IF NOT public.is_admin_atual() THEN"],
   ].map(([funcao, texto]) => ({ funcao, esperado: [{ texto, vezes: 1 }] })),
+  // 20261383: so o dono da loja define cargo. As tabelas dono_da_loja e cargo_log, as politicas e o gatilho nao sao conferiveis aqui (so corpo
+  // de funcao): a consulta 88a e a prova viva fazem isso. Aqui: a porta (dono conferido na tabela e admin atual, janela do gatilho, releitura, auth.users
+  // sempre, log) e o gatilho (janela so para o dono da funcao, mensagem de recusa).
+  "20261383000000_so_o_dono_da_loja_define_cargo.sql": [
+    {
+      funcao: "definir_cargo",
+      esperado: [
+        {
+          texto: "FROM public.dono_da_loja d WHERE d.user_id = v_quem",
+          vezes: 1,
+        },
+        {
+          texto: "IF NOT public.is_admin_atual() THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "PERFORM set_config('ikcous.definir_cargo', p_user_id::text || ':' || p_cargo, true);",
+          vezes: 1,
+        },
+        {
+          texto: "AND (raw_app_meta_data ->> 'role') IS DISTINCT FROM p_cargo;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "INSERT INTO public.cargo_log (quem, alvo, de_cargo, para_cargo)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "papel_so_pelo_definir_cargo",
+      esperado: [
+        {
+          texto: "AND current_user = (SELECT pg_get_userbyid(p.proowner)",
+          vezes: 1,
+        },
+        {
+          texto: "RAISE EXCEPTION 'O cargo só muda pela função definir_cargo",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261380: o aviso de cancelados antigos (fora_da_janela) conta so pendencia real. Os gates de admin, a regra dos dois
   // baldes (mercadoria a voltar; dinheiro que entrou e ainda sobra) e o retorno ficam no corpo; o resto e o da 20261199.
   "20261380000000_o_aviso_de_cancelados_antigos_conta_so_pendencia_real.sql": {

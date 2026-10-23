@@ -68,6 +68,10 @@ const {
 const {
   EX_ADMIN_RESTO_DO_PAINEL,
 } = require("./ex-admin-resto-do-painel-posterior.cjs");
+const { DEFINIR_CARGO } = require("./definir-cargo-posterior.cjs");
+const {
+  desfazerBuscaDoPainelNaTransacao,
+} = require("./busca-do-painel-por-codigo-posterior.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(
@@ -396,6 +400,10 @@ const POSTERIORES_A_97 = [
   // so devolve expressoes, apaga a politica nova e devolve os 10 corpos. Definicao unica em
   // tests/banco/ex-admin-resto-do-painel-posterior.cjs. No FIM da lista de proposito.
   EX_ADMIN_RESTO_DO_PAINEL,
+  // 20261383000000: as politicas de leitura de dono_da_loja e cargo_log citam rls_admin_atual(): sem esta entrada o rollback da
+  // 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira gatilho, funcoes e politicas e DEIXA as tabelas.
+  // Definicao unica em tests/banco/definir-cargo-posterior.cjs. No FIM da lista de proposito.
+  DEFINIR_CARGO,
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar
@@ -426,6 +434,8 @@ async function desfazerPosterioresNaTransacao(cliente) {
   // A 20261241000000 (a mais nova; redefine corpos da 1196/1198/1201/1225/1226) sai primeiro de todas.
   await desfazerReembolsoEmDuvidaNaTransacao(cliente);
   await desfazerCaixaIntencaoNaTransacao(cliente);
+  // A 20261385 (a busca de produtos) sucede get_admin_products_paged da 81: sai ANTES dela (o rollback da 81 exige o corpo da 81).
+  await desfazerBuscaDoPainelNaTransacao(cliente);
   // As sucessoras da 99 (20261212, 20261214: redefinem corpos dela) saem
   // primeiro — sem isso o rollback da 99 recusa (B1_BASELINE_DIVERGENT).
   await desfazerSucessorasDa99(cliente);
@@ -1580,6 +1590,8 @@ PROVAS.push({
       // A 20261241000000 (a mais nova de todas) sai antes de qualquer uma desta pilha (só se no ar).
       await desfazerReembolsoEmDuvidaNaTransacao(cliente);
       await desfazerCaixaIntencaoNaTransacao(cliente);
+      // A 20261385 (a busca de produtos) sai antes da 81, que e' desfeita nesta pilha (o rollback da 81 exige o corpo da 81).
+      await desfazerBuscaDoPainelNaTransacao(cliente);
       // A 20261243000000 (redefine o corpo de registrar_pagamento_recebido que a 97 confere por hash) também sai antes
       // (só se no ar): sem isso a recusa por hash dela vem ANTES da recusa por dependentes que esta prova mede.
       await desfazerDesfazerRecebimentoNaTransacao(cliente);
