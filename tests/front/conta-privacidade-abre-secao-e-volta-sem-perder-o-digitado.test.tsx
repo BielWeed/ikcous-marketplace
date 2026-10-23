@@ -31,10 +31,20 @@ vi.mock("@/hooks/useAuth", () => ({
   }),
 }));
 
+// A tela real tem um <h2 id="privacidade-titulo">; o duble liga/desliga o
+// titulo para provar tambem o plano B (foco no conteiner da secao).
+const dubleDePrivacidade = vi.hoisted(() => ({ comTitulo: true }));
 vi.mock("@/components/account/PrivacidadeEMeusDados", () => ({
   PrivacidadeEMeusDados: (props: { userId: string; emailAtual: string }) => {
     privacidadeProps(props);
-    return <div data-testid="privacidade-e-meus-dados">privacidade</div>;
+    return (
+      <div data-testid="privacidade-e-meus-dados">
+        {dubleDePrivacidade.comTitulo && (
+          <h2 id="privacidade-titulo">Privacidade e meus dados</h2>
+        )}
+        privacidade
+      </div>
+    );
   },
 }));
 
@@ -113,7 +123,7 @@ const gravacoes = () =>
 
 describe("Conta — a linha 'Privacidade e meus dados' abre uma seção e o '‹ Conta' volta", () => {
   let raiz: Root;
-  let hospedeiro: HTMLDivElement;
+  let hospedeiro: HTMLElement;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -126,7 +136,10 @@ describe("Conta — a linha 'Privacidade e meus dados' abre uma seção e o '‹
       }
       return Promise.resolve({ data: null, error: null });
     });
-    hospedeiro = document.createElement("div");
+    dubleDePrivacidade.comTitulo = true;
+    // O conteiner de rolagem real do app e <main id="conteudo">.
+    hospedeiro = document.createElement("main");
+    hospedeiro.id = "conteudo";
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
   });
@@ -234,5 +247,56 @@ describe("Conta — a linha 'Privacidade e meus dados' abre uma seção e o '‹
       (document.getElementById("confirm_password") as HTMLInputElement).value,
     ).toBe("senhaNovaForte123");
     expect(updatePassword).not.toHaveBeenCalled();
+  });
+
+  it("abrir manda o foco ao titulo da secao; voltar devolve o foco a linha de privacidade", async () => {
+    await montar();
+    await clicar(botaoComTexto("Privacidade e meus dados"));
+
+    const titulo = document.getElementById("privacidade-titulo")!;
+    expect(titulo.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(titulo);
+
+    await clicar(botaoComTexto("Conta"));
+    await esperarAte(() => !!botaoComTexto("Privacidade e meus dados"));
+    expect(document.activeElement).toBe(
+      botaoComTexto("Privacidade e meus dados"),
+    );
+  });
+
+  it("sem titulo na secao, o foco vai ao conteiner da secao (nunca fica no body)", async () => {
+    dubleDePrivacidade.comTitulo = false;
+    await montar();
+    await clicar(botaoComTexto("Privacidade e meus dados"));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(
+      document.activeElement?.contains(
+        document.querySelector('[data-testid="privacidade-e-meus-dados"]'),
+      ),
+    ).toBe(true);
+  });
+
+  it("montar a tela nao rouba o foco (so a troca de secao mexe nele)", async () => {
+    await montar();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("abrir leva o conteiner de rolagem ao topo; voltar restaura a posicao de antes", async () => {
+    let topo = 0;
+    Object.defineProperty(hospedeiro, "scrollTop", {
+      configurable: true,
+      get: () => topo,
+      set: (v: number) => {
+        topo = v;
+      },
+    });
+    await montar();
+    topo = 650; // a pessoa rolou ate a linha de privacidade
+
+    await clicar(botaoComTexto("Privacidade e meus dados"));
+    expect(topo).toBe(0);
+
+    await clicar(botaoComTexto("Conta"));
+    expect(topo).toBe(650);
   });
 });

@@ -89,6 +89,34 @@ export function AccountSettingsView() {
   // seção não desmonta o componente, então nome, WhatsApp, CPF, senha e a aba
   // escolhida continuam onde estavam quando a pessoa volta.
   const [secao, setSecao] = useState<"conta" | "privacidade">("conta");
+  const raizRef = useRef<HTMLDivElement>(null);
+  const secaoPrivacidadeRef = useRef<HTMLDivElement>(null);
+  const linhaPrivacidadeRef = useRef<HTMLButtonElement>(null);
+  const secaoAnteriorRef = useRef(secao);
+  const rolagemAntesRef = useRef(0);
+  // Trocar de seção troca o conteúdo debaixo dos dedos: o botão clicado some e
+  // o foco cairia no <body>, e a tela ficaria rolada no ponto do link. Aqui o
+  // foco vai ao título da seção nova (ou volta à linha de onde a pessoa saiu) e
+  // o contêiner de rolagem (<main id="conteudo">) sobe ao topo, voltando depois
+  // para onde estava. Só reage à TROCA: montar a tela não mexe em nada.
+  useEffect(() => {
+    if (secaoAnteriorRef.current === secao) return;
+    secaoAnteriorRef.current = secao;
+    const rolagem = raizRef.current?.closest("main");
+    if (secao === "privacidade") {
+      if (rolagem) rolagem.scrollTop = 0;
+      const alvo =
+        document.getElementById("privacidade-titulo") ??
+        secaoPrivacidadeRef.current;
+      if (alvo) {
+        if (!alvo.hasAttribute("tabindex")) alvo.setAttribute("tabindex", "-1");
+        alvo.focus({ preventScroll: true });
+      }
+    } else {
+      if (rolagem) rolagem.scrollTop = rolagemAntesRef.current;
+      linhaPrivacidadeRef.current?.focus({ preventScroll: true });
+    }
+  }, [secao]);
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
   const [modalTab, setModalTab] = useState<"avatars" | "upload">("avatars");
@@ -679,10 +707,14 @@ export function AccountSettingsView() {
   const nomeDoCartao = nomeSalvo || user.email || "";
 
   return (
-    <div className="pb-customer min-h-full bg-background">
+    <div ref={raizRef} className="pb-customer min-h-full bg-background">
       <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         {secao === "privacidade" ? (
-          <div className="space-y-4">
+          <div
+            ref={secaoPrivacidadeRef}
+            tabIndex={-1}
+            className="space-y-4 outline-none"
+          >
             <button
               type="button"
               onClick={() => setSecao("conta")}
@@ -730,12 +762,14 @@ export function AccountSettingsView() {
                   key={aba}
                   type="button"
                   role="tab"
+                  id={`aba-conta-${aba}`}
+                  aria-controls={`painel-conta-${aba}`}
                   aria-selected={activeTab === aba}
                   onClick={() => setActiveTab(aba)}
                   className={`flex h-11 flex-1 items-center justify-center rounded-[10px] text-[15px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
                     activeTab === aba
                       ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-foreground/70 hover:text-foreground"
                   }`}
                 >
                   {rotulo}
@@ -746,7 +780,9 @@ export function AccountSettingsView() {
             {activeTab === "profile" ? (
               <motion.section
                 key="profile-tab"
+                id="painel-conta-profile"
                 role="tabpanel"
+                aria-labelledby="aba-conta-profile"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.15 }}
@@ -946,8 +982,13 @@ export function AccountSettingsView() {
 
                 {/* Linha-link: abre a seção de privacidade (sem rota). */}
                 <button
+                  ref={linhaPrivacidadeRef}
                   type="button"
-                  onClick={() => setSecao("privacidade")}
+                  onClick={() => {
+                    rolagemAntesRef.current =
+                      raizRef.current?.closest("main")?.scrollTop ?? 0;
+                    setSecao("privacidade");
+                  }}
                   className="flex h-14 w-full items-center justify-between rounded-[14px] border border-input px-4 text-left text-[15px] font-semibold text-foreground outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Privacidade e meus dados
@@ -960,7 +1001,9 @@ export function AccountSettingsView() {
             ) : (
               <motion.section
                 key="security-tab"
+                id="painel-conta-security"
                 role="tabpanel"
+                aria-labelledby="aba-conta-security"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.15 }}
