@@ -4451,25 +4451,26 @@ async function guardaDoLedger(client, arquivos, opcoes = {}) {
   const permitirReaplicar = opcoes.permitirReaplicar === true;
   if (arquivos.length === 0) return [];
 
-  const versoes = arquivos.map((a) => {
-    const v = versaoDaMigration(a);
-    if (v === null) {
+  const itens = arquivos.map((arquivo) => {
+    const versao = versaoDaMigration(arquivo);
+    if (versao === null) {
       throw new Error(
-        `FALHOU a conferência do ledger: ${a} não tem versão numérica antes do primeiro "_". Nada foi aplicado.`,
+        `FALHOU a conferência do ledger: ${arquivo} não tem versão numérica antes do primeiro "_". Nada foi aplicado.`,
       );
     }
-    return v;
+    return { arquivo, versao };
   });
+  const versoes = itens.map((item) => item.versao);
 
   if (!permitirReaplicar) {
     const vistas = new Set();
-    for (let i = 0; i < arquivos.length; i++) {
-      if (vistas.has(versoes[i])) {
+    for (const item of itens) {
+      if (vistas.has(item.versao)) {
         throw new Error(
-          `RECUSADO (versão repetida na lista: o segundo apply seria uma reaplicação; se for de propósito, use --permitir-reaplicar): ${arquivos[i]}`,
+          `RECUSADO (versão repetida na lista: o segundo apply seria uma reaplicação; se for de propósito, use --permitir-reaplicar): ${item.arquivo}`,
         );
       }
-      vistas.add(versoes[i]);
+      vistas.add(item.versao);
     }
   }
 
@@ -4500,7 +4501,9 @@ async function guardaDoLedger(client, arquivos, opcoes = {}) {
     achadas.add(l.version);
   }
 
-  const quais = arquivos.filter((_arquivo, i) => achadas.has(versoes[i]));
+  const quais = itens
+    .filter((item) => achadas.has(item.versao))
+    .map((item) => item.arquivo);
   if (quais.length > 0) {
     if (!permitirReaplicar) {
       throw new Error(
