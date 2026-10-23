@@ -220,6 +220,13 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
     });
     hospedeiro.remove();
     vi.useRealTimers();
+    // "Ocultar" grava a escolha no navegador (e deve gravar); sem limpar, o
+    // teste que a liga deixaria os valores ocultos para os testes seguintes.
+    try {
+      globalThis.localStorage?.clear();
+    } catch {
+      // Sem armazenamento no ambiente de teste: nada a limpar.
+    }
   });
 
   async function irPara(aba: string) {
