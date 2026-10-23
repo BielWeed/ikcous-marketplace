@@ -181,5 +181,17 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
     expect(barra!.closest("[data-tema-fixo]")).toBeNull();
     // O celular abaixo da barra mantém o tema fixo.
     expect(document.body.querySelector("[data-tema-fixo]")).toBeTruthy();
+
+    // Acessibilidade da barra: alvos de 44px no próprio elemento clicável,
+    // estado do alternador exposto e botão de fechar com nome.
+    const alternadores = Array.from(
+      barra!.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"),
+    );
+    expect(alternadores).toHaveLength(2);
+    for (const b of alternadores) expect(b.className).toContain("h-11");
+    expect(
+      barra!.querySelector('button[aria-label="Fechar o simulador"]')!
+        .className,
+    ).toContain("size-11");
   });
 });

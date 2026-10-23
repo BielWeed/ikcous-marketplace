@@ -160,7 +160,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
               aria-pressed={previewMode === "card"}
               onClick={() => setPreviewMode("card")}
               className={cn(
-                "h-9 min-w-[64px] cursor-pointer rounded-full px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "h-11 min-w-[64px] cursor-pointer rounded-full px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 previewMode === "card"
                   ? "bg-foreground text-background"
                   : "text-muted-foreground hover:text-foreground",
@@ -173,7 +173,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
               aria-pressed={previewMode === "page"}
               onClick={() => setPreviewMode("page")}
               className={cn(
-                "h-9 min-w-[64px] cursor-pointer rounded-full px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "h-11 min-w-[64px] cursor-pointer rounded-full px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 previewMode === "page"
                   ? "bg-foreground text-background"
                   : "text-muted-foreground hover:text-foreground",
