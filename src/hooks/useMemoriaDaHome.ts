@@ -27,6 +27,12 @@ export interface MemoriaDaHome {
   temOfertas: boolean;
   temBestsellers: boolean;
   layoutOfertas?: LayoutDeOfertas;
+  /**
+   * Quantas ofertas a faixa mostrou na última visita. Só o "Lateral em duas fileiras" lê isto: com 1 oferta
+   * a faixa tem UMA fileira (206px) e com 2 ou mais, duas (318px) — o esqueleto antes dos dados precisa saber
+   * qual das duas reservar. Ausente (memória gravada por versão anterior) = aposta das duas fileiras.
+   */
+  qtdOfertas?: number;
   gravadoEm: number;
 }
 
@@ -61,6 +67,11 @@ function parseMemoria(bruto: string | null): MemoriaDaHome | null {
       temOfertas: memo.temOfertas,
       temBestsellers: memo.temBestsellers,
       layoutOfertas: normalizarLayoutDeOfertas(memo.layoutOfertas),
+      // Só inteiro >= 1 vale: lixo gravado à mão ou por outra versão vira "sem informação", nunca erro.
+      qtdOfertas:
+        Number.isInteger(memo.qtdOfertas) && memo.qtdOfertas >= 1
+          ? memo.qtdOfertas
+          : undefined,
       gravadoEm,
     };
   } catch {

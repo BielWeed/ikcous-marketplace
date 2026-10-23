@@ -46,6 +46,11 @@ const OPCOES_DE_LAYOUT: readonly {
     nome: "Lateral",
     icone: "M1 2h28v16H1zM4 5h9v10H4zM16 6h10M16 10h7M16 14h4",
   },
+  {
+    layout: "lateral-duplo",
+    nome: "Lateral em duas fileiras",
+    icone: "M1 1h28v8H1zM1 11h28v8H1zM3 3h5v4H3zM3 13h5v4H3zM11 4h14M11 14h14",
+  },
 ];
 
 /**
