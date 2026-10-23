@@ -11,6 +11,7 @@ import {
   FORMAS_DO_LANCAMENTO,
   type FormularioDoLancamento,
   MAXIMO_DE_PARCELAS,
+  TAMANHO_MAXIMO_DA_DESCRICAO,
   formatarBRL,
   formatarData,
   formularioInicialDoLancamento,
@@ -348,7 +349,7 @@ export function NovoLancamentoFolha({
             id="fin-lanc-descricao"
             disabled={enviando}
             value={form.descricao}
-            maxLength={200}
+            maxLength={TAMANHO_MAXIMO_DA_DESCRICAO}
             placeholder={
               transferencia
                 ? "Ex.: depósito do caixa no banco"
