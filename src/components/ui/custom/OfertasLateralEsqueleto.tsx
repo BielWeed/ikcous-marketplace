@@ -20,21 +20,23 @@ export function OfertasLateralEsqueleto() {
           <div
             key={id}
             data-cartao-esqueleto
-            style={{ minHeight: ALTURA_CARTAO_LATERAL }}
-            className="flex shrink-0 basis-[88%] animate-pulse overflow-hidden rounded-[26px] border border-solid border-zinc-200 bg-white"
+            style={{ height: ALTURA_CARTAO_LATERAL }}
+            className="relative flex shrink-0 basis-[88%] animate-pulse overflow-hidden rounded-[20px] border border-solid border-zinc-200 bg-white"
           >
-            <div className="w-2/5 shrink-0 self-stretch bg-[#ECECEF]" />
-            <div className="flex min-w-0 flex-1 flex-col p-3">
-              <div className="mb-1 min-h-10 space-y-1.5 pt-1">
-                <div className="h-3 w-full rounded bg-[#ECECEF]" />
+            <div className="w-[104px] shrink-0 self-stretch bg-[#ECECEF] max-[339px]:w-[88px]" />
+            <div className="flex min-w-0 flex-1 flex-col py-2.5 pl-3 pr-2.5">
+              <div className="h-9 pt-1">
+                <div className="h-3.5 w-full rounded bg-[#ECECEF]" />
               </div>
-              <div className="min-h-4" />
-              <div className="h-8 w-24 rounded bg-[#ECECEF]" />
-              <div className="mt-auto flex items-end justify-between gap-2 pt-1">
+              <div className="mt-0.5 h-7">
+                <div className="h-5 w-24 rounded bg-[#ECECEF]" />
+              </div>
+              <div className="h-4" />
+              <div className="mt-auto flex h-4 items-center">
                 <span className="h-3 w-16 rounded bg-[#ECECEF]" />
-                <span className="size-12 shrink-0 rounded-full bg-[#ECECEF]" />
               </div>
             </div>
+            <span className="absolute bottom-1.5 right-2.5 size-11 rounded-full bg-[#ECECEF]" />
           </div>
         ))}
       </div>

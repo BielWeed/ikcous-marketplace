@@ -6,7 +6,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
 import { Check, ImageIcon, Loader2, ShoppingCart } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import {
   type PremiumOffersProps,
   ordenarOfertas,
@@ -109,6 +109,32 @@ export default function OfertasLateral({
   );
 }
 
+// Tamanho do texto pela largura REAL da coluna de texto (a coluna é um container: 100cqw = 159px a 320px (foto de 88px abaixo de 340px)
+// de tela, 171px a 360px, 198px a 390px). Larguras por caractere medidas em navegador real: preço
+// extrabold ~0,55 x corpo, "De" ~0,54 x corpo. O corpo do preço é o maior (13 a 20px) em que preço + "De"
+// cabem na coluna, com o "De" em 55% do preço (mínimo 10px); sem espaço nem no piso, o "De" inteiro passa
+// para a linha de baixo e é recortado (flex-wrap + overflow-hidden), nunca aparece cortado no meio.
+// "Economiza" divide a faixa com o carrinho (44px + 4 de respiro) e vai de 12px até 10px.
+function medidasDoTexto(
+  preco: string,
+  de: string | null,
+  economia: string | null,
+) {
+  const n = (x: number) => Math.round(x * 1000) / 1000;
+  const p = n(preco.length * 0.55);
+  const d = de ? n(de.length * 0.54) : 0;
+  const preco20 = de
+    ? `min(calc((100cqw - 6px) / ${n(p + d * 0.55)}), calc((100cqw - ${n(6 + d * 10)}px) / ${p}))`
+    : `calc(100cqw / ${p})`;
+  return {
+    "--fonte-preco": `clamp(13px, ${preco20}, 20px)`,
+    "--fonte-de": "max(10px, calc(var(--fonte-preco) * 0.55))",
+    "--fonte-economia": economia
+      ? `clamp(10px, calc((100cqw - 48px) / ${n(economia.length * 0.56)}), 12px)`
+      : "12px",
+  } as CSSProperties;
+}
+
 function CartaoOfertaLateral({
   product,
   discount,
@@ -158,25 +184,32 @@ function CartaoOfertaLateral({
       : cartStatus === "success"
         ? `Adicionado ao carrinho: ${product.name}`
         : `Adicionar ${product.name} ao carrinho`;
+  const textoPreco = formatCurrency(product.price);
+  const textoDe = precoAntigo ? `De ${formatCurrency(precoAntigo)}` : null;
+  const textoEconomia =
+    precoAntigo && discount > 0
+      ? `Economiza ${formatCurrency(precoAntigo - product.price)}`
+      : null;
+  const medidas = medidasDoTexto(textoPreco, textoDe, textoEconomia);
   return (
     <article
       data-oferta-lateral={product.id}
       onMouseEnter={() => prefetchView("product-detail")}
       onTouchStart={() => prefetchView("product-detail")}
-      style={{ minHeight: ALTURA_CARTAO_LATERAL }}
+      style={{ height: ALTURA_CARTAO_LATERAL }}
       className={cn(
-        "relative flex min-w-0 overflow-hidden rounded-[26px] border border-solid border-zinc-200 bg-white",
+        "relative flex min-w-0 overflow-hidden rounded-[20px] border border-solid border-zinc-200 bg-white",
         rola ? "shrink-0 basis-[88%]" : "w-full",
       )}
     >
-      <div className="relative w-2/5 shrink-0 self-stretch bg-zinc-100">
+      <div className="relative w-[104px] shrink-0 self-stretch bg-zinc-100 max-[339px]:w-[88px]">
         {product.images[0] ? (
           // Absoluta: a proporção da foto não pode definir a altura do cartão.
           <div className="absolute inset-0">
             <LazyImage
               src={product.images[0]}
               alt={product.name}
-              sizes="150px"
+              sizes="104px"
               className="size-full object-cover"
             />
           </div>
@@ -196,110 +229,134 @@ function CartaoOfertaLateral({
         {precoAntigo && discount > 0 && (
           <div
             data-selo-desconto
-            className="pointer-events-none absolute bottom-2.5 left-2.5 max-w-[calc(100%-20px)] whitespace-nowrap rounded-full bg-emerald-700 px-3 py-1"
+            className="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-16px)] whitespace-nowrap rounded-full bg-emerald-700 px-2.5 py-1"
           >
             <span className="text-xs font-bold leading-4 text-white">
               {discount}% OFF
             </span>
           </div>
         )}
+        {/* Visual de 30px; o ::after estende a área de toque a 44px (7px de cada lado), toda dentro da foto. */}
         <BotaoDeFavorito
           nome={product.name}
           favorito={isFavorite}
           onClick={handleFavoriteClick}
-          className="absolute right-2.5 top-2.5 z-20"
+          className="absolute right-2 top-2 z-20 size-[30px] after:absolute after:inset-[-7px] after:content-['']"
         />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col p-3">
-        <h3 className="mb-1 line-clamp-2 min-h-10 break-words text-base font-bold leading-5 text-zinc-950">
+      <div
+        style={medidas}
+        className="flex min-w-0 flex-1 flex-col py-2.5 pl-3 pr-2.5 [container-type:inline-size]"
+      >
+        <h3 className="line-clamp-2 h-9 break-words text-sm font-semibold leading-[18px] text-zinc-950">
           {product.name}
         </h3>
-        <div className="min-h-4 truncate whitespace-nowrap text-xs leading-4 text-zinc-500 line-through">
-          {precoAntigo ? `De ${formatCurrency(precoAntigo)}` : null}
-        </div>
-        {/* 22px cabe o maior preço comum na coluna de 154px (tela de 360px); de 10 mil em diante, 20px. */}
-        <span
-          data-preco-oferta
-          className={cn(
-            "whitespace-nowrap font-extrabold tracking-tight tabular-nums",
-            product.price >= 10000 ? "text-[20px]" : "text-[22px]",
-            // Depois do tamanho: o tailwind-merge descarta o leading que vem antes de text-[..].
-            "leading-8",
-            esgotado
-              ? "text-zinc-950"
-              : precoAntigo
-                ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
-                : "text-slate-900",
-          )}
-        >
-          {formatCurrency(product.price)}
-        </span>
-        {precoAntigo && discount > 0 && (
+        <div className="mt-0.5 flex h-7 flex-wrap content-start items-baseline gap-x-1.5 overflow-hidden whitespace-nowrap">
           <span
-            data-economia-oferta
-            className="truncate whitespace-nowrap text-xs font-medium leading-4 text-zinc-600"
-          >
-            Economiza {formatCurrency(precoAntigo - product.price)}
-          </span>
-        )}
-        <div className="mt-auto flex items-end justify-between gap-2 pt-1">
-          <span className="flex min-w-0 items-center gap-1.5 text-xs font-bold leading-4">
-            {estoque && (
-              <>
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "size-2 shrink-0 rounded-full",
-                    esgotado ? "bg-red-700" : "bg-amber-600",
-                  )}
-                />
-                <span className={esgotado ? "text-red-800" : "text-amber-700"}>
-                  {estoque}
-                </span>
-              </>
-            )}
-          </span>
-          <button
-            type="button"
-            onClick={handleAddToCartClick}
-            data-compra-oferta
-            aria-label={rotuloCompra}
-            title={rotuloCompra}
-            disabled={esgotado || cartStatus !== "idle"}
+            data-preco-oferta
             className={cn(
-              "relative z-20 flex size-12 shrink-0 items-center justify-center rounded-full border border-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "shrink-0 whitespace-nowrap font-extrabold tracking-tight tabular-nums",
+              "text-[length:var(--fonte-preco)]",
+              // Depois do tamanho: o tailwind-merge descarta o leading que vem antes de text-*.
+              "leading-7",
               esgotado
-                ? "border-zinc-100 bg-zinc-100 text-zinc-500"
-                : cartStatus === "success"
-                  ? "border-zinc-200 bg-white text-emerald-700"
-                  : "border-zinc-950 bg-zinc-950 text-white",
+                ? "text-zinc-950"
+                : precoAntigo
+                  ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
+                  : "text-slate-900",
             )}
           >
-            {cartStatus === "success" ? (
-              <Check aria-hidden="true" className="size-5 shrink-0" />
-            ) : cartStatus === "loading" ? (
-              <Loader2
-                aria-hidden="true"
-                className="size-5 shrink-0 animate-spin"
-              />
-            ) : (
-              <ShoppingCart aria-hidden="true" className="size-5 shrink-0" />
-            )}
-            <span aria-live="polite" className="sr-only">
-              {cartStatus === "loading"
-                ? "Adicionando"
-                : cartStatus === "success"
-                  ? "Adicionado"
-                  : ""}
+            {textoPreco}
+          </span>
+          {textoDe && (
+            <span
+              className={cn(
+                "text-[length:var(--fonte-de)]",
+                // Depois do tamanho: o tailwind-merge descarta o leading que vem antes de text-[..].
+                "leading-4 text-zinc-500 line-through",
+              )}
+            >
+              {textoDe}
             </span>
-          </button>
+          )}
+        </div>
+        {/* O item vazio (16px de altura) na frente deixa o texto ir para a linha de baixo (recortada) se não couber: some inteiro, nunca cortado no meio. */}
+        <div className="flex h-4 flex-wrap content-start overflow-hidden">
+          {textoEconomia && <span aria-hidden="true" className="h-4 w-0" />}
+          {textoEconomia && (
+            <span
+              data-economia-oferta
+              className={cn(
+                "shrink-0 whitespace-nowrap pr-12 font-medium text-[length:var(--fonte-economia)]",
+                "leading-4 text-zinc-600",
+              )}
+            >
+              {textoEconomia}
+            </span>
+          )}
+        </div>
+        <div className="mt-auto flex h-4 items-center gap-1.5 pr-12 text-xs font-bold leading-4">
+          {estoque && (
+            <>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "size-2 shrink-0 rounded-full",
+                  esgotado ? "bg-red-700" : "bg-amber-600",
+                )}
+              />
+              <span
+                className={cn(
+                  "truncate",
+                  esgotado ? "text-red-800" : "text-amber-700",
+                )}
+              >
+                {estoque}
+              </span>
+            </>
+          )}
         </div>
       </div>
+      {/* Só na faixa de baixo (topo a ~74px; a linha do preço termina em ~70px): não bate no preço. */}
+      <button
+        type="button"
+        onClick={handleAddToCartClick}
+        data-compra-oferta
+        aria-label={rotuloCompra}
+        title={rotuloCompra}
+        disabled={esgotado || cartStatus !== "idle"}
+        className={cn(
+          "absolute bottom-1 right-2.5 z-20 flex size-11 shrink-0 items-center justify-center rounded-full border border-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          esgotado
+            ? "border-zinc-100 bg-zinc-100 text-zinc-500"
+            : cartStatus === "success"
+              ? "border-zinc-200 bg-white text-emerald-700"
+              : "border-zinc-950 bg-zinc-950 text-white",
+        )}
+      >
+        {cartStatus === "success" ? (
+          <Check aria-hidden="true" className="size-5 shrink-0" />
+        ) : cartStatus === "loading" ? (
+          <Loader2
+            aria-hidden="true"
+            className="size-5 shrink-0 animate-spin"
+          />
+        ) : (
+          <ShoppingCart aria-hidden="true" className="size-5 shrink-0" />
+        )}
+        <span aria-live="polite" className="sr-only">
+          {cartStatus === "loading"
+            ? "Adicionando"
+            : cartStatus === "success"
+              ? "Adicionado"
+              : ""}
+        </span>
+      </button>
       <button
         type="button"
         aria-label={`Ver ${product.name}`}
         onClick={handleCardClick}
-        className="absolute inset-0 min-h-11 min-w-11 rounded-[26px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="absolute inset-0 min-h-11 min-w-11 rounded-[20px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       />
     </article>
   );

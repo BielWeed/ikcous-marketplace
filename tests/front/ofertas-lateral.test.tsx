@@ -129,7 +129,7 @@ describe("Ofertas Lateral", () => {
         .minHeight,
     ).toBe(`${ALTURA_SECAO_LATERAL}px`);
     for (const c of cartoes())
-      expect(c.style.minHeight).toBe(`${ALTURA_CARTAO_LATERAL}px`);
+      expect(c.style.height).toBe(`${ALTURA_CARTAO_LATERAL}px`);
     expect(useEmblaCarousel).toHaveBeenLastCalledWith(
       expect.objectContaining({ align: "start", loop: false, active: true }),
     );
@@ -143,16 +143,18 @@ describe("Ofertas Lateral", () => {
     expect(foto.parentElement?.className).toContain("inset-0");
   });
 
-  it("a foto sangra até as bordas: coluna de 40% (w-2/5), sem padding nem raio interno; o raio do cartão recorta", async () => {
+  it("a foto sangra até as bordas: coluna de 104px (w-[104px]), sem padding nem raio interno; o raio do cartão recorta", async () => {
     await montar([produto("a"), produto("b")]);
     const c = cartoes()[0];
-    expect(c.className).toContain("rounded-[26px]");
+    expect(c.className).toContain("rounded-[20px]");
     expect(c.className).toContain("overflow-hidden");
     expect(c.className).toContain("border-zinc-200");
     expect(c.className).not.toMatch(/(^|\s)p-\d/);
     const coluna = (c.querySelector("img") as HTMLElement).parentElement
       ?.parentElement as HTMLElement;
-    expect(coluna.className).toContain("w-2/5");
+    expect(coluna.className).toContain("w-[104px]");
+    // Abaixo de 340px a foto cede 16px ao texto, para "De" e "Economiza" caberem inteiros.
+    expect(coluna.className).toContain("max-[339px]:w-[88px]");
     expect(coluna.className).toContain("self-stretch");
     expect(coluna.className).not.toMatch(/(^|\s)p-\d|rounded/);
     expect((c.querySelector("img") as HTMLElement).className).toContain(
@@ -166,21 +168,21 @@ describe("Ofertas Lateral", () => {
     const selo = c.querySelector("[data-selo-desconto]") as HTMLElement;
     expect(selo.textContent).toBe("50% OFF");
     expect(selo.className).toContain("bg-emerald-700");
-    expect(selo.className).toContain("left-2.5");
-    expect(selo.className).toContain("bottom-2.5");
-    expect(selo.className).not.toContain("top-2.5");
+    expect(selo.className).toContain("left-2");
+    expect(selo.className).toContain("bottom-2");
+    expect(selo.className).not.toContain("top-2");
     expect(selo.className).toContain("whitespace-nowrap");
     expect(selo.className).toContain("max-w-");
     expect(selo.firstElementChild?.className).toContain("text-white");
     expect(selo.firstElementChild?.className).toContain("font-bold");
     const coracao = c.querySelector("[data-botao-favorito]") as HTMLElement;
     expect(coracao.className).toContain("absolute");
-    expect(coracao.className).toContain("right-2.5");
+    expect(coracao.className).toContain("right-2");
     expect(coracao.className).toContain("z-20");
-    // Cantos diferentes: o coração (44px) nunca cobre o selo em tela de 360px.
-    expect(coracao.className).toContain("top-2.5");
-    expect(coracao.className).not.toContain("bottom-2.5");
-    expect(coracao.className).not.toContain("left-2.5");
+    // Cantos diferentes: o coração (toque de 44px) nunca cobre o selo.
+    expect(coracao.className).toContain("top-2");
+    expect(coracao.className).not.toContain("bottom-2");
+    expect(coracao.className).not.toContain("left-2");
     expect(coluna(c).contains(coracao)).toBe(true);
   });
 
@@ -203,7 +205,7 @@ describe("Ofertas Lateral", () => {
       cartoes()
         .find((c) => c.dataset.ofertaLateral === id)
         ?.querySelector("[data-preco-oferta]") as HTMLElement;
-    expect(preco("a").className).toContain("text-[22px]");
+    expect(preco("a").className).toContain("text-[length:var(--fonte-preco)]");
     expect(preco("a").className).toContain("tabular-nums");
     expect(preco("a").className).toContain("text-emerald-700");
     expect(preco("fim").className).toContain("text-zinc-950");
@@ -223,18 +225,17 @@ describe("Ofertas Lateral", () => {
     expect(ponto(por("fim")).className).toContain("bg-red-700");
     expect(ponto(por("cheio"))).toBeNull();
     // O ponto vem logo antes do texto, na mesma linha do carrinho.
-    const rodape = por("pouco").querySelector("[data-compra-oferta]")
-      ?.parentElement as HTMLElement;
+    const rodape = ponto(por("pouco")).parentElement as HTMLElement;
     expect(rodape.textContent).toContain("Restam 8");
     expect(rodape.contains(ponto(por("pouco")))).toBe(true);
-    expect(rodape.className).toContain("justify-between");
+    expect(rodape.className).toContain("mt-auto");
   });
 
   it("sem foto mantém o bloco 'Sem foto' na mesma coluna", async () => {
     await montar([produto("a", { images: [] }), produto("b")]);
     const sem = cartoes()[0].querySelector("[data-sem-foto]") as HTMLElement;
     expect(sem.textContent).toContain("Sem foto");
-    expect(sem.parentElement?.className).toContain("w-2/5");
+    expect(sem.parentElement?.className).toContain("w-[104px]");
   });
 
   it("o esqueleto tem a mesma altura e a mesma divisão foto/texto do cartão", async () => {
@@ -243,15 +244,15 @@ describe("Ofertas Lateral", () => {
     const secEsq = host.querySelector(
       '[data-testid="esqueleto-ofertas"]',
     ) as HTMLElement;
-    expect(esq.style.minHeight).toBe(`${ALTURA_CARTAO_LATERAL}px`);
-    expect(esq.className).toContain("rounded-[26px]");
+    expect(esq.style.height).toBe(`${ALTURA_CARTAO_LATERAL}px`);
+    expect(esq.className).toContain("rounded-[20px]");
     expect(esq.className).toContain("overflow-hidden");
     expect(esq.className).not.toMatch(/(^|\s)p-\d/);
-    expect(esq.firstElementChild?.className).toContain("w-2/5");
+    expect(esq.firstElementChild?.className).toContain("w-[104px]");
     expect(secEsq.style.minHeight).toBe(`${ALTURA_SECAO_LATERAL}px`);
-    // A conta: seção = cartão + 102, cartão = 186 (nome de 2 linhas sempre reservado).
-    expect(ALTURA_CARTAO_LATERAL).toBe(186);
-    expect(ALTURA_SECAO_LATERAL).toBe(288);
+    // A conta: seção = cartão + 102, cartão = 124 (altura fixa, igual em todos os casos).
+    expect(ALTURA_CARTAO_LATERAL).toBe(124);
+    expect(ALTURA_SECAO_LATERAL).toBe(226);
     await montar([produto("a"), produto("b")]);
     expect(
       host.querySelector<HTMLElement>('[data-testid="ofertas-lateral"]')?.style
@@ -259,10 +260,11 @@ describe("Ofertas Lateral", () => {
     ).toBe(`${ALTURA_SECAO_LATERAL}px`);
   });
 
-  it("preço nunca quebra (nowrap, 22px; 20px a partir de 10 mil) e 'Economiza' só com desconto visível", async () => {
+  it("preço nunca quebra (nowrap) e encolhe por conta da largura, sem tirar o De, e 'Economiza' só com desconto visível", async () => {
     await montar([
       produto("a", { price: 49.9, originalPrice: 99.9 }),
       produto("caro", { price: 12999.9, originalPrice: 20000 }),
+      produto("mil", { price: 1299.9, originalPrice: 1499.9 }),
       // 99,99 -> 100: desconto arredonda para 0%, o selo some e a economia também.
       produto("zero", { price: 99.99, originalPrice: 100 }),
     ]);
@@ -271,10 +273,25 @@ describe("Ofertas Lateral", () => {
     const preco = (id: string) =>
       por(id).querySelector("[data-preco-oferta]") as HTMLElement;
     expect(preco("a").className).toContain("whitespace-nowrap");
-    expect(preco("a").className).toContain("leading-8");
+    expect(preco("a").className).toContain("leading-7");
     expect(preco("a").className).not.toContain("break-words");
-    expect(preco("a").className).toContain("text-[22px]");
-    expect(preco("caro").className).toContain("text-[20px]");
+    // O corpo vem da largura REAL da coluna (container, cqw), de 20px no máximo a 13px no piso;
+    // texto maior (mais caracteres) pede conta diferente, e o "De" é sempre renderizado inteiro.
+    const fonte = (id: string) =>
+      (preco(id).closest("div[style]") as HTMLElement).style.getPropertyValue(
+        "--fonte-preco",
+      );
+    expect(fonte("a")).toMatch(/^clamp\(13px, .*cqw.*, 20px\)$/);
+    expect(fonte("mil")).not.toBe(fonte("a"));
+    expect(fonte("caro")).not.toBe(fonte("mil"));
+    expect(
+      (preco("a").closest("div[style]") as HTMLElement).className,
+    ).toContain("[container-type:inline-size]");
+    expect(
+      por("a").querySelector("[data-preco-oferta] + span")?.className,
+    ).toContain("leading-4");
+    expect(por("caro").textContent).toMatch(/De R\$\s20\.000,00/);
+    expect(por("mil").textContent).toMatch(/De R\$\s1\.499,90/);
     expect(por("a").querySelector("[data-economia-oferta]")).not.toBeNull();
     expect(
       por("a").querySelector("[data-economia-oferta]")?.className,
@@ -283,9 +300,14 @@ describe("Ofertas Lateral", () => {
     expect(por("zero").querySelector("[data-economia-oferta]")).toBeNull();
   });
 
+  it("cartão e esqueleto usam a mesma constante de altura: 124px fixos, seção de 226px", () => {
+    expect(ALTURA_CARTAO_LATERAL).toBe(124);
+    expect(ALTURA_SECAO_LATERAL).toBe(ALTURA_CARTAO_LATERAL + 102);
+  });
+
   it("o nome reserva sempre 2 linhas: a altura não depende do nome", async () => {
     await montar([produto("a"), produto("b")]);
-    expect(cartoes()[0].querySelector("h3")?.className).toContain("min-h-10");
+    expect(cartoes()[0].querySelector("h3")?.className).toContain("h-9");
   });
 
   it("esgotado: véu branco sobre a foto", async () => {
@@ -347,7 +369,7 @@ describe("Ofertas Lateral", () => {
     expect(host.textContent).not.toContain("OFF");
   });
 
-  it("o botão de comprar é só o ícone do carrinho, redondo de 48px e neutro escuro, com nome acessível", async () => {
+  it("o botão de comprar é só o ícone do carrinho, redondo de 44px e neutro escuro, com nome acessível", async () => {
     const p = produto("Bola");
     await montar([p, produto("outra")]);
     const botao = host.querySelector(
@@ -356,7 +378,7 @@ describe("Ofertas Lateral", () => {
     expect(botao).not.toBeNull();
     expect(botao.querySelector("svg")).not.toBeNull();
     expect(botao.textContent).not.toContain("Adicionar");
-    expect(botao.className).toContain("size-12");
+    expect(botao.className).toContain("size-11");
     expect(botao.className).toContain("rounded-full");
     expect(botao.className).toContain("bg-zinc-950");
     expect(botao.className).toContain("text-white");
@@ -418,7 +440,9 @@ describe("Ofertas Lateral", () => {
     await montar([produto("Bola"), produto("fav")], ["fav"]);
     const fav = cartoes().find((c) => c.dataset.ofertaLateral === "fav");
     const coracao = fav?.querySelector("[data-botao-favorito]") as Element;
-    expect(coracao.className).toContain("size-11");
+    // Visual de 30px; o ::after estende o toque a 44px.
+    expect(coracao.className).toContain("size-[30px]");
+    expect(coracao.className).toContain("after:inset-[-7px]");
     await clicar(coracao);
     expect(favoritar).toHaveBeenCalledWith(
       expect.objectContaining({ id: "fav" }),
