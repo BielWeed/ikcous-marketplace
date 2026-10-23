@@ -7,11 +7,15 @@ interface OrderTimelineProps {
    * `shipping` se chama "Pronto para retirar" (só texto e ícone; mesmo nome
    * da ficha do pedido, em todos os estados). */
   retiradaNaLoja?: boolean;
+  /** Perfil: quatro barras finas com o nome da etapa embaixo (mesma lista
+   * nomeada e mesma etapa atual falada; só muda o desenho). */
+  compacto?: boolean;
 }
 
 export function OrderTimeline({
   status,
   retiradaNaLoja = false,
+  compacto = false,
 }: OrderTimelineProps) {
   const steps = [
     { key: "pending", label: "Recebido", icon: Check },
@@ -37,6 +41,51 @@ export function OrderTimeline({
   const currentStepIndex = steps.findIndex((s) => s.key === status);
   // Se o status for um que não mapeamos (raro), garantimos um fallback
   const safeIndex = currentStepIndex === -1 ? 0 : currentStepIndex;
+
+  if (compacto) {
+    return (
+      <>
+        {/* eslint-disable-next-line jsx-a11y/no-redundant-roles -- list-style:none apaga o papel de lista no Safari/VoiceOver */}
+        <ol
+          aria-label="Andamento do pedido"
+          // biome-ignore lint/a11y/noRedundantRoles: list-style:none apaga o papel de lista no Safari/VoiceOver
+          role="list"
+          className="m-0 flex list-none gap-2 p-0 max-[359px]:-mx-2 max-[359px]:gap-1"
+        >
+          {steps.map((step, index) => (
+            <li
+              key={step.key}
+              className="flex-auto"
+              aria-current={index === safeIndex ? "step" : undefined}
+            >
+              <div
+                aria-hidden="true"
+                className={`h-1 rounded-full ${index <= safeIndex ? "bg-zinc-900" : "bg-zinc-200"}`}
+              />
+              <span
+                className={`mt-2 block text-xs leading-tight max-[359px]:tracking-tight ${
+                  index === safeIndex
+                    ? "font-bold text-zinc-900"
+                    : index < safeIndex
+                      ? "font-medium text-zinc-900"
+                      : "font-medium text-zinc-600"
+                }`}
+              >
+                {step.label}
+              </span>
+              <span className="sr-only">
+                {index < safeIndex
+                  ? "etapa concluída"
+                  : index === safeIndex
+                    ? "etapa atual"
+                    : "etapa ainda não alcançada"}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </>
+    );
+  }
 
   return (
     <div className="relative px-2 py-6">

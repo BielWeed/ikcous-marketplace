@@ -46,7 +46,6 @@ const ARQUIVOS = [
 
 const JA_NAO_GERAVAM: Record<string, readonly string[]> = {
   "src/views/customer/CheckoutView.tsx": ["terminal", "border-3", "shadow-3xl"],
-  "src/components/ui/custom/AddressList.tsx": ["animate-all"],
 };
 
 /**
@@ -177,10 +176,6 @@ const BOTOES_ANTIGOS_SEM_BORDA_SOLIDA: Record<string, readonly string[]> = {
     "rounded-lg border border-zinc-900 px-3 py-1.5 text-xs font-bold normal-case tracking-normal text-zinc-900 active:scale-[0.98]",
     "flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20",
     "flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95",
-  ],
-  "src/components/ui/custom/AddressList.tsx": [
-    "animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-zinc-400 shadow-sm transition-all duration-200 after:absolute after:-inset-y-2.5 after:-left-2.5 after:right-0 after:content-[''] hover:bg-zinc-900 hover:text-white",
-    "animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-red-400 shadow-sm transition-all duration-200 after:absolute after:-inset-y-2.5 after:-right-2.5 after:left-0 after:content-[''] hover:bg-red-50 hover:text-red-500",
   ],
 };
 

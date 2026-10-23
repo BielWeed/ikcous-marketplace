@@ -1,6 +1,6 @@
 import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { useStore } from "@/contexts/StoreContext";
-import { chaveDaLinha } from "@/lib/escolhas-do-item";
+import { chaveDaLinha, estoqueDaLinha } from "@/lib/escolhas-do-item";
 import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem } from "@/types";
@@ -11,6 +11,9 @@ import { memo } from "react";
 
 interface CartItemCardProps {
   item: CartItem;
+  /** O carrinho todo: o limite da linha desconta o que as OUTRAS linhas do
+   *  mesmo produto já levam da mesma variação. */
+  cart: CartItem[];
   removingId: string | null;
   onUpdateQuantity: (
     productId: string,
@@ -22,6 +25,7 @@ interface CartItemCardProps {
 
 const CartItemCard = memo(function CartItemCard({
   item,
+  cart,
   removingId,
   onUpdateQuantity,
   onRemove,
@@ -35,6 +39,20 @@ const CartItemCard = memo(function CartItemCard({
   // são linhas diferentes.
   // Sem variação segue `undefined`, como as telas sempre repassaram.
   const chaveDaVariacao = chaveDaLinha(item) || undefined;
+
+  // Quanto ESTA linha pode levar: estoque da variação escolhida (menor entre as
+  // escolhas, já descontadas as outras linhas), ou o do produto se não há
+  // variação. Mesma função que o CartContext usa para travar a quantidade.
+  const estoqueDaEscolha = estoqueDaLinha(
+    item.product,
+    item.variantId,
+    item.outrasVariantIds,
+    cart.filter(
+      (linha) =>
+        linha.product.id !== item.product.id ||
+        chaveDaLinha(linha) !== chaveDaLinha(item),
+    ),
+  );
 
   // O carrinho tem que mostrar a mesma coisa que o checkout
   // (CheckoutView.tsx:891): preferir `variantNames`, que ja vem
@@ -97,14 +115,14 @@ const CartItemCard = memo(function CartItemCard({
                       </>
                     )}
                   </p>
-                  {item.product.stock <= 3 && item.product.stock > 0 && (
+                  {estoqueDaEscolha <= 3 && estoqueDaEscolha > 0 && (
                     <div className="py-0.25 animate-fade-in inline-flex select-none items-center gap-1 whitespace-nowrap rounded-md border border-rose-100/50 bg-rose-50/80 px-1.5 text-[8px] font-black uppercase tracking-wider text-rose-600">
                       <span className="relative flex size-1">
                         <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
                         <span className="relative inline-flex size-1 rounded-full bg-rose-500" />
                       </span>
-                      Só {item.product.stock}{" "}
-                      {item.product.stock === 1 ? "restante" : "restantes"}
+                      Só {estoqueDaEscolha}{" "}
+                      {estoqueDaEscolha === 1 ? "restante" : "restantes"}
                     </div>
                   )}
                 </div>
@@ -163,7 +181,7 @@ const CartItemCard = memo(function CartItemCard({
             <div className="flex origin-bottom-right scale-90 items-center gap-2">
               <QuantitySelector
                 quantity={item.quantity}
-                maxQuantity={item.product.stock}
+                maxQuantity={estoqueDaEscolha}
                 onChange={(qty) =>
                   onUpdateQuantity(item.product.id, qty, chaveDaVariacao)
                 }
@@ -237,6 +255,7 @@ export const CartItemsList = memo(function CartItemsList({
               <CartItemCard
                 key={`${item.product.id}-${chaveDaLinha(item) || "default"}`}
                 item={item}
+                cart={cart}
                 removingId={removingId}
                 onUpdateQuantity={onUpdateQuantity}
                 onRemove={onRemove}
