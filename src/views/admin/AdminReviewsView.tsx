@@ -869,7 +869,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     id="enable-reviews-switch"
                     checked={config.enableReviews}
                     onCheckedChange={handleToggleReviews}
-                    className="data-[state=checked]:bg-zinc-300 data-[state=unchecked]:bg-admin-border-strong"
+                    className="data-[state=checked]:bg-foreground data-[state=unchecked]:bg-admin-border-strong"
                     disabled={isOffline || isUpdatingConfig}
                   />
                 </label>

@@ -285,7 +285,7 @@ export function BarraDeProporcao({
       )}
     >
       <span
-        className="block h-full rounded-full bg-zinc-300"
+        className="block h-full rounded-full bg-foreground"
         style={{ width: `${largura}%` }}
       />
     </span>
