@@ -673,7 +673,7 @@ export function AddressForm({
                       requestAnimationFrame(() => form.setFocus("street"));
                     }}
                     disabled={loading}
-                    className="-my-3 py-3 text-[13px] font-semibold text-foreground underline underline-offset-4"
+                    className="-mx-2 -my-3 px-2 py-3 text-[13px] font-semibold text-foreground underline underline-offset-4"
                   >
                     Editar
                   </button>
@@ -705,7 +705,10 @@ export function AddressForm({
 
           {/* Número e complemento */}
           <div>
-            <div className="grid grid-cols-[118px_1fr] gap-2.5">
+            {/* `minmax(0,1fr)` + `min-w-0`: a coluna do complemento ENCOLHE em vez de
+                empurrar a tela para o lado em 320 px; o rótulo quebra ("opcional"
+                desce) e `items-end` mantém os dois campos na mesma linha. */}
+            <div className="grid grid-cols-[118px_minmax(0,1fr)] items-end gap-2.5">
               <div>
                 <label htmlFor="number" className={ROTULO}>
                   Número
@@ -721,8 +724,11 @@ export function AddressForm({
                   autoComplete="off"
                 />
               </div>
-              <div>
-                <label htmlFor="complement" className={ROTULO}>
+              <div className="min-w-0">
+                <label
+                  htmlFor="complement"
+                  className={cn(ROTULO, "flex-wrap gap-y-0")}
+                >
                   Complemento
                   <i className={ROTULO_APOIO}>opcional</i>
                 </label>
@@ -753,7 +759,7 @@ export function AddressForm({
                   })
                 }
                 className={cn(
-                  "inline-flex h-9 items-center rounded-xl border px-3 text-[12px] font-semibold transition-colors",
+                  "inline-flex h-11 items-center rounded-xl border px-3 text-[12px] font-semibold transition-colors",
                   semNumero
                     ? "border-foreground bg-foreground text-background"
                     : "border-border bg-background text-muted-foreground",

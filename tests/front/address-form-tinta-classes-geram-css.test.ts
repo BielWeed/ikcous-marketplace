@@ -54,7 +54,6 @@ const CLASSES_DO_FORMULARIO = [
   "underline",
   "underline-offset-4",
   // "Sem número" e chips Casa/Trabalho/Outro
-  "h-9",
   "h-11",
   "rounded-xl",
   "px-3",
@@ -63,6 +62,15 @@ const CLASSES_DO_FORMULARIO = [
   "transition-colors",
   "border-foreground",
   "text-foreground/80",
+  // coluna do complemento que encolhe (sem vazar em 320 px) e "Editar" com
+  // área de toque maior
+  "grid-cols-[118px_minmax(0,1fr)]",
+  "items-end",
+  "min-w-0",
+  "flex-wrap",
+  "gap-y-0",
+  "-mx-2",
+  "px-2",
   // interruptor ligado em tinta
   "data-[state=checked]:bg-foreground",
   // Cancelar e botão de salvar

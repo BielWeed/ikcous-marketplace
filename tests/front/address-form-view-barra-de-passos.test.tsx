@@ -3,10 +3,12 @@
 // Cabeçalho Tinta da tela de endereço (23/10/2026): barra de 3 segmentos e o
 // rótulo "Novo endereço · N de 3". O que se prova, por estado da tela:
 // - recém-aberta: nenhum segmento cheio, "1 de 3";
-// - CEP achado com endereço completo: segmentos 1 e 2 cheios, "3 de 3";
-// - CEP que a busca devolve SEM rua: só o 1 cheio, "2 de 3";
-// - número digitado: os três cheios;
-// - apagar o CEP volta ao começo (o contador acompanha o formulário vivo);
+// - CEP achado com endereço completo, número vazio: [cheio, cheio, vazio],
+//   "2 de 3" (nunca "3 de 3" com o 3º vazio: lê como "terminei");
+// - CEP que a busca devolve SEM rua: só o 1 cheio, "1 de 3";
+// - número digitado: os três cheios, "3 de 3";
+// - apagar o CEP volta ao começo, a barra INTEIRA (nada de buraco: segmento só
+//   enche se o anterior encheu);
 // - edição: sem rótulo "Novo endereço", e a barra segue decorativa.
 // "Novo endereço" fica num elemento só dele (a jornada e2e e outros testes
 // procuram esse texto) e o "· N de 3" num <span> separado.
@@ -176,17 +178,18 @@ describe("AddressFormView — barra de passos e 'Novo endereço · N de 3'", () 
     expect(rotulo()?.textContent).toContain("1 de 3");
   });
 
-  it("CEP achado com endereço completo: 1 e 2 cheios, '3 de 3'", async () => {
+  it("CEP achado com endereço completo, número vazio: [cheio, cheio, vazio] e '2 de 3'", async () => {
     await abrir();
     await act(async () => {
       digitar("cep", "38500000");
     });
     await esvaziar();
     expect(cheios()).toEqual([true, true, false]);
-    expect(rotulo()?.textContent).toContain("3 de 3");
+    expect(rotulo()?.textContent).toContain("2 de 3");
+    expect(rotulo()?.textContent).not.toContain("3 de 3");
   });
 
-  it("CEP de cidade inteira (a busca não traz rua): só o 1 cheio, '2 de 3'", async () => {
+  it("CEP de cidade inteira (a busca não traz rua): só o 1 cheio, '1 de 3'", async () => {
     respostaDoCep = { ...COMPLETO, logradouro: "", bairro: "" };
     await abrir();
     await act(async () => {
@@ -194,10 +197,10 @@ describe("AddressFormView — barra de passos e 'Novo endereço · N de 3'", () 
     });
     await esvaziar();
     expect(cheios()).toEqual([true, false, false]);
-    expect(rotulo()?.textContent).toContain("2 de 3");
+    expect(rotulo()?.textContent).toContain("1 de 3");
   });
 
-  it("número preenchido (o nome vem da conta): os três cheios", async () => {
+  it("tudo cheio (CEP achado + número; o nome vem da conta): três cheios, '3 de 3'", async () => {
     await abrir();
     await act(async () => {
       digitar("cep", "38500000");
@@ -210,7 +213,7 @@ describe("AddressFormView — barra de passos e 'Novo endereço · N de 3'", () 
     expect(rotulo()?.textContent).toContain("3 de 3");
   });
 
-  it("apagar o CEP depois de tudo preenchido: a barra volta ao começo", async () => {
+  it("número apagado depois de tudo cheio: o 3º esvazia e o N cai para '2 de 3'", async () => {
     await abrir();
     await act(async () => {
       digitar("cep", "38500000");
@@ -220,11 +223,35 @@ describe("AddressFormView — barra de passos e 'Novo endereço · N de 3'", () 
       digitar("number", "1250");
     });
     await act(async () => {
+      digitar("number", "");
+    });
+    expect(cheios()).toEqual([true, true, false]);
+    expect(rotulo()?.textContent).toContain("2 de 3");
+  });
+
+  it("apagar o CEP com rua e número ainda no formulário: a barra INTEIRA vira vazia, '1 de 3'", async () => {
+    await abrir();
+    await act(async () => {
+      digitar("cep", "38500000");
+    });
+    await esvaziar();
+    await act(async () => {
+      digitar("number", "1250");
+    });
+    // Estado de partida provado: tudo cheio.
+    expect(cheios()).toEqual([true, true, true]);
+    await act(async () => {
       digitar("cep", "3850");
     });
     await esvaziar();
-    expect(cheios()[0]).toBe(false);
-    expect(rotulo()?.textContent).toContain("1 de 3");
+    // O formulário guarda rua e número; mesmo assim, sem CEP de 8 dígitos
+    // nenhum segmento enche (a barra não pode ter buraco).
+    expect(cheios()).toEqual([false, false, false]);
+    const spans = [...(rotulo()?.children ?? [])];
+    expect(spans.map((s) => s.textContent?.trim())).toEqual([
+      "Novo endereço",
+      "· 1 de 3",
+    ]);
   });
 
   it("edição: sem rótulo 'Novo endereço', título 'Editar endereço', barra cheia", async () => {
