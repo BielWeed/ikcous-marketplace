@@ -371,6 +371,8 @@ const SUCESSORA_244 =
 // (tests/banco/a-compra-online-trava-posterior.cjs, chamado por a-loja-escolhe-como-entrega-posterior.cjs).
 const SUCESSORA_350 =
   "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql";
+const SUCESSORA_384 =
+  "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql";
 
 Deno.test("so a 20261174000000 define o corpo vivo de v23 e v24 antes deste par (nenhuma migration posterior a redefine); depois dele, so este par e a sucessora da v24 (20261236000000)", () => {
   const dir = new URL("supabase/migrations/", DIR);
@@ -396,6 +398,7 @@ Deno.test("so a 20261174000000 define o corpo vivo de v23 e v24 antes deste par 
       `${SUCESSORA_244}:${V24}`,
       `${SUCESSORA_350}:${V23}`,
       `${SUCESSORA_350}:${V24}`,
+      `${SUCESSORA_384}:${V24}`,
     ].sort(),
   );
 });

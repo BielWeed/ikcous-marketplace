@@ -219,6 +219,13 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(hospedeiro.textContent).toContain(
       "Este pedido não está com o pagamento confirmado",
     );
+    // Diz à lojista o que fazer, além de avisar do risco. O "Cancelar" do próprio
+    // aviso só o fecha: o cancelamento é o botão Cancelar pedido da ficha, e a
+    // venda se registra na tela Vender (nomes-do-painel.ts, admin-pdv).
+    expect(hospedeiro.textContent).toContain(
+      "Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
+    );
+    expect(hospedeiro.textContent).not.toContain("balcão");
     expect(onStatusChange).not.toHaveBeenCalled();
   });
 

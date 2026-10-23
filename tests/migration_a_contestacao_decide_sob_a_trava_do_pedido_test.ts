@@ -313,6 +313,12 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/admin-atual-endurecimento-viva.cjs",
     // 20261382: o resultado mostra tarifa, juro e quebra como despesa (sinal das linhas do grupo financeiro; controle com o corpo anterior, mutantes, rollback e portoes 8e/45a/87a/87b).
     "tests/banco/fin-dre-sinal-viva.cjs",
+    // 20261383: so o dono da loja define cargo (dono nomeia e remove, nomeado nao nomeia, ninguem rebaixa o dono, PATCH direto barrado, log, EXECUTE, concorrencia real, mutantes, rollback, consultas 88a/88b).
+    "tests/banco/definir-cargo-so-o-dono-viva.cjs",
+    // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
+    "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
+    // 20261385: a busca de produtos do painel acha pelo codigo de barras e pelo codigo da variacao (controle com o corpo anterior, igualdade x parcial, total_count/paginacao, porta de admin, mutantes, rollback e consultas 90a/90b).
+    "tests/banco/busca-do-painel-por-codigo-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -426,6 +432,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/admin-atual-endurecimento-viva.cjs",
     // 20261382: o resultado mostra tarifa, juro e quebra como despesa (sinal das linhas do grupo financeiro; controle com o corpo anterior, mutantes, rollback e portoes 8e/45a/87a/87b).
     "tests/banco/fin-dre-sinal-viva.cjs",
+    // 20261383: so o dono da loja define cargo (dono nomeia e remove, nomeado nao nomeia, ninguem rebaixa o dono, PATCH direto barrado, log, EXECUTE, concorrencia real, mutantes, rollback, consultas 88a/88b).
+    "tests/banco/definir-cargo-so-o-dono-viva.cjs",
+    // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
+    "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
+    // 20261385: a busca de produtos do painel acha pelo codigo de barras e pelo codigo da variacao (controle com o corpo anterior, igualdade x parcial, total_count/paginacao, porta de admin, mutantes, rollback e consultas 90a/90b).
+    "tests/banco/busca-do-painel-por-codigo-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

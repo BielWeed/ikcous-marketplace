@@ -1981,7 +1981,7 @@ export function useProducts({ autoFetch = true } = {}) {
         if (error) throw error;
 
         await refreshContext();
-        toast.success("Status status atualizado");
+        toast.success("Status atualizado");
         return true;
       } catch (err) {
         console.error("Error updating products status:", err);
