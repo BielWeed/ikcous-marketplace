@@ -416,22 +416,37 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     expect(classes(dt("Saiu").nextElementSibling)).toContain("text-red-300");
   });
 
-  it("Caixa: a sessão do histórico usa o cartão novo e o rótulo legível", async () => {
+  it("Caixa: a sessão do histórico é uma linha do cartão do histórico, com rótulo legível em frase", async () => {
     await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
     await abrirAba("Caixa");
 
+    // Desenho de 22/10/2026: as sessões deixaram de ser cartões elevados um
+    // dentro do outro; são linhas separadas por fio dentro do cartão do histórico.
     const li = [...hospedeiro.querySelectorAll("li")].find((el) =>
       normalizar(el.textContent).includes("Esperado"),
     );
-    comACasca(li, CASCA_DO_CARTAO, "sessão do histórico");
+    expect(classes(li), "sessão do histórico").toEqual(
+      expect.arrayContaining(["border-t", "border-admin-border"]),
+    );
+    expect(classes(li), "sem cartão dentro de cartão").not.toContain(
+      "bg-admin-raised",
+    );
     for (const rotulo of ["Esperado", "Contado", "Diferença"]) {
       const r = [...(li?.querySelectorAll("dt") ?? [])].find(
         (el) => normalizar(el.textContent) === rotulo,
       );
       expect(classes(r), rotulo).toEqual(
-        expect.arrayContaining(["text-xs", "font-semibold", "text-zinc-300"]),
+        expect.arrayContaining(["text-xs", "text-zinc-400"]),
       );
-      expect(classes(r), rotulo).not.toContain("text-zinc-500");
+      for (const velha of [
+        "uppercase",
+        "font-black",
+        "text-[11px]",
+        "text-zinc-500",
+        "tracking-[0.2em]",
+      ]) {
+        expect(classes(r), `${rotulo}: sobrou ${velha}`).not.toContain(velha);
+      }
     }
     // A cor de estado da diferença (quebra) fica.
     const diferenca = [...(li?.querySelectorAll("dt") ?? [])].find(
