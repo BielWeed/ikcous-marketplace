@@ -722,7 +722,7 @@ describe("cache curto do sitemap, com stale-if-error e SEM vazar entre lojas", (
     expect(vencida.corpo).not.toContain("product-detail");
   });
 
-  it("o mapa em cache de uma loja NUNCA é servido por outra (cache chaveado pelo endereço)", async () => {
+  it("o mapa em cache de uma loja NUNCA é servido por outra (cache chaveado por domínio + banco)", async () => {
     const cacheMapa = new Map<string, EntradaCacheMapa>();
     const cache = new Map();
     const lojas: LojaDuble[] = [
@@ -758,9 +758,86 @@ describe("cache curto do sitemap, com stale-if-error e SEM vazar entre lojas", (
     expect(dois).toContain("id=d-1");
     expect(dois).not.toContain("u-1");
     expect([...cacheMapa.keys()].sort()).toEqual([
-      "https://dois-mapa.exemplo",
-      "https://um-mapa.exemplo",
+      `dois-mapa.exemplo|${lojas[1].origem}`,
+      `um-mapa.exemplo|${lojas[0].origem}`,
     ]);
+  });
+
+  it("o MESMO domínio que muda de banco nunca serve os ids do banco antigo (a chave inclui o banco)", async () => {
+    const cacheMapa = new Map<string, EntradaCacheMapa>();
+    // Um só dublê, mutado entre as leituras: o domínio é o mesmo, o banco troca.
+    const loja: LojaDuble = {
+      host: "migrou-mapa.exemplo",
+      nome: "Loja Que Migrou",
+      origem: origemDe("antiga"),
+      produtos: { tipo: "ids", ids: ["antigo-1"] },
+    };
+    const chamadas: string[] = [];
+    const ler = async () => {
+      const resp = await atenderPorteiro(
+        new Request(`https://${loja.host}/sitemap.xml`),
+        {
+          ...ENV_LIMPO,
+          VITE_SUPABASE_URL: loja.origem,
+          VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_projeto",
+        },
+        {
+          fetchImpl: criarFetchDeLojas([loja], chamadas),
+          // Ficha nova a cada leitura: só o cache do MAPA persiste, que é o
+          // que está sob teste (a ficha em si já tem teste próprio).
+          cache: new Map(),
+          cacheMapa,
+          agora: () => 1_000_000,
+        },
+      );
+      return resp.text();
+    };
+    expect(await ler()).toContain("id=antigo-1");
+    loja.origem = origemDe("novabase");
+    loja.produtos = { tipo: "ids", ids: ["novo-1"] };
+    const depois = await ler();
+    expect(depois).toContain("id=novo-1");
+    expect(depois).not.toContain("antigo-1");
+    expect(chamadas).toContain(`${loja.origem}/rest/v1/vw_produtos_public`);
+    expect(cacheMapa.size).toBe(2);
+  });
+
+  it("porta e protocolo NÃO entram na chave: os ids são reaproveitados e o XML sai com o endereço de quem pediu", async () => {
+    const loja: LojaDuble = {
+      host: "porta-mapa.exemplo",
+      nome: "Loja Porta",
+      origem: origemDe("porta"),
+      produtos: { tipo: "ids", ids: ["p-1"] },
+    };
+    const chamadas: string[] = [];
+    const cacheMapa = new Map<string, EntradaCacheMapa>();
+    const cache = new Map();
+    const ler = async (base: string) => {
+      const resp = await atenderPorteiro(
+        new Request(`${base}/sitemap.xml`),
+        {
+          ...ENV_LIMPO,
+          VITE_SUPABASE_URL: loja.origem,
+          VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_projeto",
+        },
+        {
+          fetchImpl: criarFetchDeLojas([loja], chamadas),
+          cache,
+          cacheMapa,
+          agora: () => 1_000_000,
+        },
+      );
+      return resp.text();
+    };
+    const https = await ler(`https://${loja.host}`);
+    const local = await ler(`http://${loja.host}:8080`);
+    expect(https).toContain(`https://${loja.host}/`);
+    expect(local).toContain(`http://${loja.host}:8080/`);
+    expect(local).toContain("id=p-1");
+    expect(cacheMapa.size).toBe(1);
+    expect(
+      chamadas.filter((c) => c.endsWith("/vw_produtos_public")),
+    ).toHaveLength(1);
   });
 
   it("sem cacheMapa injetado (teste ou chamada avulsa) funciona, só sem memória", async () => {
