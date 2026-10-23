@@ -130,7 +130,13 @@ function LinhaDoExtratoItem({
 function CabecalhoDoDia({
   grupo,
   hoje,
-}: { readonly grupo: DiaDoExtrato; readonly hoje: DataIso }) {
+  comSaldoPorDia,
+}: {
+  readonly grupo: DiaDoExtrato;
+  readonly hoje: DataIso;
+  /** A tela sabe reconstruir o saldo por dia (conta escolhida, período até hoje). */
+  readonly comSaldoPorDia: boolean;
+}) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pb-2 pt-4">
       <h3 className="min-w-0 text-base font-bold text-white">
@@ -155,6 +161,18 @@ function CabecalhoDoDia({
               valor={grupo.saldoAoFim}
               className="whitespace-nowrap font-semibold text-zinc-200"
             />
+          </span>
+        ) : comSaldoPorDia ? (
+          // Dia ANTES do saldo inicial da conta: o saldo de hoje nunca somou
+          // esse dinheiro, então não existe número honesto — traço, nunca
+          // R$ 0,00 nem valor reconstruído. O traço não é valor: não depende
+          // de "Ocultar" e não revela tamanho nenhum.
+          <span className="whitespace-nowrap">
+            Saldo{" "}
+            <span aria-hidden="true" className="font-semibold text-zinc-400">
+              —
+            </span>
+            <span className="sr-only">indisponível antes do saldo inicial</span>
           </span>
         ) : null}
       </p>
@@ -196,12 +214,20 @@ export function AbaExtrato({
   const saldoAtual =
     conta && intervalo && intervalo.fim >= hoje ? conta.saldo : null;
 
+  // O saldo de hoje só soma movimento a partir de `saldoInicialEm`; antes
+  // dessa data o dia não tem saldo reconstruível (achado financeiro-2).
+  const marco = conta?.saldoInicialEm ?? null;
+
   const grupos = useMemo(
     () =>
       extrato.dados
-        ? agruparExtratoPorDia(extrato.dados, { contaFiltrada, saldoAtual })
+        ? agruparExtratoPorDia(extrato.dados, {
+            contaFiltrada,
+            saldoAtual,
+            marco,
+          })
         : [],
-    [extrato.dados, contaFiltrada, saldoAtual],
+    [extrato.dados, contaFiltrada, saldoAtual, marco],
   );
 
   const visiveis = useMemo(
@@ -354,7 +380,11 @@ export function AbaExtrato({
                 aria-label={formatarDiaPorExtenso(grupo.dia)}
                 className={cn(CLASSE_CARTAO_DA_LISTA, "px-4 pb-1")}
               >
-                <CabecalhoDoDia grupo={grupo} hoje={hoje} />
+                <CabecalhoDoDia
+                  grupo={grupo}
+                  hoje={hoje}
+                  comSaldoPorDia={saldoAtual !== null}
+                />
                 <ul className="flex flex-col">
                   {linhas.map((linha) => (
                     <LinhaDoExtratoItem

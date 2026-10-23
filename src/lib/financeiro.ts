@@ -1110,12 +1110,24 @@ export interface DiaDoExtrato {
  * de trás para frente (`saldo(dia) = saldo(dia seguinte) − resultado(dia
  * seguinte)`). Sem isso, `saldoAoFim` fica `null` — nunca um número
  * inventado.
+ *
+ * `marco`: a `saldoInicialEm` da conta filtrada. O saldo de hoje (âncora da
+ * reconstrução) vem de `fin__saldos`, que só soma movimento com `data >=
+ * saldo_inicial_em`, enquanto o extrato devolve também o que veio ANTES —
+ * reconstruir para trás por cima disso inventa saldo (até negativo). Dia
+ * `< marco` fica com `saldoAoFim: null`; o dia do marco conta. Sem `marco`
+ * (omitido ou `null`) nada é cortado, como em `serieDoFluxoDeCaixa`.
  */
 export function agruparExtratoPorDia(
   linhas: readonly LinhaDoExtrato[],
-  opcoes: { contaFiltrada?: string | null; saldoAtual?: number | null } = {},
+  opcoes: {
+    contaFiltrada?: string | null;
+    saldoAtual?: number | null;
+    marco?: DataIso | null;
+  } = {},
 ): DiaDoExtrato[] {
   const contaFiltrada = opcoes.contaFiltrada ?? null;
+  const marco = opcoes.marco ?? null;
   const porDia = new Map<DataIso, LinhaDoExtrato[]>();
   for (const linha of linhas) {
     const doDia = porDia.get(linha.data);
@@ -1145,7 +1157,10 @@ export function agruparExtratoPorDia(
       resultado: deCentavos(resultado),
       entradas: deCentavos(entradas),
       saidas: deCentavos(saidas),
-      saldoAoFim: saldoCorrente === null ? null : deCentavos(saldoCorrente),
+      saldoAoFim:
+        saldoCorrente === null || (marco !== null && dia < marco)
+          ? null
+          : deCentavos(saldoCorrente),
     });
     if (saldoCorrente !== null) saldoCorrente -= resultado;
   }
