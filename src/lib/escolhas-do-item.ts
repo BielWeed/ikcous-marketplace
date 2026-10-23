@@ -10,10 +10,16 @@ import type { CartItem, Product, ProductVariant } from "@/types";
  * caíam na mesma linha (quantidade 2, nome do primeiro).
  *
  * O desenho, e por que ele é pequeno:
- *   - `CartItem.variantId` continua sendo UM id (o primeiro, pela ordem do
- *     cadastro) e é ele que o pedido e o frete enviam e o preço lê: nada do
- *     dinheiro muda de lugar. As demais escolhas ficam em
+ *   - `CartItem.variantId` continua sendo UM id (o primeiro, pela ordem
+ *     DETERMINÍSTICA de `ordenarPelaGrade`) e é ele que o pedido e o frete
+ *     enviam e o preço lê. As demais escolhas ficam em
  *     `CartItem.outrasVariantIds`.
+ *   - DINHEIRO, a verdade: o servidor cobra e baixa estoque só desse primeiro
+ *     id (`COALESCE(v.price_override, p.preco_venda)`); o ajuste de preço da
+ *     outra escolha NUNCA é cobrado. Antes o primeiro id era o do primeiro
+ *     grupo TOCADO; agora é o primeiro pela ordem fixa, e a página, o card, o
+ *     carrinho e o servidor mostram e cobram o MESMO número
+ *     (`precoDaEscolha`). Para quem tem 0 ou 1 escolha nada muda.
  *   - A identidade da LINHA é a CHAVE COMPOSTA `idA~idB` (`chaveDaVariacao`).
  *     Com uma escolha só (a maioria) a chave é o próprio `variantId`, byte a
  *     byte a de antes: carrinho salvo no aparelho e linha de `cart_items` já
@@ -77,43 +83,83 @@ export const chaveDoItem = (
 ) => `${item.product.id}-${chaveDaLinha(item)}`;
 
 /**
- * Coloca as variações escolhidas na ORDEM DO CADASTRO (grupo que aparece
- * primeiro na lista do produto vem primeiro). Sem isso o "primeiro id" mudava
- * com a ordem dos toques -- Azul depois P e P depois Azul seriam duas linhas
- * para a mesma combinação.
+ * Ordem FIXA das variações escolhidas: pelo rótulo do grupo ("Cor" antes de
+ * "Tamanho") e, no empate, pelo id. Não depende da ordem dos toques (Azul
+ * depois P e P depois Azul são a mesma combinação) NEM da ordem das linhas que
+ * o banco devolve (`product_variants(*)` vem sem ORDER BY, e uma linha
+ * atualizada pode ir para o fim): o primeiro id, a chave e o preço cobrado não
+ * mudam por isso.
  */
 export function ordenarPelaGrade(
-  variantes: readonly ProductVariant[] | undefined,
   escolhidas: readonly ProductVariant[],
 ): ProductVariant[] {
-  const posicaoDoGrupo = new Map<string, number>();
-  for (const v of variantes ?? []) {
-    if (!posicaoDoGrupo.has(v.name))
-      posicaoDoGrupo.set(v.name, posicaoDoGrupo.size);
+  const comparar = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  return [...escolhidas].sort(
+    (a, b) => comparar(a.name, b.name) || comparar(a.id, b.id),
+  );
+}
+
+/**
+ * O preço que o servidor cobra por uma escolha: o da variação PRINCIPAL (a
+ * primeira pela ordem fixa), nunca o último ajuste tocado. Página, card,
+ * carrinho e pedido leem daqui.
+ */
+export function precoDaEscolha(
+  produto: { price: number },
+  escolhidas: readonly ProductVariant[],
+): number {
+  return ordenarPelaGrade(escolhidas)[0]?.priceOverride ?? produto.price;
+}
+
+/** Soma `quantidade` ao uso de CADA variação que a linha usa. */
+export function somarUso(
+  uso: Map<string, number>,
+  linha: ItemComEscolhas,
+  quantidade: number,
+): void {
+  for (const id of semRepeticao([
+    linha.variantId,
+    ...(linha.outrasVariantIds ?? []),
+  ])) {
+    uso.set(id, (uso.get(id) ?? 0) + quantidade);
   }
-  const posicao = (v: ProductVariant) =>
-    posicaoDoGrupo.get(v.name) ?? Number.MAX_SAFE_INTEGER;
-  return [...escolhidas].sort((a, b) => posicao(a) - posicao(b));
+}
+
+/** Quanto cada variação já está levada pelas linhas dadas (por id). */
+export function usoPorVariante(
+  linhas: readonly (ItemComEscolhas & Pick<CartItem, "quantity">)[],
+): Map<string, number> {
+  const uso = new Map<string, number>();
+  for (const linha of linhas) somarUso(uso, linha, linha.quantity);
+  return uso;
 }
 
 /**
  * Quantas unidades a LINHA pode levar: sem variação, o estoque do produto; com
  * variação, o menor estoque entre TODAS as escolhidas (levar "Azul P" precisa
- * de azul E de P). Variação que o produto já não tem conta zero.
+ * de azul E de P), MENOS o que as OUTRAS linhas do carrinho já levam da mesma
+ * variação -- o servidor baixa todas as linhas contra o mesmo id principal,
+ * então Azul-M x2 e Azul-P x4 com 5 azuis falhariam no último clique. Variação
+ * que o produto já não tem conta zero.
  */
 export function estoqueDaLinha(
   product: Product,
   variantId?: string | null,
   outrasVariantIds: readonly string[] = [],
+  outrasLinhas: readonly CartItem[] = [],
 ): number {
   const principal = variantId
     ? product.variants?.find((v) => v.id === variantId)
     : undefined;
   if (!principal) return product.stock || 0;
-  const demais = outrasVariantIds.map(
-    (id) => product.variants?.find((v) => v.id === id)?.stockIncrement ?? 0,
+  const uso = usoPorVariante(
+    outrasLinhas.filter((linha) => linha.product.id === product.id),
   );
-  return Math.min(principal.stockIncrement, ...demais);
+  const sobra = (id: string, estoque: number) => estoque - (uso.get(id) ?? 0);
+  const demais = outrasVariantIds.map((id) =>
+    sobra(id, product.variants?.find((v) => v.id === id)?.stockIncrement ?? 0),
+  );
+  return Math.min(sobra(principal.id, principal.stockIncrement), ...demais);
 }
 
 /**

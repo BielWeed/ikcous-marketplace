@@ -208,4 +208,22 @@ describe("ProductCard — cor e tamanho de cadastro antigo viram UMA combinaçã
 
     expect(entregar.mock.calls[0].slice(1)).toEqual(["vt-m", "Tamanho: M", 1]);
   });
+  it("o preço do card é o da variação principal (o mesmo do carrinho), não o ajuste do último toque", async () => {
+    await renderizarCard(
+      camiseta([
+        variante("vc-azul", "Cor", "Azul", 5),
+        variante("vt-m", "Tamanho", "M", 4),
+        { ...variante("vt-g", "Tamanho", "G", 3), priceOverride: 60 },
+      ]),
+    );
+    await abrirFolha();
+    await act(async () => chip("G").click());
+
+    // Azul (sem ajuste) é a principal: R$ 50. O R$ 60 do G não é cobrado.
+    const texto = `${hospedeiro.textContent}${document.body.textContent}`;
+    expect(texto).toContain("50,00");
+    expect(texto).not.toContain("60,00");
+    await act(async () => cta().click());
+    expect(entregar.mock.calls[0][1]).toBe("vc-azul~vt-g");
+  });
 });

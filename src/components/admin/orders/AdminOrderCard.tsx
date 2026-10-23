@@ -351,7 +351,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
         <ul className="mb-2 space-y-1.5 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm text-zinc-200">
           {itens.slice(0, 3).map((item, i) => (
             <li
-              key={`${item.productId}-${item.variantId ?? i}`}
+              key={`${item.productId}-${item.variantId ?? ""}-${i}`}
               className="flex items-start gap-2"
             >
               <span className="shrink-0 font-semibold">

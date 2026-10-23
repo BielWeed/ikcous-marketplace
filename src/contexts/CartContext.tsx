@@ -1014,11 +1014,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           (item) => chaveDoItem(item) === chaveDaNova,
         );
 
-        // Enforce stock limit (com duas escolhas, vale o menor estoque)
+        // Enforce stock limit (com duas escolhas, vale o menor estoque, já
+        // descontado o que as OUTRAS linhas levam da mesma variação)
         const availableStock = estoqueDaLinha(
           product,
           variantId,
           outrasVariantIds,
+          prev.filter((item) => chaveDoItem(item) !== chaveDaNova),
         );
 
         if (availableStock <= 0) {
@@ -1123,6 +1125,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               item.product,
               item.variantId,
               item.outrasVariantIds,
+              prev.filter((outra) => outra !== item),
             );
 
             // Estoque que virou 0 não pode virar item com quantidade 0: o

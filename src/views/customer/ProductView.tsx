@@ -32,7 +32,11 @@ import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
   CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
-import { chaveDaVariacao, ordenarPelaGrade } from "@/lib/escolhas-do-item";
+import {
+  chaveDaVariacao,
+  ordenarPelaGrade,
+  precoDaEscolha,
+} from "@/lib/escolhas-do-item";
 import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
@@ -440,10 +444,11 @@ export const ProductView = React.memo(function ProductView({
   // preço exibido de uma variação-brinde era o do produto. `??` só cai no
   // acumulado quando a variação não tem override de verdade (null/undefined),
   // a mesma semântica do COALESCE do servidor.
-  const currentPrice = selectedVariantObjects.reduce(
-    (acc, v) => v?.priceOverride ?? acc,
-    product.price,
-  );
+  //
+  // O preço mostrado é o da variação PRINCIPAL (a primeira pela ordem fixa):
+  // a mesma que vai ao carrinho e que o servidor cobra. O ajuste de uma outra
+  // escolha nunca é cobrado, então também não é mostrado.
+  const currentPrice = precoDaEscolha(product, selectedVariantObjects);
   // Estoque que a cliente pode levar com UMA escolha de variações (o menor
   // entre as escolhidas; sem escolha, o do produto). Separado de `currentStock`
   // para a troca de variação conferir a escolha NOVA antes de renderizar.
@@ -613,10 +618,7 @@ export const ProductView = React.memo(function ProductView({
     // toques, senão Azul-depois-P e P-depois-Azul seriam duas linhas). O
     // primeiro id segue sendo o que o pedido envia e o preço lê; a chave
     // composta só diz QUAL combinação é esta linha (escolhas-do-item.ts).
-    const escolhasDaLinha = ordenarPelaGrade(
-      product.variants,
-      selectedVariantObjects,
-    );
+    const escolhasDaLinha = ordenarPelaGrade(selectedVariantObjects);
     const variantNames = escolhasDaLinha
       .map((v) => `${v.name}: ${v.value}`)
       .join(", ");

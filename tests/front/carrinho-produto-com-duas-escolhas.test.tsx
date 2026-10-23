@@ -23,6 +23,7 @@ import {
   normalizarChave,
   notaDasEscolhas,
   ordenarPelaGrade,
+  precoDaEscolha,
   separarChave,
 } from "@/lib/escolhas-do-item";
 import { mapProductFromDB } from "@/lib/mappers";
@@ -195,13 +196,41 @@ describe("carrinho: produto com cor e tamanho em escolhas separadas", () => {
       atual.updateQuantity("p1", 4, AZUL_M);
     });
     expect(atual.cart[0].quantity).toBe(2);
-    // Azul-P não herda o limite do M: tem 4 (P), não 2.
+    // Azul-P não herda o limite do M (P tem 4)... mas o servidor baixa as duas
+    // linhas contra o MESMO azul (5 peças): com 2 já levadas em Azul-M, só
+    // sobram 3 para Azul-P. Sem isso o pedido falharia no último clique.
     await act(async () => {
       atual.addToCart(produto(), 9, AZUL_P, NOME_AZUL_P);
     });
     expect(resumo(atual.cart)).toEqual([
       [AZUL, [M], 2],
-      [AZUL, [P], 4],
+      [AZUL, [P], 3],
+    ]);
+    expect(atual.cartCount).toBe(5);
+    // Subir a quantidade de uma linha também respeita o que a outra leva.
+    await act(async () => {
+      atual.updateQuantity("p1", 4, AZUL_P);
+    });
+    expect(atual.cart[1].quantity).toBe(3);
+    // A linha de Azul-M já no teto do M; tirar Azul-P libera o azul de novo.
+    await act(async () => {
+      atual.removeFromCart("p1", AZUL_M);
+    });
+    await act(async () => {
+      atual.updateQuantity("p1", 4, AZUL_P);
+    });
+    expect(atual.cart[0].quantity).toBe(4);
+  });
+
+  it("a cor sozinha (linha antiga) e a combinação dividem o mesmo estoque da cor", async () => {
+    await montar();
+    await act(async () => {
+      atual.addToCart(produto(), 4, AZUL, "Cor: Azul");
+      atual.addToCart(produto(), 3, AZUL_P, NOME_AZUL_P);
+    });
+    expect(resumo(atual.cart)).toEqual([
+      [AZUL, undefined, 4],
+      [AZUL, [P], 1],
     ]);
   });
 
@@ -457,17 +486,67 @@ describe("escolhas do item: chave, estoque, assinatura e observação do pedido"
     ).toBe(`p1-${AZUL_P}`);
   });
 
-  it("a ordem vem do cadastro, não da ordem dos toques", () => {
+  it("a ordem é fixa: não depende da ordem dos toques nem da ordem das linhas do banco", () => {
     const todas = produto().variants ?? [];
     const por = (id: string) => todas.find((v) => v.id === id)!;
-    const cadastro = ordenarPelaGrade(todas, [por(P), por(AZUL)]).map(
-      (v) => v.id,
+    const ids = (lista: ReturnType<typeof ordenarPelaGrade>) =>
+      lista.map((v) => v.id);
+    // Cor antes de Tamanho, qualquer que seja a ordem em que chegam.
+    expect(ids(ordenarPelaGrade([por(P), por(AZUL)]))).toEqual([AZUL, P]);
+    expect(ids(ordenarPelaGrade([por(AZUL), por(P)]))).toEqual([AZUL, P]);
+    expect(ids(ordenarPelaGrade([por(P)]))).toEqual([P]);
+    expect(ids(ordenarPelaGrade([]))).toEqual([]);
+    // Mesmo rótulo de grupo: desempata pelo id.
+    const a = { ...por(P), id: "a-id", name: "Tamanho" };
+    const b = { ...por(M), id: "b-id", name: "Tamanho" };
+    expect(ids(ordenarPelaGrade([b, a]))).toEqual(["a-id", "b-id"]);
+    // Embaralhar as variações do produto não muda chave, id principal nem preço.
+    const comPreco = variantes.map((v) =>
+      v.id === AZUL ? { ...v, price_override: 12 } : v,
     );
-    expect(cadastro).toEqual([AZUL, P]);
-    expect(
-      ordenarPelaGrade(todas, [por(AZUL), por(P)]).map((v) => v.id),
-    ).toEqual(cadastro);
-    expect(ordenarPelaGrade(undefined, [por(P)]).map((v) => v.id)).toEqual([P]);
+    const resultados = new Set<string>();
+    for (const ordem of [
+      [0, 1, 2, 3],
+      [3, 2, 1, 0],
+      [2, 0, 3, 1],
+      [1, 3, 0, 2],
+    ]) {
+      const embaralhado = mapProductFromDB({
+        ...linha,
+        product_variants: ordem.map((i) => comPreco.at(i)!),
+      });
+      const escolhidas = ordenarPelaGrade(
+        [P, AZUL].map((id) => embaralhado.variants!.find((v) => v.id === id)!),
+      );
+      resultados.add(
+        JSON.stringify([
+          chaveDaVariacao(
+            escolhidas[0].id,
+            escolhidas.slice(1).map((v) => v.id),
+          ),
+          escolhidas[0].id,
+          precoDaEscolha(embaralhado, escolhidas),
+        ]),
+      );
+    }
+    expect([...resultados]).toEqual([JSON.stringify([AZUL_P, AZUL, 12])]);
+  });
+
+  it("o preço da escolha é o da variação principal, nunca o último ajuste tocado", () => {
+    const comAjustes = mapProductFromDB({
+      ...linha,
+      product_variants: variantes.map((v) =>
+        v.id === M ? { ...v, price_override: 60 } : v,
+      ),
+    });
+    const por = (id: string) => comAjustes.variants!.find((v) => v.id === id)!;
+    // Azul sem ajuste é a principal; o R$ 60 do M não é cobrado.
+    expect(precoDaEscolha(comAjustes, [por(M), por(AZUL)])).toBe(10);
+    expect(precoDaEscolha(comAjustes, [por(AZUL), por(M)])).toBe(10);
+    // 0 e 1 escolha: como sempre.
+    expect(precoDaEscolha(comAjustes, [])).toBe(10);
+    expect(precoDaEscolha(comAjustes, [por(M)])).toBe(60);
+    expect(precoDaEscolha(comAjustes, [por(AZUL)])).toBe(10);
   });
 
   it("estoque da linha: o menor entre as escolhas; variação que sumiu vale zero", () => {
@@ -476,6 +555,24 @@ describe("escolhas do item: chave, estoque, assinatura e observação do pedido"
     expect(estoqueDaLinha(p, AZUL, [P])).toBe(4);
     expect(estoqueDaLinha(p, AZUL)).toBe(5);
     expect(estoqueDaLinha(p, AZUL, ["sumiu"])).toBe(0);
+    // Descontando o que as OUTRAS linhas já levam da mesma variação.
+    const outra = (outras: string[], quantity: number): CartItem => ({
+      product: p,
+      quantity,
+      variantId: AZUL,
+      outrasVariantIds: outras,
+    });
+    expect(estoqueDaLinha(p, AZUL, [P], [outra([M], 2)])).toBe(3);
+    expect(estoqueDaLinha(p, AZUL, [M], [outra([P], 4)])).toBe(1);
+    // Linha de OUTRO produto não desconta nada.
+    expect(
+      estoqueDaLinha(
+        p,
+        AZUL,
+        [P],
+        [{ ...outra([M], 2), product: { ...p, id: "p2" } }],
+      ),
+    ).toBe(4);
     // Sem variação (ou com id desconhecido): o estoque do produto.
     expect(estoqueDaLinha(p)).toBe(p.stock);
     expect(estoqueDaLinha(p, "id-que-nao-existe")).toBe(p.stock);
@@ -563,6 +660,18 @@ describe("escolhas do item: chave, estoque, assinatura e observação do pedido"
       variantes.filter((v) => v.id !== M),
     );
     expect(aplicarCatalogoAoCarrinho([item([M], 1)], semMNoBanco)).toEqual([]);
+
+    // As linhas dividem o MESMO azul (5): a releitura corta a SOMA, não só
+    // cada linha — Azul-M x2 + Azul-P x4 fica 2 + 3.
+    expect(
+      aplicarCatalogoAoCarrinho(
+        [item([M], 2), item([P], 4)],
+        hoje((v) => v),
+      ).map((i) => [i.outrasVariantIds, i.quantity]),
+    ).toEqual([
+      [[M], 2],
+      [[P], 3],
+    ]);
 
     // Nada mudou: devolve o MESMO array (não dispara gravação à toa).
     const igual = hoje((v) => v);

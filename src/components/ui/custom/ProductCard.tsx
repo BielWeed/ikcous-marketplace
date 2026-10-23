@@ -7,7 +7,11 @@ import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
   CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
-import { chaveDaVariacao, ordenarPelaGrade } from "@/lib/escolhas-do-item";
+import {
+  chaveDaVariacao,
+  ordenarPelaGrade,
+  precoDaEscolha,
+} from "@/lib/escolhas-do-item";
 import {
   type PromessasDeFrete,
   fraseDoSeloDeFreteGratis,
@@ -375,10 +379,8 @@ export const ProductCard = memo(function ProductCard({
     )
     .filter(Boolean) as ProductVariant[];
 
-  const precoAtual = selecionadasObjs.reduce(
-    (acc, v) => v?.priceOverride ?? acc,
-    product.price,
-  );
+  // Preço da variação PRINCIPAL (a que vai ao carrinho e o servidor cobra).
+  const precoAtual = precoDaEscolha(product, selecionadasObjs);
   const estoqueAtual = temGruposDeOpcao
     ? selecionadasObjs.length > 0
       ? Math.min(...selecionadasObjs.map((v) => v?.stockIncrement || 0))
@@ -560,10 +562,7 @@ export const ProductCard = memo(function ProductCard({
     // DUAS escolhas (na ordem do cadastro) e o carrinho faz uma linha por
     // combinação. Com uma escolha só é o próprio id, como sempre
     // (escolhas-do-item.ts).
-    const escolhasDaLinha = ordenarPelaGrade(
-      product.variants,
-      selecionadasObjs,
-    );
+    const escolhasDaLinha = ordenarPelaGrade(selecionadasObjs);
     const variantId =
       chaveDaVariacao(
         escolhasDaLinha[0]?.id,
