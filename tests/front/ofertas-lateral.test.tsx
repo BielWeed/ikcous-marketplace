@@ -143,7 +143,7 @@ describe("Ofertas Lateral", () => {
     expect(foto.parentElement?.className).toContain("inset-0");
   });
 
-  it("a foto sangra até as bordas: coluna de 44%, sem padding nem raio interno; o raio do cartão recorta", async () => {
+  it("a foto sangra até as bordas: coluna de 40% (w-2/5), sem padding nem raio interno; o raio do cartão recorta", async () => {
     await montar([produto("a"), produto("b")]);
     const c = cartoes()[0];
     expect(c.className).toContain("rounded-[26px]");
@@ -152,7 +152,7 @@ describe("Ofertas Lateral", () => {
     expect(c.className).not.toMatch(/(^|\s)p-\d/);
     const coluna = (c.querySelector("img") as HTMLElement).parentElement
       ?.parentElement as HTMLElement;
-    expect(coluna.className).toContain("w-[44%]");
+    expect(coluna.className).toContain("w-2/5");
     expect(coluna.className).toContain("self-stretch");
     expect(coluna.className).not.toMatch(/(^|\s)p-\d|rounded/);
     expect((c.querySelector("img") as HTMLElement).className).toContain(
@@ -177,26 +177,26 @@ describe("Ofertas Lateral", () => {
     expect(coluna(c).contains(coracao)).toBe(true);
   });
 
-  it("'Você economiza' mostra a diferença certa e some sem preço antigo", async () => {
+  it("'Economiza' mostra a diferença certa e some sem preço antigo", async () => {
     await montar([
       produto("a", { price: 12.9, originalPrice: 24.9 }),
       produto("simples", { originalPrice: undefined }),
     ]);
     const [a, simples] = cartoes();
     const eco = a.querySelector("[data-economia-oferta]") as HTMLElement;
-    expect(eco.textContent).toMatch(/^Você economiza R\$\s12,00$/);
+    expect(eco.textContent).toMatch(/^Economiza R\$\s12,00$/);
     expect(a.textContent).toMatch(/De R\$\s24,90/);
     expect(simples.querySelector("[data-economia-oferta]")).toBeNull();
     expect(simples.textContent).not.toContain("economiza");
   });
 
-  it("preço atual grande, verde quando promocional e escuro quando esgotado", async () => {
+  it("preço atual em destaque, verde quando promocional e escuro quando esgotado", async () => {
     await montar([produto("a"), produto("fim", { stock: 0 })]);
     const preco = (id: string) =>
       cartoes()
         .find((c) => c.dataset.ofertaLateral === id)
         ?.querySelector("[data-preco-oferta]") as HTMLElement;
-    expect(preco("a").className).toContain("text-[28px]");
+    expect(preco("a").className).toContain("text-[22px]");
     expect(preco("a").className).toContain("tabular-nums");
     expect(preco("a").className).toContain("text-emerald-700");
     expect(preco("fim").className).toContain("text-zinc-950");
@@ -227,7 +227,7 @@ describe("Ofertas Lateral", () => {
     await montar([produto("a", { images: [] }), produto("b")]);
     const sem = cartoes()[0].querySelector("[data-sem-foto]") as HTMLElement;
     expect(sem.textContent).toContain("Sem foto");
-    expect(sem.parentElement?.className).toContain("w-[44%]");
+    expect(sem.parentElement?.className).toContain("w-2/5");
   });
 
   it("o esqueleto tem a mesma altura e a mesma divisão foto/texto do cartão", async () => {
@@ -240,7 +240,7 @@ describe("Ofertas Lateral", () => {
     expect(esq.className).toContain("rounded-[26px]");
     expect(esq.className).toContain("overflow-hidden");
     expect(esq.className).not.toMatch(/(^|\s)p-\d/);
-    expect(esq.firstElementChild?.className).toContain("w-[44%]");
+    expect(esq.firstElementChild?.className).toContain("w-2/5");
     expect(secEsq.style.minHeight).toBe(`${ALTURA_SECAO_LATERAL}px`);
     // A conta: seção = cartão + 102, cartão = 186 (nome de 2 linhas sempre reservado).
     expect(ALTURA_CARTAO_LATERAL).toBe(186);
@@ -250,6 +250,30 @@ describe("Ofertas Lateral", () => {
       host.querySelector<HTMLElement>('[data-testid="ofertas-lateral"]')?.style
         .minHeight,
     ).toBe(`${ALTURA_SECAO_LATERAL}px`);
+  });
+
+  it("preço nunca quebra (nowrap, 22px; 20px a partir de 10 mil) e 'Economiza' só com desconto visível", async () => {
+    await montar([
+      produto("a", { price: 49.9, originalPrice: 99.9 }),
+      produto("caro", { price: 12999.9, originalPrice: 20000 }),
+      // 99,99 -> 100: desconto arredonda para 0%, o selo some e a economia também.
+      produto("zero", { price: 99.99, originalPrice: 100 }),
+    ]);
+    const por = (id: string) =>
+      cartoes().find((c) => c.dataset.ofertaLateral === id) as HTMLElement;
+    const preco = (id: string) =>
+      por(id).querySelector("[data-preco-oferta]") as HTMLElement;
+    expect(preco("a").className).toContain("whitespace-nowrap");
+    expect(preco("a").className).toContain("leading-8");
+    expect(preco("a").className).not.toContain("break-words");
+    expect(preco("a").className).toContain("text-[22px]");
+    expect(preco("caro").className).toContain("text-[20px]");
+    expect(por("a").querySelector("[data-economia-oferta]")).not.toBeNull();
+    expect(
+      por("a").querySelector("[data-economia-oferta]")?.className,
+    ).toContain("whitespace-nowrap");
+    expect(por("zero").querySelector("[data-selo-desconto]")).toBeNull();
+    expect(por("zero").querySelector("[data-economia-oferta]")).toBeNull();
   });
 
   it("o nome reserva sempre 2 linhas: a altura não depende do nome", async () => {

@@ -169,7 +169,7 @@ function CartaoOfertaLateral({
         rola ? "shrink-0 basis-[88%]" : "w-full",
       )}
     >
-      <div className="relative w-[44%] shrink-0 self-stretch bg-zinc-100">
+      <div className="relative w-2/5 shrink-0 self-stretch bg-zinc-100">
         {product.images[0] ? (
           // Absoluta: a proporção da foto não pode definir a altura do cartão.
           <div className="absolute inset-0">
@@ -210,17 +210,21 @@ function CartaoOfertaLateral({
           className="absolute right-2.5 top-2.5 z-20"
         />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col px-4 py-3">
+      <div className="flex min-w-0 flex-1 flex-col p-3">
         <h3 className="mb-1 line-clamp-2 min-h-10 break-words text-base font-bold leading-5 text-zinc-950">
           {product.name}
         </h3>
-        <div className="min-h-4 text-xs leading-4 text-zinc-500 line-through">
+        <div className="min-h-4 truncate whitespace-nowrap text-xs leading-4 text-zinc-500 line-through">
           {precoAntigo ? `De ${formatCurrency(precoAntigo)}` : null}
         </div>
+        {/* 22px cabe o maior preço comum na coluna de 154px (tela de 360px); de 10 mil em diante, 20px. */}
         <span
           data-preco-oferta
           className={cn(
-            "break-words text-[28px] font-extrabold leading-8 tracking-tight tabular-nums",
+            "whitespace-nowrap font-extrabold tracking-tight tabular-nums",
+            product.price >= 10000 ? "text-[20px]" : "text-[22px]",
+            // Depois do tamanho: o tailwind-merge descarta o leading que vem antes de text-[..].
+            "leading-8",
             esgotado
               ? "text-zinc-950"
               : precoAntigo
@@ -230,12 +234,12 @@ function CartaoOfertaLateral({
         >
           {formatCurrency(product.price)}
         </span>
-        {precoAntigo && (
+        {precoAntigo && discount > 0 && (
           <span
             data-economia-oferta
-            className="text-xs font-medium leading-4 text-zinc-600"
+            className="truncate whitespace-nowrap text-xs font-medium leading-4 text-zinc-600"
           >
-            Você economiza {formatCurrency(precoAntigo - product.price)}
+            Economiza {formatCurrency(precoAntigo - product.price)}
           </span>
         )}
         <div className="mt-auto flex items-end justify-between gap-2 pt-1">
