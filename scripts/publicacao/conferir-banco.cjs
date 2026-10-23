@@ -2622,6 +2622,16 @@ const ROL_DA_88B = [
   "a ordem dos gatilhos BEFORE UPDATE de profiles deixa o nome novo entre tr_ensure_role_protection e tr_prevent_role_change",
   "profiles.role e auth.users.raw_app_meta_data existem e profiles tem RLS ligada",
 ];
+// Lote 89 (20261384000000, o pedido pago pelo app exige conta: create_marketplace_order_v24 recusa 'online' sem sessao). A 89a e a 89b
+// tem o MESMO rol; muda o esperado de duas linhas (o md5 do corpo da v24 e a presenca da recusa).
+const ROL_DA_89 = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v24: corpo exato (md5)",
+  "create_marketplace_order_v24: o corpo recusa o pagamento pelo app sem conta (uma vez)",
+  "create_marketplace_order_v23: corpo inalterado, o da 20261350000000 (md5)",
+  "create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "create_marketplace_order_v24: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "90a-conferir-busca-do-painel-por-codigo-aplicado": [
     "controle: funcoes de public visiveis a este papel",
@@ -2647,6 +2657,8 @@ const ROL_FECHADO_POR_CONSULTA = {
     "fin_dre: assinatura e atributos conhecidos",
     "fin_dre: EXECUTE authenticated, sem PUBLIC ou anon",
   ],
+  "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado": ROL_DA_89,
+  "89b-antes-o-pedido-pelo-app-exige-conta-base-vigente": ROL_DA_89,
   "88a-conferir-so-o-dono-define-cargo-aplicado": ROL_DA_88A,
   "88b-antes-so-o-dono-define-cargo-ausente": ROL_DA_88B,
   "86a-conferir-ex-admin-no-resto-do-painel-aplicado": ROL_DA_86A,

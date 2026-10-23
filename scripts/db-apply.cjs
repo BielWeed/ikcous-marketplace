@@ -104,6 +104,22 @@ const VERIFICACOES = {
         },
       ],
     },
+  // 20261384: o pedido pago pelo app exige conta. So create_marketplace_order_v24 muda (o corpo da 20261350 mais UM bloco 0-ter, depois da
+  // idempotencia e da forma de pagamento aceita): 'online' sem sessao (auth.uid() nulo) e recusado antes de reservar estoque. A consulta
+  // 89a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql":
+    [
+      {
+        funcao: "create_marketplace_order_v24",
+        esperado: [
+          {
+            texto: "IF p_payment_method = 'online' AND v_user_id IS NULL THEN",
+            vezes: 1,
+          },
+          { texto: "pedido_pelo_app_exige_conta:", vezes: 1 },
+        ],
+      },
+    ],
   // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
   // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {

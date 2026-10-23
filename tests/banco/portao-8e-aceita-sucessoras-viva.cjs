@@ -122,7 +122,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // das duas e' funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 44 (a-compra-online-trava-posterior.cjs,
     // chamado por desfazerEntregaNaCidadeNaTransacao); aqui sai do rol pela mesma razao da 44 e da 1310.
     s.nome !==
-      "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
+      "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql" &&
+    // A 20261384000000 (o pedido pago pelo app exige conta) so redefine a v24, em cima da 350; a v24 nao e funcao da 8e. Entra em
+    // sucessoras-da-99.cjs so para cair antes da 350 (a-compra-online-trava-posterior.cjs chama pedido-pelo-app-exige-conta-posterior.cjs);
+    // aqui sai do rol pela mesma razao da 350.
+    s.nome !==
+      "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
