@@ -188,6 +188,8 @@ on:
       - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
       - "scripts/publicacao/consultas/88a-conferir-so-o-dono-define-cargo-aplicado.sql"
       - "scripts/publicacao/consultas/88b-antes-so-o-dono-define-cargo-ausente.sql"
+      - "scripts/publicacao/consultas/90a-conferir-busca-do-painel-por-codigo-aplicado.sql"
+      - "scripts/publicacao/consultas/90b-antes-busca-do-painel-por-codigo-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -345,6 +347,8 @@ on:
       - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
       - "scripts/publicacao/consultas/88a-conferir-so-o-dono-define-cargo-aplicado.sql"
       - "scripts/publicacao/consultas/88b-antes-so-o-dono-define-cargo-ausente.sql"
+      - "scripts/publicacao/consultas/90a-conferir-busca-do-painel-por-codigo-aplicado.sql"
+      - "scripts/publicacao/consultas/90b-antes-busca-do-painel-por-codigo-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -506,6 +510,9 @@ jobs:
       - name: Prova viva do resultado com tarifa, juro e quebra no sinal certo (20261382)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/fin-dre-sinal-viva.cjs
+      - name: Prova viva da busca de produtos do painel por codigo de barras e codigo da variacao (20261385)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/busca-do-painel-por-codigo-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

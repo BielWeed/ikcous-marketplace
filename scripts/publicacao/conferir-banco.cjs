@@ -2623,6 +2623,18 @@ const ROL_DA_88B = [
   "profiles.role e auth.users.raw_app_meta_data existem e profiles tem RLS ligada",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
+  "90a-conferir-busca-do-painel-por-codigo-aplicado": [
+    "controle: funcoes de public visiveis a este papel",
+    "get_admin_products_paged: corpo exato (md5)",
+    "get_admin_products_paged: assinatura e atributos conhecidos",
+    "get_admin_products_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+  ],
+  "90b-antes-busca-do-painel-por-codigo-base-vigente": [
+    "controle: funcoes de public visiveis a este papel",
+    "get_admin_products_paged: corpo exato (md5)",
+    "get_admin_products_paged: assinatura e atributos conhecidos",
+    "get_admin_products_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+  ],
   "87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado": [
     "controle: funcoes de public visiveis a este papel",
     "fin_dre: corpo exato (md5)",

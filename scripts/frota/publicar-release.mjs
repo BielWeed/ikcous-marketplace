@@ -598,6 +598,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente",
   "88a-conferir-so-o-dono-define-cargo-aplicado",
   "88b-antes-so-o-dono-define-cargo-ausente",
+  "90a-conferir-busca-do-painel-por-codigo-aplicado",
+  "90b-antes-busca-do-painel-por-codigo-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

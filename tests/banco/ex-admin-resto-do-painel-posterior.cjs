@@ -13,8 +13,13 @@ const EX_ADMIN_RESTO_DO_PAINEL = Object.freeze({
   noAr: "SELECT EXISTS(SELECT 1 FROM pg_policy WHERE polname='banners_admin_select_policy' AND polrelid=to_regclass('public.banners')) sim",
 });
 async function desfazerExAdminRestoNaTransacao(c) {
+  // A 20261385 (a busca de produtos acha o codigo de barras) sucede get_admin_products_paged desta: o rollback da 81 exige o
+  // corpo DELA, entao a 385 sai antes (nao faz nada se nao esta no ar). Os 6 chamadores deste modulo herdam a ordem.
+  await require("./busca-do-painel-por-codigo-posterior.cjs").desfazerBuscaDoPainelNaTransacao(
+    c,
+  );
   // A 20261383 (so o dono da loja define cargo) e' POSTERIOR a esta e cita rls_admin_atual() em duas politicas novas: sai
-  // primeiro, em ordem inversa da aplicacao, pelo mesmo motivo (o rollback da 97 recusa enquanto qualquer uma a usa).
+  // em seguida, em ordem inversa da aplicacao (385, 383), pelo mesmo motivo (o rollback da 97 recusa enquanto qualquer uma a usa).
   // Definicao unica em tests/banco/definir-cargo-posterior.cjs; nao faz nada se a migration nao estiver no ar.
   await require("./definir-cargo-posterior.cjs").desfazerDefinirCargoNaTransacao(
     c,

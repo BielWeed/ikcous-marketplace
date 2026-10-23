@@ -7937,12 +7937,32 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo81.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
+  // A sucessora da 81 (a 20261385, a busca de produtos do painel acha pelo codigo de barras e da variacao): a 17a a aceita
+  // tambem (LF e CRLF); a 17b (o ANTES) nunca.
+  const texto85 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261385000000_a_busca_de_produtos_do_painel_acha_pelo_codigo_de_barras_e_da_variacao.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini85 = texto85.indexOf(
+    "CREATE OR REPLACE FUNCTION public.get_admin_products_paged(",
+  );
+  assert(ini85 >= 0, "a 20261385 não define get_admin_products_paged");
+  const abre85 =
+    texto85.indexOf("AS $function$", ini85) + "AS $function$".length;
+  const corpo85 = texto85.slice(abre85, texto85.indexOf("$function$", abre85));
+  const shaSucessora85 = {
+    lf: criarHash("sha256").update(corpo85).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo85.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
   for (const [nome, sql, lado, outro, rotulo] of [
     [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 2 da de get_admin_products_paged (a 20261381)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 4 da de get_admin_products_paged (a 20261381 e a 20261385)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
@@ -7965,6 +7985,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora51.crlf,
                 shaSucessora81.lf,
                 shaSucessora81.crlf,
+                shaSucessora85.lf,
+                shaSucessora85.crlf,
               ]
             : [];
         assertEquals(new Set(todos).size, 6);
@@ -8008,6 +8030,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                       x.crlf,
                       shaSucessora81.lf,
                       shaSucessora81.crlf,
+                      shaSucessora85.lf,
+                      shaSucessora85.crlf,
                       x.lf,
                     ]
                   : [x.lf, x.lf, x.crlf, x.lf],
@@ -8033,6 +8057,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora45.crlf,
               shaSucessora81.lf,
               shaSucessora81.crlf,
+              shaSucessora85.lf,
+              shaSucessora85.crlf,
             ])
               assert(!sql.includes(proibido), `${nome} aceitaria a sucessora`);
         }
