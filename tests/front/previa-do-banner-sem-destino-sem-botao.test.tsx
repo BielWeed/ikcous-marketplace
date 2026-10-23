@@ -5,7 +5,7 @@
 // na loja e (2) a previa do painel mostra o mesmo que a loja (sem o botao).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Banner } from "@/types";
 
