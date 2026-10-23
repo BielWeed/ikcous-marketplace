@@ -3,7 +3,6 @@
 // Tudo que mostra dinheiro passa por <Dinheiro> (o botão Ocultar depende dele).
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatarBRL } from "@/lib/financeiro";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -11,7 +10,9 @@ import {
   CLASSE_CASCA_DO_CARTAO,
   CLASSE_ROTULO_DO_CARTAO,
   Dinheiro,
+  useValoresEstaoOcultos,
 } from "./partes";
+import { comprimentoDoValor, tamanhoDeMeiaLargura } from "./tamanhoDoValor";
 
 /** Selo curto dos quadros e da linha do custo: cabe em UMA linha. */
 export const AVISO_CURTO_DE_CUSTO_ESTIMADO = "Custo estimado";
@@ -28,37 +29,26 @@ export function corDoResultado(valor: number): string {
   return classeDoTexto(tomDoValor(Math.round(valor * 100)));
 }
 
-/** Número de caracteres do valor como a tela o escreve (com sinal, se houver). */
-function comprimentoDoValor(valor: number): number {
-  return formatarBRL(valor).length + (valor < 0 ? 1 : 0);
-}
-
 /**
  * Valor em dinheiro NUNCA quebra de linha (`whitespace-nowrap`): quem se ajusta
- * é o tamanho da letra, pelo número de caracteres do texto já formatado.
- * Faixas das metades da tela de 338px (as mesmas medidas da Visão): 22px
- * normal, 20px, 18px quando longo, e daí para baixo.
+ * é o tamanho da letra, pelo número de caracteres do texto que a tela mostra
+ * (oculto: o da máscara). Faixas das metades da tela de 338px — as mesmas da
+ * Visão — em `tamanhoDoValor`.
  */
-const TAMANHOS_DO_VALOR_NO_QUADRO: readonly (readonly [number, string])[] = [
-  [8, "text-[22px] leading-tight"],
-  [9, "text-[20px] leading-tight"],
-  [10, "text-[18px] leading-tight"],
-  [12, "text-[15px] leading-tight"],
-  [14, "text-[13px] leading-tight"],
-];
-
-export function classeDoValorDoQuadro(valor: number): string {
-  const n = comprimentoDoValor(valor);
-  const faixa = TAMANHOS_DO_VALOR_NO_QUADRO.find(([ate]) => n <= ate);
+export function classeDoValorDoQuadro(valor: number, ocultos: boolean): string {
   return cn(
     "whitespace-nowrap font-bold tracking-tight",
-    faixa?.[1] ?? "text-xs leading-tight",
+    tamanhoDeMeiaLargura(comprimentoDoValor(valor, false, ocultos)),
   );
 }
 
 /** Valor na coluna da tabela: 14px; menor só quando o texto é muito longo. */
-export function classeDoValorNaTabela(valor: number, destaque = false): string {
-  const n = comprimentoDoValor(valor);
+export function classeDoValorNaTabela(
+  valor: number,
+  destaque: boolean,
+  ocultos: boolean,
+): string {
+  const n = comprimentoDoValor(valor, false, ocultos);
   const normal = destaque ? "text-base" : "text-sm";
   const medio = destaque ? "text-sm" : "text-[13px]";
   return cn(
@@ -107,6 +97,7 @@ export function QuadroDoResultado({
   /** Número-base (não é resultado): fica em texto comum, sem cor de sinal. */
   readonly neutro?: boolean;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   return (
     <div
       data-quadro-do-resultado=""
@@ -125,7 +116,7 @@ export function QuadroDoResultado({
         <Dinheiro
           valor={valor}
           className={cn(
-            classeDoValorDoQuadro(valor),
+            classeDoValorDoQuadro(valor, ocultos),
             neutro ? "text-white" : corDoResultado(valor),
           )}
         />

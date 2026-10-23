@@ -6,7 +6,6 @@
 import type { ReactNode } from "react";
 
 import {
-  formatarBRL,
   formatarDataCurta,
   formatarDataHora,
   formatarHora,
@@ -19,7 +18,12 @@ import {
   tomDoValor,
 } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
-import { CLASSE_BOTAO_PRIMARIO, Dinheiro } from "./partes";
+import {
+  CLASSE_BOTAO_PRIMARIO,
+  Dinheiro,
+  useValoresEstaoOcultos,
+} from "./partes";
+import { classeDoValorGrande, comprimentoDoValor } from "./tamanhoDoValor";
 
 // ---------------------------------------------------------------------------
 // Superfícies e botões
@@ -50,11 +54,6 @@ export const CLASSE_BOTAO_PRINCIPAL_DA_GAVETA = cn(
 // Medidas dos valores (dinheiro NUNCA quebra de linha)
 // ---------------------------------------------------------------------------
 
-/** Número de caracteres do valor como a tela o escreve (com sinal, se houver). */
-export function comprimentoDoValor(valor: number, comSinal: boolean): number {
-  return formatarBRL(valor).length + (comSinal || valor < 0 ? 1 : 0);
-}
-
 const FAIXAS_DA_COLUNA: readonly (readonly [number, string])[] = [
   [9, "text-base"],
   [10, "text-[15px]"],
@@ -68,8 +67,12 @@ const FAIXAS_DA_COLUNA: readonly (readonly [number, string])[] = [
  * tela): nunca quebra, e é a letra que encolhe conforme o texto cresce, até o
  * piso de 11px da régua visual do painel (acima de R$ 1 milhão a coluna aperta).
  */
-export function classeDoValorNaColuna(valor: number, comSinal = false): string {
-  const n = comprimentoDoValor(valor, comSinal);
+export function classeDoValorNaColuna(
+  valor: number,
+  comSinal: boolean,
+  ocultos: boolean,
+): string {
+  const n = comprimentoDoValor(valor, comSinal, ocultos);
   const faixa = FAIXAS_DA_COLUNA.find(([ate]) => n <= ate);
   return cn(
     "whitespace-nowrap font-bold leading-tight",
@@ -83,8 +86,12 @@ const FAIXAS_DA_LINHA: readonly (readonly [number, string])[] = [
 ];
 
 /** Valor de uma linha com o rótulo ao lado (conta do esperado, movimentos). */
-export function classeDoValorDaLinha(valor: number, comSinal = false): string {
-  const n = comprimentoDoValor(valor, comSinal);
+export function classeDoValorDaLinha(
+  valor: number,
+  comSinal: boolean,
+  ocultos: boolean,
+): string {
+  const n = comprimentoDoValor(valor, comSinal, ocultos);
   const faixa = FAIXAS_DA_LINHA.find(([ate]) => n <= ate);
   return cn(
     "shrink-0 whitespace-nowrap font-semibold leading-tight",
@@ -93,13 +100,8 @@ export function classeDoValorDaLinha(valor: number, comSinal = false): string {
 }
 
 /** Valor do cartão principal: largura cheia, encolhe só quando muito longo. */
-export function classeDoValorDoHeroi(valor: number): string {
-  return cn(
-    "whitespace-nowrap font-bold leading-none tracking-tight",
-    comprimentoDoValor(valor, false) <= 13
-      ? "text-[clamp(2rem,10vw,2.75rem)]"
-      : "text-[clamp(1.5rem,7vw,2rem)]",
-  );
+export function classeDoValorDoHeroi(valor: number, ocultos: boolean): string {
+  return classeDoValorGrande(comprimentoDoValor(valor, false, ocultos));
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +202,7 @@ export function LinhaDaConta({
   readonly sentido?: 1 | -1;
   readonly total?: boolean;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const centavos = paraCentavos(valor);
   const comSinal = sentido !== undefined && centavos !== 0;
   const tom =
@@ -225,7 +228,7 @@ export function LinhaDaConta({
       </dt>
       <dd
         className={cn(
-          classeDoValorDaLinha(valor, comSinal),
+          classeDoValorDaLinha(valor, comSinal, ocultos),
           total && "font-bold",
           tom ? classeDoTexto(tom) : "text-white",
         )}

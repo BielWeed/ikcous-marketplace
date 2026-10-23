@@ -34,6 +34,7 @@ const PASTA = "src/components/admin/financeiro";
 const ARQUIVOS_DO_CAIXA = [
   `${PASTA}/AbaCaixa.tsx`,
   `${PASTA}/partesDoCaixa.tsx`,
+  `${PASTA}/tamanhoDoValor.ts`,
 ];
 
 const BARRA = String.fromCharCode(92);
@@ -119,11 +120,15 @@ const usadas = (() => {
     ...[
       0, 5, 412.5, 1412.5, 12412.5, 123456.78, 1234567.89, 99999999.99,
     ].flatMap((v) => [
-      classeDoValorNaColuna(v),
-      classeDoValorNaColuna(v, true),
-      classeDoValorDaLinha(v),
-      classeDoValorDaLinha(v, true),
-      classeDoValorDoHeroi(v),
+      classeDoValorNaColuna(v, false, false),
+      classeDoValorNaColuna(v, true, false),
+      classeDoValorDaLinha(v, false, false),
+      classeDoValorDaLinha(v, true, false),
+      classeDoValorDoHeroi(v, false),
+      // Com Ocultar ligado o tamanho é o da máscara.
+      classeDoValorNaColuna(v, true, true),
+      classeDoValorDaLinha(v, true, true),
+      classeDoValorDoHeroi(v, true),
     ]),
   ]) {
     for (const t of texto.split(/\s+/).filter(Boolean)) todas.add(t);
@@ -178,9 +183,9 @@ describe("Financeiro — toda classe da aba Caixa nova gera CSS", () => {
   it("nenhum valor de dinheiro devolve classe sem nowrap", () => {
     for (const v of [0, 412.5, 123456.78, 99999999.99]) {
       for (const c of [
-        classeDoValorNaColuna(v),
-        classeDoValorDaLinha(v, true),
-        classeDoValorDoHeroi(v),
+        classeDoValorNaColuna(v, false, false),
+        classeDoValorDaLinha(v, true, false),
+        classeDoValorDoHeroi(v, false),
       ]) {
         expect(c).toContain("whitespace-nowrap");
       }

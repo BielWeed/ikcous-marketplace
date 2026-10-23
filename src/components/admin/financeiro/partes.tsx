@@ -11,6 +11,8 @@ import { formatarBRL, formatarBRLComSinal } from "@/lib/financeiro";
 import { classeDoPonto, classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 
+import { MASCARA_DO_VALOR } from "./tamanhoDoValor";
+
 // ---------------------------------------------------------------------------
 // Valores ocultos
 // ---------------------------------------------------------------------------
@@ -107,8 +109,6 @@ export function ReciboFinanceiro({
   );
 }
 
-const MASCARA = "R$ ••••••";
-
 /**
  * Dinheiro na tela. `comSinal`: "+R$ 10,00" / "−R$ 10,00" (o sinal é a pista
  * que não depende da cor). `sentido` força o sinal de um valor positivo
@@ -129,7 +129,7 @@ export function Dinheiro({
   if (ocultos) {
     return (
       <span className={cn("tabular-nums", className)}>
-        <span aria-hidden="true">{MASCARA}</span>
+        <span aria-hidden="true">{MASCARA_DO_VALOR}</span>
         <span className="sr-only">Valor oculto</span>
       </span>
     );

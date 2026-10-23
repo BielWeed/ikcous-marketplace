@@ -25,6 +25,7 @@ import {
   Dinheiro,
   EsqueletoDeLista,
   EstadoDeErro,
+  useValoresEstaoOcultos,
 } from "./partes";
 import {
   CLASSE_BOTAO_DA_GAVETA,
@@ -80,6 +81,7 @@ function CaixaAberto({
   readonly abrirFolha: AbrirFolha;
   readonly aoNovoLancamento?: () => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const esperadoNegativo = paraCentavos(caixa.esperado) < 0;
   const movimentar = (movimento: "sangria" | "suprimento") =>
     abrirFolha({
@@ -106,7 +108,7 @@ function CaixaAberto({
           <Dinheiro
             valor={caixa.esperado}
             className={cn(
-              classeDoValorDoHeroi(caixa.esperado),
+              classeDoValorDoHeroi(caixa.esperado, ocultos),
               esperadoNegativo ? classeDoTexto("negativo") : "text-white",
             )}
           />
@@ -210,7 +212,7 @@ function CaixaAberto({
                     valor={movimento.valor}
                     sentido={entrada ? 1 : -1}
                     className={cn(
-                      classeDoValorDaLinha(movimento.valor, true),
+                      classeDoValorDaLinha(movimento.valor, true, ocultos),
                       classeDoTexto(entrada ? "positivo" : "negativo"),
                     )}
                   />
@@ -298,6 +300,7 @@ function ColunaDaSessao({
 }
 
 function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
+  const ocultos = useValoresEstaoOcultos();
   const calculo =
     sessao.esperado !== null && sessao.contado !== null
       ? diferencaDoFechamento(sessao.esperado, sessao.contado)
@@ -358,7 +361,10 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
           className={
             sessao.esperado === null
               ? "text-base font-bold text-white"
-              : cn(classeDoValorNaColuna(sessao.esperado), "text-white")
+              : cn(
+                  classeDoValorNaColuna(sessao.esperado, false, ocultos),
+                  "text-white",
+                )
           }
         >
           {sessao.esperado === null ? (
@@ -372,7 +378,10 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
           className={
             sessao.contado === null
               ? "text-base font-bold text-white"
-              : cn(classeDoValorNaColuna(sessao.contado), "text-white")
+              : cn(
+                  classeDoValorNaColuna(sessao.contado, false, ocultos),
+                  "text-white",
+                )
           }
         >
           {sessao.contado === null ? (
@@ -386,7 +395,7 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
           className={cn(
             diferenca === null
               ? "text-base font-bold"
-              : classeDoValorNaColuna(diferenca, true),
+              : classeDoValorNaColuna(diferenca, true, ocultos),
             classeDoTexto(tomDaDiferenca),
           )}
         >

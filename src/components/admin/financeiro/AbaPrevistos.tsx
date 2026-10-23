@@ -26,6 +26,7 @@ import {
   EstadoDeErro,
   EstadoVazio,
   Segmentado,
+  useValoresEstaoOcultos,
 } from "./partes";
 import {
   CLASSE_CARTAO_DA_LISTA,
@@ -76,6 +77,7 @@ function CartaoDoPrevisto({
   readonly abrirFolha: AbrirFolha;
   readonly aoAbrirPedido: (pedidoId: string) => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const situacao = situacaoDoVencimento(item.vencimento, hoje);
   const editavel = previstoEhEditavel(item);
   const parcela =
@@ -92,7 +94,10 @@ function CartaoDoPrevisto({
         </p>
         <Dinheiro
           valor={item.valor}
-          className={cn(classeDoValorDaLinha(item.valor, false), "text-white")}
+          className={cn(
+            classeDoValorDaLinha(item.valor, false, ocultos),
+            "text-white",
+          )}
         />
       </div>
       <p className="mt-1 break-words text-sm leading-snug text-zinc-400">
@@ -200,6 +205,7 @@ export function AbaPrevistos({
   readonly aoNovoLancamento: (lado: LadoDosPrevistos) => void;
   readonly aoAbrirPedido: (pedidoId: string) => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const previstos = usePrevistosFinanceiros(lado, ativo, versao);
   const ordenados = useMemo(
     () => (previstos.dados ? ordenarPorVencimento(previstos.dados) : []),
@@ -260,7 +266,7 @@ export function AbaPrevistos({
             <Dinheiro
               valor={totais.total}
               className={cn(
-                classeDoValorDoTopo(totais.total, false),
+                classeDoValorDoTopo(totais.total, false, ocultos),
                 paraCentavos(totais.total) > 0
                   ? "text-white"
                   : classeDoTexto("neutro"),
@@ -277,7 +283,7 @@ export function AbaPrevistos({
                   <Dinheiro
                     valor={totais.vencido}
                     className={cn(
-                      classeDoValorNoQuadro(totais.vencido, false),
+                      classeDoValorNoQuadro(totais.vencido, false, ocultos),
                       temVencido ? classeDoTexto("negativo") : "text-zinc-300",
                     )}
                   />
@@ -289,7 +295,11 @@ export function AbaPrevistos({
                   <Dinheiro
                     valor={totais.proximos7Dias}
                     className={cn(
-                      classeDoValorNoQuadro(totais.proximos7Dias, false),
+                      classeDoValorNoQuadro(
+                        totais.proximos7Dias,
+                        false,
+                        ocultos,
+                      ),
                       "text-white",
                     )}
                   />

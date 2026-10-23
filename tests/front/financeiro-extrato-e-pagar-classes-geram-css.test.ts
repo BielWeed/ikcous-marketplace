@@ -39,6 +39,7 @@ const ARQUIVOS = [
   `${PASTA}/AbaExtrato.tsx`,
   `${PASTA}/AbaPrevistos.tsx`,
   `${PASTA}/partesDoExtrato.tsx`,
+  `${PASTA}/tamanhoDoValor.ts`,
 ];
 
 const BARRA = String.fromCharCode(92);
@@ -94,11 +95,15 @@ describe("Financeiro — Extrato e Pagar e receber: toda classe gera CSS", () =>
   // Tamanhos que o código escolhe por número de caracteres (nunca quebra).
   const dinamicas = [
     ...[0, 5, 99, 1234.56, 12345.67, 1234567.89].flatMap((v) => [
-      classeDoValorDaLinha(v, true),
-      classeDoValorDoTopo(v, true),
-      classeDoValorNoQuadro(v, false),
+      classeDoValorDaLinha(v, true, false),
+      classeDoValorDoTopo(v, true, false),
+      classeDoValorNoQuadro(v, false, false),
+      // Com Ocultar ligado o tamanho é o da máscara (mesmas classes, outra faixa).
+      classeDoValorDaLinha(v, true, true),
+      classeDoValorDoTopo(v, true, true),
+      classeDoValorNoQuadro(v, false, true),
     ]),
-    classeDoValorNoQuadro(123456789012.34, false),
+    classeDoValorNoQuadro(123456789012.34, false, false),
   ];
 
   const usadas = (() => {
@@ -167,24 +172,32 @@ describe("Financeiro — Extrato e Pagar e receber: toda classe gera CSS", () =>
     for (const v of [
       0, 5, 99, 1234.56, 12345.67, 1234567.89, 123456789012.34,
     ]) {
-      expect(classeDoValorDaLinha(v, true)).toContain("whitespace-nowrap");
-      expect(classeDoValorDoTopo(v, true)).toContain("whitespace-nowrap");
-      expect(classeDoValorNoQuadro(v, true)).toContain("whitespace-nowrap");
+      expect(classeDoValorDaLinha(v, true, false)).toContain(
+        "whitespace-nowrap",
+      );
+      expect(classeDoValorDoTopo(v, true, false)).toContain(
+        "whitespace-nowrap",
+      );
+      expect(classeDoValorNoQuadro(v, true, false)).toContain(
+        "whitespace-nowrap",
+      );
     }
   });
 
   it("o tamanho encolhe com o comprimento: 22px normal, 20/18px quando passa de ~9 caracteres, nunca maior que antes", () => {
     // "R$ 5,00" (7) · "R$ 100,00" (9) · "R$ 1.250,00" (11) · "R$ 12.345,67" (12).
-    expect(classeDoValorNoQuadro(5, false)).toContain("text-[22px]");
-    expect(classeDoValorNoQuadro(100, false)).toContain("text-[20px]");
-    expect(classeDoValorNoQuadro(1250, false)).toContain("text-[15px]");
-    expect(classeDoValorNoQuadro(12345.67, false)).toContain("text-[15px]");
+    expect(classeDoValorNoQuadro(5, false, false)).toContain("text-[22px]");
+    expect(classeDoValorNoQuadro(100, false, false)).toContain("text-[20px]");
+    expect(classeDoValorNoQuadro(1250, false, false)).toContain("text-[15px]");
+    expect(classeDoValorNoQuadro(12345.67, false, false)).toContain(
+      "text-[15px]",
+    );
     // Com sinal o texto ganha um caractere: "+R$ 100,00" (10) → 18px.
-    expect(classeDoValorNoQuadro(100, true)).toContain("text-[18px]");
+    expect(classeDoValorNoQuadro(100, true, false)).toContain("text-[18px]");
     // Linha da lista: 18px até 9 caracteres, depois 16px, depois 14px.
-    expect(classeDoValorDaLinha(100, false)).toContain("text-[18px]");
-    expect(classeDoValorDaLinha(100, true)).toContain("text-base");
-    expect(classeDoValorDaLinha(1234567.89, true)).toContain("text-sm");
+    expect(classeDoValorDaLinha(100, false, false)).toContain("text-[18px]");
+    expect(classeDoValorDaLinha(100, true, false)).toContain("text-base");
+    expect(classeDoValorDaLinha(1234567.89, true, false)).toContain("text-sm");
   });
 
   it("o título do dia: Hoje e Ontem sem o dia da semana; os outros ficam por extenso", () => {

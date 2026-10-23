@@ -25,7 +25,11 @@ const carregarConfig = exigir("tailwindcss/loadConfig") as (
 const ler = (caminho: string) => readFileSync(join(raiz, caminho), "utf8");
 
 const PASTA = "src/components/admin/financeiro";
-const ARQUIVOS = [`${PASTA}/AbaDre.tsx`, `${PASTA}/partesDoResultado.tsx`];
+const ARQUIVOS = [
+  `${PASTA}/AbaDre.tsx`,
+  `${PASTA}/partesDoResultado.tsx`,
+  `${PASTA}/tamanhoDoValor.ts`,
+];
 
 const BARRA = String.fromCharCode(92);
 const escapar = (classe: string) =>
@@ -122,9 +126,12 @@ describe("Financeiro — toda classe da aba Resultado gera CSS", () => {
     // As classes que as funções de tamanho de verdade devolvem.
     for (const valor of [0, 5, 99, 1234.5, -1234.5, 123456.78, 1234567.89]) {
       for (const texto of [
-        classeDoValorDoQuadro(valor),
-        classeDoValorNaTabela(valor),
-        classeDoValorNaTabela(valor, true),
+        classeDoValorDoQuadro(valor, false),
+        classeDoValorNaTabela(valor, false, false),
+        classeDoValorNaTabela(valor, true, false),
+        classeDoValorDoQuadro(valor, true),
+        classeDoValorNaTabela(valor, false, true),
+        classeDoValorNaTabela(valor, true, true),
       ]) {
         for (const t of texto.split(/\s+/).filter(Boolean)) todas.add(t);
       }
@@ -165,22 +172,34 @@ describe("Financeiro — toda classe da aba Resultado gera CSS", () => {
     const tamanho = (texto: string) =>
       texto.split(" ").find((c) => /^text-(\[\d+px\]|xs|sm|base)$/.test(c));
     for (const valor of [0, 99, 1234.5, 123456.78, 1234567.89]) {
-      expect(classeDoValorDoQuadro(valor)).toContain("whitespace-nowrap");
-      expect(classeDoValorNaTabela(valor)).toContain("whitespace-nowrap");
-      expect(classeDoValorNaTabela(valor, true)).toContain("whitespace-nowrap");
+      expect(classeDoValorDoQuadro(valor, false)).toContain(
+        "whitespace-nowrap",
+      );
+      expect(classeDoValorNaTabela(valor, false, false)).toContain(
+        "whitespace-nowrap",
+      );
+      expect(classeDoValorNaTabela(valor, true, false)).toContain(
+        "whitespace-nowrap",
+      );
     }
     // "R$ 99,00" = 8 caracteres: 22px. "R$ 1.234.567,89" = 15: o menor.
-    expect(tamanho(classeDoValorDoQuadro(99))).toBe("text-[22px]");
-    expect(tamanho(classeDoValorDoQuadro(123.4))).toBe("text-[20px]");
-    expect(tamanho(classeDoValorDoQuadro(1234.5))).toBe("text-[15px]");
-    expect(tamanho(classeDoValorDoQuadro(123456.78))).toBe("text-[13px]");
-    expect(tamanho(classeDoValorDoQuadro(1234567.89))).toBe("text-xs");
+    expect(tamanho(classeDoValorDoQuadro(99, false))).toBe("text-[22px]");
+    expect(tamanho(classeDoValorDoQuadro(123.4, false))).toBe("text-[20px]");
+    expect(tamanho(classeDoValorDoQuadro(1234.5, false))).toBe("text-[15px]");
+    expect(tamanho(classeDoValorDoQuadro(123456.78, false))).toBe(
+      "text-[13px]",
+    );
+    expect(tamanho(classeDoValorDoQuadro(1234567.89, false))).toBe("text-xs");
     // Negativo ganha o caractere do sinal e desce uma faixa mais cedo.
-    expect(tamanho(classeDoValorDoQuadro(-99))).toBe("text-[20px]");
+    expect(tamanho(classeDoValorDoQuadro(-99, false))).toBe("text-[20px]");
     // Tabela: 14px normal, 13px com 12–13 caracteres, 12px acima disso.
-    expect(tamanho(classeDoValorNaTabela(99))).toBe("text-sm");
-    expect(tamanho(classeDoValorNaTabela(-12345.67))).toBe("text-[13px]");
-    expect(tamanho(classeDoValorNaTabela(1234567.89))).toBe("text-xs");
-    expect(tamanho(classeDoValorNaTabela(99, true))).toBe("text-base");
+    expect(tamanho(classeDoValorNaTabela(99, false, false))).toBe("text-sm");
+    expect(tamanho(classeDoValorNaTabela(-12345.67, false, false))).toBe(
+      "text-[13px]",
+    );
+    expect(tamanho(classeDoValorNaTabela(1234567.89, false, false))).toBe(
+      "text-xs",
+    );
+    expect(tamanho(classeDoValorNaTabela(99, true, false))).toBe("text-base");
   });
 });

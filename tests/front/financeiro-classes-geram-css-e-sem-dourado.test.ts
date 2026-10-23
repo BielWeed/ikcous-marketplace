@@ -39,6 +39,7 @@ const ARQUIVOS_DA_CASCA = [
   `${PASTA}/AbaVisao.tsx`,
   `${PASTA}/FluxoDeCaixaGrafico.tsx`,
   `${PASTA}/SeletorDePeriodo.tsx`,
+  `${PASTA}/tamanhoDoValor.ts`,
   VIEW,
 ];
 

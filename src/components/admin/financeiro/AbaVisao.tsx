@@ -11,7 +11,6 @@ import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useResumoFinanceiro } from "@/hooks/useFinanceiro";
 import {
-  formatarBRL,
   formatarDataHora,
   formatarHora,
   formatarPercentual,
@@ -42,7 +41,13 @@ import {
   EstadoDeErro,
   EstadoVazio,
   corDoValor,
+  useValoresEstaoOcultos,
 } from "./partes";
+import {
+  classeDoValorGrande,
+  comprimentoDoValor,
+  tamanhoDeMeiaLargura,
+} from "./tamanhoDoValor";
 
 const COR_APP = "#38bdf8";
 const COR_LOJA = "#FF8BB2";
@@ -53,43 +58,24 @@ const CLASSE_CARTAO =
 
 /**
  * Valor em dinheiro NUNCA quebra de linha (`whitespace-nowrap`): quem se ajusta
- * é o tamanho da letra, pelo número de caracteres do texto já formatado
- * ("+R$ 453,88" = 10). As faixas foram medidas com a fonte do painel (Inter
- * negrito, números tabulares) para caber na metade da tela de 338px (cartão de
- * ~117px de miolo): 22px normal, 20px, 18px quando longo, e daí para baixo.
+ * é o tamanho da letra, pelo número de caracteres do texto que a tela mostra
+ * ("+R$ 453,88" = 10; oculto, o da máscara). As faixas e o comprimento moram
+ * em `tamanhoDoValor`.
  */
-const TAMANHOS_DO_VALOR_NO_CARTAO: readonly (readonly [number, string])[] = [
-  [8, "text-[22px] leading-tight"],
-  [9, "text-[20px] leading-tight"],
-  [10, "text-[18px] leading-tight"],
-  [12, "text-[15px] leading-tight"],
-  [14, "text-[13px] leading-tight"],
-];
-const TAMANHO_MINIMO_DO_VALOR = "text-xs leading-tight";
-
-/** Número de caracteres do valor como a tela o escreve (com sinal, se houver). */
-function comprimentoDoValor(valor: number, comSinal: boolean): number {
-  return formatarBRL(valor).length + (comSinal || valor < 0 ? 1 : 0);
-}
-
-/** Tamanho (e `nowrap`) do valor dentro de um cartão de meia largura. */
-function classeDoValorNoCartao(valor: number, comSinal: boolean): string {
-  const n = comprimentoDoValor(valor, comSinal);
-  const faixa = TAMANHOS_DO_VALOR_NO_CARTAO.find(([ate]) => n <= ate);
+function classeDoValorNoCartao(
+  valor: number,
+  comSinal: boolean,
+  ocultos: boolean,
+): string {
   return cn(
     "whitespace-nowrap font-bold",
-    faixa?.[1] ?? TAMANHO_MINIMO_DO_VALOR,
+    tamanhoDeMeiaLargura(comprimentoDoValor(valor, comSinal, ocultos)),
   );
 }
 
 /** Valor do cartão-herói: largura cheia, encolhe só quando o texto é muito longo. */
-function classeDoValorDoHeroi(valor: number): string {
-  return cn(
-    "whitespace-nowrap font-bold leading-none tracking-tight",
-    comprimentoDoValor(valor, false) <= 13
-      ? "text-[clamp(2rem,10vw,2.75rem)]"
-      : "text-[clamp(1.5rem,7vw,2rem)]",
-  );
+function classeDoValorDoHeroi(valor: number, ocultos: boolean): string {
+  return classeDoValorGrande(comprimentoDoValor(valor, false, ocultos));
 }
 
 /** Saldo de conta: neutro quando positivo (não é novidade), vermelho se negativo. */
@@ -142,6 +128,7 @@ function CartaoDePrevistos({
   readonly lado: LadoDosPrevistos;
   readonly aoVer: (lado: LadoDosPrevistos) => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const temVencido = Math.round(totais.vencido * 100) > 0;
   return (
     <section aria-label={titulo} className="h-full">
@@ -163,7 +150,7 @@ function CartaoDePrevistos({
           valor={totais.total}
           sentido={lado === "entrada" ? 1 : -1}
           className={cn(
-            classeDoValorNoCartao(totais.total, true),
+            classeDoValorNoCartao(totais.total, true, ocultos),
             classeDoTexto(
               tomDoValor(totais.total, { invertido: lado === "saida" }),
             ),
@@ -381,6 +368,7 @@ export function AbaVisao({
   readonly irParaAba: (aba: AbaDoFinanceiro) => void;
   readonly verPrevistos: (lado: LadoDosPrevistos) => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const resumo = useResumoFinanceiro(intervalo, ativo, versao);
   const janela = useMemo(() => ultimos30Dias(hoje), [hoje]);
   const mesmaJanela =
@@ -438,7 +426,7 @@ export function AbaVisao({
         <Dinheiro
           valor={dados.saldoTotal}
           className={cn(
-            classeDoValorDoHeroi(dados.saldoTotal),
+            classeDoValorDoHeroi(dados.saldoTotal, ocultos),
             saldoNegativo ? classeDoTexto("negativo") : "text-white",
           )}
         />
@@ -460,6 +448,7 @@ export function AbaVisao({
                   classeDoValorNoCartao(
                     dados.entradas,
                     paraCentavos(dados.entradas) > 0,
+                    ocultos,
                   ),
                   corDoValor(dados.entradas),
                 )}
@@ -476,6 +465,7 @@ export function AbaVisao({
                   classeDoValorNoCartao(
                     dados.saidas,
                     paraCentavos(dados.saidas) > 0,
+                    ocultos,
                   ),
                   corDoValor(-dados.saidas),
                 )}

@@ -27,6 +27,7 @@ import {
   Etiqueta,
   Segmentado,
   corDoValor,
+  useValoresEstaoOcultos,
 } from "./partes";
 import {
   CLASSE_CARTAO_DA_LISTA,
@@ -62,6 +63,7 @@ function LinhaDoExtratoItem({
   readonly contaFiltrada: string | null;
   readonly aoAbrir: (linha: LinhaDoExtrato) => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const sentido = sentidoDoLancamento(linha, contaFiltrada);
   const previsto = linha.status === "previsto";
   const cancelado = linha.status === "cancelado";
@@ -111,7 +113,7 @@ function LinhaDoExtratoItem({
           valor={linha.valor}
           sentido={sentido}
           className={cn(
-            classeDoValorDaLinha(linha.valor, sentido !== 0),
+            classeDoValorDaLinha(linha.valor, sentido !== 0, ocultos),
             foraDoTotal
               ? "text-zinc-400"
               : sentido === 0
@@ -184,6 +186,7 @@ export function AbaExtrato({
   readonly abrirFolha: AbrirFolha;
   readonly aoNovoLancamento: () => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const [contaId, setContaId] = useState("");
   const [filtro, setFiltro] = useState<FiltroDoTipo>("todos");
   const contaFiltrada = contaId || null;
@@ -248,7 +251,7 @@ export function AbaExtrato({
             valor={totais.resultado}
             comSinal
             className={cn(
-              classeDoValorDoTopo(totais.resultado, true),
+              classeDoValorDoTopo(totais.resultado, true, ocultos),
               corDoValor(totais.resultado),
             )}
           />

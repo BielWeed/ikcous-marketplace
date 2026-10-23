@@ -20,6 +20,7 @@ import {
   EstadoDeErro,
   EstadoVazio,
   Segmentado,
+  useValoresEstaoOcultos,
 } from "./partes";
 import {
   AVISO_CUSTO_ESTIMADO,
@@ -123,6 +124,7 @@ function TabelaDoPeriodo({
   readonly abertas: ReadonlySet<ChaveDaDre>;
   readonly aoAlternar: (chave: ChaveDaDre) => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const cascata = cascataDaDre(dre);
   return (
     <table className="w-full border-separate border-spacing-0 text-sm">
@@ -194,7 +196,7 @@ function TabelaDoPeriodo({
                   <Dinheiro
                     valor={linha.valor}
                     className={cn(
-                      classeDoValorNaTabela(linha.valor, linha.final),
+                      classeDoValorNaTabela(linha.valor, linha.final, ocultos),
                       corDaLinha(linha.chave, linha.valor),
                     )}
                   />
@@ -229,7 +231,11 @@ function TabelaDoPeriodo({
                   <td className="whitespace-nowrap py-2 pl-2 text-right align-middle">
                     <Dinheiro
                       valor={sub.valor}
-                      className={classeDoValorNaTabela(sub.valor)}
+                      className={classeDoValorNaTabela(
+                        sub.valor,
+                        false,
+                        ocultos,
+                      )}
                     />
                   </td>
                   <td className="w-14 whitespace-nowrap py-2 pl-2 text-right align-middle text-xs tabular-nums text-zinc-400">

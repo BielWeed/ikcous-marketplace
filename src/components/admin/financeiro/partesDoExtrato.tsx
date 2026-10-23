@@ -9,10 +9,14 @@ import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatarBRL } from "@/lib/financeiro";
 import { cn } from "@/lib/utils";
 import type { ContaFinanceira, DataIso } from "@/types/financeiro";
 import { CLASSE_CHIP, CLASSE_CHIP_COMUM } from "./partes";
+import {
+  classeDoValorGrande,
+  comprimentoDoValor,
+  tamanhoDeMeiaLargura,
+} from "./tamanhoDoValor";
 
 /** Rótulo pequeno em caixa alta do cartão de número. */
 export const CLASSE_ROTULO_CAIXA_ALTA =
@@ -50,42 +54,27 @@ export const CLASSE_PILULA_SECUNDARIA = cn(
   "border-admin-border bg-admin-raised text-white hover:bg-admin-hover",
 );
 
-/** Número de caracteres do valor como a tela o escreve (com sinal, se houver). */
-function comprimentoDoValor(valor: number, comSinal: boolean): number {
-  return formatarBRL(valor).length + (comSinal || valor < 0 ? 1 : 0);
+/**
+ * Valor do cartão do topo: largura cheia, encolhe só quando muito longo.
+ * `ocultos`: com o "olho" ligado o tamanho não depende do valor real.
+ */
+export function classeDoValorDoTopo(
+  valor: number,
+  comSinal: boolean,
+  ocultos: boolean,
+): string {
+  return classeDoValorGrande(comprimentoDoValor(valor, comSinal, ocultos));
 }
-
-/** Valor do cartão do topo: largura cheia, encolhe só quando muito longo. */
-export function classeDoValorDoTopo(valor: number, comSinal: boolean): string {
-  return cn(
-    "whitespace-nowrap font-bold leading-none tracking-tight",
-    comprimentoDoValor(valor, comSinal) <= 13
-      ? "text-[clamp(2rem,10vw,2.75rem)]"
-      : "text-[clamp(1.5rem,7vw,2rem)]",
-  );
-}
-
-// Faixas medidas com a fonte do painel (Inter negrito, números tabulares) para
-// caber num quadro de meia largura em 338px (miolo de ~117px): 22px normal,
-// 20px / 18px quando passa de ~9 caracteres, e daí para baixo.
-const TAMANHOS_NO_QUADRO: readonly (readonly [number, string])[] = [
-  [8, "text-[22px] leading-tight"],
-  [9, "text-[20px] leading-tight"],
-  [10, "text-[18px] leading-tight"],
-  [12, "text-[15px] leading-tight"],
-  [14, "text-[13px] leading-tight"],
-];
 
 /** Valor de um quadro de meia largura (Entrou/Saiu, Vencido, Próximos 7 dias). */
 export function classeDoValorNoQuadro(
   valor: number,
   comSinal: boolean,
+  ocultos: boolean,
 ): string {
-  const n = comprimentoDoValor(valor, comSinal);
-  const faixa = TAMANHOS_NO_QUADRO.find(([ate]) => n <= ate);
   return cn(
     "whitespace-nowrap font-bold",
-    faixa?.[1] ?? "text-xs leading-tight",
+    tamanhoDeMeiaLargura(comprimentoDoValor(valor, comSinal, ocultos)),
   );
 }
 
@@ -93,8 +82,12 @@ export function classeDoValorNoQuadro(
  * Valor à direita de uma linha/cartão de lista: não encolhe (`shrink-0`), é o
  * título que cede e quebra. Letra menor só quando o texto é longo.
  */
-export function classeDoValorDaLinha(valor: number, comSinal: boolean): string {
-  const n = comprimentoDoValor(valor, comSinal);
+export function classeDoValorDaLinha(
+  valor: number,
+  comSinal: boolean,
+  ocultos: boolean,
+): string {
+  const n = comprimentoDoValor(valor, comSinal, ocultos);
   return cn(
     "shrink-0 whitespace-nowrap text-right font-bold leading-snug",
     n <= 9 ? "text-[18px]" : n <= 12 ? "text-base" : "text-sm",

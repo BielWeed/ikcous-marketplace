@@ -605,35 +605,45 @@ describe("Ocultar valores vale para os blocos novos", () => {
 
 describe("Medidas dos valores (funções puras)", () => {
   it("coluna do histórico: 22px não existe; encolhe por número de caracteres", () => {
-    expect(classeDoValorNaColuna(412.5)).toContain("text-base");
+    expect(classeDoValorNaColuna(412.5, false, false)).toContain("text-base");
     // "+R$ 412,50" = 10 caracteres; "R$ 1.412,50" = 11; "R$ 12.412,50" = 12…
-    expect(classeDoValorNaColuna(412.5, true)).toContain("text-[15px]");
-    expect(classeDoValorNaColuna(1412.5)).toContain("text-[13px]");
-    expect(classeDoValorNaColuna(12412.5)).toContain("text-xs");
-    expect(classeDoValorNaColuna(123456.78)).toContain("text-[11px]");
-    expect(classeDoValorNaColuna(1234567.89)).toContain("text-[11px]");
+    expect(classeDoValorNaColuna(412.5, true, false)).toContain("text-[15px]");
+    expect(classeDoValorNaColuna(1412.5, false, false)).toContain(
+      "text-[13px]",
+    );
+    expect(classeDoValorNaColuna(12412.5, false, false)).toContain("text-xs");
+    expect(classeDoValorNaColuna(123456.78, false, false)).toContain(
+      "text-[11px]",
+    );
+    expect(classeDoValorNaColuna(1234567.89, false, false)).toContain(
+      "text-[11px]",
+    );
     for (const v of [0, 5, 412.5, 99999999.99]) {
-      expect(classeDoValorNaColuna(v)).toContain("whitespace-nowrap");
+      expect(classeDoValorNaColuna(v, false, false)).toContain(
+        "whitespace-nowrap",
+      );
     }
   });
 
   it("o sinal conta como um caractere a mais", () => {
-    expect(classeDoValorNaColuna(1412.5, true)).toContain("text-xs");
-    expect(classeDoValorNaColuna(-1412.5)).toContain("text-xs");
+    expect(classeDoValorNaColuna(1412.5, true, false)).toContain("text-xs");
+    expect(classeDoValorNaColuna(-1412.5, false, false)).toContain("text-xs");
   });
 
   it("linha e herói: nowrap sempre e tamanho por faixa", () => {
-    expect(classeDoValorDaLinha(94.9, true)).toContain("text-base");
-    expect(classeDoValorDaLinha(12345.67, true)).toContain("text-sm");
-    expect(classeDoValorDaLinha(123456.78, true)).toContain("text-xs");
-    expect(classeDoValorDaLinha(1)).toContain("whitespace-nowrap");
-    expect(classeDoValorDoHeroi(184.9)).toContain(
+    expect(classeDoValorDaLinha(94.9, true, false)).toContain("text-base");
+    expect(classeDoValorDaLinha(12345.67, true, false)).toContain("text-sm");
+    expect(classeDoValorDaLinha(123456.78, true, false)).toContain("text-xs");
+    expect(classeDoValorDaLinha(1, false, false)).toContain(
+      "whitespace-nowrap",
+    );
+    expect(classeDoValorDoHeroi(184.9, false)).toContain(
       "text-[clamp(2rem,10vw,2.75rem)]",
     );
-    expect(classeDoValorDoHeroi(12345678.9)).toContain(
+    expect(classeDoValorDoHeroi(12345678.9, false)).toContain(
       "text-[clamp(1.5rem,7vw,2rem)]",
     );
-    expect(classeDoValorDoHeroi(1)).toContain("whitespace-nowrap");
+    expect(classeDoValorDoHeroi(1, false)).toContain("whitespace-nowrap");
   });
 
   it("instantes: hoje só a hora; outro dia com a data; lixo vira traço", () => {
