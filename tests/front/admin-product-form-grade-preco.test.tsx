@@ -417,6 +417,34 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       );
     });
 
+    it("com variações ativas o estoque mostra UMA linha compacta (fechada) e o texto completo fica no alvo do aria-describedby", async () => {
+      await montarNovo();
+      await abrirGradeDe4();
+      await act(async () => {
+        clicarObrigatorio("Salvar 4 variações");
+      });
+
+      const campo = document.getElementById("product-stock");
+      expect(campo?.getAttribute("aria-describedby")).toBe(
+        "product-stock-info",
+      );
+      const texto = document.getElementById("product-stock-info");
+      expect(texto?.textContent).toContain("soma das variações ativas");
+      const botao = document.querySelector(
+        'button[aria-controls="product-stock-info"]',
+      ) as HTMLButtonElement;
+      expect(botao.textContent).toContain("Estoque vem das variações");
+      expect(botao.getAttribute("aria-expanded")).toBe("false");
+      // A frase antiga, comprida e âmbar, não existe mais.
+      expect(document.body.textContent).not.toContain(
+        "Estoque gerenciado pelas variantes ativas",
+      );
+      await act(async () => {
+        botao.click();
+      });
+      expect(botao.getAttribute("aria-expanded")).toBe("true");
+    });
+
     it("grade recusada (código interno já usado na loja): nada entra — o Preço de Venda continua vazio e sem 'veio da grade'", async () => {
       mocks.loja.produtos = [
         { id: "prod-2", variants: [{ id: "x1", sku: "BLU-AMA-P" }] },

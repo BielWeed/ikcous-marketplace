@@ -163,13 +163,35 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
     // fosco (pedido do Gabriel, 02/09) — e não opaco como era antes.
     const veu = document.body.querySelector('div[class*="backdrop-blur-xl"]');
     expect(veu).toBeTruthy();
-    expect(veu!.className).toContain("bg-zinc-950/70");
-    expect(veu!.className).not.toContain("bg-zinc-950/98");
+    // Desde 23/10/2026 o véu e a barra usam os tokens do tema do painel
+    // (bg-background / bg-card) em vez de zinc fixo, para seguir Escuro,
+    // Claro e Confortável; a translucidez e o blur continuam os mesmos.
+    expect(veu!.className).toContain("bg-background/80");
+    expect(veu!.className).not.toContain("bg-background/95");
+    expect(veu!.className).not.toMatch(/bg-zinc-950/);
 
     // A barra superior do simulador é nítida sobre o véu (fundo quase
-    // sólido), porque é o único comando que continua clicável.
-    const barra = document.body.querySelector('div[class*="bg-zinc-950/85"]');
+    // sólido), porque é o único comando que continua clicável — e não usa
+    // mais verde de marca nem tema fixo.
+    const barra = document.body.querySelector('div[class*="bg-card/90"]');
     expect(barra).toBeTruthy();
     expect(barra!.textContent).toContain("Simulador do Aplicativo");
+    expect(barra!.className).not.toMatch(/emerald|zinc/);
+    expect(barra!.innerHTML).not.toMatch(/emerald/);
+    expect(barra!.closest("[data-tema-fixo]")).toBeNull();
+    // O celular abaixo da barra mantém o tema fixo.
+    expect(document.body.querySelector("[data-tema-fixo]")).toBeTruthy();
+
+    // Acessibilidade da barra: alvos de 44px no próprio elemento clicável,
+    // estado do alternador exposto e botão de fechar com nome.
+    const alternadores = Array.from(
+      barra!.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"),
+    );
+    expect(alternadores).toHaveLength(2);
+    for (const b of alternadores) expect(b.className).toContain("h-11");
+    expect(
+      barra!.querySelector('button[aria-label="Fechar o simulador"]')!
+        .className,
+    ).toContain("size-11");
   });
 });
