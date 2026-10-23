@@ -72,6 +72,19 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
+  // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
+  "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {
+    funcao: "fin_dre",
+    esperado: [
+      "IF NOT public.is_admin() THEN",
+      "IF NOT public.is_admin_atual() THEN",
+      "CASE WHEN grupo_dre = 'financeiro'",
+      "THEN sum(CASE WHEN tipo = 'entrada' THEN valor ELSE -valor END)",
+      "ELSE sum(valor) END AS valor_dre,",
+      "'categoria', g.nome, 'valor', g.valor_dre)",
+    ],
+  },
   // 20261381: o ex-admin perde o acesso na hora no resto do painel. Dez RPCs trocam so o gate (is_admin -> is_admin_atual); as 21
   // politicas e a politica nova de banners nao sao conferiveis aqui (so corpo de funcao): a consulta 86a e a prova viva fazem isso.
   "20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql": [

@@ -30,6 +30,7 @@
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
 --                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda);
 --   * `fin_dre`                → 20261242000000 (a DRE usa o custo do dia da venda; parte do corpo da 99);
+--                                e, DEPOIS dela, 20261382000000 (o resultado mostra tarifa, juro e quebra como despesa);
 --   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável)
 --                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp);
@@ -159,6 +160,7 @@ WITH corpos AS (
     ('get_admin_analytics_v2', '5746d8a1df216ca4a5569901c45a2a07', '20261250000000'),
     ('get_admin_analytics_v2', '060c9ab5b1505dc375b41e4436e9d3a8', '20261251000000'),
     ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000'),
+    ('fin_dre', '2d191bc8120a9b188c04eeaaa0263110', '20261382000000'),
     ('registrar_pagamento_recebido', '88270bb1e228c90be73acca03a3cee4e', '20261243000000'),
     ('upsert_store_config', '391e8e1064400df5aea579f3472b203c', '20261244000000'),
     ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000')), colunas(tabela, coluna) AS (VALUES
