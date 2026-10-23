@@ -63,21 +63,26 @@ describe("estilo do card de frete na Home", () => {
       function conferirAnel(liberado: boolean, percentual: number) {
         const anel = container.querySelector("svg");
         expect(anel?.getAttribute("aria-hidden")).toBe("true");
-        expect(anel?.getAttribute("width")).toBe("52");
-        expect(anel?.getAttribute("height")).toBe("52");
+        expect(anel?.getAttribute("width")).toBe("40");
+        expect(anel?.getAttribute("height")).toBe("40");
+        expect(anel?.getAttribute("stroke-width")).toBe("3.5");
+        expect(
+          container.querySelector(liberado ? ".lucide-check" : ".lucide-truck"),
+        ).not.toBeNull();
         const circulos = anel?.querySelectorAll("circle");
-        expect(circulos).toHaveLength(2);
+        // Progresso 0: só o trilho (sem arco, sem pontinho verde no topo).
+        expect(circulos).toHaveLength(percentual > 0 ? 2 : 1);
+        if (percentual <= 0) return;
         const arco = circulos?.[1];
-        expect(arco?.getAttribute("r")).toBe("24");
+        expect(arco?.getAttribute("r")).toBe("18.25");
+        expect(arco?.getAttribute("cx")).toBe("-20");
+        expect(arco?.getAttribute("cy")).toBe("20");
         expect(arco?.getAttribute("stroke-linecap")).toBe("round");
         expect(arco?.getAttribute("pathLength")).toBe("100");
         expect(arco?.getAttribute("stroke-dasharray")).toBe("100");
         expect(Number(arco?.getAttribute("stroke-dashoffset"))).toBeCloseTo(
           100 - percentual,
         );
-        expect(
-          container.querySelector(liberado ? ".lucide-check" : ".lucide-truck"),
-        ).not.toBeNull();
       }
 
       for (const total of [129.9, 0, 211.7]) {
@@ -96,10 +101,10 @@ describe("estilo do card de frete na Home", () => {
           );
           const meta =
             total >= 150
-              ? `Seu carrinho já ganhou entrega${soLocal ? " local" : ""} grátis!`
+              ? "Já vale para o seu carrinho."
               : total
                 ? "R$ 129,90 de R$ 150,00"
-                : `A partir de R$ 150,00 em compras${soLocal ? ", na entrega local" : ""}.`;
+                : "Compras a partir de R$ 150,00";
           expect(texto(container.querySelector("p:last-child"))).toBe(meta);
           expect(conteudo).not.toContain("/");
           if (total >= 150) expect(conteudo).not.toContain("Faltam");
@@ -138,7 +143,7 @@ describe("estilo do card de frete na Home", () => {
         expect(texto(container.querySelector("p:last-child"))).toBe(
           soLocal
             ? "Pedido com entrega local sai grátis."
-            : "Qualquer pedido sai com entrega grátis.",
+            : "Todo pedido sai com entrega grátis.",
         );
         expect(container.querySelector('[role="progressbar"]')).toBeNull();
         conferirAnel(true, 100);
@@ -157,27 +162,55 @@ describe("estilo do card de frete na Home", () => {
     ).toBe("0");
   });
   it.each([-20, Number.NaN])(
-    "anel protege progresso inválido (%s)",
+    "anel protege progresso inválido (%s): só o trilho, sem arco verde",
     (total) => {
       estado.cartTotal = total;
       montar();
-      expect(
-        Number(
-          container
-            .querySelectorAll("circle")[1]
-            ?.getAttribute("stroke-dashoffset"),
-        ),
-      ).toBe(100);
+      const circulos = container
+        .querySelector("svg")!
+        .querySelectorAll("circle");
+      expect(circulos).toHaveLength(1);
+      expect(circulos[0]?.getAttribute("stroke")).toBe("#27272A");
     },
   );
+  it("ícone: caminhão cinza enquanto falta, check verde quando liberado", () => {
+    estado.cartTotal = 10;
+    montar();
+    const caminhao = container.querySelector(".lucide-truck");
+    expect(caminhao?.getAttribute("class")).toContain("text-zinc-400");
+    expect(caminhao?.getAttribute("width")).toBe("18");
+    estado.cartTotal = 150;
+    montar();
+    const check = container.querySelector(".lucide-check");
+    expect(check?.getAttribute("class")).toContain("text-emerald-400");
+    expect(check?.getAttribute("aria-hidden")).toBe("true");
+  });
+  it("cartão tem as medidas do desenho aprovado (66px, 18px, textos >= 11px)", () => {
+    estado.cartTotal = 129.9;
+    montar();
+    const card = container.firstElementChild!;
+    for (const c of [
+      "min-h-[66px]",
+      "rounded-[18px]",
+      "gap-2.5",
+      "px-3",
+      "py-2",
+    ])
+      expect(card.className).toContain(c);
+    expect(container.querySelector("p")?.className).toContain("text-[11px]");
+    expect(container.querySelector("h3")?.className).toContain("text-base");
+    expect(container.querySelector("p:last-child")?.className).toContain(
+      "text-xs",
+    );
+  });
   it("compacto contém textos e valores grandes sem forçar largura mínima", () => {
     estado.config.freeShippingMin = 12345.67;
     estado.cartTotal = 1999.9;
     montar();
     const card = container.firstElementChild!;
     expect(card.className).toContain("w-full");
-    expect(card.className).toContain("min-h-[84px]");
-    expect(card.className).toContain("rounded-[22px]");
+    expect(card.className).toContain("min-h-[66px]");
+    expect(card.className).toContain("rounded-[18px]");
     const coluna = container.querySelector("h3")!.parentElement!;
     expect(coluna.className).toContain("min-w-0");
     // Contrato da Home: texto nunca é cortado; o cartão cresce (min-h).

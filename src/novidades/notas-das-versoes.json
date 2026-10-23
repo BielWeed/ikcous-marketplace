@@ -1,4 +1,14 @@
 {
+  "1.5.61": {
+    "titulo": "Barra de frete grátis renovada e ofertas em duas fileiras",
+    "novidades": [
+      "Novo jeito de mostrar as Ofertas na tela inicial: \"Lateral em duas fileiras\". Cabem duas ofertas uma sobre a outra em cada passo do carrossel, gastando menos espaço. Quem administra escolhe esse layout em Vitrines, no painel; as lojas que já usam outro layout continuam como estão."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "A barra de frete grátis da tela inicial (no estilo compacto) ficou mais baixa e organizada, com um anel que mostra quanto falta para ganhar o frete grátis."
+    ]
+  },
   "1.5.60": {
     "titulo": "Perfil redesenhado e carrinho que respeita o estoque do tamanho escolhido",
     "novidades": [

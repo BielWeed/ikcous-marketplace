@@ -26,8 +26,10 @@ import React, {
   useRef,
 } from "react";
 import { OfertasCompactasEsqueleto } from "./OfertasCompactasEsqueleto";
+import { OfertasLateralDuploEsqueleto } from "./OfertasLateralDuploEsqueleto";
 import { OfertasLateralEsqueleto } from "./OfertasLateralEsqueleto";
 import { StarRating } from "./StarRating";
+import { fileirasDaFaixa } from "./ofertas-lateral-duplo-altura";
 
 export interface PremiumOffersProps {
   layout?: LayoutDeOfertas;
@@ -42,6 +44,7 @@ export interface PremiumOffersProps {
 
 const OfertasCompactas = React.lazy(() => import("./OfertasCompactas"));
 const OfertasLateral = React.lazy(() => import("./OfertasLateral"));
+const OfertasLateralDuplo = React.lazy(() => import("./OfertasLateralDuplo"));
 
 export const PremiumOffers = React.memo(function PremiumOffers(
   props: PremiumOffersProps,
@@ -56,6 +59,19 @@ export const PremiumOffers = React.memo(function PremiumOffers(
     return (
       <React.Suspense fallback={<OfertasLateralEsqueleto />}>
         <OfertasLateral {...props} />
+      </React.Suspense>
+    );
+  if (props.layout === "lateral-duplo")
+    return (
+      // Aqui as ofertas já estão na mão: o esqueleto reserva as fileiras que a faixa terá (1 oferta = 1 fileira).
+      <React.Suspense
+        fallback={
+          <OfertasLateralDuploEsqueleto
+            fileiras={fileirasDaFaixa(props.products.length)}
+          />
+        }
+      >
+        <OfertasLateralDuplo {...props} />
       </React.Suspense>
     );
   return <PremiumOffersPadrao {...props} />;
