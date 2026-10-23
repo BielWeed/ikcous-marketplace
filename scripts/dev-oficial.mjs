@@ -17,10 +17,19 @@
 // continuam vindo do `.env.local`, que o lancador nao toca.
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Como o `npm run dev` faz: procura o vite subindo as pastas (worktree sem
+// node_modules proprio usa o do projeto original).
+const VITE_BIN = join(
+  dirname(
+    createRequire(join(RAIZ, "package.json")).resolve("vite/package.json"),
+  ),
+  "bin/vite.js",
+);
 export const PAGINA_OFICIAL = "https://ickous-marketplace.vercel.app/";
 
 /** Le `{supabaseUrl, publishableKey}` da ficha embutida no HTML publicado. */
@@ -83,22 +92,18 @@ async function main() {
   console.log(
     `[dev:oficial] banco oficial confirmado: ${new URL(conexao.supabaseUrl).host} (ref do canal IKCOUS)`,
   );
-  const filho = spawn(
-    process.execPath,
-    [join(RAIZ, "node_modules/vite/bin/vite.js"), ...process.argv.slice(2)],
-    {
-      cwd: RAIZ,
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        // A trava de identidade do vite exige o endereco publico da loja.
-        VITE_APP_URL: PAGINA_OFICIAL.replace(/\/$/, ""),
-        VITE_SUPABASE_URL: conexao.supabaseUrl,
-        VITE_SUPABASE_PUBLISHABLE_KEY: conexao.publishableKey,
-        VITE_SUPABASE_ANON_KEY: conexao.publishableKey,
-      },
+  const filho = spawn(process.execPath, [VITE_BIN, ...process.argv.slice(2)], {
+    cwd: RAIZ,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      // A trava de identidade do vite exige o endereco publico da loja.
+      VITE_APP_URL: PAGINA_OFICIAL.replace(/\/$/, ""),
+      VITE_SUPABASE_URL: conexao.supabaseUrl,
+      VITE_SUPABASE_PUBLISHABLE_KEY: conexao.publishableKey,
+      VITE_SUPABASE_ANON_KEY: conexao.publishableKey,
     },
-  );
+  });
   const parar = () => filho.kill();
   process.on("SIGINT", parar);
   process.on("SIGTERM", parar);
