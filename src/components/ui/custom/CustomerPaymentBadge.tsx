@@ -258,7 +258,8 @@ interface CustomerPaymentBadgeProps {
   // idêntico ao de antes desta correção.
   orderStatus?: OrderStatus | null;
   className?: string;
-  variant?: "lista";
+  /** `perfil`: mesmo selo da lista, com texto de 12 px (cartão do Perfil). */
+  variant?: "lista" | "perfil";
 }
 
 /**
@@ -291,13 +292,13 @@ export const CustomerPaymentBadge = memo(function CustomerPaymentBadge({
       data-testid="customer-payment-badge"
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2.5",
-        variant === "lista" ? "h-6" : "py-1",
+        variant === "lista" ? "h-6" : variant === "perfil" ? "h-7" : "py-1",
         styles.bgColor,
         styles.borderColor,
         className,
       )}
     >
-      {variant === "lista" ? (
+      {variant ? (
         <Icon
           aria-hidden="true"
           className={cn("size-3 shrink-0", styles.color)}
@@ -309,7 +310,9 @@ export const CustomerPaymentBadge = memo(function CustomerPaymentBadge({
         className={cn(
           variant === "lista"
             ? "text-[11px] font-semibold"
-            : "text-[9px] font-black uppercase tracking-widest",
+            : variant === "perfil"
+              ? "text-xs font-semibold"
+              : "text-[9px] font-black uppercase tracking-widest",
           styles.color,
         )}
       >

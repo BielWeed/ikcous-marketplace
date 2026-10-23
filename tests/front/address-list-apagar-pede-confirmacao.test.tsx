@@ -97,7 +97,7 @@ describe.each([
 
   const lixeiras = () => [
     ...hospedeiro.querySelectorAll<HTMLButtonElement>(
-      'button[aria-label="Excluir"]',
+      'button[aria-label^="Excluir"]',
     ),
   ];
 
@@ -166,7 +166,7 @@ describe("AddressList — o que nao muda", () => {
         />,
       ),
     );
-    expect(hospedeiro.querySelector('button[aria-label="Excluir"]')).toBeNull();
+    expect(hospedeiro.querySelector('button[aria-label^="Excluir"]')).toBeNull();
     expect(pergunta()).toBeNull();
     act(() => raiz.unmount());
     hospedeiro.remove();
@@ -179,9 +179,9 @@ describe("AddressList — o que nao muda", () => {
     act(() =>
       raiz.render(<AddressList addresses={[CASA]} onEdit={() => {}} />),
     );
-    expect(hospedeiro.querySelector('button[aria-label="Excluir"]')).toBeNull();
+    expect(hospedeiro.querySelector('button[aria-label^="Excluir"]')).toBeNull();
     expect(
-      hospedeiro.querySelector('button[aria-label="Editar"]'),
+      hospedeiro.querySelector('button[aria-label^="Editar"]'),
     ).not.toBeNull();
     act(() => raiz.unmount());
     hospedeiro.remove();
