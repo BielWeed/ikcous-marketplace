@@ -112,11 +112,12 @@ Deno.test("1383: nenhum seed do dono; o comando de cadastro esta so em comentari
     "prevent_role_change",
     "handle_profile_role_sync_to_auth",
   ]) {
+    // Espacos normalizados e caixa alta: sem montar expressao regular a partir do nome.
+    const normalizado = semComentario.replace(/\s+/g, " ").toUpperCase();
+    const nomeAlto = f.toUpperCase();
     assert(
-      !new RegExp(
-        `CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${f}\\(`,
-        "i",
-      ).test(semComentario),
+      !normalizado.includes(`CREATE FUNCTION PUBLIC.${nomeAlto}(`) &&
+        !normalizado.includes(`CREATE OR REPLACE FUNCTION PUBLIC.${nomeAlto}(`),
       `${f} nao pode ser redefinida`,
     );
   }
@@ -223,13 +224,14 @@ Deno.test("1383: consultas 88a/88b (md5 = o do corpo real), rol fechado, canais,
   }
   const conf = require("../scripts/publicacao/conferir-banco.cjs");
   const mapa = require("../scripts/db-apply.cjs");
-  assertEquals(conf.ROL_FECHADO_POR_CONSULTA[A].length, 9);
-  assertEquals(conf.ROL_FECHADO_POR_CONSULTA[B].length, 8);
+  const roles = new Map<string, string[]>(
+    Object.entries(conf.ROL_FECHADO_POR_CONSULTA),
+  );
+  assertEquals(roles.get(A)?.length, 9);
+  assertEquals(roles.get(B)?.length, 8);
   for (const consulta of [A, B]) {
-    assertEquals(
-      new Set(conf.ROL_FECHADO_POR_CONSULTA[consulta]).size,
-      conf.ROL_FECHADO_POR_CONSULTA[consulta].length,
-    );
+    const rol = roles.get(consulta) ?? [];
+    assertEquals(new Set(rol).size, rol.length);
     assertStringIncludes(
       lerRaiz(".github/workflows/conferir-banco-da-loja.yml"),
       `- ${consulta}\n`,
@@ -246,7 +248,11 @@ Deno.test("1383: consultas 88a/88b (md5 = o do corpo real), rol fechado, canais,
     );
   }
   assertEquals(
-    mapa.VERIFICACOES[nome].map((x: { funcao: string }) => x.funcao),
+    (
+      new Map<string, { funcao: string }[]>(
+        Object.entries(mapa.VERIFICACOES),
+      ).get(nome) ?? []
+    ).map((x) => x.funcao),
     ["definir_cargo", "papel_so_pelo_definir_cargo"],
   );
   const canais = JSON.parse(lerRaiz("scripts/frota/canais-de-backend.json"));
@@ -257,7 +263,7 @@ Deno.test("1383: consultas 88a/88b (md5 = o do corpo real), rol fechado, canais,
   assertEquals(lotes[0].consulta, A);
   assertEquals(lotes[0].ausenciaConfirmadaPor, B);
   for (const campo of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
-    assertEquals(lotes[0][campo], undefined, campo);
+    assertEquals(Object.hasOwn(lotes[0], campo), false, campo);
   assertStringIncludes(
     lerRaiz(".github/workflows/rpc-ci.yml"),
     "run: node tests/banco/rodar-isolado.cjs tests/banco/definir-cargo-so-o-dono-viva.cjs",

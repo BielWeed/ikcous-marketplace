@@ -283,10 +283,18 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
   ]) {
     const t = lerRaiz(arq);
     // As posteriores entram na ordem da aplicacao; a 20261383 (DEFINIR_CARGO) vem depois desta e fecha a lista.
+    const marcaResto = "EX_ADMIN_RESTO_DO_PAINEL,\n";
+    const iFim = t.indexOf("DEFINIR_CARGO,\n];");
+    const iResto = iFim >= 0 ? t.lastIndexOf(marcaResto, iFim) : -1;
+    // Entre as duas marcas so pode haver linha em branco ou comentario.
+    const entre =
+      iResto >= 0 && iFim > iResto
+        ? t.slice(iResto + marcaResto.length, iFim)
+        : "x";
     assert(
-      /EX_ADMIN_RESTO_DO_PAINEL,\n(?:\s*\/\/[^\n]*\n)*\s*DEFINIR_CARGO,\n\];/.test(
-        t,
-      ),
+      entre
+        .split("\n")
+        .every((l: string) => l.trim() === "" || l.trim().startsWith("//")),
       `${arq}: EX_ADMIN_RESTO_DO_PAINEL seguido so de DEFINIR_CARGO no fim da lista`,
     );
     assertStringIncludes(
