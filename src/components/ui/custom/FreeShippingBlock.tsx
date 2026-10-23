@@ -104,11 +104,11 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
             Frete grátis{soLocal ? " na cidade" : ""}
           </p>
           <h3
-            className={`text-base font-bold leading-5 tabular-nums${liberado ? " text-emerald-400" : ""}`}
+            className={`text-base font-bold tabular-nums leading-5${liberado ? " text-emerald-400" : ""}`}
           >
             {liberado ? "Liberado" : `Faltam ${formatCurrency(remaining)}`}
           </h3>
-          <p className="text-xs leading-[15px] tabular-nums text-zinc-400">
+          <p className="text-xs tabular-nums leading-[15px] text-zinc-400">
             {sempre
               ? soLocal
                 ? "Pedido com entrega local sai grátis."
