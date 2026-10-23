@@ -214,14 +214,6 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     await esperar();
   }
 
-  const dt = (rotulo: string): HTMLElement => {
-    const achado = [...hospedeiro.querySelectorAll<HTMLElement>("dt")].find(
-      (el) => normalizar(el.textContent) === rotulo,
-    );
-    if (!achado) throw new Error(`dt "${rotulo}" não existe`);
-    return achado;
-  };
-
   it("BlocoKpi: casca nova, rótulo em frase, valor grande e ícone em selo", async () => {
     await montar(
       <BlocoKpi
@@ -337,90 +329,94 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     expect(hospedeiro.textContent).not.toContain("online_desconhecido");
   });
 
-  it("Visão: mini-cartões de vencido, próximos 7 dias e saldo por conta", async () => {
+  it("Visão: vencido em etiqueta, próximos 7 dias sempre à vista e saldo por conta em lista compacta", async () => {
     await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
 
-    for (const rotulo of ["Vencido", "Próximos 7 dias"]) {
-      const r = dt(rotulo);
-      expect(classes(r.parentElement?.parentElement), rotulo).toContain(
-        "text-xs",
+    // Desenho de 22/10/2026: o "Vencido" virou etiqueta (só quando há) e, sem
+    // vencido, a linha diz "Nada vencido" em cinza. "Próximos 7 dias" aparece
+    // nos dois cartões, com o valor.
+    const aPagar = hospedeiro.querySelector('[aria-label="A pagar"]');
+    const aReceber = hospedeiro.querySelector('[aria-label="A receber"]');
+    expect(aPagar?.querySelector("[data-vencido]")).toBeNull();
+    const nada = [...(aPagar?.querySelectorAll("p") ?? [])].find(
+      (el) => normalizar(el.textContent) === "Nada vencido",
+    );
+    comACasca(nada, ["text-zinc-400"], "Nada vencido neutro");
+    for (const cartao of [aPagar, aReceber]) {
+      const sete = [...(cartao?.querySelectorAll("p") ?? [])].find((el) =>
+        normalizar(el.textContent).startsWith("Próximos 7 dias"),
       );
-      expect(classes(r.parentElement), rotulo).toContain("flex-wrap");
-      const caixa = r.parentElement;
-      expect(classes(caixa), rotulo).toContain("items-baseline");
-      expect(classes(caixa), rotulo).not.toContain("rounded-xl");
+      expect(sete, "Próximos 7 dias à vista").toBeDefined();
+      comACasca(sete, ["text-zinc-400"], "Próximos 7 dias");
     }
-    // Sem vencido (a pagar), o indicador permanece neutro.
-    const vencidoDoAPagar = [...hospedeiro.querySelectorAll("dt")].filter(
-      (el) => normalizar(el.textContent) === "Vencido",
-    )[0];
-    comACasca(
-      vencidoDoAPagar?.parentElement,
-      ["text-zinc-400"],
-      "Vencido neutro",
-    );
-    // Com vencido a cor de estado (vermelho) fica, só a casca muda.
-    const vencidoDoAReceber = hospedeiro.querySelector(
-      '[aria-label="A receber"] dt',
-    );
-    expect(classes(vencidoDoAReceber?.parentElement)).toEqual(
-      expect.arrayContaining(["text-red-400", "flex-wrap"]),
+    expect(
+      normalizar(
+        [...(aPagar?.querySelectorAll("p") ?? [])].find((el) =>
+          normalizar(el.textContent).startsWith("Próximos 7 dias"),
+        )?.textContent,
+      ),
+    ).toContain("R$ 200,00");
+    // Com vencido a cor de estado (vermelho) fica, agora numa etiqueta.
+    const etiqueta = aReceber?.querySelector("[data-vencido]");
+    expect(normalizar(etiqueta?.textContent)).toBe("Vencido R$ 100,00");
+    expect(classes(etiqueta)).toEqual(
+      expect.arrayContaining(["text-red-400", "bg-red-400/10", "rounded-full"]),
     );
 
+    // Saldo por conta: lista compacta nome ↔ valor, sem um cartão por linha.
     const conta = hospedeiro.querySelector(
       'ul[aria-label="Saldo por conta"] li',
     );
-    comACasca(conta, CASCA_DO_CARTAO, "saldo por conta");
-    const nome = conta?.querySelector("span");
+    expect(classes(conta)).toEqual(
+      expect.arrayContaining(["flex", "items-center", "justify-between"]),
+    );
+    expect(classes(conta)).not.toContain("bg-admin-raised");
+    expect(classes(conta)).toContain("min-h-12");
+    const nome = [...(conta?.querySelectorAll("span") ?? [])].find(
+      (el) => normalizar(el.textContent) === "Conta bancária",
+    );
+    expect(nome).toBeDefined();
     expect(classes(nome)).toEqual(
-      expect.arrayContaining(["text-xs", "font-semibold", "text-zinc-300"]),
+      expect.arrayContaining(["text-sm", "text-zinc-200"]),
     );
-    expect(classes(nome)).not.toContain("text-[11px]");
   });
 
-  it("Extrato: Entrou, Saiu e Resultado no cartão novo", async () => {
-    await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
-    await abrirAba("Extrato");
+  // "Extrato: Entrou, Saiu e Resultado no cartão novo" saiu daqui em 23/10/2026:
+  // o Extrato ganhou o desenho aprovado (cartão do período com o resultado
+  // grande e Entrou/Saiu em uma linha). A cobertura nova está em
+  // financeiro-extrato-e-pagar-no-desenho-novo.test.tsx.
 
-    for (const rotulo of ["Entrou", "Saiu", "Resultado"]) {
-      const r = dt(rotulo);
-      rotuloNoDesenhoNovo(r, rotulo);
-      comACasca(r.parentElement?.parentElement, CASCA_DO_CARTAO, rotulo);
-    }
-    // Os totais ficam em linhas próprias no mesmo cartão.
-    expect(classes(dt("Saiu").parentElement?.parentElement)).toEqual(
-      expect.arrayContaining(["flex", "flex-col"]),
-    );
-    expect(classes(dt("Saiu").parentElement?.parentElement)).not.toContain(
-      "grid-cols-3",
-    );
-    expect(classes(dt("Saiu").parentElement?.parentElement)).toContain("p-4");
-    expect(classes(dt("Saiu").nextElementSibling)).toEqual(
-      expect.arrayContaining(["text-sm", "font-bold"]),
-    );
-    // O valor não perde a cor de sinal.
-    expect(classes(dt("Entrou").nextElementSibling)).toContain(
-      "text-emerald-300",
-    );
-    expect(classes(dt("Saiu").nextElementSibling)).toContain("text-red-300");
-  });
-
-  it("Caixa: a sessão do histórico usa o cartão novo e o rótulo legível", async () => {
+  it("Caixa: a sessão do histórico é uma linha do cartão do histórico, com rótulo legível em frase", async () => {
     await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
     await abrirAba("Caixa");
 
+    // Desenho de 22/10/2026: as sessões deixaram de ser cartões elevados um
+    // dentro do outro; são linhas separadas por fio dentro do cartão do histórico.
     const li = [...hospedeiro.querySelectorAll("li")].find((el) =>
       normalizar(el.textContent).includes("Esperado"),
     );
-    comACasca(li, CASCA_DO_CARTAO, "sessão do histórico");
+    expect(classes(li), "sessão do histórico").toEqual(
+      expect.arrayContaining(["border-t", "border-admin-border"]),
+    );
+    expect(classes(li), "sem cartão dentro de cartão").not.toContain(
+      "bg-admin-raised",
+    );
     for (const rotulo of ["Esperado", "Contado", "Diferença"]) {
       const r = [...(li?.querySelectorAll("dt") ?? [])].find(
         (el) => normalizar(el.textContent) === rotulo,
       );
       expect(classes(r), rotulo).toEqual(
-        expect.arrayContaining(["text-xs", "font-semibold", "text-zinc-300"]),
+        expect.arrayContaining(["text-xs", "text-zinc-400"]),
       );
-      expect(classes(r), rotulo).not.toContain("text-zinc-500");
+      for (const velha of [
+        "uppercase",
+        "font-black",
+        "text-[11px]",
+        "text-zinc-500",
+        "tracking-[0.2em]",
+      ]) {
+        expect(classes(r), `${rotulo}: sobrou ${velha}`).not.toContain(velha);
+      }
     }
     // A cor de estado da diferença (quebra) fica.
     const diferenca = [...(li?.querySelectorAll("dt") ?? [])].find(

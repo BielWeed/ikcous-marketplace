@@ -37,7 +37,7 @@ function valor(rotulo: string) {
   return secao.querySelector(".tabular-nums")!;
 }
 
-it("a receber e a pagar seguem entrada e saída no resumo, com saldo positivo verde", async () => {
+it("a receber e a pagar seguem entrada e saída no resumo; o saldo total é neutro e o verde fica na etiqueta do período", async () => {
   rpc.mockResolvedValue({
     data: {
       saldo_total: 120,
@@ -61,9 +61,11 @@ it("a receber e a pagar seguem entrada e saída no resumo, com saldo positivo ve
     .soft(valor("A receber").classList.contains("text-emerald-400"))
     .toBe(true);
   expect.soft(valor("A pagar").classList.contains("text-red-400")).toBe(true);
+  // Desenho de 22/10/2026: o saldo é texto neutro — cor só onde significa algo.
+  expect.soft(valor("Saldo total").classList.contains("text-white")).toBe(true);
   expect
     .soft(valor("Saldo total").classList.contains("text-emerald-400"))
-    .toBe(true);
+    .toBe(false);
 });
 
 it("totais zerados da visão geral são cinza, não entrada e saída", async () => {
@@ -110,13 +112,17 @@ it.each(["entrada", "saida"] as const)(
   },
 );
 
+// Desenho aprovado de 23/10/2026 (Pagar e receber): o total e o valor de cada
+// conta ficam em texto neutro (ainda não entrou nem saiu); a cor mora no PRAZO
+// (vencido vermelho, hoje âmbar) e no quadro "Vencido". O ícone de relógio
+// saiu do cartão, então o teste confere o prazo e o valor, não mais o ícone.
 it.each([
   {
     lado: "entrada" as const,
-    cor: "text-emerald-400",
+    cor: "text-white",
     rotulo: "Total a receber",
   },
-  { lado: "saida" as const, cor: "text-red-400", rotulo: "Total a pagar" },
+  { lado: "saida" as const, cor: "text-white", rotulo: "Total a pagar" },
 ])(
   "previstos: $rotulo, vencido vermelho e hoje âmbar sem borda de estado",
   async ({ lado, cor, rotulo }) => {
@@ -162,10 +168,7 @@ it.each([
       const item = itens.find((el) => el.textContent?.includes(descricao))!;
       expect.soft(item.querySelector(`p.${corDoPrazo}`)).not.toBeNull();
       expect
-        .soft(item.querySelector(`p.font-bold svg.${corDoPrazo}`))
-        .not.toBeNull();
-      expect
-        .soft(item.querySelector(".text-2xl")?.classList.contains(cor))
+        .soft(item.querySelector(".tabular-nums")?.classList.contains(cor))
         .toBe(true);
       expect.soft(item.classList.contains("border-admin-border")).toBe(true);
     }

@@ -379,15 +379,9 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
   it("resposta de uma geração anterior não fecha nem limpa a folha nova", async () => {
     const envio = pendente();
     await montarPainel();
-    const aba = [
-      ...hospedeiro.querySelectorAll<HTMLElement>('[role="tab"]'),
-    ].find((el) => el.textContent?.startsWith("Contas e categorias"))!;
-    await act(async () => {
-      aba.dispatchEvent(
-        new MouseEvent("mousedown", { bubbles: true, button: 0 }),
-      );
-    });
-    await esperar();
+    // "Contas e categorias" saiu da fila de abas (22/10/2026): abre pelo chip
+    // "Contas" do cabeçalho.
+    await clicar(botaoEm(hospedeiro, "Contas"));
     await clicar(botaoEm(hospedeiro, "Nova conta"));
     await digitar("fin-conta-nome", "Conta A");
     rpcFalso.mockImplementation((nome: string) => {
@@ -416,15 +410,9 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     const cadastro = pendente();
     const lancamento = pendente();
     await montarPainel();
-    const aba = [
-      ...hospedeiro.querySelectorAll<HTMLElement>('[role="tab"]'),
-    ].find((el) => el.textContent?.startsWith("Contas e categorias"))!;
-    await act(async () => {
-      aba.dispatchEvent(
-        new MouseEvent("mousedown", { bubbles: true, button: 0 }),
-      );
-    });
-    await esperar();
+    // "Contas e categorias" saiu da fila de abas (22/10/2026): abre pelo chip
+    // "Contas" do cabeçalho.
+    await clicar(botaoEm(hospedeiro, "Contas"));
     await clicar(botaoEm(hospedeiro, "Nova conta"));
     await digitar("fin-conta-nome", "Conta A");
     rpcFalso.mockImplementation((nome: string) => {

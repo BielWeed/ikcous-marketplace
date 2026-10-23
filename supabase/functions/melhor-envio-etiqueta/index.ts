@@ -2579,10 +2579,27 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         }
 
         const productIds = [...new Set(itensPedido.map((i: any) => i.product_id).filter(Boolean))]
-        const { data: produtosDb } = await supabaseClient
+        const { data: produtosDb, error: produtosError } = await supabaseClient
             .from('produtos')
             .select('id, nome, preco_venda, peso_kg, largura_cm, altura_cm, comprimento_cm')
             .in('id', productIds)
+        // Falha de LEITURA não é produto sem medição (mesmo critério da
+        // reversa, R5): `data` vem null e `montarProdutosEVolumes` trataria
+        // TODOS os itens com as medidas de reserva (0.3 kg / 15 cm) — a
+        // etiqueta seria COMPRADA com o saldo do lojista com peso e caixa
+        // inventados. Para ANTES do GET /me e do carrinho: nada foi chamado
+        // no ME, nada foi reivindicado. Só o CÓDIGO vai pro log (a mensagem
+        // crua do driver pode ecoar valor de coluna).
+        if (produtosError) {
+            console.error(
+                '[melhor-envio-etiqueta] falha ao ler as medidas dos produtos:',
+                produtosError?.code ?? 'erro',
+            )
+            return respostaJson(
+                { error: 'Não consegui ler as medidas dos produtos agora; nada foi pago. Tente de novo em instantes.' },
+                500,
+            )
+        }
 
         const { products, volumes } = montarProdutosEVolumes(itensPedido, produtosDb || [])
 

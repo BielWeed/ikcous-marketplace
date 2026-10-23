@@ -171,6 +171,7 @@
 :where(html.admin-mode[data-admin-tema]) .selection\:bg-admin-gold\/30:where(:not([data-tema-fixo], [data-tema-fixo] *))::selection{background-color:hsl(var(--admin-gold-fill) / 0.3)}
 :where(html.admin-mode[data-admin-tema="claro"]) .selection\:text-emerald-200:where(:not([data-tema-fixo], [data-tema-fixo] *))::selection{color:#065f46}
 :where(html.admin-mode[data-admin-tema]) .selection\:text-white:where(:not([data-tema-fixo], [data-tema-fixo] *))::selection{color:hsl(var(--admin-text))}
+:where(html.admin-mode[data-admin-tema="claro"]) .focus-within\:ring-sky-300:focus-within:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:#0284c7}
 :where(html.admin-mode[data-admin-tema]) .focus-within\:ring-zinc-400:focus-within:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-admin-gold\/10:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
 :where(html.admin-mode[data-admin-tema="confortavel"]) .hover\:bg-white:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-pill))}

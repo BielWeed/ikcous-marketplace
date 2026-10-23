@@ -1,6 +1,8 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { branding } from "@/config/branding";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuestions } from "@/hooks/useQuestions";
+import { iniciaisDaLoja } from "@/lib/iniciais-da-loja";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -12,10 +14,20 @@ import type { View } from "@/types";
 
 interface ProductQAProps {
   productId: string;
+  /** Nome da loja (a Home já o tem); sem ele, o nome do build. */
+  nomeDaLoja?: string;
   onNavigate?: (view: View, id?: string) => void;
 }
 
-export function ProductQA({ productId, onNavigate }: ProductQAProps) {
+export function ProductQA({
+  productId,
+  nomeDaLoja,
+  onNavigate,
+}: ProductQAProps) {
+  const siglaDaLoja = iniciaisDaLoja(
+    nomeDaLoja?.trim() || branding.appName,
+    branding.appName,
+  );
   const {
     questions,
     loading,
@@ -326,7 +338,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                       <div className="flex-shrink-0">
                         <Avatar className="size-7 border border-zinc-950/10 shadow-sm">
                           <AvatarFallback className="flex select-none items-center justify-center bg-primary text-[9px] font-black text-primary-foreground">
-                            IK
+                            {siglaDaLoja}
                           </AvatarFallback>
                         </Avatar>
                       </div>
