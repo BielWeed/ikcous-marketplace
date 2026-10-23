@@ -114,7 +114,10 @@ export interface CartActions {
     quantity: number,
     variantId?: string,
   ) => void;
-  clearCart: () => void;
+  /** Sem opção: a PESSOA esvaziou o carrinho e vê o aviso "Carrinho limpo".
+   *  `silencioso`: limpeza por conclusão de compra, sem aviso por cima da
+   *  tela de sucesso. */
+  clearCart: (opcoes?: { silencioso?: boolean }) => void;
   getCartTotal: () => number;
   getCartCount: () => number;
   /** `origem` padrão `automatica`: só o toque da cliente passa `cliente`. */
@@ -1171,31 +1174,34 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [removeFromCart],
   );
 
-  const clearCart = useCallback(() => {
-    // Tombstone all current items before clearing
-    setCart((prev) => {
-      const tombstones = loadTombstones();
-      const now = Date.now();
-      prev.forEach((item) => {
-        const key = chaveDoItem(item);
-        tombstones.set(key, { key, deletedAt: now });
+  const clearCart = useCallback(
+    (opcoes?: { silencioso?: boolean }) => {
+      // Tombstone all current items before clearing
+      setCart((prev) => {
+        const tombstones = loadTombstones();
+        const now = Date.now();
+        prev.forEach((item) => {
+          const key = chaveDoItem(item);
+          tombstones.set(key, { key, deletedAt: now });
+        });
+        saveTombstones(tombstones);
+        return [];
       });
-      saveTombstones(tombstones);
-      return [];
-    });
-    setSelectedShippingOption(null);
-    setShippingCep(null);
-    const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
-    if (rascunho) {
-      salvarRascunhoDoCheckout(globalThis.sessionStorage, {
-        ...rascunho,
-        cupom: null,
-        contaDoCupom: null,
-      });
-    }
-    removerSeguro(CART_STORAGE_KEY);
-    toast.info("Carrinho limpo");
-  }, [setSelectedShippingOption]);
+      setSelectedShippingOption(null);
+      setShippingCep(null);
+      const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+      if (rascunho) {
+        salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+          ...rascunho,
+          cupom: null,
+          contaDoCupom: null,
+        });
+      }
+      removerSeguro(CART_STORAGE_KEY);
+      if (!opcoes?.silencioso) toast.info("Carrinho limpo");
+    },
+    [setSelectedShippingOption],
+  );
 
   // A cotação de frete vale para uma composição específica de carrinho: o preço
   // depende de peso e dimensões. Mudou item ou quantidade, a cotação anterior

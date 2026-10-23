@@ -1,4 +1,15 @@
 {
+  "1.5.60": {
+    "titulo": "Perfil redesenhado e carrinho que respeita o estoque do tamanho escolhido",
+    "novidades": [
+      "A tela de Perfil ficou mais limpa e organizada: capa e foto, seus pedidos com a linha do tempo de cada um, endereços e acesso rápido ao painel para quem administra a loja."
+    ],
+    "correcoes": [
+      "No carrinho, o botão de mais e o aviso de quantas unidades restam agora usam o estoque do tamanho ou da cor que você escolheu, e não o estoque do produto inteiro.",
+      "Ao concluir uma compra, o aviso de carrinho limpo não aparece mais junto da tela de sucesso."
+    ],
+    "melhorias": []
+  },
   "1.5.59": {
     "titulo": "Busca de produtos por código, vitrine que pausa e carrinho com cor e tamanho certos",
     "novidades": [

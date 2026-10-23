@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// RETIRADA NA LOJA: no Perfil, o cartão "Pedidos em Andamento" de um pedido
+// RETIRADA NA LOJA: no Perfil, o cartão "Pedidos em andamento" de um pedido
 // "Pronto para retirar" (gravado como `shipping`) mostrava a etapa "Em rota"
 // com caminhão -- a cliente vai BUSCAR, nada está a caminho (14/10/2026).
 //
@@ -157,7 +157,7 @@ describe("ProfileView — o cartão do pedido pronto para retirar não diz 'Em r
   it("retirada pronta (shipping): o cartão mostra 'Pronto para retirar' e nada de 'Em rota'", async () => {
     estado.linhas = [linhaDoPedido(true)];
     const texto = await renderizar();
-    expect(texto).toContain("Pedidos em Andamento");
+    expect(texto).toContain("Pedidos em andamento");
     expect(texto).toContain("Pronto para retirar");
     expect(texto).not.toContain("Em rota");
   });
@@ -165,7 +165,7 @@ describe("ProfileView — o cartão do pedido pronto para retirar não diz 'Em r
   it("entrega a caminho (shipping): o cartão continua 'Em rota' (controle)", async () => {
     estado.linhas = [linhaDoPedido(false)];
     const texto = await renderizar();
-    expect(texto).toContain("Pedidos em Andamento");
+    expect(texto).toContain("Pedidos em andamento");
     expect(texto).toContain("Em rota");
     expect(texto).not.toContain("Pronto para retirar");
   });
