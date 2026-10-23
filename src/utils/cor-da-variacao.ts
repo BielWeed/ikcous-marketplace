@@ -35,17 +35,17 @@ const MAIOR_CHAVE = Math.max(
   ...[...cores.keys()].map((chave) => chave.split(" ").length),
 );
 
+/** Separador real entre cores citadas: vírgula, barra, &, +, ; ou " e " / " com ". */
+const SEPARADOR = /\s*[,/&+;]\s*|\s+(?:e|com)\s+/;
+
 /**
- * Cores (hex) citadas num nome composto, na ordem em que aparecem e sem
- * repetir. O nome inteiro vem primeiro; senão as chaves de várias palavras
- * ("azul marinho") vencem as de uma palavra, sempre por palavra inteira.
+ * A cor de um trecho SEM separador. Chaves de várias palavras ("azul
+ * marinho") vencem as de uma palavra, sempre por palavra inteira. Se o trecho
+ * cita mais de uma cor vizinha ("verde musgo"), é UM tom só: vale a última,
+ * a mais específica.
  */
-export function coresDoNome(valor: string): string[] {
-  const inteiro = corDaVariacao(valor);
-  if (inteiro) return [inteiro];
-  const palavras = normalizar(valor)
-    .split(/[^a-z0-9]+/)
-    .filter(Boolean);
+function corDoTrecho(trecho: string): string | undefined {
+  const palavras = trecho.split(/[^a-z0-9]+/).filter(Boolean);
   const usada = palavras.map(() => false);
   const achadas: { posicao: number; hex: string }[] = [];
   for (let tamanho = MAIOR_CHAVE; tamanho >= 1; tamanho--) {
@@ -57,8 +57,20 @@ export function coresDoNome(valor: string): string[] {
       achadas.push({ posicao: i, hex });
     }
   }
-  const unicas = new Set(
-    achadas.sort((a, b) => a.posicao - b.posicao).map(({ hex }) => hex),
-  );
-  return [...unicas];
+  return achadas.sort((a, b) => b.posicao - a.posicao)[0]?.hex;
+}
+
+/**
+ * Cores (hex) citadas num nome composto, na ordem em que aparecem e sem
+ * repetir. O nome inteiro vem primeiro; senão o nome é partido nos
+ * separadores reais e cada trecho vira UMA cor (nunca bicolor sem separador).
+ */
+export function coresDoNome(valor: string): string[] {
+  const inteiro = corDaVariacao(valor);
+  if (inteiro) return [inteiro];
+  const achadas = normalizar(valor)
+    .split(SEPARADOR)
+    .map(corDoTrecho)
+    .filter((hex): hex is string => Boolean(hex));
+  return [...new Set(achadas)];
 }

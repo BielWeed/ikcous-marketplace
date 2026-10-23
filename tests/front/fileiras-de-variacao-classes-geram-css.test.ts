@@ -39,7 +39,8 @@ const CLASSES = [
   // chip
   "flex-wrap",
   "gap-2",
-  "h-11",
+  "min-h-11",
+  "py-2",
   "min-w-11",
   "max-w-full",
   "items-center",
@@ -59,7 +60,7 @@ const CLASSES = [
   "disabled:border-border/60",
   "disabled:bg-muted/30",
   "disabled:text-muted-foreground",
-  "truncate",
+  "text-left",
   "sr-only",
   // amostra de cor
   "size-[18px]",

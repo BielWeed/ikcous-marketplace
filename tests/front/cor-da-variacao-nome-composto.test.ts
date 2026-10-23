@@ -46,12 +46,54 @@ describe("coresDoNome: cores citadas num nome composto", () => {
 
   it("ignora acento, caixa e espaço sobrando", () => {
     expect(coresDoNome("  CAFÉ  ")).toEqual([corDaVariacao("cafe")]);
-    expect(coresDoNome("Cinza   Chumbo")).toEqual([
-      cinza,
-      corDaVariacao("chumbo"),
-    ]);
+    expect(coresDoNome("Cinza   Chumbo")).toEqual([corDaVariacao("chumbo")]);
     expect(coresDoNome("Listrado Preto/Branco")).toEqual([preto, branco]);
     expect(coresDoNome("Off-White")).toEqual([corDaVariacao("off white")]);
+    expect(coresDoNome("Azul-Marinho")).toEqual([
+      corDaVariacao("azul marinho"),
+    ]);
+  });
+
+  it("uma cor de duas palavras sem separador é UM tom só: vale a segunda palavra", () => {
+    const tons: [string, string][] = [
+      ["Verde Musgo", "musgo"],
+      ["Cinza Chumbo", "chumbo"],
+      ["Amarelo Mostarda", "mostarda"],
+      ["Marrom Café", "cafe"],
+      ["Vermelho Vinho", "vinho"],
+      ["Rosa Nude", "nude"],
+    ];
+    for (const [nome, especifica] of tons) {
+      expect(coresDoNome(nome), nome).toEqual([corDaVariacao(especifica)]);
+      expect(coresDoNome(nome.toUpperCase()), nome).toHaveLength(1);
+    }
+  });
+
+  it("se a segunda palavra não está no dicionário, vale a primeira (nunca bicolor)", () => {
+    expect(coresDoNome("Verde Água")).toEqual([corDaVariacao("verde")]);
+    expect(coresDoNome("Azul Petróleo")).toEqual([corDaVariacao("azul")]);
+    expect(coresDoNome("Listrado Azul Petróleo")).toEqual([
+      corDaVariacao("azul"),
+    ]);
+  });
+
+  it("só divide em várias cores com separador real (e, vírgula, barra, &, +, com)", () => {
+    const musgo = corDaVariacao("musgo");
+    const chumbo = corDaVariacao("chumbo");
+    for (const nome of [
+      "Verde Musgo e Cinza Chumbo",
+      "Verde Musgo, Cinza Chumbo",
+      "Verde Musgo/Cinza Chumbo",
+      "Verde Musgo & Cinza Chumbo",
+      "Verde Musgo + Cinza Chumbo",
+      "Verde Musgo com Cinza Chumbo",
+    ])
+      expect(coresDoNome(nome), nome).toEqual([musgo, chumbo]);
+    expect(coresDoNome("Preto com Branco")).toEqual([preto, branco]);
+    expect(coresDoNome("Preto & Branco")).toEqual([preto, branco]);
+    expect(coresDoNome("Preto + Branco")).toEqual([preto, branco]);
+    // a letra "e" solta dentro de outra palavra não é separador
+    expect(coresDoNome("Verde Elegante")).toEqual([corDaVariacao("verde")]);
   });
 
   it("não repete a mesma cor (preto e preta, branco e branca)", () => {

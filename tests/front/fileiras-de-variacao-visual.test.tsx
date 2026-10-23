@@ -97,7 +97,7 @@ describe("apresentação acessível das fileiras", () => {
       'button[aria-label="Branco"]',
     )!;
     expect(azul.getAttribute("aria-pressed")).toBe("true");
-    expect(azul.classList.contains("h-11")).toBe(true);
+    expect(azul.classList.contains("min-h-11")).toBe(true);
     const amostra = azul.querySelector('[aria-hidden="true"]')!;
     expect(amostra.classList.contains("size-[18px]")).toBe(true);
     expect(amostra.getAttribute("style")).toContain("background-color");
@@ -198,11 +198,11 @@ describe("apresentação acessível das fileiras", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
-  it("todo botão de opção tem alvo de toque h-11 (44px), com ou sem amostra", () => {
+  it("todo botão de opção tem alvo de toque min-h-11 (44px), com ou sem amostra", () => {
     const host = montar(["Azul", "Branco"]);
     const botoes = host.querySelectorAll("button");
     expect(botoes.length).toBe(2);
-    for (const b of botoes) expect(b.classList.contains("h-11")).toBe(true);
+    for (const b of botoes) expect(b.classList.contains("min-h-11")).toBe(true);
     const texto = document.createElement("div");
     texto.innerHTML = renderToStaticMarkup(
       <FileirasDeVariacao
@@ -217,7 +217,7 @@ describe("apresentação acessível das fileiras", () => {
       />,
     );
     const b = texto.querySelector("button")!;
-    expect(b.classList.contains("h-11")).toBe(true);
+    expect(b.classList.contains("min-h-11")).toBe(true);
     expect(b.classList.contains("rounded-[14px]")).toBe(true);
     expect(b.classList.contains("px-3.5")).toBe(true);
     expect(b.querySelector("[style]")).toBeNull();
@@ -324,7 +324,7 @@ describe("apresentação acessível das fileiras", () => {
     await act(async () => root.unmount());
     raiz.remove();
   });
-  it("três chips longos quebram linha sem rolagem lateral (320/360/390)", () => {
+  it("três chips longos quebram linha, mostram o nome INTEIRO e não dão rolagem lateral (320/360/390)", () => {
     const longos = [
       "Xadrez Preto, Cinza e Branco",
       "Listrado Azul Marinho e Branco",
@@ -333,17 +333,32 @@ describe("apresentação acessível das fileiras", () => {
     const host = montar(longos);
     const fileira = host.querySelector('[role="group"]')!;
     const linha = fileira.lastElementChild!;
-    // flex-wrap deixa o chip descer de linha; min-w-0 no pai e max-w-full +
-    // truncate no chip impedem que um nome enorme alargue a página.
+    // flex-wrap deixa o chip descer de linha; min-w-0 no pai e max-w-full no
+    // chip impedem que um nome enorme alargue a página; o NOME quebra de
+    // linha dentro do chip (break-words) em vez de ser cortado com reticências.
     for (const c of ["flex", "flex-wrap", "min-w-0", "gap-2"])
       expect(linha.classList.contains(c), c).toBe(true);
     expect(fileira.classList.contains("min-w-0")).toBe(true);
     for (const b of host.querySelectorAll("button")) {
       expect(b.classList.contains("max-w-full")).toBe(true);
-      expect(b.querySelector(".truncate")).not.toBeNull();
+      // alvo de toque de 44px que CRESCE com o nome (sem altura fixa)
+      expect(b.classList.contains("min-h-11")).toBe(true);
+      expect(b.classList.contains("py-2")).toBe(true);
+      expect(b.className).not.toMatch(/(^|\s)h-/);
       expect(b.className).not.toMatch(/whitespace-nowrap|\bw-\[/);
+      // o nome inteiro está no DOM e a caixa dele não corta nem abrevia
+      const nome = b.querySelector<HTMLElement>("span.min-w-0")!;
+      expect(nome.textContent).toBe(b.getAttribute("aria-label"));
+      for (const c of ["break-words", "text-left", "min-w-0"])
+        expect(nome.classList.contains(c), c).toBe(true);
+      expect(nome.className).not.toMatch(
+        /truncate|text-ellipsis|overflow-hidden|line-clamp|whitespace-nowrap/,
+      );
     }
-    expect(host.innerHTML).not.toMatch(/overflow-x-(auto|scroll)/);
+    expect(host.innerHTML).not.toMatch(
+      /overflow-x-(auto|scroll)|truncate|text-ellipsis|line-clamp/,
+    );
+    for (const nome of longos) expect(host.textContent).toContain(nome);
   });
   it("o ProductView não desenha mais o título Opções nem o cartão em volta das fileiras", () => {
     const src = readFileSync("src/views/customer/ProductView.tsx", "utf8");
