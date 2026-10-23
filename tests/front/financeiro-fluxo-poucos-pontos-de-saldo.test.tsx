@@ -13,8 +13,12 @@
 // "Saldo"), uma frase curta diz a partir de quando o saldo aparece; com
 // EXATAMENTE 1 ponto conhecido, mostra esse saldo formatado (sinal e modo
 // oculto). O BarChart de entradas/saídas continua de pé, com tooltip
-// funcionando — o `syncId` compartilhado não pode quebrar por só ter UM
-// gráfico inscrito.
+// funcionando.
+//
+// DESENHO DE 22/10/2026: o cartão mostra UM gráfico por vez (chave "Saldo |
+// Entradas e saídas", padrão = Saldo). Por isso, no padrão, quem NÃO tem linha
+// de saldo mostra o painel de texto e nenhum gráfico (0 `.recharts-wrapper`);
+// as barras ficam a um toque na chave ("Entradas e saídas").
 import { FluxoDeCaixaGrafico } from "@/components/admin/financeiro/FluxoDeCaixaGrafico";
 import { ContextoValoresOcultos } from "@/components/admin/financeiro/partes";
 import type { PontoDoFluxo } from "@/lib/financeiro";
@@ -111,6 +115,20 @@ function tooltips(tela: HTMLElement) {
   return tela.querySelectorAll('[data-testid="fluxo-tooltip"]');
 }
 
+/** Troca o gráfico pela chave segmentada e deixa o recharts medir de novo. */
+function escolherGrafico(tela: HTMLElement, rotulo: string) {
+  const botao = [
+    ...tela.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"),
+  ].find((b) => (b.textContent ?? "").trim() === rotulo);
+  if (!botao) throw new Error(`chave "${rotulo}" não existe`);
+  act(() => {
+    botao.click();
+  });
+  act(() => {
+    vi.advanceTimersByTime(300);
+  });
+}
+
 describe("FluxoDeCaixaGrafico — painel de saldo com poucos pontos conhecidos", () => {
   it("sem movimentos: explica o vazio e mantém acesso à alternativa em tabela", () => {
     const tela = montar(
@@ -153,9 +171,8 @@ describe("FluxoDeCaixaGrafico — painel de saldo com poucos pontos conhecidos",
       vi.advanceTimersByTime(300);
     });
 
-    // Só o BarChart monta — sem par de AreaChart no mesmo syncId.
-    const wrappers = tela.querySelectorAll<HTMLElement>(".recharts-wrapper");
-    expect(wrappers).toHaveLength(1);
+    // No padrão (Saldo) não há linha para desenhar: só o painel de texto.
+    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(0);
 
     expect(tela.textContent).toContain("Saldo");
     expect(tela.textContent).toContain(
@@ -172,8 +189,10 @@ describe("FluxoDeCaixaGrafico — painel de saldo com poucos pontos conhecidos",
     ).length;
     expect(vezesQueApareceAFrase).toBe(1);
 
-    // O BarChart sozinho continua respondendo ao toque — syncId sem par não
-    // pode quebrar o cursor/tooltip dele.
+    // O BarChart (a um toque na chave) responde ao toque normalmente.
+    escolherGrafico(tela, "Entradas e saídas");
+    const wrappers = tela.querySelectorAll<HTMLElement>(".recharts-wrapper");
+    expect(wrappers).toHaveLength(1);
     act(() => {
       wrappers[0].dispatchEvent(
         new MouseEvent("mousemove", {
@@ -210,7 +229,7 @@ describe("FluxoDeCaixaGrafico — painel de saldo com poucos pontos conhecidos",
       vi.advanceTimersByTime(300);
     });
 
-    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(1);
+    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(0);
     // Revisão independente: `tela.textContent` inteiro também bate com
     // "−R$ 50,00" pela TABELA de baixo (o dia 30/08 tem movimento, então
     // aparece lá com o mesmo valor) — isso escondia um mutante (perder o
@@ -278,7 +297,9 @@ describe("FluxoDeCaixaGrafico — painel de saldo com poucos pontos conhecidos",
       vi.advanceTimersByTime(300);
     });
 
-    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(2);
+    // Um gráfico por vez: a linha do saldo (o padrão) desenha.
+    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(1);
+    expect(tela.querySelectorAll(".recharts-area").length).toBeGreaterThan(0);
     expect(tela.textContent).not.toContain("Saldo de hoje");
     expect(tela.textContent).not.toContain("O saldo aparece aqui a partir de");
     expect(tela.textContent).not.toContain("Saldo sem mudança desde");
@@ -324,7 +345,7 @@ describe("FluxoDeCaixaGrafico — painel de saldo quando todos os pontos conheci
       vi.advanceTimersByTime(300);
     });
 
-    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(1);
+    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(0);
     const texto = (tela.textContent ?? "").replace(/\s/g, " ");
     expect(texto).toContain("Saldo sem mudança desde 30/08: R$ 0,00");
 
@@ -358,7 +379,7 @@ describe("FluxoDeCaixaGrafico — painel de saldo quando todos os pontos conheci
       vi.advanceTimersByTime(300);
     });
 
-    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(1);
+    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(0);
     const texto = (tela.textContent ?? "").replace(/\s/g, " ");
     expect(texto).toContain("Saldo sem mudança desde 30/08: R$ 100,00");
   });

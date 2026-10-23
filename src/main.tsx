@@ -37,6 +37,7 @@ if (
   }
 }
 
+import "@/config/buildIdentity";
 import "./index.css";
 import { GlobalErrorBoundary } from "@/components/ui/custom/GlobalErrorBoundary";
 import { applyBranding } from "@/config/branding";

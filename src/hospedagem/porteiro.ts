@@ -23,6 +23,7 @@ import { assertPublicSupabaseKey } from "../lib/publicSupabaseKey";
 import type { PublicStoreIdentity } from "../lib/storeIdentity";
 import { identityRevision } from "../lib/storeIdentity";
 import { montarDataBlock } from "./ficha";
+import { buscarIdsDosProdutos, robotsTxt, sitemapXml } from "./mapaDoSite";
 
 // ─── Matcher: só DOCUMENTOS invocam o porteiro ─────────────────────────────
 //
@@ -46,10 +47,10 @@ const PREFIXOS_RESERVADOS =
 // `sw.js`.
 //
 // Conferido contra `ls dist-test/` de um build fixture (11/09/2026): HOJE
-// existem `sw.js`, `version.json`, `favicon.svg`, `sitemap.xml`,
-// `og-image.png`, `silent-guardian.js`, `loading.css`, `404.html`,
-// `index.html`, `offline.html` e `google8e0e5366e254e024.html`. Os demais
-// (`favicon.ico`, `logo.svg`, `apple-touch-icon.png`, `robots.txt`,
+// existem `sw.js`, `version.json`, `favicon.svg`, `og-image.png`,
+// `silent-guardian.js`, `loading.css`, `404.html`, `index.html`,
+// `offline.html` e `google8e0e5366e254e024.html`. Os demais
+// (`favicon.ico`, `logo.svg`, `apple-touch-icon.png`,
 // `registerSW.js`, `workbox-*.js` FORA de `assets/`) não existem nesse build
 // — entram por nome porque pertencem à mesma família (raiz do PWA) e
 // excluir um caminho que não existe não custa nada. `workbox-*.js` hoje só
@@ -69,8 +70,16 @@ const PREFIXOS_RESERVADOS =
 // o arquivo do Google entra por PREFIXO (`google[A-Za-z0-9]*\.html$`)
 // porque o nome é gerado pelo console do Google a cada reverificação — o
 // padrão sobrevive a uma reverificação futura com hash diferente.
+//
+// `robots.txt` e `sitemap.xml` NÃO estão nesta lista (defeito multiloja-frota-3,
+// 23/10/2026): eram arquivos estáticos assados com o endereço e os produtos da
+// loja principal, e a Vercel os servia a TODO host — o Google abria o endereço
+// da Savy e recebia o mapa da IKCOUS. Agora são DOCUMENTOS do porteiro, que
+// responde os dois por host (`atenderMapaDoSite`). O arquivo do build continua
+// existindo em `dist/` (e serve o `vite dev`), mas na Vercel a borda atende
+// antes dele.
 const ARQUIVOS_RESERVADOS_DE_RAIZ =
-  "sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|robots\\.txt$|sitemap\\.xml$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$";
+  "sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$";
 
 // O array abaixo NÃO é o que a Vercel lê: `config.matcher` em `middleware.ts`
 // precisa ser um LITERAL para ser lido por análise estática (ver o
@@ -789,6 +798,23 @@ export interface EntradaCachePorteiro {
 export const CACHE_FRESCO_MS = 60_000;
 export const CACHE_STALE_MAX_MS = 3_600_000;
 
+/** O sitemap lê o catálogo inteiro da loja (uma consulta por 1000 produtos):
+ * 10 min frescos entre robôs, e o último bom por até 1h se o banco cair —
+ * o mesmo teto do stale-if-error da ficha. Produto novo entra no mapa em até
+ * 10 min; o Google relê o sitemap em horas ou dias, então não há ganho em
+ * consultar mais que isso. */
+export const CACHE_MAPA_FRESCO_MS = 600_000;
+export const CACHE_MAPA_STALE_MAX_MS = 3_600_000;
+
+/** Os ids públicos de UMA loja, guardados por endereço (`scheme://host`):
+ * o mapa de uma loja nunca é servido por outra porque a chave é o endereço
+ * que respondeu. Guarda os ids, não o XML — o XML é barato de remontar e a
+ * origem pode variar (porta/protocolo no ensaio local). */
+export interface EntradaCacheMapa {
+  readonly ids: readonly string[];
+  readonly quando: number;
+}
+
 export interface DependenciasPorteiro {
   readonly fetchImpl: typeof fetch;
   readonly resolverNaCaderneta?: ResolverLojaNaCaderneta;
@@ -798,6 +824,9 @@ export interface DependenciasPorteiro {
    * passada aqui para cada chamada (é o que torna a função testável sem
    * estado global escondido). */
   readonly cache: Map<string, EntradaCachePorteiro>;
+  /** Cache dos ids do sitemap, também um `Map` de módulo de `middleware.ts`.
+   * Opcional: sem ele (teste, chamada avulsa) cada pedido lê o banco. */
+  readonly cacheMapa?: Map<string, EntradaCacheMapa>;
   /** Relógio injetável — testes avançam o tempo sem `sleep`. */
   readonly agora?: () => number;
 }
@@ -1129,8 +1158,104 @@ export async function atenderPorteiro(
   }
   if (url.pathname === "/manifest.webmanifest")
     return atenderManifest(ficha, estadoCaderneta);
+  if (url.pathname === "/robots.txt")
+    return atenderRobots(request, ficha, estadoCaderneta);
+  if (url.pathname === "/sitemap.xml")
+    return atenderMapaDoSite(request, ficha, estadoCaderneta, deps);
 
   return documentoDaLoja(request, ficha, estadoCaderneta, deps);
+}
+
+// ─── robots.txt e sitemap.xml POR LOJA (multiloja-frota-3) ─────────────────
+//
+// SUPOSIÇÕES DE ESTADO, ditas em voz alta:
+//   - Só chegam aqui hosts que `obterFichaValidada` confirmou (banco da loja
+//     concorda que é dono do host). Host desconhecido/discordante/alias já
+//     saiu antes como 503/308, IGUAL ao documento — nunca o mapa de outra loja.
+//   - O endereço do mapa é `<protocolo>//<ficha.host><:porta>`: `ficha.host` é
+//     o host NORMALIZADO (minúsculo, sem ponto de FQDN), o mesmo que a
+//     concordância comparou com `dominio_publico`. Nunca o endereço do build.
+//   - O catálogo vem do banco DA FICHA (`ficha.conexao`), a mesma conexão que
+//     provou o domínio. Ler produto de outra conexão não é possível por
+//     construção: não existe outra conexão nesta função.
+//   - Idempotente e sem efeito colateral além do cache em memória do isolate.
+
+function enderecoDoMapa(request: Request, ficha: FichaDaLoja): string {
+  const url = new URL(request.url);
+  return `${url.protocol}//${ficha.host}${url.port ? `:${url.port}` : ""}`;
+}
+
+const CABECALHOS_DO_MAPA = {
+  "x-ikcous-porteiro": "ok",
+  vary: "host",
+} as const;
+
+function atenderRobots(
+  request: Request,
+  ficha: FichaDaLoja,
+  caderneta: EstadoCaderneta,
+): Response {
+  return new Response(robotsTxt(enderecoDoMapa(request, ficha)), {
+    headers: {
+      ...CABECALHOS_DO_MAPA,
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "public, max-age=0, s-maxage=600",
+      "x-ikcous-caderneta": caderneta,
+    },
+  });
+}
+
+async function atenderMapaDoSite(
+  request: Request,
+  ficha: FichaDaLoja,
+  caderneta: EstadoCaderneta,
+  deps: DependenciasPorteiro,
+): Promise<Response> {
+  const origem = enderecoDoMapa(request, ficha);
+  const agora = (deps.agora ?? Date.now)();
+  const guardado = deps.cacheMapa?.get(origem);
+
+  const responder = (
+    ids: readonly string[],
+    modo: "completo" | "stale" | "estatico",
+  ): Response =>
+    new Response(sitemapXml(origem, ids), {
+      headers: {
+        ...CABECALHOS_DO_MAPA,
+        "content-type": "application/xml; charset=utf-8",
+        // O mapa DEGRADADO (só estáticas) nunca pode ficar na borda: o próximo
+        // robô tem de tentar o catálogo de novo.
+        "cache-control":
+          modo === "estatico"
+            ? "no-store"
+            : "public, max-age=0, s-maxage=600, stale-while-revalidate=3600",
+        "x-ikcous-caderneta": caderneta,
+        "x-ikcous-mapa": modo,
+      },
+    });
+
+  if (guardado && agora - guardado.quando < CACHE_MAPA_FRESCO_MS)
+    return responder(guardado.ids, "completo");
+
+  try {
+    const ids = await buscarIdsDosProdutos(
+      {
+        supabaseUrl: ficha.conexao.supabaseUrl,
+        publishableKey: ficha.conexao.publishableKey,
+      },
+      { fetchImpl: deps.fetchImpl },
+    );
+    deps.cacheMapa?.set(origem, { ids, quando: agora });
+    return responder(ids, "completo");
+  } catch (erro) {
+    // Falha de leitura NUNCA vira erro para o robô: o último mapa bom DESTA
+    // loja (até 1h) ou, sem ele, só as URLs estáticas DELA. Fica no log para
+    // "mapa pequeno" nunca ser silencioso (`x-ikcous-mapa` também diz).
+    console.error("[Porteiro] sitemap sem produtos:", erro);
+    if (guardado && agora - guardado.quando < CACHE_MAPA_STALE_MAX_MS)
+      return responder(guardado.ids, "stale");
+    return responder([], "estatico");
+  }
 }
 
 /**

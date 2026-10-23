@@ -46,6 +46,7 @@
 // ausente) — os dois pintam a MESMA tela, mas por caminhos independentes,
 // de propósito.
 import { lerFichaDaLoja } from "./fichaDaLoja";
+import { destinoDoIndexCru } from "./guardaDoIndexCru";
 
 if (typeof __STORE_IDENTITY__ === "undefined") {
   throw new Error("IDENTITY_BUILD_MISSING");
@@ -87,6 +88,20 @@ try {
     "Não foi possível confirmar os dados desta loja agora. Recarregue em alguns instantes.",
   );
   throw erro;
+}
+
+// "/index.html" cru (sem ficha) numa loja cliente: vai para "/", onde o porteiro
+// entrega a ficha certa. Interrompe o boot ANTES de criar o cliente do banco.
+const destinoCru = destinoDoIndexCru({
+  ficha: fichaDaLoja,
+  pathname: globalThis.location?.pathname ?? "",
+  dev: import.meta.env.DEV,
+  search: globalThis.location?.search ?? "",
+  hash: globalThis.location?.hash ?? "",
+});
+if (destinoCru !== null) {
+  globalThis.location.replace(destinoCru);
+  throw new Error("INDEX_CRU_REDIRECIONANDO");
 }
 
 export const buildIdentity: typeof __STORE_IDENTITY__ = fichaDaLoja

@@ -313,10 +313,10 @@ describe("Financeiro — abrir e fechar o caixa", () => {
   });
 
   it.each([
-    { entra: false, tipo: "entrada", sinal: "−", cor: "text-red-300" },
-    { entra: true, tipo: "saida", sinal: "+", cor: "text-emerald-300" },
-    { entra: undefined, tipo: "saida", sinal: "−", cor: "text-red-300" },
-    { entra: undefined, tipo: "entrada", sinal: "+", cor: "text-emerald-300" },
+    { entra: false, tipo: "entrada", sinal: "−", cor: "text-red-400" },
+    { entra: true, tipo: "saida", sinal: "+", cor: "text-emerald-400" },
+    { entra: undefined, tipo: "saida", sinal: "−", cor: "text-red-400" },
+    { entra: undefined, tipo: "entrada", sinal: "+", cor: "text-emerald-400" },
   ])(
     "movimento respeita entra=$entra e mantém fallback tipo=$tipo",
     async ({ entra, tipo, sinal, cor }) => {
@@ -338,10 +338,10 @@ describe("Financeiro — abrir e fechar o caixa", () => {
         el.textContent?.includes("Transferência entre contas"),
       );
       expect(normalizar(movimento?.textContent)).toContain(`${sinal}R$ 100,00`);
+      // Desenho de 22/10/2026: o movimento é texto + valor com sinal na cor do
+      // significado (sem o ícone redondo de antes); o sinal vem escrito.
       expect(movimento?.querySelector(`span.${cor}`)).not.toBeNull();
-      expect(
-        movimento?.querySelector("svg")?.parentElement?.classList.contains(cor),
-      ).toBe(true);
+      expect(movimento?.querySelector("svg")).toBeNull();
     },
   );
 
@@ -395,7 +395,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
 
     // Depois da escrita a tela busca de novo: agora o caixa está aberto.
     const aberto = normalizar(hospedeiro.textContent);
-    expect(aberto).toContain("Caixa aberto");
+    expect(aberto).toContain("Esperado na gaveta agora");
     expect(aberto).toContain("R$ 480,50");
     expect(aberto).toContain("+R$ 330,50");
 

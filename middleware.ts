@@ -1,5 +1,6 @@
 import type {
   AmbientePorteiro,
+  EntradaCacheMapa,
   EntradaCachePorteiro,
   ResolverLojaNaCaderneta,
 } from "./src/hospedagem/porteiro";
@@ -31,7 +32,7 @@ import {
 // `icons/`, `images/`, `fonts/`; `logos/` e `branding/` desde 23/09/2026 —
 // toda pasta de `public/`) e arquivos de raiz que o build sempre
 // produz (`sw.js`, `version.json`, `favicon.ico`/`.svg`, `logo.svg`,
-// `apple-touch-icon.png`, `robots.txt`, `sitemap.xml`, `og-image.png`,
+// `apple-touch-icon.png`, `og-image.png`,
 // `silent-guardian.js`, `loading.css`, `404.html`, `index.html`,
 // `registerSW.js`, `workbox-*.js`) — qualquer OUTRO documento sem extensão
 // reservada agora casa o primeiro padrão (ex.: `/qualquer.txt` passa a
@@ -50,9 +51,16 @@ import {
 // `/product-detail` casa o primeiro padrão (sem nome reservado), então o
 // caminho de robô abaixo continua funcionando sem entrada própria no
 // matcher.
+//
+// `/robots.txt` e `/sitemap.xml` ficaram FORA da lista de exclusão em
+// 23/10/2026 (defeito multiloja-frota-3): o par estático do build tinha o
+// endereço e os produtos da loja principal e era servido a todo host — o
+// Google abria a Savy e recebia o mapa da IKCOUS. Os dois caminhos agora casam
+// o primeiro padrão e o porteiro os responde POR HOST
+// (`atenderPorteiro` -> `atenderMapaDoSite`, `src/hospedagem/porteiro.ts`).
 export const config = {
   matcher: [
-    "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|robots\\.txt$|sitemap\\.xml$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
+    "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
     "/identidade.json",
     "/manifest.webmanifest",
   ],
@@ -62,6 +70,10 @@ export const config = {
 // invocações — é o que faz o cache de 60s/1h do porteiro valer a pena
 // (`src/hospedagem/porteiro.ts`, `CACHE_FRESCO_MS`/`CACHE_STALE_MAX_MS`).
 const cachePorteiro = new Map<string, EntradaCachePorteiro>();
+
+// Ids públicos do sitemap por loja (10 min frescos, 1h de stale-if-error,
+// chave = endereço que respondeu): ver `CACHE_MAPA_FRESCO_MS` no porteiro.
+const cacheMapaDoSite = new Map<string, EntradaCacheMapa>();
 
 // Caminho (a) do porteiro — a caderneta central (`resolver_loja`, T5,
 // `supabase/migrations/20261141000000_caderneta_da_frota.sql`). Convenção de
@@ -379,5 +391,6 @@ export default async function middleware(request: Request) {
     fetchImpl: fetch,
     resolverNaCaderneta,
     cache: cachePorteiro,
+    cacheMapa: cacheMapaDoSite,
   });
 }

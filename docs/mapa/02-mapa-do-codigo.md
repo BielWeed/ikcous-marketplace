@@ -18,7 +18,7 @@
 | `middleware.ts` | middleware de borda (Vercel) |
 | `lefthook.yml` | hooks de git (secretlint, commitlint, typecheck no push) |
 | `version.json` | regenerado no build |
-| `public/` | sementes de `robots.txt`/`sitemap.xml` por loja (a fonte fresca é o build) |
+| `public/` | sementes de `robots.txt`/`sitemap.xml` (servem o `vite dev`; em produção o porteiro responde os dois por host) |
 
 ## `src/` — a aplicação
 

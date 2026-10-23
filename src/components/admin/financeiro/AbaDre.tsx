@@ -1,12 +1,4 @@
-import {
-  BarChart3,
-  ChevronRight,
-  FileText,
-  Info,
-  ReceiptText,
-  TrendingUp,
-  Wallet,
-} from "lucide-react";
+import { ChevronRight, FileText } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
 import { useDreFinanceira, useDreMensal } from "@/hooks/useFinanceiro";
@@ -19,26 +11,29 @@ import {
   percentualDaReceita,
   sublinhasDaDre,
 } from "@/lib/financeiro";
-import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { DreFinanceira, IntervaloDeDatas } from "@/types/financeiro";
 import {
-  BlocoKpi,
   CartaoSecao,
   Dinheiro,
-  EsqueletoDeKpis,
   EsqueletoDeLista,
   EstadoDeErro,
   EstadoVazio,
-  Etiqueta,
   Segmentado,
+  useValoresEstaoOcultos,
 } from "./partes";
+import {
+  AVISO_CUSTO_ESTIMADO,
+  AvisoDeCustoEstimado,
+  EsqueletoDoResultado,
+  QuadroDoResultado,
+  classeDoValorNaTabela,
+  corDoResultado,
+} from "./partesDoResultado";
 
 type ModoDaDre = "periodo" | "mensal";
 
 const MAXIMO_DE_MESES = 12;
-const AVISO_CUSTO_ESTIMADO =
-  "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado";
 
 function RotuloDaLinha({
   linha,
@@ -56,18 +51,22 @@ function RotuloDaLinha({
   const texto = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span>{linha.rotulo}</span>
-      {estimado ? (
-        <Etiqueta tom="aviso">{AVISO_CUSTO_ESTIMADO}</Etiqueta>
-      ) : null}
+      {estimado ? <AvisoDeCustoEstimado /> : null}
     </span>
   );
-  if (!expansivel) return <span className="block py-1 pl-6">{texto}</span>;
+  if (!expansivel) {
+    return (
+      <span className={cn("block py-2.5", !linha.final && "pl-6")}>
+        {texto}
+      </span>
+    );
+  }
   return (
     <button
       type="button"
       aria-expanded={aberta}
       onClick={() => aoAlternar(linha.chave)}
-      className="-ml-1 flex min-h-11 w-full items-center gap-1 rounded-lg px-1 text-left hover:bg-white/5"
+      className="-ml-1 flex min-h-11 w-full items-center gap-1 rounded-lg px-1 text-left hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
     >
       <ChevronRight
         aria-hidden="true"
@@ -87,16 +86,35 @@ function corDaLinha(chave: ChaveDaDre, valor: number): string {
     chave === "resultado_operacional" ||
     chave === "resultado_financeiro" ||
     chave === "lucro_liquido"
-    ? classeDoTexto(tomDoValor(valor))
+    ? corDoResultado(valor)
     : "text-white";
 }
 
-function classeDaLinha(linha: LinhaDaCascata): string {
-  if (linha.final) return "border-t-2 border-violet-400/40 bg-violet-400/5";
+/** Só o mês a mês usa: subtotal com fundo e o lucro líquido com traço forte. */
+function classeDaLinhaMensal(linha: LinhaDaCascata): string {
+  if (linha.final) {
+    return "border-t-2 border-admin-border-strong bg-admin-raised";
+  }
   if (linha.subtotal) return "border-t border-admin-border bg-admin-raised";
   return "";
 }
 
+/** Divisória fina entre as linhas da tabela (menos a primeira). */
+const DIVISORIA = "border-t border-solid border-admin-border";
+
+/** Caixa do lucro líquido (as pontas arredondadas vêm da primeira e da última célula). */
+const CAIXA_DO_LUCRO =
+  "border-y border-solid border-admin-border-strong bg-admin-raised";
+
+const CABECALHO_DA_TABELA =
+  "border-b border-solid border-admin-border py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-400";
+
+/**
+ * A demonstração do período, em três colunas (linha, valor, % da receita
+ * líquida) em qualquer largura de tela. O lucro líquido, última linha, fica
+ * numa caixa própria: por isso a tabela separa as bordas (`border-separate`) e
+ * as divisórias moram nas células.
+ */
 function TabelaDoPeriodo({
   dre,
   abertas,
@@ -106,43 +124,60 @@ function TabelaDoPeriodo({
   readonly abertas: ReadonlySet<ChaveDaDre>;
   readonly aoAlternar: (chave: ChaveDaDre) => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const cascata = cascataDaDre(dre);
   return (
-    <table className="block w-full border-collapse text-sm sm:table">
+    <table className="w-full border-separate border-spacing-0 text-sm">
       <caption className="sr-only">
         Demonstração do resultado do período, com o percentual de cada linha
         sobre a receita líquida
       </caption>
       <thead>
-        <tr className="text-xs text-zinc-400">
-          <th scope="col" className="py-2 text-left font-black">
+        <tr>
+          <th scope="col" className={cn(CABECALHO_DA_TABELA, "text-left")}>
             Linha
           </th>
-          <th scope="col" className="py-2 text-right font-black">
+          <th
+            scope="col"
+            className={cn(CABECALHO_DA_TABELA, "pl-2 text-right")}
+          >
             Valor
           </th>
-          <th scope="col" className="w-16 py-2 text-right font-black sm:w-20">
+          <th
+            scope="col"
+            className={cn(CABECALHO_DA_TABELA, "w-14 pl-2 text-right")}
+          >
             % rec. líq.
           </th>
         </tr>
       </thead>
-      <tbody className="block sm:table-row-group">
-        {cascata.map((linha) => {
+      <tbody>
+        {cascata.map((linha, indice) => {
           const aberta = abertas.has(linha.chave);
           const sublinhas = aberta ? sublinhasDaDre(dre, linha.chave) : [];
+          const divisoria = indice > 0 && !linha.final ? DIVISORIA : "";
           return (
             <Fragment key={linha.chave}>
+              {linha.final ? (
+                <tr data-respiro-do-lucro="">
+                  <td colSpan={3} className="h-3 p-0" />
+                </tr>
+              ) : null}
               <tr
                 data-linha-dre={linha.chave}
-                className={cn(
-                  "grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border-b border-admin-border py-3 sm:table-row sm:py-0",
-                  classeDaLinha(linha),
-                  linha.subtotal ? "font-black text-white" : "text-zinc-300",
-                )}
+                data-linha-final={linha.final ? "" : undefined}
+                className={
+                  linha.subtotal ? "font-bold text-white" : "text-zinc-300"
+                }
               >
                 <th
                   scope="row"
-                  className="col-span-2 break-words pr-2 text-left font-[inherit]"
+                  className={cn(
+                    "break-words pr-2 text-left font-[inherit]",
+                    divisoria,
+                    linha.final &&
+                      cn(CAIXA_DO_LUCRO, "rounded-l-2xl border-l pl-4"),
+                  )}
                 >
                   <RotuloDaLinha
                     linha={linha}
@@ -151,16 +186,32 @@ function TabelaDoPeriodo({
                     aoAlternar={aoAlternar}
                   />
                 </th>
-                <td className="min-w-0 py-2 text-left text-xl sm:text-right sm:text-sm">
+                <td
+                  className={cn(
+                    "whitespace-nowrap py-2 pl-2 text-right align-middle",
+                    divisoria,
+                    linha.final && CAIXA_DO_LUCRO,
+                  )}
+                >
                   <Dinheiro
                     valor={linha.valor}
                     className={cn(
-                      linha.final && "text-2xl sm:text-base",
+                      classeDoValorNaTabela(linha.valor, linha.final, ocultos),
                       corDaLinha(linha.chave, linha.valor),
                     )}
                   />
                 </td>
-                <td className="self-center py-2 text-right text-xs font-normal tabular-nums text-zinc-400">
+                <td
+                  className={cn(
+                    "w-14 whitespace-nowrap py-2 pl-2 text-right align-middle text-xs font-normal tabular-nums text-zinc-400",
+                    divisoria,
+                    linha.final &&
+                      cn(
+                        CAIXA_DO_LUCRO,
+                        "rounded-r-2xl border-r pr-4 text-sm font-bold text-white",
+                      ),
+                  )}
+                >
                   {formatarPercentual(
                     percentualDaReceita(linha.valor, dre.receitaLiquida),
                   )}
@@ -169,18 +220,25 @@ function TabelaDoPeriodo({
               {sublinhas.map((sub) => (
                 <tr
                   key={`${linha.chave}-${sub.rotulo}`}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border-b border-admin-border py-3 text-xs text-zinc-400 sm:table-row sm:py-0"
+                  className="text-zinc-300"
                 >
                   <th
                     scope="row"
-                    className="col-span-2 break-words px-2 py-1.5 text-left font-normal sm:pl-10"
+                    className="break-words py-2 pl-7 pr-2 text-left text-[13px] font-normal"
                   >
                     {sub.rotulo}
                   </th>
-                  <td className="py-1.5 pl-2 text-left text-lg font-bold sm:pl-0 sm:text-right sm:text-xs">
-                    <Dinheiro valor={sub.valor} />
+                  <td className="whitespace-nowrap py-2 pl-2 text-right align-middle">
+                    <Dinheiro
+                      valor={sub.valor}
+                      className={classeDoValorNaTabela(
+                        sub.valor,
+                        false,
+                        ocultos,
+                      )}
+                    />
                   </td>
-                  <td className="self-center py-1.5 text-right tabular-nums text-zinc-400">
+                  <td className="w-14 whitespace-nowrap py-2 pl-2 text-right align-middle text-xs tabular-nums text-zinc-400">
                     {formatarPercentual(
                       percentualDaReceita(sub.valor, dre.receitaLiquida),
                     )}
@@ -265,8 +323,8 @@ function TabelaMensal({
               <Fragment key={linha.chave}>
                 <tr
                   className={cn(
-                    classeDaLinha(linha),
-                    linha.subtotal ? "font-black text-white" : "text-zinc-300",
+                    classeDaLinhaMensal(linha),
+                    linha.subtotal ? "font-bold text-white" : "text-zinc-300",
                   )}
                 >
                   <th scope="row" className={cn(colunaFixa, "font-[inherit]")}>
@@ -345,10 +403,14 @@ function TabelaMensal({
 
 /**
  * Aba "Resultado" (a DRE): a demonstração do resultado simplificada, por
- * competência — na tela, "mês de referência" (spec §4). Cada linha mostra
- * o % da receita líquida (análise vertical); subtotais em destaque; linhas com categorias abrem por baixo. Período com
- * mais de um mês ganha a visão mês a mês — as colunas dos meses são a ÚNICA
- * coisa da tela que rola de lado no celular.
+ * competência — na tela, "mês de referência" (spec §4). No alto, o controle
+ * Período / Mês a mês e quatro quadros (lucro líquido, receita líquida, lucro
+ * bruto e a sobra depois dos custos da venda); embaixo, a demonstração com o %
+ * da receita líquida de cada linha (análise vertical), subtotais em destaque e
+ * o lucro líquido em caixa própria; linhas com categorias abrem por baixo.
+ * Período com mais de um mês ganha a visão mês a mês — as colunas dos meses são
+ * a ÚNICA coisa da tela que rola de lado no celular. Só desenho: nenhuma conta
+ * mudou (vêm de `src/lib/financeiro.ts` e da `fin_dre`).
  */
 export function AbaDre({
   ativo,
@@ -387,14 +449,7 @@ export function AbaDre({
     return <EstadoDeErro mensagem={dre.erro} aoTentarDeNovo={dre.recarregar} />;
   }
   const dados = dre.dados;
-  if (!dados) {
-    return (
-      <div className="flex flex-col gap-4">
-        <EsqueletoDeKpis quantos={3} />
-        <EsqueletoDeLista linhas={8} />
-      </div>
-    );
-  }
+  if (!dados) return <EsqueletoDoResultado />;
 
   const vazia =
     Math.round(dados.receitaBruta * 100) === 0 &&
@@ -408,89 +463,54 @@ export function AbaDre({
     dados.lucroLiquido,
     dados.receitaLiquida,
   );
+  const sobraSobreReceita = percentualDaReceita(
+    dados.margemContribuicao,
+    dados.receitaLiquida,
+  );
 
   return (
-    <div className="flex flex-col gap-7">
-      <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-4">
-        <BlocoKpi
+    <div data-aba-resultado="" className="flex flex-col gap-4">
+      {podeMensal ? (
+        <Segmentado<ModoDaDre>
+          rotulo="Visão do resultado"
+          valor={modo}
+          aoMudar={setModo}
+          opcoes={[
+            { valor: "periodo", rotulo: "Período" },
+            { valor: "mensal", rotulo: "Mês a mês" },
+          ]}
+        />
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <QuadroDoResultado
           rotulo="Lucro líquido"
-          icone={BarChart3}
-          destaque="text-violet-300"
-          className="bg-admin-raised"
-          detalhe={
-            <>
-              <span className="block">
-                Margem líquida {formatarPercentual(margemLiquida)}
-              </span>
-              {dados.cmvEstimado ? (
-                <Etiqueta tom="aviso">{AVISO_CUSTO_ESTIMADO}</Etiqueta>
-              ) : null}
-            </>
-          }
-        >
-          <Dinheiro
-            valor={dados.lucroLiquido}
-            className={classeDoTexto(tomDoValor(dados.lucroLiquido))}
-          />
-        </BlocoKpi>
-        <BlocoKpi
+          valor={dados.lucroLiquido}
+          detalhe={`Margem líquida ${formatarPercentual(margemLiquida)}`}
+          comAviso={dados.cmvEstimado}
+        />
+        <QuadroDoResultado
           rotulo="Receita líquida"
-          icone={ReceiptText}
-          destaque="text-blue-300"
-        >
-          <Dinheiro valor={dados.receitaLiquida} />
-        </BlocoKpi>
-        <BlocoKpi
+          valor={dados.receitaLiquida}
+          neutro
+        />
+        <QuadroDoResultado
           rotulo="Lucro bruto"
-          icone={TrendingUp}
-          destaque="text-teal-300"
-          detalhe={
-            <>
-              <span className="block">
-                Margem bruta {formatarPercentual(margemBruta)}
-              </span>
-              {dados.cmvEstimado ? (
-                <Etiqueta tom="aviso">{AVISO_CUSTO_ESTIMADO}</Etiqueta>
-              ) : null}
-            </>
-          }
-        >
-          <Dinheiro
-            valor={dados.lucroBruto}
-            className={classeDoTexto(tomDoValor(dados.lucroBruto))}
-          />
-        </BlocoKpi>
-        <BlocoKpi
+          valor={dados.lucroBruto}
+          detalhe={`Margem bruta ${formatarPercentual(margemBruta)}`}
+          comAviso={dados.cmvEstimado}
+        />
+        <QuadroDoResultado
           rotulo="Sobra depois dos custos da venda"
-          icone={Wallet}
-          destaque="text-sky-300"
-          detalhe={formatarPercentual(
-            percentualDaReceita(dados.margemContribuicao, dados.receitaLiquida),
-          )}
-        >
-          <Dinheiro
-            valor={dados.margemContribuicao}
-            className={classeDoTexto(tomDoValor(dados.margemContribuicao))}
-          />
-        </BlocoKpi>
+          valor={dados.margemContribuicao}
+          detalhe={`${formatarPercentual(sobraSobreReceita)} da receita`}
+          comAviso={dados.cmvEstimado}
+        />
       </div>
 
       <CartaoSecao
         titulo="Demonstração do resultado"
         subtitulo={`${rotuloDoPeriodo} · pelo mês de referência`}
-        acao={
-          podeMensal ? (
-            <Segmentado<ModoDaDre>
-              rotulo="Visão do resultado"
-              valor={modo}
-              aoMudar={setModo}
-              opcoes={[
-                { valor: "periodo", rotulo: "Período" },
-                { valor: "mensal", rotulo: "Mês a mês" },
-              ]}
-            />
-          ) : undefined
-        }
       >
         {dre.erro ? (
           <div className="mb-3">
@@ -527,13 +547,16 @@ export function AbaDre({
             aoAlternar={alternar}
           />
         )}
-        <p className="mt-4 flex items-start gap-2 text-xs text-zinc-400">
-          <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+      </CartaoSecao>
+
+      <div className="flex flex-col gap-2 px-1 text-xs leading-relaxed text-zinc-400">
+        {dados.cmvEstimado ? <p>{AVISO_CUSTO_ESTIMADO}.</p> : null}
+        <p>
           Transferências entre contas, compra de mercadoria para estoque e
           aporte ou retirada do dono ficam fora do resultado: não são lucro nem
           prejuízo.
         </p>
-      </CartaoSecao>
+      </div>
     </div>
   );
 }

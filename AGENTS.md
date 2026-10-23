@@ -393,10 +393,17 @@ carrega o número novo. NÃO incrementar por build/preview: o `deliveryVersion` 
 (sha + identity) continua distinguindo builds; o núcleo semver só avança em release —
 é ele que o aviso de atualização mostra.
 
-`robots.txt` e `sitemap.xml` (SEO, issue #117) também nascem no build, por loja: o
-`scripts/sitemap.mjs` consulta a `vw_produtos_public` e sobrescreve as sementes versionadas
-em `public/` (que servem o `vite dev` e envelhecem — o build é a fonte fresca; regenerá-las
-é rodar um build database e copiar do `dist/`). Modo fixture não sai para a rede.
+`robots.txt` e `sitemap.xml` (SEO, issue #117): o build ainda gera um par
+(`scripts/sitemap.mjs` consulta a `vw_produtos_public` e sobrescreve as sementes versionadas
+em `public/`, que servem o `vite dev`; modo fixture não sai para a rede) — mas é UM par, com o
+endereço da loja que o build conhece, e na Vercel todas as lojas dividem o mesmo build. Por isso,
+em produção, **quem responde os dois caminhos é o porteiro, por host** (`atenderMapaDoSite`,
+`src/hospedagem/mapaDoSite.ts`; defeito multiloja-frota-3, 23/10/2026): `robots.txt` com o
+`Sitemap:` do endereço que respondeu; `sitemap.xml` com as 4 URLs estáticas mais os produtos de
+`vw_produtos_public` do banco DAQUELA loja (cache de 10 min por endereço; banco fora = último mapa
+bom por até 1h, depois só as estáticas — nunca erro, nunca o mapa de outra loja). O gerador do
+build e o de borda são dois arquivos que precisam dar a mesma saída (`tests/front/mapa-do-site.test.ts`
+confronta os dois).
 
 ## Testes e estabilidade
 

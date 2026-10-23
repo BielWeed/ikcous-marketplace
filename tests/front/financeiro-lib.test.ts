@@ -145,6 +145,33 @@ it("caixa transporta estorno externo sem recalcular esperado e assume zero se au
   });
 });
 
+it("movimento do caixa lê o horário que o banco devolve como criado_em", () => {
+  // fin_caixa_atual manda 'criado_em' (e não 'created_at') em cada movimento.
+  const caixa = parseCaixaAtual({
+    id: "sessao-1",
+    movimentos: [
+      {
+        id: "m1",
+        origem: "sangria",
+        valor: 5,
+        criado_em: "2026-10-23T11:05:00Z",
+      },
+      {
+        id: "m2",
+        origem: "suprimento",
+        valor: 9,
+        created_at: "2026-10-23T12:00:00Z",
+      },
+      { id: "m3", origem: "sangria", valor: 1 },
+    ],
+  });
+  expect(caixa?.movimentos.map((m) => m.em)).toEqual([
+    "2026-10-23T11:05:00Z",
+    "2026-10-23T12:00:00Z",
+    null,
+  ]);
+});
+
 describe("dinheiro em pt-BR", () => {
   it.each([
     ["1.234,56", 1234.56],
@@ -504,6 +531,156 @@ describe("extrato por dia e saldo corrente", () => {
     ]);
     expect(efeitoNoSaldo(linhas.at(4) as LinhaDoExtrato, "caixa")).toBe(-40);
     expect(efeitoNoSaldo(linhas.at(4) as LinhaDoExtrato, "banco")).toBe(40);
+  });
+
+  // Defeito financeiro-2: o saldo de hoje da conta (`fin__saldos`) só soma
+  // movimento com `data >= saldo_inicial_em`, mas o extrato devolve também as
+  // vendas ANTERIORES a essa data. Reconstruir para trás por cima delas
+  // inventava saldo (até negativo) nos dias antes do saldo inicial. Com o
+  // `marco`, esses dias ficam sem saldo (`null`), como na série do fluxo.
+  describe("marco do saldo inicial (financeiro-2)", () => {
+    const mp = (
+      parcial: Partial<LinhaDoExtrato> & Pick<LinhaDoExtrato, "id">,
+    ) => linha({ contaId: "mp", contaNome: "Mercado Pago", ...parcial });
+    const doMarco: LinhaDoExtrato[] = [
+      mp({ id: "m1", data: "2026-09-28", tipo: "entrada", valor: 50 }),
+      mp({ id: "m2", data: "2026-09-27", tipo: "entrada", valor: 100 }),
+      // Antes do marco: venda que nunca entrou no saldo da conta.
+      mp({ id: "m3", data: "2026-09-26", tipo: "entrada", valor: 850 }),
+      mp({ id: "m4", data: "2026-09-25", tipo: "entrada", valor: 400 }),
+    ];
+    const saldos = (
+      grupos: ReturnType<typeof agruparExtratoPorDia>,
+    ): Array<[string, number | null]> =>
+      grupos.map((g) => [g.dia, g.saldoAoFim]);
+
+    it("sem marco o comportamento é o de antes (o número inventado ainda sai)", () => {
+      const esperado = [
+        ["2026-09-28", 1000],
+        ["2026-09-27", 950],
+        ["2026-09-26", 850],
+        ["2026-09-25", 0],
+      ];
+      const sem = agruparExtratoPorDia(doMarco, {
+        contaFiltrada: "mp",
+        saldoAtual: 1000,
+      });
+      expect(saldos(sem)).toEqual(esperado);
+      expect(
+        saldos(
+          agruparExtratoPorDia(doMarco, {
+            contaFiltrada: "mp",
+            saldoAtual: 1000,
+            marco: null,
+          }),
+        ),
+      ).toEqual(esperado);
+    });
+
+    it("marco no meio do período: antes dele o saldo é null, do marco em diante é o reconstruído", () => {
+      const grupos = agruparExtratoPorDia(doMarco, {
+        contaFiltrada: "mp",
+        saldoAtual: 1000,
+        marco: "2026-09-27",
+      });
+      expect(saldos(grupos)).toEqual([
+        ["2026-09-28", 1000],
+        ["2026-09-27", 950],
+        ["2026-09-26", null],
+        ["2026-09-25", null],
+      ]);
+      // O resto do dia não muda: só o saldo é cortado.
+      expect(grupos.map((g) => [g.dia, g.resultado])).toEqual([
+        ["2026-09-28", 50],
+        ["2026-09-27", 100],
+        ["2026-09-26", 850],
+        ["2026-09-25", 400],
+      ]);
+    });
+
+    it("o próprio dia do marco conta (fin__saldos usa data >= saldo_inicial_em)", () => {
+      const grupos = agruparExtratoPorDia(doMarco, {
+        contaFiltrada: "mp",
+        saldoAtual: 1000,
+        marco: "2026-09-26",
+      });
+      expect(saldos(grupos)).toEqual([
+        ["2026-09-28", 1000],
+        ["2026-09-27", 950],
+        ["2026-09-26", 850],
+        ["2026-09-25", null],
+      ]);
+    });
+
+    it("marco em dia sem movimento (vários dias vazios no meio) corta pelo dia, não pela linha", () => {
+      const grupos = agruparExtratoPorDia(
+        [
+          mp({ id: "a", data: "2026-10-20", tipo: "entrada", valor: 30 }),
+          mp({ id: "b", data: "2026-10-12", tipo: "saida", valor: 10 }),
+          mp({ id: "c", data: "2026-10-02", tipo: "entrada", valor: 999 }),
+        ],
+        { contaFiltrada: "mp", saldoAtual: 200, marco: "2026-10-05" },
+      );
+      expect(saldos(grupos)).toEqual([
+        ["2026-10-20", 200],
+        ["2026-10-12", 170],
+        ["2026-10-02", null],
+      ]);
+    });
+
+    it("marco antes de tudo: nenhum dia perde o saldo", () => {
+      const grupos = agruparExtratoPorDia(doMarco, {
+        contaFiltrada: "mp",
+        saldoAtual: 1000,
+        marco: "2026-01-01",
+      });
+      expect(grupos.every((g) => g.saldoAoFim !== null)).toBe(true);
+    });
+
+    it("marco depois de tudo (conta criada hoje): todos os dias sem saldo", () => {
+      const grupos = agruparExtratoPorDia(doMarco, {
+        contaFiltrada: "mp",
+        saldoAtual: 0,
+        marco: "2026-10-23",
+      });
+      expect(grupos.every((g) => g.saldoAoFim === null)).toBe(true);
+    });
+
+    it("saldo negativo LEGÍTIMO depois do marco continua aparecendo", () => {
+      const grupos = agruparExtratoPorDia(
+        [
+          mp({ id: "s1", data: "2026-09-28", tipo: "saida", valor: 70 }),
+          mp({ id: "s2", data: "2026-09-27", tipo: "saida", valor: 30 }),
+          mp({ id: "s3", data: "2026-09-26", tipo: "entrada", valor: 500 }),
+        ],
+        { contaFiltrada: "mp", saldoAtual: -50, marco: "2026-09-27" },
+      );
+      // Hoje −50; antes da saída de 70 era +20; antes da de 30 era +50.
+      expect(saldos(grupos)).toEqual([
+        ["2026-09-28", -50],
+        ["2026-09-27", 20],
+        ["2026-09-26", null],
+      ]);
+    });
+
+    it("sem saldo atual o marco não inventa nada: tudo null", () => {
+      const grupos = agruparExtratoPorDia(doMarco, {
+        contaFiltrada: "mp",
+        saldoAtual: null,
+        marco: "2026-09-27",
+      });
+      expect(grupos.every((g) => g.saldoAoFim === null)).toBe(true);
+    });
+
+    it("extrato vazio com marco não quebra", () => {
+      expect(
+        agruparExtratoPorDia([], {
+          contaFiltrada: "mp",
+          saldoAtual: 10,
+          marco: "2026-09-27",
+        }),
+      ).toEqual([]);
+    });
   });
 
   it("saldo retroativo e série de 30 dias com os buracos preenchidos", () => {

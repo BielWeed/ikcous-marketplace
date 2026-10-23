@@ -577,7 +577,7 @@ sw.addEventListener("fetch", (event: any) => {
     event.respondWith(
       caches.open(IMAGE_CACHE_NAME).then((cache) => {
         return cache.match(event.request).then((cachedResponse) => {
-          const fetchPromise = fetch(event.request)
+          const fetchPromise = buscarFotoDoStorage(event.request)
             .then((networkResponse) => {
               if (networkResponse?.status === 200) {
                 const responseToCache = networkResponse.clone();
@@ -902,6 +902,42 @@ sw.addEventListener("notificationclick", (event: any) => {
       }),
   );
 });
+
+/**
+ * Busca a foto pública do Storage de um jeito que dê para GUARDAR
+ * (pwa-performance-3, 23/10/2026).
+ *
+ * `<img>` sem `crossorigin` (a foto da vitrine, LazyImage) chega ao SW como
+ * pedido `no-cors`, e `fetch(event.request)` devolve uma resposta OPACA
+ * (`status` 0): o ramo do Storage só guarda `status === 200`, então quase
+ * nenhuma foto entrava na gaveta e quem ficava sem sinal via a grade em
+ * branco. Aqui o pedido é refeito em modo `cors` — o Storage público responde
+ * `Access-Control-Allow-Origin: *` (medido nas duas lojas, objeto e render) —
+ * SEM credenciais (com cookie o `*` não vale e o CORS falharia). O
+ * `Request(request, init)` copia o resto, em especial o `Accept`: o endpoint
+ * de render escolhe WebP/AVIF por ele. Uma resposta `cors` serve a um pedido
+ * `no-cors` normalmente; o contrário (opaca para um pedido cors) é que o
+ * navegador recusa.
+ *
+ * Só `<img>` (destination "image"): vídeo/áudio mandam `Range` e o 206 não se
+ * guarda. Qualquer coisa que a via cors não entregue limpa (rede, CORS,
+ * status != 200) cai no `fetch(request)` de sempre — o comportamento de antes,
+ * nunca pior. A resposta opaca segue fora da gaveta (o `status === 200` do
+ * chamador a barra): cada uma contaria ~7 MB da cota no Chrome.
+ */
+async function buscarFotoDoStorage(request: Request): Promise<Response> {
+  if (request.mode === "no-cors" && request.destination === "image") {
+    try {
+      const comCors = await fetch(
+        new Request(request, { mode: "cors", credentials: "omit" }),
+      );
+      if (comCors.status === 200 && comCors.type === "cors") return comCors;
+    } catch (err) {
+      console.warn("[SW] Foto via cors falhou, usando o pedido original:", err);
+    }
+  }
+  return fetch(request);
+}
 
 async function cleanOldImageCache(cache: Cache) {
   try {
