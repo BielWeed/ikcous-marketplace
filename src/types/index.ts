@@ -411,7 +411,7 @@ export interface StoreConfig {
     active: boolean;
     type?: "new_arrivals" | "offers" | "bestsellers" | "custom";
     maxItems?: number;
-    layout?: "padrao" | "compacto" | "lateral";
+    layout?: "padrao" | "compacto" | "lateral" | "lateral-duplo";
     productIds?: string[];
     isCustom?: boolean;
   }[];

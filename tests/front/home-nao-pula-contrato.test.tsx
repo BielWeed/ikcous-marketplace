@@ -29,6 +29,11 @@ import {
   ALTURA_CARTAO_LATERAL,
   ALTURA_SECAO_LATERAL,
 } from "@/components/ui/custom/ofertas-lateral-altura";
+import {
+  ALTURA_CARTAO_DUPLO,
+  ALTURA_SECAO_DUPLO,
+  ALTURA_SECAO_DUPLO_UMA_FILEIRA,
+} from "@/components/ui/custom/ofertas-lateral-duplo-altura";
 import { describe, expect, it } from "vitest";
 
 // ── Caso comportamental (laudo edj3ka, E2): montar o HomeView DE VERDADE ──
@@ -455,7 +460,8 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     temBanner: boolean;
     temOfertas: boolean;
     temBestsellers: boolean;
-    layoutOfertas?: "padrao" | "compacto" | "lateral";
+    layoutOfertas?: "padrao" | "compacto" | "lateral" | "lateral-duplo";
+    qtdOfertas?: unknown;
   }) => {
     window.localStorage.setItem(
       "ikcous_home_memoria",
@@ -723,6 +729,140 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
       // Inválida = 1ª visita: aposta de hoje.
       expect(esqueletoDeOfertas()).not.toBeNull();
     }
+  });
+
+  // ── Lateral em duas fileiras: a faixa tem 2 fileiras (318px) com 2+ ofertas e 1 fileira (206px) com 1 só;
+  // quem decide o esqueleto, antes dos dados chegarem, é a memória da última visita (quantas ofertas havia).
+  const memoriaGravada = () =>
+    JSON.parse(window.localStorage.getItem("ikcous_home_memoria") ?? "{}");
+  const configDuplo = (extra: Record<string, unknown> = {}) => {
+    configDaLoja = {
+      homeSections: [
+        {
+          id: "offers",
+          title: "Ofertas",
+          active: true,
+          layout: "lateral-duplo",
+          ...extra,
+        },
+      ],
+    };
+  };
+
+  it("Lateral em duas fileiras, 1ª visita sem quantidade na memória: reserva as duas fileiras (318px)", async () => {
+    configCarregada = false;
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+      layoutOfertas: "lateral-duplo",
+    });
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.style.minHeight).toBe(
+      `${ALTURA_SECAO_DUPLO}px`,
+    );
+    const cartoes = esqueletoDeOfertas()?.querySelectorAll<HTMLElement>(
+      "[data-cartao-esqueleto]",
+    );
+    expect(cartoes).toHaveLength(4);
+    expect(cartoes?.[0].style.height).toBe(`${ALTURA_CARTAO_DUPLO}px`);
+  });
+
+  it("Lateral em duas fileiras: a última visita tinha 1 oferta -> o esqueleto reserva UMA fileira (206px), a página não pula", async () => {
+    configCarregada = false;
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+      layoutOfertas: "lateral-duplo",
+      qtdOfertas: 1,
+    });
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.style.minHeight).toBe(
+      `${ALTURA_SECAO_DUPLO_UMA_FILEIRA}px`,
+    );
+    expect(
+      esqueletoDeOfertas()?.querySelectorAll("[data-cartao-esqueleto]"),
+    ).toHaveLength(1);
+  });
+
+  it.each([2, 3, 9])(
+    "Lateral em duas fileiras: a última visita tinha %i ofertas -> duas fileiras (318px)",
+    async (qtd) => {
+      configCarregada = false;
+      semearMemoria({
+        temBanner: false,
+        temOfertas: true,
+        temBestsellers: false,
+        layoutOfertas: "lateral-duplo",
+        qtdOfertas: qtd,
+      });
+      await montar([], true);
+      expect(esqueletoDeOfertas()?.style.minHeight).toBe(
+        `${ALTURA_SECAO_DUPLO}px`,
+      );
+    },
+  );
+
+  it.each([["x"], [-1], [null], [0], [1.5], [Number.NaN]])(
+    "memória com quantidade inválida (%j) é ignorada: aposta das duas fileiras, sem erro",
+    async (qtd) => {
+      configCarregada = false;
+      semearMemoria({
+        temBanner: false,
+        temOfertas: true,
+        temBestsellers: false,
+        layoutOfertas: "lateral-duplo",
+        qtdOfertas: qtd,
+      });
+      await montar([], true);
+      expect(esqueletoDeOfertas()?.style.minHeight).toBe(
+        `${ALTURA_SECAO_DUPLO}px`,
+      );
+    },
+  );
+
+  it("config com layout lateral-duplo reserva o esqueleto novo mesmo sem memória", async () => {
+    configDuplo();
+    configCarregada = true;
+    await montar([], true);
+    expect(esqueletoDeOfertas()?.style.minHeight).toBe(
+      `${ALTURA_SECAO_DUPLO}px`,
+    );
+  });
+
+  it("a visita carregada grava o layout e QUANTAS ofertas a faixa mostrou (1, várias, e o corte do maxItems)", async () => {
+    configDuplo();
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([criarProduto({ id: "a", originalPrice: 130 })], false);
+    expect(memoriaGravada()).toMatchObject({
+      layoutOfertas: "lateral-duplo",
+      temOfertas: true,
+      qtdOfertas: 1,
+    });
+    const cinco = ["a", "b", "c", "d", "e"].map((id) =>
+      criarProduto({ id, originalPrice: 130 }),
+    );
+    await montar(cinco, false);
+    expect(memoriaGravada().qtdOfertas).toBe(5);
+    // A lojista limitou a faixa a 1 item: o que aparece é 1, não 5.
+    configDuplo({ maxItems: 1 });
+    await montar(cinco, false);
+    expect(memoriaGravada().qtdOfertas).toBe(1);
+    // Faixa curada à mão: conta os escolhidos que estão à venda (o pausado não aparece).
+    configDuplo({ productIds: ["a", "b", "inexistente"] });
+    await montar(cinco, false);
+    expect(memoriaGravada().qtdOfertas).toBe(2);
+  });
+
+  it("sem nenhuma oferta a memória grava 0 e a próxima visita não reserva esqueleto de ofertas", async () => {
+    configDuplo();
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([criarProduto({ id: "sem-oferta" })], false);
+    expect(memoriaGravada()).toMatchObject({
+      temOfertas: false,
+      qtdOfertas: 0,
+    });
   });
 
   it("a visita carregada grava a memória para a próxima", async () => {
