@@ -401,11 +401,13 @@ export function AdminFinanceiroView({
                 : "pb-[calc(var(--admin-tab-pb,6.25rem)_+_4rem)] lg:pb-28",
             )}
           >
-            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pb-3 pt-6 [&_h1]:text-[32px] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-5 pb-2 pt-4 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
               <AdminPageHeader
                 titulo={NOMES_DO_PAINEL["admin-financeiro"]}
                 acoes={
-                  <>
+                  // Chips compactos (px-2.5, 6px entre eles) para título e chips
+                  // caberem na MESMA linha já em 338px, como no desenho aprovado.
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() =>
@@ -414,6 +416,7 @@ export function AdminFinanceiroView({
                       aria-pressed={aba === "contas"}
                       className={cn(
                         CLASSE_CHIP,
+                        "gap-1.5 px-2.5",
                         aba === "contas"
                           ? CLASSE_CHIP_SELECIONADO
                           : CLASSE_CHIP_COMUM,
@@ -429,7 +432,11 @@ export function AdminFinanceiroView({
                         ocultos ? "Mostrar valores" : "Ocultar valores"
                       }
                       title={ocultos ? "Mostrar valores" : "Ocultar valores"}
-                      className={cn(CLASSE_CHIP, CLASSE_CHIP_COMUM)}
+                      className={cn(
+                        CLASSE_CHIP,
+                        CLASSE_CHIP_COMUM,
+                        "gap-1.5 px-2.5",
+                      )}
                     >
                       {ocultos ? (
                         <EyeOff aria-hidden="true" className="size-4" />
@@ -438,7 +445,7 @@ export function AdminFinanceiroView({
                       )}
                       <span>{ocultos ? "Mostrar" : "Ocultar"}</span>
                     </button>
-                  </>
+                  </div>
                 }
               />
             </div>

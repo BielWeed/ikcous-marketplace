@@ -659,4 +659,144 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       expect(secao("Saldo total")).not.toBeNull();
     });
   });
+
+  describe("valor nunca quebra, cabeçalho em uma linha e saldos neutros (correção de 23/10/2026)", () => {
+    /** Todo valor em dinheiro da tela (folha: sem outro valor dentro dele). */
+    const valores = () =>
+      [
+        ...hospedeiro.querySelectorAll<HTMLElement>('[class*="tabular-nums"]'),
+      ].filter((el) => !el.querySelector('[class*="tabular-nums"]'));
+
+    it("todo valor da Visão tem whitespace-nowrap, também com números enormes", async () => {
+      resumoAtual = {
+        ...RESUMO_BASE,
+        saldo_total: 1234567.89,
+        entradas: 1234567.89,
+        saidas: 999999.99,
+        resultado: 234567.89,
+        a_pagar: {
+          total: 123456.78,
+          vencido: 1234.56,
+          proximos_7_dias: 9999.99,
+        },
+        a_receber: { total: 7654321.09, vencido: 100, proximos_7_dias: 300 },
+        caixa_aberto: {
+          id: "s1",
+          conta_id: "c1",
+          aberto_em: "2026-10-23T12:00:00Z",
+          valor_abertura: 150,
+        },
+      };
+      await montar();
+      const lista = valores();
+      // Herói, etiqueta, entradas, saídas, 2×(total, vencido, 7 dias), troco,
+      // 3 contas, 1 forma e os 2 canais: nenhum pode ficar de fora.
+      expect(lista.length).toBeGreaterThanOrEqual(17);
+      for (const el of lista) {
+        expect(
+          el.classList.contains("whitespace-nowrap"),
+          `sem nowrap: "${normalizar(el.textContent)}"`,
+        ).toBe(true);
+      }
+    });
+
+    it("o tamanho da letra encolhe com o texto: 22px curto, 18px em +R$ 453,88, menor nos enormes", async () => {
+      await montar();
+      const dd = (rotulo: string) =>
+        [...hospedeiro.querySelectorAll("dt")]
+          .find((el) => normalizar(el.textContent) === rotulo)!
+          .nextElementSibling!.querySelector<HTMLElement>(".tabular-nums")!;
+      // "+R$ 453,88" tem 10 caracteres → 18px (medido: cabe na metade de 338px).
+      expect(normalizar(dd("Entradas").textContent)).toBe("+R$ 453,88");
+      expect(dd("Entradas").className).toContain("text-[18px]");
+      // "R$ 0,00" é curto → 22px.
+      expect(dd("Saídas").className).toContain("text-[22px]");
+      expect(dd("Saídas").className).not.toContain("text-[18px]");
+
+      act(() => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      resumoAtual = {
+        ...RESUMO_BASE,
+        entradas: 1234567.89,
+        saidas: 12345.67,
+        saldo_total: 1234567.89,
+      };
+      await montar();
+      // "+R$ 1.234.567,89" (16) cai para o mínimo; "−R$ 12.345,67" (13) → 13px.
+      expect(dd("Entradas").className).toContain("text-xs");
+      expect(dd("Saídas").className).toContain("text-[13px]");
+      // Herói: 15 caracteres encolhem o clamp; sem nunca quebrar.
+      const heroi = secao("Saldo total").querySelector(".tabular-nums")!;
+      expect(heroi.className).toContain("text-[clamp(1.5rem,7vw,2rem)]");
+      expect(heroi.className).toContain("whitespace-nowrap");
+    });
+
+    it("A pagar e A receber também encolhem o total (nunca quebra em duas linhas)", async () => {
+      resumoAtual = {
+        ...RESUMO_BASE,
+        a_pagar: { total: 123456.78, vencido: 0, proximos_7_dias: 0 },
+        a_receber: { total: 12, vencido: 0, proximos_7_dias: 0 },
+      };
+      await montar();
+      const total = (rotulo: string) =>
+        secao(rotulo).querySelector<HTMLElement>(".tabular-nums")!;
+      // "−R$ 123.456,78" (14) → 13px; "+R$ 12,00" (9) → 20px.
+      expect(total("A pagar").className).toContain("text-[13px]");
+      expect(total("A receber").className).toContain("text-[20px]");
+      for (const rotulo of ["A pagar", "A receber"]) {
+        expect(total(rotulo).className).toContain("whitespace-nowrap");
+      }
+    });
+
+    it("título e chips ficam na MESMA linha: chips compactos juntos, título menor, quebra só se não couber", async () => {
+      await montar();
+      const titulo = hospedeiro.querySelector("h1")!;
+      const linha = titulo.parentElement!;
+      // O wrapper da linha deixa quebrar só se faltar espaço (`flex-wrap`) e o
+      // título é text-2xl (não os 32px de antes).
+      expect(linha.classList.contains("flex-wrap")).toBe(true);
+      expect(linha.className).toContain("[&_h1]:text-2xl");
+      expect(linha.className).not.toContain("[&_h1]:text-[32px]");
+      // Os dois chips moram no MESMO bloco (6px entre eles), irmão do título.
+      const contas = [...hospedeiro.querySelectorAll("button")].find(
+        (b) => normalizar(b.textContent) === "Contas",
+      )!;
+      const ocultar = [...hospedeiro.querySelectorAll("button")].find(
+        (b) => normalizar(b.textContent) === "Ocultar",
+      )!;
+      expect(contas.parentElement).toBe(ocultar.parentElement);
+      expect(contas.parentElement!.parentElement!.parentElement).toBe(linha);
+      for (const chip of [contas, ocultar]) {
+        expect(chip.classList.contains("px-2.5")).toBe(true);
+        expect(chip.classList.contains("min-h-11")).toBe(true);
+      }
+      // O chip de Ocultar continua com o rótulo curto (o nome acessível é
+      // "Ocultar valores").
+      expect(normalizar(ocultar.textContent)).toBe("Ocultar");
+      expect(ocultar.getAttribute("aria-label")).toBe("Ocultar valores");
+    });
+
+    it("saldo por conta é neutro quando positivo, vermelho quando negativo, cinza no zero", async () => {
+      resumoAtual = {
+        ...RESUMO_BASE,
+        contas: [
+          { id: "c1", nome: "Caixa da loja", tipo: "caixa", saldo: 34.9 },
+          { id: "c2", nome: "Conta bancária", tipo: "banco", saldo: -10 },
+          { id: "c3", nome: "Mercado Pago", tipo: "mercado_pago", saldo: 0 },
+        ],
+      };
+      await montar();
+      const cor = (i: number) =>
+        Array.from(
+          hospedeiro.querySelectorAll('ul[aria-label="Saldo por conta"] li'),
+        )
+          .at(i)!
+          .querySelector<HTMLElement>(".tabular-nums")!.className;
+      expect(cor(0)).toContain("text-white");
+      expect(cor(0)).not.toMatch(/emerald/);
+      expect(cor(1)).toContain("text-red-400");
+      expect(cor(2)).toContain("text-zinc-300");
+      expect(cor(2)).not.toMatch(/emerald|red-/);
+    });
+  });
 });

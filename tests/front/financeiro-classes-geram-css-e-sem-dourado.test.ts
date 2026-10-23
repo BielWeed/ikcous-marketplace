@@ -113,6 +113,11 @@ describe("Financeiro — toda classe da casca e da Visão novas gera CSS", () =>
     "text-zinc-400",
     "pb-[calc(var(--admin-tab-pb,6.25rem)_+_4rem)]",
     "lg:pb-28",
+    // Valor do herói: o clamp encolhe só quando o texto é muito longo.
+    "text-[clamp(2rem,10vw,2.75rem)]",
+    "text-[clamp(1.5rem,7vw,2rem)]",
+    "whitespace-nowrap",
+    "shrink-0",
   ];
 
   const usadas = (() => {
@@ -135,6 +140,11 @@ describe("Financeiro — toda classe da casca e da Visão novas gera CSS", () =>
       "bg-foreground",
       "text-[clamp(2rem,10vw,2.75rem)]",
       "min-h-[7.5rem]",
+      // Tamanhos que encolhem o valor do cartão (sem quebra de linha).
+      "text-[22px]",
+      "text-[18px]",
+      "text-[13px]",
+      "[&_h1]:text-2xl",
     ]) {
       expect(usadas, esperada).toContain(esperada);
     }

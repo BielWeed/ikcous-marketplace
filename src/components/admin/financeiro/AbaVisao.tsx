@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useResumoFinanceiro } from "@/hooks/useFinanceiro";
 import {
+  formatarBRL,
   formatarDataHora,
   formatarHora,
   formatarPercentual,
@@ -48,7 +49,53 @@ const COR_LOJA = "#FF8BB2";
 
 /** Superfície dos cartões da Visão (mesma dos `CartaoSecao`). */
 const CLASSE_CARTAO =
-  "min-w-0 rounded-3xl border border-admin-border bg-admin-surface p-4";
+  "min-w-0 rounded-3xl border border-admin-border bg-admin-surface p-3";
+
+/**
+ * Valor em dinheiro NUNCA quebra de linha (`whitespace-nowrap`): quem se ajusta
+ * é o tamanho da letra, pelo número de caracteres do texto já formatado
+ * ("+R$ 453,88" = 10). As faixas foram medidas com a fonte do painel (Inter
+ * negrito, números tabulares) para caber na metade da tela de 338px (cartão de
+ * ~117px de miolo): 22px normal, 20px, 18px quando longo, e daí para baixo.
+ */
+const TAMANHOS_DO_VALOR_NO_CARTAO: readonly (readonly [number, string])[] = [
+  [8, "text-[22px] leading-tight"],
+  [9, "text-[20px] leading-tight"],
+  [10, "text-[18px] leading-tight"],
+  [12, "text-[15px] leading-tight"],
+  [14, "text-[13px] leading-tight"],
+];
+const TAMANHO_MINIMO_DO_VALOR = "text-xs leading-tight";
+
+/** Número de caracteres do valor como a tela o escreve (com sinal, se houver). */
+function comprimentoDoValor(valor: number, comSinal: boolean): number {
+  return formatarBRL(valor).length + (comSinal || valor < 0 ? 1 : 0);
+}
+
+/** Tamanho (e `nowrap`) do valor dentro de um cartão de meia largura. */
+function classeDoValorNoCartao(valor: number, comSinal: boolean): string {
+  const n = comprimentoDoValor(valor, comSinal);
+  const faixa = TAMANHOS_DO_VALOR_NO_CARTAO.find(([ate]) => n <= ate);
+  return cn(
+    "whitespace-nowrap font-bold",
+    faixa?.[1] ?? TAMANHO_MINIMO_DO_VALOR,
+  );
+}
+
+/** Valor do cartão-herói: largura cheia, encolhe só quando o texto é muito longo. */
+function classeDoValorDoHeroi(valor: number): string {
+  return cn(
+    "whitespace-nowrap font-bold leading-none tracking-tight",
+    comprimentoDoValor(valor, false) <= 13
+      ? "text-[clamp(2rem,10vw,2.75rem)]"
+      : "text-[clamp(1.5rem,7vw,2rem)]",
+  );
+}
+
+/** Saldo de conta: neutro quando positivo (não é novidade), vermelho se negativo. */
+function corDoSaldoDaConta(saldo: number): string {
+  return paraCentavos(saldo) > 0 ? "text-white" : corDoValor(saldo);
+}
 
 /** Rótulo pequeno em caixa alta dos cartões de número. */
 const CLASSE_ROTULO_CAIXA_ALTA =
@@ -77,7 +124,8 @@ function EtiquetaDoResultado({ resultado }: { readonly resultado: number }) {
     >
       <Icone aria-hidden="true" className="size-3.5 shrink-0" />
       <span className="min-w-0">
-        <Dinheiro valor={resultado} comSinal /> no período
+        <Dinheiro valor={resultado} comSinal className="whitespace-nowrap" /> no
+        período
       </span>
     </p>
   );
@@ -115,7 +163,7 @@ function CartaoDePrevistos({
           valor={totais.total}
           sentido={lado === "entrada" ? 1 : -1}
           className={cn(
-            "text-xl font-bold",
+            classeDoValorNoCartao(totais.total, true),
             classeDoTexto(
               tomDoValor(totais.total, { invertido: lado === "saida" }),
             ),
@@ -130,13 +178,18 @@ function CartaoDePrevistos({
                 classeDoTexto("negativo"),
               )}
             >
-              Vencido <Dinheiro valor={totais.vencido} />
+              Vencido{" "}
+              <Dinheiro valor={totais.vencido} className="whitespace-nowrap" />
             </p>
           ) : (
             <p className="text-zinc-400">Nada vencido</p>
           )}
           <p className="flex flex-wrap items-baseline gap-x-1 text-zinc-400">
-            Próximos 7 dias <Dinheiro valor={totais.proximos7Dias} />
+            Próximos 7 dias{" "}
+            <Dinheiro
+              valor={totais.proximos7Dias}
+              className="whitespace-nowrap"
+            />
           </p>
         </div>
         <span className="sr-only">Ver contas</span>
@@ -171,10 +224,10 @@ function RecebimentosPorForma({
                     <IconeDaForma forma={forma.forma} className="mr-1.5" />
                     {rotuloDaForma(forma.forma)}
                   </span>
-                  <span className="shrink-0 text-xs tabular-nums text-zinc-400">
+                  <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-zinc-400">
                     <Dinheiro
                       valor={forma.valor}
-                      className="text-sm font-bold text-white"
+                      className="whitespace-nowrap text-sm font-bold text-white"
                     />{" "}
                     · {formatarPercentual(pct)}
                   </span>
@@ -222,8 +275,8 @@ function ItemDaLegendaDoCanal({
         <span className="min-w-0 break-words">{nome}</span>
       </dt>
       <dd className="mt-1 text-sm font-bold tabular-nums text-white">
-        <Dinheiro valor={valor} />
-        <span className="font-normal text-zinc-400">
+        <Dinheiro valor={valor} className="whitespace-nowrap" />
+        <span className="whitespace-nowrap font-normal text-zinc-400">
           {" "}
           · {formatarPercentual(percentual)}
         </span>
@@ -385,7 +438,7 @@ export function AbaVisao({
         <Dinheiro
           valor={dados.saldoTotal}
           className={cn(
-            "text-[clamp(2rem,10vw,2.75rem)] font-bold leading-none tracking-tight",
+            classeDoValorDoHeroi(dados.saldoTotal),
             saldoNegativo ? classeDoTexto("negativo") : "text-white",
           )}
         />
@@ -399,21 +452,33 @@ export function AbaVisao({
         <dl className="grid grid-cols-2 gap-3">
           <div className={CLASSE_CARTAO}>
             <dt className={CLASSE_ROTULO_CAIXA_ALTA}>Entradas</dt>
-            <dd className="mt-2 text-[1.375rem] font-bold leading-tight">
+            <dd className="mt-2">
               <Dinheiro
                 valor={dados.entradas}
                 sentido={paraCentavos(dados.entradas) > 0 ? 1 : 0}
-                className={corDoValor(dados.entradas)}
+                className={cn(
+                  classeDoValorNoCartao(
+                    dados.entradas,
+                    paraCentavos(dados.entradas) > 0,
+                  ),
+                  corDoValor(dados.entradas),
+                )}
               />
             </dd>
           </div>
           <div className={CLASSE_CARTAO}>
             <dt className={CLASSE_ROTULO_CAIXA_ALTA}>Saídas</dt>
-            <dd className="mt-2 text-[1.375rem] font-bold leading-tight">
+            <dd className="mt-2">
               <Dinheiro
                 valor={dados.saidas}
                 sentido={paraCentavos(dados.saidas) > 0 ? -1 : 0}
-                className={corDoValor(-dados.saidas)}
+                className={cn(
+                  classeDoValorNoCartao(
+                    dados.saidas,
+                    paraCentavos(dados.saidas) > 0,
+                  ),
+                  corDoValor(-dados.saidas),
+                )}
               />
             </dd>
           </div>
@@ -456,7 +521,11 @@ export function AbaVisao({
           {caixa ? (
             <p className="text-xs text-zinc-400">
               Caixa aberto em {formatarDataHora(caixa.abertoEm)} com{" "}
-              <Dinheiro valor={caixa.valorAbertura} /> de troco.
+              <Dinheiro
+                valor={caixa.valorAbertura}
+                className="whitespace-nowrap"
+              />{" "}
+              de troco.
             </p>
           ) : null}
         </div>
@@ -502,7 +571,10 @@ export function AbaVisao({
                 </span>
                 <Dinheiro
                   valor={conta.saldo}
-                  className={cn("text-sm font-bold", corDoValor(conta.saldo))}
+                  className={cn(
+                    "shrink-0 whitespace-nowrap text-sm font-bold",
+                    corDoSaldoDaConta(conta.saldo),
+                  )}
                 />
                 <span className="sr-only">
                   {rotuloDoTipoDeConta(conta.tipo)}
