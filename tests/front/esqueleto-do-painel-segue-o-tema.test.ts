@@ -36,10 +36,8 @@ describe("esqueleto do painel segue o tema", () => {
     expect(regra).not.toMatch(/#[0-9a-f]{3,8}/i);
   });
 
-  it("a regra do tema vence o .dark .shimmer (especificidade maior)", () => {
-    // .dark .shimmer = 0,2,0 ; html.admin-mode[attr] .shimmer = 0,3,1
-    expect("html.admin-mode[data-admin-tema] .shimmer").toMatch(
-      /^html\.admin-mode\[data-admin-tema\] \.shimmer$/,
-    );
-  });
+  // Especificidade (sem teste: jsdom não resolve CSS): `.dark .shimmer` vale
+  // 0,2,0 e `html.admin-mode[data-admin-tema] .shimmer` vale 0,3,1; as duas
+  // são regras soltas, então a segunda vence sem `!important`. Quem prova a
+  // cor de verdade é a conferência no navegador.
 });
