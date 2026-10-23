@@ -708,7 +708,7 @@ export function ProfileView({
                           </Button>
                         )}
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           onClick={() => onNavigate("order-details", order.id)}
                           className="h-12 flex-1 rounded-2xl bg-zinc-900 text-base font-semibold text-white hover:bg-zinc-800"

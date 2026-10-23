@@ -370,6 +370,34 @@ describe("ProfileView — redesenho aprovado", () => {
         lista!.querySelector('li[aria-current="step"]')?.textContent,
       ).toContain("Preparando");
     });
+
+    // Medido em navegador a 320 px (jsdom não calcula layout; aqui só se trava
+    // a CLASSE que o navegador mediu): colunas iguais faziam "Preparando"
+    // invadir o vizinho, e a linha "Ver detalhes" + "WhatsApp" vazava do cartão.
+    it("linha do tempo: colunas pelo tamanho do rótulo (sem grade de 4 iguais) e folga menor em tela estreita", async () => {
+      estado.orders = [pedido({ status: "processing" })];
+      await renderizar();
+      const lista = hospedeiro.querySelector(
+        'ol[aria-label="Andamento do pedido"]',
+      )!;
+      expect(lista.className).toContain("flex");
+      expect(lista.className).not.toContain("grid-cols-4");
+      expect(lista.className).toContain("max-[359px]:gap-1");
+      for (const li of lista.querySelectorAll("li")) {
+        expect(li.className).toContain("flex-auto");
+        // sem min-w-0: a coluna nunca encolhe abaixo da maior palavra
+        expect(li.className).not.toContain("min-w-0");
+      }
+    });
+
+    it("'Ver detalhes' e 'WhatsApp' quebram de linha em tela estreita em vez de vazar do cartão", async () => {
+      estado.orders = [pedido({})];
+      await renderizar();
+      const linha = botaoQueContem("Ver detalhes")!.parentElement!;
+      expect(linha.className).toContain("flex-wrap");
+      for (const nome of ["Ver detalhes", "WhatsApp"])
+        expect(botaoQueContem(nome)!.className).toMatch(/(^|\s)h-12(\s|$)/);
+    });
   });
 
   describe("endereços", () => {

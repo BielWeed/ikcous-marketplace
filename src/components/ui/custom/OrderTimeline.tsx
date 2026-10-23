@@ -50,11 +50,12 @@ export function OrderTimeline({
           aria-label="Andamento do pedido"
           // biome-ignore lint/a11y/noRedundantRoles: list-style:none apaga o papel de lista no Safari/VoiceOver
           role="list"
-          className="m-0 grid list-none grid-cols-4 gap-2 p-0"
+          className="m-0 flex list-none gap-2 p-0 max-[359px]:-mx-2 max-[359px]:gap-1"
         >
           {steps.map((step, index) => (
             <li
               key={step.key}
+              className="flex-auto"
               aria-current={index === safeIndex ? "step" : undefined}
             >
               <div
@@ -62,7 +63,7 @@ export function OrderTimeline({
                 className={`h-1 rounded-full ${index <= safeIndex ? "bg-zinc-900" : "bg-zinc-200"}`}
               />
               <span
-                className={`mt-2 block text-xs leading-tight ${
+                className={`mt-2 block text-xs leading-tight max-[359px]:tracking-tight ${
                   index === safeIndex
                     ? "font-bold text-zinc-900"
                     : index < safeIndex
