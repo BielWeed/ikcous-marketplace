@@ -59,32 +59,42 @@ describe("Avaliações e Avisos sem texto abaixo de 11px", () => {
 
 describe("Avaliações: abas, pílulas e rótulos continuam cabendo", () => {
   const fonte = ler("src/views/admin/AdminReviewsView.tsx");
+  const controles = ler("src/components/admin/atendimento/controles.tsx");
 
-  it("as abas e filtros `whitespace-nowrap` têm 11px e rastro `tracking-wider`", () => {
-    const abas = linhasCom(fonte, /whitespace-nowrap rounded-lg .*uppercase/);
-    expect(abas.length).toBeGreaterThanOrEqual(2);
+  // Redesenho de 22/10/2026: as abas (filtro por nota) e as pílulas deixaram
+  // de ser caixa alta com rastro largo — a letra é normal, de 14px. O que este
+  // teste guarda continua sendo a causa do estouro antigo: texto em caixa alta
+  // com `tracking-widest` numa caixa que não cresce.
+  it("nenhuma linha junta `uppercase` e `tracking-widest` (era o que estourava a pílula)", () => {
+    for (const fonteDaTela of [fonte, controles]) {
+      for (const linha of linhasCom(fonteDaTela, /uppercase/)) {
+        expect(linha).not.toContain("tracking-widest");
+      }
+    }
+    // controle: o auxiliar enxerga o rótulo em caixa alta que sobrou (o guia).
+    expect(linhasCom(fonte, /uppercase/).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("todo rótulo em caixa alta que sobrou tem 11px ou mais", () => {
+    for (const linha of linhasCom(fonte, /uppercase/)) {
+      expect(linha).toContain("text-[11px]");
+    }
+  });
+
+  it("as abas do filtro por nota e as pílulas que cortam (`truncate`/`line-clamp`) usam texto de 14px ou mais", () => {
+    const abas = linhasCom(controles, /whitespace-nowrap rounded-xl border/);
+    expect(abas.length).toBeGreaterThanOrEqual(1);
     for (const linha of abas) {
-      expect(linha).toContain("text-[11px]");
-      expect(linha).not.toContain("tracking-widest");
+      expect(linha).toContain("text-sm");
     }
-  });
-
-  it("o rótulo `leading-none` do cartão tem 11px e rastro `tracking-wider`", () => {
-    const rotulos = linhasCom(fonte, /uppercase leading-none/);
-    expect(rotulos.length).toBeGreaterThanOrEqual(1);
-    for (const linha of rotulos) {
-      expect(linha).toContain("text-[11px]");
-      expect(linha).not.toContain("tracking-widest");
+    const cortados = linhasCom(
+      fonte,
+      /(line-clamp-\d|min-w-0 truncate|text-base font-semibold text-white)/,
+    );
+    expect(cortados.length).toBeGreaterThanOrEqual(2);
+    for (const linha of cortados) {
+      expect(linha).not.toMatch(/text-\[(?:[6-9]|10)(?:\.\d+)?px\]/);
     }
-  });
-
-  it("a pílula `truncate` e o texto `line-clamp-2` têm 11px", () => {
-    const pilula = linhasCom(fonte, /items-center gap-1 truncate rounded-full/);
-    const citacao = linhasCom(fonte, /line-clamp-2 text-/);
-    expect(pilula).toHaveLength(1);
-    expect(citacao).toHaveLength(1);
-    expect(pilula[0]).toContain("text-[11px]");
-    expect(citacao[0]).toContain("text-[11px]");
   });
 });
 

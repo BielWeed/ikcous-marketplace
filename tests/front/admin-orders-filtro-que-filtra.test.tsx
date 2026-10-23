@@ -206,7 +206,8 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
     await abrirFiltros(hospedeiro);
     const emAberto = botaoComTexto(hospedeiro, "Em Aberto");
     expect(emAberto).toBeTruthy();
-    expect(emAberto!.className).toContain("bg-admin-gold");
+    expect(emAberto!.className).toContain("border-foreground");
+    expect(emAberto!.className).not.toContain("admin-gold");
   });
 
   it("com a CHAVE ANTIGA 'admin_orders_filter' gravada como 'all', a tela ainda abre em 'Em Aberto' (armadilha do localStorage)", async () => {
@@ -222,7 +223,8 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
 
     await abrirFiltros(hospedeiro);
     const emAberto = botaoComTexto(hospedeiro, "Em Aberto");
-    expect(emAberto!.className).toContain("bg-admin-gold");
+    expect(emAberto!.className).toContain("border-foreground");
+    expect(emAberto!.className).not.toContain("admin-gold");
     expect(ultimoStatusFilterEnviado()).toBe("open");
   });
 
@@ -244,7 +246,8 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
     await esperarAte(() => ultimoStatusFilterEnviado() === "all");
 
     expect(ultimoStatusFilterEnviado()).toBe("all");
-    expect(botaoTodos!.className).toContain("bg-admin-gold");
+    expect(botaoTodos!.className).toContain("border-foreground");
+    expect(botaoTodos!.className).not.toContain("admin-gold");
   });
 
   it("clicar num status individual (Cancelado) continua mandando aquele status", async () => {

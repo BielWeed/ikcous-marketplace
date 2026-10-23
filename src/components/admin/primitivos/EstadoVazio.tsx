@@ -24,7 +24,7 @@ export function EstadoVazio({
         <button
           type="button"
           onClick={acao.aoClicar}
-          className="mt-2 min-h-11 rounded-xl bg-admin-gold px-5 text-sm font-bold text-black transition-colors hover:bg-admin-gold/90"
+          className="mt-2 min-h-11 rounded-xl bg-foreground px-5 text-sm font-bold text-background transition-colors hover:opacity-90"
         >
           {acao.rotulo}
         </button>

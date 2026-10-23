@@ -19,12 +19,13 @@
 // citado acima).
 //
 // Os três estados que precisam chegar DIFERENTES à tela:
-//   1. consulta que falha     -> cartões mostram "—", rótulo "Erro ao atualizar",
-//                                rodapé "Não foi possível carregar agora";
-//                                JAMAIS "Fila Limpa" nem "0%"
-//   2. loja legitimamente vazia -> "Fila Limpa" TEM de aparecer (controle
-//                                positivo: sem isto, um teste que só checa
-//                                ausência passaria até com tela em branco)
+//   1. consulta que falha     -> filtro, resumo e cartões mostram "—", a linha
+//                                diz "Erro ao atualizar", o rodapé "Não foi
+//                                possível carregar agora"; JAMAIS "0", "0%"
+//                                nem "Fila de perguntas limpa"
+//   2. loja legitimamente vazia -> "Fila de perguntas limpa" TEM de aparecer
+//                                (controle positivo: sem isto, um teste que só
+//                                checa ausência passaria até com tela em branco)
 //   3. loja com pendências    -> números na tela, nenhum sinal de erro
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -188,46 +189,59 @@ describe("AdminQAView na tela — erro de estatística nunca vira 'Fila Limpa'",
   }
 
   /** Texto integral da tela montada — mesma leitura de DOM de
-   * checkout-view-flag-off.test.tsx. Nenhum outro canto desta página contém
-   * "Fila Limpa" ou "0%" legitimamente (o estado vazio diz "Fila de
-   * Perguntas Limpa", que não é a mesma string), então as asserções de
-   * ausência valem para os cartões sem precisar de âncora estrutural. */
+   * checkout-view-flag-off.test.tsx, com os espaços normalizados. */
   function texto(): string {
-    return hospedeiro.textContent ?? "";
+    return (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
   }
 
-  it("CASO 1 — consulta que falha: '—', 'Erro ao atualizar', nunca 'Fila Limpa' nem '0%'", async () => {
+  async function expandirResumo() {
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Expandir",
+    );
+    expect(botao).toBeTruthy();
+    await act(async () => {
+      botao!.click();
+    });
+  }
+
+  it("CASO 1 — consulta que falha: '—', 'Erro ao atualizar', nunca zero nem fila limpa", async () => {
     h.estado.stats = { status: "error", error: { message: "HTTP 500" } };
 
     await montar();
 
     const tela = texto();
 
-    // A mentira proibida: erro apresentado como fila vazia. Com QUALQUER uma
-    // das condicionais `statsUnavailable` de AdminQAView desfeita, "Fila
-    // Limpa" (rótulo do cartão de pendentes) ou "0%" (taxa de resposta)
-    // reaparecem aqui e este teste cai.
-    expect(tela).not.toContain("Fila Limpa");
+    // A mentira proibida: erro apresentado como fila vazia. O filtro
+    // ("Pendentes N / Todas N"), a linha do resumo e o estado vazio da lista
+    // têm, cada um, a sua condicional: com QUALQUER uma desfeita, "0", "0%"
+    // ou "Fila de perguntas limpa" reaparecem aqui e este teste cai.
+    expect(tela).not.toMatch(/Pendentes 0/);
+    expect(tela).not.toMatch(/Todas 0/);
     expect(tela).not.toContain("0%");
-    // O rodapé da taxa também tem a sua mentira: com a condicional dele
-    // desfeita, volta "0 de 0 respondidas".
-    expect(tela).not.toContain("0 de 0 respondidas");
+    expect(tela).not.toContain("0 de 0");
+    expect(tela).not.toContain("Fila de perguntas limpa");
 
-    // A marcação honesta que LUGAR ALGUM mais garante: sem estas três, uma
-    // tela toda em branco passaria neste caso.
-    expect(tela).toContain("—");
+    // A marcação honesta que LUGAR ALGUM mais garante: sem estas, uma tela
+    // toda em branco passaria neste caso.
+    expect(tela).toContain("Pendentes —");
+    expect(tela).toContain("Todas —");
+    expect(tela).toContain("— respondidas");
     expect(tela).toContain("Erro ao atualizar");
-    expect(tela).toContain("Não foi possível carregar agora");
+    // Fechado: filtro (2) + linha do resumo (1).
+    expect((tela.match(/—/g) ?? []).length).toBe(3);
 
-    // Os TRÊS cartões numéricos (pendentes, taxa, total) mostram o traço de
-    // indisponível — nem dois, nem quatro. Desfazer a condicional de valor de
-    // QUALQUER um dos três derruba a contagem para 2 e este teste cai, mesmo
-    // sem o rótulo mudar.
-    const tracos = (tela.match(/—/g) ?? []).length;
-    expect(tracos).toBe(3);
+    // Aberto, os TRÊS cartões numéricos mostram o traço de indisponível —
+    // nem dois, nem quatro. Desfazer a condicional de valor de QUALQUER um
+    // derruba a contagem e este teste cai, mesmo sem o rótulo mudar.
+    await expandirResumo();
+    const aberta = texto();
+    expect(aberta).toContain("Não foi possível carregar agora");
+    expect(aberta).not.toContain("0%");
+    expect(aberta).not.toContain("0 de 0");
+    expect((aberta.match(/—/g) ?? []).length).toBe(5);
   });
 
-  it("CASO 2 — controle positivo: fila legitimamente vazia MOSTRA 'Fila Limpa'", async () => {
+  it("CASO 2 — controle positivo: fila legitimamente vazia MOSTRA 'Fila de perguntas limpa'", async () => {
     h.estado.stats = {
       status: "ok",
       total: 0,
@@ -243,14 +257,16 @@ describe("AdminQAView na tela — erro de estatística nunca vira 'Fila Limpa'",
     // Zero de verdade tem direito ao selo — é ele que distingue este estado
     // do de erro. Se alguém "consertar" escondendo o rótulo também aqui,
     // este teste cai junto.
-    expect(tela).toContain("Fila Limpa");
+    expect(tela).toContain("Fila de perguntas limpa");
 
-    // E os zeros legítimos aparecem SEM cara de erro: "0%" e "0 de 0
-    // respondidas" são a verdade aqui — é exatamente o que NÃO pode vazar
-    // no CASO 1.
-    expect(tela).toContain("0%");
-    expect(tela).toContain("0 de 0 respondidas");
+    // E os zeros legítimos aparecem SEM cara de erro: "0%" e "0 de 0" são a
+    // verdade aqui — é exatamente o que NÃO pode vazar no CASO 1.
+    expect(tela).toContain("Pendentes 0");
+    expect(tela).toContain("Todas 0");
+    expect(tela).toContain("0% respondidas");
+    expect(tela).toContain("0 de 0");
     expect(tela).not.toContain("Erro ao atualizar");
+    expect(tela).not.toContain("—");
   });
 
   it("CASO 3 — loja com pendências: números na tela, nenhum sinal de erro", async () => {
@@ -267,19 +283,19 @@ describe("AdminQAView na tela — erro de estatística nunca vira 'Fila Limpa'",
 
     const tela = texto();
 
-    // Os números chegam: 5 pendentes, taxa 58%, 7 de 12 respondidas.
-    expect(tela).toContain("5 PENDENTES");
-    expect(tela).toContain("58%");
-    expect(tela).toContain("7 de 12 respondidas");
-    expect(tela).toContain("12");
+    // Os números chegam: 5 pendentes, 12 no total, taxa 58%, 7 de 12.
+    expect(tela).toContain("Pendentes 5");
+    expect(tela).toContain("Todas 12");
+    expect(tela).toContain("58% respondidas");
+    expect(tela).toContain("7 de 12");
 
     // E nenhuma marcação de erro vaza para um estado que não é de erro.
     expect(tela).not.toContain("Erro ao atualizar");
     expect(tela).not.toContain("Não foi possível carregar agora");
 
     // A lista em si também renderiza de verdade (caminho separado do stats).
-    expect(hospedeiro.textContent).toContain("Maria Teste");
-    expect(hospedeiro.textContent).toContain("Vocês enviam para o interior?");
-    expect(hospedeiro.textContent).toContain("Pendente");
+    expect(tela).toContain("Maria Teste");
+    expect(tela).toContain("Vocês enviam para o interior?");
+    expect(tela).toContain("Pendente");
   });
 });

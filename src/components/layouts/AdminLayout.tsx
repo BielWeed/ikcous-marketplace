@@ -1123,10 +1123,10 @@ export function AdminLayout({
                         pedirNovoBanner();
                       }}
                       className={cn(
-                        "flex h-11 min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-nav",
+                        "flex h-11 min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-admin-nav",
                         isOffline
                           ? "border border-admin-border-strong bg-admin-raised text-zinc-400"
-                          : "bg-admin-gold text-black hover:bg-admin-gold/90",
+                          : "bg-foreground text-background hover:opacity-90",
                       )}
                     >
                       {isOffline ? (

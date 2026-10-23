@@ -510,7 +510,7 @@ export function ModalVarianteGrade({
                               className={cn(
                                 "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
                                 grupo.nome === attr
-                                  ? "bg-admin-gold/10 border-admin-gold text-admin-gold"
+                                  ? "border-solid bg-admin-hover border-foreground text-foreground"
                                   : "bg-zinc-950 border-admin-border text-zinc-500 hover:text-zinc-300 hover:border-admin-border-strong",
                               )}
                             >
@@ -536,7 +536,7 @@ export function ModalVarianteGrade({
                                 className={cn(
                                   "min-h-11 px-3 py-2 rounded-full text-xs font-bold border transition-all active:scale-95",
                                   selecionado
-                                    ? "bg-admin-gold/10 border-admin-gold text-admin-gold"
+                                    ? "border-solid bg-admin-hover border-foreground text-foreground"
                                     : "bg-zinc-950 border-admin-border text-zinc-400 hover:border-admin-border-strong",
                                 )}
                               >

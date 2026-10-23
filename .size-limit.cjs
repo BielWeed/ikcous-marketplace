@@ -88,7 +88,11 @@ module.exports = [
     // 560 -> 564 kB para acomodar as telas pedidas da 1.5.54 (Finalizar com resumos
     // compactos, ofertas no layout lateral e icones de categoria). Medido na
     // integracao: 563,72 kB, 3,72 kB acima do teto anterior.
-    limit: "564 kB",
+    // 23/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 564 -> 568 kB na 1.5.55. Medido: 564,27 kB, 274 B acima do teto. Nenhum codigo
+    // da loja mudou neste lote (so painel); o acrescimo vem da nota da versao, que
+    // vai no pacote da loja, e do ruido de hash dos chunks (folga de ~40 B nao basta).
+    limit: "568 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem

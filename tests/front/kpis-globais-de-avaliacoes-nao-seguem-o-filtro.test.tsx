@@ -9,7 +9,7 @@
 //
 // Este teste é a metade FRONT do par: com a RPC devolvendo um resultado
 // FILTRADO VAZIO (total_count=0) e GLOBAIS POVOADOS (global_total=7,
-// média 4.4, 3 verificadas, 2 respondidas), os cartões têm que mostrar os
+// média 4,4, 3 verificadas, 2 respondidas), os cartões têm que mostrar os
 // GLOBAIS — inclusive "43%" de verificadas (3/7), nunca "100%" de zero.
 // A corrida vermelha deste teste contra o código antigo é a prova de
 // sabotagem do par.
@@ -150,47 +150,74 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+async function montar() {
+  await act(async () => {
+    raiz.render(<AdminReviewsView active={true} onNavigate={vi.fn()} />);
+  });
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function expandirResumo() {
+  const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+    (b) => b.textContent?.trim() === "Expandir",
+  );
+  expect(botao).toBeTruthy();
+  await act(async () => {
+    botao!.click();
+  });
+}
+
+/** O cartão do resumo expandido: o pai do rótulo exato. */
+function cartao(rotulo: string): HTMLElement {
+  const etiqueta = Array.from(hospedeiro.querySelectorAll("span")).find(
+    (el) => el.textContent?.trim() === rotulo,
+  );
+  expect(etiqueta, rotulo).toBeDefined();
+  return etiqueta!.parentElement as HTMLElement;
+}
+
 describe("KPIs globais de Avaliações (par com a migration 20261002000000)", () => {
-  it("filtro vazio: cartões mostram os GLOBAIS — 4.4, 7, e 43% (nunca 100% de zero)", async () => {
-    await act(async () => {
-      raiz.render(<AdminReviewsView active={true} onNavigate={vi.fn()} />);
-    });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+  it("filtro vazio: a linha e os cartões mostram os GLOBAIS — 4,4, 7, e 43% (nunca 100% de zero)", async () => {
+    await montar();
 
+    // Linha do resumo (fechado): média e total globais, não os do filtro (0).
+    const linha = hospedeiro.querySelector(
+      'section[aria-label="Métricas de Avaliações"]',
+    )?.textContent;
+    expect(linha).toContain("4,4");
+    expect(linha).toContain("7 avaliações");
+
+    await expandirResumo();
     const texto = hospedeiro.textContent ?? "";
-
-    // Média Global e Total Recebido: os globais, não os do filtro (0).
-    expect(texto).toContain("4.4");
-    expect(texto).toContain("7");
 
     // A armadilha do achado: "100%" com zero no total. 3 de 7 = 43%.
     expect(texto).not.toContain("100%");
     expect(texto).toContain("43%");
+    expect(cartao("Total recebido").textContent).toContain("7");
   });
 
-  it("CORRIGE 1 da 2305: nenhum elemento rotulado 'global' mostra o filtrado — o badge do topo incluso", async () => {
-    await act(async () => {
-      raiz.render(<AdminReviewsView active={true} onNavigate={vi.fn()} />);
-    });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+  it("CORRIGE 1 da 2305: nenhum elemento rotulado 'global' mostra o filtrado — a linha do topo inclusa", async () => {
+    await montar();
 
-    // O badge sticky cujo title promete "Média global de estrelas" tem que
-    // mostrar o GLOBAL (4.4) — nunca o filtrado (0.0 do dublê).
-    const badge = hospedeiro.querySelector(
-      '[title="Média global de estrelas"]',
+    // A linha do resumo e o cartão "Média global" têm que mostrar o GLOBAL
+    // (4,4) — nunca o filtrado (0,0 do dublê).
+    const linha = hospedeiro.querySelector(
+      'section[aria-label="Métricas de Avaliações"]',
     );
-    expect(badge).not.toBeNull();
-    expect(badge!.textContent).toContain("4.4");
-    expect(badge!.textContent).not.toContain("0.0");
+    expect(linha).not.toBeNull();
+    expect(linha!.textContent).toContain("4,4");
+    expect(linha!.textContent).not.toContain("0,0");
+
+    await expandirResumo();
+    const media = cartao("Média global");
+    expect(media.textContent).toContain("4,4");
+    expect(media.textContent).not.toContain("0,0");
   });
 
-  it("CORRIGE 2 da 2305: RPC antiga (sem chaves global_*) com lista cheia — cartões mostram '—', nunca zero", async () => {
+  it("CORRIGE 2 da 2305: RPC antiga (sem chaves global_*) com lista cheia — linha e cartões mostram '—', nunca zero", async () => {
     // A RPC ANTIGA em ação: lista cheia (43 no total filtrado) e NENHUMA
     // chave global_* — nem globaisDisponiveis.
     const anterior = h.retorno;
@@ -205,28 +232,26 @@ describe("KPIs globais de Avaliações (par com a migration 20261002000000)", ()
       globaisDisponiveis: false,
     };
 
-    await act(async () => {
-      raiz.render(<AdminReviewsView active={true} onNavigate={vi.fn()} />);
-    });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await montar();
+
+    // A linha do resumo (fechado) já não inventa zero: "—" e "— avaliações".
+    const linha = hospedeiro.querySelector(
+      'section[aria-label="Métricas de Avaliações"]',
+    )?.textContent;
+    expect(linha).toContain("— avaliações");
+    expect(linha).not.toContain("0,0");
 
     // L1 da revisão final: o "—" tem que estar DENTRO do cartão "Total
-    // Recebido" — as taxas já renderizam "—" sozinhas com total 0, então
+    // recebido" — as taxas já renderizam "—" sozinhas com total 0, então
     // um toContain no host inteiro passa com o cartão mostrando 0.
-    // Localizador forte: o MENOR elemento que contém o rótulo exato.
-    const rotulo = Array.from(hospedeiro.querySelectorAll("*"))
-      .filter((el) => el.textContent?.trim() === "Total Recebido")
-      .at(-1);
-    expect(rotulo).toBeDefined();
-    const areaDoCartao = rotulo!.parentElement?.parentElement?.parentElement;
-    expect(areaDoCartao?.textContent ?? "").toContain("—");
-    expect(areaDoCartao?.textContent ?? "").not.toMatch(
-      /(^|[^\d])0(\.0)?([^\d]|$)/,
+    await expandirResumo();
+    const areaDoCartao = cartao("Total recebido");
+    expect(areaDoCartao.textContent ?? "").toContain("—");
+    expect(areaDoCartao.textContent ?? "").not.toMatch(
+      /(^|[^\d])0([,.]0)?([^\d]|$)/,
     );
-    expect(hospedeiro.textContent).not.toContain("0.0");
+    expect(cartao("Média global").textContent).toContain("—");
+    expect(hospedeiro.textContent).not.toContain("0,0");
     h.retorno = anterior;
   });
 });

@@ -42,7 +42,7 @@ interface Inspecao {
 }
 
 export const BOTAO_PRINCIPAL =
-  "flex min-h-11 items-center justify-center gap-2 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-widest text-black transition-all hover:bg-admin-gold/90 active:scale-95 disabled:opacity-50";
+  "flex min-h-11 items-center justify-center gap-2 rounded-xl bg-foreground px-4 text-[11px] font-black uppercase tracking-widest text-background transition-all hover:opacity-90 active:scale-95 disabled:opacity-50";
 export const BOTAO_SECUNDARIO =
   "flex min-h-11 items-center justify-center gap-2 rounded-xl border border-admin-border bg-white/5 px-4 text-[11px] font-bold text-zinc-200 transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50";
 const BOTAO_PERIGO =
@@ -272,7 +272,8 @@ export function AcoesDaDevolucao({
               onClick={() => escolherModo("aprovar")}
               className={cn(
                 BOTAO_SECUNDARIO,
-                modo === "aprovar" && "border-admin-gold/50 text-admin-gold",
+                modo === "aprovar" &&
+                  "border-solid border-foreground text-foreground",
               )}
             >
               <Check className="size-4" />
@@ -496,7 +497,8 @@ export function AcoesDaDevolucao({
               onClick={() => escolherModo("concluir")}
               className={cn(
                 BOTAO_SECUNDARIO,
-                modo === "concluir" && "border-admin-gold/50 text-admin-gold",
+                modo === "concluir" &&
+                  "border-solid border-foreground text-foreground",
               )}
             >
               <Check className="size-4" />
@@ -542,7 +544,7 @@ export function AcoesDaDevolucao({
                           className={cn(
                             "min-h-11 rounded-lg border px-2 text-[11px] font-bold transition-colors",
                             i?.condicao === c
-                              ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
+                              ? "border-solid border-foreground bg-admin-hover text-foreground"
                               : "border-admin-border text-zinc-400 hover:text-white",
                           )}
                         >
@@ -560,7 +562,7 @@ export function AcoesDaDevolucao({
                         disabled={!i?.condicao || i.condicao === "ausente"}
                         aria-label={`Voltar ${item.product_name || "item"} ao estoque`}
                         onCheckedChange={(v) => mudarReestoque(item.id, v)}
-                        className="data-[state=checked]:bg-admin-gold"
+                        className="data-[state=checked]:bg-foreground"
                       />
                     </div>
                   </div>
@@ -579,7 +581,7 @@ export function AcoesDaDevolucao({
                       className={cn(
                         "min-h-11 rounded-lg border px-2 text-[11px] font-bold transition-colors",
                         resolucao === r
-                          ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
+                          ? "border-solid border-foreground bg-admin-hover text-foreground"
                           : "border-admin-border text-zinc-400 hover:text-white",
                       )}
                     >

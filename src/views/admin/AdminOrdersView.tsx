@@ -80,6 +80,7 @@ import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import {
   AlertCircle,
   CalendarDays,
+  Check,
   CheckCircle2,
   Clock,
   CreditCard,
@@ -114,7 +115,7 @@ const FOCO_PEDIDOS =
 const BOTAO_PEDIDOS = `flex min-h-11 items-center justify-center gap-2 whitespace-normal rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-admin-hover disabled:text-zinc-400 ${FOCO_PEDIDOS}`;
 const OPCAO_PEDIDOS = `${BOTAO_PEDIDOS} w-full rounded-full text-left`;
 const SELECIONADO_PEDIDOS =
-  "border-admin-gold bg-admin-gold/10 ring-1 ring-admin-gold";
+  "border-solid border-foreground bg-admin-hover ring-1 ring-foreground";
 
 /**
  * Subtítulo do cartão "Para preparar" — achado 10 da auditoria de
@@ -1870,6 +1871,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       {modo === "compact"
                         ? "Visualização Compacta"
                         : "Visualização Detalhada"}
+                      {viewMode === modo && (
+                        <Check
+                          aria-hidden="true"
+                          data-marca="selecionado"
+                          className="size-4 shrink-0"
+                        />
+                      )}
                     </button>
                   ))}
                 </fieldset>
@@ -1990,6 +1998,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         )}
                       >
                         {label}
+                        {canalFilter === valor && (
+                          <Check
+                            aria-hidden="true"
+                            data-marca="selecionado"
+                            className="size-4 shrink-0"
+                          />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -2028,7 +2043,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                           className={cn(
                             "flex min-h-11 w-full items-center gap-2 border-b border-admin-border px-3 py-3 text-left text-sm text-zinc-200",
                             FOCO_PEDIDOS,
-                            paymentFilter === valor && "bg-admin-gold/10",
+                            paymentFilter === valor && "bg-admin-hover",
                           )}
                         >
                           <span
@@ -2048,7 +2063,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                           {paymentFilter === valor && (
                             <CheckCircle2
                               aria-hidden="true"
-                              className="size-5 shrink-0 text-admin-gold"
+                              className="size-5 shrink-0 text-foreground"
                             />
                           )}
                         </button>

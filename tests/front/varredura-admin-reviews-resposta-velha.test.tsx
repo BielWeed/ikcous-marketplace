@@ -115,10 +115,19 @@ describe("AdminReviewsView — a resposta superada não sobrescreve a mais nova"
     hospedeiro.remove();
   });
 
+  // O total aparece em dois lugares, de duas leituras diferentes do mesmo
+  // resultado: a linha do resumo ("77 avaliações", total GLOBAL) e o
+  // paginador ("Página 1 de 8", total do filtro). Os dois têm de acompanhar a
+  // leitura mais nova.
   const totalNaTela = () =>
-    hospedeiro
-      .querySelector('[title="Total de avaliações"]')
-      ?.textContent?.trim();
+    /(\d+) avaliações/.exec(
+      hospedeiro.querySelector('section[aria-label="Métricas de Avaliações"]')
+        ?.textContent ?? "",
+    )?.[1];
+  const paginasNaTela = () =>
+    /de (\d+)/.exec(
+      hospedeiro.querySelector('nav[aria-label="Páginas"]')?.textContent ?? "",
+    )?.[1];
 
   async function montarComDuasLeituras() {
     const { AdminReviewsView } = await import("@/views/admin/AdminReviewsView");
@@ -142,6 +151,7 @@ describe("AdminReviewsView — a resposta superada não sobrescreve a mais nova"
       h.respostas[0](leitura(33)); // a mais velha, atrasada
     });
     expect(totalNaTela()).toBe("77");
+    expect(paginasNaTela()).toBe("8");
   });
 
   it("controle: na ordem normal (velha, depois nova) vale a nova", async () => {
@@ -153,5 +163,6 @@ describe("AdminReviewsView — a resposta superada não sobrescreve a mais nova"
       h.respostas[1](leitura(77));
     });
     expect(totalNaTela()).toBe("77");
+    expect(paginasNaTela()).toBe("8");
   });
 });

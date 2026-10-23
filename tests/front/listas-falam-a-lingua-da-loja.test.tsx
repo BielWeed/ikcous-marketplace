@@ -347,28 +347,30 @@ describe("telas de lista na língua da loja", () => {
     });
   }
 
-  it("Perguntas: três cartões medidos, sem 'Conversão Comercial'", async () => {
+  it("Perguntas: três cartões medidos no resumo expandido, sem 'Conversão Comercial'", async () => {
     await abrirPerguntas();
 
-    // Os cartões moram no carrossel de KPIs, cujo cabeçalho é o título
-    // "Resumo das perguntas"; cada cartão tem exatamente um <h3> (o valor).
-    // O <h3> do estado vazio ("Fila de Perguntas Limpa") fica fora do
-    // carrossel e por isso não entra na conta.
-    const titulo = [...hospedeiro.querySelectorAll("span")].find(
-      (s) => s.textContent === "Resumo das perguntas",
+    // O resumo é uma linha que se expande (botão "Expandir") em três cartões:
+    // Pendentes, Respondidas e Total. O estado vazio da lista tem o próprio
+    // <h2> e fica fora da seção do resumo.
+    const expandir = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Expandir",
     );
-    const carrossel = titulo?.closest("div.w-full");
-    expect(carrossel).toBeTruthy();
-    const cartoes = [...(carrossel?.querySelectorAll("h3") ?? [])];
-    expect(cartoes).toHaveLength(3);
-    const rotulos = cartoes.map(
-      (h3) => h3.previousElementSibling?.textContent?.trim() ?? "",
+    expect(expandir).toBeTruthy();
+    await act(async () => {
+      expandir!.click();
+      await esperar(0);
+    });
+
+    const resumo = hospedeiro.querySelector(
+      'section[aria-label="Resumo das perguntas"]',
     );
-    expect(rotulos).toEqual([
-      "Dúvidas Pendentes",
-      "Taxa de Resposta",
-      "Total de Perguntas",
-    ]);
+    expect(resumo).toBeTruthy();
+    const rotulos = [...(resumo?.querySelectorAll("span.text-3xl") ?? [])].map(
+      (valor) =>
+        valor.parentElement?.firstElementChild?.textContent?.trim() ?? "",
+    );
+    expect(rotulos).toEqual(["Pendentes", "Respondidas", "Total"]);
 
     const tela = textoDaTela();
     expect(tela).not.toContain("Conversão Comercial");
