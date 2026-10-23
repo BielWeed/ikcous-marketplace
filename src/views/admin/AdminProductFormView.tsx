@@ -8,6 +8,7 @@ import {
 import { PhoneSimulator } from "@/components/admin/PhoneSimulator";
 import { CampoDeCategoria } from "@/components/admin/products/CampoDeCategoria";
 import { CodigoDoProduto } from "@/components/admin/products/CodigoDoProduto";
+import { DicaExpansivel } from "@/components/admin/products/DicaExpansivel";
 import { InterruptorDoProduto } from "@/components/admin/products/InterruptorDoProduto";
 import { SecaoDoProduto } from "@/components/admin/products/SecaoDoProduto";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
@@ -4122,12 +4123,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               {!priceError &&
                 precoDoProdutoTexto.trim() === "" &&
                 formData.variants.some((v) => v.priceOverride == null) && (
-                  <span
-                    data-testid="preco-das-variacoes-sem-preco"
-                    className="ml-1 mt-1 block text-[11px] font-bold text-amber-500"
+                  <DicaExpansivel
+                    testId="preco-das-variacoes-sem-preco"
+                    rotulo="Variações sem preço usam este"
                   >
                     As variações sem preço usam este.
-                  </span>
+                  </DicaExpansivel>
                 )}
             </div>
 
@@ -4165,14 +4166,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </div>
               </div>
               {hasActiveVariants ? (
-                <span
-                  id="product-stock-info"
-                  className="ml-1 mt-1 block flex items-center gap-1.5 text-[11px] font-bold text-amber-500"
+                <DicaExpansivel
+                  idDoTexto="product-stock-info"
+                  rotulo={`Estoque vem das variações · ${formData.stock} un`}
                 >
-                  <Info className="size-3.5 shrink-0" />
-                  Estoque gerenciado pelas variantes ativas ({formData.stock}{" "}
-                  un).
-                </span>
+                  O estoque deste produto é a soma das variações ativas (
+                  {formData.stock} un). Para mudar a quantidade, edite o estoque
+                  de cada variação.
+                </DicaExpansivel>
               ) : (
                 stockError && (
                   <span
