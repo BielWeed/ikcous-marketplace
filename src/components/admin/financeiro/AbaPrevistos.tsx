@@ -1,12 +1,4 @@
-import {
-  CalendarClock,
-  Check,
-  Clock,
-  ExternalLink,
-  Info,
-  Plus,
-  X,
-} from "lucide-react";
+import { CalendarClock, ExternalLink, Plus } from "lucide-react";
 import { useMemo } from "react";
 
 import { usePrevistosFinanceiros } from "@/hooks/useFinanceiro";
@@ -14,6 +6,7 @@ import {
   type SituacaoDoVencimento,
   formatarData,
   ordenarPorVencimento,
+  paraCentavos,
   previstoEhEditavel,
   rotuloDaOrigem,
   situacaoDoVencimento,
@@ -21,7 +14,7 @@ import {
   totaisDosPrevistos,
 } from "@/lib/financeiro";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
-import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { DataIso, LancamentoPrevisto } from "@/types/financeiro";
 import type { AbrirFolha, LadoDosPrevistos } from "./navegacao";
@@ -29,13 +22,25 @@ import {
   CLASSE_BOTAO_SECUNDARIO,
   CLASSE_TITULO_SECAO,
   Dinheiro,
-  EsqueletoDeKpis,
   EsqueletoDeLista,
   EstadoDeErro,
   EstadoVazio,
-  Etiqueta,
   Segmentado,
+  useValoresEstaoOcultos,
 } from "./partes";
+import {
+  CLASSE_CARTAO_DA_LISTA,
+  CLASSE_CARTAO_DO_TOPO,
+  CLASSE_PILULA_PRIMARIA,
+  CLASSE_PILULA_SECUNDARIA,
+  CLASSE_QUADRO_INTERNO,
+  CLASSE_QUADRO_VENCIDO,
+  CLASSE_ROTULO_CAIXA_ALTA,
+  EsqueletoDoTopo,
+  classeDoValorDaLinha,
+  classeDoValorDoTopo,
+  classeDoValorNoQuadro,
+} from "./partesDoExtrato";
 
 const SECOES: readonly { situacao: SituacaoDoVencimento; titulo: string }[] = [
   { situacao: "vencido", titulo: "Vencidos" },
@@ -53,8 +58,7 @@ function NotaDoNaoEditavel({ item }: { readonly item: LancamentoPrevisto }) {
         ? "Devolução em andamento: o valor sai quando a devolução for concluída."
         : `${rotuloDaOrigem(item.origem)}: vem do pedido, o Financeiro só acompanha.`;
   return (
-    <p className="mt-3 flex items-start gap-2 rounded-2xl bg-sky-400/5 p-3 text-xs leading-relaxed text-zinc-400">
-      <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+    <p className="mt-3 break-words text-sm leading-relaxed text-zinc-400">
       {texto}
     </p>
   );
@@ -73,8 +77,8 @@ function CartaoDoPrevisto({
   readonly abrirFolha: AbrirFolha;
   readonly aoAbrirPedido: (pedidoId: string) => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const situacao = situacaoDoVencimento(item.vencimento, hoje);
-  const vencido = situacao === "vencido";
   const editavel = previstoEhEditavel(item);
   const parcela =
     item.parcela !== null && item.parcelas !== null && item.parcelas > 1
@@ -82,66 +86,46 @@ function CartaoDoPrevisto({
       : null;
 
   return (
-    <li
-      className={cn(
-        "flex min-w-0 flex-col rounded-3xl border border-admin-border bg-admin-surface p-4",
-      )}
-    >
-      <div className="flex flex-col items-start gap-3">
-        <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-2 text-base font-bold leading-snug text-white">
-            <Clock
-              aria-hidden="true"
-              className={cn(
-                "size-5 shrink-0",
-                classeDoTexto(
-                  vencido
-                    ? "negativo"
-                    : situacao === "hoje"
-                      ? "atencao"
-                      : "neutro",
-                ),
-              )}
-            />
-            <span className="min-w-0 flex-1 break-words">{item.descricao}</span>
-            {parcela ? <Etiqueta>{parcela}</Etiqueta> : null}
-          </p>
-          <p className="mt-3 break-words text-xs leading-relaxed text-zinc-400">
-            {item.categoriaNome ?? rotuloDaOrigem(item.origem)} ·{" "}
-            {item.contaNome ?? "—"}
-          </p>
-          <p
-            className={cn(
-              "mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium",
-              classeDoTexto(
-                vencido
-                  ? "negativo"
-                  : situacao === "hoje"
-                    ? "atencao"
-                    : "neutro",
-              ),
-            )}
-          >
-            <CalendarClock aria-hidden="true" className="size-3.5" />
-            {textoDoVencimento(item.vencimento, hoje)}
-            {item.vencimento && situacao !== "depois" ? (
-              <span className="font-normal text-zinc-400">
-                · {formatarData(item.vencimento)}
-              </span>
-            ) : null}
-          </p>
-        </div>
+    <li className={cn(CLASSE_CARTAO_DA_LISTA, "flex flex-col p-4")}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="min-w-0 flex-1 break-words text-base font-bold leading-snug text-white">
+          {item.descricao}
+          {parcela ? ` · ${parcela}` : ""}
+        </p>
         <Dinheiro
           valor={item.valor}
-          sentido={lado === "entrada" ? 1 : -1}
           className={cn(
-            "text-2xl font-bold",
-            classeDoTexto(lado === "entrada" ? "positivo" : "negativo"),
+            classeDoValorDaLinha(item.valor, false, ocultos),
+            "text-white",
           )}
         />
       </div>
+      <p className="mt-1 break-words text-sm leading-snug text-zinc-400">
+        {item.categoriaNome ?? rotuloDaOrigem(item.origem)} ·{" "}
+        {item.contaNome ?? "—"}
+      </p>
+      {/* A cor só vem com significado (vencido = vermelho, hoje = âmbar) e o
+          texto diz o mesmo: a cor nunca é a única pista. */}
+      <p
+        className={cn(
+          "mt-1.5 text-sm font-medium",
+          situacao === "vencido"
+            ? classeDoTexto("negativo")
+            : situacao === "hoje"
+              ? classeDoTexto("atencao")
+              : "text-zinc-300",
+        )}
+      >
+        {textoDoVencimento(item.vencimento, hoje)}
+        {item.vencimento && situacao !== "depois" ? (
+          <span className="font-normal text-zinc-400">
+            {" "}
+            · {formatarData(item.vencimento)}
+          </span>
+        ) : null}
+      </p>
       {editavel ? (
-        <div className="mt-4 grid grid-cols-1 gap-2 xs:grid-cols-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() =>
@@ -157,9 +141,8 @@ function CartaoDoPrevisto({
                 },
               })
             }
-            className={cn(CLASSE_BOTAO_SECUNDARIO, "text-teal-300")}
+            className={CLASSE_PILULA_PRIMARIA}
           >
-            <Check aria-hidden="true" className="size-5 shrink-0" />
             Dar baixa
           </button>
           <button
@@ -174,9 +157,8 @@ function CartaoDoPrevisto({
                 },
               })
             }
-            className={cn(CLASSE_BOTAO_SECUNDARIO, "text-red-300")}
+            className={CLASSE_PILULA_SECUNDARIA}
           >
-            <X aria-hidden="true" className="size-5 shrink-0" />
             Cancelar
           </button>
         </div>
@@ -187,9 +169,9 @@ function CartaoDoPrevisto({
             <button
               type="button"
               onClick={() => aoAbrirPedido(item.pedidoId ?? "")}
-              className={`${CLASSE_BOTAO_SECUNDARIO} mt-3`}
+              className={cn(CLASSE_PILULA_SECUNDARIA, "mt-3 w-full gap-2")}
             >
-              <ExternalLink aria-hidden="true" className="size-4" />
+              <ExternalLink aria-hidden="true" className="size-4 shrink-0" />
               Abrir pedido #{numeroDoPedido(item.pedidoId)}
             </button>
           ) : null}
@@ -200,9 +182,9 @@ function CartaoDoPrevisto({
 }
 
 /**
- * Aba "A pagar / A receber": o que ainda vai sair ou entrar, do vencimento
- * mais antigo para o mais novo. Vencido em vermelho, com o texto dizendo há
- * quantos dias — a cor nunca é a única pista.
+ * Aba "Pagar e receber": o que ainda vai sair ou entrar, do vencimento mais
+ * antigo para o mais novo. Vencido em vermelho, com o texto dizendo há quantos
+ * dias — a cor nunca é a única pista.
  */
 export function AbaPrevistos({
   ativo,
@@ -223,6 +205,7 @@ export function AbaPrevistos({
   readonly aoNovoLancamento: (lado: LadoDosPrevistos) => void;
   readonly aoAbrirPedido: (pedidoId: string) => void;
 }) {
+  const ocultos = useValoresEstaoOcultos();
   const previstos = usePrevistosFinanceiros(lado, ativo, versao);
   const ordenados = useMemo(
     () => (previstos.dados ? ordenarPorVencimento(previstos.dados) : []),
@@ -244,9 +227,10 @@ export function AbaPrevistos({
     [ordenados, hoje],
   );
   const aReceber = lado === "entrada";
+  const temVencido = paraCentavos(totais.vencido) > 0;
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-4">
       <Segmentado<LadoDosPrevistos>
         rotulo="A pagar ou a receber"
         valor={lado}
@@ -265,50 +249,64 @@ export function AbaPrevistos({
         />
       ) : !previstos.dados ? (
         <>
-          <EsqueletoDeKpis quantos={3} />
+          <EsqueletoDoTopo altura="h-[13.5rem]" />
           <EsqueletoDeLista />
         </>
       ) : (
         <>
           <section
             aria-label={aReceber ? "Total a receber" : "Total a pagar"}
-            className="rounded-3xl border border-admin-border bg-admin-raised p-5"
+            className={CLASSE_CARTAO_DO_TOPO}
           >
-            <p className="text-xs text-zinc-400">
+            <h2 className={CLASSE_ROTULO_CAIXA_ALTA}>
               {aReceber ? "Total a receber" : "Total a pagar"}
-            </p>
+            </h2>
+            {/* Total sem cor de estado (ainda não saiu nem entrou); só o zero
+                vira cinza, que é o "nada aqui". */}
             <Dinheiro
               valor={totais.total}
-              sentido={aReceber ? 1 : -1}
               className={cn(
-                "mt-4 block text-3xl font-bold",
-                classeDoTexto(
-                  tomDoValor(totais.total, { invertido: !aReceber }),
-                ),
+                classeDoValorDoTopo(totais.total, false, ocultos),
+                paraCentavos(totais.total) > 0
+                  ? "text-white"
+                  : classeDoTexto("neutro"),
               )}
             />
-            <dl className="mt-6 flex flex-col gap-4 text-sm">
-              <div className="flex flex-wrap justify-between gap-2">
-                <dt className="text-zinc-400">Vencido</dt>
-                <dd>
+            <dl className="grid w-full grid-cols-2 gap-3">
+              <div
+                className={
+                  temVencido ? CLASSE_QUADRO_VENCIDO : CLASSE_QUADRO_INTERNO
+                }
+              >
+                <dt className="text-xs text-zinc-300">Vencido</dt>
+                <dd className="mt-1">
                   <Dinheiro
                     valor={totais.vencido}
-                    className={
-                      totais.vencido > 0
-                        ? "font-bold text-red-400"
-                        : "text-white"
-                    }
+                    className={cn(
+                      classeDoValorNoQuadro(totais.vencido, false, ocultos),
+                      temVencido ? classeDoTexto("negativo") : "text-zinc-300",
+                    )}
                   />
                 </dd>
               </div>
-              <div className="flex flex-wrap justify-between gap-2">
-                <dt className="text-zinc-400">Próximos 7 dias</dt>
-                <dd className="font-bold">
-                  <Dinheiro valor={totais.proximos7Dias} />
+              <div className={CLASSE_QUADRO_INTERNO}>
+                <dt className="text-xs text-zinc-300">Próximos 7 dias</dt>
+                <dd className="mt-1">
+                  <Dinheiro
+                    valor={totais.proximos7Dias}
+                    className={cn(
+                      classeDoValorNoQuadro(
+                        totais.proximos7Dias,
+                        false,
+                        ocultos,
+                      ),
+                      "text-white",
+                    )}
+                  />
                 </dd>
               </div>
             </dl>
-            <p className="mt-4 text-xs text-zinc-400">
+            <p className="text-xs text-zinc-400">
               De hoje até 7 dias à frente, inclusive.
             </p>
           </section>
@@ -346,8 +344,8 @@ export function AbaPrevistos({
                 <h2
                   className={cn(
                     CLASSE_TITULO_SECAO,
-                    "mb-2 px-1",
-                    secao.situacao === "vencido" && "text-red-400",
+                    "mb-3 px-1",
+                    secao.situacao === "vencido" && classeDoTexto("negativo"),
                   )}
                 >
                   {secao.titulo} · {secao.itens.length}

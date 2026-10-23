@@ -11,19 +11,7 @@
 // busca de novo) e a FOLHA aberta (uma por vez — é o que liga o Voltar do
 // celular e o aviso de alterações não salvas ao formulário da vez).
 
-import {
-  BarChart3,
-  CalendarClock,
-  Clock,
-  Eye,
-  EyeOff,
-  Plus,
-  ReceiptText,
-  SlidersHorizontal,
-  Store,
-  Wallet,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { CalendarClock, Eye, EyeOff, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -61,13 +49,16 @@ import type {
   LadoDosPrevistos,
 } from "@/components/admin/financeiro/navegacao";
 import {
-  CLASSE_BOTAO_PRIMARIO,
+  CLASSE_ABA_DO_FINANCEIRO,
+  CLASSE_BOTAO_REDONDO_DO_FINANCEIRO,
+  CLASSE_CHIP,
+  CLASSE_CHIP_COMUM,
+  CLASSE_CHIP_SELECIONADO,
   type ConfirmacaoFinanceira,
   ContextoConfirmacaoFinanceira,
   ContextoValoresOcultos,
   ReciboFinanceiro,
 } from "@/components/admin/financeiro/partes";
-import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAuth } from "@/hooks/useAuth";
@@ -80,6 +71,7 @@ import {
   useValoresOcultos,
 } from "@/hooks/useFinanceiro";
 import { intervaloDoPeriodo, rotuloDoPeriodo } from "@/lib/financeiro";
+import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { PeriodoEscolhido } from "@/types/financeiro";
 
@@ -91,40 +83,23 @@ interface AdminFinanceiroViewProps {
 }
 
 // O `valor` é a chave da aba (o "dre" busca `fin_dre`); o `rotulo` é o que a
-// lojista lê. "Contas e categorias" é configuração: fica no fim, com o selo
-// "Avançado" (spec "Painel simples", §10).
+// lojista lê. Abas só com texto (desenho aprovado de 22/10/2026). A visão
+// `contas` (Contas e categorias, configuração) saiu da fila: abre pelo chip
+// "Contas" do cabeçalho e, enquanto está aberta, nenhuma aba fica ativa.
 const ABAS: readonly {
   valor: AbaDoFinanceiro;
   rotulo: string;
-  icone: LucideIcon;
-  matiz: string;
-  avancado?: boolean;
 }[] = [
-  { valor: "visao", rotulo: "Visão", icone: Wallet, matiz: "#69C8FF" },
-  { valor: "extrato", rotulo: "Extrato", icone: ReceiptText, matiz: "#7AA2FF" },
-  {
-    valor: "previstos",
-    rotulo: "A pagar e receber",
-    icone: CalendarClock,
-    matiz: "#FF8BB2",
-  },
-  { valor: "caixa", rotulo: "Caixa", icone: Store, matiz: "#2DD4BF" },
-  { valor: "dre", rotulo: "Resultado", icone: BarChart3, matiz: "#BA9AFF" },
-  {
-    valor: "contas",
-    rotulo: "Contas e categorias",
-    icone: SlidersHorizontal,
-    matiz: "#FF9F5A",
-    avancado: true,
-  },
+  { valor: "visao", rotulo: "Visão" },
+  { valor: "extrato", rotulo: "Extrato" },
+  { valor: "previstos", rotulo: "Pagar e receber" },
+  { valor: "caixa", rotulo: "Caixa" },
+  { valor: "dre", rotulo: "Resultado" },
 ];
 
 function ehAba(valor: string): valor is AbaDoFinanceiro {
   return ABAS.some((aba) => aba.valor === valor);
 }
-
-const CLASSE_ABA =
-  "h-auto min-h-11 flex-none whitespace-normal rounded-xl border border-solid border-transparent px-3 py-2 text-xs font-bold text-zinc-300 hover:text-white focus-visible:ring-sky-300 data-[state=active]:border-solid data-[state=active]:border-foreground data-[state=active]:bg-admin-hover data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-admin-hover dark:data-[state=active]:text-foreground";
 
 export function AdminFinanceiroView({
   onNavigate,
@@ -286,7 +261,7 @@ export function AdminFinanceiroView({
               aoPedirPersonalizado={() => abrirFolha({ tipo: "periodo" })}
             />
             <p className="mt-4 rounded-2xl bg-sky-400/5 p-3 text-xs leading-relaxed text-zinc-400">
-              A pagar e receber, Caixa e Contas e categorias não usam este
+              Pagar e receber, Caixa e Contas e categorias não usam este
               período. O fluxo usa sempre seus últimos 30 dias.
             </p>
           </FolhaFinanceira>
@@ -415,29 +390,67 @@ export function AdminFinanceiroView({
     <ContextoDoCacheFinanceiro.Provider value={cache}>
       <ContextoValoresOcultos.Provider value={ocultos}>
         <ContextoConfirmacaoFinanceira.Provider value={setConfirmacao}>
-          <div className="pb-admin h-auto bg-admin-bg text-white lg:pb-12">
-            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 pb-7 pt-6 [&_h1]:text-[32px] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+          <div
+            className={cn(
+              "h-auto bg-admin-bg text-white",
+              // O botão redondo flutua 56px acima da pílula: o conteúdo ganha
+              // folga para o último item nunca ficar por baixo dele. Na aba
+              // Caixa (ação na pílula) vale a folga de sempre.
+              aba === "caixa"
+                ? "pb-admin lg:pb-12"
+                : "pb-[calc(var(--admin-tab-pb,6.25rem)_+_4rem)] lg:pb-28",
+            )}
+          >
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-5 pb-2 pt-4 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
               <AdminPageHeader
                 titulo={NOMES_DO_PAINEL["admin-financeiro"]}
-                acoes=<button
-                  type="button"
-                  onClick={alternarOcultos}
-                  aria-pressed={ocultos}
-                  aria-label={ocultos ? "Mostrar valores" : "Ocultar valores"}
-                  title={ocultos ? "Mostrar valores" : "Ocultar valores"}
-                  className="flex min-h-11 items-center justify-center gap-2 rounded-full bg-admin-raised px-4 text-xs text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
-                >
-                  {ocultos ? (
-                    <EyeOff aria-hidden="true" className="size-4" />
-                  ) : (
-                    <Eye aria-hidden="true" className="size-4" />
-                  )}
-                  <span>{ocultos ? "Mostrar" : "Ocultar"}</span>
-                </button>
+                acoes={
+                  // Chips compactos (px-2.5, 6px entre eles) para título e chips
+                  // caberem na MESMA linha já em 338px, como no desenho aprovado.
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAba(aba === "contas" ? "visao" : "contas")
+                      }
+                      aria-pressed={aba === "contas"}
+                      className={cn(
+                        CLASSE_CHIP,
+                        "gap-1.5 px-2.5",
+                        aba === "contas"
+                          ? CLASSE_CHIP_SELECIONADO
+                          : CLASSE_CHIP_COMUM,
+                      )}
+                    >
+                      Contas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={alternarOcultos}
+                      aria-pressed={ocultos}
+                      aria-label={
+                        ocultos ? "Mostrar valores" : "Ocultar valores"
+                      }
+                      title={ocultos ? "Mostrar valores" : "Ocultar valores"}
+                      className={cn(
+                        CLASSE_CHIP,
+                        CLASSE_CHIP_COMUM,
+                        "gap-1.5 px-2.5",
+                      )}
+                    >
+                      {ocultos ? (
+                        <EyeOff aria-hidden="true" className="size-4" />
+                      ) : (
+                        <Eye aria-hidden="true" className="size-4" />
+                      )}
+                      <span>{ocultos ? "Mostrar" : "Ocultar"}</span>
+                    </button>
+                  </div>
+                }
               />
             </div>
 
-            <div className="mx-auto flex max-w-7xl flex-col gap-7 px-5">
+            <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5">
               {confirmacao ? (
                 <ReciboFinanceiro
                   confirmacao={confirmacao}
@@ -454,11 +467,7 @@ export function AdminFinanceiroView({
                     aoPedirOpcoes={() => abrirFolha({ tipo: "periodos" })}
                   />
                 ) : (
-                  <p className="flex min-h-12 items-center gap-2 rounded-2xl bg-admin-raised px-3 text-xs text-zinc-300">
-                    <Clock
-                      aria-hidden="true"
-                      className="size-5 shrink-0 text-teal-300"
-                    />
+                  <p className="text-xs text-zinc-400">
                     {aba === "caixa"
                       ? "Sessão atual"
                       : aba === "previstos"
@@ -473,42 +482,21 @@ export function AdminFinanceiroView({
                 onValueChange={(valor) =>
                   setAba(ehAba(valor) ? valor : "visao")
                 }
-                className="min-w-0 gap-7"
+                className="min-w-0 gap-4"
               >
-                <div className="sticky top-0 z-20 -mx-5 border-b border-admin-border bg-admin-bg/95 px-5 py-2 backdrop-blur-sm before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-5 before:bg-gradient-to-r before:from-admin-bg before:to-transparent after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-5 after:bg-gradient-to-l after:from-admin-bg after:to-transparent">
+                <div className="sticky top-0 z-20 -mx-5 border-b border-admin-border bg-admin-bg/95 px-5 backdrop-blur-sm before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-5 before:bg-gradient-to-r before:from-admin-bg before:to-transparent after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-5 after:bg-gradient-to-l after:from-admin-bg after:to-transparent">
                   <TabsList
                     ref={listaDeAbas}
                     aria-label="Abas do Financeiro"
-                    className="no-scrollbar -mx-5 flex h-auto scroll-px-5 w-[calc(100%+2.5rem)] justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-5 py-1"
+                    className="no-scrollbar -mx-5 flex h-auto w-[calc(100%+2.5rem)] scroll-px-5 justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-5 py-0"
                   >
                     {ABAS.map((item) => (
                       <TabsTrigger
                         key={item.valor}
                         value={item.valor}
-                        className={CLASSE_ABA}
+                        className={CLASSE_ABA_DO_FINANCEIRO}
                       >
-                        <item.icone
-                          aria-hidden="true"
-                          className="size-4"
-                          style={{
-                            color:
-                              item.valor === aba ? "currentColor" : item.matiz,
-                          }}
-                        />
-                        <span className="max-w-40 break-words text-left leading-snug">
-                          {item.rotulo}
-                          {item.avancado ? (
-                            <>
-                              {" "}
-                              <span
-                                data-selo-avancado=""
-                                className="block text-[11px] font-normal text-zinc-400"
-                              >
-                                Avançado
-                              </span>
-                            </>
-                          ) : null}
-                        </span>
+                        {item.rotulo}
                       </TabsTrigger>
                     ))}
                   </TabsList>
@@ -570,7 +558,12 @@ export function AdminFinanceiroView({
                     rotuloDoPeriodo={rotulo}
                   />
                 </TabsContent>
-                <TabsContent value="contas">
+                <TabsContent value="contas" className="flex flex-col gap-4">
+                  {/* A visão não tem mais aba: o chip "Contas" a abre, então
+                      ela se apresenta pelo nome de sempre. */}
+                  <h2 className="text-xl font-bold text-white">
+                    Contas e categorias
+                  </h2>
                   <AbaContasECategorias
                     contas={contas}
                     categorias={categorias}
@@ -579,17 +572,15 @@ export function AdminFinanceiroView({
                 </TabsContent>
               </Tabs>
               {ativo && !folha && aba !== "caixa" ? (
-                <AcaoDaBarra>
-                  <button
-                    type="button"
-                    onClick={() => novoLancamento()}
-                    aria-label="Novo lançamento"
-                    className={`${CLASSE_BOTAO_PRIMARIO} admin-barra-principal w-full`}
-                  >
-                    <Plus aria-hidden="true" className="size-6" />
-                    Novo lançamento
-                  </button>
-                </AcaoDaBarra>
+                <button
+                  type="button"
+                  onClick={() => novoLancamento()}
+                  aria-label="Novo lançamento"
+                  className={CLASSE_BOTAO_REDONDO_DO_FINANCEIRO}
+                >
+                  <Plus aria-hidden="true" className="size-7" />
+                  <span className="sr-only">Novo lançamento</span>
+                </button>
               ) : null}
             </div>
 

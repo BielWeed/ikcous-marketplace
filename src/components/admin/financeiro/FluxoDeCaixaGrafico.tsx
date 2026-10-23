@@ -24,7 +24,7 @@ import {
   paraCentavos,
 } from "@/lib/financeiro";
 import type { DataIso } from "@/types/financeiro";
-import { Dinheiro, useValoresEstaoOcultos } from "./partes";
+import { Dinheiro, Segmentado, useValoresEstaoOcultos } from "./partes";
 
 // Cores por FUNÇÃO (não por série arbitrária): entrada verde, saída
 // vermelha, saldo azul. A cor nunca anda sozinha — a legenda
@@ -33,6 +33,8 @@ const COR_ENTRADA = "#10b981";
 const COR_SAIDA = "#f43f5e";
 const COR_SALDO = "#7AA2FF";
 const COR_EIXO = "#ABABB7";
+
+type ModoDoFluxo = "saldo" | "movimentos";
 
 interface PontoDoGrafico extends PontoDoFluxo {
   /** Saída desenhada para BAIXO da linha do zero (mesmo eixo, sem 2º eixo). */
@@ -125,25 +127,25 @@ function ConteudoDoTooltip({
 }
 
 /**
- * Fluxo de caixa dos últimos 30 dias em DOIS gráficos empilhados que dividem
- * o mesmo eixo X (e o mesmo cursor, via `syncId`): em cima a linha do saldo,
- * embaixo as barras de entrada (para cima) e saída (para baixo). Dois
- * gráficos e não um de dois eixos Y: o saldo vive numa escala muito maior
- * que o movimento do dia, e eixo duplo faz a leitura mentir.
+ * Fluxo de caixa dos últimos 30 dias: DOIS gráficos, UM por vez, escolhidos por
+ * uma chave segmentada "Saldo | Entradas e saídas" (desenho aprovado de
+ * 22/10/2026; padrão = Saldo). Numa posição da chave mora a linha do saldo; na
+ * outra, as barras de entrada (para cima) e saída (para baixo). Continuam dois
+ * gráficos e não um de dois eixos Y: o saldo vive numa escala muito maior que
+ * o movimento do dia, e eixo duplo faz a leitura mentir.
  *
- * Só o gráfico de BAIXO mostra o balão do tooltip (Pedido do Gabriel,
- * 27/09/2026: com um `<Tooltip content={<ConteudoDoTooltip/>}>` em cada
- * gráfico, o `syncId` ativa os dois ao mesmo tempo — dois balões iguais, um
- * em cima do outro). O de cima mantém seu `<Tooltip>` (sem ele o
- * `activeDot` da linha do saldo não acende — depende de o recharts achar um
- * `Tooltip` entre os filhos) só com `content={() => null}`: o cursor
- * tracejado continua sincronizado nos dois, mas o balão nasce uma vez só.
+ * Como só um gráfico aparece por vez, o balão (`ConteudoDoTooltip`) nasce no
+ * próprio gráfico da vez — não existe mais o par sincronizado (`syncId`) que
+ * obrigava a esconder o balão de um dos dois (pedido do Gabriel, 27/09/2026:
+ * dois balões iguais, um em cima do outro). O balão é o mesmo nos dois e
+ * escreve os sinais +/−.
  *
  * `pontos[i].saldo` pode ser `null` (dia antes do marco do saldo inicial —
  * ver `marcoDoSaldoInicial`/`serieDoFluxoDeCaixa` em src/lib/financeiro.ts):
  * a linha do saldo não é desenhada aí, o balão mostra "—" em vez de um
- * número, e a nota abaixo do gráfico explica a partir de quando o saldo
- * existe.
+ * número (por isso o `<Tooltip>` do saldo usa `filterNull={false}`: o
+ * recharts descartaria o ponto sem valor e o balão nem abriria), e a nota
+ * abaixo do gráfico explica a partir de quando o saldo existe.
  */
 export function FluxoDeCaixaGrafico({
   pontos,
@@ -166,6 +168,7 @@ export function FluxoDeCaixaGrafico({
   readonly marco: DataIso | null;
 }) {
   const ocultos = useValoresEstaoOcultos();
+  const [modo, setModo] = useState<ModoDoFluxo>("saldo");
   // O ResponsiveContainer mede a largura na montagem; esperar a transição
   // da tela evita medir 0 px (mesmo cuidado do OperationalPerformanceChart).
   const [pronto, setPronto] = useState(false);
@@ -248,30 +251,59 @@ export function FluxoDeCaixaGrafico({
     );
   }
 
+  const mostraSaldo = modo === "saldo";
+  const eixoX = (
+    <XAxis
+      dataKey="dia"
+      axisLine={false}
+      tickLine={false}
+      fontSize={11}
+      minTickGap={16}
+      tick={{ fill: COR_EIXO, fontWeight: 700 }}
+      tickFormatter={(dia: string) => formatarDataCurta(dia)}
+      dy={6}
+    />
+  );
+
   return (
     <div className="flex flex-col gap-3">
+      <Segmentado<ModoDoFluxo>
+        rotulo="Gráfico do fluxo de caixa"
+        valor={modo}
+        aoMudar={setModo}
+        opcoes={[
+          { valor: "saldo", rotulo: "Saldo" },
+          { valor: "movimentos", rotulo: "Entradas e saídas" },
+        ]}
+      />
+
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-zinc-400">
-        <li className="flex items-center gap-1.5">
-          <span
-            className="size-2.5 rounded-sm"
-            style={{ background: COR_ENTRADA }}
-          />
-          Entradas
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span
-            className="size-2.5 rounded-sm"
-            style={{ background: COR_SAIDA }}
-          />
-          Saídas
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span
-            className="h-0.5 w-4 rounded"
-            style={{ background: COR_SALDO }}
-          />
-          Saldo ao fim do dia
-        </li>
+        {mostraSaldo ? (
+          <li className="flex items-center gap-1.5">
+            <span
+              className="h-0.5 w-4 rounded"
+              style={{ background: COR_SALDO }}
+            />
+            Saldo ao fim do dia
+          </li>
+        ) : (
+          <>
+            <li className="flex items-center gap-1.5">
+              <span
+                className="size-2.5 rounded-sm"
+                style={{ background: COR_ENTRADA }}
+              />
+              Entradas
+            </li>
+            <li className="flex items-center gap-1.5">
+              <span
+                className="size-2.5 rounded-sm"
+                style={{ background: COR_SAIDA }}
+              />
+              Saídas
+            </li>
+          </>
+        )}
       </ul>
 
       {pronto ? (
@@ -280,9 +312,8 @@ export function FluxoDeCaixaGrafico({
           aria-label="Gráfico do fluxo de caixa dos últimos 30 dias. A tabela logo abaixo tem os mesmos números."
           className="flex flex-col"
         >
-          <p className="mb-3 text-sm font-bold text-white">Saldo</p>
-          {semLinhaDeSaldo ? (
-            <div className="flex min-h-[100px] w-full flex-col items-start justify-center gap-3 rounded-2xl border border-admin-border bg-admin-raised p-4">
+          {mostraSaldo && semLinhaDeSaldo ? (
+            <div className="flex h-[220px] w-full flex-col items-start justify-center gap-3 rounded-2xl border border-admin-border bg-admin-raised p-4">
               {poucosPontosDeSaldo ? (
                 <>
                   <p className="text-sm leading-relaxed text-zinc-400">
@@ -305,8 +336,8 @@ export function FluxoDeCaixaGrafico({
                 </p>
               )}
             </div>
-          ) : (
-            <div className="h-[150px] w-full min-w-0 rounded-2xl bg-admin-raised">
+          ) : mostraSaldo ? (
+            <div className="h-[220px] w-full min-w-0 rounded-2xl bg-admin-raised">
               <ResponsiveContainer
                 width="100%"
                 height="100%"
@@ -315,7 +346,6 @@ export function FluxoDeCaixaGrafico({
               >
                 <AreaChart
                   data={dados}
-                  syncId="fin-fluxo"
                   margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                 >
                   <defs>
@@ -337,13 +367,15 @@ export function FluxoDeCaixaGrafico({
                     stroke="#ffffff"
                     strokeOpacity={0.04}
                   />
-                  <XAxis dataKey="dia" hide />
+                  {eixoX}
                   {eixoY}
-                  {/* Sem balão aqui — só o cursor tracejado, sincronizado com
-                      o gráfico de baixo pelo `syncId`. O balão de verdade é
-                      renderizado uma vez só, no `<Tooltip>` do BarChart. */}
+                  {/* `filterNull={false}`: dia ANTES do marco chega com
+                      `saldo: null` e o recharts, por padrão, tira do balão o
+                      ponto sem valor — o balão nem abriria, e o "—" honesto
+                      de "antes do saldo inicial" sumiria. */}
                   <Tooltip
-                    content={() => null}
+                    content={<ConteudoDoTooltip />}
+                    filterNull={false}
                     cursor={{
                       stroke: "rgba(255,255,255,0.15)",
                       strokeDasharray: "4 4",
@@ -374,73 +406,62 @@ export function FluxoDeCaixaGrafico({
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          )}
-
-          {/* Linha + rótulo entre os dois painéis: sem isto, o fim do eixo
-              de cima ("−R$ 150") ficava colado no começo do eixo de baixo
-              ("R$ 200") — dois painéis com escalas independentes, fáceis de
-              ler como um só. */}
-          <div className="my-1.5 h-px w-full bg-white/5" />
-          <p className="mb-3 text-sm font-bold text-white">Entradas e saídas</p>
-          <div className="h-[170px] w-full min-w-0 rounded-2xl bg-admin-raised">
-            <ResponsiveContainer
-              width="100%"
-              height="100%"
-              minWidth={0}
-              debounce={150}
-            >
-              <BarChart
-                data={dados}
-                syncId="fin-fluxo"
-                stackOffset="sign"
-                barCategoryGap={2}
-                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+          ) : (
+            <div className="h-[220px] w-full min-w-0 rounded-2xl bg-admin-raised">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={0}
+                debounce={150}
               >
-                <CartesianGrid
-                  vertical={false}
-                  stroke="#ffffff"
-                  strokeOpacity={0.04}
-                />
-                <XAxis
-                  dataKey="dia"
-                  axisLine={false}
-                  tickLine={false}
-                  fontSize={11}
-                  minTickGap={16}
-                  tick={{ fill: COR_EIXO, fontWeight: 700 }}
-                  tickFormatter={(dia: string) => formatarDataCurta(dia)}
-                  dy={6}
-                />
-                {eixoY}
-                <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" />
-                <Tooltip
-                  content={<ConteudoDoTooltip />}
-                  cursor={{ fill: "rgba(255,255,255,0.04)" }}
-                />
-                <Bar
-                  dataKey="entradas"
-                  stackId="fluxo"
-                  fill={COR_ENTRADA}
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={14}
-                  isAnimationActive={false}
-                />
-                <Bar
-                  dataKey="saidaNegativa"
-                  stackId="fluxo"
-                  fill={COR_SAIDA}
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={14}
-                  isAnimationActive={false}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+                <BarChart
+                  data={dados}
+                  stackOffset="sign"
+                  barCategoryGap={2}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="#ffffff"
+                    strokeOpacity={0.04}
+                  />
+                  {eixoX}
+                  {eixoY}
+                  <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" />
+                  <Tooltip
+                    content={<ConteudoDoTooltip />}
+                    cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                  />
+                  <Bar
+                    dataKey="entradas"
+                    stackId="fluxo"
+                    fill={COR_ENTRADA}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={14}
+                    isAnimationActive={false}
+                  />
+                  <Bar
+                    dataKey="saidaNegativa"
+                    stackId="fluxo"
+                    fill={COR_SAIDA}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={14}
+                    isAnimationActive={false}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       ) : (
-        <Skeleton className="h-[280px] w-full rounded-2xl bg-white/5" />
+        <Skeleton className="h-[220px] w-full rounded-2xl bg-white/5" />
       )}
-      {marco && pontos.some((p) => p.saldo === null) ? (
+      {mostraSaldo && !semLinhaDeSaldo ? (
+        <p className="text-xs text-zinc-400">
+          Saldo reconstruído a partir do saldo de hoje.
+        </p>
+      ) : null}
+      {mostraSaldo && marco && pontos.some((p) => p.saldo === null) ? (
         <p className="text-xs text-zinc-400">
           {semLinhaDeSaldo ? (
             // O painel que substitui o AreaChart (acima) já diz "a partir de

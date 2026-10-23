@@ -242,14 +242,14 @@ describe("Financeiro — extrato e a pagar", () => {
       (s) => (s.getAttribute("aria-label") ?? "").includes("20 de setembro"),
     ) as HTMLElement;
     const texto20 = normalizar(dia20.textContent);
-    expect(texto20).toContain("Resultado +R$ 70,00");
+    expect(texto20).toContain("Dia +R$ 70,00");
     expect(texto20).toContain("+R$ 150,00");
     expect(texto20).toContain("−R$ 80,00");
     // O previsto do dia 30 não mexe no resultado dele.
     const dia30 = [...hospedeiro.querySelectorAll("section[aria-label]")].find(
       (s) => (s.getAttribute("aria-label") ?? "").includes("30 de setembro"),
     ) as HTMLElement;
-    expect(normalizar(dia30.textContent)).toContain("Resultado R$ 0,00");
+    expect(normalizar(dia30.textContent)).toContain("Dia R$ 0,00");
     expect(normalizar(dia30.textContent)).toContain("Previsto");
 
     await clicar(botaoEm(hospedeiro, /^Venda #abc123/));
@@ -265,7 +265,7 @@ describe("Financeiro — extrato e a pagar", () => {
   });
 
   it("a pagar: o botão do estorno diz o número do pedido como o cliente vê (#999XYZ) e abre pelo id inteiro", async () => {
-    await irPara("A pagar e receber");
+    await irPara("Pagar e receber");
 
     const botao = botaoEm(hospedeiro, /^Abrir pedido #/);
     expect(normalizar(botao.textContent).trim()).toBe("Abrir pedido #999XYZ");
@@ -321,7 +321,7 @@ describe("Financeiro — extrato e a pagar", () => {
   });
 
   it("a pagar: vencido em destaque, baixa com data e conta, estorno sem ação", async () => {
-    await irPara("A pagar e receber");
+    await irPara("Pagar e receber");
 
     const texto = normalizar(hospedeiro.textContent);
     expect(texto).toContain("Vencidos · 1");
