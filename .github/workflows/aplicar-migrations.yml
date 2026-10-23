@@ -38,6 +38,21 @@ run-name: "aplicar em ${{ inputs.projeto }}: ${{ inputs.migracoes }}"
 # ser aplicável por um motivo novo além dessas três travas e do registro no ledger
 # (que falha fechado, atomicamente, se supabase_migrations.schema_migrations faltar).
 #
+# GUARDA DO LEDGER (23/10/2026, achado migrations-1): reaplicar por engano uma
+# migration ANTIGA troca em silêncio a função que uma migration mais nova recriou
+# (o registro no ledger faz ON CONFLICT DO NOTHING e o run terminava verde).
+# Por isso, depois do gate de transporte e ANTES de qualquer prova ou apply, o
+# script faz UMA consulta SÓ DE LEITURA ao ledger da loja alvo
+# (SELECT version … WHERE version = ANY(<versões da lista>)). Se QUALQUER versão
+# da lista já estiver registrada, o run PARA com RECUSADO e NADA da lista é
+# aplicado. A mesma versão repetida na lista também é recusada (o segundo apply
+# seria uma reaplicação). Consulta que falha ou resposta que não se entende
+# também PARA (nunca segue em silêncio). Rollback-manual não passa por esta guarda
+# (ele precisa da linha no ledger, para apagá-la). Para reaplicar DE PROPÓSITO:
+# input permitir_reaplicar=true (padrão false). Ele só libera ESTA guarda: a
+# faixa histórica 20261160..20261166 continua recusada, e o run avisa em voz alta
+# quais versões estão sendo reaplicadas.
+#
 # USO: Actions → Run workflow → migracoes = arquivos de supabase/migrations/
 # separados por vírgula, NA ORDEM (fila serializada). Vazio = só fingerprint.
 # Dois formatos de nome, NUNCA misturados no mesmo dispatch: migration
@@ -66,6 +81,11 @@ on:
         description: "So para projeto = ikcous-publicada ou savy: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA); vazio nas outras lojas"
         required: false
         default: ""
+      permitir_reaplicar:
+        description: "Padrao false: o run RECUSA qualquer migration da lista que ja esteja registrada no ledger (supabase_migrations.schema_migrations) da loja, porque reaplicar pode desfazer correcao mais nova. Marque true SO para reaplicar de proposito (o run avisa quais versoes); nao libera a faixa historica 20261160..66"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   aplicar:
@@ -113,6 +133,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
           MIGRACOES: ${{ inputs.migracoes }}
           PROJETO: ${{ inputs.projeto }}
+          PERMITIR_REAPLICAR: ${{ inputs.permitir_reaplicar }}
         run: |
           node -e "
             const fs = require('node:fs');
@@ -379,6 +400,48 @@ jobs:
             }
             // ENVELOPE_FIM
 
+            // GUARDA DO LEDGER (achado migrations-1). Só o input permitir_reaplicar
+            // com o texto exato 'true' libera; qualquer outro valor (vazio, TRUE,
+            // sim) conta como false. A consulta é UM SELECT só de leitura, sem
+            // transação, pelo mesmo caminho e segredo das outras consultas. Fecha
+            // em caso de dúvida: HTTP ruim, erro de rede, timeout, resposta que
+            // não é JSON, que não é lista ou cuja linha não tem version em texto
+            // PARAM o run, porque 'não consegui ver o ledger' não é 'ledger vazio'.
+            // A versão vem SÓ do nome do arquivo (14 dígitos, regex estrita), então
+            // entra literal no SQL sem escape.
+            const PERMITIR_REAPLICAR = process.env.PERMITIR_REAPLICAR === 'true';
+            function versaoDoArquivo(arquivo) {
+              const m = /^([0-9]{14})_/.exec(arquivo || '');
+              return m ? m[1] : null;
+            }
+            async function versoesJaNoLedger(sqlFn, versoes) {
+              const Q = String.fromCharCode(39);
+              const consulta = 'SELECT version FROM supabase_migrations.schema_migrations WHERE version = ANY(ARRAY[' + versoes.map((v) => Q + v + Q).join(', ') + ']);';
+              let texto;
+              try {
+                texto = await sqlFn('conferência do ledger', consulta);
+              } catch (e) {
+                throw new Error('FALHOU a conferência do ledger (' + String(e && e.message).slice(0, 300) + ') | Sem ver o ledger não há como saber se a versão já foi aplicada: nada foi aplicado e o run não segue.');
+              }
+              let linhas;
+              try {
+                linhas = JSON.parse(texto);
+              } catch (e) {
+                throw new Error('FALHOU a conferência do ledger: a resposta não é JSON. Nada foi aplicado e o run não segue.');
+              }
+              if (!Array.isArray(linhas)) {
+                throw new Error('FALHOU a conferência do ledger: a resposta não é uma lista de linhas. Nada foi aplicado e o run não segue.');
+              }
+              const achadas = new Set();
+              for (const l of linhas.flat()) {
+                if (!l || typeof l !== 'object' || Array.isArray(l) || typeof l.version !== 'string') {
+                  throw new Error('FALHOU a conferência do ledger: linha sem version em texto. Nada foi aplicado e o run não segue.');
+                }
+                achadas.add(l.version);
+              }
+              return versoes.filter((v) => achadas.has(v));
+            }
+
             const NOME_MIGRATION = /^[0-9]{14}_[a-z0-9_-]+\\.sql\$/;
             const NOME_ROLLBACK = /^rollback-manual-[0-9]{14}_[a-z0-9_-]+\\.sql\$/;
 
@@ -416,6 +479,19 @@ jobs:
                   }
                 }
               }
+              // A mesma versão duas vezes na lista (o mesmo arquivo repetido, ou
+              // dois arquivos com os 14 dígitos iguais): o primeiro apply a
+              // registra e o segundo seria uma reaplicação. Antes da rede.
+              if (rollbacks.length === 0 && !PERMITIR_REAPLICAR) {
+                const vistas = new Set();
+                for (const arquivo of arquivos) {
+                  const v = versaoDoArquivo(arquivo);
+                  if (vistas.has(v)) {
+                    throw new Error('RECUSADO (versão repetida na lista: o segundo apply seria uma reaplicação; se for de propósito, rode com permitir_reaplicar=true): ' + arquivo);
+                  }
+                  vistas.add(v);
+                }
+              }
               const corpos = {};
               for (const arquivo of arquivos) {
                 const caminho = 'supabase/migrations/' + arquivo;
@@ -428,6 +504,21 @@ jobs:
               // chamada ao banco, em todo dispatch. Com migracoes vazio é o
               // preflight autorizado; reprovado, nada mais roda.
               await gateDeTransporte(sql);
+
+              // 0b. GUARDA DO LEDGER (só leitura) — antes do fingerprint, da prova
+              // e de QUALQUER apply. Só para lista de migrations (o rollback-manual
+              // precisa da linha no ledger, para apagá-la) e só com arquivo na lista.
+              // Qualquer versão já registrada recusa a lista INTEIRA: nada é aplicado.
+              if (arquivos.length > 0 && rollbacks.length === 0) {
+                const registradas = await versoesJaNoLedger(sql, arquivos.map(versaoDoArquivo));
+                if (registradas.length > 0) {
+                  const quais = arquivos.filter((a) => registradas.includes(versaoDoArquivo(a)));
+                  if (!PERMITIR_REAPLICAR) {
+                    throw new Error('RECUSADO (versão já aplicada nesta loja; reaplicar pode desfazer correção mais nova): ' + quais.join(', ') + ' | Nada foi aplicado. Para reaplicar DE PROPÓSITO, rode de novo com permitir_reaplicar=true.');
+                  }
+                  console.log('REAPLICAÇÃO DELIBERADA (permitir_reaplicar=true): já estão no ledger desta loja e serão aplicadas de novo: ' + quais.join(', '));
+                }
+              }
 
               // 1. Fingerprint — antes de qualquer DDL.
               const fp = await sql('fingerprint', \`select

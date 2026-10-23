@@ -11,6 +11,8 @@ import { formatarBRL, formatarBRLComSinal } from "@/lib/financeiro";
 import { classeDoPonto, classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 
+import { MASCARA_DO_VALOR } from "./tamanhoDoValor";
+
 // ---------------------------------------------------------------------------
 // Valores ocultos
 // ---------------------------------------------------------------------------
@@ -107,8 +109,6 @@ export function ReciboFinanceiro({
   );
 }
 
-const MASCARA = "R$ ••••••";
-
 /**
  * Dinheiro na tela. `comSinal`: "+R$ 10,00" / "−R$ 10,00" (o sinal é a pista
  * que não depende da cor). `sentido` força o sinal de um valor positivo
@@ -129,7 +129,7 @@ export function Dinheiro({
   if (ocultos) {
     return (
       <span className={cn("tabular-nums", className)}>
-        <span aria-hidden="true">{MASCARA}</span>
+        <span aria-hidden="true">{MASCARA_DO_VALOR}</span>
         <span className="sr-only">Valor oculto</span>
       </span>
     );
@@ -449,8 +449,11 @@ export function EstadoDeErro({
 // Botões e campos
 // ---------------------------------------------------------------------------
 
+// Primário NEUTRO de alto contraste (ordem do dono, 22/10/2026): claro no tema
+// escuro, escuro no claro — o dourado é só do "Finalizar Pedido" da loja e do
+// tracinho da barra de baixo.
 export const CLASSE_BOTAO_PRIMARIO =
-  "inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#F9D65B] to-[#EABD28] px-4 py-3 text-sm font-bold text-[#171308] shadow-[0_8px_24px_#EABD2814] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:from-admin-hover disabled:to-admin-hover disabled:text-zinc-400 disabled:shadow-none";
+  "inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-foreground px-4 py-3 text-sm font-bold text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-admin-hover disabled:text-zinc-400";
 
 export const CLASSE_BOTAO_SECUNDARIO =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-4 py-2.5 text-sm font-bold text-zinc-100 transition-colors hover:bg-admin-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-zinc-400";
@@ -557,6 +560,31 @@ export function Segmentado<V extends string>({
     </div>
   );
 }
+
+/**
+ * Chip do cabeçalho do Financeiro (Contas, Ocultar, período): pílula de 44px.
+ * Selecionado = neutro (borda forte + fundo elevado), nunca cor de marca.
+ * `border-solid` explícito: o index.css zera a borda de todo `<button>`.
+ */
+export const CLASSE_CHIP =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-solid px-4 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98]";
+export const CLASSE_CHIP_COMUM =
+  "border-admin-border bg-admin-raised text-white hover:bg-white/10";
+export const CLASSE_CHIP_SELECIONADO =
+  "border-foreground bg-admin-hover text-foreground";
+
+// Ativa: texto forte + traço fino neutro embaixo (`foreground`); as outras em
+// cor secundária. `border-0 border-b-2` zera a moldura da base do `TabsTrigger`
+// e deixa só o traço; `border-solid` porque o index.css zera o `<button>`.
+export const CLASSE_ABA_DO_FINANCEIRO =
+  "h-auto min-h-11 flex-none whitespace-nowrap rounded-none border-0 border-b-2 border-solid border-transparent bg-transparent px-3 py-2 text-sm font-semibold text-zinc-400 hover:text-white focus-visible:ring-sky-300 data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-transparent dark:data-[state=active]:text-foreground";
+
+// Botão redondo de 56px, fixo no canto, ACIMA da pílula de navegação de baixo
+// e da área segura (`--admin-tab-pb` já soma pílula, prateleira e área segura).
+// Variante LOCAL do Financeiro: não usa `AcaoDaBarra` (compartilhada com outras
+// telas, que continuam com a ação na pílula). Neutro de alto contraste.
+export const CLASSE_BOTAO_REDONDO_DO_FINANCEIRO =
+  "fixed bottom-[calc(var(--admin-tab-pb,6.25rem)_-_0.5rem)] right-5 z-30 flex size-14 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-foreground text-background shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition-transform hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-95 lg:bottom-8 lg:right-8";
 
 /** Etiqueta pequena (previsto, cancelado, sistema…). */
 export function Etiqueta({

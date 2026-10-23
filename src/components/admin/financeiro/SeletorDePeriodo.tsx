@@ -18,6 +18,8 @@ import {
   CLASSE_BOTAO_PRIMARIO,
   CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
+  CLASSE_CHIP,
+  CLASSE_CHIP_COMUM,
   Campo,
   SeloFinanceiro,
 } from "./partes";
@@ -102,13 +104,13 @@ export function SeletorDePeriodo({
         type="button"
         onClick={aoPedirOpcoes}
         aria-label={`Período: ${rotulo}`}
-        className="flex min-h-12 items-center gap-2 rounded-2xl bg-admin-raised px-3 py-2 text-left text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 lg:hidden"
+        className={cn(
+          CLASSE_CHIP,
+          CLASSE_CHIP_COMUM,
+          "w-fit max-w-full text-left lg:hidden",
+        )}
       >
-        <CalendarRange
-          aria-hidden="true"
-          className="size-5 shrink-0 text-blue-300"
-        />
-        <span className="min-w-0 flex-1 break-words">{rotulo}</span>
+        <span className="min-w-0 break-words">{rotulo}</span>
         <ChevronDown
           aria-hidden="true"
           className="size-4 shrink-0 text-zinc-400"

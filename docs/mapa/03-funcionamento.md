@@ -64,7 +64,8 @@ tudo `fetch`.
   CI Linux).
 - Deploy na Vercel; `version.json` e service worker nascem no build; atualização
   do PWA é com consentimento (`registerType: "prompt"`); `robots.txt`/`sitemap.xml`
-  por loja nascem no build (`scripts/sitemap.mjs`).
+  nascem no build (`scripts/sitemap.mjs`) mas, em produção, o porteiro os responde por host
+  (`src/hospedagem/mapaDoSite.ts`).
 
 ## Regras de banco que não se negociam (resumo — detalhe no AGENTS.md)
 
