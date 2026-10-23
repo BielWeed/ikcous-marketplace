@@ -272,7 +272,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
         </div>
 
         {/* Abas */}
-        <div className="scrollbar-none mt-4 flex gap-2 overflow-x-auto">
+        <div className="scrollbar-none -mx-1 mt-3 flex gap-2 overflow-x-auto px-1 py-1">
           {(
             [
               { id: "todas", label: "Todas" },
@@ -377,6 +377,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                     {!notif.read && (
                       <span
                         data-testid="notif-ponto-nao-lida"
+                        role="img"
                         aria-label="Não lida"
                         className="pointer-events-none absolute right-3 top-5 size-2 rounded-full bg-foreground"
                       />
