@@ -1481,7 +1481,11 @@ export const ProductView = React.memo(function ProductView({
               className="mb-6 scroll-mt-[64px] border-t border-zinc-100 pt-8"
             >
               <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-                <ProductQA productId={product.id} onNavigate={onNavigate} />
+                <ProductQA
+                  productId={product.id}
+                  nomeDaLoja={nomeDaLoja}
+                  onNavigate={onNavigate}
+                />
               </div>
             </div>
 
