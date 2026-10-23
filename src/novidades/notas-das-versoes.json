@@ -2,8 +2,8 @@
   "1.5.57": {
     "titulo": "Financeiro redesenhado em cinco abas e várias correções na loja",
     "novidades": [
-      "O Financeiro foi redesenhado e agora tem cinco abas: Visão, Extrato, Pagar e receber, Caixa e Resultado. Os valores cabem em uma linha e o verde aparece só onde o dinheiro entrou.",
-      "No Extrato, cada dia mostra o saldo da conta ao fim dele; para dias anteriores ao saldo inicial da conta, o saldo aparece como traço (—), porque não dá para calculá-lo.",
+      "O Financeiro foi redesenhado e agora tem cinco abas: Visão, Extrato, Pagar e receber, Caixa e Resultado. A tela de Contas e categorias passou a abrir pelo botão Contas, no alto. Os valores cabem em uma linha, o verde marca o que é positivo e o vermelho o que é negativo.",
+      "No Extrato, ao escolher uma conta e um período que chegue até hoje, cada dia mostra o saldo da conta ao fim dele; nos dias anteriores ao saldo inicial da conta, o saldo aparece como traço (—), porque não dá para calculá-lo.",
       "O mapa do site e o robots.txt de cada loja agora apontam para o endereço da própria loja, e não mais para o da loja principal."
     ],
     "correcoes": [
