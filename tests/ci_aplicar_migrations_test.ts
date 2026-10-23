@@ -391,6 +391,11 @@ const FP_OK = JSON.stringify([
 
 /** Responde como uma API saudável; cada cenário sobrescreve o que quer quebrar. */
 function respostaSaudavel(q: string): Resposta {
+  // Guarda do ledger (23/10/2026): a consulta só de leitura devolve "nenhuma
+  // versão da lista registrada". O comportamento da guarda em si está em
+  // tests/ci_aplicar_migrations_guarda_ledger_test.ts.
+  if (q.startsWith("SELECT version FROM supabase_migrations.schema_migrations"))
+    return { corpo: "[]" };
   if (q.includes("ikcous.sonda1")) return { corpo: SONDA(1000.2) };
   if (q.includes("txid_current_if_assigned"))
     return { corpo: '[{"pid":123,"txid":null}]' };
@@ -643,6 +648,16 @@ Deno.test({
       assertEquals(r.fim, true, `${arquivo}: ${r.texto}`);
       const q = r.chamadas;
       assertStringIncludes(q[0], "READ ONLY");
+      // Guarda do ledger (23/10/2026): só a MIGRATION consulta o ledger (leitura),
+      // logo depois do gate e do registro dele; o rollback-manual não consulta.
+      const consultaDoLedger = arquivo === M201 ? 1 : 0;
+      if (consultaDoLedger) {
+        assertStringIncludes(
+          q[2],
+          "SELECT version FROM supabase_migrations.schema_migrations WHERE version = ANY(ARRAY[",
+        );
+      }
+      q.splice(2, consultaDoLedger);
       assertStringIncludes(q[2], "marketplace_orders");
       // O ledger (06/10/2026): a migration se REGISTRA (INSERT) e o rollback-manual
       // APAGA a linha daquela versão (DELETE), ambos na mesma transação do corpo.
