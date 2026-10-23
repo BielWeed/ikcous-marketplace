@@ -561,7 +561,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     expect(
       esqueletoDeOfertas()?.querySelector<HTMLElement>(
         "[data-cartao-esqueleto]",
-      )?.style.minHeight,
+      )?.style.height,
     ).toBe(`${ALTURA_CARTAO_LATERAL}px`);
     configDaLoja = {
       homeSections: [
