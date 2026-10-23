@@ -193,9 +193,12 @@ describe("endereços — só leitura confirmada da mesma conta limpa o erro entr
   }
 
   async function clicar(texto: string) {
-    const botao = [...hospedeiro.querySelectorAll("button")].find(
-      (item) => item.textContent?.trim() === texto,
-    );
+    // Os botões da "outra tela" vêm primeiro: o Perfil também tem um "Editar"
+    // (Meus dados) e ele não pode roubar o clique do teste.
+    const botao = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>("nav button"),
+      ...hospedeiro.querySelectorAll("button"),
+    ].find((item) => item.textContent?.trim() === texto);
     expect(botao).toBeDefined();
     await act(async () => botao!.click());
   }

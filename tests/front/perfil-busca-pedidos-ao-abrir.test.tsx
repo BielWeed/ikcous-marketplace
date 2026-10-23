@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Defeito do dono (25/09/2026, print da conta real): o Perfil não mostrava o
-// cartão "Pedidos em Andamento" enquanto Carrinho > Meus Pedidos mostrava
+// cartão "Pedidos em andamento" enquanto Carrinho > Meus Pedidos mostrava
 // EM ANDAMENTO (5). Causa (laudo do investigador, reproduzida com o hook
 // real): `useOrders` NÃO busca ao montar — o estado nasce do cache
 // `ikcous_orders_cache_<id>`, que só `fetchUserOrders` grava, e cada tela tem
@@ -165,11 +165,11 @@ describe("ProfileView — busca os pedidos ao abrir (hook real, cache vazio)", (
     });
   }
 
-  it("aba visível: o cartão Pedidos em Andamento aparece sem precisar abrir Meus Pedidos", async () => {
+  it("aba visível: o cartão Pedidos em andamento aparece sem precisar abrir Meus Pedidos", async () => {
     await renderizar(true);
 
     expect(buscasDePedidos).toBeGreaterThan(0);
-    expect(hospedeiro.textContent).toContain("Pedidos em Andamento");
+    expect(hospedeiro.textContent).toContain("Pedidos em andamento");
   });
 
   it("aba escondida não busca; ao voltar a ser a visível, busca de novo", async () => {
@@ -178,7 +178,7 @@ describe("ProfileView — busca os pedidos ao abrir (hook real, cache vazio)", (
 
     await renderizar(true);
     expect(buscasDePedidos).toBe(1);
-    expect(hospedeiro.textContent).toContain("Pedidos em Andamento");
+    expect(hospedeiro.textContent).toContain("Pedidos em andamento");
 
     // Sai e volta: a cópia do Perfil não recebe a busca de outra tela, então
     // cada retorno à aba relê.

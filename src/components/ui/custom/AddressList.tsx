@@ -9,7 +9,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { Address } from "@/types";
-import { CheckCircle2, Edit, MapPin, Trash2 } from "lucide-react";
+import { CheckCircle2, Edit, MapPin, Plus, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
 
 interface AddressListProps {
@@ -23,6 +23,8 @@ interface AddressListProps {
   /** Opt-in do Perfil: mapa por cartão nos detalhes expandidos. O ramo
    * compacto NUNCA monta iframe, e o checkout (selectable) não passa a flag. */
   showMaps?: boolean;
+  /** Opt-in do Perfil: com a lista vazia, mostra o botão "Adicionar endereço". */
+  onAdd?: () => void;
 }
 
 // Query de LOCAL para o Google. Endereço completo (rua, cidade e UF):
@@ -131,6 +133,7 @@ export const AddressList = memo(function AddressList({
   selectable = false,
   compact = false,
   showMaps = false,
+  onAdd,
 }: AddressListProps) {
   // O endereço cuja lixeira foi tocada, enquanto a pergunta está aberta.
   const [apagando, setApagando] = useState<Address | null>(null);
@@ -147,10 +150,92 @@ export const AddressList = memo(function AddressList({
 
   if (addresses.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 py-8 text-center">
+      <div
+        className={
+          onAdd
+            ? "rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center"
+            : "rounded-lg border border-dashed border-gray-200 bg-gray-50 py-8 text-center"
+        }
+      >
         <MapPin className="mx-auto mb-3 size-10 text-gray-300" />
-        <p className="text-sm text-gray-500">Nenhum endereço cadastrado</p>
+        <p
+          className={
+            onAdd
+              ? "text-base font-bold text-zinc-900"
+              : "text-sm text-gray-500"
+          }
+        >
+          Nenhum endereço cadastrado
+        </p>
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="mt-4 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-zinc-900 px-5 text-sm font-semibold text-white transition-colors hover:bg-zinc-800"
+          >
+            <Plus aria-hidden="true" className="size-4" />
+            Adicionar endereço
+          </button>
+        )}
       </div>
+    );
+  }
+
+  // Lista limpa do Perfil: uma linha por endereço, nome + selo, rua e bairro,
+  // editar e apagar com alvo de toque de 44 px e nome do endereço no rótulo.
+  if (compact && !selectable) {
+    return (
+      <>
+        <ul className="divide-y divide-zinc-100">
+          {addresses.map((address) => (
+            <li key={address.id} className="flex items-center gap-3 py-3">
+              <span
+                aria-hidden="true"
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-600"
+              >
+                <MapPin className="size-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2">
+                  <span className="max-w-full truncate text-base font-bold text-zinc-900">
+                    {address.name}
+                  </span>
+                  {address.is_default && (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                      Principal
+                    </span>
+                  )}
+                </div>
+                <p className="truncate text-sm text-zinc-600">
+                  {address.street}, {address.number} ·{" "}
+                  {address.neighborhood || address.city}
+                </p>
+              </div>
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(address)}
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100"
+                  aria-label={`Editar endereço ${address.name}`}
+                >
+                  <Edit aria-hidden="true" className="size-5" />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={() => setApagando(address)}
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-red-600 transition-colors hover:bg-red-50"
+                  aria-label={`Excluir endereço ${address.name}`}
+                >
+                  <Trash2 aria-hidden="true" className="size-5" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+        {confirmacao}
+      </>
     );
   }
 
@@ -213,35 +298,6 @@ export const AddressList = memo(function AddressList({
                 {selectable && selectedId === address.id ? (
                   <CheckCircle2 className="size-3.5 text-zinc-900" />
                 ) : null}
-
-                {!selectable && (onEdit || onDelete) && (
-                  <div className="flex items-center gap-0.5">
-                    {onEdit && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit?.(address);
-                        }}
-                        className="animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-zinc-400 shadow-sm transition-all duration-200 after:absolute after:-inset-y-2.5 after:-left-2.5 after:right-0 after:content-[''] hover:bg-zinc-900 hover:text-white"
-                        aria-label="Editar"
-                      >
-                        <Edit className="size-2.5" />
-                      </button>
-                    )}
-                    {onDelete && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setApagando(address);
-                        }}
-                        className="animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-red-400 shadow-sm transition-all duration-200 after:absolute after:-inset-y-2.5 after:-right-2.5 after:left-0 after:content-[''] hover:bg-red-50 hover:text-red-500"
-                        aria-label="Excluir"
-                      >
-                        <Trash2 className="size-2.5" />
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           ))}
@@ -290,8 +346,16 @@ export const AddressList = memo(function AddressList({
                       {address.name}
                     </span>
                     {address.is_default && (
-                      <span className="mt-1 block text-[11px] font-bold uppercase tracking-widest text-emerald-500">
-                        Endereço Principal
+                      <span
+                        className={
+                          selectable
+                            ? "mt-1 block text-[11px] font-bold uppercase tracking-widest text-emerald-500"
+                            : "mt-1 block text-xs font-semibold text-emerald-700"
+                        }
+                      >
+                        {selectable
+                          ? "Endereço Principal"
+                          : "Endereço principal"}
                       </span>
                     )}
                   </div>
@@ -306,10 +370,18 @@ export const AddressList = memo(function AddressList({
                         e.stopPropagation();
                         onEdit?.(address);
                       }}
-                      className="relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
-                      aria-label="Editar"
+                      className={
+                        selectable
+                          ? "relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
+                          : "flex size-11 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100"
+                      }
+                      aria-label={
+                        selectable
+                          ? "Editar"
+                          : `Editar endereço ${address.name}`
+                      }
                     >
-                      <Edit className="size-3.5" />
+                      <Edit className={selectable ? "size-3.5" : "size-5"} />
                     </button>
                     {onDelete && (
                       <button
@@ -317,10 +389,20 @@ export const AddressList = memo(function AddressList({
                           e.stopPropagation();
                           setApagando(address);
                         }}
-                        className="relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500"
-                        aria-label="Excluir"
+                        className={
+                          selectable
+                            ? "relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500"
+                            : "flex size-11 items-center justify-center rounded-full text-red-600 transition-colors hover:bg-red-50"
+                        }
+                        aria-label={
+                          selectable
+                            ? "Excluir"
+                            : `Excluir endereço ${address.name}`
+                        }
                       >
-                        <Trash2 className="size-3.5" />
+                        <Trash2
+                          className={selectable ? "size-3.5" : "size-5"}
+                        />
                       </button>
                     )}
                   </div>
@@ -328,7 +410,13 @@ export const AddressList = memo(function AddressList({
               </div>
 
               {/* Details */}
-              <div className="space-y-1 pl-11 text-[11px] font-medium text-zinc-500">
+              <div
+                className={
+                  selectable
+                    ? "space-y-1 pl-11 text-[11px] font-medium text-zinc-500"
+                    : "space-y-1 pl-11 text-sm font-medium text-zinc-600"
+                }
+              >
                 <p className="mb-1 text-xs font-bold uppercase tracking-tighter text-zinc-900">
                   {address.recipient_name}
                 </p>
@@ -339,7 +427,13 @@ export const AddressList = memo(function AddressList({
                 <p className="leading-relaxed">
                   {address.neighborhood}, {address.city} - {address.state}
                 </p>
-                <p className="mt-1 text-[11px] font-bold text-zinc-400">
+                <p
+                  className={
+                    selectable
+                      ? "mt-1 text-[11px] font-bold text-zinc-400"
+                      : "mt-1 text-sm font-bold text-zinc-600"
+                  }
+                >
                   CEP: {address.cep}
                 </p>
               </div>
@@ -370,7 +464,7 @@ export const AddressList = memo(function AddressList({
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`Abrir no Google Maps — endereço ${address.name}`}
-                    className="flex min-h-9 items-center justify-center gap-1 bg-zinc-50 p-2 text-[10px] font-black uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-900"
+                    className="flex min-h-11 items-center justify-center gap-1 bg-zinc-50 p-2 text-sm font-semibold text-zinc-700 transition-colors hover:text-zinc-900"
                   >
                     Abrir no Google Maps
                   </a>
