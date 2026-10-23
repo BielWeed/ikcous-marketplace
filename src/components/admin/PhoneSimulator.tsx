@@ -132,50 +132,51 @@ export const PhoneSimulator = memo(function PhoneSimulator({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      data-tema-fixo=""
-      className="fixed inset-0 z-[100] flex flex-col bg-zinc-950/70 text-zinc-100 backdrop-blur-xl"
+      className="fixed inset-0 z-[100] flex flex-col bg-background/80 text-foreground backdrop-blur-xl"
     >
-      {/* Modal Header — fundo mais sólido que o véu do overlay para o texto
-          ficar nítido sobre o formulário embaçado atrás. */}
-      <div className="flex items-center justify-between border-b border-admin-border bg-zinc-950/85 px-6 py-4 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
-            <Smartphone className="size-4" />
+      {/* Barra de cima: segue o tema do painel (Escuro, Claro ou Confortável)
+          pelos tokens, sem verde de marca — o celular abaixo é que tem tema fixo. */}
+      <div className="flex items-center justify-between gap-3 border-b border-solid border-border bg-card/90 px-4 py-3 backdrop-blur-md">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="hidden size-10 shrink-0 items-center justify-center rounded-full border border-solid border-border bg-muted text-muted-foreground sm:flex">
+            <Smartphone aria-hidden="true" className="size-5" />
           </div>
-          <div>
-            <h3 className="text-xs font-black uppercase tracking-wider text-white">
+          <div className="min-w-0">
+            <h3 className="line-clamp-2 text-sm font-semibold leading-4 text-foreground sm:leading-5">
               Simulador do Aplicativo
             </h3>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+            <p className="hidden truncate text-xs leading-4 text-muted-foreground sm:block">
               Prévia em Tempo Real
             </p>
           </div>
         </div>
 
         {/* Controls & Close */}
-        <div className="flex items-center gap-4">
-          {/* Toggle Selector */}
-          <div className="flex items-center gap-1 rounded-xl border border-admin-border bg-zinc-900 p-1">
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Toggle Selector — selecionado em neutro de alto contraste */}
+          <div className="flex items-center gap-1 rounded-full border border-solid border-border bg-muted p-1">
             <button
               type="button"
+              aria-pressed={previewMode === "card"}
               onClick={() => setPreviewMode("card")}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                "h-9 min-w-[64px] cursor-pointer rounded-full px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 previewMode === "card"
-                  ? "bg-emerald-500 text-emerald-950 shadow-md font-extrabold"
-                  : "text-zinc-400 hover:text-white",
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               Card
             </button>
             <button
               type="button"
+              aria-pressed={previewMode === "page"}
               onClick={() => setPreviewMode("page")}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                "h-9 min-w-[64px] cursor-pointer rounded-full px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 previewMode === "page"
-                  ? "bg-emerald-500 text-emerald-950 shadow-md font-extrabold"
-                  : "text-zinc-400 hover:text-white",
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               Página
@@ -186,15 +187,19 @@ export const PhoneSimulator = memo(function PhoneSimulator({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-9 cursor-pointer items-center justify-center rounded-xl border border-admin-border bg-zinc-900 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white active:scale-95"
+            aria-label="Fechar o simulador"
+            className="flex size-11 cursor-pointer items-center justify-center rounded-full border border-solid border-border bg-muted text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
           >
-            <X className="size-5" />
+            <X aria-hidden="true" className="size-5" />
           </button>
         </div>
       </div>
 
-      {/* Modal Simulator Body */}
-      <div className="flex flex-1 items-center justify-center overflow-y-auto p-6 md:p-12">
+      {/* Modal Simulator Body — o celular mantém o tema fixo (é a loja da cliente). */}
+      <div
+        data-tema-fixo=""
+        className="flex flex-1 items-center justify-center overflow-y-auto p-6 md:p-12"
+      >
         <motion.div
           initial={{ scale: 0.95, y: 15 }}
           animate={{ scale: 1, y: 0 }}
