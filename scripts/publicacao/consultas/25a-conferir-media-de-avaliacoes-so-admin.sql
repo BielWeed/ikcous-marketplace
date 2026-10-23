@@ -22,6 +22,9 @@
 --                service_role por has_function_privilege. (A ACL e' o que a 24a, do lote anterior,
 --                tambem mede; aqui ela confirma que o corpo novo nao a mexeu.)
 --
+-- SUCESSORA (23/10/2026): a 20261381000000 redefine este corpo trocando so a guarda (`public.is_admin()` por
+-- `public.is_admin_atual()`); as linhas do corpo e da guarda aceitam os dois. O rollback-manual da 81 devolve
+-- o corpo da 22 e a consulta segue positiva.
 -- md5 recalculado dos ARQUIVOS das migrations por tests/ci_conferir_banco_test.ts, e
 -- tests/banco/media-de-avaliacoes-so-admin-portao-viva.cjs roda esta consulta num Postgres real
 -- (positiva depois do apply, negativa depois do rollback, um negativo por linha). LIMITES: nao prova o
@@ -32,8 +35,12 @@ WITH alvo(assinatura) AS (
 ), fn AS (
   SELECT p.oid,
          md5(replace(p.prosrc, chr(13), '')) AS m,
-         CASE WHEN position('IF NOT public.is_admin() THEN' IN p.prosrc) > 0
-                   AND position('IF NOT public.is_admin() THEN' IN p.prosrc) < position('IF p_search IS NOT NULL' IN p.prosrc)
+         -- a guarda e' a da 20261222 (`is_admin()`) OU a da SUCESSORA, a 20261381 (`is_admin_atual()`): o
+         -- mesmo lugar, antes da primeira leitura de avaliacoes.
+         CASE WHEN (position('IF NOT public.is_admin() THEN' IN p.prosrc) > 0
+                    AND position('IF NOT public.is_admin() THEN' IN p.prosrc) < position('IF p_search IS NOT NULL' IN p.prosrc))
+                OR (position('IF NOT public.is_admin_atual() THEN' IN p.prosrc) > 0
+                    AND position('IF NOT public.is_admin_atual() THEN' IN p.prosrc) < position('IF p_search IS NOT NULL' IN p.prosrc))
               THEN 'sim' ELSE 'nao' END AS guarda,
          CASE WHEN p.prosecdef AND l.lanname = 'plpgsql' AND p.provolatile = 'v'
                    AND p.proconfig = ARRAY['search_path=public']::text[]
@@ -57,7 +64,10 @@ WITH alvo(assinatura) AS (
   UNION ALL
   SELECT 'get_reviews_metrics: corpo e o da 20261222000000, com a guarda de admin (md5)',
          'cb41947ab5a8075cea87ab123913b10d',
-         COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
+         -- aceita tambem o corpo da SUCESSORA, a 20261381000000 (a guarda passa para o admin atual): o `vivo`
+         -- mostra o esperado, como a 9a e a 17a fazem com as sucessoras delas.
+         COALESCE((SELECT CASE WHEN f.m = '71a40c86c6c1b23fbf991d653c746091'
+                               THEN 'cb41947ab5a8075cea87ab123913b10d' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_reviews_metrics: o corpo exige is_admin() antes de ler as avaliacoes',
          'sim',

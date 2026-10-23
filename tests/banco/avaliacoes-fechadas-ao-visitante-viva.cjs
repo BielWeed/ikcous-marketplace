@@ -66,6 +66,7 @@ const AS_DUAS = [METRICAS, VOTO];
 const SQL_METRICAS = "SELECT * FROM public.get_reviews_metrics(NULL, NULL)";
 const SQL_VOTO = "SELECT public.increment_helpful($1::uuid)";
 const UUID_QUE_NAO_EXISTE = "7e7e2210-0000-4000-8000-000000000001";
+const ADMIN_REAL = "7e7e2210-0000-4000-8000-0000000000ad";
 
 // A ACL que o baseline deixa (default privileges: anon, authenticated e service_role) com PUBLIC
 // revogado pela 20261090500000; o dono e' o postgres. O DEPOIS e' o do corte.
@@ -283,7 +284,18 @@ prova(
         chegouAoCorpo(mm),
         `authenticated devia chegar ao corpo: ${mm.erro}`,
       );
-      // e o authenticated ADMIN recebe a linha (JWT com app_metadata.role = admin), com ou sem a guarda no corpo
+      // e o authenticated ADMIN recebe a linha, com ou sem a guarda no corpo. Desde a 20261381000000 o gate de
+      // get_reviews_metrics e' is_admin_atual(): so JWT com app_metadata.role = admin NAO basta; o admin precisa
+      // ser admin de AGORA nas duas fontes (auth.users E profiles) — aqui um admin real, desfeito com a transacao.
+      await C.query(
+        "INSERT INTO auth.users(id,email,raw_app_meta_data) VALUES ($1,'admin-avaliacoes@exemplo.invalid','{\"role\":\"admin\"}'::jsonb)",
+        [ADMIN_REAL],
+      );
+      await C.query(
+        "INSERT INTO public.profiles(id,full_name,role) VALUES ($1,'Admin real','admin') ON CONFLICT (id) DO UPDATE SET role='admin'",
+        [ADMIN_REAL],
+      );
+      await logar(ADMIN_REAL);
       await C.query("SELECT set_config('request.jwt.claims', $1, true)", [
         JSON.stringify({ app_metadata: { role: "admin" } }),
       ]);

@@ -309,6 +309,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/caixa-conta-da-loja-viva.cjs",
     // 20261380: o aviso de cancelados antigos conta so pendencia real (pedido a pedido, mutantes, rollback e consultas 85a/85b).
     "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
+    // 20261381: o ex-admin perde o acesso na hora no resto do painel (21 politicas, 10 RPCs; 4 ex-admins, mutantes, rollback e consultas 86a/86b).
+    "tests/banco/admin-atual-endurecimento-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -418,6 +420,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/caixa-conta-da-loja-viva.cjs",
     // 20261380: o aviso de cancelados antigos conta so pendencia real (pedido a pedido, mutantes, rollback e consultas 85a/85b).
     "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
+    // 20261381: o ex-admin perde o acesso na hora no resto do painel (21 politicas, 10 RPCs; 4 ex-admins, mutantes, rollback e consultas 86a/86b).
+    "tests/banco/admin-atual-endurecimento-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",
