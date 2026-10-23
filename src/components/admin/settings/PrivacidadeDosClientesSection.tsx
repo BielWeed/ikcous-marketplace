@@ -233,7 +233,7 @@ export const PrivacidadeDosClientesSection = memo(
                   type="button"
                   aria-pressed={filtro === opcao}
                   onClick={() => setFiltro(opcao)}
-                  className={`flex min-h-11 items-center justify-between gap-3 rounded-2xl border p-3 text-left text-sm ${filtro === opcao ? "border-admin-gold bg-admin-gold/10 text-admin-gold" : "border-admin-border bg-admin-raised text-zinc-200"}`}
+                  className={`flex min-h-11 items-center justify-between gap-3 rounded-2xl border p-3 text-left text-sm ${filtro === opcao ? "border-solid border-foreground bg-admin-hover text-foreground" : "border-admin-border bg-admin-raised text-zinc-200"}`}
                 >
                   <span>
                     {parcial

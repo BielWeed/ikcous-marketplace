@@ -43,7 +43,7 @@ export const CartaoDaDevolucao = memo(function CartaoDaDevolucao({
       className={cn(
         "group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all duration-200 active:scale-[0.99]",
         selecionada
-          ? "border-admin-gold/40 bg-admin-gold/[0.06]"
+          ? "border-solid border-foreground bg-admin-hover"
           : "border-admin-border bg-zinc-950/40 hover:border-admin-border-strong hover:bg-zinc-900/40",
       )}
     >

@@ -554,7 +554,7 @@ export function PoliticaDeDevolucaoSection({
               type="checkbox"
               checked={mesmoEndereco}
               onChange={(e) => marcarMesmoEndereco(e.target.checked)}
-              className="size-5 shrink-0 accent-admin-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-admin-gold"
+              className="size-5 shrink-0 accent-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-admin-gold"
             />
             Mesmo endereço da loja
           </label>
@@ -629,7 +629,7 @@ export function PoliticaDeDevolucaoSection({
                   className={cn(
                     "min-h-11 rounded-xl border px-3 text-[11px] font-bold transition-colors",
                     marcada
-                      ? "border-admin-gold/50 bg-admin-gold/10 text-admin-gold"
+                      ? "border-solid border-foreground bg-admin-hover text-foreground"
                       : "border-admin-border text-zinc-400 hover:text-white",
                   )}
                 >
@@ -758,7 +758,7 @@ function Escolha<T extends string>({
             className={cn(
               "min-h-11 rounded-lg border px-2 text-[11px] font-bold transition-colors",
               valor === chave
-                ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
+                ? "border-solid border-foreground bg-admin-hover text-foreground"
                 : "border-admin-border text-zinc-400 hover:text-white",
             )}
           >

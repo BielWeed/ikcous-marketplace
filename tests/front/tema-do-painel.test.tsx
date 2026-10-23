@@ -566,9 +566,9 @@ describe("tema do painel — cores soltas dos CSS do painel", () => {
   );
 
   it("o Escuro não muda: a reserva de cada var é EXATAMENTE o hex que estava escrito", () => {
-    // O PDV migrou superfícies e texto para --admin-*. Restam 76 usos
-    // legados nos cinco CSS; a guarda de reserva e o contraste não mudam.
-    expect(usos.length).toBeGreaterThanOrEqual(76);
+    // O PDV migrou superfícies e texto para --admin-*. Restam 75 usos
+    // legados nos cinco CSS (o do switch dourado saiu em 22/10); a guarda de reserva e o contraste não mudam.
+    expect(usos.length).toBeGreaterThanOrEqual(75);
     for (const u of usos) {
       expect(u.reserva.toLowerCase(), `${u.arquivo} ${u.chave}`).toBe(u.chave);
     }

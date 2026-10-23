@@ -161,7 +161,7 @@ export function CriarBannerComIa({
         <Button
           type="button"
           onClick={copiarTexto}
-          className="min-h-11 w-full whitespace-normal bg-admin-gold font-bold text-black hover:bg-admin-gold/90"
+          className="min-h-11 w-full whitespace-normal bg-foreground font-bold text-background hover:opacity-90"
         >
           <Copy aria-hidden="true" />
           {copiando ? "Copiando…" : "Copiar texto"}

@@ -118,7 +118,7 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
             type="button"
             disabled={saving || !active || !dirty}
             onClick={() => void save()}
-            className="min-h-11 rounded-xl bg-admin-gold px-4 font-black text-black disabled:opacity-40"
+            className="min-h-11 rounded-xl bg-foreground px-4 font-black text-background disabled:opacity-40"
           >
             {saving ? "Salvando…" : "Salvar horário"}
           </button>

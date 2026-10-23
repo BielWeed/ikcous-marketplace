@@ -45,7 +45,7 @@ export function FolhaNovaVitrine({
             type="button"
             onClick={aoCriar}
             disabled={criando}
-            className="h-12 flex-1 rounded-[14px] bg-admin-gold text-[15px] font-extrabold text-zinc-950 transition-colors hover:bg-admin-gold/90 active:scale-[0.99] disabled:opacity-60"
+            className="h-12 flex-1 rounded-[14px] bg-foreground text-[15px] font-extrabold text-background transition-colors hover:opacity-90 active:scale-[0.99] disabled:opacity-60"
           >
             Criar vitrine
           </button>

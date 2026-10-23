@@ -547,7 +547,7 @@ export function Segmentado<V extends string>({
           className={cn(
             "min-h-11 min-w-0 flex-1 break-words rounded-xl border border-transparent px-2 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:border-admin-border-strong disabled:bg-admin-raised disabled:text-zinc-400",
             opcao.valor === valor
-              ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
+              ? "border-solid border-foreground bg-admin-hover text-foreground"
               : "text-zinc-400 hover:bg-white/5 hover:text-white",
           )}
         >

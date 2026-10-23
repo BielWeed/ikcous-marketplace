@@ -166,7 +166,7 @@ export function CartaoDaVitrine({
             onCheckedChange={() => aoAlternarAtiva(secao.id)}
             aria-label={`Exibir na loja: ${titulo}`}
             disabled={travado}
-            className="pointer-events-auto h-[26px] w-11 data-[state=checked]:bg-admin-gold data-[state=unchecked]:bg-zinc-700 [&>span]:ml-0.5 [&>span]:size-5 [&>span]:data-[state=checked]:translate-x-[18px]"
+            className="pointer-events-auto h-[26px] w-11 data-[state=checked]:bg-foreground data-[state=unchecked]:bg-zinc-700 [&>span]:ml-0.5 [&>span]:size-5 [&>span]:data-[state=checked]:translate-x-[18px]"
           />
         </div>
 
@@ -282,7 +282,7 @@ export function CartaoDaVitrine({
                     className={cn(
                       "flex h-8 items-center gap-1 rounded-[10px] border px-1.5",
                       marcado
-                        ? "border-admin-gold/25 bg-admin-gold/10 text-admin-gold"
+                        ? "border-solid border-foreground bg-admin-hover text-foreground"
                         : "border-admin-border bg-white/5",
                     )}
                   >

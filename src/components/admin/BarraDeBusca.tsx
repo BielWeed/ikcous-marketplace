@@ -2,6 +2,7 @@ import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
+  Check,
   LayoutGrid,
   List,
   Loader2,
@@ -78,7 +79,8 @@ export function OpcoesDaBusca({
         className={cn(
           BOTAO,
           folha ? "w-full" : "max-w-full shrink-0",
-          selecionada && "border-admin-gold bg-admin-gold/10 text-admin-gold",
+          selecionada &&
+            "border-solid border-foreground bg-admin-hover text-foreground ring-1 ring-foreground",
         )}
       >
         {Icone ? (
@@ -90,6 +92,13 @@ export function OpcoesDaBusca({
           />
         ) : null}
         <span className="min-w-0 [overflow-wrap:anywhere]">{rotulo}</span>
+        {selecionada && (
+          <Check
+            aria-hidden="true"
+            data-marca="selecionado"
+            className="size-4 shrink-0"
+          />
+        )}
         {!folha && quantidade !== undefined && (
           <span
             className="tabular-nums"
@@ -207,7 +216,7 @@ export function BarraDeBusca({
         >
           <SlidersHorizontal aria-hidden="true" className="size-5" />
           {filtrosAtivos > 0 && (
-            <span className="absolute -right-1 -top-1 rounded-full bg-admin-gold px-1.5 text-[11px] font-bold text-zinc-950">
+            <span className="absolute -right-1 -top-1 rounded-full bg-foreground px-1.5 text-[11px] font-bold text-background">
               {filtrosAtivos}
             </span>
           )}
