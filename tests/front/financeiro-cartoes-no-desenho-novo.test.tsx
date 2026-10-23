@@ -214,14 +214,6 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     await esperar();
   }
 
-  const dt = (rotulo: string): HTMLElement => {
-    const achado = [...hospedeiro.querySelectorAll<HTMLElement>("dt")].find(
-      (el) => normalizar(el.textContent) === rotulo,
-    );
-    if (!achado) throw new Error(`dt "${rotulo}" não existe`);
-    return achado;
-  };
-
   it("BlocoKpi: casca nova, rótulo em frase, valor grande e ícone em selo", async () => {
     await montar(
       <BlocoKpi
@@ -389,32 +381,10 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     );
   });
 
-  it("Extrato: Entrou, Saiu e Resultado no cartão novo", async () => {
-    await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
-    await abrirAba("Extrato");
-
-    for (const rotulo of ["Entrou", "Saiu", "Resultado"]) {
-      const r = dt(rotulo);
-      rotuloNoDesenhoNovo(r, rotulo);
-      comACasca(r.parentElement?.parentElement, CASCA_DO_CARTAO, rotulo);
-    }
-    // Os totais ficam em linhas próprias no mesmo cartão.
-    expect(classes(dt("Saiu").parentElement?.parentElement)).toEqual(
-      expect.arrayContaining(["flex", "flex-col"]),
-    );
-    expect(classes(dt("Saiu").parentElement?.parentElement)).not.toContain(
-      "grid-cols-3",
-    );
-    expect(classes(dt("Saiu").parentElement?.parentElement)).toContain("p-4");
-    expect(classes(dt("Saiu").nextElementSibling)).toEqual(
-      expect.arrayContaining(["text-sm", "font-bold"]),
-    );
-    // O valor não perde a cor de sinal.
-    expect(classes(dt("Entrou").nextElementSibling)).toContain(
-      "text-emerald-300",
-    );
-    expect(classes(dt("Saiu").nextElementSibling)).toContain("text-red-300");
-  });
+  // "Extrato: Entrou, Saiu e Resultado no cartão novo" saiu daqui em 23/10/2026:
+  // o Extrato ganhou o desenho aprovado (cartão do período com o resultado
+  // grande e Entrou/Saiu em uma linha). A cobertura nova está em
+  // financeiro-extrato-e-pagar-no-desenho-novo.test.tsx.
 
   it("Caixa: a sessão do histórico é uma linha do cartão do histórico, com rótulo legível em frase", async () => {
     await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
