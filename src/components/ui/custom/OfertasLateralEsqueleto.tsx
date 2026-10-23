@@ -3,7 +3,7 @@ export function OfertasLateralEsqueleto() {
   return (
     <div
       data-testid="esqueleto-ofertas"
-      className="min-h-[280px] overflow-hidden py-4"
+      className="min-h-[286px] overflow-hidden py-4"
     >
       <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
         <span className="h-6 w-40 animate-pulse rounded bg-[#ECECEF]" />
@@ -14,19 +14,18 @@ export function OfertasLateralEsqueleto() {
           <div
             key={id}
             data-cartao-esqueleto
-            className="flex min-h-[176px] shrink-0 basis-[88%] animate-pulse gap-3 rounded-[20px] border border-zinc-200 bg-white p-3"
+            className="flex min-h-[184px] shrink-0 basis-[88%] animate-pulse overflow-hidden rounded-[26px] border border-solid border-zinc-200 bg-white"
           >
-            <div className="w-2/5 shrink-0 self-stretch rounded-[14px] bg-[#ECECEF]" />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className="mb-1 min-h-10 space-y-1.5 pt-1">
+            <div className="w-[44%] shrink-0 self-stretch bg-[#ECECEF]" />
+            <div className="flex min-w-0 flex-1 flex-col px-4 pb-3 pt-4">
+              <div className="mb-1 min-h-5 space-y-1.5 pt-1">
                 <div className="h-3 w-full rounded bg-[#ECECEF]" />
-                <div className="h-3 w-2/3 rounded bg-[#ECECEF]" />
               </div>
               <div className="min-h-4" />
-              <div className="h-7 w-24 rounded bg-[#ECECEF]" />
-              <div className="mt-auto flex items-center gap-2 pt-2">
-                <span className="size-11 shrink-0 rounded-full bg-[#ECECEF]" />
-                <span className="size-11 shrink-0 rounded-full bg-[#ECECEF]" />
+              <div className="h-8 w-24 rounded bg-[#ECECEF]" />
+              <div className="mt-auto flex items-end justify-between gap-2 pt-1">
+                <span className="h-3 w-16 rounded bg-[#ECECEF]" />
+                <span className="size-12 shrink-0 rounded-full bg-[#ECECEF]" />
               </div>
             </div>
           </div>

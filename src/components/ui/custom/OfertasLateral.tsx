@@ -47,7 +47,7 @@ export default function OfertasLateral({
   return (
     <section
       data-testid="ofertas-lateral"
-      className="relative min-h-[280px] bg-white py-4"
+      className="relative min-h-[286px] bg-white py-4"
     >
       <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
         <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">
@@ -159,18 +159,18 @@ function CartaoOfertaLateral({
       onMouseEnter={() => prefetchView("product-detail")}
       onTouchStart={() => prefetchView("product-detail")}
       className={cn(
-        "relative flex min-h-[176px] min-w-0 gap-3 rounded-[20px] border border-zinc-200 bg-white p-3",
+        "relative flex min-h-[184px] min-w-0 overflow-hidden rounded-[26px] border border-solid border-zinc-200 bg-white",
         rola ? "shrink-0 basis-[88%]" : "w-full",
       )}
     >
-      <div className="relative w-2/5 shrink-0 self-stretch overflow-hidden rounded-[14px] bg-zinc-100">
+      <div className="relative w-[44%] shrink-0 self-stretch bg-zinc-100">
         {product.images[0] ? (
           // Absoluta: a proporção da foto não pode definir a altura do cartão.
           <div className="absolute inset-0">
             <LazyImage
               src={product.images[0]}
               alt={product.name}
-              sizes="130px"
+              sizes="150px"
               className="size-full object-cover"
             />
           </div>
@@ -186,43 +186,35 @@ function CartaoOfertaLateral({
         {esgotado && (
           <div className="pointer-events-none absolute inset-0 bg-white/70" />
         )}
-        {/* Pastilha branca: o texto fica legível sobre qualquer foto. */}
+        {/* Verde escuro com texto branco (5,5:1): legível sobre qualquer foto. */}
         {precoAntigo && discount > 0 && (
-          <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-white px-2 py-0.5">
-            <span
-              className={cn(
-                "text-[11px] font-bold leading-4",
-                CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
-              )}
-            >
+          <div
+            data-selo-desconto
+            className="pointer-events-none absolute left-2.5 top-2.5 rounded-full bg-emerald-700 px-3 py-1"
+          >
+            <span className="text-xs font-bold leading-4 text-white">
               {discount}% OFF
             </span>
           </div>
         )}
-        {estoque && (
-          <div className="pointer-events-none absolute bottom-2 left-2 rounded-full bg-white px-2 py-0.5">
-            <span
-              className={cn(
-                "text-[11px] font-bold leading-4",
-                esgotado ? "text-red-800" : "text-amber-700",
-              )}
-            >
-              {estoque}
-            </span>
-          </div>
-        )}
+        <BotaoDeFavorito
+          nome={product.name}
+          favorito={isFavorite}
+          onClick={handleFavoriteClick}
+          className="absolute right-2.5 top-2.5 z-20"
+        />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <h3 className="mb-1 line-clamp-2 min-h-10 break-words text-sm font-semibold leading-5 text-zinc-950">
+      <div className="flex min-w-0 flex-1 flex-col px-4 pb-3 pt-4">
+        <h3 className="mb-1 line-clamp-2 break-words text-base font-bold leading-5 text-zinc-950">
           {product.name}
         </h3>
-        <div className="min-h-4 text-[11px] leading-4 text-zinc-500 line-through">
-          {precoAntigo ? `De: ${formatCurrency(precoAntigo)}` : null}
+        <div className="min-h-4 text-xs leading-4 text-zinc-500 line-through">
+          {precoAntigo ? `De ${formatCurrency(precoAntigo)}` : null}
         </div>
         <span
           data-preco-oferta
           className={cn(
-            "break-words text-xl font-extrabold leading-7 tracking-tight",
+            "break-words text-[28px] font-extrabold leading-8 tracking-tight tabular-nums",
             esgotado
               ? "text-zinc-950"
               : precoAntigo
@@ -232,13 +224,31 @@ function CartaoOfertaLateral({
         >
           {formatCurrency(product.price)}
         </span>
-        <div className="mt-auto flex items-center gap-2 pt-2">
-          <BotaoDeFavorito
-            nome={product.name}
-            favorito={isFavorite}
-            onClick={handleFavoriteClick}
-            className="relative z-20"
-          />
+        {precoAntigo && (
+          <span
+            data-economia-oferta
+            className="text-xs font-medium leading-4 text-zinc-600"
+          >
+            Você economiza {formatCurrency(precoAntigo - product.price)}
+          </span>
+        )}
+        <div className="mt-auto flex items-end justify-between gap-2 pt-1">
+          <span className="flex min-w-0 items-center gap-1.5 text-xs font-bold leading-4">
+            {estoque && (
+              <>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-2 shrink-0 rounded-full",
+                    esgotado ? "bg-red-700" : "bg-amber-600",
+                  )}
+                />
+                <span className={esgotado ? "text-red-800" : "text-amber-700"}>
+                  {estoque}
+                </span>
+              </>
+            )}
+          </span>
           <button
             type="button"
             onClick={handleAddToCartClick}
@@ -247,7 +257,7 @@ function CartaoOfertaLateral({
             title={rotuloCompra}
             disabled={esgotado || cartStatus !== "idle"}
             className={cn(
-              "relative z-20 flex size-11 shrink-0 items-center justify-center rounded-full border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "relative z-20 flex size-12 shrink-0 items-center justify-center rounded-full border border-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               esgotado
                 ? "border-zinc-100 bg-zinc-100 text-zinc-500"
                 : cartStatus === "success"
@@ -279,7 +289,7 @@ function CartaoOfertaLateral({
         type="button"
         aria-label={`Ver ${product.name}`}
         onClick={handleCardClick}
-        className="absolute inset-0 min-h-11 min-w-11 rounded-[20px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute inset-0 min-h-11 min-w-11 rounded-[26px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       />
     </article>
   );

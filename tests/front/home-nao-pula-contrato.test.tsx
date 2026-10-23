@@ -551,10 +551,10 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
       layoutOfertas: "lateral",
     });
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).toContain("min-h-[280px]");
+    expect(esqueletoDeOfertas()?.className).toContain("min-h-[286px]");
     expect(
       esqueletoDeOfertas()?.querySelector("[data-cartao-esqueleto]")?.className,
-    ).toContain("min-h-[176px]");
+    ).toContain("min-h-[184px]");
     configDaLoja = {
       homeSections: [
         { id: "offers", title: "Ofertas", active: true, layout: "lateral" },
@@ -562,7 +562,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     };
     configCarregada = true;
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).toContain("min-h-[280px]");
+    expect(esqueletoDeOfertas()?.className).toContain("min-h-[286px]");
   });
 
   it("layout desconhecido na config cai no Padrão", async () => {
@@ -573,7 +573,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     };
     configCarregada = true;
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).not.toContain("min-h-[280px]");
+    expect(esqueletoDeOfertas()?.className).not.toContain("min-h-[286px]");
     expect(esqueletoDeOfertas()?.className).not.toContain("min-h-[392px]");
   });
 
