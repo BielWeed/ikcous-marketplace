@@ -10,12 +10,16 @@
 // não o compilador de rota da Vercel.
 import { describe, expect, it } from "vitest";
 
-import { CAMINHO_DOCUMENTO_REGEX, matcher } from "@/hospedagem/porteiro";
+import {
+  CAMINHO_DOCUMENTO_REGEX,
+  ehCaminhoDeDocumento,
+  matcher,
+} from "@/hospedagem/porteiro";
 
 describe("matcher — os três padrões exportados para config.matcher", () => {
   it("tem exatamente os três padrões do desenho (rodada 2, correção do achado 1: offline.html e google*.html entram na lista de raiz)", () => {
     expect(matcher).toEqual([
-      "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|robots\\.txt$|sitemap\\.xml$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
+      "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
       "/identidade.json",
       "/manifest.webmanifest",
     ]);
@@ -51,7 +55,6 @@ describe("CAMINHO_DOCUMENTO_REGEX — a regra do primeiro padrão do matcher", (
     expect(CAMINHO_DOCUMENTO_REGEX.test("/index.html")).toBe(false);
     expect(CAMINHO_DOCUMENTO_REGEX.test("/version.json")).toBe(false);
     expect(CAMINHO_DOCUMENTO_REGEX.test("/favicon.svg")).toBe(false);
-    expect(CAMINHO_DOCUMENTO_REGEX.test("/sitemap.xml")).toBe(false);
     expect(CAMINHO_DOCUMENTO_REGEX.test("/og-image.png")).toBe(false);
     expect(CAMINHO_DOCUMENTO_REGEX.test("/silent-guardian.js")).toBe(false);
     expect(CAMINHO_DOCUMENTO_REGEX.test("/loading.css")).toBe(false);
@@ -75,12 +78,29 @@ describe("CAMINHO_DOCUMENTO_REGEX — a regra do primeiro padrão do matcher", (
     );
   });
 
-  it("NÃO casa os arquivos de raiz nomeados que não existem neste build mas entram por nome (favicon.ico, logo.svg, apple-touch-icon.png, robots.txt, registerSW.js)", () => {
+  it("NÃO casa os arquivos de raiz nomeados que não existem neste build mas entram por nome (favicon.ico, logo.svg, apple-touch-icon.png, registerSW.js)", () => {
     expect(CAMINHO_DOCUMENTO_REGEX.test("/favicon.ico")).toBe(false);
     expect(CAMINHO_DOCUMENTO_REGEX.test("/logo.svg")).toBe(false);
     expect(CAMINHO_DOCUMENTO_REGEX.test("/apple-touch-icon.png")).toBe(false);
-    expect(CAMINHO_DOCUMENTO_REGEX.test("/robots.txt")).toBe(false);
     expect(CAMINHO_DOCUMENTO_REGEX.test("/registerSW.js")).toBe(false);
+  });
+
+  it("CASA `/robots.txt` e `/sitemap.xml`: o porteiro os responde por host (multiloja-frota-3) — o arquivo único do build era servido a TODA loja", () => {
+    expect(CAMINHO_DOCUMENTO_REGEX.test("/robots.txt")).toBe(true);
+    expect(CAMINHO_DOCUMENTO_REGEX.test("/sitemap.xml")).toBe(true);
+    expect(ehCaminhoDeDocumento("/robots.txt")).toBe(true);
+    expect(ehCaminhoDeDocumento("/sitemap.xml")).toBe(true);
+  });
+
+  it("mexer só nesses dois NÃO libera mais ninguém: o resto da lista de raiz segue excluído", () => {
+    for (const nome of [
+      "/sw.js",
+      "/version.json",
+      "/index.html",
+      "/offline.html",
+      "/og-image.png",
+    ])
+      expect(ehCaminhoDeDocumento(nome)).toBe(false);
   });
 
   it("workbox-*.js: NÃO casa, e vale tanto na raiz quanto dentro de assets/ (a raiz é prevenção, assets/ já cobre o caso real de hoje)", () => {
