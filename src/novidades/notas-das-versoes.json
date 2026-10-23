@@ -1,8 +1,8 @@
 {
   "1.5.56": {
-    "titulo": "Ofertas Lateral mais compactas e seção Na loja do produto corrigida",
+    "titulo": "Ofertas Lateral redesenhadas e seção Na loja do produto corrigida",
     "novidades": [
-      "No desenho Lateral das Ofertas, o cartão ficou mais compacto: a foto fica de um lado e, do outro, o nome, o preço antigo riscado, o preço em destaque e o botão do carrinho.",
+      "No desenho Lateral das Ofertas, o cartão foi redesenhado: a foto fica de um lado e, do outro, o nome, o preço antigo riscado, o preço em destaque e o botão do carrinho.",
       "Quando o produto tem preço antigo, o cartão mostra o selo de desconto no canto de baixo da foto e a linha Economiza com o valor.",
       "O aviso de estoque do cadastro de produto virou uma linha azul pequena: você toca nela para ler a explicação completa e toca de novo para fechar."
     ],
