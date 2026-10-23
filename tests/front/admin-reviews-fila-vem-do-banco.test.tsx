@@ -139,7 +139,7 @@ describe("AdminReviewsView — a fila do cartão vem do banco, não da página (
     mockReviews = [];
   });
 
-  it("página com 0 pendentes e count 3 no banco: o cartão mostra '3 aguardando sua aprovação'", async () => {
+  it("página com 0 pendentes e count 3 no banco: a linha do resumo e o cartão mostram a fila de 3", async () => {
     const { AdminReviewsView } = await import("@/views/admin/AdminReviewsView");
     await act(async () => {
       raiz.render(<AdminReviewsView active={true} onNavigate={vi.fn()} />);
@@ -148,12 +148,19 @@ describe("AdminReviewsView — a fila do cartão vem do banco, não da página (
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
+    // A contagem REAL do banco — com o defeito, a linha do resumo não diria
+    // nada da fila e o cartão diria "Nenhuma na fila" (a página não tem
+    // pendente).
+    expect(hospedeiro.textContent).toContain("3 na fila");
+    const expandir = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Expandir",
+    );
+    await act(async () => {
+      expandir!.click();
+    });
     const tela = hospedeiro.textContent ?? "";
-
-    // A contagem REAL do banco — com o defeito, aqui apareceria
-    // "Nenhuma avaliação na fila de moderação" (a página não tem pendente).
-    expect(tela).toContain("3 aguardando sua aprovação");
-    expect(tela).not.toContain("Nenhuma avaliação na fila de moderação");
+    expect(tela).toContain("3 para aprovar");
+    expect(tela).not.toContain("Nenhuma na fila");
 
     // A LISTA continua sendo a da página: as duas publicadas aparecem e
     // nenhuma "Em moderação" inventada entra nela.

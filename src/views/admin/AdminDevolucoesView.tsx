@@ -190,7 +190,7 @@ export function AdminDevolucoesView({
                 className={cn(
                   "flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3.5 text-[11px] font-bold transition-colors",
                   ativo
-                    ? "border-admin-gold/50 bg-admin-gold/10 text-admin-gold"
+                    ? "border-solid border-foreground bg-admin-hover text-foreground"
                     : "border-admin-border bg-admin-surface text-zinc-400 hover:text-white",
                 )}
               >
@@ -200,7 +200,7 @@ export function AdminDevolucoesView({
                     className={cn(
                       "rounded-md px-1.5 py-0.5 text-[11px] font-black tabular-nums",
                       pedeAcao
-                        ? "bg-admin-gold text-black"
+                        ? "bg-foreground text-background"
                         : "bg-white/5 text-zinc-300",
                     )}
                   >

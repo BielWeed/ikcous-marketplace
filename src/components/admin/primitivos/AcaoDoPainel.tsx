@@ -5,7 +5,7 @@ import type { ComponentPropsWithRef } from "react";
 type Variante = "primaria" | "secundaria" | "perigo";
 
 const VARIANTES: Record<Variante, string> = {
-  primaria: "bg-admin-gold text-black hover:bg-admin-gold/90",
+  primaria: "bg-foreground text-background hover:opacity-90",
   secundaria:
     "border border-admin-border-strong bg-admin-raised text-zinc-100 hover:bg-admin-hover",
   perigo:
@@ -41,7 +41,7 @@ export function AcaoDoPainel({
       disabled={disabled || carregando}
       aria-busy={carregando || undefined}
       className={cn(
-        "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
         // eslint-disable-next-line security/detect-object-injection -- chave tipada, não entrada do usuário
         VARIANTES[variante],
         className,

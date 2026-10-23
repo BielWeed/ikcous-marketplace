@@ -382,10 +382,6 @@ body:has(.produto-formulario) [role="dialog"] h2 {
   text-transform: none;
 }
 
-body:has(.produto-formulario) [role="dialog"] button.bg-admin-gold {
-  min-height: 56px;
-}
-
 /* Nada fica coberto: um campo que recebe foco (ou é levado à vista) não pode
    parar atrás do cabeçalho de cima nem da barra Publicar/Salvar de baixo. A
    reserva de baixo é a mesma do AdminLayout (`--admin-tab-pb`: a pílula + a

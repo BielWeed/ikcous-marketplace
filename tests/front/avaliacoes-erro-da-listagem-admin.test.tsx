@@ -122,13 +122,13 @@ it("erro inicial não anuncia loja vazia e a nova tentativa recupera a leitura",
   h.rpc.mockResolvedValueOnce(falha).mockResolvedValue(vazia);
   await montar();
   expect(host.querySelector('[role="alert"]')).not.toBeNull();
-  expect(host.textContent).not.toContain("Sem Feedback Ainda");
+  expect(host.textContent).not.toContain("Sem avaliações ainda");
   expect(host.textContent).not.toContain("falha interna");
   await act(async () => {
     tentarDeNovo().click();
   });
   expect(host.querySelector('[role="alert"]')).toBeNull();
-  expect(host.textContent).toContain("Sem Feedback Ainda");
+  expect(host.textContent).toContain("Sem avaliações ainda");
 });
 
 it("falha posterior avisa e tira a lista e o cache da leitura anterior (contrato B2)", async () => {
@@ -163,12 +163,12 @@ it("falha posterior avisa e tira a lista e o cache da leitura anterior (contrato
   });
   expect(host.querySelector('[role="alert"]')).not.toBeNull();
   expect(host.textContent).not.toContain("Gostei do produto");
-  expect(host.textContent).not.toContain("Sem Feedback Ainda");
+  expect(host.textContent).not.toContain("Sem avaliações ainda");
   expect(h.gravarCache).toHaveBeenLastCalledWith([]);
   await act(async () => {
     tentarDeNovo().click();
   });
   expect(host.querySelector('[role="alert"]')).not.toBeNull();
   expect(host.textContent).not.toContain("Gostei do produto");
-  expect(host.textContent).not.toContain("Sem Feedback Ainda");
+  expect(host.textContent).not.toContain("Sem avaliações ainda");
 });

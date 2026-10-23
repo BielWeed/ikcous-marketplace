@@ -747,8 +747,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     [
       "pendente",
       {
-        estilo:
-          "bg-[hsl(var(--admin-gold-fill))] text-black shadow-lg hover:opacity-90",
+        estilo: "bg-foreground text-background shadow-lg hover:opacity-90",
         rotulo: "Salvar",
         icone: <Save className="size-3.5" />,
       },
@@ -756,7 +755,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     [
       "salvando",
       {
-        estilo: "bg-[hsl(var(--admin-gold-fill))] text-black opacity-70",
+        estilo: "bg-foreground text-background opacity-70",
         rotulo: "Salvando…",
         icone: <RefreshCw className="size-3.5 animate-spin" />,
       },
@@ -1176,7 +1175,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                     aria-controls={`gratis-${aba}`}
                     aria-selected={abaGratis === aba}
                     onClick={() => setAbaGratis(aba)}
-                    className={`min-h-11 min-w-0 flex-1 rounded-full px-2 text-xs font-bold ${abaGratis === aba ? "bg-[hsl(var(--admin-gold-fill))] text-black" : "text-zinc-300"}`}
+                    className={`min-h-11 min-w-0 flex-1 rounded-full px-2 text-xs font-bold ${abaGratis === aba ? "border border-solid border-foreground bg-admin-hover text-foreground" : "text-zinc-300"}`}
                   >
                     {aba === "local" ? "Na sua região" : "Fora da região"}
                     {(aba === "local" ? erroLocal : erroNacional) && (

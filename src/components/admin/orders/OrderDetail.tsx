@@ -504,7 +504,7 @@ function OrderActionBar({
           <Button
             onClick={() => onAdvance(orderId, nextStatus)}
             disabled={isOffline || isUpdatingStatus}
-            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-normal rounded-xl bg-admin-gold px-2.5 text-sm font-semibold leading-tight text-black transition-colors hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-normal rounded-xl bg-foreground px-2.5 text-sm font-semibold leading-tight text-background transition-colors hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
           >
             {isUpdatingStatus ? (
               <>
@@ -1156,7 +1156,7 @@ function OrderLogisticsCard({
           <Button
             size="sm"
             onClick={onSaveTracking}
-            className="flex h-10 items-center gap-1.5 rounded-xl bg-admin-gold px-4 text-sm font-semibold text-black hover:bg-admin-gold/90"
+            className="flex h-10 items-center gap-1.5 rounded-xl bg-foreground px-4 text-sm font-semibold text-background hover:opacity-90"
             disabled={isSavingTracking}
           >
             {isSavingTracking ? (
@@ -1341,7 +1341,7 @@ function OrderNotesCard({
           <Button
             size="sm"
             onClick={onSaveNotes}
-            className="flex h-10 items-center gap-1.5 rounded-xl bg-admin-gold px-4 text-sm font-semibold text-black hover:bg-admin-gold/90"
+            className="flex h-10 items-center gap-1.5 rounded-xl bg-foreground px-4 text-sm font-semibold text-background hover:opacity-90"
             disabled={isSavingNotes || isOffline}
           >
             {isSavingNotes ? (
@@ -2221,7 +2221,7 @@ export const OrderDetail = memo(function OrderDetail({
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={confirmPendingAdvance}
-                  className="rounded-xl border-0 bg-admin-gold px-4 py-2 text-xs font-bold text-black hover:bg-admin-gold/90"
+                  className="rounded-xl border-0 bg-foreground px-4 py-2 text-xs font-bold text-background hover:opacity-90"
                 >
                   Avançar mesmo assim
                 </AlertDialogAction>

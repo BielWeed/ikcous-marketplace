@@ -3,7 +3,7 @@
 // Laudo 0109 (A-1) — `handleSendAnswer` chamava `addAnswer(..., { silent: true })`
 // e só tratava o caminho feliz. O hook com `silent` não toast e não lança:
 // quando a resposta FALHAVA (rede, permissão, sessão vencida), a lojista
-// clicava "Publicar Resposta" e NADA acontecia na tela — o diálogo ficava
+// clicava "Publicar resposta" e NADA acontecia na tela — o diálogo ficava
 // aberto, sem aviso nenhum. O conserto: a view olha o `false` e fala.
 //
 // Montagem: mesmo casco de admin-qa-view-erro-nao-e-fila-limpa.test.tsx —
@@ -201,7 +201,7 @@ describe("AdminQAView — resposta que falha não fica muda (laudo 0109, A-1)", 
 
   async function publicarResposta() {
     const publicar = Array.from(document.body.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Publicar Resposta"),
+      (b) => b.textContent?.includes("Publicar resposta"),
     );
     expect(publicar).toBeTruthy();
     await act(async () => {

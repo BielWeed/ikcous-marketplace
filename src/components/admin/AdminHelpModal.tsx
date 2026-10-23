@@ -34,7 +34,7 @@ export function AdminHelpModal({
         <button
           type="button"
           onClick={onClose}
-          className="min-h-11 rounded-xl bg-admin-gold px-5 text-xs font-black uppercase tracking-widest text-black transition-colors hover:bg-admin-gold/90"
+          className="min-h-11 rounded-xl bg-foreground px-5 text-xs font-black uppercase tracking-widest text-background transition-colors hover:opacity-90"
         >
           Entendi
         </button>

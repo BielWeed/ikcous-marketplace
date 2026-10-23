@@ -224,7 +224,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             <button
               type="submit"
               disabled={!email || !password || isLoading}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-admin-gold py-5 text-[11px] font-black uppercase tracking-[0.3em] text-black shadow-[0_0_30px_rgba(212,175,55,0.2)] transition-all hover:bg-admin-gold/90 hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] active:scale-95 disabled:cursor-not-allowed disabled:border-admin-border disabled:bg-zinc-900 disabled:text-zinc-600"
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-foreground py-5 text-[11px] font-black uppercase tracking-[0.3em] text-background transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:border-admin-border disabled:bg-zinc-900 disabled:text-zinc-600"
             >
               {isLoading ? (
                 <Loader2 className="size-5 animate-spin" />

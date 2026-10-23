@@ -35,7 +35,7 @@ function semEspacoSobrando(valor: string): string {
 }
 
 const CLASSE_DO_CAMPO =
-  "mt-2 min-h-11 w-full rounded-xl border bg-black/50 px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 disabled:opacity-50";
+  "mt-2 min-h-11 w-full rounded-xl border bg-black/50 px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
 export const DadosDaEmpresa = memo(function DadosDaEmpresa({
   onDirtyChange,
@@ -287,7 +287,7 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
             onClick={() => void salvar()}
             disabled={!isLoaded || offline || salvando || !alterado}
             title="Salva a razão social, o CNPJ ou CPF e o e-mail de atendimento"
-            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-admin-gold px-5 text-xs font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:w-auto"
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-foreground px-5 text-xs font-black uppercase tracking-[0.12em] text-background transition-all hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:w-auto"
           >
             {salvando ? (
               <>

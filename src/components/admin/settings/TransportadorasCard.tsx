@@ -1327,7 +1327,7 @@ function CartaoDoProvedor({
                 disabled={ligado && !sandboxAtual}
                 aria-label={`Modo de teste — ${nomeDoProvedor(provider)}`}
                 onCheckedChange={(checked) => onModoDeTesteMudou(checked)}
-                className="scale-75 data-[state=checked]:bg-admin-gold"
+                className="scale-75 data-[state=checked]:bg-foreground"
               />
             </label>
           )}
@@ -1388,7 +1388,7 @@ function CartaoDoProvedor({
                 (!rascunho.tokenDigitado.trim() && !temChave)
               }
               onClick={onTestar}
-              className="flex min-h-11 items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+              className="flex min-h-11 items-center gap-1.5 rounded-lg border border-solid border-admin-border-strong bg-admin-raised px-3 py-1.5 text-xs font-bold text-foreground hover:bg-admin-hover active:scale-95 disabled:opacity-40"
             >
               {rascunho.testando ? (
                 <RefreshCw className="size-3 animate-spin" />
@@ -1586,7 +1586,7 @@ function CartaoDoProvedor({
                             checked={marcado}
                             disabled={rascunho.testando || rascunho.salvando}
                             onChange={() => onAlternarServico(servico.codigo)}
-                            className="size-5 accent-admin-gold"
+                            className="size-5 accent-foreground"
                           />
                           <RotuloDoServico
                             transportadora={servico.transportadora}
@@ -1619,7 +1619,7 @@ function CartaoDoProvedor({
               type="button"
               disabled={rascunho.salvando || rascunho.testando}
               onClick={onSalvar}
-              className="flex min-h-[50px] w-full justify-center shrink-0 select-none items-center gap-1.5 rounded-lg border border-admin-border bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+              className="flex min-h-[50px] w-full shrink-0 select-none items-center justify-center gap-1.5 rounded-lg border border-admin-border bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
             >
               {rascunho.salvando ? (
                 <RefreshCw className="size-3 animate-spin text-admin-gold" />

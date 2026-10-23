@@ -562,8 +562,6 @@ it("botão primário tem contraste AA em repouso, hover, foco e desabilitado nos
   expect(foco).toContain(
     "outline-color: hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
   );
-  const hex = (valor: string) =>
-    [1, 3, 5].map((i) => Number.parseInt(valor.slice(i, i + 2), 16));
   const hsl = (valor: string) => {
     const [h, s, l] = valor.trim().split(/\s+/).map(Number.parseFloat);
     const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
@@ -591,10 +589,11 @@ it("botão primário tem contraste AA em repouso, hover, foco e desabilitado nos
     // eslint-disable-next-line security/detect-non-literal-regexp -- nomes fechados dos tokens do próprio teste
     return bloco.match(new RegExp(`--admin-${nome}:\\s*([^;]+);`))![1];
   };
-  const cores = normal.match(/linear-gradient\((#[a-f0-9]+), (#[a-f0-9]+)\)/)!;
-  const de = hex(cores[1]);
-  const ate = hex(cores[2]);
-  const texto = hex(normal.match(/color: (#[a-f0-9]+)/)![1]);
+  // Ordem do dono (22/10): o botão principal é neutro (texto sobre fundo, nos
+  // tokens do tema), nunca o degradê dourado de marca.
+  expect(normal).toContain("background: hsl(var(--foreground))");
+  expect(normal).toContain("color: hsl(var(--background))");
+  expect(normal).not.toMatch(/linear-gradient|#f9d65c|#e4af16/);
   for (const tema of ["escuro", "claro", "confortavel"]) {
     const seletor = `html.admin-mode[data-admin-tema="${tema}"] {`;
     const elevado = hsl(
@@ -614,13 +613,21 @@ it("botão primário tem contraste AA em repouso, hover, foco e desabilitado nos
         "nav",
       ),
     );
-    const minimoNormal = Math.min(
-      ...Array.from({ length: 101 }, (_, i) =>
-        contraste(
-          texto,
-          // eslint-disable-next-line security/detect-object-injection -- índice numérico 0..2 dos canais RGB do degradê
-          de.map((n, canal) => n + ((ate[canal] - n) * i) / 100),
-        ),
+    // Escuro: lê os tokens do bloco `.dark` do próprio index.css.
+    const escuroCss = (nome: string) => {
+      const bloco = css.slice(css.indexOf("  .dark {"));
+      return bloco.match(new RegExp(`--${nome}:\\s*([^;]+);`))![1];
+    };
+    const minimoNormal = contraste(
+      hsl(
+        tema === "escuro"
+          ? escuroCss("foreground")
+          : token(temas, seletor, "text"),
+      ),
+      hsl(
+        tema === "escuro"
+          ? escuroCss("background")
+          : token(temas, seletor, "bg"),
       ),
     );
     const minimoDesabilitado = contraste(textoSuave, elevado);

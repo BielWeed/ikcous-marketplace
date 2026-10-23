@@ -124,7 +124,7 @@ function ehAba(valor: string): valor is AbaDoFinanceiro {
 }
 
 const CLASSE_ABA =
-  "h-auto min-h-11 flex-none whitespace-normal rounded-xl border border-transparent px-3 py-2 text-xs font-bold text-zinc-300 hover:text-white focus-visible:ring-sky-300 data-[state=active]:border-admin-gold/50 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold data-[state=active]:shadow-none dark:data-[state=active]:border-admin-gold/50 dark:data-[state=active]:bg-admin-gold/10 dark:data-[state=active]:text-admin-gold";
+  "h-auto min-h-11 flex-none whitespace-normal rounded-xl border border-solid border-transparent px-3 py-2 text-xs font-bold text-zinc-300 hover:text-white focus-visible:ring-sky-300 data-[state=active]:border-solid data-[state=active]:border-foreground data-[state=active]:bg-admin-hover data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:border-foreground dark:data-[state=active]:bg-admin-hover dark:data-[state=active]:text-foreground";
 
 export function AdminFinanceiroView({
   onNavigate,

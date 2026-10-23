@@ -654,7 +654,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             type="button"
             onClick={() => setShowAddVitrineModal(true)}
             disabled={salvandoVitrines}
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-admin-gold px-6 text-[14.5px] font-extrabold text-zinc-950 shadow-[0_10px_24px_-10px] shadow-admin-gold/55 transition-all hover:bg-admin-gold/90 active:scale-[0.99] disabled:opacity-60 sm:h-auto sm:w-56"
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-[14.5px] font-extrabold text-background transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-60 sm:h-auto sm:w-56"
           >
             <Plus className="size-[18px] stroke-[2.5]" />
             Nova vitrine

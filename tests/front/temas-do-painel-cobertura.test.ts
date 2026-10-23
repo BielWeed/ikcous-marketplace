@@ -138,7 +138,6 @@ const ESCURO_SOBRE_CLARO =
   "texto/ícone escuro sobre preenchimento claro ou vivo (botão dourado, pílula branca): serve nos três temas";
 const SOMBRA = "véu escuro translúcido: escurece em qualquer tema";
 const CORTINA = "cortina de modal: escurece o fundo em qualquer tema";
-const INEXISTENTE = "tom que não existe no Tailwind do projeto: sem efeito";
 const SERIE = "cor de série de gráfico/legenda: identidade, não superfície";
 const PREVIA_ESCURA =
   "pré-visualização de banner sem imagem: bloco escuro marcado com data-tema-fixo";
@@ -171,14 +170,11 @@ const MANTIDAS = new Map<string, string>([
   ["text-black", ESCURO_SOBRE_CLARO],
   ["hover:text-black", ESCURO_SOBRE_CLARO],
   ["text-zinc-950", ESCURO_SOBRE_CLARO],
-  ["fill-black", ESCURO_SOBRE_CLARO],
   ["border-black/20", ESCURO_SOBRE_CLARO],
-  ["border-zinc-950", ESCURO_SOBRE_CLARO],
   ["bg-black", SOMBRA],
   ["bg-black/10", SOMBRA],
   ["bg-black/20", SOMBRA],
   ["bg-black/80", CORTINA],
-  ["border-zinc-955", INEXISTENTE],
   ["bg-zinc-300", SERIE],
   ["bg-zinc-400", SERIE],
   ["data-[state=checked]:bg-zinc-300", SERIE],

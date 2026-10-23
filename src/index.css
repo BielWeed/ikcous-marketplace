@@ -1268,8 +1268,8 @@ body.admin-modal-open .active-scroll-container {
   overflow-wrap: anywhere;
 }
 .admin-acoes-da-barra .admin-barra-principal:not(:disabled) {
-  background: linear-gradient(#f9d65c, #e4af16);
-  color: #1b1300;
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
 }
 .admin-acoes-da-barra button:disabled {
   background: hsl(var(--admin-raised));

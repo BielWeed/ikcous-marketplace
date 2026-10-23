@@ -3008,7 +3008,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                       className={cn(
                                         "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
                                         par.name === attr
-                                          ? "bg-admin-gold/10 border-admin-gold text-admin-gold"
+                                          ? "border-solid bg-admin-hover border-foreground text-foreground"
                                           : "bg-zinc-950 border-admin-border text-zinc-500 hover:text-zinc-300 hover:border-admin-border-strong",
                                       )}
                                     >
@@ -3227,14 +3227,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                     imageUrl: "",
                                   }))
                                 }
-                                className="relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-admin-gold ring-2 ring-admin-gold/30 transition-all"
+                                className="relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-foreground ring-2 ring-foreground transition-all"
                               >
                                 <img
                                   src={variantFormData.imageUrl}
                                   alt=""
                                   className="size-full object-cover"
                                 />
-                                <span className="absolute inset-x-0 bottom-0 bg-admin-gold py-0.5 text-center text-[11px] font-black text-black">
+                                <span className="absolute inset-x-0 bottom-0 bg-foreground py-0.5 text-center text-[11px] font-black text-background">
                                   Atual
                                 </span>
                               </button>
@@ -3261,7 +3261,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 className={cn(
                                   "relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
                                   selecionada
-                                    ? "border-2 border-admin-gold ring-2 ring-admin-gold/30"
+                                    ? "border-2 border-foreground ring-2 ring-foreground"
                                     : "border-admin-border hover:border-emerald-500/50",
                                 )}
                               >
@@ -3271,7 +3271,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   className="size-full object-cover"
                                 />
                                 {selecionada && (
-                                  <span className="absolute inset-x-0 bottom-0 bg-admin-gold py-0.5 text-center text-[11px] font-black text-black">
+                                  <span className="absolute inset-x-0 bottom-0 bg-foreground py-0.5 text-center text-[11px] font-black text-background">
                                     Selecionada
                                   </span>
                                 )}
