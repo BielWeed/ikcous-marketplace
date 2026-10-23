@@ -52,12 +52,12 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
     const sempre = preset === "sempre";
     const liberado = isGoalReached || sempre;
     const Icone = liberado ? Check : Truck;
-    // O SVG gira -90° em torno da origem: o centro (26,26) vira (-26,26) e
+    // O SVG gira -90° em torno da origem: o centro (20,20) vira (-20,20) e
     // o arco começa no topo. pathLength=100 deixa o traço em porcentagem.
-    const anel = { cx: -26, cy: 26, r: 24, pathLength: 100 };
+    const anel = { cx: -20, cy: 20, r: 18.25, pathLength: 100 };
     const progresso = liberado ? 100 : Math.max(0, progressPercent || 0);
     return (
-      <div className="flex w-full min-h-[84px] items-center gap-3.5 rounded-[22px] border border-zinc-800 bg-zinc-950 px-4 py-3 text-white">
+      <div className="flex min-h-[66px] w-full items-center gap-2.5 rounded-[18px] border border-zinc-800 bg-zinc-950 px-3 py-2 text-white">
         <div
           {...(sempre
             ? {}
@@ -73,47 +73,51 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
         >
           <svg
             aria-hidden="true"
-            width="52"
-            height="52"
+            width="40"
+            height="40"
             fill="none"
-            strokeWidth="4"
+            strokeWidth="3.5"
           >
             <g transform="rotate(-90)">
               <circle {...anel} stroke="#27272A" />
-              <circle
-                {...anel}
-                stroke="#10B981"
-                strokeLinecap="round"
-                strokeDasharray={100}
-                strokeDashoffset={100 - progresso}
-              />
+              {/* Progresso 0 não desenha o arco: a ponta redonda faria um
+                  pontinho verde no topo, dizendo que algo já andou. */}
+              {progresso > 0 && (
+                <circle
+                  {...anel}
+                  stroke="#10B981"
+                  strokeLinecap="round"
+                  strokeDasharray={100}
+                  strokeDashoffset={100 - progresso}
+                />
+              )}
             </g>
           </svg>
           <Icone
             aria-hidden="true"
-            size={22}
-            className="absolute inset-0 m-auto text-emerald-400"
+            size={18}
+            className={`absolute inset-0 m-auto ${liberado ? "text-emerald-400" : "text-zinc-400"}`}
           />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+          <p className="text-[11px] font-semibold uppercase leading-[13px] tracking-[0.06em] text-zinc-400">
             Frete grátis{soLocal ? " na cidade" : ""}
           </p>
           <h3
-            className={`text-[17px] font-bold leading-[22px]${liberado ? " text-emerald-400" : ""}`}
+            className={`text-base font-bold tabular-nums leading-5${liberado ? " text-emerald-400" : ""}`}
           >
             {liberado ? "Liberado" : `Faltam ${formatCurrency(remaining)}`}
           </h3>
-          <p className="text-[11.5px] text-zinc-400">
+          <p className="text-xs tabular-nums leading-[15px] text-zinc-400">
             {sempre
               ? soLocal
                 ? "Pedido com entrega local sai grátis."
-                : "Qualquer pedido sai com entrega grátis."
+                : "Todo pedido sai com entrega grátis."
               : liberado
-                ? `Seu carrinho já ganhou entrega${soLocal ? " local" : ""} grátis!`
+                ? "Já vale para o seu carrinho."
                 : totalCartValue > 0
                   ? `${formatCurrency(totalCartValue)} de ${formatCurrency(minShipping)}`
-                  : `A partir de ${formatCurrency(minShipping)} em compras${soLocal ? ", na entrega local" : ""}.`}
+                  : `Compras a partir de ${formatCurrency(minShipping)}`}
           </p>
         </div>
       </div>
