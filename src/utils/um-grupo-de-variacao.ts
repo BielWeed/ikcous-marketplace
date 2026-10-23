@@ -14,10 +14,12 @@
  *  - ESTOQUE: o estoque do produto é a SOMA das variantes ativas
  *    (AdminProductFormView, efeito de "Sync stock dynamically"). Rosa 3 +
  *    Azul 2 + P 3 + M 2 mostra 10 quando existem 5 peças.
- *  - CARRINHO: o item leva UM `variantId` só, o da primeira variação clicada
- *    (ProductView, `selectedVariantObjects[0]?.id`), e a fusão de itens é por
- *    `productId + variantId` (CartContext) — "Rosa+P" e "Rosa+M" viram uma
- *    linha de quantidade 2.
+ *  - CARRINHO: o item levava UM `variantId` só, o da primeira variação clicada
+ *    (ProductView, `selectedVariantObjects[0]?.id`), e a fusão de itens era por
+ *    `productId + variantId` (CartContext) — "Rosa+P" e "Rosa+M" viravam uma
+ *    linha de quantidade 2. CORRIGIDO no carrinho: a linha leva as duas
+ *    escolhas e é uma por combinação (src/lib/escolhas-do-item.ts); o estoque
+ *    somado e o pedido (um `variant_id` só) seguem como descritos abaixo.
  *  - BANCO: `cart_items` tem `UNIQUE (user_id, product_id, variant_id)`, então
  *    duas combinações do mesmo produto nem cabem na tabela.
  *  - PEDIDO: grava só `variant_id`; a combinação inteira vira texto solto na

@@ -8,6 +8,11 @@ import {
   CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
 import {
+  chaveDaVariacao,
+  ordenarPelaGrade,
+  precoDaEscolha,
+} from "@/lib/escolhas-do-item";
+import {
   type PromessasDeFrete,
   fraseDoSeloDeFreteGratis,
 } from "@/lib/estrategias-de-frete";
@@ -374,10 +379,8 @@ export const ProductCard = memo(function ProductCard({
     )
     .filter(Boolean) as ProductVariant[];
 
-  const precoAtual = selecionadasObjs.reduce(
-    (acc, v) => v?.priceOverride ?? acc,
-    product.price,
-  );
+  // Preço da variação PRINCIPAL (a que vai ao carrinho e o servidor cobra).
+  const precoAtual = precoDaEscolha(product, selecionadasObjs);
   const estoqueAtual = temGruposDeOpcao
     ? selecionadasObjs.length > 0
       ? Math.min(...selecionadasObjs.map((v) => v?.stockIncrement || 0))
@@ -555,7 +558,16 @@ export const ProductCard = memo(function ProductCard({
       return;
     }
 
-    const variantId = selecionadasObjs[0]?.id;
+    // Produto de cadastro antigo com cor e tamanho separados: a chave leva as
+    // DUAS escolhas (na ordem do cadastro) e o carrinho faz uma linha por
+    // combinação. Com uma escolha só é o próprio id, como sempre
+    // (escolhas-do-item.ts).
+    const escolhasDaLinha = ordenarPelaGrade(selecionadasObjs);
+    const variantId =
+      chaveDaVariacao(
+        escolhasDaLinha[0]?.id,
+        escolhasDaLinha.slice(1).map((v) => v.id),
+      ) || undefined;
     const variantNames = Array.from(selecionadas)
       .map(([nome, valor]) => `${nome}: ${valor}`)
       .join(", ");

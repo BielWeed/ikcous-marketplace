@@ -33,6 +33,11 @@ import {
   CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
 import {
+  chaveDaVariacao,
+  ordenarPelaGrade,
+  precoDaEscolha,
+} from "@/lib/escolhas-do-item";
+import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
@@ -439,10 +444,11 @@ export const ProductView = React.memo(function ProductView({
   // preço exibido de uma variação-brinde era o do produto. `??` só cai no
   // acumulado quando a variação não tem override de verdade (null/undefined),
   // a mesma semântica do COALESCE do servidor.
-  const currentPrice = selectedVariantObjects.reduce(
-    (acc, v) => v?.priceOverride ?? acc,
-    product.price,
-  );
+  //
+  // O preço mostrado é o da variação PRINCIPAL (a primeira pela ordem fixa):
+  // a mesma que vai ao carrinho e que o servidor cobra. O ajuste de uma outra
+  // escolha nunca é cobrado, então também não é mostrado.
+  const currentPrice = precoDaEscolha(product, selectedVariantObjects);
   // Estoque que a cliente pode levar com UMA escolha de variações (o menor
   // entre as escolhidas; sem escolha, o do produto). Separado de `currentStock`
   // para a troca de variação conferir a escolha NOVA antes de renderizar.
@@ -607,7 +613,13 @@ export const ProductView = React.memo(function ProductView({
       return;
     }
 
-    const variantNames = selectedVariantObjects
+    // Produto de cadastro antigo com cor e tamanho separados: as DUAS
+    // escolhas vão para o carrinho, na ordem do cadastro (e não na ordem dos
+    // toques, senão Azul-depois-P e P-depois-Azul seriam duas linhas). O
+    // primeiro id segue sendo o que o pedido envia e o preço lê; a chave
+    // composta só diz QUAL combinação é esta linha (escolhas-do-item.ts).
+    const escolhasDaLinha = ordenarPelaGrade(selectedVariantObjects);
+    const variantNames = escolhasDaLinha
       .map((v) => `${v.name}: ${v.value}`)
       .join(", ");
     const imgSrc = variantImage || product.images?.[0] || "";
@@ -618,7 +630,14 @@ export const ProductView = React.memo(function ProductView({
       triggerFlyingCartAnimation(e.currentTarget, imgSrc);
     }
 
-    onAddToCart(quantity, selectedVariantObjects[0]?.id, variantNames);
+    onAddToCart(
+      quantity,
+      chaveDaVariacao(
+        escolhasDaLinha[0]?.id,
+        escolhasDaLinha.slice(1).map((v) => v.id),
+      ) || undefined,
+      variantNames,
+    );
 
     setTimeout(() => {
       setCartStatus("success");
