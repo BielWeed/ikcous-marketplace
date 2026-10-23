@@ -32,6 +32,7 @@ import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
   CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
+import { chaveDaVariacao, ordenarPelaGrade } from "@/lib/escolhas-do-item";
 import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
@@ -607,7 +608,16 @@ export const ProductView = React.memo(function ProductView({
       return;
     }
 
-    const variantNames = selectedVariantObjects
+    // Produto de cadastro antigo com cor e tamanho separados: as DUAS
+    // escolhas vão para o carrinho, na ordem do cadastro (e não na ordem dos
+    // toques, senão Azul-depois-P e P-depois-Azul seriam duas linhas). O
+    // primeiro id segue sendo o que o pedido envia e o preço lê; a chave
+    // composta só diz QUAL combinação é esta linha (escolhas-do-item.ts).
+    const escolhasDaLinha = ordenarPelaGrade(
+      product.variants,
+      selectedVariantObjects,
+    );
+    const variantNames = escolhasDaLinha
       .map((v) => `${v.name}: ${v.value}`)
       .join(", ");
     const imgSrc = variantImage || product.images?.[0] || "";
@@ -618,7 +628,14 @@ export const ProductView = React.memo(function ProductView({
       triggerFlyingCartAnimation(e.currentTarget, imgSrc);
     }
 
-    onAddToCart(quantity, selectedVariantObjects[0]?.id, variantNames);
+    onAddToCart(
+      quantity,
+      chaveDaVariacao(
+        escolhasDaLinha[0]?.id,
+        escolhasDaLinha.slice(1).map((v) => v.id),
+      ) || undefined,
+      variantNames,
+    );
 
     setTimeout(() => {
       setCartStatus("success");

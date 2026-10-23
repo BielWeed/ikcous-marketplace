@@ -70,6 +70,11 @@ import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
 } from "@/lib/endereco-de-entrega";
+import {
+  assinaturaDosItens,
+  chaveDaLinha,
+  notaDasEscolhas,
+} from "@/lib/escolhas-do-item";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import type { MetodoOnline } from "@/lib/forma-de-pagamento";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
@@ -734,15 +739,6 @@ interface CheckoutViewProps {
   // online sai de cena calado, e o pago entre a saída e a volta mostra a
   // confirmação.
   readonly retomadaDaRecarga?: boolean;
-}
-
-function assinaturaDosItensDoCarrinho(itens: readonly CartItem[]): string {
-  return itens
-    .map((item) =>
-      JSON.stringify([item.product.id, item.variantId || "", item.quantity]),
-    )
-    .sort()
-    .join("|");
 }
 
 /**
@@ -4029,10 +4025,10 @@ export function CheckoutViewDaConta({
       exigeCpfDoDestinatario && customerInfo.cpf ? customerInfo.cpf : undefined;
     const observations = notes || undefined;
 
-    const variantNotes = cart
-      .filter((item) => item.variantNames)
-      .map((item) => `${item.product.name}: ${item.variantNames}`)
-      .join("\n");
+    // O pedido só recebe UM variant_id por linha; produto de cadastro antigo
+    // com cor e tamanho separados leva as duas escolhas (e a quantidade de cada
+    // combinação) por escrito aqui (escolhas-do-item.ts).
+    const variantNotes = notaDasEscolhas(cart);
     const shippingNotes = notaDoFreteEscolhido(selectedShippingOption);
     const noteParts = [observations, variantNotes, shippingNotes].filter(
       Boolean,
@@ -4087,7 +4083,14 @@ export function CheckoutViewDaConta({
     );
     orderData.idempotencyKey = gerenteDaChaveRef.current.chavePara(
       impressaoDaCompra({
-        items: orderData.items,
+        // A impressão enxerga a CHAVE da linha (as duas escolhas), não só o
+        // primeiro id que a RPC recebe: sem isso, trocar Azul-P por Azul-M e
+        // tentar de novo repetia a chave e devolvia o pedido da outra.
+        items: cart.map((item) => ({
+          product_id: item.product.id,
+          variant_id: chaveDaLinha(item) || undefined,
+          quantity: item.quantity,
+        })),
         totalAmount: orderData.totalAmount,
         shippingCost: orderData.shippingCost,
         destinationCep: orderData.destinationCep,
@@ -4144,8 +4147,7 @@ export function CheckoutViewDaConta({
       itensDoPedidoParaRestaurarRef.current = [];
       const carrinhoAtual = carrinhoAtualRef.current;
       if (
-        assinaturaDosItensDoCarrinho(carrinhoAtual) ===
-        assinaturaDosItensDoCarrinho(itensEnviados)
+        assinaturaDosItens(carrinhoAtual) === assinaturaDosItens(itensEnviados)
       ) {
         onClearCart();
         itensDoPedidoParaRestaurarRef.current = itensEnviados;
@@ -4156,14 +4158,14 @@ export function CheckoutViewDaConta({
           const atual = carrinhoAtual.find(
             (linha) =>
               linha.product.id === item.product.id &&
-              (linha.variantId || "") === (item.variantId || ""),
+              chaveDaLinha(linha) === chaveDaLinha(item),
           );
           if (
             atual &&
             (atual.quantity === item.quantity ||
               (pedido === pedidoRestaurado && atual.quantity <= item.quantity))
           ) {
-            removeFromCart(item.product.id, item.variantId);
+            removeFromCart(item.product.id, chaveDaLinha(item) || undefined);
             itensDoPedidoParaRestaurarRef.current.push(atual);
           }
         }
@@ -4374,7 +4376,12 @@ export function CheckoutViewDaConta({
     const itens = itensDoPedidoParaRestaurarRef.current;
     itensDoPedidoParaRestaurarRef.current = [];
     for (const item of itens) {
-      addToCart(item.product, item.quantity, item.variantId, item.variantNames);
+      addToCart(
+        item.product,
+        item.quantity,
+        chaveDaLinha(item) || undefined,
+        item.variantNames,
+      );
     }
     onNavigate("cart");
   };
@@ -6647,7 +6654,7 @@ export function CheckoutViewDaConta({
 
                         return (
                           <li
-                            key={`${item.product.id}-${item.variantId ?? ""}`}
+                            key={`${item.product.id}-${chaveDaLinha(item)}`}
                             className="flex items-center gap-3"
                           >
                             <img

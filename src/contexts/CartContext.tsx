@@ -9,6 +9,13 @@ import {
   avisosDoCarrinho,
   montarCatalogo,
 } from "@/lib/catalogo-do-carrinho";
+import {
+  chaveDaLinha,
+  chaveDoItem,
+  estoqueDaLinha,
+  normalizarChave,
+  separarChave,
+} from "@/lib/escolhas-do-item";
 // FRETE V2/V3 (frentes B 03/09 e T3 23/09): o preço FINAL de cada opção
 // (grátis/desconto já aplicados) é a fonte única em estrategias-de-frete.ts
 // -- local calcula aqui (mesmo preset de sempre); nacional só EXIBE o que a
@@ -43,6 +50,10 @@ const cartItemSchema = z.object({
   // variação escolhida some do painel de resumo e da nota do pedido em
   // CheckoutView.tsx depois de uma recarga de página.
   variantNames: z.string().optional(),
+  // Produto de cadastro antigo com duas escolhas separadas (cor + tamanho):
+  // sem esta chave o Zod descartaria a segunda escolha na hidratação e a linha
+  // voltaria a se fundir com a da outra combinação (escolhas-do-item.ts).
+  outrasVariantIds: z.array(z.string()).optional(),
   lastModifiedAt: z.number().optional(),
 });
 
@@ -94,6 +105,9 @@ export interface CartActions {
     variantId?: string,
     variantNames?: string,
   ) => void;
+  /** `variantId` aqui (e em `addToCart`/`updateQuantity`) é a CHAVE da linha:
+   *  o id da variação, ou `idA~idB` no produto de duas escolhas separadas
+   *  (`chaveDaVariacao`). Com uma escolha só é o id de sempre. */
   removeFromCart: (productId: string, variantId?: string) => void;
   updateQuantity: (
     productId: string,
@@ -134,7 +148,7 @@ const CART_TOMBSTONES_KEY = "marketplace_cart_tombstones_v1";
 
 /** Tombstone entry: tracks when a cart item was intentionally deleted locally */
 interface CartTombstone {
-  key: string; // productId-variantId
+  key: string; // productId-chave da variação (escolhas-do-item.ts)
   deletedAt: number; // epoch ms
 }
 
@@ -485,17 +499,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             // carrinho remoto. Mantém a cópia local e tenta reler, sem gravar
             // um carrinho incompleto por cima do banco.
             if (lido.variantesFalharam) {
-              const faltaPrecoDaVariacao = dbItems.some(
-                (item) =>
-                  item.variant_id &&
+              const faltaPrecoDaVariacao = dbItems.some((item) => {
+                // A coluna guarda a chave da linha; o preço é do primeiro id.
+                const { variantId } = separarChave(item.variant_id);
+                return (
+                  variantId &&
                   !cartRef.current.some(
                     (local) =>
                       local.product.id === item.product_id &&
-                      local.product.variants?.some(
-                        (v) => v.id === item.variant_id,
-                      ),
-                  ),
-              );
+                      local.product.variants?.some((v) => v.id === variantId),
+                  )
+                );
+              });
               if (faltaPrecoDaVariacao) {
                 toast.error(
                   "Não foi possível conferir o preço das variações. Tente novamente.",
@@ -528,7 +543,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                   ? new Date(dbItem.updated_at).getTime()
                   : 0,
               };
-              if (dbItem.variant_id) item.variantId = dbItem.variant_id;
+              // A coluna guarda a chave da linha (`idA~idB` no produto de duas
+              // escolhas separadas); linha antiga tem só o id e abre igual.
+              const { variantId, outrasVariantIds } = separarChave(
+                dbItem.variant_id,
+              );
+              if (variantId) item.variantId = variantId;
+              if (outrasVariantIds.length > 0)
+                item.outrasVariantIds = outrasVariantIds;
               if ((dbItem as any).variant_names)
                 item.variantNames = (dbItem as any).variant_names;
               return item;
@@ -541,18 +563,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           if (catalogo) {
             try {
               const chavesDeAqui = new Set(
-                cartRef.current.map(
-                  (item) => `${item.product.id}-${item.variantId || ""}`,
-                ),
+                cartRef.current.map((item) => chaveDoItem(item)),
               );
               avisos = await avisosDoCarrinho(
                 [
                   ...cartRef.current,
                   ...reconstructedCart.filter(
-                    (item) =>
-                      !chavesDeAqui.has(
-                        `${item.product.id}-${item.variantId || ""}`,
-                      ),
+                    (item) => !chavesDeAqui.has(chaveDoItem(item)),
                   ),
                 ],
                 catalogo,
@@ -598,7 +615,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
             // Add local items first (these carry local timestamps)
             prev.forEach((item) => {
-              const key = `${item.product.id}-${item.variantId || ""}`;
+              const key = chaveDoItem(item);
               // A exclusão de outra aba também vale para a cópia que ficou aqui.
               const tombstone = tombstones.get(key);
               if (
@@ -615,7 +632,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
             // Merge remote items using Last-Write-Wins with timestamps
             reconstructedCart.forEach((remoteItem) => {
-              const key = `${remoteItem.product.id}-${remoteItem.variantId || ""}`;
+              const key = chaveDoItem(remoteItem);
               const remoteTs = remoteItem.lastModifiedAt || 0;
 
               const tombstone = tombstones.get(key);
@@ -899,7 +916,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         console.log("[CartContext] 📤 Syncing to Supabase...");
         const itemMap = new Map<string, any>();
         currentCart.forEach((item) => {
-          const variantId = item.variantId || "";
+          // `cart_items.variant_id` é texto e único por usuário+produto: leva
+          // a chave da linha, então "Azul-P" e "Azul-M" são duas linhas.
+          const variantId = chaveDaLinha(item);
           const key = `${item.product.id}-${variantId}`;
           if (itemMap.has(key)) {
             itemMap.get(key).quantity += item.quantity;
@@ -976,10 +995,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
 
       const qToAdd = Math.max(Number(quantity) || 1, 1);
-      const variantId =
-        variantIdInput === "" || variantIdInput === null
-          ? undefined
-          : variantIdInput;
+      // O parâmetro é a chave da linha: um id, ou `idA~idB` no produto de duas
+      // escolhas separadas (escolhas-do-item.ts).
+      const { variantId, outrasVariantIds } = separarChave(variantIdInput);
       const variantNames = variantNamesInput || undefined;
 
       console.log(
@@ -987,18 +1005,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       );
 
       setCart((prev) => {
+        const chaveDaNova = chaveDoItem({
+          product,
+          variantId,
+          outrasVariantIds,
+        });
         const existingIndex = prev.findIndex(
-          (item) =>
-            item.product.id === product.id && item.variantId === variantId,
+          (item) => chaveDoItem(item) === chaveDaNova,
         );
 
-        // Enforce stock limit
-        const variant = variantId
-          ? product.variants?.find((v) => v.id === variantId)
-          : undefined;
-        const availableStock = variant
-          ? variant.stockIncrement
-          : product.stock || 0;
+        // Enforce stock limit (com duas escolhas, vale o menor estoque)
+        const availableStock = estoqueDaLinha(
+          product,
+          variantId,
+          outrasVariantIds,
+        );
 
         if (availableStock <= 0) {
           toast.error("Este produto está esgotado.");
@@ -1063,6 +1084,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             product,
             quantity: validatedQuantity,
             variantId,
+            ...(outrasVariantIds.length > 0 ? { outrasVariantIds } : {}),
             variantNames,
             lastModifiedAt: Date.now(),
           },
@@ -1074,21 +1096,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const removeFromCart = useCallback(
     (productId: string, variantIdInput?: string) => {
-      const variantId =
-        variantIdInput === "" || variantIdInput === null
-          ? undefined
-          : variantIdInput;
+      const chave = normalizarChave(variantIdInput);
       // Record tombstone so offline merge doesn't resurrect this item
-      const key = `${productId}-${variantId || ""}`;
+      const key = `${productId}-${chave}`;
       const tombstones = loadTombstones();
       tombstones.set(key, { key, deletedAt: Date.now() });
       saveTombstones(tombstones);
-      setCart((prev) =>
-        prev.filter(
-          (item) =>
-            !(item.product.id === productId && item.variantId === variantId),
-        ),
-      );
+      setCart((prev) => prev.filter((item) => chaveDoItem(item) !== key));
       toast.info("Produto removido do carrinho");
     },
     [],
@@ -1096,24 +1110,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const updateQuantity = useCallback(
     (productId: string, quantity: number, variantIdInput?: string) => {
-      const variantId =
-        variantIdInput === "" || variantIdInput === null
-          ? undefined
-          : variantIdInput;
+      const chave = normalizarChave(variantIdInput);
       if (quantity <= 0) {
-        removeFromCart(productId, variantId);
+        removeFromCart(productId, chave);
         return;
       }
 
       setCart((prev) =>
         prev.flatMap((item) => {
-          if (item.product.id === productId && item.variantId === variantId) {
-            const variant = variantId
-              ? item.product.variants?.find((v) => v.id === variantId)
-              : undefined;
-            const availableStock = variant
-              ? variant.stockIncrement
-              : item.product.stock || 0;
+          if (item.product.id === productId && chaveDaLinha(item) === chave) {
+            const availableStock = estoqueDaLinha(
+              item.product,
+              item.variantId,
+              item.outrasVariantIds,
+            );
 
             // Estoque que virou 0 não pode virar item com quantidade 0: o
             // seletor trava (o "-" em qtd <= 1, o "+" no max 0), o subtotal
@@ -1125,7 +1135,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             if (availableStock <= 0) {
               toast.error("Este produto está esgotado e saiu do seu carrinho.");
               const tombstones = loadTombstones();
-              const key = `${item.product.id}-${item.variantId || ""}`;
+              const key = chaveDoItem(item);
               tombstones.set(key, { key, deletedAt: Date.now() });
               saveTombstones(tombstones);
               return [];
@@ -1164,7 +1174,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const tombstones = loadTombstones();
       const now = Date.now();
       prev.forEach((item) => {
-        const key = `${item.product.id}-${item.variantId || ""}`;
+        const key = chaveDoItem(item);
         tombstones.set(key, { key, deletedAt: now });
       });
       saveTombstones(tombstones);

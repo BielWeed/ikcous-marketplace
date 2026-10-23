@@ -79,17 +79,29 @@ function faltaEscolherVariacao(
  * desativada não vende (o servidor exige `v.active = true`). Linha sem
  * variação: o estoque do produto, como `addToCart` e `updateQuantity` já
  * contam — salvo se o produto TEM variação ativa (ver `faltaEscolherVariacao`).
+ *
+ * Linha com DUAS escolhas separadas (cor + tamanho, cadastro antigo): vale o
+ * menor estoque entre elas, e qualquer uma que sumiu ou foi desativada tira a
+ * linha -- levar "Azul P" precisa das duas.
  */
 function unidadesDisponiveis(
   produto: Product,
   variantId: string | undefined,
+  outrasVariantIds: readonly string[] = [],
 ): number | null {
   if (!variantId) {
     return faltaEscolherVariacao(produto, variantId) ? null : produto.stock;
   }
-  const variacao = produto.variants?.find((v) => v.id === variantId);
-  if (!variacao || variacao.active === false) return null;
-  return variacao.stockIncrement;
+  let unidades: number | null = null;
+  for (const id of [variantId, ...outrasVariantIds]) {
+    const variacao = produto.variants?.find((v) => v.id === id);
+    if (!variacao || variacao.active === false) return null;
+    unidades = Math.min(
+      unidades ?? variacao.stockIncrement,
+      variacao.stockIncrement,
+    );
+  }
+  return unidades;
 }
 
 function renovarItem(
@@ -101,7 +113,9 @@ function renovarItem(
   if (!catalogo.consultados.has(id)) return item;
 
   const atual = catalogo.produtos.get(id);
-  const disponivel = atual ? unidadesDisponiveis(atual, item.variantId) : null;
+  const disponivel = atual
+    ? unidadesDisponiveis(atual, item.variantId, item.outrasVariantIds)
+    : null;
   if (!atual || disponivel === null || disponivel <= 0) return null;
 
   const quantity = Math.min(item.quantity, disponivel);
@@ -171,7 +185,7 @@ export async function avisosDoCarrinho(
 
     const atual = catalogo.produtos.get(id);
     const disponivel = atual
-      ? unidadesDisponiveis(atual, item.variantId)
+      ? unidadesDisponiveis(atual, item.variantId, item.outrasVariantIds)
       : null;
 
     // Linha sem tamanho/cor de produto que exige escolha: a frase é PRÓPRIA
