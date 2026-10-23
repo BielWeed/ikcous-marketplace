@@ -272,6 +272,22 @@ const SEM_DOURADO: ReadonlyArray<readonly [string, readonly string[]]> = [
   ],
   ["src/views/admin/AdminShippingView.tsx", ["admin-gold-fill"]],
   ["src/components/admin/shipping/PreviaDoFrete.tsx", ["admin-gold-fill"]],
+  [
+    "src/components/admin/settings/IdentitySettingsSection.tsx",
+    ["accent-admin-gold"],
+  ],
+  [
+    "src/components/admin/settings/PoliticaDeDevolucaoSection.tsx",
+    ["accent-admin-gold"],
+  ],
+  [
+    "src/components/admin/settings/TransportadorasCard.tsx",
+    ["accent-admin-gold"],
+  ],
+  [
+    "src/components/admin/products/formulario-produto.css",
+    ["button.bg-admin-gold"],
+  ],
 ];
 
 describe("fase 2 — seleção e botão sólido sem dourado no resto do painel", () => {
@@ -303,6 +319,7 @@ describe("fase 2 — seleção e botão sólido sem dourado no resto do painel",
       "text-background",
       "border-2",
       "ring-2",
+      "accent-foreground",
     ];
     const resultado = await postcss([
       tailwindcss({

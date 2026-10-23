@@ -1586,7 +1586,7 @@ function CartaoDoProvedor({
                             checked={marcado}
                             disabled={rascunho.testando || rascunho.salvando}
                             onChange={() => onAlternarServico(servico.codigo)}
-                            className="size-5 accent-admin-gold"
+                            className="size-5 accent-foreground"
                           />
                           <RotuloDoServico
                             transportadora={servico.transportadora}

@@ -554,7 +554,7 @@ export function PoliticaDeDevolucaoSection({
               type="checkbox"
               checked={mesmoEndereco}
               onChange={(e) => marcarMesmoEndereco(e.target.checked)}
-              className="size-5 shrink-0 accent-admin-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-admin-gold"
+              className="size-5 shrink-0 accent-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-admin-gold"
             />
             Mesmo endereço da loja
           </label>
