@@ -54,6 +54,9 @@
 --     get_admin_orders_cancelados_recentes foi redefinida de novo na 20261380 — o aviso de cancelados
 --     antigos conta só pendência real —: o corpo esperado é o dela, e o da 99 ainda no ar (migration
 --     não aplicada nesta loja) aparece como o dela, igual ao upsert_store_config, para não parar o backfill;
+--     buscar_por_codigo_barras foi redefinida na 20261381 — a guarda passa de is_admin() para o admin
+--     atual (rls_admin_atual), o resto igual —: o corpo esperado é o dela, e o da 61 ainda no ar
+--     (migration não aplicada nesta loja) aparece como o dela, pela mesma tolerância;
 --     e upsert_store_config foi redefinida de novo na
 --     20261239 — a loja declara razão social, CNPJ/CPF e e-mail de atendimento — e de novo
 --     na 20261244 — a loja escolhe como entrega na cidade e em quantos dias: as chaves
@@ -114,7 +117,7 @@ WITH corpos AS (
    WHERE ns.nspname = 'public'
    GROUP BY p.proname
 ), final(fn, h) AS (VALUES
-    ('buscar_por_codigo_barras', '8762faab7f7efaf4bfd183499408d8df'),
+    ('buscar_por_codigo_barras', 'e1b93114cd9deee7eda6801ef37ff1f9'),
     ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd'),
     ('get_admin_orders_paged', '5861dbbe0e9c007a4196f5308c17d763'),
     ('get_product_recommendations', '3de5b27cc17c31301249861b7921a6fe'),
@@ -284,6 +287,8 @@ WITH corpos AS (
               THEN 'aa4ed730ac6ad3d3c2644b4285ff39a9'
               WHEN f.fn = 'get_admin_orders_cancelados_recentes' AND c.h = '99a9e4cb232aef020bf297ddcd1901f0'
               THEN '9567454f17698f3f0624cca0b06458cd'
+              WHEN f.fn = 'buscar_por_codigo_barras' AND c.h = '8762faab7f7efaf4bfd183499408d8df'
+              THEN 'e1b93114cd9deee7eda6801ef37ff1f9'
               ELSE COALESCE(c.h, 'AUSENTE') END
     FROM final f LEFT JOIN corpos c ON c.proname = f.fn
   UNION ALL

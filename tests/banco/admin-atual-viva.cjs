@@ -65,6 +65,9 @@ const { PERFIS_ADMIN_ATUAL } = require("./admin-atual-perfis-posterior.cjs");
 const {
   EX_ADMIN_DEMAIS_TABELAS,
 } = require("./ex-admin-demais-tabelas-posterior.cjs");
+const {
+  EX_ADMIN_RESTO_DO_PAINEL,
+} = require("./ex-admin-resto-do-painel-posterior.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(
@@ -388,6 +391,11 @@ const POSTERIORES_A_97 = [
     nome: "20261352000000_o_produto_e_a_grade_salvam_numa_transacao_so.sql",
     noAr: `SELECT to_regprocedure('public.salvar_produto_com_grade(uuid,timestamptz,jsonb,jsonb,uuid[])') IS NOT NULL AS sim`,
   },
+  // 20261381000000: 21 politicas de 10 tabelas, a politica nova de leitura do admin em banners e 10 RPCs passam a citar
+  // rls_admin_atual()/is_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual dela
+  // so devolve expressoes, apaga a politica nova e devolve os 10 corpos. Definicao unica em
+  // tests/banco/ex-admin-resto-do-painel-posterior.cjs. No FIM da lista de proposito.
+  EX_ADMIN_RESTO_DO_PAINEL,
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar
