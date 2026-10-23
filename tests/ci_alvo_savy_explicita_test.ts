@@ -620,6 +620,10 @@ const FP_OK = JSON.stringify([
 ]);
 
 function respostaSaudavel(q: string): Resposta {
+  // Guarda do ledger (23/10/2026): consulta só de leitura, "nada registrado".
+  // Ver tests/ci_aplicar_migrations_guarda_ledger_test.ts.
+  if (q.startsWith("SELECT version FROM supabase_migrations.schema_migrations"))
+    return { corpo: "[]" };
   if (q.includes("ikcous.sonda1")) return { corpo: SONDA };
   if (q.includes("txid_current_if_assigned"))
     return { corpo: '[{"pid":123,"txid":null}]' };
@@ -928,8 +932,15 @@ Deno.test({
       );
       // o ledger: a migration se registra e o rollback-manual apaga a linha, na
       // própria transação (prova e apply); nenhuma requisição à parte toca o ledger
-      const tocaLedger = r.chamadas.filter((q) =>
-        /schema_migrations/i.test(q.replace(corpo, "")),
+      // (Guarda do ledger, 23/10/2026: a consulta SELECT só de leitura da migration
+      // não é escrita; ela fica de fora desta lista e tem teste próprio em
+      // tests/ci_aplicar_migrations_guarda_ledger_test.ts.)
+      const tocaLedger = r.chamadas.filter(
+        (q) =>
+          /schema_migrations/i.test(q.replace(corpo, "")) &&
+          !q.startsWith(
+            "SELECT version FROM supabase_migrations.schema_migrations WHERE version = ANY(ARRAY[",
+          ),
       );
       assertEquals(
         tocaLedger,
