@@ -58,7 +58,7 @@ export function OpcoesDePeriodo({
               ? aoPedirPersonalizado()
               : aoEscolher({ preset: preset.valor })
           }
-          className={`flex min-h-16 items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${periodo.preset === preset.valor ? "bg-admin-gold/10 text-admin-gold" : "text-white hover:bg-white/5"}`}
+          className={`flex min-h-16 items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${periodo.preset === preset.valor ? "bg-admin-hover text-foreground" : "text-white hover:bg-white/5"}`}
         >
           <SeloFinanceiro
             icone={periodo.preset === preset.valor ? Check : CalendarRange}
@@ -134,7 +134,7 @@ export function SeletorDePeriodo({
               className={cn(
                 "min-h-11 shrink-0 select-none rounded-full border px-4 text-xs font-black transition-colors",
                 ativo
-                  ? "border-admin-gold/50 bg-admin-gold/10 text-admin-gold"
+                  ? "border-solid border-foreground bg-admin-hover text-foreground"
                   : "border-admin-border bg-admin-raised text-zinc-400 hover:bg-white/5 hover:text-white",
               )}
             >

@@ -704,7 +704,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     }}
                     className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
                       ratingFilter === "all"
-                        ? "bg-foreground text-background "
+                        ? "bg-foreground text-background"
                         : "text-zinc-500 hover:bg-white/5 hover:text-white"
                     }`}
                   >
@@ -719,7 +719,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       }}
                       className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
                         ratingFilter === star
-                          ? "bg-foreground text-background "
+                          ? "bg-foreground text-background"
                           : "text-zinc-500 hover:bg-white/5 hover:text-white"
                       }`}
                     >
@@ -1467,7 +1467,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   }}
                   className={`size-11 rounded-xl text-[11px] font-black transition-all duration-300 ${
                     page === i
-                      ? "scale-110 bg-foreground text-background "
+                      ? "scale-110 bg-foreground text-background"
                       : "text-zinc-500 hover:bg-white/5 hover:text-white"
                   }`}
                 >

@@ -629,7 +629,7 @@ export function PoliticaDeDevolucaoSection({
                   className={cn(
                     "min-h-11 rounded-xl border px-3 text-[11px] font-bold transition-colors",
                     marcada
-                      ? "border-admin-gold/50 bg-admin-gold/10 text-admin-gold"
+                      ? "border-solid border-foreground bg-admin-hover text-foreground"
                       : "border-admin-border text-zinc-400 hover:text-white",
                   )}
                 >
@@ -758,7 +758,7 @@ function Escolha<T extends string>({
             className={cn(
               "min-h-11 rounded-lg border px-2 text-[11px] font-bold transition-colors",
               valor === chave
-                ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
+                ? "border-solid border-foreground bg-admin-hover text-foreground"
                 : "border-admin-border text-zinc-400 hover:text-white",
             )}
           >

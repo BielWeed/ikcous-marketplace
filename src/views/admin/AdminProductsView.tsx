@@ -1585,7 +1585,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               className={cn(
                 "flex-1 flex min-h-11 items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "concepts"
-                  ? "border border-admin-gold bg-admin-gold/10 text-admin-gold"
+                  ? "border border-solid border-foreground bg-admin-hover text-foreground"
                   : "border border-admin-border bg-admin-raised text-zinc-300 hover:text-white",
               )}
             >
@@ -1599,7 +1599,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               className={cn(
                 "flex-1 flex min-h-11 items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "simulator"
-                  ? "border border-admin-gold bg-admin-gold/10 text-admin-gold"
+                  ? "border border-solid border-foreground bg-admin-hover text-foreground"
                   : "border border-admin-border bg-admin-raised text-zinc-300 hover:text-white",
               )}
             >

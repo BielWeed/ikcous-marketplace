@@ -25,8 +25,8 @@
 .ajustes
   [data-testid="politica-devolucao"]
   [data-slot="switch"][data-state="checked"] {
-  border-color: var(--lit-b-f4c43f, #f4c43f);
-  background: #f4c43f18;
+  border-color: hsl(var(--admin-text, 240 10% 96.1%));
+  background: hsl(var(--admin-hover));
 }
 
 .ajustes [data-testid="politica-devolucao"] [data-slot="switch-thumb"] {
@@ -38,7 +38,7 @@
   [data-slot="switch"][data-state="checked"]::after {
   content: "✓";
   margin: auto;
-  color: var(--lit-t-f4c43f, #f4c43f);
+  color: hsl(var(--admin-text, 240 10% 96.1%));
   font-size: 24px;
 }
 

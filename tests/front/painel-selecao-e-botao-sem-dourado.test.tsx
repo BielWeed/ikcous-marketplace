@@ -161,3 +161,148 @@ describe("Pedidos — filtro escolhido é neutro", () => {
     expect(fonte).not.toContain("admin-gold");
   });
 });
+
+// Fase 2: o que o revisor listou. Cada trecho abaixo era seleção ou botão
+// sólido dourado; agora não pode voltar.
+const SEM_DOURADO: ReadonlyArray<readonly [string, readonly string[]]> = [
+  [
+    "src/components/admin/crm/ClientesDoCrm.tsx",
+    [
+      "border-admin-gold/60 bg-admin-gold/[0.08]",
+      'gruposAbertos && "bg-admin-gold/15',
+      '"border-admin-gold bg-admin-gold/15 text-admin-gold"',
+    ],
+  ],
+  [
+    "src/views/admin/AdminCrmView.tsx",
+    ["admin-gold-fill", "border-admin-gold bg-admin-gold/15"],
+  ],
+  [
+    "src/components/admin/devolucoes/AcoesDaDevolucao.tsx",
+    [
+      'modo === "aprovar" && "border-admin-gold',
+      'modo === "concluir" && "border-admin-gold',
+      "border-admin-gold/60 bg-admin-gold/10",
+      "data-[state=checked]:bg-admin-gold",
+    ],
+  ],
+  [
+    "src/components/admin/devolucoes/CartaoDaDevolucao.tsx",
+    ["border-admin-gold/40 bg-admin-gold"],
+  ],
+  [
+    "src/views/admin/AdminDevolucoesView.tsx",
+    ["border-admin-gold/50 bg-admin-gold/10", '"bg-admin-gold text-black"'],
+  ],
+  [
+    "src/components/admin/financeiro/FolhasDeCadastro.tsx",
+    ["border-admin-gold/50 bg-admin-gold/10"],
+  ],
+  [
+    "src/components/admin/financeiro/partes.tsx",
+    ["border-admin-gold/60 bg-admin-gold/10"],
+  ],
+  [
+    "src/components/admin/financeiro/SeletorDePeriodo.tsx",
+    [
+      "border-admin-gold/50 bg-admin-gold/10",
+      '"bg-admin-gold/10 text-admin-gold"',
+    ],
+  ],
+  [
+    "src/components/admin/products/ModalVarianteGrade.tsx",
+    ["bg-admin-gold/10 border-admin-gold"],
+  ],
+  [
+    "src/components/admin/settings/PoliticaDeDevolucaoSection.tsx",
+    [
+      "border-admin-gold/50 bg-admin-gold/10",
+      "border-admin-gold/60 bg-admin-gold/10",
+    ],
+  ],
+  [
+    "src/components/admin/settings/PrivacidadeDosClientesSection.tsx",
+    ["border-admin-gold bg-admin-gold/10"],
+  ],
+  [
+    "src/views/admin/AdminProductFormView.tsx",
+    [
+      "bg-admin-gold/10 border-admin-gold",
+      "border-2 border-admin-gold",
+      "bottom-0 bg-admin-gold",
+    ],
+  ],
+  [
+    "src/views/admin/AdminProductsView.tsx",
+    ["border border-admin-gold bg-admin-gold/10"],
+  ],
+  [
+    "src/components/admin/vitrines/CartaoDaVitrine.tsx",
+    [
+      "data-[state=checked]:bg-admin-gold",
+      'border-admin-gold/25 bg-admin-gold/10 text-admin-gold"\n',
+    ],
+  ],
+  ["src/components/admin/crm/CanaisDoCrm.tsx", ["admin-gold-fill"]],
+  ["src/components/admin/crm/VisaoGeralDoCrm.tsx", ["admin-gold-fill"]],
+  ["src/components/admin/pdv/ReciboDaVenda.tsx", ["bg-admin-gold"]],
+  [
+    "src/components/admin/orders/EtiquetaDoPedidoCard.tsx",
+    ["border-admin-gold/30 bg-admin-gold/10"],
+  ],
+  [
+    "src/components/admin/settings/TransportadorasCard.tsx",
+    [
+      "data-[state=checked]:bg-admin-gold",
+      "border-admin-gold/30 bg-admin-gold/10",
+    ],
+  ],
+  [
+    "src/components/admin/settings/aparencia-do-painel.css",
+    ["var(--admin-gold)"],
+  ],
+  ["src/components/admin/settings/ajustes.css", ["f4c43f"]],
+];
+
+describe("fase 2 — seleção e botão sólido sem dourado no resto do painel", () => {
+  for (const [arquivo, proibidos] of SEM_DOURADO) {
+    it(`${arquivo.split("/").pop()} não pinta seleção/botão de dourado`, () => {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- lista fixa de arquivos do próprio projeto
+      const fonte = readFileSync(resolve(__dirname, "../..", arquivo), "utf-8");
+      for (const p of proibidos) expect(fonte, p).not.toContain(p);
+    });
+  }
+
+  it("filtros de Pedidos mostram o check do escolhido", () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- arquivo fixo do projeto
+    const fonte = readFileSync(
+      resolve(__dirname, "../../src/views/admin/AdminOrdersView.tsx"),
+      "utf-8",
+    );
+    expect(
+      fonte.match(/data-marca="selecionado"/g)?.length ?? 0,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("as classes novas da fase 2 geram CSS", async () => {
+    const classes = [
+      "data-[state=checked]:bg-foreground",
+      "border-admin-border-strong",
+      "hover:bg-admin-hover",
+      "bg-foreground",
+      "text-background",
+      "border-2",
+      "ring-2",
+    ];
+    const resultado = await postcss([
+      tailwindcss({
+        ...carregarConfigDoProjeto(),
+        content: [{ raw: classes.join(" "), extension: "html" }],
+      }),
+    ]).process("@tailwind utilities;", { from: undefined });
+    const escapar = (t: string) => t.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+    expect(
+      classes.filter((c) => !resultado.css.includes(`.${escapar(c)}`)),
+    ).toEqual([]);
+  });
+});

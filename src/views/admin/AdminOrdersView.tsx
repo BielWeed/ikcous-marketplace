@@ -80,6 +80,7 @@ import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import {
   AlertCircle,
   CalendarDays,
+  Check,
   CheckCircle2,
   Clock,
   CreditCard,
@@ -1870,6 +1871,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       {modo === "compact"
                         ? "Visualização Compacta"
                         : "Visualização Detalhada"}
+                      {viewMode === modo && (
+                        <Check
+                          aria-hidden="true"
+                          data-marca="selecionado"
+                          className="size-4 shrink-0"
+                        />
+                      )}
                     </button>
                   ))}
                 </fieldset>
@@ -1990,6 +1998,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         )}
                       >
                         {label}
+                        {canalFilter === valor && (
+                          <Check
+                            aria-hidden="true"
+                            data-marca="selecionado"
+                            className="size-4 shrink-0"
+                          />
+                        )}
                       </button>
                     ))}
                   </div>

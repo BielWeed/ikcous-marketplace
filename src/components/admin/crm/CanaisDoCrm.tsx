@@ -404,7 +404,7 @@ export function CanaisDoCrm({
                 <button
                   type="button"
                   onClick={() => onNavigate("admin-pdv")}
-                  className="bg-admin-gold-fill text-admin-gold-ink min-h-11 rounded-xl px-4 text-xs font-bold"
+                  className="bg-foreground text-background min-h-11 rounded-xl px-4 text-xs font-bold"
                 >
                   Vender no balcão
                 </button>

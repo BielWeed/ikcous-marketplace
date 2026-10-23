@@ -134,7 +134,7 @@ function BlocoDeSegmento({
         "relative flex min-h-[68px] flex-col justify-between gap-1 rounded-xl p-2 text-left",
         CLICAVEL_DO_CRM,
         selecionado &&
-          "border-admin-gold/60 bg-admin-gold/[0.08] ring-1 ring-admin-gold/40 hover:border-admin-gold/60",
+          "border-solid border-foreground bg-admin-hover ring-1 ring-foreground hover:border-foreground",
       )}
     >
       <span className="flex items-start gap-1.5">
@@ -795,7 +795,8 @@ export function ClientesDoCrm({
           onClick={() => setGruposAbertos(!gruposAbertos)}
           className={cn(
             "flex size-12 shrink-0 items-center justify-center rounded-2xl border border-solid border-admin-border bg-admin-surface text-admin-text-2",
-            gruposAbertos && "bg-admin-gold/15 text-admin-gold",
+            gruposAbertos &&
+              "border-solid border-foreground bg-admin-hover text-foreground",
             FOCO_DO_CRM,
           )}
         >
@@ -829,7 +830,7 @@ export function ClientesDoCrm({
               className={cn(
                 "min-h-11 shrink-0 whitespace-nowrap rounded-full border border-solid border-admin-border bg-admin-surface px-3 text-[11px] font-bold text-admin-text-2",
                 segmento === s &&
-                  "border-admin-gold bg-admin-gold/15 text-admin-gold",
+                  "border-solid border-foreground bg-admin-hover text-foreground",
                 FOCO_DO_CRM,
               )}
             >

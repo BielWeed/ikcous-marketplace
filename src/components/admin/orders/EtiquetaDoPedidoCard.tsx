@@ -530,7 +530,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                     href={pedido.shipping_label_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-10 items-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold/10 px-3 text-sm font-medium text-admin-gold transition-colors hover:bg-admin-gold/20 active:scale-95"
+                    className="flex h-10 items-center gap-1.5 rounded-xl border border-solid border-admin-border-strong bg-admin-raised px-3 text-sm font-medium text-foreground transition-colors hover:bg-admin-hover active:scale-95"
                   >
                     <ExternalLink className="size-4" />
                     <span>Abrir etiqueta</span>

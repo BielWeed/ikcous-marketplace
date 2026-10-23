@@ -613,10 +613,22 @@ it("botão primário tem contraste AA em repouso, hover, foco e desabilitado nos
         "nav",
       ),
     );
-    // Escuro: tokens `.dark` (foreground 0 0% 98% sobre background 240 10% 3.9%).
+    // Escuro: lê os tokens do bloco `.dark` do próprio index.css.
+    const escuroCss = (nome: string) => {
+      const bloco = css.slice(css.indexOf("  .dark {"));
+      return bloco.match(new RegExp(`--${nome}:\\s*([^;]+);`))![1];
+    };
     const minimoNormal = contraste(
-      hsl(tema === "escuro" ? "0 0% 98%" : token(temas, seletor, "text")),
-      hsl(tema === "escuro" ? "240 10% 3.9%" : token(temas, seletor, "bg")),
+      hsl(
+        tema === "escuro"
+          ? escuroCss("foreground")
+          : token(temas, seletor, "text"),
+      ),
+      hsl(
+        tema === "escuro"
+          ? escuroCss("background")
+          : token(temas, seletor, "bg"),
+      ),
     );
     const minimoDesabilitado = contraste(textoSuave, elevado);
     const minimoFoco = contraste(textoSuave, nav);
