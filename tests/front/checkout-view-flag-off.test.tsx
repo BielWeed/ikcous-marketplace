@@ -288,6 +288,7 @@ describe("CheckoutView com pagamentoOnlineLigado() desligada", () => {
       comPagamentoOnline: false,
     });
     expect(clearCart).toHaveBeenCalledTimes(1);
+    expect(clearCart).toHaveBeenCalledWith({ silencioso: true });
 
     // A garantia central: nunca a tela de "aguardando pagamento" — sempre o
     // caminho de sucesso de sempre.
