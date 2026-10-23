@@ -815,6 +815,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     />
                     <button
                       type="button"
+                      aria-label={
+                        showPassword ? "Ocultar senha" : "Mostrar senha"
+                      }
+                      aria-pressed={showPassword}
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-300 transition-colors hover:text-zinc-600"
                     >
@@ -847,6 +851,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
 
               {loginError && (
                 <motion.div
+                  role="alert"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-red-600"

@@ -219,6 +219,10 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(hospedeiro.textContent).toContain(
       "Este pedido não está com o pagamento confirmado",
     );
+    // Diz à lojista o que fazer, além de avisar do risco.
+    expect(hospedeiro.textContent).toContain(
+      "Se a cliente pagou na loja, cancele este pedido agora e lance a venda no balcão.",
+    );
     expect(onStatusChange).not.toHaveBeenCalled();
   });
 

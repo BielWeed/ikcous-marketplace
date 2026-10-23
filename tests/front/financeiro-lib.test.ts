@@ -888,6 +888,11 @@ describe("DRE", () => {
     expect(percentualDaReceita(1805, 9500)).toBeCloseTo(19);
     expect(percentualDaReceita(10, 0)).toBeNull();
   });
+
+  it("receita líquida negativa não vira margem: devoluções maiores que vendas dão null", () => {
+    expect(percentualDaReceita(-450, -100)).toBeNull();
+    expect(percentualDaReceita(30, -100)).toBeNull();
+  });
 });
 
 describe("formulários", () => {
@@ -903,6 +908,33 @@ describe("formulários", () => {
       "descricao",
       "valor",
     ]);
+  });
+
+  it("descrição aceita até 140 caracteres (limite do banco) e recusa 141", () => {
+    const base = {
+      valor: "10,00",
+      categoriaId: "cat",
+      contaId: "banco",
+      formaPagamento: "pix",
+    };
+    const ok = validarLancamento(
+      formularioInicialDoLancamento(hoje, {
+        ...base,
+        descricao: "a".repeat(140),
+      }),
+      hoje,
+    );
+    expect(ok.ok).toBe(true);
+    const r = validarLancamento(
+      formularioInicialDoLancamento(hoje, {
+        ...base,
+        descricao: "a".repeat(141),
+      }),
+      hoje,
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.erros.descricao).toBe("Use no máximo 140 caracteres.");
   });
 
   it("despesa paga vira realizado com data de pagamento", () => {
