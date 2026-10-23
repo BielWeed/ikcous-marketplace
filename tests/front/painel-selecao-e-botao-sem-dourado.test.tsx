@@ -262,6 +262,16 @@ const SEM_DOURADO: ReadonlyArray<readonly [string, readonly string[]]> = [
     ["var(--admin-gold)"],
   ],
   ["src/components/admin/settings/ajustes.css", ["f4c43f"]],
+  [
+    "src/views/admin/AdminFinanceiroView.tsx",
+    [
+      "data-[state=active]:border-admin-gold",
+      "data-[state=active]:bg-admin-gold",
+      "data-[state=active]:text-admin-gold",
+    ],
+  ],
+  ["src/views/admin/AdminShippingView.tsx", ["admin-gold-fill"]],
+  ["src/components/admin/shipping/PreviaDoFrete.tsx", ["admin-gold-fill"]],
 ];
 
 describe("fase 2 — seleção e botão sólido sem dourado no resto do painel", () => {
