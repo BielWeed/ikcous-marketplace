@@ -80,7 +80,7 @@ describe("ProfileView — botão Sobre a Loja para TODOS os usuários (peça 24)
 
   function botaoSobreALoja() {
     return [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Sobre a Loja"),
+      b.textContent?.includes("Sobre a loja"),
     );
   }
 
@@ -118,7 +118,7 @@ describe("ProfileView — botão Sobre a Loja para TODOS os usuários (peça 24)
 
     // Prova de que este cenário é um usuário comum: o bloco admin não está na
     // tela, mas o cartão novo está.
-    expect(hospedeiro.textContent).not.toContain("Modo Admin");
+    expect(hospedeiro.textContent).not.toContain("Modo admin");
     const botao = botaoSobreALoja();
     expect(botao).toBeDefined();
 
@@ -135,30 +135,30 @@ describe("ProfileView — botão Sobre a Loja para TODOS os usuários (peça 24)
 
     await renderizarPerfil(onNavigate);
 
-    expect(hospedeiro.textContent).toContain("Modo Admin");
+    expect(hospedeiro.textContent).toContain("Modo admin");
     expect(botaoSobreALoja()).toBeDefined();
   });
 
-  it("ordem do dono: Sobre a Loja logo abaixo de Segurança e Conta; Encerrar Sessão em cartão separado embaixo", async () => {
+  it("ordem do dono: Sobre a Loja logo abaixo de Segurança e conta; Encerrar sessão em cartão separado embaixo", async () => {
     flagAdmin = false;
 
     await renderizarPerfil(() => {});
 
     const botao = botaoSobreALoja();
     expect(botao).toBeDefined();
-    // O botão novo vive NO MESMO cartão de Segurança e Conta (a linha acima
+    // O botão novo vive NO MESMO cartão de Segurança e conta (a linha acima
     // dele), e esse cartão NÃO contém a ação destrutiva.
     const cartao = botao!.closest("div.overflow-hidden");
     expect(cartao).not.toBeNull();
-    expect(cartao!.textContent).toContain("Segurança e Conta");
-    expect(cartao!.textContent).not.toContain("Encerrar Sessão");
+    expect(cartao!.textContent).toContain("Segurança e conta");
+    expect(cartao!.textContent).not.toContain("Encerrar sessão");
 
-    // Encerrar Sessão ganhou cartão PRÓPRIO, DEPOIS do cartão do botão novo.
+    // Encerrar sessão ganhou cartão PRÓPRIO, DEPOIS do cartão do botão novo.
     const cartoes = [...hospedeiro.querySelectorAll("div.overflow-hidden")];
     const indiceDoCartao = cartoes.indexOf(cartao!);
     const cartaoEncerrar = cartoes
       .slice(indiceDoCartao + 1)
-      .find((c) => c.textContent?.includes("Encerrar Sessão"));
+      .find((c) => c.textContent?.includes("Encerrar sessão"));
     expect(cartaoEncerrar).toBeDefined();
   });
 });

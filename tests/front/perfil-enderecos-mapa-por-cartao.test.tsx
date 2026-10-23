@@ -6,7 +6,7 @@ import type { Address } from "@/types";
 // @vitest-environment jsdom
 //
 // Mapa por cartão de endereço no Perfil (pedido do dono, 21/09/2026): ao
-// expandir "Ver mais detalhes", cada cartão ganha o embed do Google com a
+// expandir "Ver detalhes dos endereços", cada cartão ganha o embed do Google com a
 // query de LOCAL — rua+número, cidade, UF e o CEP de rua no fim (o bairro só
 // entra quando faltam cidade ou UF; ver AddressList.tsx). Dados
 // privados (destinatário, complemento, referência, apelido) NUNCA vão na
@@ -172,12 +172,12 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
     expect(iframes(hospedeiro)).toHaveLength(1);
     await act(async () => {
       hospedeiro
-        .querySelector<HTMLButtonElement>("button[aria-label='Editar']")!
+        .querySelector<HTMLButtonElement>("button[aria-label^='Editar']")!
         .click();
     });
     await act(async () => {
       hospedeiro
-        .querySelector<HTMLButtonElement>("button[aria-label='Excluir']")!
+        .querySelector<HTMLButtonElement>("button[aria-label^='Excluir']")!
         .click();
     });
     expect(onEdit).toHaveBeenCalledWith(CASA);
@@ -356,7 +356,7 @@ describe("ProfileView — expandir monta os mapas, recolher desmonta", () => {
     expect(iframes(hospedeiro)).toHaveLength(0);
 
     const botaoExpandir = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Ver mais detalhes"),
+      b.textContent?.includes("Ver detalhes dos endereços"),
     );
     expect(botaoExpandir).toBeTruthy();
     await act(async () => {
