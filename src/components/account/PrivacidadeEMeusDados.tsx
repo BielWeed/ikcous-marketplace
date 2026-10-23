@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   TEXTOS_DA_CLIENTE,
+  fraseDeItens,
   fraseDecisaoDaLoja,
   frasePedidoEnviado,
 } from "@/config/textos-de-privacidade";
@@ -24,8 +25,9 @@ import {
   ultimoPedidoDoTipo,
   validarEmailNovo,
 } from "@/lib/pedidos-de-privacidade";
-import { Loader2, Mail, ShieldCheck, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { cn } from "@/lib/utils";
+import { ChevronRight, Loader2, Minus } from "lucide-react";
+import { type ReactNode, useRef, useState } from "react";
 
 // ⚠️ Os TEXTOS desta área moram em src/config/textos-de-privacidade.ts e
 // PRECISAM de revisão do dono (e de quem entende de LGPD) antes de valerem
@@ -47,6 +49,33 @@ const TEXTO_DO_ERRO_DO_EMAIL = {
 type Dialogo = TipoDoPedidoDePrivacidade | null;
 
 /**
+ * Cartão de linha fina com um ponto colorido na frente (Tinta: cor só com
+ * significado, nunca bloco pintado). O ponto é decorativo; quem informa é o texto.
+ */
+function CartaoComPonto({
+  ponto,
+  alerta = false,
+  children,
+}: {
+  ponto: string;
+  alerta?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      role={alerta ? "alert" : "status"}
+      className="flex items-start gap-2.5 rounded-2xl border border-border p-3.5 text-sm text-foreground"
+    >
+      <span
+        aria-hidden="true"
+        className={cn("mt-1.5 size-2 shrink-0 rounded-full", ponto)}
+      />
+      <div className="min-w-0 flex-1 space-y-1">{children}</div>
+    </div>
+  );
+}
+
+/**
  * Estado de UM tipo de pedido, como a cliente vê: esperando resposta (com a data
  * e o prazo), respondido (com a resposta da loja) ou nada ainda.
  */
@@ -57,10 +86,7 @@ function SituacaoDoPedido({ pedido }: { pedido: PedidoDePrivacidade | null }) {
   );
   if (pedido.situacao === "aberto") {
     return (
-      <div
-        role="status"
-        className="space-y-1 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
-      >
+      <CartaoComPonto ponto="bg-emerald-500">
         <p className="font-semibold">{frasePedidoEnviado(data)}</p>
         {pedido.email_novo && (
           <p>
@@ -68,13 +94,12 @@ function SituacaoDoPedido({ pedido }: { pedido: PedidoDePrivacidade | null }) {
             <span className="break-all">{pedido.email_novo}</span>
           </p>
         )}
-      </div>
+      </CartaoComPonto>
     );
   }
   return (
-    <div
-      role="status"
-      className="space-y-1 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-800"
+    <CartaoComPonto
+      ponto={pedido.situacao === "atendido" ? "bg-emerald-500" : "bg-amber-500"}
     >
       <p className="font-semibold">
         {fraseDecisaoDaLoja(pedido.situacao, data)}
@@ -85,6 +110,82 @@ function SituacaoDoPedido({ pedido }: { pedido: PedidoDePrivacidade | null }) {
           <span className="whitespace-pre-line">{pedido.observacao}</span>
         </p>
       )}
+    </CartaoComPonto>
+  );
+}
+
+type LinhaDaSanfona = "guarda" | "apaga" | "fica";
+
+/**
+ * Uma linha da lista em sanfona: o botão (título, resumo e seta) e o painel que
+ * ele abre. O painel fica SEMPRE no DOM, com `hidden` quando fechado: assim o
+ * `aria-controls` aponta para algo que existe e o leitor de tela só lê o painel
+ * aberto. O resumo recortado em 2 linhas é o próprio texto (o recorte é só CSS) e
+ * some quando a linha abre, para o texto não aparecer duas vezes.
+ */
+function LinhaDaSanfona({
+  id,
+  titulo,
+  resumo,
+  recortarResumo,
+  resumoComAberta,
+  aberta,
+  aoAlternar,
+  primeira,
+  children,
+}: {
+  id: string;
+  titulo: string;
+  resumo: string;
+  recortarResumo: boolean;
+  /** `true` mantém o resumo à vista com a linha aberta (ex.: "7 itens"). */
+  resumoComAberta: boolean;
+  aberta: boolean;
+  aoAlternar: () => void;
+  primeira: boolean;
+  children: ReactNode;
+}) {
+  const Seta = aberta ? Minus : ChevronRight;
+  return (
+    <div
+      className={cn(
+        !primeira && "border-t border-border",
+        aberta && "bg-muted/30",
+      )}
+    >
+      <h3>
+        <button
+          type="button"
+          id={`${id}-botao`}
+          aria-expanded={aberta}
+          aria-controls={`${id}-painel`}
+          onClick={aoAlternar}
+          className="flex min-h-11 w-full items-start gap-3 px-4 py-3.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold leading-5 text-foreground">
+              {titulo}
+            </span>
+            {(!aberta || resumoComAberta) && (
+              <span
+                className={cn(
+                  "mt-0.5 text-xs leading-4 text-muted-foreground",
+                  recortarResumo ? "line-clamp-2" : "block",
+                )}
+              >
+                {resumo}
+              </span>
+            )}
+          </span>
+          <Seta
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          />
+        </button>
+      </h3>
+      <div id={`${id}-painel`} hidden={!aberta} className="px-4 pb-4">
+        {children}
+      </div>
     </div>
   );
 }
@@ -106,6 +207,12 @@ export function PrivacidadeEMeusDados({
   const [erroDoEmail, setErroDoEmail] = useState<string | null>(null);
   const [falha, setFalha] = useState<string | null>(null);
   const campoDoEmail = useRef<HTMLInputElement>(null);
+  // Só "o que a exclusão apaga" abre sozinha: é a pergunta que a cliente mais traz.
+  const [abertas, setAbertas] = useState<Record<LinhaDaSanfona, boolean>>({
+    guarda: false,
+    apaga: true,
+    fica: false,
+  });
 
   const pedidoDeExclusao = ultimoPedidoDoTipo(pedidos, "excluir_conta");
   const pedidoDeEmail = ultimoPedidoDoTipo(pedidos, "corrigir_email");
@@ -119,6 +226,10 @@ export function PrivacidadeEMeusDados({
     (pedidoDeExclusao === null || pedidoDeExclusao.situacao === "recusado");
   const podePedirEmail =
     pronta && (pedidoDeEmail === null || pedidoDeEmail.situacao !== "aberto");
+
+  function alternar(linha: LinhaDaSanfona) {
+    setAbertas((antes) => ({ ...antes, [linha]: !antes[linha] }));
+  }
 
   function abrir(tipo: TipoDoPedidoDePrivacidade) {
     setFalha(null);
@@ -165,54 +276,93 @@ export function PrivacidadeEMeusDados({
   }
 
   return (
-    <section
-      aria-labelledby="privacidade-titulo"
-      className="space-y-4 rounded-2xl border border-zinc-200/50 bg-white p-5 shadow-sm"
-    >
-      <div className="flex items-center gap-2.5">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-zinc-900 shadow-sm">
-          <ShieldCheck className="size-4 text-white" aria-hidden="true" />
-        </div>
+    <section aria-labelledby="privacidade-titulo" className="space-y-5">
+      <header className="space-y-1.5">
+        <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+          {TEXTOS_DA_CLIENTE.rotuloDaTela}
+        </p>
         <h2
           id="privacidade-titulo"
-          className="text-base font-bold text-zinc-900"
+          className="text-[28px] font-bold leading-8 tracking-tight text-foreground"
         >
           {TEXTOS_DA_CLIENTE.titulo}
         </h2>
+        <p className="text-sm text-muted-foreground">
+          {TEXTOS_DA_CLIENTE.abertura}
+        </p>
+      </header>
+
+      <div className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-border bg-muted/30 px-4">
+        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+          {TEXTOS_DA_CLIENTE.rotuloDoPrazo}
+        </span>
+        <p className="text-[15px] font-semibold text-foreground">
+          {TEXTOS_DA_CLIENTE.prazo}
+        </p>
       </div>
 
-      <p className="text-sm text-zinc-700">{TEXTOS_DA_CLIENTE.abertura}</p>
-
-      <div className="space-y-3 text-sm text-zinc-700">
-        <div>
-          <h3 className="font-semibold text-zinc-900">
-            {TEXTOS_DA_CLIENTE.guardaTitulo}
-          </h3>
-          <p>{TEXTOS_DA_CLIENTE.guarda}</p>
-        </div>
-        <div>
-          <h3 className="font-semibold text-zinc-900">
-            {TEXTOS_DA_CLIENTE.apagaTitulo}
-          </h3>
-          <ul className="list-disc pl-5">
+      <div className="overflow-hidden rounded-[18px] border border-input">
+        <LinhaDaSanfona
+          id="privacidade-guarda"
+          titulo={TEXTOS_DA_CLIENTE.guardaTitulo}
+          resumo={TEXTOS_DA_CLIENTE.guarda}
+          recortarResumo
+          resumoComAberta={false}
+          aberta={abertas.guarda}
+          aoAlternar={() => alternar("guarda")}
+          primeira
+        >
+          <p className="text-[13px] leading-[18px] text-foreground">
+            {TEXTOS_DA_CLIENTE.guarda}
+          </p>
+        </LinhaDaSanfona>
+        <LinhaDaSanfona
+          id="privacidade-apaga"
+          titulo={TEXTOS_DA_CLIENTE.apagaTitulo}
+          resumo={fraseDeItens(TEXTOS_DA_CLIENTE.apaga.length)}
+          recortarResumo={false}
+          resumoComAberta
+          aberta={abertas.apaga}
+          aoAlternar={() => alternar("apaga")}
+          primeira={false}
+        >
+          <ul className="space-y-2.5 pt-1">
             {TEXTOS_DA_CLIENTE.apaga.map((item) => (
-              <li key={item}>{item}</li>
+              <li
+                key={item}
+                className="flex gap-2 text-[13px] leading-[18px] text-foreground"
+              >
+                <span
+                  aria-hidden="true"
+                  className="shrink-0 text-muted-foreground"
+                >
+                  —
+                </span>
+                <span className="min-w-0">{item}</span>
+              </li>
             ))}
           </ul>
-        </div>
-        <div>
-          <h3 className="font-semibold text-zinc-900">
-            {TEXTOS_DA_CLIENTE.ficaTitulo}
-          </h3>
-          <p>{TEXTOS_DA_CLIENTE.fica}</p>
-        </div>
-        <p className="font-semibold text-zinc-900">{TEXTOS_DA_CLIENTE.prazo}</p>
+        </LinhaDaSanfona>
+        <LinhaDaSanfona
+          id="privacidade-fica"
+          titulo={TEXTOS_DA_CLIENTE.ficaTitulo}
+          resumo={TEXTOS_DA_CLIENTE.fica}
+          recortarResumo
+          resumoComAberta={false}
+          aberta={abertas.fica}
+          aoAlternar={() => alternar("fica")}
+          primeira={false}
+        >
+          <p className="text-[13px] leading-[18px] text-foreground">
+            {TEXTOS_DA_CLIENTE.fica}
+          </p>
+        </LinhaDaSanfona>
       </div>
 
       {carga === "carregando" && (
         <p
           role="status"
-          className="flex items-center gap-2 text-sm text-zinc-600"
+          className="flex items-center gap-2 text-sm text-muted-foreground"
         >
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           {TEXTOS_DA_CLIENTE.carregando}
@@ -220,63 +370,51 @@ export function PrivacidadeEMeusDados({
       )}
 
       {carga === "erro" && (
-        <div
-          role="alert"
-          className="space-y-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
-        >
+        <CartaoComPonto ponto="bg-red-500" alerta>
           <p className="font-semibold">{TEXTOS_DA_CLIENTE.falhaAoCarregar}</p>
           <Button
             type="button"
             variant="outline"
             onClick={() => void recarregar()}
-            className="min-h-11 rounded-xl"
+            className="mt-2 min-h-11 rounded-xl"
           >
             {TEXTOS_DA_CLIENTE.recarregar}
           </Button>
-        </div>
+        </CartaoComPonto>
       )}
 
       {falha && dialogo === null && (
-        <p
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800"
-        >
-          {falha}
-        </p>
+        <CartaoComPonto ponto="bg-red-500" alerta>
+          <p className="font-semibold">{falha}</p>
+        </CartaoComPonto>
       )}
 
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <SituacaoDoPedido pedido={pedidoDeEmail} />
-          {podePedirEmail && (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={ocupada}
-              onClick={() => abrir("corrigir_email")}
-              className="min-h-11 w-full rounded-xl"
-            >
-              <Mail aria-hidden="true" />
-              {TEXTOS_DA_CLIENTE.botaoCorrigirEmail}
-            </Button>
-          )}
-        </div>
+      <div className="space-y-3">
+        <SituacaoDoPedido pedido={pedidoDeEmail} />
+        {podePedirEmail && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={ocupada}
+            onClick={() => abrir("corrigir_email")}
+            className="h-[52px] min-h-11 w-full rounded-2xl border-[1.5px] border-foreground bg-background text-[15px] font-semibold text-foreground shadow-none hover:bg-muted/40 hover:text-foreground dark:border-foreground dark:bg-background dark:hover:bg-muted/40"
+          >
+            {TEXTOS_DA_CLIENTE.botaoCorrigirEmail}
+          </Button>
+        )}
 
-        <div className="space-y-2">
-          <SituacaoDoPedido pedido={pedidoDeExclusao} />
-          {podePedirExclusao && (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={ocupada}
-              onClick={() => abrir("excluir_conta")}
-              className="min-h-11 w-full rounded-xl border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-            >
-              <Trash2 aria-hidden="true" />
-              {TEXTOS_DA_CLIENTE.botaoExcluir}
-            </Button>
-          )}
-        </div>
+        <SituacaoDoPedido pedido={pedidoDeExclusao} />
+        {podePedirExclusao && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={ocupada}
+            onClick={() => abrir("excluir_conta")}
+            className="h-[52px] min-h-11 w-full rounded-2xl border-[1.5px] border-red-300 bg-background text-[15px] font-semibold text-red-600 shadow-none hover:bg-muted/40 hover:text-red-600 dark:border-red-300 dark:bg-background dark:text-red-400 dark:hover:bg-muted/40 dark:hover:text-red-400"
+          >
+            {TEXTOS_DA_CLIENTE.botaoExcluir}
+          </Button>
+        )}
       </div>
 
       <AlertDialog

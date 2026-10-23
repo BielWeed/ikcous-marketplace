@@ -38,6 +38,10 @@ export const TEXTOS_DA_CLIENTE = {
   ficaTitulo: "O que fica guardado por lei",
   fica: "Os pedidos e as notas fiscais ficam guardados (valores, itens, datas e forma de pagamento), mas sem o seu nome, telefone, CPF, e-mail e endereço. Suas avaliações e perguntas públicas, se houver, também ficam, sem o seu nome.",
   prazo: `A loja responde em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias.`,
+  // NOVO: revisar com o dono (rótulos curtos da tela "Tinta", 23/10/2026)
+  rotuloDaTela: "Conta · Privacidade",
+  // NOVO: revisar com o dono
+  rotuloDoPrazo: "Prazo",
 
   botaoExcluir: "Pedir exclusão da minha conta",
   botaoCorrigirEmail: "Corrigir meu e-mail",
@@ -72,6 +76,11 @@ export const TEXTOS_DA_CLIENTE = {
   falhaGenerica:
     "Não foi possível enviar o pedido agora. Tente de novo em alguns minutos.",
 } as const;
+
+// NOVO: revisar com o dono. Resumo da lista "o que a exclusão apaga" na tela.
+export function fraseDeItens(quantidade: number): string {
+  return quantidade === 1 ? "1 item" : `${quantidade} itens`;
+}
 
 /** "Pedido enviado em 14/10/2026 — a loja responde em até 15 dias." */
 export function frasePedidoEnviado(dataFormatada: string): string {
