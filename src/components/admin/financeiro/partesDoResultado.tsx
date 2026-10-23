@@ -13,8 +13,8 @@ import {
   Dinheiro,
 } from "./partes";
 
-/** Frase curta que aparece nos quadros e na linha do custo. */
-export const AVISO_CURTO_DE_CUSTO_ESTIMADO = "Inclui estimativa de custo";
+/** Selo curto dos quadros e da linha do custo: cabe em UMA linha. */
+export const AVISO_CURTO_DE_CUSTO_ESTIMADO = "Custo estimado";
 
 /** A explicação inteira, escrita uma vez embaixo do resultado. */
 export const AVISO_CUSTO_ESTIMADO =
@@ -67,14 +67,20 @@ export function classeDoValorNaTabela(valor: number, destaque = false): string {
   );
 }
 
-/** Selo âmbar do custo estimado: a explicação inteira fica no `title`. */
+/**
+ * Selo âmbar do custo estimado, numa linha só (`whitespace-nowrap`). A frase
+ * inteira continua acessível: no `title` (mouse) e no `aria-label` (leitor de
+ * tela, que lê a explicação e não só "Custo estimado").
+ */
 export function AvisoDeCustoEstimado() {
   return (
     <span
+      role="note"
       data-aviso-de-estimativa=""
       title={AVISO_CUSTO_ESTIMADO}
+      aria-label={AVISO_CUSTO_ESTIMADO}
       className={cn(
-        "inline-flex w-fit max-w-full items-center rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-bold leading-tight",
+        "inline-flex w-fit max-w-full items-center whitespace-nowrap rounded-full bg-amber-400/10 px-2.5 py-0.5 text-xs font-bold leading-tight",
         classeDoTexto("atencao"),
       )}
     >

@@ -159,7 +159,10 @@ describe("Financeiro — aba Resultado redesenhada", () => {
     // a própria linha do custo; a receita líquida não depende dele.
     expect(selos).toHaveLength(4);
     for (const selo of selos) {
-      expect(normalizar(selo.textContent)).toBe("Inclui estimativa de custo");
+      expect(normalizar(selo.textContent)).toBe("Custo estimado");
+      // Uma linha só; a frase inteira segue no title e no aria-label.
+      expect(selo.className).toContain("whitespace-nowrap");
+      expect(selo.getAttribute("aria-label")).toBe(AVISO_LONGO);
       expect(selo.title).toBe(AVISO_LONGO);
       expect(selo.className).toContain("rounded-full");
     }
@@ -192,7 +195,9 @@ describe("Financeiro — aba Resultado redesenhada", () => {
     });
     await montar();
     expect(hospedeiro.querySelector("[data-aviso-de-estimativa]")).toBeNull();
-    expect(normalizar(hospedeiro.textContent)).not.toContain("estimativa");
+    const textoSemSelo = normalizar(hospedeiro.textContent);
+    expect(textoSemSelo).not.toContain("estimativa");
+    expect(textoSemSelo).not.toContain("Custo estimado");
   });
 
   it("a tabela tem 3 colunas em qualquer tela, sem versão empilhada do celular", async () => {
