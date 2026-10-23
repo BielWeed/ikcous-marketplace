@@ -1,4 +1,21 @@
 {
+  "1.5.56": {
+    "titulo": "Ofertas Lateral mais compactas e seção Na loja do produto corrigida",
+    "novidades": [
+      "No desenho Lateral das Ofertas, o cartão ficou mais compacto, cerca de 30% mais baixo: a foto fica de um lado e, do outro, o nome, o preço em destaque com o antigo riscado ao lado e o botão do carrinho.",
+      "Quando o produto tem preço antigo, o cartão mostra o selo de desconto no canto de baixo da foto e a linha Economiza com o valor.",
+      "O aviso de estoque do cadastro de produto virou uma linha azul pequena: você toca nela para ler a explicação completa e toca de novo para fechar."
+    ],
+    "correcoes": [
+      "No cadastro de produto, a seção Na loja não aparece mais embolada: as chaves Aparece na loja, Em destaque e Frete grátis ficam uma abaixo da outra, sem cobrir o ID do Sistema."
+    ],
+    "melhorias": [
+      "O cartão Lateral tem sempre a mesma altura, então a vitrine não pula quando as ofertas terminam de carregar.",
+      "O preço do cartão Lateral não quebra em duas linhas em celular estreito: o tamanho dele se ajusta à largura disponível, e em preços muito altos num celular muito estreito o preço antigo e a linha Economiza somem inteiros em vez de aparecer cortados.",
+      "O aviso sobre o preço das variações no cadastro também virou uma linha azul que abre ao toque.",
+      "No Ver no app do cadastro de produto, a barra de cima do simulador segue as cores do tema do painel, e a escolha entre Card e Página fica em tom neutro, sem o verde."
+    ]
+  },
   "1.5.55": {
     "titulo": "Perguntas e Avaliações redesenhadas e painel sem dourado nos itens escolhidos",
     "novidades": [

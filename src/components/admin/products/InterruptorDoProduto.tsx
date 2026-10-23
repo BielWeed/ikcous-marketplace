@@ -7,7 +7,7 @@ import { type ReactNode, useId } from "react";
  *
  * Ligado = neutro e forte (trilho na cor do texto do painel + um "visto" no
  * pino), nunca uma cor de marca: o estado não depende só da cor. As cores
- * moram em `formulario-produto.css` (`.produto-interruptor*`), com os tokens
+ * moram em `formulario-produto.css` (`.produto-chave*` e `.produto-interruptor-*`), com os tokens
  * `admin-*` dos três temas.
  */
 export function InterruptorDoProduto({
@@ -29,7 +29,7 @@ export function InterruptorDoProduto({
 }) {
   const idDaDescricao = useId();
   return (
-    <div className="produto-interruptor">
+    <div className="produto-chave">
       <button
         type="button"
         role="switch"

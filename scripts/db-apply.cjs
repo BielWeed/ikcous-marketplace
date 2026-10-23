@@ -72,6 +72,26 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261381: o ex-admin perde o acesso na hora no resto do painel. Dez RPCs trocam so o gate (is_admin -> is_admin_atual); as 21
+  // politicas e a politica nova de banners nao sao conferiveis aqui (so corpo de funcao): a consulta 86a e a prova viva fazem isso.
+  "20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql": [
+    ["get_admin_reviews_paged", "IF NOT public.is_admin_atual() THEN"],
+    ["get_admin_questions_paged", "IF NOT public.is_admin_atual() THEN"],
+    ["get_admin_products_paged", "IF NOT public.is_admin_atual() THEN"],
+    ["get_reviews_metrics", "IF NOT public.is_admin_atual() THEN"],
+    [
+      "buscar_por_codigo_barras",
+      "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+    ],
+    [
+      "read_store_identity",
+      "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+    ],
+    ["assinatura_da_loja_ler", "IF NOT public.is_admin_atual() THEN"],
+    ["record_vor_action", "IF NOT public.is_admin_atual() THEN"],
+    ["reorder_banners_atomic", "IF NOT public.is_admin_atual() THEN"],
+    ["swap_banner_order", "IF NOT public.is_admin_atual() THEN"],
+  ].map(([funcao, texto]) => ({ funcao, esperado: [{ texto, vezes: 1 }] })),
   // 20261380: o aviso de cancelados antigos (fora_da_janela) conta so pendencia real. Os gates de admin, a regra dos dois
   // baldes (mercadoria a voltar; dinheiro que entrou e ainda sobra) e o retorno ficam no corpo; o resto e o da 20261199.
   "20261380000000_o_aviso_de_cancelados_antigos_conta_so_pendencia_real.sql": {
