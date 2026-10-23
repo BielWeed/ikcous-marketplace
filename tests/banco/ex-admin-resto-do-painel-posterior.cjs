@@ -13,6 +13,12 @@ const EX_ADMIN_RESTO_DO_PAINEL = Object.freeze({
   noAr: "SELECT EXISTS(SELECT 1 FROM pg_policy WHERE polname='banners_admin_select_policy' AND polrelid=to_regclass('public.banners')) sim",
 });
 async function desfazerExAdminRestoNaTransacao(c) {
+  // A 20261383 (so o dono da loja define cargo) e' POSTERIOR a esta e cita rls_admin_atual() em duas politicas novas: sai
+  // primeiro, em ordem inversa da aplicacao, pelo mesmo motivo (o rollback da 97 recusa enquanto qualquer uma a usa).
+  // Definicao unica em tests/banco/definir-cargo-posterior.cjs; nao faz nada se a migration nao estiver no ar.
+  await require("./definir-cargo-posterior.cjs").desfazerDefinirCargoNaTransacao(
+    c,
+  );
   if ((await c.query(EX_ADMIN_RESTO_DO_PAINEL.noAr)).rows[0].sim) {
     const arquivo = path.join(
       __dirname,

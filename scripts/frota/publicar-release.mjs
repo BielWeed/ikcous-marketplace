@@ -596,6 +596,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "86b-antes-ex-admin-no-resto-do-painel-base-vigente",
   "87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado",
   "87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente",
+  "88a-conferir-so-o-dono-define-cargo-aplicado",
+  "88b-antes-so-o-dono-define-cargo-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

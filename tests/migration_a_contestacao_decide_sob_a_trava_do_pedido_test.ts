@@ -313,6 +313,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/admin-atual-endurecimento-viva.cjs",
     // 20261382: o resultado mostra tarifa, juro e quebra como despesa (sinal das linhas do grupo financeiro; controle com o corpo anterior, mutantes, rollback e portoes 8e/45a/87a/87b).
     "tests/banco/fin-dre-sinal-viva.cjs",
+    // 20261383: so o dono da loja define cargo (dono nomeia e remove, nomeado nao nomeia, ninguem rebaixa o dono, PATCH direto barrado, log, EXECUTE, concorrencia real, mutantes, rollback, consultas 88a/88b).
+    "tests/banco/definir-cargo-so-o-dono-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -426,6 +428,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/admin-atual-endurecimento-viva.cjs",
     // 20261382: o resultado mostra tarifa, juro e quebra como despesa (sinal das linhas do grupo financeiro; controle com o corpo anterior, mutantes, rollback e portoes 8e/45a/87a/87b).
     "tests/banco/fin-dre-sinal-viva.cjs",
+    // 20261383: so o dono da loja define cargo (dono nomeia e remove, nomeado nao nomeia, ninguem rebaixa o dono, PATCH direto barrado, log, EXECUTE, concorrencia real, mutantes, rollback, consultas 88a/88b).
+    "tests/banco/definir-cargo-so-o-dono-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

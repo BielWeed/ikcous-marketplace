@@ -186,6 +186,8 @@ on:
       - "scripts/publicacao/consultas/86b-antes-ex-admin-no-resto-do-painel-base-vigente.sql"
       - "scripts/publicacao/consultas/87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado.sql"
       - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
+      - "scripts/publicacao/consultas/88a-conferir-so-o-dono-define-cargo-aplicado.sql"
+      - "scripts/publicacao/consultas/88b-antes-so-o-dono-define-cargo-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -341,6 +343,8 @@ on:
       - "scripts/publicacao/consultas/86b-antes-ex-admin-no-resto-do-painel-base-vigente.sql"
       - "scripts/publicacao/consultas/87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado.sql"
       - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
+      - "scripts/publicacao/consultas/88a-conferir-so-o-dono-define-cargo-aplicado.sql"
+      - "scripts/publicacao/consultas/88b-antes-so-o-dono-define-cargo-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -553,6 +557,14 @@ jobs:
       - name: Prova viva do ex-admin no resto do painel (migration 20261381000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-endurecimento-viva.cjs
+      # Migration 20261383000000 (so o dono da loja define cargo): tabelas dono_da_loja e cargo_log, a RPC definir_cargo e o
+      # gatilho tr_papel_so_pelo_definir_cargo em profiles. O dono nomeia/remove; o nomeado, o ex-admin, o cliente, anon e
+      # service_role nao; ninguem rebaixa o dono; PATCH direto em profiles.role falha (cliente segue desfeito em silencio);
+      # log, leitura/escrita das tabelas, EXECUTE, bordas (dono nao cadastrado, dono sem ser admin, corrida real de duas
+      # conexoes), reaplicar, rollback comum e destrutivo, 8 sabotagens do preflight, posflight sem BEGIN, 11 mutantes. CLONE proprio.
+      - name: Prova viva de so o dono da loja definir cargo (migration 20261383000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/definir-cargo-so-o-dono-viva.cjs
       # Migration 20261197000000 (o dinheiro exige o admin de agora): admin
       # rebaixado com JWT velho — nas duas direções da contradição auth.users
       # × profiles — é recusado nas seis RPCs sem escrever nada e não lê

@@ -46,7 +46,11 @@ projeto. A regra prática, sem exceção:
 
 **Papéis (RLS).** O papel mora em `profiles.role` (CHECK: `admin | gerente | vendedor |
 customer`) — **lojista = staff** (`admin` manda: `is_admin()`, SECURITY DEFINER, é a porta
-do painel; o front espelha via RPC com cache). `public_profiles` é a projeção pública.
+do painel; o front espelha via RPC com cache). **Quem muda cargo:** só `definir_cargo()`
+(20261383), e só o **dono da loja** — linha única em `dono_da_loja`, cadastrada à mão
+(comando no cabeçalho da migration), conferida no banco e nunca no JWT; o gatilho
+`tr_papel_so_pelo_definir_cargo` barra UPDATE direto em `profiles.role`; `cargo_log` registra.
+`public_profiles` é a projeção pública.
 RLS de pedidos: `auth.uid() = user_id` — **convidado não vê pedido nenhum sem OTP**.
 
 **Entidades (36 tabelas vivas).** Catálogo: categorias → produtos → product_variants;

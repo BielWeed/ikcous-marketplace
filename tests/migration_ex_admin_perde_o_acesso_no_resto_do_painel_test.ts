@@ -282,7 +282,13 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
     "tests/banco/pagamentos-rpc-viva.cjs",
   ]) {
     const t = lerRaiz(arq);
-    assertStringIncludes(t, "EX_ADMIN_RESTO_DO_PAINEL,\n];");
+    // As posteriores entram na ordem da aplicacao; a 20261383 (DEFINIR_CARGO) vem depois desta e fecha a lista.
+    assert(
+      /EX_ADMIN_RESTO_DO_PAINEL,\n(?:\s*\/\/[^\n]*\n)*\s*DEFINIR_CARGO,\n\];/.test(
+        t,
+      ),
+      `${arq}: EX_ADMIN_RESTO_DO_PAINEL seguido so de DEFINIR_CARGO no fim da lista`,
+    );
     assertStringIncludes(
       t,
       'require("./ex-admin-resto-do-painel-posterior.cjs")',
