@@ -192,7 +192,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
 
     digitar("phone", "+55 34 99999-8888");
 
-    const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações")!;
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações")!;
     await act(async () => {
       botaoSalvar.click();
     });
@@ -241,7 +241,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
 
     expect(telefone.value).toBe("553499999888");
 
-    const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações")!;
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações")!;
     await act(async () => {
       botaoSalvar.click();
     });
@@ -267,7 +267,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
 
     digitar("phone", "349999988"); // 9 dígitos — nem fixo, nem celular
 
-    const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações")!;
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações")!;
     await act(async () => {
       botaoSalvar.click();
     });
@@ -295,7 +295,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
     await montarComPerfilCarregado();
 
     // Não digita nada no campo WhatsApp — permanece "".
-    const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações")!;
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações")!;
     await act(async () => {
       botaoSalvar.click();
     });
@@ -314,7 +314,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
 
     digitar("phone", "34999998888");
 
-    const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações")!;
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações")!;
     await act(async () => {
       botaoSalvar.click();
     });
@@ -364,7 +364,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
     // A pessoa mexe SÓ no nome — nunca dispara o onChange do campo WhatsApp.
     digitar("full_name", "Fulano Editado");
 
-    const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações")!;
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações")!;
     await act(async () => {
       botaoSalvar.click();
     });

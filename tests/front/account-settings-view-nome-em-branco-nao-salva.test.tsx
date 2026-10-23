@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Nome em branco na Conta (caçada de 14/10/2026): a cliente apagava o nome, tocava em "Salvar Alterações" e via
+// Nome em branco na Conta (caçada de 14/10/2026): a cliente apagava o nome, tocava em "Salvar alterações" e via
 // "Perfil atualizado com sucesso" — mas o banco gravava o texto vazio (`COALESCE(p_full_name, full_name)` só protege
 // contra NULL, e '' não é NULL). O cabeçalho passava a mostrar o começo do e-mail e o nome público dela (avaliações,
 // perguntas) ficava vazio. Só espaços passava igual, porque o texto nunca era aparado.
@@ -105,7 +105,7 @@ function localizarBotaoPorTexto(texto: string) {
 }
 
 async function salvar() {
-  const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações")!;
+  const botaoSalvar = localizarBotaoPorTexto("Salvar alterações")!;
   await act(async () => {
     botaoSalvar.click();
   });
