@@ -816,7 +816,10 @@ export function CheckoutViewDaConta({
   // está travado).
   const total =
     propTotal ?? ctxSubtotal + (ctxFreteIndefinido ? 0 : ctxShipping);
-  const onClearCart = propOnClearCart ?? ctxClearCart;
+  // Pedido concluído limpa o carrinho em silêncio: o aviso "Carrinho limpo" é
+  // só de quando a pessoa esvazia, não vai por cima da tela de sucesso.
+  const onClearCart =
+    propOnClearCart ?? (() => ctxClearCart({ silencioso: true }));
 
   // A MODALIDADE DO FRETE (regra do dono, 21/09/2026): envio por
   // TRANSPORTADORA (Melhor Envio/Frenet — qualquer id que não seja

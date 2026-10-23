@@ -1,4 +1,3 @@
-import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
@@ -27,19 +26,15 @@ import {
 } from "@/utils/covers";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ArrowRight,
   Camera,
   Check,
-  ChevronDown,
   ChevronRight,
-  ChevronUp,
   CreditCard,
   Loader2,
   LogOut,
-  MapPin,
+  type LucideIcon,
   Package,
   Plus,
-  Settings,
   Shield,
   Store,
   Trash2,
@@ -80,6 +75,55 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import { haptic } from "@/utils/haptic";
+import { formatarWhatsAppParaExibicao } from "@/utils/telefone";
+
+// Cartão branco padrão das seções do Perfil.
+const CARTAO = "rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm";
+
+// Linha de atalho (Segurança e conta, Sobre a loja, Encerrar sessão): alvo de
+// toque de 64 px; `perigo` pinta de vermelho e some com a setinha.
+function LinhaDoMenu({
+  icone: Icone,
+  titulo,
+  descricao,
+  onClick,
+  perigo = false,
+}: {
+  icone: LucideIcon;
+  titulo: string;
+  descricao: string;
+  onClick: () => void;
+  perigo?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-16 w-full items-center gap-3 px-5 py-3 text-left transition-colors ${perigo ? "hover:bg-red-50" : "hover:bg-zinc-50"}`}
+    >
+      <span
+        aria-hidden="true"
+        className={`flex size-10 shrink-0 items-center justify-center rounded-full ${perigo ? "bg-red-50 text-red-600" : "bg-zinc-100 text-zinc-700"}`}
+      >
+        <Icone className="size-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span
+          className={`block text-base font-bold ${perigo ? "text-red-700" : "text-zinc-900"}`}
+        >
+          {titulo}
+        </span>
+        <span className="block text-sm text-zinc-600">{descricao}</span>
+      </span>
+      {!perigo && (
+        <ChevronRight
+          aria-hidden="true"
+          className="size-5 shrink-0 text-zinc-500"
+        />
+      )}
+    </button>
+  );
+}
 
 interface ProfileViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -366,6 +410,19 @@ export function ProfileView({
     );
   }, [orders]);
 
+  // "Cliente desde mês/ano": só com a data de criação que a conta JÁ traz no
+  // contexto de auth; sem ela (ou ilegível) o selo some, nada é inventado.
+  const clienteDesde = useMemo(() => {
+    const bruto = user?.created_at ?? profile?.created_at;
+    const data = bruto ? new Date(bruto) : null;
+    if (!data || Number.isNaN(data.getTime())) return null;
+    const mes = data
+      .toLocaleDateString("pt-BR", { month: "short" })
+      .replace(".", "");
+    return `${mes}/${data.getFullYear()}`;
+  }, [user, profile]);
+  const whatsapp = String(profile?.whatsapp ?? "").trim();
+
   if (authLoading) {
     return <ProfileSkeleton />;
   }
@@ -386,17 +443,19 @@ export function ProfileView({
         {/* Visual Glassmorphism overlay for gradient/depth */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/10" />
 
-        {/* Edit Cover Button */}
+        {/* Trocar capa: botão com a palavra "Capa" (antes era só um ícone) */}
         <button
           type="button"
           onClick={() => {
             setIsCoverModalOpen(true);
             haptic.light();
           }}
-          className="absolute right-4 top-4 z-10 flex size-10 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white shadow-lg backdrop-blur-md transition-all hover:bg-black/60 active:scale-90"
+          className="absolute right-4 top-4 z-10 flex h-11 items-center gap-2 rounded-full bg-black/60 px-4 text-sm font-semibold text-white backdrop-blur-md transition-all hover:bg-black/70 active:scale-95"
           title="Alterar capa de fundo"
+          aria-label="Alterar capa de fundo"
         >
-          <Camera className="size-4" />
+          <Camera aria-hidden="true" className="size-4" />
+          Capa
         </button>
       </div>
 
@@ -404,213 +463,174 @@ export function ProfileView({
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="mx-auto max-w-md space-y-6 px-4"
+        className="mx-auto max-w-md space-y-4 px-4"
       >
-        {/* Header Info - Shifted Up to Overlap Cover */}
+        {/* Cabeçalho: avatar sobreposto à capa, nome e e-mail legíveis */}
         <motion.div
           variants={itemVariants}
-          className="relative z-10 -mt-14 flex flex-col items-center justify-center pb-4"
+          className="relative z-10 -mt-14 pb-2"
         >
-          {/* Clickable Avatar with Hover Camera Overlay */}
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={openAvatarModal}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                openAvatarModal();
-              }
-            }}
-            className="group/avatar hover:scale-102 relative mb-4 flex size-28 cursor-pointer items-center justify-center overflow-hidden rounded-[28px] border-[6px] border-white bg-white shadow-premium transition-transform duration-300 focus:outline-none focus:ring-2 focus:ring-zinc-900"
-          >
-            {profile?.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt="Profile Avatar"
-                className="size-full object-cover duration-300 animate-in fade-in"
-              />
-            ) : (
-              <User className="size-12 text-zinc-300 duration-300 animate-in fade-in" />
-            )}
-            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 transition-opacity duration-300 group-hover/avatar:opacity-100">
-              <Camera className="size-6" />
-            </div>
-            {isUpdatingAvatar && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                <Loader2 className="size-6 animate-spin text-zinc-600" />
+          <div className="flex items-end justify-between gap-3">
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Trocar foto de perfil"
+              onClick={openAvatarModal}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openAvatarModal();
+                }
+              }}
+              className="relative size-28 shrink-0 cursor-pointer rounded-[28px] focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            >
+              <div className="flex size-full items-center justify-center overflow-hidden rounded-[28px] border-[6px] border-white bg-zinc-100 shadow-premium">
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt="Profile Avatar"
+                    className="size-full object-cover duration-300 animate-in fade-in"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="text-4xl font-bold text-zinc-600"
+                  >
+                    {profileName.trim().charAt(0).toUpperCase()}
+                  </span>
+                )}
+                {isUpdatingAvatar && (
+                  <div className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-white/80">
+                    <Loader2 className="size-6 animate-spin text-zinc-600" />
+                  </div>
+                )}
               </div>
+              {/* Emblema sempre visível (no celular não existe hover) */}
+              <span
+                aria-hidden="true"
+                className="absolute -bottom-1 -right-1 flex size-9 items-center justify-center rounded-full border-2 border-white bg-zinc-900 text-white"
+              >
+                <Camera className="size-4" />
+              </span>
+            </div>
+            {clienteDesde && (
+              <span className="mb-2 rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700">
+                Cliente desde {clienteDesde}
+              </span>
             )}
           </div>
 
-          <h1 className="text-3xl font-black leading-none tracking-tighter text-zinc-900 transition-all duration-500">
+          <h1 className="mt-3 break-words text-2xl font-bold leading-tight text-zinc-900">
             {profileName}
           </h1>
-          <p className="mt-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400 opacity-60 transition-colors">
-            {user.email}
-          </p>
+          <p className="mt-1 break-all text-base text-zinc-600">{user.email}</p>
 
           {isAdmin && (
-            <div className="mt-6 w-full rounded-3xl border border-zinc-800 bg-zinc-900 p-4 text-white">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-white/10 text-white">
-                    <Settings className="size-5" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white">
-                      Modo Admin
-                    </p>
-                    <p className="text-[9px] font-bold uppercase tracking-tighter text-zinc-400">
-                      Painel de Controle Ativo
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => onNavigate("admin-dashboard")}
-                  className="h-9 rounded-full bg-white px-4 text-[9px] font-black uppercase tracking-widest text-zinc-900 transition-all hover:bg-zinc-100 active:scale-95"
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-zinc-900 p-3 text-white">
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  aria-hidden="true"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white/10"
                 >
-                  Acessar Painel
-                </Button>
+                  <Shield className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-base font-bold leading-tight">
+                    Modo admin
+                  </p>
+                  <p className="text-sm text-zinc-300">
+                    Painel de controle ativo
+                  </p>
+                </div>
               </div>
+              <Button
+                onClick={() => onNavigate("admin-dashboard")}
+                className="h-11 shrink-0 rounded-full bg-white px-4 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+              >
+                Acessar painel
+              </Button>
             </div>
           )}
         </motion.div>
 
-        {/* Delivery Addresses */}
-        <motion.div
-          variants={itemVariants}
-          className={`overflow-hidden border border-zinc-100 bg-white shadow-sm transition-all duration-300 ${
-            !isAddressesExpanded ? "rounded-[1.75rem]" : "rounded-[2.5rem]"
-          }`}
-        >
-          <div
-            className={`flex items-center justify-between border-b border-zinc-50 bg-zinc-50/50 transition-all duration-300 ${
-              !isAddressesExpanded ? "px-5 py-3" : "p-6"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <MapPin
-                className={`text-zinc-400 transition-all duration-300 ${!isAddressesExpanded ? "size-3.5" : "size-4"}`}
-              />
-              <span
-                className={`font-black uppercase tracking-[0.2em] text-zinc-500 transition-all duration-300 ${
-                  !isAddressesExpanded ? "text-[9px]" : "text-[10px]"
-                }`}
-              >
-                Endereços de Entrega
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onNavigate("address-form")}
-              className={`rounded-full border border-zinc-100 bg-white px-3 font-black uppercase tracking-widest transition-all duration-300 hover:bg-zinc-100 ${
-                !isAddressesExpanded ? "h-7 text-[8px]" : "h-8 text-[9px]"
-              }`}
+        {/* Meus dados: o que a conta já tem; Editar abre Segurança e conta */}
+        <motion.section variants={itemVariants} className={CARTAO}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-zinc-900">Meus dados</h2>
+            <button
+              type="button"
+              onClick={() => onNavigate("account-settings")}
+              className="flex h-11 items-center gap-0.5 text-base font-semibold text-zinc-900"
             >
-              <Plus
-                className={`mr-1 transition-all duration-300 ${!isAddressesExpanded ? "size-2.5" : "size-3"}`}
-              />
-              Novo
-            </Button>
+              Editar
+              <ChevronRight aria-hidden="true" className="size-4" />
+            </button>
           </div>
-          <div
-            className={`transition-all duration-300 ${!isAddressesExpanded ? "p-3.5" : "p-6"}`}
-          >
-            {addressesLoading && addresses.length === 0 ? (
-              <div className="animate-pulse space-y-4">
-                <div className="flex h-28 flex-col justify-between rounded-3xl border border-transparent bg-zinc-50/50 p-6">
-                  <div className="flex items-center gap-3">
-                    <div className="size-10 rounded-2xl bg-zinc-100" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 w-1/3 rounded bg-zinc-100" />
-                      <div className="h-3 w-1/4 rounded bg-zinc-100" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="h-3 w-3/4 rounded bg-zinc-100" />
-                    <div className="h-3 w-1/2 rounded bg-zinc-100" />
-                  </div>
+          <div className="divide-y divide-zinc-100 border-t border-zinc-100">
+            <div className="py-3">
+              <p className="text-sm text-zinc-600">Nome completo</p>
+              <p className="break-words text-base font-medium text-zinc-900">
+                {profileName}
+              </p>
+            </div>
+            {profile &&
+              (whatsapp ? (
+                <div className="py-3">
+                  <p className="text-sm text-zinc-600">WhatsApp</p>
+                  <p className="text-base font-medium text-zinc-900">
+                    {formatarWhatsAppParaExibicao(whatsapp)}
+                  </p>
                 </div>
-              </div>
-            ) : (
-              <>
-                {erroAoCarregar && (
-                  <div
-                    role="alert"
-                    className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800"
-                  >
-                    <p className="flex-1 text-sm">
-                      Não conseguimos carregar seus endereços agora.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => void fetchAddresses()}
-                      disabled={addressesLoading}
-                      className="min-h-11 rounded-xl border border-red-200 px-3 text-xs font-bold hover:bg-red-100 disabled:opacity-50"
-                    >
-                      Tentar de novo
-                    </button>
-                  </div>
-                )}
-                {(addresses.length > 0 || !erroAoCarregar) && (
-                  <AddressList
-                    addresses={addresses}
-                    compact={!isAddressesExpanded}
-                    showMaps
-                    onEdit={(addr) => {
-                      onNavigate("address-form", addr.id);
-                    }}
-                    onDelete={deleteAddress}
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("account-settings")}
+                  className="flex min-h-11 w-full items-center justify-between gap-3 py-3 text-left"
+                >
+                  <span>
+                    <span className="block text-sm text-zinc-600">
+                      WhatsApp
+                    </span>
+                    <span className="block text-base text-zinc-600">
+                      Adicionar WhatsApp
+                    </span>
+                  </span>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-5 shrink-0 text-zinc-500"
                   />
-                )}
-                {addresses.length > 0 && (
-                  <button
-                    onClick={() => {
-                      setIsAddressesExpanded(!isAddressesExpanded);
-                      haptic.light();
-                    }}
-                    className={`flex w-full items-center justify-center gap-1.5 rounded-xl border-t border-zinc-100 bg-zinc-50/10 font-black uppercase tracking-widest text-zinc-400 transition-all duration-300 hover:bg-zinc-50/35 hover:text-zinc-900 ${
-                      !isAddressesExpanded
-                        ? "mt-3 py-2 text-[8px]"
-                        : "mt-4 py-3 text-[10px]"
-                    }`}
-                  >
-                    {isAddressesExpanded ? (
-                      <>
-                        Ver menos detalhes
-                        <ChevronUp className="size-3.5" />
-                      </>
-                    ) : (
-                      <>
-                        Ver mais detalhes
-                        <ChevronDown className="size-3.5" />
-                      </>
-                    )}
-                  </button>
-                )}
-              </>
-            )}
+                </button>
+              ))}
+            <div className="pt-3">
+              <p className="text-sm text-zinc-600">E-mail</p>
+              <p className="break-all text-base font-medium text-zinc-900">
+                {user.email}
+              </p>
+            </div>
           </div>
-        </motion.div>
+        </motion.section>
 
-        {/* Active Orders */}
+        {/* Pedidos em andamento (mesmo dado de antes, em cartão) */}
         {activeOrders.length > 0 && (
-          <motion.div
-            variants={itemVariants}
-            className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
-          >
-            <div className="flex items-center gap-3 border-b border-zinc-50 bg-zinc-50/50 p-6">
-              <div className="size-2 animate-pulse rounded-full bg-emerald-500" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                Pedidos em Andamento
+          <motion.section variants={itemVariants} className={CARTAO}>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-lg font-bold text-zinc-900">
+                <span
+                  aria-hidden="true"
+                  className="size-2.5 rounded-full bg-emerald-500"
+                />
+                Pedidos em andamento
+              </h2>
+              <span
+                data-testid="contagem-em-andamento"
+                className="flex size-8 items-center justify-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-900"
+              >
+                {activeOrders.length}
               </span>
             </div>
-            <div className="space-y-6 p-6">
+            <div className="mt-4 space-y-4">
               {(isOrdersExpanded ? activeOrders : activeOrders.slice(0, 1)).map(
-                (order, idx) => {
+                (order) => {
                   const firstItem = order.items?.[0];
                   const firstItemImage = firstItem?.image;
                   const firstItemName = firstItem?.name || "Pedido";
@@ -618,11 +638,10 @@ export function ProfileView({
                   return (
                     <div
                       key={order.id}
-                      className={`space-y-4 ${idx > 0 ? "border-t border-zinc-100 pt-6" : ""}`}
+                      className="space-y-4 rounded-2xl border border-zinc-100 bg-zinc-50 p-4"
                     >
-                      <div className="flex items-center gap-4">
-                        {/* Circular product thumbnail */}
-                        <div className="flex size-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-zinc-200">
                           {firstItemImage ? (
                             <img
                               src={firstItemImage}
@@ -630,46 +649,46 @@ export function ProfileView({
                               className="size-full object-cover"
                             />
                           ) : (
-                            <Package className="size-5 text-zinc-300" />
+                            <Package
+                              aria-hidden="true"
+                              className="size-6 text-zinc-500"
+                            />
                           )}
                         </div>
-                        {/* Product and order details */}
                         <div className="min-w-0 flex-1">
-                          <h3 className="truncate text-[11px] font-black uppercase tracking-wider text-zinc-900">
+                          <h3 className="truncate text-base font-bold text-zinc-900">
                             {firstItemName}
                           </h3>
                           {order.items.length > 1 && (
-                            <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-400">
+                            <p className="text-sm text-zinc-600">
                               +{order.items.length - 1}{" "}
                               {order.items.length - 1 === 1
                                 ? "outro item"
                                 : "outros itens"}
                             </p>
                           )}
-                          <div className="mt-1 flex items-center gap-2">
-                            <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[9px] font-black tracking-widest text-zinc-500">
-                              ID #{numeroDoPedido(order.id)}
-                            </span>
-                            <span className="size-1.5 rounded-full bg-zinc-200" />
-                            <span className="text-[9px] font-bold tracking-tight text-zinc-400">
-                              {new Date(order.createdAt).toLocaleDateString(
-                                "pt-BR",
-                              )}
-                            </span>
-                          </div>
                         </div>
                       </div>
+
+                      <p className="w-fit rounded-lg bg-zinc-100 px-2.5 py-1 text-sm font-medium text-zinc-700">
+                        #{numeroDoPedido(order.id)} ·{" "}
+                        {new Date(order.createdAt).toLocaleDateString("pt-BR")}
+                      </p>
 
                       {/* Pedido pago pelo app e ainda não pago: o cartão não
                           pode parecer um pedido "Recebido" qualquer (em 30
                           min ele é cancelado). Mesmo selo da lista de pedidos
                           e mesma regra de "Retomar pagamento" do detalhe. */}
-                      <CustomerPaymentBadge
-                        paymentStatus={order.paymentStatus}
-                        orderStatus={order.status}
-                      />
+                      <div>
+                        <CustomerPaymentBadge
+                          paymentStatus={order.paymentStatus}
+                          orderStatus={order.status}
+                          variant="perfil"
+                        />
+                      </div>
 
                       <OrderTimeline
+                        compacto
                         status={order.status}
                         retiradaNaLoja={order.retiradaNaLoja}
                       />
@@ -682,28 +701,26 @@ export function ProfileView({
                         }) && (
                           <Button
                             onClick={() => onRetomarPagamento(order.id)}
-                            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-[10px] font-black uppercase tracking-widest text-white shadow-sm transition-all active:scale-95"
+                            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-base font-semibold text-white"
                           >
                             <CreditCard className="size-4" aria-hidden="true" />
                             Retomar pagamento
                           </Button>
                         )}
 
-                      <div className="flex gap-2 pt-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
-                          variant="outline"
                           onClick={() => onNavigate("order-details", order.id)}
-                          className="group h-12 flex-1 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest"
+                          className="h-12 flex-1 rounded-2xl bg-zinc-900 text-base font-semibold text-white hover:bg-zinc-800"
                         >
-                          Ver Detalhes
-                          <ArrowRight className="ml-2 size-3 transition-transform group-hover:translate-x-1" />
+                          Ver detalhes
                         </Button>
                         {lojaTemWhatsappAgora && (
                           <Button
+                            variant="outline"
                             onClick={() => handleWhatsAppSupport(order.id)}
-                            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl border-none bg-emerald-600 text-[10px] font-black uppercase tracking-widest text-white shadow-sm shadow-emerald-600/10 transition-all hover:bg-emerald-700 active:scale-95"
+                            className="h-12 flex-1 rounded-2xl border-2 border-solid border-zinc-200 bg-white text-base font-semibold text-zinc-900 hover:bg-zinc-50"
                           >
-                            <IconeWhatsapp className="size-[18px]" />
                             WhatsApp
                           </Button>
                         )}
@@ -715,106 +732,149 @@ export function ProfileView({
             </div>
             {activeOrders.length > 1 && (
               <button
+                type="button"
                 onClick={() => {
                   setIsOrdersExpanded(!isOrdersExpanded);
                   haptic.light();
                 }}
-                className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 bg-zinc-50/10 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:bg-zinc-50/35 hover:text-zinc-900"
+                className="mt-2 flex h-11 w-full items-center justify-center gap-1 text-base font-semibold text-zinc-600 hover:text-zinc-900"
               >
-                {isOrdersExpanded ? (
-                  <>
-                    Ver menos
-                    <ChevronUp className="size-3.5" />
-                  </>
-                ) : (
-                  <>
-                    Ver mais ({activeOrders.length - 1}{" "}
-                    {activeOrders.length - 1 === 1 ? "outro" : "outros"})
-                    <ChevronDown className="size-3.5" />
-                  </>
-                )}
+                {isOrdersExpanded
+                  ? "Ver menos"
+                  : `Ver mais (${activeOrders.length - 1} ${
+                      activeOrders.length - 1 === 1 ? "outro" : "outros"
+                    })`}
+                <ChevronRight
+                  aria-hidden="true"
+                  className={`size-4 ${isOrdersExpanded ? "-rotate-90" : ""}`}
+                />
               </button>
             )}
-          </motion.div>
+          </motion.section>
         )}
 
-        {/* Order History & Menu */}
+        {/* Endereços de entrega: carregando, erro, vazio ou lista */}
+        <motion.section variants={itemVariants} className={CARTAO}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-zinc-900">
+              Endereços de entrega
+            </h2>
+            <Button
+              onClick={() => onNavigate("address-form")}
+              className="h-11 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-900 hover:bg-zinc-200"
+            >
+              <Plus aria-hidden="true" className="size-4" />
+              Novo
+            </Button>
+          </div>
+          <div className="mt-3">
+            {addressesLoading && addresses.length === 0 ? (
+              <div
+                role="status"
+                aria-busy="true"
+                className="animate-pulse space-y-4 py-2"
+              >
+                <span className="sr-only">Carregando endereços</span>
+                {[0, 1].map((i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="size-10 shrink-0 rounded-full bg-zinc-100" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3.5 w-full rounded bg-zinc-100" />
+                      <div className="h-3 w-2/5 rounded bg-zinc-100" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                {erroAoCarregar && (
+                  <div
+                    role="alert"
+                    className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800"
+                  >
+                    <p className="text-base">
+                      Não conseguimos carregar seus endereços agora.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void fetchAddresses()}
+                      disabled={addressesLoading}
+                      className="mt-3 min-h-11 rounded-xl border border-solid border-red-200 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Tentar de novo
+                    </button>
+                  </div>
+                )}
+                {(addresses.length > 0 || !erroAoCarregar) && (
+                  <AddressList
+                    addresses={addresses}
+                    compact={!isAddressesExpanded}
+                    showMaps
+                    onAdd={() => onNavigate("address-form")}
+                    onEdit={(addr) => {
+                      onNavigate("address-form", addr.id);
+                    }}
+                    onDelete={deleteAddress}
+                  />
+                )}
+                {addresses.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddressesExpanded(!isAddressesExpanded);
+                      haptic.light();
+                    }}
+                    className="mt-1 flex h-11 w-full items-center justify-center gap-1 text-base font-semibold text-zinc-600 hover:text-zinc-900"
+                  >
+                    {isAddressesExpanded
+                      ? "Ver menos detalhes"
+                      : "Ver detalhes dos endereços"}
+                    <ChevronRight
+                      aria-hidden="true"
+                      className={`size-4 ${isAddressesExpanded ? "-rotate-90" : ""}`}
+                    />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </motion.section>
+
+        {/* Atalhos. "Sobre a loja" — a marca do lojista assinante (peça 24;
+            ordem do dono, 14/09): logo ABAIXO de Segurança e conta, no mesmo
+            cartão, visível a TODOS os usuários (não mora em isAdmin nem em
+            outro ramo condicional). */}
         <motion.div
           variants={itemVariants}
-          className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
+          className="divide-y divide-zinc-100 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm"
         >
-          <button
+          <LinhaDoMenu
+            icone={Shield}
+            titulo="Segurança e conta"
+            descricao="Alterar senha e dados pessoais"
             onClick={() => onNavigate("account-settings")}
-            className="group flex w-full items-center justify-between border-b border-zinc-50 p-6 transition-colors hover:bg-zinc-50"
-          >
-            <div className="flex items-center gap-4">
-              <div className="flex size-10 items-center justify-center rounded-2xl bg-zinc-50 transition-colors group-hover:bg-white">
-                <Shield className="size-5 text-zinc-400" />
-              </div>
-              <div className="text-left">
-                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">
-                  Segurança e Conta
-                </p>
-                <p className="text-[9px] font-bold uppercase tracking-tighter text-zinc-400">
-                  Alterar senha e dados pessoais
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
-          </button>
-
-          {/* Sobre a Loja — a marca do lojista assinante (peça 24). Ordem do
-              dono (14/09): logo ABAIXO de Segurança e Conta, no mesmo cartão;
-              Encerrar Sessão ganha cartão próprio no fim do perfil. Visível a
-              TODOS os usuários: não mora dentro de isAdmin nem de nenhum
-              outro ramo condicional. */}
-          <button
-            type="button"
+          />
+          <LinhaDoMenu
+            icone={Store}
+            titulo="Sobre a loja"
+            descricao="A loja por trás deste app"
             onClick={() => onNavigate("about-store")}
-            className="group flex w-full items-center justify-between p-6 transition-colors hover:bg-zinc-50"
-          >
-            <div className="flex items-center gap-4">
-              <div className="flex size-10 items-center justify-center rounded-2xl bg-zinc-50 transition-colors group-hover:bg-white">
-                <Store className="size-5 text-zinc-400" />
-              </div>
-              <div className="text-left">
-                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">
-                  Sobre a Loja
-                </p>
-                <p className="text-[9px] font-bold uppercase tracking-tighter text-zinc-400">
-                  A loja por trás deste app
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
-          </button>
+          />
         </motion.div>
 
-        {/* Encerrar Sessão — cartão PRÓPRIO no fim do perfil (ordem do dono,
+        {/* Encerrar sessão — cartão PRÓPRIO no fim do perfil (ordem do dono,
             14/09): a ação destrutiva fica separada das navegações. */}
         <motion.div
           variants={itemVariants}
-          className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
+          className="overflow-hidden rounded-3xl border border-red-100 bg-white shadow-sm"
         >
-          <button
+          <LinhaDoMenu
+            perigo
+            icone={LogOut}
+            titulo="Encerrar sessão"
+            descricao="Sair da sua conta"
             onClick={logout}
-            className="group flex w-full items-center justify-between p-6 transition-colors hover:bg-red-50"
-          >
-            <div className="flex items-center gap-4">
-              <div className="flex size-10 items-center justify-center rounded-2xl bg-red-50 transition-colors group-hover:bg-white">
-                <LogOut className="size-5 text-red-500" />
-              </div>
-              <div className="text-left">
-                <p className="text-[10px] font-black uppercase tracking-widest text-red-600">
-                  Encerrar Sessão
-                </p>
-                <p className="text-[9px] font-bold uppercase tracking-tighter text-red-400">
-                  Sair da sua conta premium
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="size-4 text-red-200 transition-transform group-hover:translate-x-1" />
-          </button>
+          />
         </motion.div>
       </motion.div>
 
