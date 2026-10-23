@@ -20,6 +20,11 @@
 // coisas juntas: só UM balão aparece, e ele escreve "−R$ 187,40" (sinal
 // tipográfico U+2212), não "R$ 187,40".
 //
+// DESENHO DE 22/10/2026: o cartão passou a mostrar UM gráfico por vez, numa
+// chave "Saldo | Entradas e saídas" (padrão = Saldo). O par sincronizado
+// (`syncId`) deixou de existir; o balão nasce no gráfico da vez e continua
+// único e com o sinal certo — o teste agora prova isso nos DOIS gráficos.
+//
 // Ajuste pedido pelo coordenador depois da 1ª revisão: aquele −R$ 187,40
 // nunca foi um saldo real — é a reconstrução "hoje − Σ depois" andando para
 // trás de um marco que `fin__saldos` respeita e o front não respeitava (o
@@ -141,6 +146,36 @@ function tooltips(tela: HTMLElement) {
   return tela.querySelectorAll('[data-testid="fluxo-tooltip"]');
 }
 
+function escolherGrafico(tela: HTMLElement, rotulo: string) {
+  const botao = [
+    ...tela.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"),
+  ].find((b) => (b.textContent ?? "").trim() === rotulo);
+  if (!botao) throw new Error(`chave "${rotulo}" não existe`);
+  act(() => {
+    botao.click();
+  });
+  act(() => {
+    vi.advanceTimersByTime(300);
+  });
+}
+
+/** Passa o mouse no único gráfico da tela (1ª banda: clientX=90). */
+function tocarNoGrafico(tela: HTMLElement) {
+  const graficos = tela.querySelectorAll<HTMLElement>(".recharts-wrapper");
+  // Um gráfico por vez: nunca o par empilhado de antes.
+  expect(graficos).toHaveLength(1);
+  act(() => {
+    graficos[0].dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 90,
+        clientY: 100,
+      }),
+    );
+  });
+}
+
 describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", () => {
   it("antes de tocar, nenhum balão aparece", () => {
     const tela = montar(
@@ -157,7 +192,43 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
     expect(tooltips(tela)).toHaveLength(0);
   });
 
-  it("ao tocar no gráfico, aparece SÓ UM balão — e ele escreve o saldo negativo com o sinal −", () => {
+  it.each(["Saldo", "Entradas e saídas"])(
+    "ao tocar no gráfico %s, aparece SÓ UM balão — e ele escreve o saldo negativo com o sinal −",
+    (rotulo) => {
+      const tela = montar(
+        <FluxoDeCaixaGrafico
+          pontos={PONTOS}
+          carregando={false}
+          ativo={true}
+          marco={null}
+        />,
+      );
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      // O padrão é o Saldo; o outro gráfico entra pela chave.
+      if (rotulo !== "Saldo") escolherGrafico(tela, rotulo);
+
+      // O gráfico da vez: largura 320, eixo Y reserva 56px à esquerda, margem
+      // direita 8px — clientX=90 cai na 1ª banda, o dia de 29/08 (saldo −187,40).
+      tocarNoGrafico(tela);
+
+      const balões = tooltips(tela);
+      // O defeito de 27/09/2026 eram DOIS balões iguais, um em cima do outro.
+      expect(balões).toHaveLength(1);
+
+      // O Intl põe espaço inseparável depois de "R$" — mesmo tratamento de
+      // tests/front/financeiro-lib.test.ts (`semNbsp`).
+      const texto = (balões[0]?.textContent ?? "").replace(/\s/g, " ");
+      expect(texto).toContain("Sábado, 29 de agosto");
+      // Sinal tipográfico U+2212 (SINAL_DE_MENOS de src/lib/financeiro.ts),
+      // não o hífen comum nem "R$ 187,40" sem sinal nenhum.
+      expect(texto).toContain("−R$ 187,40");
+      expect(texto).not.toMatch(/(?<!−)R\$ 187,40/);
+    },
+  );
+
+  it("a chave Saldo | Entradas e saídas mostra um gráfico por vez e começa no Saldo", () => {
     const tela = montar(
       <FluxoDeCaixaGrafico
         pontos={PONTOS}
@@ -169,40 +240,28 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
     act(() => {
       vi.advanceTimersByTime(300);
     });
+    const chave = (rotulo: string) =>
+      [
+        ...tela.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"),
+      ].find((b) => (b.textContent ?? "").trim() === rotulo)!;
+    expect(chave("Saldo").getAttribute("aria-pressed")).toBe("true");
+    expect(chave("Entradas e saídas").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    // Saldo = área (sem barras); Entradas e saídas = barras (sem área).
+    expect(tela.querySelectorAll(".recharts-area").length).toBeGreaterThan(0);
+    expect(tela.querySelectorAll(".recharts-bar")).toHaveLength(0);
 
-    const graficos = tela.querySelectorAll<HTMLElement>(".recharts-wrapper");
-    expect(graficos).toHaveLength(2);
-    // O gráfico de baixo (barras de entrada/saída) — largura 320, eixo Y
-    // reserva 56px à esquerda, margem direita 8px: 2 dias dividem os
-    // (320−56−8)=256px restantes em 128px cada. clientX=90 cai na 1ª banda
-    // (56–184), o dia de 29/08 (saldo −187,40).
-    const graficoDeBaixo = graficos[1];
-
-    act(() => {
-      graficoDeBaixo.dispatchEvent(
-        new MouseEvent("mousemove", {
-          bubbles: true,
-          cancelable: true,
-          clientX: 90,
-          clientY: 100,
-        }),
-      );
-    });
-
-    const balões = tooltips(tela);
-    // O defeito relatado: os DOIS gráficos (mesmo syncId) ativam o tooltip
-    // juntos, e cada um tem seu próprio `<Tooltip content={...}>` — dois
-    // balões iguais, um em cima do outro.
-    expect(balões).toHaveLength(1);
-
-    // O Intl põe espaço inseparável depois de "R$" — mesmo tratamento de
-    // tests/front/financeiro-lib.test.ts (`semNbsp`).
-    const texto = (balões[0]?.textContent ?? "").replace(/\s/g, " ");
-    expect(texto).toContain("Sábado, 29 de agosto");
-    // Sinal tipográfico U+2212 (SINAL_DE_MENOS de src/lib/financeiro.ts),
-    // não o hífen comum nem "R$ 187,40" sem sinal nenhum.
-    expect(texto).toContain("−R$ 187,40");
-    expect(texto).not.toMatch(/(?<!−)R\$ 187,40/);
+    escolherGrafico(tela, "Entradas e saídas");
+    expect(chave("Entradas e saídas").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(tela.querySelectorAll(".recharts-area")).toHaveLength(0);
+    expect(tela.querySelectorAll(".recharts-bar").length).toBeGreaterThan(0);
+    // A tabela com os mesmos números segue disponível nos dois.
+    expect(tela.querySelector("details summary")?.textContent).toBe(
+      "Ver os números em tabela",
+    );
   });
 
   it("num dia ANTES do marco (saldo: null), o balão mostra “—” e nunca inventa o −R$ 187,40", () => {
@@ -242,18 +301,9 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
       vi.advanceTimersByTime(300);
     });
 
-    const graficoDeBaixo =
-      tela.querySelectorAll<HTMLElement>(".recharts-wrapper")[1];
-    act(() => {
-      graficoDeBaixo.dispatchEvent(
-        new MouseEvent("mousemove", {
-          bubbles: true,
-          cancelable: true,
-          clientX: 90,
-          clientY: 100,
-        }),
-      );
-    });
+    // Gráfico do Saldo (o padrão): o dia sem saldo conhecido ainda abre o
+    // balão (`filterNull={false}`), com o "—" honesto.
+    tocarNoGrafico(tela);
 
     const balões = tooltips(tela);
     expect(balões).toHaveLength(1);

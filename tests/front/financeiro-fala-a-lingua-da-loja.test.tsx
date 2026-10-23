@@ -202,18 +202,38 @@ describe("Financeiro fala a língua da loja", () => {
     expect(rpcFalso).toHaveBeenCalledWith("fin_dre", expect.any(Object));
   });
 
-  it("Contas e categorias é a última aba e leva o selo Avançado", async () => {
+  it("Contas e categorias saiu da fila de abas: abre pelo chip Contas e o selo Avançado some", async () => {
     await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
 
-    const todas = abas();
-    expect(todas.at(-1)).toBe("Contas e categorias Avançado");
-    const ultima = [
-      ...hospedeiro.querySelectorAll<HTMLElement>('[role="tab"]'),
-    ].at(-1);
-    const selo = ultima?.querySelector("[data-selo-avancado]");
-    expect(normalizar(selo?.textContent)).toBe("Avançado");
-    // Só ela é avançada.
-    expect(hospedeiro.querySelectorAll("[data-selo-avancado]")).toHaveLength(1);
+    // Desenho de 22/10/2026: as abas são só as cinco do dia a dia.
+    expect(abas()).toEqual([
+      "Visão",
+      "Extrato",
+      "Pagar e receber",
+      "Caixa",
+      "Resultado",
+    ]);
+    expect(hospedeiro.querySelectorAll("[data-selo-avancado]")).toHaveLength(0);
+
+    // A configuração mora no chip "Contas" do cabeçalho (neutro quando aberto).
+    const chip = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => normalizar(b.textContent) === "Contas")!;
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => {
+      chip.click();
+    });
+    await esperar();
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    // A visão continua se chamando "Contas e categorias".
+    const titulo = [...hospedeiro.querySelectorAll("h2")].find(
+      (h) => normalizar(h.textContent) === "Contas e categorias",
+    );
+    expect(titulo).toBeDefined();
+    // Com ela aberta, nenhuma aba aparece como ativa.
+    expect(
+      hospedeiro.querySelector('[role="tab"][data-state="active"]'),
+    ).toBeNull();
   });
 
   it("o Resultado mostra a sobra depois dos custos da venda, sem jargão", async () => {

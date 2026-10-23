@@ -337,45 +337,56 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     expect(hospedeiro.textContent).not.toContain("online_desconhecido");
   });
 
-  it("Visão: mini-cartões de vencido, próximos 7 dias e saldo por conta", async () => {
+  it("Visão: vencido em etiqueta, próximos 7 dias sempre à vista e saldo por conta em lista compacta", async () => {
     await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
 
-    for (const rotulo of ["Vencido", "Próximos 7 dias"]) {
-      const r = dt(rotulo);
-      expect(classes(r.parentElement?.parentElement), rotulo).toContain(
-        "text-xs",
+    // Desenho de 22/10/2026: o "Vencido" virou etiqueta (só quando há) e, sem
+    // vencido, a linha diz "Nada vencido" em cinza. "Próximos 7 dias" aparece
+    // nos dois cartões, com o valor.
+    const aPagar = hospedeiro.querySelector('[aria-label="A pagar"]');
+    const aReceber = hospedeiro.querySelector('[aria-label="A receber"]');
+    expect(aPagar?.querySelector("[data-vencido]")).toBeNull();
+    const nada = [...(aPagar?.querySelectorAll("p") ?? [])].find(
+      (el) => normalizar(el.textContent) === "Nada vencido",
+    );
+    comACasca(nada, ["text-zinc-400"], "Nada vencido neutro");
+    for (const cartao of [aPagar, aReceber]) {
+      const sete = [...(cartao?.querySelectorAll("p") ?? [])].find((el) =>
+        normalizar(el.textContent).startsWith("Próximos 7 dias"),
       );
-      expect(classes(r.parentElement), rotulo).toContain("flex-wrap");
-      const caixa = r.parentElement;
-      expect(classes(caixa), rotulo).toContain("items-baseline");
-      expect(classes(caixa), rotulo).not.toContain("rounded-xl");
+      expect(sete, "Próximos 7 dias à vista").toBeDefined();
+      comACasca(sete, ["text-zinc-400"], "Próximos 7 dias");
     }
-    // Sem vencido (a pagar), o indicador permanece neutro.
-    const vencidoDoAPagar = [...hospedeiro.querySelectorAll("dt")].filter(
-      (el) => normalizar(el.textContent) === "Vencido",
-    )[0];
-    comACasca(
-      vencidoDoAPagar?.parentElement,
-      ["text-zinc-400"],
-      "Vencido neutro",
-    );
-    // Com vencido a cor de estado (vermelho) fica, só a casca muda.
-    const vencidoDoAReceber = hospedeiro.querySelector(
-      '[aria-label="A receber"] dt',
-    );
-    expect(classes(vencidoDoAReceber?.parentElement)).toEqual(
-      expect.arrayContaining(["text-red-400", "flex-wrap"]),
+    expect(
+      normalizar(
+        [...(aPagar?.querySelectorAll("p") ?? [])].find((el) =>
+          normalizar(el.textContent).startsWith("Próximos 7 dias"),
+        )?.textContent,
+      ),
+    ).toContain("R$ 200,00");
+    // Com vencido a cor de estado (vermelho) fica, agora numa etiqueta.
+    const etiqueta = aReceber?.querySelector("[data-vencido]");
+    expect(normalizar(etiqueta?.textContent)).toBe("Vencido R$ 100,00");
+    expect(classes(etiqueta)).toEqual(
+      expect.arrayContaining(["text-red-400", "bg-red-400/10", "rounded-full"]),
     );
 
+    // Saldo por conta: lista compacta nome ↔ valor, sem um cartão por linha.
     const conta = hospedeiro.querySelector(
       'ul[aria-label="Saldo por conta"] li',
     );
-    comACasca(conta, CASCA_DO_CARTAO, "saldo por conta");
-    const nome = conta?.querySelector("span");
-    expect(classes(nome)).toEqual(
-      expect.arrayContaining(["text-xs", "font-semibold", "text-zinc-300"]),
+    expect(classes(conta)).toEqual(
+      expect.arrayContaining(["flex", "items-center", "justify-between"]),
     );
-    expect(classes(nome)).not.toContain("text-[11px]");
+    expect(classes(conta)).not.toContain("bg-admin-raised");
+    expect(classes(conta)).toContain("min-h-12");
+    const nome = [...(conta?.querySelectorAll("span") ?? [])].find(
+      (el) => normalizar(el.textContent) === "Conta bancária",
+    );
+    expect(nome).toBeDefined();
+    expect(classes(nome)).toEqual(
+      expect.arrayContaining(["text-sm", "text-zinc-200"]),
+    );
   });
 
   it("Extrato: Entrou, Saiu e Resultado no cartão novo", async () => {

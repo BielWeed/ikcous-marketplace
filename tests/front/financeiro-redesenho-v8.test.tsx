@@ -42,7 +42,7 @@ afterEach(() => {
   host.remove();
 });
 
-it("a barra de abas apresenta os seis destinos e mantém a seleção do Financeiro", async () => {
+it("a barra de abas apresenta os cinco destinos só com texto e mantém a seleção do Financeiro", async () => {
   await act(async () =>
     root.render(<AdminFinanceiroView onNavigate={vi.fn()} />),
   );
@@ -53,22 +53,20 @@ it("a barra de abas apresenta os seis destinos e mantém a seleção do Financei
   expect(menu).not.toBeNull();
   expect(host.querySelectorAll('[role="tablist"]')).toHaveLength(1);
   const opcoes = [...menu!.querySelectorAll<HTMLElement>('[role="tab"]')];
+  // Desenho de 22/10/2026: "Contas e categorias" saiu da fila (vira o chip
+  // "Contas" do cabeçalho) e "A pagar e receber" virou "Pagar e receber".
   expect(opcoes.map((b) => b.textContent?.replace(/\s+/g, " ").trim())).toEqual(
-    [
-      "Visão",
-      "Extrato",
-      "A pagar e receber",
-      "Caixa",
-      "Resultado",
-      "Contas e categorias Avançado",
-    ],
+    ["Visão", "Extrato", "Pagar e receber", "Caixa", "Resultado"],
   );
   expect(menu!.classList.contains("hidden")).toBe(false);
   for (const opcao of opcoes) {
     expect(opcao.classList.contains("min-h-11")).toBe(true);
-    expect(opcao.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    // Só texto: nada de ícone colorido dentro da aba.
+    expect(opcao.querySelector("svg")).toBeNull();
     expect(opcao.classList.contains("truncate")).toBe(false);
-    expect(opcao.classList.contains("whitespace-normal")).toBe(true);
+    // Ativa = traço fino neutro embaixo; nada de dourado nem de fundo.
+    expect(opcao.className).toContain("data-[state=active]:border-foreground");
+    expect(opcao.className).not.toContain("admin-gold");
   }
   expect(menu!.parentElement!.classList.contains("sticky")).toBe(true);
   expect(menu!.parentElement!.classList.contains("top-0")).toBe(true);
@@ -83,19 +81,17 @@ it("a barra de abas apresenta os seis destinos e mantém a seleção do Financei
   expect(opcoes[2].getAttribute("aria-selected")).toBe("true");
   expect(
     host.querySelector('[role="tab"][data-state="active"]')?.textContent,
-  ).toBe("A pagar e receber");
+  ).toBe("Pagar e receber");
   expect(document.querySelector('[aria-label="Escolha a seção"]')).toBeNull();
 });
 
-it("revela a aba ativa ao selecionar e ao usar um atalho do conteúdo", async () => {
+it("revela a aba ativa ao selecionar e leva ao chip Contas pelo atalho do conteúdo", async () => {
   await act(async () =>
     root.render(<AdminFinanceiroView onNavigate={vi.fn()} />),
   );
   const abas = [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
   const revelarExtrato = vi.fn();
-  const revelarContas = vi.fn();
   Object.defineProperty(abas[1], "scrollIntoView", { value: revelarExtrato });
-  Object.defineProperty(abas[5], "scrollIntoView", { value: revelarContas });
   await act(async () =>
     abas[1].dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, button: 0 }),
@@ -114,13 +110,21 @@ it("revela a aba ativa ao selecionar e ao usar um atalho do conteúdo", async ()
     ...host.querySelectorAll<HTMLButtonElement>('button:not([role="tab"])'),
   ].find((b) => b.textContent?.trim() === "Contas e categorias");
   expect(atalho).toBeDefined();
+  const chip = [...host.querySelectorAll<HTMLButtonElement>("button")].find(
+    (b) => b.textContent?.trim() === "Contas",
+  )!;
+  expect(chip.getAttribute("aria-pressed")).toBe("false");
   await act(async () => atalho!.click());
-  expect(abas[5].getAttribute("aria-selected")).toBe("true");
-  expect(revelarContas).toHaveBeenCalledWith({
-    block: "nearest",
-    inline: "nearest",
-  });
+  // Aberta a visão Contas: o chip fica selecionado e nenhuma aba fica ativa.
+  expect(chip.getAttribute("aria-pressed")).toBe("true");
+  expect(host.querySelector('[role="tab"][data-state="active"]')).toBeNull();
   expect(host.textContent).toContain("Cadastros da loja");
+  // O chip também fecha a visão e devolve para a Visão.
+  await act(async () => chip.click());
+  expect(chip.getAttribute("aria-pressed")).toBe("false");
+  expect(
+    host.querySelector('[role="tab"][data-state="active"]')?.textContent,
+  ).toBe("Visão");
 });
 
 it.each(["carregando", "erro", "vazio"])(
@@ -146,7 +150,7 @@ it.each(["carregando", "erro", "vazio"])(
       expect(host.textContent).toContain("Nenhuma conta ainda");
     }
     const abas = [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
-    expect(abas).toHaveLength(6);
+    expect(abas).toHaveLength(5);
     await act(async () =>
       abas[1].dispatchEvent(
         new MouseEvent("mousedown", { bubbles: true, button: 0 }),
@@ -158,7 +162,7 @@ it.each(["carregando", "erro", "vazio"])(
   },
 );
 
-it("Visão apresenta A pagar antes de A receber e antes dos movimentos do período", async () => {
+it("Visão apresenta os movimentos do período, depois A pagar antes de A receber", async () => {
   await act(async () =>
     root.render(<AdminFinanceiroView onNavigate={vi.fn()} />),
   );
@@ -169,23 +173,47 @@ it("Visão apresenta A pagar antes de A receber e antes dos movimentos do perío
   expect(
     pagar!.compareDocumentPosition(receber!) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
+  // Desenho de 22/10/2026: Entradas | Saídas vêm logo depois do saldo, antes
+  // de A pagar | A receber.
   const movimentos = host.querySelector('[aria-label="Movimentos do período"]');
   expect(movimentos).not.toBeNull();
   expect(
-    receber!.compareDocumentPosition(movimentos!) &
+    movimentos!.compareDocumentPosition(pagar!) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   expect(host.textContent).toContain("Nenhuma conta ainda");
   expect(host.textContent).toContain("Cadastre onde o dinheiro da loja mora");
 });
 
-it("o rodapé inline de Novo lançamento conserva as margens do conteúdo", async () => {
+it("Novo lançamento é um botão redondo de 56px com +, fixo acima da barra de baixo e neutro", async () => {
   await act(async () =>
     root.render(<AdminFinanceiroView onNavigate={vi.fn()} />),
   );
-  const novo = host.querySelector('[aria-label="Novo lançamento"]')!;
-  expect(novo.closest(".admin-acao-inline")).not.toBeNull();
-  expect(novo.closest(".px-5.max-w-7xl")).not.toBeNull();
+  const novo = host.querySelector<HTMLElement>(
+    '[aria-label="Novo lançamento"]',
+  )!;
+  expect(novo).not.toBeNull();
+  // Variante local do Financeiro: não vai para a pílula/prateleira nem fica
+  // no rodapé inline das outras telas.
+  expect(novo.closest(".admin-acao-inline")).toBeNull();
+  expect(novo.closest(".admin-acoes-da-barra")).toBeNull();
+  const c = [...novo.classList];
+  expect(c).toEqual(
+    expect.arrayContaining(["fixed", "right-5", "size-14", "rounded-full"]),
+  );
+  // Acima da pílula e da área segura: a reserva do painel (`--admin-tab-pb`).
+  expect(novo.className).toContain("var(--admin-tab-pb,6.25rem)");
+  // Neutro de alto contraste, nunca o dourado.
+  expect(c).toEqual(
+    expect.arrayContaining(["bg-foreground", "text-background"]),
+  );
+  expect(novo.className).not.toContain("admin-gold");
+  expect(novo.className).not.toContain("F9D65B");
+  // O "+" é desenhado; o nome acessível vem do aria-label.
+  expect(novo.querySelector("svg")).not.toBeNull();
+  // O conteúdo ganha folga para o botão nunca cobrir o último item.
+  const raiz = novo.closest("div.bg-admin-bg") as HTMLElement;
+  expect(raiz.className).toContain("pb-[calc(var(--admin-tab-pb,6.25rem)");
 });
 
 it("a confirmação identifica uma operação e também respeita Ocultar valores", async () => {

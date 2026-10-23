@@ -265,7 +265,7 @@ describe("Financeiro — extrato e a pagar", () => {
   });
 
   it("a pagar: o botão do estorno diz o número do pedido como o cliente vê (#999XYZ) e abre pelo id inteiro", async () => {
-    await irPara("A pagar e receber");
+    await irPara("Pagar e receber");
 
     const botao = botaoEm(hospedeiro, /^Abrir pedido #/);
     expect(normalizar(botao.textContent).trim()).toBe("Abrir pedido #999XYZ");
@@ -321,7 +321,7 @@ describe("Financeiro — extrato e a pagar", () => {
   });
 
   it("a pagar: vencido em destaque, baixa com data e conta, estorno sem ação", async () => {
-    await irPara("A pagar e receber");
+    await irPara("Pagar e receber");
 
     const texto = normalizar(hospedeiro.textContent);
     expect(texto).toContain("Vencidos · 1");

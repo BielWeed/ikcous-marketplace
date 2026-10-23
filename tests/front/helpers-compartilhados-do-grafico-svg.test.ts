@@ -275,8 +275,10 @@ function capturar(tela: () => ReactNode, movel = true) {
     // No desktop os componentes reais mantêm a animação de entrada. Ela só
     // começa depois de o gráfico sair do esqueleto; avança numa etapa separada.
     concluirAnimacao();
+    // Desenho de 22/10/2026: o fluxo mostra UM gráfico por vez (padrão = Saldo,
+    // a área); as barras entram pela chave "Entradas e saídas", mais abaixo.
     expect(container.querySelectorAll("#fluxo .recharts-surface")).toHaveLength(
-      2,
+      1,
     );
     expect(
       container.querySelectorAll("#operacional .recharts-surface"),
@@ -306,6 +308,33 @@ function capturar(tela: () => ReactNode, movel = true) {
     expect(
       container.querySelectorAll("#fluxo .recharts-active-dot").length,
     ).toBeGreaterThan(0);
+    registrar();
+    // A chave troca a área pelas barras (Rectangle, stackOffset="sign"): o
+    // SVG e o balão das barras do fluxo também têm de sair idênticos.
+    const chaveDasBarras = [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        "#fluxo button[aria-pressed]",
+      ),
+    ].find((b) => b.textContent?.trim() === "Entradas e saídas");
+    expect(chaveDasBarras).toBeTruthy();
+    act(() => {
+      chaveDasBarras!.click();
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    concluirAnimacao();
+    expect(container.querySelectorAll("#fluxo .recharts-surface")).toHaveLength(
+      1,
+    );
+    expect(
+      container.querySelectorAll("#fluxo .recharts-bar-rectangle path").length,
+    ).toBeGreaterThan(0);
+    registrar();
+    mover("#fluxo .recharts-wrapper:last-child");
+    expect(
+      container.querySelectorAll('[data-testid="fluxo-tooltip"]'),
+    ).toHaveLength(1);
     registrar();
     mover("#composto .recharts-wrapper");
     expect(
