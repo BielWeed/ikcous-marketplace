@@ -18,7 +18,13 @@ import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
 import { haptic } from "@/utils/haptic";
 import useEmblaCarousel from "embla-carousel-react";
 import { Check, Flame, Loader2, ShoppingCart, Truck } from "lucide-react";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { OfertasCompactasEsqueleto } from "./OfertasCompactasEsqueleto";
 import { OfertasLateralEsqueleto } from "./OfertasLateralEsqueleto";
 import { StarRating } from "./StarRating";
@@ -71,7 +77,45 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
   const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
   const { prefetchView } = usePrefetchOnHover();
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
+  // Pausa da rotacao (WCAG 2.2.2, achado loja-ux-a11y-1): mouse em cima, foco
+  // do teclado dentro, dedo tocando/arrastando, aba escondida ou sistema pedindo
+  // menos movimento. Cada motivo tem o proprio booleano, para a saida de um nao
+  // destravar outro (mouse sai com o foco ainda dentro continua parado).
+  const [hoverAtivo, setHoverAtivo] = useState(false);
+  const [focoAtivo, setFocoAtivo] = useState(false);
+  const [toqueAtivo, setToqueAtivo] = useState(false);
+  const [abaOculta, setAbaOculta] = useState(
+    () => typeof document !== "undefined" && document.hidden,
+  );
+  const [menosMovimento, setMenosMovimento] = useState(false);
+  const ultimoToqueEm = useRef(0);
+  const isPaused =
+    hoverAtivo || focoAtivo || toqueAtivo || abaOculta || menosMovimento;
+
+  useEffect(() => {
+    const aoMudarVisibilidade = () => setAbaOculta(document.hidden);
+    document.addEventListener("visibilitychange", aoMudarVisibilidade);
+    return () =>
+      document.removeEventListener("visibilitychange", aoMudarVisibilidade);
+  }, []);
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    )
+      return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setMenosMovimento(mq.matches);
+    const aoMudar = (e: MediaQueryListEvent) => setMenosMovimento(e.matches);
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", aoMudar);
+      return () => mq.removeEventListener("change", aoMudar);
+    }
+    // Safari antigo nao tem addEventListener em MediaQueryList.
+    mq.addListener(aoMudar);
+    return () => mq.removeListener(aoMudar);
+  }, []);
 
   // Initialize Embla Carousel for featured offers
   const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -117,11 +161,46 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
   }, [prefetchView]);
 
   const handleMouseEnter = useCallback(() => {
-    setIsPaused(true);
+    // O navegador de celular emula mouseenter logo apos o toque e so manda o
+    // mouseleave quando a pessoa toca em outro lugar: sem este filtro a
+    // vitrine ficaria parada para sempre depois de um toque.
+    if (Date.now() - ultimoToqueEm.current < 1000) return;
+    setHoverAtivo(true);
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    setIsPaused(false);
+    setHoverAtivo(false);
+  }, []);
+
+  const handleTouchStart = useCallback(() => {
+    ultimoToqueEm.current = Date.now();
+    setToqueAtivo(true);
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    ultimoToqueEm.current = Date.now();
+    setToqueAtivo(false);
+  }, []);
+
+  const handleFocus = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    // So o foco de TECLADO pausa: clicar/tocar numa bolinha tambem foca o botao
+    // (Chrome), e a vitrine nao pode ficar parada depois que o mouse/dedo sai.
+    // Se o navegador nao souber `:focus-visible`, trata como teclado (falha
+    // do lado acessivel).
+    let deTeclado = true;
+    try {
+      deTeclado = (e.target as Element).matches(":focus-visible");
+    } catch {
+      deTeclado = true;
+    }
+    // Atribui (nao so liga): foco que passa de um botao de teclado para um
+    // clicado dentro do bloco nao deixa a vitrine parada.
+    setFocoAtivo(deTeclado);
+  }, []);
+
+  const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+      setFocoAtivo(false);
   }, []);
 
   const selectHero = useCallback(
@@ -131,7 +210,6 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
       if (emblaApi) {
         emblaApi.scrollTo(index);
       }
-      setIsPaused(true); // Pause auto-rotation on manual interaction
     },
     [emblaApi],
   );
@@ -141,7 +219,16 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
   const sortedOffers = ordenarOfertas(products);
 
   return (
-    <div className="relative overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6">
+    <div
+      className="relative overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+    >
       {/* Premium Micro-Dividers */}
       <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-zinc-200/20 to-transparent" />
       <div className="absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-zinc-200/10 to-transparent" />
@@ -181,8 +268,6 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
               <div
                 key={offer.product.id}
                 className="flex min-w-0 flex-[0_0_100%] flex-col p-1.5"
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
               >
                 <HeroOfferCard
                   product={offer.product}
