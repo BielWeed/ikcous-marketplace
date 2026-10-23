@@ -1,4 +1,23 @@
 {
+  "1.5.57": {
+    "titulo": "Financeiro redesenhado em cinco abas e várias correções na loja",
+    "novidades": [
+      "O Financeiro foi redesenhado e agora tem cinco abas: Visão, Extrato, Pagar e receber, Caixa e Resultado. Os valores cabem em uma linha e o verde aparece só onde o dinheiro entrou.",
+      "No Extrato, cada dia mostra o saldo da conta ao fim dele; para dias anteriores ao saldo inicial da conta, o saldo aparece como traço (—), porque não dá para calculá-lo.",
+      "O mapa do site e o robots.txt de cada loja agora apontam para o endereço da própria loja, e não mais para o da loja principal."
+    ],
+    "correcoes": [
+      "Ao gerar a etiqueta de envio, se as medidas dos produtos não puderem ser lidas, o painel avisa para tentar de novo em instantes e nada é cobrado.",
+      "Na resposta da loja às perguntas do produto, a assinatura passa a usar a sigla da própria loja.",
+      "O coração de favoritar nos cartões de produto aparece também quando você navega pelo teclado.",
+      "Banner sem destino não mostra mais um botão que não leva a lugar nenhum.",
+      "Abrir o endereço /index.html de uma loja leva para a página inicial da própria loja, em vez de mostrar a marca da loja principal."
+    ],
+    "melhorias": [
+      "As fotos da vitrine ficam guardadas no aparelho (até 100) para aparecerem também sem internet.",
+      "Com o botão Ocultar ligado no Financeiro, o tamanho dos valores não revela mais quantos dígitos eles têm."
+    ]
+  },
   "1.5.56": {
     "titulo": "Ofertas Lateral mais compactas e seção Na loja do produto corrigida",
     "novidades": [
