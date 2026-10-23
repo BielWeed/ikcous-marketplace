@@ -431,9 +431,7 @@
     },
     {
       "consulta": "90a-conferir-busca-do-painel-por-codigo-aplicado",
-      "versoes": [
-        "20261385000000"
-      ],
+      "versoes": ["20261385000000"],
       "ausenciaConfirmadaPor": "90b-antes-busca-do-painel-por-codigo-base-vigente",
       "_comentario": "UMA migration ADITIVA de APPLY NORMAL, sem backfillLedger e sem nuncaAplicar; so LEITURA muda (nenhum dado e tocado), em RPC que le o catalogo e o CUSTO do painel (get_admin_products_paged devolve p.*), por isso revisao Opus do SQL antes de aplicar. CREATE OR REPLACE de get_admin_products_paged (so ela), corpo vigente da 20261381000000 byte a byte e UMA edicao em CADA um dos dois blocos do filtro de busca (total_count e pagina, mesmo texto): o texto passa a achar tambem o codigo de barras do produto (igualdade), o codigo de barras de variacao ATIVA (igualdade) e o SKU de variacao ATIVA (mesmo criterio do codigo do produto), por EXISTS. Assinatura, retorno, SECURITY DEFINER, search_path, dono, OID, GRANTs (EXECUTE so authenticated e service_role) e o gate is_admin_atual() nao mudam; o front nao muda. ORDEM: DEPOIS da 20261381000000 e da 20261160000000 (o pre-voo recusa corpo desconhecido, ACL/atributo diferente e coluna ausente: plpgsql nao valida coluna ao criar, entao sem a guarda uma loja sem o codigo de barras perderia a lista inteira de Produtos). 17a e 86a aceitam o corpo desta como sucessor; desfazer a 20261381 exige desfazer esta ANTES. Banco de CADA loja; valem IKCOUS e Savy, lojas de teste ficam fora. 90a/90b: so catalogo, rol fechado de 4 linhas cada; 90a negativa exige 90b positiva e mais nova antes do apply; repetir 90a depois. ROLLBACK: rollback-manual-20261385000000_a_busca_de_produtos_do_painel_acha_pelo_codigo_de_barras_e_da_variacao.sql devolve o corpo da 20261381 byte a byte, com pre-voo por hash que recusa corpo desconhecido e segundo rollback. Prova de comportamento no CI efemero: tests/banco/busca-do-painel-por-codigo-viva.cjs. Nenhuma prova de banco vivo obtida neste lote."
     }
