@@ -150,8 +150,18 @@ it("movimento do caixa lê o horário que o banco devolve como criado_em", () =>
   const caixa = parseCaixaAtual({
     id: "sessao-1",
     movimentos: [
-      { id: "m1", origem: "sangria", valor: 5, criado_em: "2026-10-23T11:05:00Z" },
-      { id: "m2", origem: "suprimento", valor: 9, created_at: "2026-10-23T12:00:00Z" },
+      {
+        id: "m1",
+        origem: "sangria",
+        valor: 5,
+        criado_em: "2026-10-23T11:05:00Z",
+      },
+      {
+        id: "m2",
+        origem: "suprimento",
+        valor: 9,
+        created_at: "2026-10-23T12:00:00Z",
+      },
       { id: "m3", origem: "sangria", valor: 1 },
     ],
   });
