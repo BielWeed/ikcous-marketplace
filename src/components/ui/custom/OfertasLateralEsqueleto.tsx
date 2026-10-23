@@ -23,7 +23,7 @@ export function OfertasLateralEsqueleto() {
             style={{ height: ALTURA_CARTAO_LATERAL }}
             className="relative flex shrink-0 basis-[88%] animate-pulse overflow-hidden rounded-[20px] border border-solid border-zinc-200 bg-white"
           >
-            <div className="w-[104px] shrink-0 self-stretch bg-[#ECECEF]" />
+            <div className="w-[104px] shrink-0 self-stretch bg-[#ECECEF] max-[339px]:w-[88px]" />
             <div className="flex min-w-0 flex-1 flex-col py-2.5 pl-3 pr-2.5">
               <div className="h-9 pt-1">
                 <div className="h-3.5 w-full rounded bg-[#ECECEF]" />

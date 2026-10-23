@@ -153,6 +153,8 @@ describe("Ofertas Lateral", () => {
     const coluna = (c.querySelector("img") as HTMLElement).parentElement
       ?.parentElement as HTMLElement;
     expect(coluna.className).toContain("w-[104px]");
+    // Abaixo de 340px a foto cede 16px ao texto, para "De" e "Economiza" caberem inteiros.
+    expect(coluna.className).toContain("max-[339px]:w-[88px]");
     expect(coluna.className).toContain("self-stretch");
     expect(coluna.className).not.toMatch(/(^|\s)p-\d|rounded/);
     expect((c.querySelector("img") as HTMLElement).className).toContain(
@@ -203,7 +205,7 @@ describe("Ofertas Lateral", () => {
       cartoes()
         .find((c) => c.dataset.ofertaLateral === id)
         ?.querySelector("[data-preco-oferta]") as HTMLElement;
-    expect(preco("a").className).toContain("text-xl");
+    expect(preco("a").className).toContain("text-[length:var(--fonte-preco)]");
     expect(preco("a").className).toContain("tabular-nums");
     expect(preco("a").className).toContain("text-emerald-700");
     expect(preco("fim").className).toContain("text-zinc-950");
@@ -273,10 +275,21 @@ describe("Ofertas Lateral", () => {
     expect(preco("a").className).toContain("whitespace-nowrap");
     expect(preco("a").className).toContain("leading-7");
     expect(preco("a").className).not.toContain("break-words");
-    expect(preco("a").className).toContain("text-xl");
-    // Conta da coluna de 171px (tela de 360px): quanto maior o texto, menor o corpo do preço.
-    expect(preco("mil").className).toContain("text-sm");
-    expect(preco("caro").className).toContain("text-[13px]");
+    // O corpo vem da largura REAL da coluna (container, cqw), de 20px no máximo a 13px no piso;
+    // texto maior (mais caracteres) pede conta diferente, e o "De" é sempre renderizado inteiro.
+    const fonte = (id: string) =>
+      (preco(id).closest("div[style]") as HTMLElement).style.getPropertyValue(
+        "--fonte-preco",
+      );
+    expect(fonte("a")).toMatch(/^clamp\(13px, .*cqw.*, 20px\)$/);
+    expect(fonte("mil")).not.toBe(fonte("a"));
+    expect(fonte("caro")).not.toBe(fonte("mil"));
+    expect(
+      (preco("a").closest("div[style]") as HTMLElement).className,
+    ).toContain("[container-type:inline-size]");
+    expect(
+      por("a").querySelector("[data-preco-oferta] + span")?.className,
+    ).toContain("leading-4");
     expect(por("caro").textContent).toMatch(/De R\$\s20\.000,00/);
     expect(por("mil").textContent).toMatch(/De R\$\s1\.499,90/);
     expect(por("a").querySelector("[data-economia-oferta]")).not.toBeNull();
