@@ -463,6 +463,12 @@ async function main() {
   C = new Client({ connectionString: url });
   C.on("error", () => {});
   await C.connect();
+  // A 20261381000000 (o ex-admin perde o acesso na hora) sucede a 22 em get_reviews_metrics (so troca a guarda). Esta prova
+  // mede a 22 sobre o corpo que ela mesma deixa: a 81 sai do clone descartavel pelo rollback-manual dela (nao faz nada
+  // se nao esta no ar).
+  await require("./ex-admin-resto-do-painel-posterior.cjs").desfazerExAdminRestoNaTransacao(
+    C,
+  );
   const falhas = [];
   try {
     await C.query(`CREATE ROLE ${PAPEL_RO} NOLOGIN NOSUPERUSER BYPASSRLS`);

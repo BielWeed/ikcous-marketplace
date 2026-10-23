@@ -1282,6 +1282,11 @@ async function main() {
   // O molde (clone do rodar-isolado) traz a arvore INTEIRA: as posteriores ao lote 17 saem dele, na
   // ordem inversa, cada uma pelo rollback-manual (com preflight proprio). O clone e' descartavel.
   await usar(MOLDE, async (c) => {
+    // A 20261381000000 (o ex-admin perde o acesso na hora) sucede a 13 em get_admin_products_paged (so troca a guarda) e
+    // nao e' uma das 42 da 99: sai primeiro, pelo rollback-manual dela (nao faz nada se nao esta no ar).
+    await require("./ex-admin-resto-do-painel-posterior.cjs").desfazerExAdminRestoNaTransacao(
+      c,
+    );
     for (const s of [...POSTERIORES].reverse()) {
       const vivo = (await c.query(`SELECT ${MD5_VIVO(s.assinatura)} AS h`))
         .rows[0].h;
