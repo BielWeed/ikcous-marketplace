@@ -32,7 +32,7 @@ type Secao = {
   maxItems?: number;
   productIds?: string[];
   isCustom?: boolean;
-  layout?: "padrao" | "compacto" | "lateral";
+  layout?: "padrao" | "compacto" | "lateral" | "lateral-duplo";
 };
 
 const secaoLancamentos: Secao = {
@@ -240,10 +240,14 @@ describe("layout da vitrine de Ofertas", () => {
   const opcao = (nome: string) =>
     porRotulo(`Layout ${nome}`) as HTMLButtonElement;
 
-  it("só Ofertas mostra as três opções e grava a lista inteira pelo caminho confirmado", async () => {
+  it("só Ofertas mostra as quatro opções e grava a lista inteira pelo caminho confirmado", async () => {
     configDaLoja.homeSections = [secaoLancamentos, ofertas, secaoKits];
     await montar();
-    expect(document.querySelectorAll("[aria-pressed]")).toHaveLength(3);
+    expect(document.querySelectorAll("[aria-pressed]")).toHaveLength(4);
+    expect(opcao("Lateral em duas fileiras").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(opcao("Lateral em duas fileiras").className).toContain("h-11");
     expect(opcao("Padrão").getAttribute("aria-pressed")).toBe("true");
     expect(opcao("Compacto").getAttribute("aria-pressed")).toBe("false");
     expect(opcao("Lateral").getAttribute("aria-pressed")).toBe("false");
@@ -279,6 +283,23 @@ describe("layout da vitrine de Ofertas", () => {
     configDaLoja.homeSections = [{ ...ofertas, layout: "lateral" }];
     await montar();
     expect(opcao("Lateral").getAttribute("aria-pressed")).toBe("true");
+    expect(opcao("Padrão").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("escolher Lateral em duas fileiras grava lateral-duplo, marca só ela e não mexe no Lateral", async () => {
+    configDaLoja.homeSections = [{ ...ofertas, layout: "lateral" }];
+    await montar();
+    expect(opcao("Lateral").getAttribute("aria-pressed")).toBe("true");
+    await clicar(opcao("Lateral em duas fileiras"));
+    expect(ultimaGravacao().homeSections).toEqual([
+      { ...ofertas, layout: "lateral-duplo" },
+    ]);
+    configDaLoja.homeSections = [{ ...ofertas, layout: "lateral-duplo" }];
+    await montar();
+    expect(opcao("Lateral em duas fileiras").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(opcao("Lateral").getAttribute("aria-pressed")).toBe("false");
     expect(opcao("Padrão").getAttribute("aria-pressed")).toBe("false");
   });
 

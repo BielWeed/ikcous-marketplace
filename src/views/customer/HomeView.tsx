@@ -28,11 +28,13 @@ import React, { useCallback, useState, useMemo } from "react";
 import { FreeShippingBlock } from "@/components/ui/custom/FreeShippingBlock";
 import { InfoBlockCarousel } from "@/components/ui/custom/InfoBlockCarousel";
 import { OfertasCompactasEsqueleto } from "@/components/ui/custom/OfertasCompactasEsqueleto";
+import { OfertasLateralDuploEsqueleto } from "@/components/ui/custom/OfertasLateralDuploEsqueleto";
 import { OfertasLateralEsqueleto } from "@/components/ui/custom/OfertasLateralEsqueleto";
 import { PremiumOffers } from "@/components/ui/custom/PremiumOffers";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
 import { ProductCarousel } from "@/components/ui/custom/ProductCarousel";
 import { ProductList } from "@/components/ui/custom/ProductList";
+import { fileirasDaFaixa } from "@/components/ui/custom/ofertas-lateral-duplo-altura";
 import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
 import { buildIdentity } from "@/config/buildIdentity";
@@ -272,6 +274,22 @@ export const HomeView = React.memo(function HomeView({
       .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
   }, [produtosAVenda]);
 
+  // Quantas ofertas a faixa de Ofertas MOSTRA (mesma conta do render: lista escolhida à mão ou derivada, cortada
+  // pelo maxItems). O "Lateral em duas fileiras" tem 1 fileira com 1 oferta e 2 com várias: a memória guarda
+  // este número para o esqueleto da próxima visita reservar a altura certa antes dos dados chegarem.
+  const qtdOfertasNaFaixa = useMemo(() => {
+    const secao = config.homeSections?.find((s) => s.id === "offers");
+    const max = secao?.maxItems ?? 6;
+    if (secao?.productIds && secao.productIds.length > 0) {
+      const aVenda = new Set(produtosAVenda.map((p) => p.id));
+      return Math.min(
+        max,
+        secao.productIds.filter((id) => aVenda.has(id)).length,
+      );
+    }
+    return Math.min(max, offerProducts.length);
+  }, [config.homeSections, produtosAVenda, offerProducts]);
+
   const bestsellerProducts = useMemo(() => {
     return produtosAVenda
       .filter((p) => p.isBestseller)
@@ -295,12 +313,14 @@ export const HomeView = React.memo(function HomeView({
       temOfertas: offerProducts.length > 0,
       temBestsellers: bestsellerProducts.length > 0,
       layoutOfertas,
+      qtdOfertas: qtdOfertasNaFaixa,
     });
   }, [
     isLoading,
     bannersLoaded,
     configLoaded,
     layoutOfertas,
+    qtdOfertasNaFaixa,
     topBanners.length,
     offerProducts.length,
     bestsellerProducts.length,
@@ -883,9 +903,17 @@ function SecaoCarrosselEsqueleto() {
 
 /** Espelho do PremiumOffers (seção offers): header compacto + card herói. */
 function SecaoOfertasEsqueleto({ layout }: { layout?: LayoutDeOfertas }) {
+  // Só o "Lateral em duas fileiras" usa: 1 oferta na última visita = 1 fileira, várias (ou sem informação) = 2.
+  const memoria = useMemoriaDaHome();
   // A reserva de 392px mínimos é a mesma do fallback lazy do Compacto.
   if (layout === "compacto") return <OfertasCompactasEsqueleto />;
   if (layout === "lateral") return <OfertasLateralEsqueleto />;
+  if (layout === "lateral-duplo")
+    return (
+      <OfertasLateralDuploEsqueleto
+        fileiras={fileirasDaFaixa(memoria?.qtdOfertas)}
+      />
+    );
   return (
     // data-testid: âncora do teste comportamental "sem ofertas → nenhum
     // esqueleto de ofertas montado" (laudo edj3ka, E2) — sem efeito visual.
