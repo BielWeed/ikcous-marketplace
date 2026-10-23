@@ -1,9 +1,15 @@
+import {
+  ALTURA_CARTAO_LATERAL,
+  ALTURA_SECAO_LATERAL,
+} from "./ofertas-lateral-altura";
+
 /** Mesma moldura e mesma altura reservada do Lateral: a página não pula quando as ofertas chegam. */
 export function OfertasLateralEsqueleto() {
   return (
     <div
       data-testid="esqueleto-ofertas"
-      className="min-h-[286px] overflow-hidden py-4"
+      style={{ minHeight: ALTURA_SECAO_LATERAL }}
+      className="overflow-hidden py-4"
     >
       <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
         <span className="h-6 w-40 animate-pulse rounded bg-[#ECECEF]" />
@@ -14,11 +20,12 @@ export function OfertasLateralEsqueleto() {
           <div
             key={id}
             data-cartao-esqueleto
-            className="flex min-h-[184px] shrink-0 basis-[88%] animate-pulse overflow-hidden rounded-[26px] border border-solid border-zinc-200 bg-white"
+            style={{ minHeight: ALTURA_CARTAO_LATERAL }}
+            className="flex shrink-0 basis-[88%] animate-pulse overflow-hidden rounded-[26px] border border-solid border-zinc-200 bg-white"
           >
             <div className="w-[44%] shrink-0 self-stretch bg-[#ECECEF]" />
-            <div className="flex min-w-0 flex-1 flex-col px-4 pb-3 pt-4">
-              <div className="mb-1 min-h-5 space-y-1.5 pt-1">
+            <div className="flex min-w-0 flex-1 flex-col px-4 py-3">
+              <div className="mb-1 min-h-10 space-y-1.5 pt-1">
                 <div className="h-3 w-full rounded bg-[#ECECEF]" />
               </div>
               <div className="min-h-4" />

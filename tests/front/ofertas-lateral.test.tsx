@@ -1,10 +1,14 @@
+import { OfertasLateralEsqueleto } from "@/components/ui/custom/OfertasLateralEsqueleto";
+import { PremiumOffers } from "@/components/ui/custom/PremiumOffers";
 // @vitest-environment jsdom
 //
 // Terceiro desenho das Ofertas ("Lateral"): foto de um lado, informações do outro, carrossel
 // horizontal e o botão de comprar só com o ícone do carrinho. As regras de compra são as mesmas
 // dos outros desenhos (variação abre a escolha, esgotado não vende).
-import { OfertasLateralEsqueleto } from "@/components/ui/custom/OfertasLateralEsqueleto";
-import { PremiumOffers } from "@/components/ui/custom/PremiumOffers";
+import {
+  ALTURA_CARTAO_LATERAL,
+  ALTURA_SECAO_LATERAL,
+} from "@/components/ui/custom/ofertas-lateral-altura";
 import { normalizarLayoutDeOfertas } from "@/lib/layout-de-ofertas";
 import type { Product } from "@/types";
 import { act } from "react";
@@ -121,9 +125,11 @@ describe("Ofertas Lateral", () => {
     await montar([produto("a"), produto("b"), produto("c")]);
     expect(cartoes()).toHaveLength(3);
     expect(
-      host.querySelector('[data-testid="ofertas-lateral"]')?.className,
-    ).toContain("min-h-[286px]");
-    for (const c of cartoes()) expect(c.className).toContain("min-h-[184px]");
+      host.querySelector<HTMLElement>('[data-testid="ofertas-lateral"]')?.style
+        .minHeight,
+    ).toBe(`${ALTURA_SECAO_LATERAL}px`);
+    for (const c of cartoes())
+      expect(c.style.minHeight).toBe(`${ALTURA_CARTAO_LATERAL}px`);
     expect(useEmblaCarousel).toHaveBeenLastCalledWith(
       expect.objectContaining({ align: "start", loop: false, active: true }),
     );
@@ -230,16 +236,25 @@ describe("Ofertas Lateral", () => {
     const secEsq = host.querySelector(
       '[data-testid="esqueleto-ofertas"]',
     ) as HTMLElement;
-    expect(esq.className).toContain("min-h-[184px]");
+    expect(esq.style.minHeight).toBe(`${ALTURA_CARTAO_LATERAL}px`);
     expect(esq.className).toContain("rounded-[26px]");
     expect(esq.className).toContain("overflow-hidden");
     expect(esq.className).not.toMatch(/(^|\s)p-\d/);
     expect(esq.firstElementChild?.className).toContain("w-[44%]");
-    expect(secEsq.className).toContain("min-h-[286px]");
+    expect(secEsq.style.minHeight).toBe(`${ALTURA_SECAO_LATERAL}px`);
+    // A conta: seção = cartão + 102, cartão = 186 (nome de 2 linhas sempre reservado).
+    expect(ALTURA_CARTAO_LATERAL).toBe(186);
+    expect(ALTURA_SECAO_LATERAL).toBe(288);
     await montar([produto("a"), produto("b")]);
     expect(
-      host.querySelector('[data-testid="ofertas-lateral"]')?.className,
-    ).toContain("min-h-[286px]");
+      host.querySelector<HTMLElement>('[data-testid="ofertas-lateral"]')?.style
+        .minHeight,
+    ).toBe(`${ALTURA_SECAO_LATERAL}px`);
+  });
+
+  it("o nome reserva sempre 2 linhas: a altura não depende do nome", async () => {
+    await montar([produto("a"), produto("b")]);
+    expect(cartoes()[0].querySelector("h3")?.className).toContain("min-h-10");
   });
 
   it("esgotado: véu branco sobre a foto", async () => {

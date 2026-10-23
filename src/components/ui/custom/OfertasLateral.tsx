@@ -12,6 +12,10 @@ import {
   ordenarOfertas,
   useAcoesDaOferta,
 } from "./PremiumOffers";
+import {
+  ALTURA_CARTAO_LATERAL,
+  ALTURA_SECAO_LATERAL,
+} from "./ofertas-lateral-altura";
 
 /** O módulo só é baixado quando a vitrine de Ofertas escolheu Lateral. */
 export default function OfertasLateral({
@@ -47,7 +51,8 @@ export default function OfertasLateral({
   return (
     <section
       data-testid="ofertas-lateral"
-      className="relative min-h-[286px] bg-white py-4"
+      style={{ minHeight: ALTURA_SECAO_LATERAL }}
+      className="relative bg-white py-4"
     >
       <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
         <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">
@@ -158,8 +163,9 @@ function CartaoOfertaLateral({
       data-oferta-lateral={product.id}
       onMouseEnter={() => prefetchView("product-detail")}
       onTouchStart={() => prefetchView("product-detail")}
+      style={{ minHeight: ALTURA_CARTAO_LATERAL }}
       className={cn(
-        "relative flex min-h-[184px] min-w-0 overflow-hidden rounded-[26px] border border-solid border-zinc-200 bg-white",
+        "relative flex min-w-0 overflow-hidden rounded-[26px] border border-solid border-zinc-200 bg-white",
         rola ? "shrink-0 basis-[88%]" : "w-full",
       )}
     >
@@ -204,8 +210,8 @@ function CartaoOfertaLateral({
           className="absolute right-2.5 top-2.5 z-20"
         />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col px-4 pb-3 pt-4">
-        <h3 className="mb-1 line-clamp-2 break-words text-base font-bold leading-5 text-zinc-950">
+      <div className="flex min-w-0 flex-1 flex-col px-4 py-3">
+        <h3 className="mb-1 line-clamp-2 min-h-10 break-words text-base font-bold leading-5 text-zinc-950">
           {product.name}
         </h3>
         <div className="min-h-4 text-xs leading-4 text-zinc-500 line-through">

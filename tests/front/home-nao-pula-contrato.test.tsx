@@ -1,3 +1,7 @@
+import {
+  ALTURA_CARTAO_LATERAL,
+  ALTURA_SECAO_LATERAL,
+} from "@/components/ui/custom/ofertas-lateral-altura";
 // @vitest-environment jsdom
 //
 // CONTRATO da frente cls-home-0409 ("A HOME PARA DE PULAR", dossiê
@@ -495,7 +499,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
   });
 
   const esqueletoDeOfertas = () =>
-    hospedeiro.querySelector('[data-testid="esqueleto-ofertas"]');
+    hospedeiro.querySelector<HTMLElement>('[data-testid="esqueleto-ofertas"]');
   const esqueletoDeCarrossel = () =>
     hospedeiro.querySelector('[data-testid="esqueleto-carrossel"]');
   const esqueletoDeBanner = () =>
@@ -551,10 +555,14 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
       layoutOfertas: "lateral",
     });
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).toContain("min-h-[286px]");
+    expect(esqueletoDeOfertas()?.style.minHeight).toBe(
+      `${ALTURA_SECAO_LATERAL}px`,
+    );
     expect(
-      esqueletoDeOfertas()?.querySelector("[data-cartao-esqueleto]")?.className,
-    ).toContain("min-h-[184px]");
+      esqueletoDeOfertas()?.querySelector<HTMLElement>(
+        "[data-cartao-esqueleto]",
+      )?.style.minHeight,
+    ).toBe(`${ALTURA_CARTAO_LATERAL}px`);
     configDaLoja = {
       homeSections: [
         { id: "offers", title: "Ofertas", active: true, layout: "lateral" },
@@ -562,7 +570,9 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     };
     configCarregada = true;
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).toContain("min-h-[286px]");
+    expect(esqueletoDeOfertas()?.style.minHeight).toBe(
+      `${ALTURA_SECAO_LATERAL}px`,
+    );
   });
 
   it("layout desconhecido na config cai no Padrão", async () => {
@@ -573,7 +583,9 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     };
     configCarregada = true;
     await montar([], true);
-    expect(esqueletoDeOfertas()?.className).not.toContain("min-h-[286px]");
+    expect(esqueletoDeOfertas()?.style.minHeight).not.toBe(
+      `${ALTURA_SECAO_LATERAL}px`,
+    );
     expect(esqueletoDeOfertas()?.className).not.toContain("min-h-[392px]");
   });
 
