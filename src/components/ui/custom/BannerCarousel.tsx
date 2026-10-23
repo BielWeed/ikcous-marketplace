@@ -205,7 +205,8 @@ export const BannerCarousel = memo(function BannerCarousel({
                       banner.showTextOverlay !== false &&
                       ((banner.title && banner.title.trim() !== "") ||
                         (banner.subtitle && banner.subtitle.trim() !== "") ||
-                        (banner.buttonText &&
+                        (destino !== null &&
+                          banner.buttonText &&
                           banner.buttonText.trim() !== "") ||
                         (banner.badgeText && banner.badgeText.trim() !== ""));
 
