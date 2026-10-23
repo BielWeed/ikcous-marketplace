@@ -2,6 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
+import {
+  type PassosDoEndereco,
+  passosDoEndereco,
+} from "@/lib/passos-do-endereco";
 import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { cn } from "@/lib/utils";
 import type { Address } from "@/types";
@@ -9,16 +13,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertCircle,
   ArrowUpRight,
-  Briefcase,
   Check,
-  CheckCircle2,
-  Home,
   Loader2,
   Lock,
   MapPin,
-  Pencil,
   Plus,
-  Tag,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -67,6 +66,13 @@ interface AddressFormProps {
    * campo nasce vazio, como antes.
    */
   nomeDaConta?: string;
+  /**
+   * Cabeçalho da tela (barra de passos, rótulo, título), desenhado por quem
+   * usa o formulário e renderizado no topo dele. Recebe os passos já
+   * calculados com os valores VIVOS do formulário — o estado mora aqui, então
+   * é por aqui que a tela de fora acompanha. Opcional: o checkout não passa.
+   */
+  cabecalho?: (passos: PassosDoEndereco) => React.ReactNode;
 }
 
 // Apelidos que viram botão. O valor gravado é o MESMO texto que a pessoa
@@ -102,12 +108,16 @@ const URL_DESCOBRIR_CEP =
 // iPhone dá zoom na tela quando o campo ganha foco e a barra de ação some —
 // e os 15 px de sempre de `md` (768 px) para cima. Sem `maximum-scale`: o
 // zoom do usuário continua livre.
+// Linguagem "Tinta" (23/10/2026): foco em tinta (`foreground`), nunca na cor da
+// loja (`primary`, que às vezes é amarela).
 const CAMPO =
-  "h-[52px] w-full rounded-2xl border-[1.5px] border-input bg-muted/40 px-3.5 text-base font-medium text-foreground outline-none transition-all placeholder:text-muted-foreground/60 focus:border-ring focus:bg-background focus:ring-4 focus:ring-ring/10 disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px]";
+  "h-[52px] w-full rounded-[14px] border border-input bg-muted/40 px-3.5 text-base font-medium text-foreground outline-none transition-all placeholder:text-muted-foreground/60 focus:border-foreground focus:bg-background focus:ring-4 focus:ring-foreground/10 disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px]";
 const CAMPO_COM_ERRO =
   "border-red-300 bg-background ring-4 ring-red-500/10 dark:border-red-500/60";
 const ROTULO =
-  "mb-1.5 ml-0.5 flex items-baseline justify-between text-xs font-semibold text-muted-foreground";
+  "mb-2 ml-0.5 flex items-baseline gap-2 text-[13px] font-semibold text-foreground";
+// "opcional" e "da sua conta" ao lado do rótulo, em tom de apoio.
+const ROTULO_APOIO = "font-medium not-italic text-muted-foreground";
 
 function MensagemDeErro({
   id,
@@ -134,6 +144,7 @@ export function AddressForm({
   onSubmit,
   onCancel,
   nomeDaConta,
+  cabecalho,
 }: Readonly<AddressFormProps>) {
   // `config` não decide mais a busca de CEP (vale para toda loja): a cobertura
   // de entrega decide para onde a loja entrega, nunca onde o cliente mora.
@@ -476,6 +487,15 @@ export function AddressForm({
   const escolhaApelido = escolhaDoApelido(apelido, apelidoOutro);
   const semNumero = numero.trim().toUpperCase() === SEM_NUMERO;
   const nomeVemDaConta = !!nomePadrao && recebedor.trim() === nomePadrao;
+  const passos = passosDoEndereco({
+    cep: cepAtual,
+    rua,
+    bairro,
+    cidade,
+    uf,
+    numero,
+    recebedor,
+  });
 
   return (
     <form
@@ -483,6 +503,8 @@ export function AddressForm({
       className="flex flex-1 flex-col gap-4"
       noValidate
     >
+      {cabecalho?.(passos)}
+
       {/* CEP — grande, primeiro, o único campo à vista no começo */}
       <div>
         <label htmlFor="cep" className={ROTULO}>
@@ -531,7 +553,7 @@ export function AddressForm({
                     // para o `md:text-[15px]` do CAMPO não encolher o CEP no desktop.
                     "h-16 rounded-[20px] px-4 pr-12 text-[22px] md:text-[22px] font-bold tracking-[0.04em] tabular-nums placeholder:font-bold placeholder:text-muted-foreground/40",
                     cepAchado &&
-                      "border-emerald-200 bg-background dark:border-emerald-500/40",
+                      "border-2 border-emerald-300 bg-background dark:border-emerald-500/50",
                     (cepComProblema || !!erros.cep) && CAMPO_COM_ERRO,
                   )}
                   autoComplete="postal-code"
@@ -541,7 +563,9 @@ export function AddressForm({
                     <Loader2 className="size-5 animate-spin text-muted-foreground" />
                   )}
                   {!buscandoCep && cepAchado && (
-                    <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400" />
+                    <span className="flex size-6 items-center justify-center rounded-full bg-emerald-500 text-white">
+                      <Check className="size-3.5" strokeWidth={3} />
+                    </span>
                   )}
                   {!buscandoCep && (cepComProblema || !!erros.cep) && (
                     <AlertCircle className="size-5 text-red-600 dark:text-red-400" />
@@ -585,7 +609,7 @@ export function AddressForm({
 
       {/* Cartão fantasma (antes do CEP) e cartão carregando (durante a busca) */}
       {!cepPronto && !buscandoCep && (
-        <div className="flex gap-3 rounded-[20px] border-[1.5px] border-dashed border-border bg-muted/30 p-3.5">
+        <div className="flex gap-3 rounded-[18px] border border-dashed border-border bg-muted/30 p-3.5">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-[13px] bg-muted text-muted-foreground/50">
             <MapPin className="size-[18px]" />
           </div>
@@ -600,7 +624,7 @@ export function AddressForm({
       )}
       {buscandoCep && (
         <div
-          className="flex gap-3 rounded-[20px] border border-border bg-card p-3.5"
+          className="flex gap-3 rounded-[18px] border border-border bg-muted/30 p-3.5"
           aria-hidden="true"
         >
           <div className="size-10 shrink-0 animate-pulse rounded-[13px] bg-muted" />
@@ -618,13 +642,13 @@ export function AddressForm({
           {mostrarCartao ? (
             <div
               data-testid="cartao-do-endereco"
-              className="flex gap-3 rounded-[20px] border border-border bg-card p-3.5 shadow-sm"
+              className="flex gap-3 rounded-[18px] border border-border bg-muted/30 p-3.5"
             >
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-[13px] bg-primary text-primary-foreground">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-[13px] bg-foreground text-background">
                 <MapPin className="size-[18px]" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-bold tracking-tight text-foreground">
+                <p className="truncate text-[15px] font-semibold tracking-tight text-foreground">
                   {rua}
                 </p>
                 <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
@@ -632,8 +656,11 @@ export function AddressForm({
                 </p>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   {resultadoCep?.tipo === "achou" && cepTrouxeRuaEBairro ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                      <Check className="size-3" strokeWidth={2.5} />
+                    <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      <span
+                        aria-hidden="true"
+                        className="size-1.5 rounded-full bg-emerald-500"
+                      />
                       Achado pelo CEP
                     </span>
                   ) : (
@@ -646,9 +673,8 @@ export function AddressForm({
                       requestAnimationFrame(() => form.setFocus("street"));
                     }}
                     disabled={loading}
-                    className="inline-flex items-center gap-1.5 rounded-[10px] bg-muted px-2.5 py-1.5 text-[12.5px] font-semibold text-foreground"
+                    className="-mx-2 -my-3 px-2 py-3 text-[13px] font-semibold text-foreground underline underline-offset-4"
                   >
-                    <Pencil className="size-3.5" />
                     Editar
                   </button>
                 </div>
@@ -679,7 +705,10 @@ export function AddressForm({
 
           {/* Número e complemento */}
           <div>
-            <div className="grid grid-cols-[118px_1fr] gap-2.5">
+            {/* `minmax(0,1fr)` + `min-w-0`: a coluna do complemento ENCOLHE em vez de
+                empurrar a tela para o lado em 320 px; o rótulo quebra ("opcional"
+                desce) e `items-end` mantém os dois campos na mesma linha. */}
+            <div className="grid grid-cols-[118px_minmax(0,1fr)] items-end gap-2.5">
               <div>
                 <label htmlFor="number" className={ROTULO}>
                   Número
@@ -695,12 +724,13 @@ export function AddressForm({
                   autoComplete="off"
                 />
               </div>
-              <div>
-                <label htmlFor="complement" className={ROTULO}>
+              <div className="min-w-0">
+                <label
+                  htmlFor="complement"
+                  className={cn(ROTULO, "flex-wrap gap-y-0")}
+                >
                   Complemento
-                  <i className="font-medium not-italic text-muted-foreground/70">
-                    opcional
-                  </i>
+                  <i className={ROTULO_APOIO}>opcional</i>
                 </label>
                 <input
                   id="complement"
@@ -729,9 +759,9 @@ export function AddressForm({
                   })
                 }
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-[11.5px] font-semibold",
+                  "inline-flex h-11 items-center rounded-xl border px-3 text-[12px] font-semibold transition-colors",
                   semNumero
-                    ? "border-primary bg-primary text-primary-foreground"
+                    ? "border-foreground bg-foreground text-background"
                     : "border-border bg-background text-muted-foreground",
                 )}
               >
@@ -755,9 +785,7 @@ export function AddressForm({
             <div>
               <label htmlFor="reference" className={ROTULO}>
                 Ponto de referência
-                <i className="font-medium not-italic text-muted-foreground/70">
-                  opcional
-                </i>
+                <i className={ROTULO_APOIO}>opcional</i>
               </label>
               <input
                 id="reference"
@@ -850,7 +878,7 @@ export function AddressForm({
             <label htmlFor="recipient_name" className={ROTULO}>
               Quem vai receber
               {nomeVemDaConta && (
-                <span className="text-[11px] font-semibold text-muted-foreground">
+                <span className="text-[11px] font-medium text-muted-foreground">
                   da sua conta
                 </span>
               )}
@@ -884,13 +912,7 @@ export function AddressForm({
               aria-labelledby="rotulo-apelido"
               className="flex flex-wrap gap-2"
             >
-              {(
-                [
-                  { escolha: "Casa", Icone: Home },
-                  { escolha: "Trabalho", Icone: Briefcase },
-                  { escolha: "Outro", Icone: Tag },
-                ] as const
-              ).map(({ escolha, Icone }) => {
+              {(["Casa", "Trabalho", "Outro"] as const).map((escolha) => {
                 const ligado = escolhaApelido === escolha;
                 return (
                   <button
@@ -917,13 +939,12 @@ export function AddressForm({
                       );
                     }}
                     className={cn(
-                      "inline-flex h-[42px] items-center gap-1.5 rounded-[14px] border-[1.5px] px-3.5 text-sm font-semibold transition-colors",
+                      "inline-flex h-11 items-center justify-center rounded-xl border px-5 text-sm font-semibold transition-colors",
                       ligado
-                        ? "border-primary bg-primary text-primary-foreground"
+                        ? "border-foreground bg-foreground text-background"
                         : "border-border bg-background text-foreground/80",
                     )}
                   >
-                    <Icone className="size-4" />
                     {escolha}
                   </button>
                 );
@@ -959,7 +980,7 @@ export function AddressForm({
               htmlFor="is_default"
               className="min-w-0 flex-1 cursor-pointer"
             >
-              <span className="block text-sm font-semibold text-foreground">
+              <span className="block text-[15px] font-semibold text-foreground">
                 Endereço principal
               </span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -976,6 +997,8 @@ export function AddressForm({
                   checked={field.value}
                   onCheckedChange={field.onChange}
                   disabled={loading}
+                  // Ligado em tinta (não na cor da loja), como os chips.
+                  className="data-[state=checked]:bg-foreground"
                 />
               )}
             />
@@ -987,7 +1010,7 @@ export function AddressForm({
               variant="ghost"
               onClick={onCancel}
               disabled={loading}
-              className="h-10 rounded-xl px-5 text-xs font-semibold text-muted-foreground"
+              className="h-11 rounded-xl px-5 text-[13px] font-semibold text-muted-foreground"
             >
               Cancelar
             </Button>
@@ -1001,12 +1024,11 @@ export function AddressForm({
           type="submit"
           disabled={loading || buscandoCep}
           className={cn(
-            "h-[52px] w-full rounded-2xl text-[15px] font-bold shadow-lg shadow-primary/20 transition-all active:scale-[0.98]",
+            "h-[52px] w-full rounded-2xl bg-foreground text-[15px] font-semibold text-background transition-all hover:bg-foreground/90 active:scale-[0.98]",
             // Antes de haver um CEP completo o botão se mostra apagado, mas
             // continua tocável: tocar nele mostra o que falta (CEP inválido)
             // em vez de não responder.
-            !cepPronto &&
-              "bg-muted text-muted-foreground shadow-none hover:bg-muted",
+            !cepPronto && "bg-muted text-muted-foreground hover:bg-muted",
           )}
         >
           {loading ? (
