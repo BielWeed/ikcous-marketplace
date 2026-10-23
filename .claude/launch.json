@@ -4,7 +4,7 @@
     {
       "name": "core_app_mkt",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": ["run", "dev:oficial"],
       "port": 5173
     }
   ]
