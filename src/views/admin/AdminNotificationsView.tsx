@@ -10,10 +10,10 @@ import {
 import type { View } from "@/types";
 import type { Aviso, TipoDeAviso } from "@/utils/avisos-do-lojista";
 import {
-  type Bell,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  type LucideIcon,
   MessageSquare,
   Package,
   RefreshCw,
@@ -47,7 +47,7 @@ const ROTULO_MONO =
  */
 const APARENCIA: Record<
   TipoDeAviso,
-  { Icone: typeof Bell; cor: string; rotulo: string; fonte: string }
+  { Icone: LucideIcon; cor: string; rotulo: string; fonte: string }
 > = {
   pedido: {
     Icone: ShoppingBag,
@@ -161,7 +161,7 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
               <span className="mt-2 flex w-fit items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-300">
                 <span
                   aria-hidden="true"
-                  className="size-1.5 shrink-0 rounded-full bg-sky-300"
+                  className="size-1.5 shrink-0 rounded-full bg-current"
                 />
                 Não lida
               </span>
@@ -363,7 +363,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
             {valor}
           </p>
           {status && (
-            <span className="rounded-xl border border-emerald-400/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-400">
+            <span className="rounded-xl border border-border px-2.5 py-1 text-[11px] font-semibold text-emerald-400">
               {status}
             </span>
           )}
@@ -389,7 +389,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
       {orientacao && (
         <span
           data-orientacao
-          className="mt-3 flex min-h-11 items-center gap-2 rounded-xl border border-red-400/40 px-3 py-2 text-sm font-bold text-red-400"
+          className="mt-3 flex min-h-11 items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-bold text-red-400"
         >
           <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
           <span className="min-w-0 flex-1">{orientacao}</span>
@@ -513,7 +513,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
           >
             <span
               aria-hidden="true"
-              className="size-2 shrink-0 rounded-full bg-sky-300"
+              className="size-2 shrink-0 rounded-full bg-current text-sky-300"
             />
             <span className="min-w-0 flex-1">
               {naoLidas}{" "}
@@ -529,7 +529,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
         {fontesComFalha.length > 0 && (
           <div
             role="alert"
-            className="space-y-3 rounded-[18px] border border-amber-400/40 p-4"
+            className="space-y-3 rounded-[18px] border border-border p-4"
           >
             <div className="flex items-center gap-2 text-amber-400">
               <TriangleAlert aria-hidden="true" className="size-6 shrink-0" />

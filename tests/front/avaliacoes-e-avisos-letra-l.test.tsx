@@ -5,7 +5,7 @@
 //      `text-[6px]` … `text-[10.5px]`, inclusive com prefixo `sm:`), fora de comentário.
 //  (b) Onde a mesma tag junta `uppercase` e `tracking-widest` numa caixa que não
 //      pode crescer (`whitespace-nowrap`, `truncate`, `leading-none`), o rastro
-//      aperta para `tracking-wider`: texto maior com o mesmo espaçamento estoura.
+//      aperta para `tracking-wider` ou `tracking-[0.12em]`: texto maior com o mesmo espaçamento estoura.
 /* eslint-disable security/detect-non-literal-fs-filename, security/detect-unsafe-regex --
    lê arquivos-fonte do próprio repositório (caminhos constantes deste teste, não entrada de usuário); regex constantes, sem backtracking sobre entrada externa */
 import { readFileSync } from "node:fs";
@@ -101,7 +101,7 @@ describe("Avaliações: abas, pílulas e rótulos continuam cabendo", () => {
 describe("Avisos: o rótulo `leading-none` com `max-w` não estoura", () => {
   const fonte = ler("src/views/admin/AdminNotificationsView.tsx");
 
-  it("o rótulo do cartão tem 11px e rastro `tracking-wider`", () => {
+  it("o rótulo do cartão tem 11px e rastro `tracking-[0.12em]` (nunca widest)", () => {
     const rotulos = linhasCom(fonte, /font-mono text-.*uppercase leading-none/);
     expect(rotulos).toHaveLength(1);
     expect(rotulos[0]).toContain("text-[11px]");

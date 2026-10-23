@@ -629,7 +629,8 @@ describe("Notificações do painel — linguagem Tinta", () => {
     const selo = Array.from(pagamento?.querySelectorAll("span") ?? []).find(
       (no) => no.textContent === "Entregue",
     );
-    expect(selo?.className).toContain("border-emerald-400/40");
+    expect(selo?.className).toContain("border-border");
+    expect(selo?.className).toContain("text-emerald-400");
     expect(selo?.className).not.toMatch(/(^|\s)bg-/);
   });
 
@@ -664,7 +665,7 @@ describe("Notificações do painel — linguagem Tinta", () => {
     expect(atalho?.textContent).toContain("1 novidade não lida");
     expect(atalho?.className).toContain("min-h-11");
     expect(atalho?.className).toContain("rounded-[18px]");
-    expect(atalho?.querySelector("span.bg-sky-300")).not.toBeNull();
+    expect(atalho?.querySelector("span.bg-current")).not.toBeNull();
   });
 
   it("a tela não traz cor literal nem a paleta fixa do tema escuro", () => {
