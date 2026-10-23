@@ -193,7 +193,7 @@ describe("AdminQAView — protege o texto durante o envio", () => {
 
   async function publicarResposta() {
     const publicar = Array.from(document.body.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Publicar Resposta"),
+      (b) => b.textContent?.includes("Publicar resposta"),
     );
     expect(publicar).toBeTruthy();
     await act(async () => {

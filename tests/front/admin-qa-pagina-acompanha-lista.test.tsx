@@ -175,7 +175,7 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
       );
       expect(excluir).not.toBeNull();
       await act(async () => excluir!.click());
-      await clicar("Sim");
+      await clicar("Excluir");
     } else {
       await clicar("Responder");
       const campo = document.body.querySelector("#merchant-answer");
@@ -188,7 +188,7 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
         setter.call(campo, "Sim.");
         campo!.dispatchEvent(new Event("input", { bubbles: true }));
       });
-      await clicar("Publicar Resposta");
+      await clicar("Publicar resposta");
     }
   }
 
@@ -232,7 +232,7 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
 
       expect(armazem.get("admin_qa_page")).toBe("0");
       expect(hospedeiro.textContent).not.toContain("Dúvida número 1?");
-      expect(hospedeiro.textContent).toContain("Fila de Perguntas Limpa");
+      expect(hospedeiro.textContent).toContain("Fila de perguntas limpa");
     },
   );
 
@@ -275,7 +275,7 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
 
   it("trocar o filtro volta à primeira página", async () => {
     await montar();
-    await clicar("Todas");
+    await clicar("Todas 0"); // o filtro leva a contagem (a do dublê de estatísticas é 0)
     expect(armazem.get("admin_qa_page")).toBe("0");
     expect(hospedeiro.textContent).toContain("Dúvida número 1?");
   });

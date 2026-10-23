@@ -488,7 +488,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
                   const bloco = BLOCO_DO_PASSO.get(passo.chave);
                   if (bloco) irAoBloco(bloco);
                 }}
-                className="flex min-h-11 items-center rounded-xl border border-admin-gold/30 bg-admin-bg px-4 text-sm font-bold text-admin-gold transition-colors hover:border-admin-gold/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60"
+                className="flex min-h-11 items-center rounded-xl border border-admin-gold/30 bg-admin-bg px-4 text-sm font-bold text-admin-gold transition-colors hover:border-admin-gold/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {passo.rotulo}
               </button>
@@ -673,7 +673,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             aria-disabled={
               !isLoaded || isOffline || salvandoTudo || !alterados.length
             }
-            className="admin-barra-principal flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-admin-gold px-5 text-sm font-bold text-zinc-950 transition-colors hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60"
+            className="admin-barra-principal flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-sm font-bold text-background transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {salvandoTudo ? (
               <RefreshCw aria-hidden="true" className="size-4 animate-spin" />

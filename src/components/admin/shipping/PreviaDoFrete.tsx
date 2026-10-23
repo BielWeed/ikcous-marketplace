@@ -90,7 +90,7 @@ export function PreviaDoFrete({
                 key={valor}
                 aria-pressed={valor === subtotal}
                 onClick={() => setSubtotal(valor)}
-                className={`min-h-11 min-w-0 flex-1 rounded-full text-[13px] font-bold ${valor === subtotal ? "bg-[hsl(var(--admin-gold-fill))] text-black" : "text-zinc-300"}`}
+                className={`min-h-11 min-w-0 flex-1 rounded-full text-[13px] font-bold ${valor === subtotal ? "border border-solid border-foreground bg-admin-hover text-foreground" : "text-zinc-300"}`}
               >
                 R$ {valor}
               </button>

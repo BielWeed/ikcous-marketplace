@@ -1,4 +1,20 @@
 {
+  "1.5.55": {
+    "titulo": "Perguntas e Avaliações redesenhadas e painel sem dourado nos itens escolhidos",
+    "novidades": [
+      "Em Perguntas, você filtra entre Pendentes e Todas, e o resumo cabe numa linha com o botão Expandir, que abre os números em cartões.",
+      "Em Perguntas, o botão Responder abre uma folha que sobe de baixo e fica acima do teclado do celular, para você enxergar o que escreve.",
+      "Em Avaliações, você filtra por nota (de 5 a 1 estrela) ou vê Todas, e o resumo também cabe numa linha e abre em cartões.",
+      "Cada pergunta mostra se está Pendente ou Respondida, e cada avaliação mostra se é Verificada ou está Em moderação."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "Excluir uma pergunta ou avaliação agora pede a confirmação com uma frase, dentro do próprio cartão, antes de apagar.",
+      "No painel, o item escolhido (filtros, períodos, telas) deixa de ficar dourado e ganha uma borda mais forte em tom neutro; em Pedidos e nas opções de busca aparece também um tique.",
+      "Os botões principais do painel, como Novo banner, ficaram em tom neutro, de bom contraste, em vez de dourado.",
+      "Os interruptores ligados e as caixas de marcar do painel também ficaram em tom neutro. O tracinho dourado da aba ativa continua."
+    ]
+  },
   "1.5.54": {
     "titulo": "Finalizar compra mais enxuto, ofertas com foto ao lado e produto com código automático",
     "novidades": [

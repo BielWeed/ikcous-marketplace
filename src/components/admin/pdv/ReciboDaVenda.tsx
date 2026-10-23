@@ -261,11 +261,7 @@ export function ReciboDaVenda({
           aoConcluir={() => setAnulada(true)}
         />
       )}
-      <Button
-        type="button"
-        className="pdv-primary bg-admin-gold text-black"
-        onClick={limparCupom}
-      >
+      <Button type="button" className="pdv-primary" onClick={limparCupom}>
         <Plus aria-hidden="true" className="size-5" />
         Nova venda
       </Button>

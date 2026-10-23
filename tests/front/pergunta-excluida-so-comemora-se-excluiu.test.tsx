@@ -185,7 +185,10 @@ describe("AdminQAView — 'Pergunta excluída' só comemora se excluiu de verdad
 
   function clicarSim() {
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
-    const botaoSim = botoes.find((b) => b.textContent?.trim() === "Sim");
+    // A confirmação agora é uma frase dentro do cartão com Cancelar | Excluir
+    // (a lixeira tem aria-label "Excluir pergunta", então o texto "Excluir"
+    // só existe no botão de confirmar).
+    const botaoSim = botoes.find((b) => b.textContent?.trim() === "Excluir");
     expect(botaoSim).toBeTruthy();
     botaoSim!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   }

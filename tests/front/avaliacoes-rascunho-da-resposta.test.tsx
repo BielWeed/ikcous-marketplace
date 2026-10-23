@@ -122,19 +122,12 @@ async function montar(
 }
 function abridores() {
   return [...host.querySelectorAll<HTMLButtonElement>("button")].filter(
-    (b) =>
-      b.title === "Responder" ||
-      (b.textContent?.trim() === "Responder" && b.querySelector("svg")),
+    (b) => b.textContent?.trim() === "Responder" && b.querySelector("svg"),
   );
 }
 function botaoEnviar() {
   const botao = [...host.querySelectorAll<HTMLButtonElement>("button")].find(
-    (el) =>
-      ["Responder", "Publicar Resposta"].includes(
-        el.textContent?.trim() ?? "",
-      ) &&
-      !el.title &&
-      !el.querySelector("svg"),
+    (el) => el.textContent?.trim() === "Publicar resposta",
   );
   if (!botao) throw new Error("Botão de envio ausente");
   return botao;
@@ -161,15 +154,16 @@ it.each(["compact", "detailed"] as const)(
   "guarda o rascunho de cada avaliação no modo %s",
   async (modo) => {
     await montar(modo);
-    await clicar(abridores()[0]);
+    // O formulário aberto ocupa o lugar dos botões do próprio cartão: com A
+    // aberto, o primeiro "Responder" da tela é o de B (e vice-versa).
+    await clicar(abridores()[0]); // abre A
     await digitar("Resposta de A");
-    await clicar(abridores()[0]);
-    expect(host.querySelector("textarea")?.value).toBe("Resposta de A");
-    await clicar(abridores()[1]);
+    await clicar(abridores()[0]); // abre B (A guarda o rascunho)
+    expect(host.querySelector("textarea")?.value).toBe("");
     await digitar("Resposta de B");
-    await clicar(abridores()[0]);
+    await clicar(abridores()[0]); // volta a A
     expect(host.querySelector("textarea")?.value).toBe("Resposta de A");
-    await clicar(abridores()[1]);
+    await clicar(abridores()[0]); // volta a B
     expect(host.querySelector("textarea")?.value).toBe("Resposta de B");
   },
 );
@@ -188,8 +182,11 @@ it.each(["compact", "detailed"] as const)(
     await clicar(abridores()[0]);
     await digitar("Resposta de A");
     await clicar(botaoEnviar());
+    // Só sobrou o "Responder" do outro cartão (o de A virou o formulário): ele
+    // fica apagado durante o envio e um toque nele não troca de editor.
+    expect(abridores()).toHaveLength(1);
     expect(abridores().every((b) => b.disabled)).toBe(true);
-    await clicar(abridores()[1]);
+    await clicar(abridores()[0]);
     expect(host.querySelector("textarea")?.value).toBe("Resposta de A");
     await act(async () => {
       concluir(false);
@@ -210,12 +207,12 @@ it("excluir a avaliação descarta o rascunho e tira o aviso de alteração pend
   await clicar(cancelar!);
   expect(sujo).toHaveBeenLastCalledWith(true);
   const excluir = host.querySelector<HTMLButtonElement>(
-    'button[title="Excluir Avaliação"]',
+    'button[aria-label="Excluir avaliação"]',
   );
   await clicar(excluir!);
   const confirmar = [
     ...host.querySelectorAll<HTMLButtonElement>("button"),
-  ].find((b) => b.textContent?.trim() === "Sim, Apagar");
+  ].find((b) => b.textContent?.trim() === "Excluir");
   await clicar(confirmar!);
   expect(h.excluir).toHaveBeenCalledWith("a");
   expect(sujo).toHaveBeenLastCalledWith(false);

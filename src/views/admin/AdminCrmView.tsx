@@ -266,7 +266,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                     "flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-xl px-1 text-center text-[13px] font-bold transition-colors lg:w-auto lg:shrink-0 lg:px-3.5",
                     FOCO_DO_CRM,
                     selecionada
-                      ? "bg-admin-gold-fill text-admin-gold-ink shadow"
+                      ? "bg-foreground text-background shadow"
                       : "text-zinc-400 hover:bg-white/5 hover:text-white",
                   )}
                 >
@@ -309,7 +309,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                       "flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl border border-solid px-0 text-xs font-semibold lg:px-3",
                       FOCO_DO_CRM,
                       periodo === item.id
-                        ? "border-admin-gold bg-admin-gold/15 text-admin-gold"
+                        ? "border-solid border-foreground bg-admin-hover text-foreground"
                         : "border-transparent text-admin-text-2",
                     )}
                   >
@@ -326,7 +326,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                         "flex min-h-11 items-center justify-center rounded-xl border border-solid text-xs font-semibold lg:px-3",
                         FOCO_DO_CRM,
                         periodo === "90d" || periodo === "ano"
-                          ? "border-admin-gold bg-admin-gold/15 text-admin-gold"
+                          ? "border-solid border-foreground bg-admin-hover text-foreground"
                           : "border-transparent text-admin-text-2",
                       )}
                     >

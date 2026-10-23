@@ -305,7 +305,7 @@ function EscolhaDaCor({
       {conflito && editor.current ? (
         <>
           <Button
-            className="h-12 w-full rounded-2xl bg-admin-gold text-black hover:bg-admin-gold/90"
+            className="h-12 w-full rounded-2xl bg-foreground text-background hover:opacity-90"
             disabled={editor.busy || !editor.active}
             onClick={() => editor.resolveConflict(true)}
           >
@@ -322,7 +322,7 @@ function EscolhaDaCor({
         </>
       ) : pendente || conflito ? (
         <Button
-          className="h-12 w-full rounded-2xl bg-admin-gold text-black hover:bg-admin-gold/90"
+          className="h-12 w-full rounded-2xl bg-foreground text-background hover:opacity-90"
           disabled={offline || editor.busy || !editor.active}
           onClick={() => void editor.read()}
         >
@@ -331,7 +331,7 @@ function EscolhaDaCor({
       ) : (
         <>
           <Button
-            className="h-12 w-full rounded-2xl bg-admin-gold font-bold text-black hover:bg-admin-gold/90"
+            className="h-12 w-full rounded-2xl bg-foreground font-bold text-background hover:opacity-90"
             disabled={
               offline || editor.locked || !editor.dirty || !validacao.ok
             }
@@ -428,7 +428,7 @@ export function AdminAppColorView({
                 Sua cor continua salva. Confira a internet e tente de novo.
               </p>
               <Button
-                className={`${ACAO} mt-3 w-full bg-admin-gold text-black`}
+                className={`${ACAO} mt-3 w-full bg-foreground text-background`}
                 disabled={offline || !active}
                 onClick={() => void editor.read()}
               >

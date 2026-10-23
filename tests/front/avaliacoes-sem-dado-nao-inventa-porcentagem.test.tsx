@@ -200,17 +200,28 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
     return hospedeiro.textContent ?? "";
   }
 
-  /** Largura (em %) da barra de progresso identificada pela classe do
-   * cartão — "bg-purple-550" para Compras Verificadas, "bg-sky-500" para
-   * Taxa de Resposta. Exige `style.width` setado para não confundir com o
-   * fundo do ícone do cartão, que carrega a mesma substring de classe
-   * (ex.: "bg-sky-500/10") mas não é a barra. */
-  function larguraDaBarra(classeUnica: string): string | undefined {
-    const barra = Array.from(
-      hospedeiro.querySelectorAll<HTMLDivElement>("div"),
-    ).find(
-      (div) => div.className.includes(classeUnica) && div.style.width !== "",
+  /** Abre o resumo ("Expandir"): os cartões de taxa só existem aberto. */
+  async function expandirResumo() {
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Expandir",
     );
+    expect(botao).toBeTruthy();
+    await act(async () => {
+      botao!.click();
+    });
+  }
+
+  /** Largura (em %) da barra de proporção do cartão de rótulo `rotulo`
+   * ("Taxa de resposta", "Compras verificadas"): a barra é o `<span>` com
+   * `style.width` dentro do cartão. */
+  function larguraDaBarra(rotulo: string): string | undefined {
+    const etiqueta = Array.from(
+      hospedeiro.querySelectorAll<HTMLElement>("span"),
+    ).find((el) => el.textContent === rotulo);
+    const cartao = etiqueta?.parentElement;
+    const barra = Array.from(
+      cartao?.querySelectorAll<HTMLElement>("span[style]") ?? [],
+    ).find((el) => el.style.width !== "");
     return barra?.style.width;
   }
 
@@ -220,6 +231,7 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
     h.estado.globalRepliedCount = 0;
 
     await montar();
+    await expandirResumo();
 
     const tela = texto();
 
@@ -229,13 +241,13 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
     expect(tela).not.toContain("0%");
 
     // O "—" tem que aparecer duas vezes: uma para cada cartão de taxa
-    // (Compras Verificadas e Taxa de Resposta).
+    // (Compras verificadas e Taxa de resposta).
     const tracos = (tela.match(/—/g) ?? []).length;
     expect(tracos).toBe(2);
 
     // E as duas barras de progresso ficam vazias, não cheias.
-    expect(larguraDaBarra("bg-purple-550")).toBe("0%");
-    expect(larguraDaBarra("bg-sky-500")).toBe("0%");
+    expect(larguraDaBarra("Compras verificadas")).toBe("0%");
+    expect(larguraDaBarra("Taxa de resposta")).toBe("0%");
   });
 
   it("CONTROLE — 10 avaliações, 0 verificadas: mostra '0%' de verdade, não '—'", async () => {
@@ -245,12 +257,13 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
     h.estado.globalRepliedCount = 3;
 
     await montar();
+    await expandirResumo();
 
     const tela = texto();
 
     // Zero medido é zero de verdade: continua aparecendo, sem virar "—".
     expect(tela).toContain("0%");
-    expect(larguraDaBarra("bg-purple-550")).toBe("0%");
+    expect(larguraDaBarra("Compras verificadas")).toBe("0%");
 
     // Nenhum "—" vaza para um estado que tem dado real para medir.
     expect(tela).not.toContain("—");
@@ -263,11 +276,12 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
     h.estado.globalRepliedCount = 5;
 
     await montar();
+    await expandirResumo();
 
     const tela = texto();
 
     expect(tela).toContain("50%");
-    expect(larguraDaBarra("bg-purple-550")).toBe("50%");
+    expect(larguraDaBarra("Compras verificadas")).toBe("50%");
     expect(tela).not.toContain("—");
   });
 });

@@ -23,7 +23,7 @@ export function AlternadorDeTelas({
   return (
     <nav
       aria-label="Telas desta seção"
-      className="flex gap-1 rounded-2xl border border-admin-border bg-admin-surface p-1"
+      className="flex gap-1 rounded-2xl border border-solid border-admin-border bg-admin-surface p-1"
     >
       {telas.map((tela) => {
         const ativa = tela === atual;
@@ -38,10 +38,12 @@ export function AlternadorDeTelas({
               if (!ativa) onNavigate(tela);
             }}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center rounded-xl px-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold",
+              // Selecionado é NEUTRO: moldura forte e fundo elevado, sem cor de
+              // marca (a pista não é a cor: há `aria-current` e o peso da letra).
+              "flex min-h-11 flex-1 items-center justify-center rounded-xl border border-solid px-3 text-base transition-colors",
               ativa
-                ? "bg-admin-gold text-black"
-                : "text-zinc-300 hover:bg-admin-raised",
+                ? "border-admin-border-strong bg-admin-raised font-bold text-white"
+                : "border-transparent font-medium text-zinc-300 hover:bg-admin-raised",
             )}
           >
             {nome}

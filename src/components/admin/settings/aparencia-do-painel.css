@@ -20,8 +20,8 @@
 }
 
 .tema-opcao[aria-checked="true"] {
-  border-color: hsl(var(--admin-gold));
-  background: hsl(var(--admin-gold) / 10%);
+  border-color: hsl(var(--admin-text, 240 10% 96.1%));
+  background: hsl(var(--admin-hover));
 }
 
 .tema-opcao[aria-checked="true"]::after {
@@ -29,7 +29,7 @@
   flex: none;
   font-size: 0.75rem;
   font-weight: 700;
-  color: hsl(var(--admin-gold));
+  color: hsl(var(--admin-text, 240 10% 96.1%));
 }
 
 .tema-nome {

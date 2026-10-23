@@ -137,16 +137,17 @@ describe("AdminReviewsView — o haptic de sucesso só toca na exclusão que deu
   }
 
   async function confirmarExclusao() {
-    // Modo compacto (default sem localStorage): lixeira com title "Excluir".
+    // A lixeira do cartão tem o nome "Excluir avaliação"; a confirmação é uma
+    // frase com Cancelar | Excluir dentro do cartão.
     const lixeira = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.getAttribute("title") === "Excluir",
+      (b) => b.getAttribute("aria-label") === "Excluir avaliação",
     );
     expect(lixeira).toBeTruthy();
     await act(async () => {
       lixeira!.click();
     });
     const sim = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.textContent?.trim() === "Sim",
+      (b) => b.textContent?.trim() === "Excluir",
     );
     expect(sim).toBeTruthy();
     await act(async () => {

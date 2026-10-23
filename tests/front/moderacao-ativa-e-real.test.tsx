@@ -186,14 +186,16 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Em moderação");
-    expect(texto).toContain("aguardando sua aprovação");
+    // A fila (contagem do BANCO) aparece na linha do resumo.
+    expect(texto).toContain("1 na fila");
     // O rótulo decorativo que afirmava moderação sem haver moderação:
     expect(texto).not.toContain("Moderação Ativa");
-    // O modo padrão é "compact" — o botão de publicar é o de ícone com title:
-    const botaoCompacto = hospedeiro.querySelector(
+    // O botão de publicar diz "Aprovar" e se chama "Aprovar e Publicar":
+    const botaoDeAprovar = hospedeiro.querySelector(
       'button[title="Aprovar e Publicar"]',
     );
-    expect(botaoCompacto).toBeDefined();
+    expect(botaoDeAprovar).not.toBeNull();
+    expect(botaoDeAprovar?.textContent?.trim()).toBe("Aprovar");
   });
 
   it("clicar em Aprovar chama a publicação com o id da avaliação", async () => {
@@ -216,7 +218,7 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
     const aprovar = hospedeiro.querySelector(
       'button[title="Aprovar e Publicar"]',
     ) as HTMLButtonElement;
-    expect(aprovar).toBeDefined();
+    expect(aprovar).not.toBeNull();
     await act(async () => {
       aprovar.click();
       await esperarMicrotarefas();
@@ -225,7 +227,7 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
     expect(h.aprovarReview).toHaveBeenCalledWith("rev-p");
   });
 
-  it("no modo DETAILED o pendente ganha o botão com texto 'Aprovar e Publicar'", async () => {
+  it("no modo DETAILED o pendente também ganha o botão 'Aprovar' (nome 'Aprovar e Publicar')", async () => {
     // Pré-carrega o modo detailed no armazem do localStorage dublado (o
     // useLocalStorage lê no primeiro render). O valor vai COMO JSON — o
     // hook faz JSON.parse do que está guardado.
@@ -248,7 +250,9 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Em moderação");
-    expect(texto).toContain("Aprovar e Publicar");
+    expect(
+      hospedeiro.querySelector('button[aria-label="Aprovar e Publicar"]'),
+    ).not.toBeNull();
     expect(h.aprovarReview).not.toHaveBeenCalled();
   });
 
@@ -271,7 +275,14 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).not.toContain("Em moderação");
-    expect(texto).toContain("Nenhuma avaliação na fila de moderação");
+    expect(texto).not.toContain("na fila");
+    const expandir = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Expandir",
+    );
+    await act(async () => {
+      expandir!.click();
+    });
+    expect(hospedeiro.textContent).toContain("Nenhuma na fila");
     const botoesAprovar = [...hospedeiro.querySelectorAll("button")].filter(
       (b) => b.textContent?.includes("Aprovar"),
     );

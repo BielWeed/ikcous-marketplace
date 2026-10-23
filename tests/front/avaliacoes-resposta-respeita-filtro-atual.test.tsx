@@ -115,19 +115,12 @@ async function montar(modo: "compact" | "detailed") {
 }
 function abridores() {
   return [...host.querySelectorAll<HTMLButtonElement>("button")].filter(
-    (b) =>
-      b.title === "Responder" ||
-      (b.textContent?.trim() === "Responder" && b.querySelector("svg")),
+    (b) => b.textContent?.trim() === "Responder" && b.querySelector("svg"),
   );
 }
 function botaoEnviar() {
   const botao = [...host.querySelectorAll<HTMLButtonElement>("button")].find(
-    (el) =>
-      ["Responder", "Publicar Resposta"].includes(
-        el.textContent?.trim() ?? "",
-      ) &&
-      !el.title &&
-      !el.querySelector("svg"),
+    (el) => el.textContent?.trim() === "Publicar resposta",
   );
   if (!botao) throw new Error("Botão de envio ausente");
   return botao;

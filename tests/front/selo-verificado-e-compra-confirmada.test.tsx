@@ -143,8 +143,8 @@ describe("AdminReviewsView — o selo Verificado é da compra, não do clique", 
       dispatchEvent: vi.fn(),
     }));
     const armazem = new Map<string, string>([
-      // O badge com TEXTO "Compra Verificada" vive no card DETAILED — o modo
-      // padrão é "compact" (só ícone, sem texto para o textContent ler).
+      // O modo (compacto ou detalhado) não muda o selo "Verificada" — o modo
+      // detalhado fica gravado para provar que os dois mostram o mesmo selo.
       ["admin_reviews_view_mode", "detailed"],
     ]);
     vi.stubGlobal("localStorage", {
@@ -203,12 +203,13 @@ describe("AdminReviewsView — o selo Verificado é da compra, não do clique", 
   it("a review VERIFICADA carrega a marca de compra; a não-verificada não", async () => {
     await montar();
 
-    // No modo compacto (padrão) a marca de compra é o ícone de escudo
-    // esmeralda ao lado do nome — sem texto. O KPI do topo tem o SEU
-    // escudo, roxo: a contagem é dele, não dos cards.
-    const marcas = hospedeiro.querySelectorAll(
-      "svg.lucide-shield-check.text-emerald-450",
+    // A marca de compra é o selo "Verificada" (escudo + texto em verde) ao
+    // lado do nome. Das duas avaliações da fixture, só a primeira é
+    // verificada: exatamente um selo na tela.
+    const marcas = [...hospedeiro.querySelectorAll("span")].filter(
+      (el) => el.textContent?.trim() === "Verificada",
     );
     expect(marcas.length).toBe(1);
+    expect(marcas[0]?.closest("li")?.textContent).toContain("Compradora");
   });
 });

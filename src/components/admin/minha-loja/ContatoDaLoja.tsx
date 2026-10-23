@@ -151,7 +151,7 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
             onClick={() => void salvar()}
             disabled={!isLoaded || offline || salvando || !alterado}
             title="Salva o WhatsApp e a mensagem de compartilhamento"
-            className="admin-barra-principal flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-admin-gold px-5 text-xs font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale"
+            className="admin-barra-principal flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-foreground px-5 text-xs font-black uppercase tracking-[0.12em] text-background transition-all hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale"
           >
             {salvando ? (
               <>
