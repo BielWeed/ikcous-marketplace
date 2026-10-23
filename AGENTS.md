@@ -248,12 +248,17 @@ escrita serial (salvo a exceção do `/paralelizar`, acima); quem escreveu não 
   prova `BEGIN/ROLLBACK` + apply, arquivo por arquivo). Ele grava a versão em
   `supabase_migrations.schema_migrations` na mesma transação do apply
   (`ON CONFLICT DO NOTHING`; o `rollback-manual-` apaga a linha) e, **antes de qualquer
-  prova ou apply**, consulta o ledger só para leitura: versão da lista já registrada,
-  versão repetida na lista ou consulta que falha **param o run** sem aplicar nada. Reaplicar
-  de propósito exige `permitir_reaplicar=true` (que não libera a faixa histórica
-  `20261160`–`20261166`). O `scripts/db-apply.cjs` tem a mesma guarda (flag
-  `--permitir-reaplicar`). A verificação final do workflow confere um conjunto fixo de
-  RPCs, não a migration nova. As `20261175`–`20261178` (PR #666), a `20261179`
+  prova ou apply**, consulta o ledger só para leitura (lista de `rollback-manual-` não
+  passa por essa consulta, porque precisa da linha para apagá-la): versão da lista já
+  registrada, versão repetida na lista ou consulta que falha **param o run** sem aplicar
+  nada. Reaplicar de propósito exige `permitir_reaplicar=true` (que não libera a faixa
+  histórica `20261160`–`20261166`). O `scripts/db-apply.cjs` tem a mesma guarda do ledger
+  (flag `--permitir-reaplicar`) e a mesma recusa da faixa histórica: se a conexão
+  (`DATABASE_URL`) é da CAF ou da Savy (reconhecidas pelo ref no host `db.<ref>.supabase.co`
+  ou no usuário do pooler `postgres.<ref>`) e algum arquivo da lista, inclusive
+  `rollback-manual-`, está na faixa, ele recusa **antes de conectar**, e a flag não libera;
+  lojas novas e de teste seguem livres. A verificação final do workflow confere um
+  conjunto fixo de RPCs, não a migration nova. As `20261175`–`20261178` (PR #666), a `20261179`
   (correção pós-revisão de `cancelar_devolucao` e a RPC
   `admin_devolucao_liberar_vinculo_reverso`, achados A1/R1/R2 da etiqueta reversa de devolução) e
   a `20261180` (achado de risco do cliente não cancelar com cartão vivo) sobem por ele, cada uma

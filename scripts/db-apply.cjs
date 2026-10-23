@@ -4371,6 +4371,41 @@ async function definicaoAtual(client, nomeFuncao) {
   return rows.map((r) => r.def);
 }
 
+// Refs das duas lojas em que a faixa histórica nunca se reaplica: a CAF
+// (IKCOUS publicada) e a Savy. Não são segredo (aparecem no host do banco).
+const REFS_FAIXA_HISTORICA = ["cafkrminfnokvgjqtkle", "gnjsrucsmjkajijrakzr"];
+const FAIXA_HISTORICA = /^(rollback-manual-)?2026116[0-6][0-9]{6}_/;
+
+/** A conexão é de uma das lojas conhecidas? O ref aparece no host direto
+ * (`db.<ref>.supabase.co`) ou no usuário do pooler (`postgres.<ref>`). */
+function conexaoDeLojaConhecida(conexao) {
+  const texto = String(conexao || "");
+  return REFS_FAIXA_HISTORICA.some(
+    (ref) =>
+      texto.includes(`db.${ref}.supabase.co`) ||
+      texto.includes(`postgres.${ref}`),
+  );
+}
+
+/**
+ * FAIXA HISTÓRICA — a mesma recusa do aplicar-migrations.yml: as migrations
+ * 20261160..20261166 (e os rollback-manual delas) já estão vivas nas lojas
+ * conhecidas e reaplicá-las é regressivo e destrutivo. Roda ANTES de conectar
+ * e a flag --permitir-reaplicar NÃO a libera. Lojas novas e de teste seguem
+ * livres. A mensagem nunca traz a conexão nem o ref.
+ */
+function recusarFaixaHistorica(conexao, arquivos) {
+  if (!conexaoDeLojaConhecida(conexao)) return;
+  for (const arquivo of arquivos) {
+    const base = path.basename(arquivo);
+    if (FAIXA_HISTORICA.test(base)) {
+      throw new Error(
+        `RECUSADO (loja conhecida, faixa histórica 20261160..20261166: nunca se reaplica nem se desfaz; --permitir-reaplicar não libera): ${base}`,
+      );
+    }
+  }
+}
+
 /**
  * A versão que o INSERT no ledger grava para este arquivo: o que vem antes do
  * primeiro "_" do nome. Só aceita dígitos; qualquer outra coisa é null.
@@ -4485,6 +4520,9 @@ async function main() {
       process.exit(1);
     }
   }
+
+  // Antes de conectar: a flag não libera a faixa histórica nas lojas conhecidas.
+  recusarFaixaHistorica(lerDatabaseUrl(), arquivos);
 
   const Client = carregarClient();
   const client = new Client({
@@ -4644,6 +4682,8 @@ if (require.main === module) {
 // montarTarefasDeVerificacao). O guarda acima existe por causa disso: sem
 // ele, importar o módulo dispararia a aplicação das migrations.
 module.exports = {
+  recusarFaixaHistorica,
+  conexaoDeLojaConhecida,
   guardaDoLedger,
   versaoDaMigration,
   funcoesAlteradas,

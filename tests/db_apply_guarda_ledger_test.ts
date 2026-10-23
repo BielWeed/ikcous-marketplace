@@ -20,6 +20,7 @@ import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
+  assertThrows,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const require = createRequire(import.meta.url);
@@ -169,4 +170,85 @@ Deno.test("main chama a guarda antes de gravar rollback e antes do apply", () =>
   assert(guarda < main.indexOf("fs.writeFileSync(arquivoRollback"));
   assert(guarda < main.indexOf('client.query("BEGIN")'));
   assertStringIncludes(main, 'args.includes("--permitir-reaplicar")');
+});
+
+// ─── faixa histórica 20261160..20261166 nas lojas conhecidas ───
+const {
+  recusarFaixaHistorica,
+  conexaoDeLojaConhecida,
+} = require("../scripts/db-apply.cjs");
+const REF_CAF = "cafkrminfnokvgjqtkle";
+const REF_SAVY = "gnjsrucsmjkajijrakzr";
+const POOLER_CAF = `postgres://postgres.${REF_CAF}@aws-0-sa-east-1.pooler.supabase.com:6543/postgres`;
+const DIRETO_SAVY = `postgres://postgres@db.${REF_SAVY}.supabase.co:5432/postgres`;
+const LOJA_TESTE =
+  "postgres://postgres.abcdefghijklmnopqrst@pooler.supabase.com:6543/postgres";
+const DA_FAIXA = "20261163000000_qualquer.sql";
+
+Deno.test("faixa histórica: pooler da CAF (usuário postgres.<ref>) recusa", () => {
+  assert(conexaoDeLojaConhecida(POOLER_CAF));
+  assertThrows(
+    () => recusarFaixaHistorica(POOLER_CAF, [DA_FAIXA]),
+    Error,
+    "faixa histórica",
+  );
+});
+
+Deno.test("faixa histórica: host direto da Savy recusa, em qualquer ponta da faixa", () => {
+  for (const v of ["20261160", "20261166"]) {
+    assertThrows(
+      () => recusarFaixaHistorica(DIRETO_SAVY, [`${v}000000_x.sql`]),
+      Error,
+      "faixa histórica",
+    );
+  }
+});
+
+Deno.test("faixa histórica: rollback-manual da faixa também recusa", () => {
+  assertThrows(
+    () =>
+      recusarFaixaHistorica(POOLER_CAF, [
+        "rollback-manual-20261164000000_x.sql",
+      ]),
+    Error,
+    "faixa histórica",
+  );
+});
+
+Deno.test("faixa histórica: --permitir-reaplicar NÃO libera (a função nem recebe a flag) e main a chama antes de conectar", () => {
+  const fonte = Deno.readTextFileSync(
+    new URL("../scripts/db-apply.cjs", import.meta.url),
+  );
+  const main = fonte.slice(fonte.indexOf("async function main()"));
+  const recusa = main.indexOf(
+    "recusarFaixaHistorica(lerDatabaseUrl(), arquivos)",
+  );
+  assert(recusa > 0);
+  assert(recusa < main.indexOf("new Client("));
+  assert(recusa < main.indexOf("await client.connect()"));
+  assertEquals(recusarFaixaHistorica.length, 2);
+});
+
+Deno.test("faixa histórica: arquivo fora da faixa passa nas lojas conhecidas", () => {
+  recusarFaixaHistorica(POOLER_CAF, [
+    "20261167000000_x.sql",
+    "20261159000000_x.sql",
+  ]);
+});
+
+Deno.test("faixa histórica: loja de teste ou nova segue livre, mesmo com arquivo da faixa", () => {
+  assert(!conexaoDeLojaConhecida(LOJA_TESTE));
+  recusarFaixaHistorica(LOJA_TESTE, [
+    DA_FAIXA,
+    "rollback-manual-20261160000000_x.sql",
+  ]);
+});
+
+Deno.test("faixa histórica: a mensagem não vaza a conexão nem o ref", () => {
+  try {
+    recusarFaixaHistorica(POOLER_CAF, [DA_FAIXA]);
+    throw new Error("não recusou");
+  } catch (e) {
+    assert(!e.message.includes(REF_CAF));
+  }
 });
