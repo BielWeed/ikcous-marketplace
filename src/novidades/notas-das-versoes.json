@@ -1,4 +1,13 @@
 {
+  "1.5.58": {
+    "titulo": "Resultado do Financeiro com as despesas no sinal certo",
+    "novidades": [],
+    "correcoes": [
+      "No Resultado do Financeiro, tarifas bancárias e juros pagos, e a quebra de caixa, agora aparecem como despesa (valor negativo) no detalhe, em vez de aparecerem como ganho. O lucro total e os demais números não mudam.",
+      "Nos temas Claro e Confortável do painel, os blocos cinza de carregando passam a seguir as cores do tema, em vez de aparecerem escuros."
+    ],
+    "melhorias": []
+  },
   "1.5.57": {
     "titulo": "Financeiro redesenhado em cinco abas e várias correções na loja",
     "novidades": [
