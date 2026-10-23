@@ -920,7 +920,7 @@ export const ProductCard = memo(function ProductCard({
               />
 
               {/* Action Buttons */}
-              <div className="absolute right-3 top-3 flex translate-x-0 flex-col gap-2 opacity-100 transition-all duration-500 ease-out hover-hover:translate-x-12 hover-hover:opacity-0 hover-hover:group-hover:translate-x-0 hover-hover:group-hover:opacity-100">
+              <div className="absolute right-3 top-3 flex translate-x-0 flex-col gap-2 opacity-100 transition-all duration-500 ease-out hover-hover:translate-x-12 hover-hover:opacity-0 hover-hover:group-focus-within:translate-x-0 hover-hover:group-focus-within:opacity-100 hover-hover:group-hover:translate-x-0 hover-hover:group-hover:opacity-100">
                 <BotaoDeFavorito
                   nome={product.name}
                   favorito={isFavorite}
