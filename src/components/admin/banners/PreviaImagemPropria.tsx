@@ -1,3 +1,4 @@
+import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
 
@@ -105,28 +106,29 @@ export function PreviaImagemPropria({
                   "Subtítulo atraente descrevendo sua oferta especial."}
               </p>
 
-              {formData.buttonText && (
-                <div className="mt-0.5">
-                  <span
-                    className={cn(
-                      "inline-block rounded-lg px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider shadow-lg transition-transform motion-safe:hover:scale-105",
-                      formData.fontFamily || "font-sans",
-                    )}
-                    style={{
-                      backgroundColor:
-                        formData.buttonBgColor ||
-                        "hsl(var(--admin-gold-fill, var(--admin-gold)))",
-                      color: formData.buttonTextColor || "#000000",
-                      boxShadow:
-                        formData.templateType === "neon_glow"
-                          ? `0 0 10px ${formData.buttonBgColor || "hsl(var(--admin-gold-fill, var(--admin-gold)))"}`
-                          : undefined,
-                    }}
-                  >
-                    {formData.buttonText}
-                  </span>
-                </div>
-              )}
+              {formData.buttonText &&
+                destinoDoBanner(formData.link) !== null && (
+                  <div className="mt-0.5">
+                    <span
+                      className={cn(
+                        "inline-block rounded-lg px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider shadow-lg transition-transform motion-safe:hover:scale-105",
+                        formData.fontFamily || "font-sans",
+                      )}
+                      style={{
+                        backgroundColor:
+                          formData.buttonBgColor ||
+                          "hsl(var(--admin-gold-fill, var(--admin-gold)))",
+                        color: formData.buttonTextColor || "#000000",
+                        boxShadow:
+                          formData.templateType === "neon_glow"
+                            ? `0 0 10px ${formData.buttonBgColor || "hsl(var(--admin-gold-fill, var(--admin-gold)))"}`
+                            : undefined,
+                      }}
+                    >
+                      {formData.buttonText}
+                    </span>
+                  </div>
+                )}
             </div>
           </div>
         </>
