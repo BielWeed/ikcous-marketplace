@@ -95,9 +95,11 @@ describe("CartItemsList — o limite da linha é o estoque da VARIAÇÃO escolhi
   }
 
   const mais = (host: HTMLElement, indice = 0) =>
-    host.querySelectorAll<HTMLButtonElement>(
-      'button[aria-label="Aumentar quantidade"]',
-    )[indice];
+    host
+      .querySelectorAll<HTMLButtonElement>(
+        'button[aria-label="Aumentar quantidade"]',
+      )
+      .item(indice);
 
   it("tamanho P com 2 no estoque (produto tem 10): '+' trava em 2 e o aviso diz 'Só 2 restantes'", async () => {
     const host = await renderizar([
