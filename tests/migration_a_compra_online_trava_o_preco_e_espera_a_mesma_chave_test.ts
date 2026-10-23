@@ -300,15 +300,16 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
     "a 81a entra uma vez",
   );
   assertEquals(
-    canais.provasDeObjetos.slice(-5).map((p) => p.consulta),
+    canais.provasDeObjetos.slice(-6).map((p) => p.consulta),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
       "83a-conferir-caixa-so-na-conta-da-loja-aplicado",
       "84a-conferir-produto-com-grade-aplicado",
       "85a-conferir-aviso-de-cancelados-antigos-aplicado",
+      "86a-conferir-ex-admin-no-resto-do-painel-aplicado",
     ],
-    "a 82a, a 83a, a 84a e a 85a sucedem a 81a no fim, sem reordenar lotes anteriores",
+    "a 82a, a 83a, a 84a, a 85a e a 86a sucedem a 81a no fim, sem reordenar lotes anteriores",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(

@@ -80,6 +80,13 @@ async function main() {
   await C.connect();
   await C.query("BEGIN");
   try {
+    // A 20261381000000 (o ex-admin perde o acesso na hora) troca as politicas de categorias depois da 1300, e o pre-voo da
+    // 1300 recusa politica que nao seja a de antes (fecha fechado). Esta prova mede a 1300 sobre a base em que ela foi
+    // aplicada: a 81 sai primeiro, dentro da transacao (nao faz nada se nao esta no ar). A 61a/61b seguem positivas nos
+    // dois estados (provado em admin-atual-endurecimento-viva.cjs).
+    await require("./ex-admin-resto-do-painel-posterior.cjs").desfazerExAdminRestoNaTransacao(
+      C,
+    );
     await conferir(A, true);
     await conferir(B, false);
     const antes = await retrato();

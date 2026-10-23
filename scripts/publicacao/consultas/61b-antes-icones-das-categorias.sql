@@ -1,4 +1,6 @@
 -- ANTES (base ou rollback com coluna preservada) da 20261300000000; SO LEITURA, somente catalogo, rol fechado de 4 linhas.
+-- 23/10/2026: a 20261381000000 troca is_admin() por rls_admin_atual() nas tres politicas de escrita de categorias (a leitura publica
+-- fica); o item das quatro policies aceita as DUAS formas, para este lote nao reprovar numa loja que ja recebeu a 20261381.
 WITH itens(item, esperado, vivo) AS (
   SELECT 'categorias: RLS ativa e quatro policies originais', 'sim',
     CASE WHEN COALESCE((SELECT count(*) = 1 AND bool_and(relrowsecurity) FROM pg_class WHERE oid = to_regclass('public.categorias')), false) AND COALESCE((SELECT count(*) = 4 AND bool_and(polpermissive AND
@@ -6,12 +8,12 @@ WITH itens(item, esperado, vivo) AS (
       WHEN 'categorias_select_policy' THEN polcmd = 'r' AND polroles = ARRAY[0::oid]
         AND pg_get_expr(polqual, polrelid) = 'true' AND polwithcheck IS NULL
       WHEN 'categorias_admin_insert_policy' THEN polcmd = 'a' AND polroles = ARRAY['authenticated'::regrole::oid]
-        AND polqual IS NULL AND regexp_replace(replace(pg_get_expr(polwithcheck, polrelid), 'public.', ''), '[[:space:]]', '', 'g') = '(SELECTis_admin()ASis_admin)'
+        AND polqual IS NULL AND regexp_replace(replace(pg_get_expr(polwithcheck, polrelid), 'public.', ''), '[[:space:]]', '', 'g') IN ('(SELECTis_admin()ASis_admin)', '(SELECTrls_admin_atual()ASrls_admin_atual)')
       WHEN 'categorias_admin_update_policy' THEN polcmd = 'w' AND polroles = ARRAY['authenticated'::regrole::oid]
-        AND regexp_replace(replace(pg_get_expr(polqual, polrelid), 'public.', ''), '[[:space:]]', '', 'g') = '(SELECTis_admin()ASis_admin)'
-        AND regexp_replace(replace(pg_get_expr(polwithcheck, polrelid), 'public.', ''), '[[:space:]]', '', 'g') = '(SELECTis_admin()ASis_admin)'
+        AND regexp_replace(replace(pg_get_expr(polqual, polrelid), 'public.', ''), '[[:space:]]', '', 'g') IN ('(SELECTis_admin()ASis_admin)', '(SELECTrls_admin_atual()ASrls_admin_atual)')
+        AND regexp_replace(replace(pg_get_expr(polwithcheck, polrelid), 'public.', ''), '[[:space:]]', '', 'g') IN ('(SELECTis_admin()ASis_admin)', '(SELECTrls_admin_atual()ASrls_admin_atual)')
       WHEN 'categorias_admin_delete_policy' THEN polcmd = 'd' AND polroles = ARRAY['authenticated'::regrole::oid]
-        AND regexp_replace(replace(pg_get_expr(polqual, polrelid), 'public.', ''), '[[:space:]]', '', 'g') = '(SELECTis_admin()ASis_admin)'
+        AND regexp_replace(replace(pg_get_expr(polqual, polrelid), 'public.', ''), '[[:space:]]', '', 'g') IN ('(SELECTis_admin()ASis_admin)', '(SELECTrls_admin_atual()ASrls_admin_atual)')
         AND polwithcheck IS NULL
       ELSE false
     END)

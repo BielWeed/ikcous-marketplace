@@ -23,6 +23,7 @@ const ler = (caminho: string) => readFileSync(join(raiz, caminho), "utf8");
 const COMPONENTES_NOVOS = [
   "src/components/admin/products/CampoDeCategoria.tsx",
   "src/components/admin/products/CodigoDoProduto.tsx",
+  "src/components/admin/products/DicaExpansivel.tsx",
   "src/components/admin/products/InterruptorDoProduto.tsx",
 ];
 
@@ -33,6 +34,14 @@ const CLASSES_DO_FORMULARIO = [
   "border-admin-border",
   "text-zinc-200",
   "text-zinc-300",
+  // DicaExpansivel: as classes dependentes do estado (aberta/recolhida) e da
+  // animação ficam em template string, que o leitor de `className="..."` não vê.
+  "grid-rows-[1fr]",
+  "grid-rows-[0fr]",
+  "rotate-180",
+  "invisible",
+  "transition-[grid-template-rows]",
+  "motion-reduce:transition-none",
 ];
 
 /** Classes escritas à mão em CSS próprio (não são utilitários do Tailwind). */

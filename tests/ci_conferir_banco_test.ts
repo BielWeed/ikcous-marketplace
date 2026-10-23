@@ -3610,10 +3610,10 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para as três que nenhuma migration posterior redefine; get_admin_orders_paged é da 20261199, get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
+    "quem é o dono do corpo: 60..66 só para as duas que nenhuma migration posterior redefine; buscar_por_codigo_barras é da 20261381 (a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261199, get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
     () => {
       assertEquals(dono, {
-        buscar_por_codigo_barras: "20261161000000",
+        buscar_por_codigo_barras: "20261381000000",
         get_admin_orders_cancelados_recentes: "20261380000000",
         get_admin_orders_paged: "20261199000000",
         get_product_recommendations: "20261160000000",
@@ -3627,7 +3627,6 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     "nenhuma migration > 20261166 redefine as funções que a 9a trata como só de 60..66",
     () => {
       for (const fn of [
-        "buscar_por_codigo_barras",
         "get_product_recommendations",
         "limpar_cotacoes_fora_da_janela",
       ]) {
@@ -7913,12 +7912,32 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo50.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
+  // A sucessora de get_admin_products_paged (a 20261381, o ex-admin perde o acesso na hora): a 17a a aceita
+  // ao lado do da 13 (LF e CRLF); a 17b (o ANTES) nunca.
+  const texto81 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini81 = texto81.indexOf(
+    "CREATE OR REPLACE FUNCTION public.get_admin_products_paged(",
+  );
+  assert(ini81 >= 0, "a 20261381 não define get_admin_products_paged");
+  const abre81 =
+    texto81.indexOf("AS $function$", ini81) + "AS $function$".length;
+  const corpo81 = texto81.slice(abre81, texto81.indexOf("$function$", abre81));
+  const shaSucessora81 = {
+    lf: criarHash("sha256").update(corpo81).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo81.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
   for (const [nome, sql, lado, outro, rotulo] of [
     [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 2 da de get_admin_products_paged (a 20261381)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
@@ -7939,6 +7958,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora50.crlf,
                 shaSucessora51.lf,
                 shaSucessora51.crlf,
+                shaSucessora81.lf,
+                shaSucessora81.crlf,
               ]
             : [];
         assertEquals(new Set(todos).size, 6);
@@ -7975,7 +7996,16 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                     shaSucessora51.crlf,
                     x.lf,
                   ]
-                : [x.lf, x.lf, x.crlf, x.lf],
+                : lado === "depois" && f.nome === "get_admin_products_paged"
+                  ? [
+                      x.lf,
+                      x.lf,
+                      x.crlf,
+                      shaSucessora81.lf,
+                      shaSucessora81.crlf,
+                      x.lf,
+                    ]
+                  : [x.lf, x.lf, x.crlf, x.lf],
             `${f.nome}: esperado LF, aceitos LF e CRLF (e, no painel e no analytics, o da sucessora), resultado LF`,
           );
           assertStringIncludes(
@@ -7996,6 +8026,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora42.crlf,
               shaSucessora45.lf,
               shaSucessora45.crlf,
+              shaSucessora81.lf,
+              shaSucessora81.crlf,
             ])
               assert(!sql.includes(proibido), `${nome} aceitaria a sucessora`);
         }
@@ -11192,6 +11224,27 @@ Deno.test("25a/25b — o md5 da 25a e' o do corpo NOVO que o arquivo da migratio
   assertStringIncludes(mig, "IF NOT public.is_admin() THEN");
   for (const sql of [a, b])
     assertStringIncludes(sql, "'IF NOT public.is_admin() THEN'");
+  // a sucessora (20261381) troca so a guarda: a 25a aceita o md5 dela e a guarda nova (a 25b nunca)
+  const mig81 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql`,
+  );
+  const ini81 = mig81.indexOf(
+    "CREATE OR REPLACE FUNCTION public.get_reviews_metrics(",
+  );
+  assert(ini81 >= 0, "a 20261381 nao define get_reviews_metrics");
+  const corpo81 = (() => {
+    const i = mig81.indexOf("AS $function$", ini81) + "AS $function$".length;
+    return mig81.slice(i, mig81.indexOf("$function$", i));
+  })();
+  const md5Sucessora = md5(corpo81);
+  assertStringIncludes(
+    a,
+    `'${md5Sucessora}'`,
+    "25a: aceita o md5 da sucessora",
+  );
+  assert(!b.includes(md5Sucessora), "25b nao cita o corpo da sucessora");
+  assertStringIncludes(a, "'IF NOT public.is_admin_atual() THEN'");
+  assert(!b.includes("is_admin_atual"), "25b nao conhece a guarda nova");
   // a 24a/24b (so ACL) nao foram tocadas: continuam sem medir corpo
   const a24 = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_24A}.sql`);
   assert(!/prosrc/.test(sqlSemComentarios(a24)));

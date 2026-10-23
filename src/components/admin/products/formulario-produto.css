@@ -414,7 +414,16 @@ body:has(.produto-formulario) [role="dialog"] h2 {
   opacity: 0.5;
 }
 
-.produto-interruptor + .produto-interruptor {
+/* O envoltório da chave NÃO se chama `.produto-interruptor`: esse nome é a
+   chave miniatura da lista de produtos (catalogo-produtos.css: inline-flex,
+   32x22) e, com o CSS das duas telas no mesmo pacote, ela encolhia as três
+   chaves daqui lado a lado (23/10/2026). */
+.produto-chave {
+  display: block;
+  width: 100%;
+}
+
+.produto-chave + .produto-chave {
   border-top: 1px solid hsl(var(--admin-border));
 }
 

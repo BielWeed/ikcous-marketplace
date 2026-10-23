@@ -245,6 +245,8 @@ on:
           - 84b-antes-produto-com-grade-ausente
           - 85a-conferir-aviso-de-cancelados-antigos-aplicado
           - 85b-antes-aviso-de-cancelados-antigos-base-vigente
+          - 86a-conferir-ex-admin-no-resto-do-painel-aplicado
+          - 86b-antes-ex-admin-no-resto-do-painel-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

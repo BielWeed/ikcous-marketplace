@@ -326,6 +326,11 @@ PROVAS.push({
       [U_ADMIN, U_CLIENTE],
     );
 
+    // A 20261381000000 (o ex-admin perde o acesso na hora) sucede a 13 em get_admin_products_paged (so troca a guarda):
+    // sai antes, pelo rollback-manual dela, para o rollback da 13 achar o corpo que ele espera. Nao faz nada se nao esta no ar.
+    await require("./ex-admin-resto-do-painel-posterior.cjs").desfazerExAdminRestoNaTransacao(
+      c,
+    );
     // A 20261228000000 (o Início compara até a mesma hora) sucede a 12 no mesmo corpo: o clone
     // volta ao corpo da 12 antes de medir (o rollback da 28 tem preflight próprio).
     if ((await catalogo(c, PAINEL)).hash === H28.desta) {

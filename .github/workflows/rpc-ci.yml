@@ -182,6 +182,8 @@ on:
       - "scripts/publicacao/consultas/84b-antes-produto-com-grade-ausente.sql"
       - "scripts/publicacao/consultas/85a-conferir-aviso-de-cancelados-antigos-aplicado.sql"
       - "scripts/publicacao/consultas/85b-antes-aviso-de-cancelados-antigos-base-vigente.sql"
+      - "scripts/publicacao/consultas/86a-conferir-ex-admin-no-resto-do-painel-aplicado.sql"
+      - "scripts/publicacao/consultas/86b-antes-ex-admin-no-resto-do-painel-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -333,6 +335,8 @@ on:
       - "scripts/publicacao/consultas/84b-antes-produto-com-grade-ausente.sql"
       - "scripts/publicacao/consultas/85a-conferir-aviso-de-cancelados-antigos-aplicado.sql"
       - "scripts/publicacao/consultas/85b-antes-aviso-de-cancelados-antigos-base-vigente.sql"
+      - "scripts/publicacao/consultas/86a-conferir-ex-admin-no-resto-do-painel-aplicado.sql"
+      - "scripts/publicacao/consultas/86b-antes-ex-admin-no-resto-do-painel-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -535,6 +539,13 @@ jobs:
       - name: Prova viva do aviso de cancelados antigos (migration 20261380000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-aviso-de-cancelados-antigos-viva.cjs
+      # Migration 20261381000000 (o ex-admin perde o acesso na hora no resto do painel): 21 politicas de 10 tabelas, a politica
+      # nova de leitura do admin em banners e 10 RPCs trocam is_admin() (JWT, ~1 h) por rls_admin_atual()/is_admin_atual().
+      # Admin atual, ex-admin com JWT velho nas duas direcoes da contradicao, anon, cliente e servico; 44 sondas; 32
+      # mutantes; atomicidade sem BEGIN; reaplicacao LF/CRLF; sabotagens do preflight; rollback exato; consultas 86a/86b. CLONE proprio.
+      - name: Prova viva do ex-admin no resto do painel (migration 20261381000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-endurecimento-viva.cjs
       # Migration 20261197000000 (o dinheiro exige o admin de agora): admin
       # rebaixado com JWT velho — nas duas direções da contradição auth.users
       # × profiles — é recusado nas seis RPCs sem escrever nada e não lê
