@@ -9,7 +9,6 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .bg-\[\#401A24\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:#ffe4e6}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill))}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold\/\[0\.06\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.06)}
-:where(html.admin-mode[data-admin-tema]) .bg-admin-gold\/\[0\.08\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.08)}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold\/10:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold\/15:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.15)}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold\/20:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.2)}
@@ -155,11 +154,8 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>textarea\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>textarea{border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema]) .before\:bg-zinc-700:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{background-color:hsl(var(--admin-hover))}
 :where(html.admin-mode[data-admin-tema]) .before\:text-zinc-300:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{color:hsl(var(--admin-text-2))}
-:where(html.admin-mode[data-admin-tema]) .dark\:data-\[state\=active\]\:bg-admin-gold\/10[data-state="active"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
-:where(html.admin-mode[data-admin-tema]) .data-\[state\=active\]\:bg-admin-gold\/10[data-state="active"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
 :where(html.admin-mode[data-admin-tema]) .data-\[state\=active\]\:bg-zinc-800[data-state="active"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-raised))}
 :where(html.admin-mode[data-admin-tema]) .data-\[state\=active\]\:text-white[data-state="active"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text))}
-:where(html.admin-mode[data-admin-tema]) .data-\[state\=checked\]\:bg-admin-gold[data-state="checked"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill))}
 :where(html.admin-mode[data-admin-tema]) .data-\[state\=unchecked\]\:bg-zinc-700[data-state="unchecked"]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-hover))}
 :where(html.admin-mode[data-admin-tema]) .empty\:before\:text-zinc-500:empty:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode:not([data-admin-tema])) .empty\:before\:text-zinc-500:empty:where(:not([data-tema-fixo], [data-tema-fixo] *))::before{color:hsl(var(--admin-text-soft))}
@@ -177,8 +173,6 @@
 :where(html.admin-mode[data-admin-tema]) .selection\:text-white:where(:not([data-tema-fixo], [data-tema-fixo] *))::selection{color:hsl(var(--admin-text))}
 :where(html.admin-mode[data-admin-tema]) .focus-within\:ring-zinc-400:focus-within:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-admin-gold\/10:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
-:where(html.admin-mode[data-admin-tema]) .hover\:bg-admin-gold\/20:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.2)}
-:where(html.admin-mode[data-admin-tema]) .hover\:bg-admin-gold\/90:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.9)}
 :where(html.admin-mode[data-admin-tema="confortavel"]) .hover\:bg-white:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-pill))}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-white\/\[0\.02\]:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-text) / 0.02)}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-white\/\[0\.05\]:hover:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-text) / 0.05)}
