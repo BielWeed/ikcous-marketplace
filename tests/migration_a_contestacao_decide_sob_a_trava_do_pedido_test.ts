@@ -315,6 +315,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/fin-dre-sinal-viva.cjs",
     // 20261383: so o dono da loja define cargo (dono nomeia e remove, nomeado nao nomeia, ninguem rebaixa o dono, PATCH direto barrado, log, EXECUTE, concorrencia real, mutantes, rollback, consultas 88a/88b).
     "tests/banco/definir-cargo-so-o-dono-viva.cjs",
+    // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
+    "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -430,6 +432,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/fin-dre-sinal-viva.cjs",
     // 20261383: so o dono da loja define cargo (dono nomeia e remove, nomeado nao nomeia, ninguem rebaixa o dono, PATCH direto barrado, log, EXECUTE, concorrencia real, mutantes, rollback, consultas 88a/88b).
     "tests/banco/definir-cargo-so-o-dono-viva.cjs",
+    // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
+    "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

@@ -1268,6 +1268,12 @@ async function main() {
         "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql",
         "public.fin_dre(date,date)",
       ],
+      // A 20261384 (o pedido pago pelo app exige conta): UMA funcao de fora destas tres (a v24, que ela SUCEDE a 350); a 17a nao a le.
+      // O rollback dela devolve o corpo da 350 (o molde, abaixo, desfaz e mede).
+      [
+        "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql",
+        "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

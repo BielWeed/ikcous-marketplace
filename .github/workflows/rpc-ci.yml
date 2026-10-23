@@ -188,6 +188,8 @@ on:
       - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
       - "scripts/publicacao/consultas/88a-conferir-so-o-dono-define-cargo-aplicado.sql"
       - "scripts/publicacao/consultas/88b-antes-so-o-dono-define-cargo-ausente.sql"
+      - "scripts/publicacao/consultas/89a-conferir-o-pedido-pelo-app-exige-conta-aplicado.sql"
+      - "scripts/publicacao/consultas/89b-antes-o-pedido-pelo-app-exige-conta-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -345,6 +347,8 @@ on:
       - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
       - "scripts/publicacao/consultas/88a-conferir-so-o-dono-define-cargo-aplicado.sql"
       - "scripts/publicacao/consultas/88b-antes-so-o-dono-define-cargo-ausente.sql"
+      - "scripts/publicacao/consultas/89a-conferir-o-pedido-pelo-app-exige-conta-aplicado.sql"
+      - "scripts/publicacao/consultas/89b-antes-o-pedido-pelo-app-exige-conta-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -565,6 +569,15 @@ jobs:
       - name: Prova viva de so o dono da loja definir cargo (migration 20261383000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/definir-cargo-so-o-dono-viva.cjs
+      # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
+      # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
+      # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam
+      # intactos; cliente logado, convidado com pagamento na entrega/retirada e o retry de pedido ja existente (mesma chave)
+      # continuam como hoje; so o bloco 0-ter difere do corpo da 20261350; mutante sem a trava reprova; reaplicar, CRLF,
+      # rollback byte a byte, pre-voo, pos-voo e consultas 89a/89b. CLONE proprio.
+      - name: Prova viva do pedido pago pelo app que exige conta (migration 20261384000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pedido-pelo-app-exige-conta-viva.cjs
       # Migration 20261197000000 (o dinheiro exige o admin de agora): admin
       # rebaixado com JWT velho — nas duas direções da contradição auth.users
       # × profiles — é recusado nas seis RPCs sem escrever nada e não lê
