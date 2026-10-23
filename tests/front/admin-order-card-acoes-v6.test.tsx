@@ -131,6 +131,10 @@ it.each(["aguardando", "recusado", "estornado"] as const)(
     expect(document.body.textContent).toContain(
       "depois de finalizado, não dá mais para cancelar e devolver ao estoque",
     );
+    // Mesma orientação do aviso da ficha (OrderDetail): o "Cancelar" daqui só fecha.
+    expect(document.body.textContent).toContain(
+      "Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
+    );
     await clicar("Cancelar");
     expect(avancar).not.toHaveBeenCalled();
     await clicar("Avançar mesmo assim");

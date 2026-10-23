@@ -2213,8 +2213,8 @@ export const OrderDetail = memo(function OrderDetail({
                   O dinheiro deste pedido não entrou. Se você avançar, a
                   mercadoria caminha para sair mesmo assim — e, depois de
                   finalizado, não dá mais para cancelar e devolver ao estoque.
-                  Se a cliente pagou na loja, cancele este pedido agora e lance
-                  a venda no balcão.
+                  Se a cliente pagou na loja, feche este aviso, cancele o pedido
+                  (botão Cancelar pedido) e registre a venda em Vender.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter className="mt-4 gap-2">
