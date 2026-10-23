@@ -120,22 +120,35 @@ describe("Financeiro — DRE", () => {
       expect(texto, chave).toContain(pct);
     }
 
-    // Subtotais em negrito e com fundo; o lucro líquido é a linha final.
+    // Subtotais em negrito, com divisória fina em cada célula; o lucro líquido
+    // é a linha final, em caixa própria (neutra, sem violeta: o redesenho de
+    // 23/10/2026 deixou a cor só para o sinal).
     for (const chave of [
       "receita_liquida",
       "lucro_bruto",
       "margem_contribuicao",
       "resultado_operacional",
     ]) {
-      expect(linha(chave).className, chave).toContain("font-black");
-      expect(linha(chave).className, chave).toContain("border-t");
+      expect(linha(chave).className, chave).toContain("font-bold");
+      expect(linha(chave).querySelector("th")?.className, chave).toContain(
+        "border-t",
+      );
     }
-    expect(linha("lucro_liquido").className).toContain("border-violet-400/40");
-    expect(linha("cmv").className).not.toContain("font-black");
+    expect(linha("lucro_liquido").hasAttribute("data-linha-final")).toBe(true);
+    expect(linha("cmv").className).not.toContain("font-bold");
 
-    // O CMV avisa que parte dele é estimada pelo custo ATUAL dos produtos (o servidor diz `cmv_estimado`).
-    expect(normalizar(linha("cmv").textContent)).toContain(
+    // O CMV avisa que parte dele é estimada pelo custo ATUAL dos produtos (o
+    // servidor diz `cmv_estimado`): selo curto na linha, com a explicação
+    // inteira no `title` e escrita uma vez embaixo da tabela.
+    const selo = linha("cmv").querySelector(
+      "[data-aviso-de-estimativa]",
+    ) as HTMLElement;
+    expect(normalizar(selo.textContent)).toBe("Inclui estimativa de custo");
+    expect(selo.title).toBe(
       "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado",
+    );
+    expect(normalizar(hospedeiro.textContent)).toContain(
+      "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado.",
     );
 
     // A receita bruta já abre separando app e loja física.
@@ -171,8 +184,9 @@ describe("Financeiro — DRE", () => {
           .querySelectorAll(".sr-only, [hidden]")
           .forEach((el) => el.remove());
         const texto = normalizar(quadro.textContent);
-        const aviso =
-          "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado";
+        // Selo curto no quadro (a explicação inteira vai no `title` e embaixo
+        // da tabela — redesenho de 23/10/2026).
+        const aviso = "Inclui estimativa de custo";
         if (estimado) expect(texto, rotulo).toContain(aviso);
         else expect(texto, rotulo).not.toContain("estimativa");
         expect(texto, rotulo).toContain(
