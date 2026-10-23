@@ -166,7 +166,9 @@ describe("AddressList — o que nao muda", () => {
         />,
       ),
     );
-    expect(hospedeiro.querySelector('button[aria-label^="Excluir"]')).toBeNull();
+    expect(
+      hospedeiro.querySelector('button[aria-label^="Excluir"]'),
+    ).toBeNull();
     expect(pergunta()).toBeNull();
     act(() => raiz.unmount());
     hospedeiro.remove();
@@ -179,7 +181,9 @@ describe("AddressList — o que nao muda", () => {
     act(() =>
       raiz.render(<AddressList addresses={[CASA]} onEdit={() => {}} />),
     );
-    expect(hospedeiro.querySelector('button[aria-label^="Excluir"]')).toBeNull();
+    expect(
+      hospedeiro.querySelector('button[aria-label^="Excluir"]'),
+    ).toBeNull();
     expect(
       hospedeiro.querySelector('button[aria-label^="Editar"]'),
     ).not.toBeNull();

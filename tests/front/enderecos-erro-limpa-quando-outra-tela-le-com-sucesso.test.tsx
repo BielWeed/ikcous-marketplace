@@ -198,9 +198,7 @@ describe("endereços — só leitura confirmada da mesma conta limpa o erro entr
     const botao = [
       ...hospedeiro.querySelectorAll<HTMLButtonElement>("nav button"),
       ...hospedeiro.querySelectorAll("button"),
-    ].find(
-      (item) => item.textContent?.trim() === texto,
-    );
+    ].find((item) => item.textContent?.trim() === texto);
     expect(botao).toBeDefined();
     await act(async () => botao!.click());
   }

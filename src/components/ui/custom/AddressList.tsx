@@ -151,7 +151,11 @@ export const AddressList = memo(function AddressList({
   if (addresses.length === 0) {
     return (
       <div
-        className={`border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center ${onAdd ? "rounded-2xl" : "rounded-lg"}`}
+        className={
+          onAdd
+            ? "rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center"
+            : "rounded-lg border border-dashed border-gray-200 bg-gray-50 py-8 text-center"
+        }
       >
         <MapPin className="mx-auto mb-3 size-10 text-gray-300" />
         <p
@@ -366,10 +370,18 @@ export const AddressList = memo(function AddressList({
                         e.stopPropagation();
                         onEdit?.(address);
                       }}
-                      className="flex size-11 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100"
-                      aria-label={`Editar endereço ${address.name}`}
+                      className={
+                        selectable
+                          ? "relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
+                          : "flex size-11 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100"
+                      }
+                      aria-label={
+                        selectable
+                          ? "Editar"
+                          : `Editar endereço ${address.name}`
+                      }
                     >
-                      <Edit aria-hidden="true" className="size-5" />
+                      <Edit className={selectable ? "size-3.5" : "size-5"} />
                     </button>
                     {onDelete && (
                       <button
@@ -377,10 +389,20 @@ export const AddressList = memo(function AddressList({
                           e.stopPropagation();
                           setApagando(address);
                         }}
-                        className="flex size-11 items-center justify-center rounded-full text-red-600 transition-colors hover:bg-red-50"
-                        aria-label={`Excluir endereço ${address.name}`}
+                        className={
+                          selectable
+                            ? "relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500"
+                            : "flex size-11 items-center justify-center rounded-full text-red-600 transition-colors hover:bg-red-50"
+                        }
+                        aria-label={
+                          selectable
+                            ? "Excluir"
+                            : `Excluir endereço ${address.name}`
+                        }
                       >
-                        <Trash2 aria-hidden="true" className="size-5" />
+                        <Trash2
+                          className={selectable ? "size-3.5" : "size-5"}
+                        />
                       </button>
                     )}
                   </div>
@@ -389,7 +411,11 @@ export const AddressList = memo(function AddressList({
 
               {/* Details */}
               <div
-                className={`space-y-1 pl-11 font-medium ${selectable ? "text-[11px] text-zinc-500" : "text-sm text-zinc-600"}`}
+                className={
+                  selectable
+                    ? "space-y-1 pl-11 text-[11px] font-medium text-zinc-500"
+                    : "space-y-1 pl-11 text-sm font-medium text-zinc-600"
+                }
               >
                 <p className="mb-1 text-xs font-bold uppercase tracking-tighter text-zinc-900">
                   {address.recipient_name}
@@ -402,7 +428,11 @@ export const AddressList = memo(function AddressList({
                   {address.neighborhood}, {address.city} - {address.state}
                 </p>
                 <p
-                  className={`mt-1 font-bold ${selectable ? "text-[11px] text-zinc-400" : "text-sm text-zinc-600"}`}
+                  className={
+                    selectable
+                      ? "mt-1 text-[11px] font-bold text-zinc-400"
+                      : "mt-1 text-sm font-bold text-zinc-600"
+                  }
                 >
                   CEP: {address.cep}
                 </p>
