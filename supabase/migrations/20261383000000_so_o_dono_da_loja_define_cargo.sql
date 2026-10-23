@@ -1,7 +1,8 @@
 -- SO O DONO DA LOJA DEFINE CARGO (passo 2 do endurecimento de permissoes; permissao + dado de cliente; 23/10/2026)
 -- RASCUNHO PARA REVISAO OPUS. Nada foi aplicado em banco algum. Muda quem pode mexer em profiles.role:
--- NAO e "so aditiva" no sentido da carta branca (o gatilho novo recusa o que antes passava); so aplicar depois da
--- revisao Opus do SQL e da consulta de estado (papeis contraditorios) em cada loja.
+-- ADITIVA pelos criterios da carta branca: nao apaga tabela, coluna nem dado, nao muda dado existente (cria 2 tabelas
+-- vazias, 2 funcoes e 1 gatilho; a 88b prova que nada disso existe antes). Mesmo assim MUDA PERMISSAO (o gatilho novo
+-- recusa o que antes passava): so aplicar depois da revisao Opus do SQL e da consulta de estado (papeis contraditorios).
 --
 -- DEFEITO (o que acontece hoje): a politica profiles_update_policy deixa QUALQUER admin atual alterar profiles.role de
 -- QUALQUER pessoa por um PATCH (inclusive rebaixar o dono, ou nomear 5 administradores que nomeiam outros). Nenhuma tela
@@ -46,6 +47,8 @@
 -- DADOS EXISTENTES: nenhuma linha de profiles, auth.users ou qualquer tabela existente e' lida ou escrita ao aplicar.
 -- Quem ja e' admin continua admin (a migration nao rebaixa ninguem); o que muda e' QUEM PODE mudar papel dai em diante.
 -- Admins ja nomeados por PATCH antes desta migration seguem admins ate o dono decidir pela funcao nova.
+-- APAGAR A CONTA DO DONO fica bloqueado (FK ON DELETE RESTRICT) ate trocar o dono: DELETE FROM public.dono_da_loja e novo
+-- INSERT (como postgres).
 --
 -- ATOMICIDADE E REAPLICACAO: sem BEGIN/COMMIT: o aplicador fornece a transacao inteira (molde 20261381). O PRE-VOO aceita,
 -- para cada objeto, "ausente" ou "exatamente o desta migration" (corpo por md5 sem CR, atributos, definicao deparseada do
@@ -189,7 +192,7 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: definir_cargo ou papel_so_pelo_definir_cargo tem sobrecarga em public.';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_proc WHERE oid = to_regprocedure('public.definir_cargo(uuid,text)')
-       AND md5(replace(prosrc, chr(13), '')) <> '69258350cbaf598b1e0b8e0bf2f20211')
+       AND md5(replace(prosrc, chr(13), '')) <> '9b7591e74cf779ad50f8d8f0173ddd32')
      OR EXISTS (SELECT 1 FROM pg_proc WHERE oid = to_regprocedure('public.papel_so_pelo_definir_cargo()')
        AND md5(replace(prosrc, chr(13), '')) <> '4db62affedb4d07d5ea9e26393fb938c')
      OR (to_regprocedure('public.definir_cargo(uuid,text)') IS NULL
@@ -262,6 +265,14 @@ BEGIN
     -- 1. Quem chama: o DONO, conferido na tabela do banco. Nunca o JWT nem a porta de admin do JWT.
     IF v_quem IS NULL OR NOT EXISTS (SELECT 1 FROM public.dono_da_loja d WHERE d.user_id = v_quem) THEN
         RAISE EXCEPTION 'Acesso negado: só o dono da loja define cargos.' USING ERRCODE = '42501';
+    END IF;
+
+    -- 1b. SOMADO ao dono (nunca no lugar): o dono precisa ser administrador de AGORA nas duas fontes. Sem isto, um dono
+    --     cadastrado por engano que e 'customer' promoveria uma pessoa com papeis contraditorios: o passo 5 e pulado
+    --     quando profiles.role ja tem o cargo pedido e o passo 6 grava auth.users sem gatilho nenhum no caminho.
+    --     is_admin_atual() le auth.uid() da propria sessao (o SECURITY DEFINER nao troca o GUC da requisicao).
+    IF NOT public.is_admin_atual() THEN
+        RAISE EXCEPTION 'Acesso negado: o dono da loja precisa ser administrador nas duas fontes (auth.users e profiles).' USING ERRCODE = '42501';
     END IF;
 
     -- 2. Entrada: a pessoa e um dos dois cargos reais de profiles.role.
@@ -376,7 +387,7 @@ BEGIN
   -- Funcoes: corpo, atributos, ACL.
   IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
       WHERE p.oid = to_regprocedure('public.definir_cargo(uuid,text)')
-        AND md5(replace(p.prosrc, chr(13), '')) = '69258350cbaf598b1e0b8e0bf2f20211'
+        AND md5(replace(p.prosrc, chr(13), '')) = '9b7591e74cf779ad50f8d8f0173ddd32'
         AND l.lanname = 'plpgsql' AND p.prosecdef AND p.provolatile = 'v' AND NOT p.proisstrict
         AND pg_get_function_result(p.oid) = 'jsonb' AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[])
      OR has_function_privilege('anon', 'public.definir_cargo(uuid,text)', 'EXECUTE')

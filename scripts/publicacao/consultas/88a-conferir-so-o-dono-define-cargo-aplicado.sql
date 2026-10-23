@@ -10,7 +10,7 @@ WITH fn AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'definir_cargo: uma so, com o corpo da 20261383000000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn WHERE proname = 'definir_cargo') = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'definir_cargo' AND h = '69258350cbaf598b1e0b8e0bf2f20211') THEN 'sim' ELSE 'nao' END
+    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'definir_cargo' AND h = '9b7591e74cf779ad50f8d8f0173ddd32') THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'definir_cargo: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo, jsonb, uuid e text)', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND f.prosecdef AND f.provolatile = 'v' AND NOT f.proisstrict AND f.resultado = 'jsonb'
         AND f.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]

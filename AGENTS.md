@@ -49,11 +49,13 @@ customer`) — **lojista = staff** (`admin` manda: `is_admin()`, SECURITY DEFINE
 do painel; o front espelha via RPC com cache). **Quem muda cargo:** só `definir_cargo()`
 (20261383), e só o **dono da loja** — linha única em `dono_da_loja`, cadastrada à mão
 (comando no cabeçalho da migration), conferida no banco e nunca no JWT; o gatilho
-`tr_papel_so_pelo_definir_cargo` barra UPDATE direto em `profiles.role`; `cargo_log` registra.
+`tr_papel_so_pelo_definir_cargo` barra UPDATE direto em `profiles.role`; `cargo_log` registra. O dono
+também precisa ser admin atual nas duas fontes para a função agir. Apagar a conta do dono fica bloqueado
+(`ON DELETE RESTRICT`) até trocar o dono: `DELETE FROM public.dono_da_loja` e novo `INSERT`.
 `public_profiles` é a projeção pública.
 RLS de pedidos: `auth.uid() = user_id` — **convidado não vê pedido nenhum sem OTP**.
 
-**Entidades (36 tabelas vivas).** Catálogo: categorias → produtos → product_variants;
+**Entidades (38 tabelas vivas).** Catálogo: categorias → produtos → product_variants;
 banners; perguntas/respostas; reviews (voto útil com memória no servidor — tabela
 `review_votes`, `UNIQUE (review_id, user_id)`: a deduplicação mora na constraint,
 não no cliente; `increment_helpful` foi reescrita em cima dela); favoritos. Compra: carrinho →

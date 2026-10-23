@@ -25,12 +25,13 @@
  *       leitura só do dono e do admin atual; escrita por ninguém de aplicação (as duas tabelas);
  *   (6) EXECUTE: anon, PUBLIC e service_role sem; só authenticated; o gatilho não é executável por ninguém;
  *   (7) as bordas: cargo inválido, pessoa inexistente, ordem sem oráculo, dono não cadastrado, dono que não é admin
- *       (a função aborta e a janela do gatilho NÃO fica aberta), singleton e FK da tabela do dono, transação desfeita,
+ *       (a função aborta e a janela do gatilho NÃO fica aberta; mesmo com o alvo de papéis contraditórios, que o passo 6
+ *       gravaria sem gatilho nenhum no caminho), singleton e FK da tabela do dono, transação desfeita,
  *       cargo antigo 'gerente', duas chamadas simultâneas sobre a mesma pessoa (a segunda espera a primeira);
  *   (8) reaplicar 2x não muda nada; o rollback comum devolve o catálogo (só os 5 objetos saem) e PRESERVA as linhas; o
  *       destrutivo exige confirmação e o rollback comum antes; o pré-voo recusa 8 estados desconhecidos sem escrever;
  *       o pós-voo que falha desfaz tudo numa conexão SEM BEGIN (como o aplicador);
- *   (9) CONTROLES: sem a migration (rollback) as sondas reprovam; 11 mutantes (cada guarda tirada) reprovam a SUA sonda.
+ *   (9) CONTROLES: sem a migration (rollback) as sondas reprovam; 12 mutantes (cada guarda tirada) reprovam a SUA sonda.
  *
  * Toda chamada de teste roda numa transação DESFEITA no fim; as exceções (escrita real) restauram as fixtures.
  *
@@ -1046,7 +1047,7 @@ PROVAS.push({
     );
     assert.equal(r.resultados[0].ok, false);
     assert.equal(r.resultados[0].code, "42501");
-    assert.match(r.resultados[0].message, /não foi gravado/);
+    assert.match(r.resultados[0].message, /administrador nas duas fontes/);
     assert.equal(
       r.resultados[1].rows[0].flag,
       "",
@@ -1081,6 +1082,42 @@ PROVAS.push({
       ]),
     ]);
     assert.ok([null, ""].includes(flag.resultados[0].rows[0].flag));
+  },
+});
+
+PROVAS.push({
+  nome: "(7e) dono que NÃO é admin tentando promover quem tem papéis contraditórios: 42501 e nada gravado (o passo de profiles seria pulado e o de auth.users gravaria sem gatilho)",
+  corpo: async (c) => {
+    const trocar = [
+      "DELETE FROM public.dono_da_loja",
+      `INSERT INTO public.dono_da_loja (user_id) VALUES ('${U_DONO_FRACO}')`,
+    ];
+    const r = await rodar(
+      c,
+      [
+        // U_REB_AUTH: profiles 'admin', auth.users 'customer'. Pedir 'admin' deixa profiles igual (passo 5 pulado).
+        P("donoFraco", CALL(U_REB_AUTH, "admin")),
+        // O mesmo dono fraco também não rebaixa pela função (a regra vale para os dois cargos).
+        P("donoFraco", CALL(U_REB_PERFIL, "customer")),
+      ],
+      { ids: [U_REB_AUTH, U_REB_PERFIL], antes: trocar },
+    );
+    for (const i of [0, 1]) {
+      assert.equal(r.resultados[i].ok, false);
+      assert.equal(r.resultados[i].code, "42501");
+      assert.match(r.resultados[i].message, /administrador nas duas fontes/);
+    }
+    assert.deepEqual(r.estado[U_REB_AUTH], ["customer", "admin"]);
+    assert.deepEqual(r.estado[U_REB_PERFIL], ["admin", "customer"]);
+    assert.deepEqual(r.log, []);
+
+    // Controle: o dono que É admin nas duas fontes corrige o mesmo alvo (as duas fontes passam a admin) e o log registra.
+    const certo = await rodar(c, [P("dono", CALL(U_REB_AUTH, "admin"))], {
+      ids: [U_REB_AUTH],
+    });
+    assert.equal(certo.resultados[0].ok, true);
+    assert.deepEqual(certo.estado[U_REB_AUTH], ["admin", "admin"]);
+    assert.equal(certo.log.length, 1);
   },
 });
 
@@ -1589,6 +1626,22 @@ const SONDAS = {
       r.estado[U_ALVO].join() === "customer,customer"
     );
   },
+  async dono_fraco_nao_promove_contraditorio(c, antes) {
+    const trocar = [
+      "DELETE FROM public.dono_da_loja",
+      `INSERT INTO public.dono_da_loja (user_id) VALUES ('${U_DONO_FRACO}')`,
+    ];
+    const r = await rodar(c, [P("donoFraco", CALL(U_REB_AUTH, "admin"))], {
+      ids: [U_REB_AUTH],
+      antes: [...antes, ...trocar],
+    });
+    return (
+      !r.resultados[0].ok &&
+      r.resultados[0].code === "42501" &&
+      /administrador nas duas fontes/.test(r.resultados[0].message) &&
+      r.estado[U_REB_AUTH].join() === "customer,admin"
+    );
+  },
   async repetir_nao_suja_o_log(c, antes) {
     const r = await rodar(
       c,
@@ -1620,7 +1673,7 @@ const falhas = (s) =>
     .sort();
 
 PROVAS.push({
-  nome: "(9a) as 11 sondas valem no estado da árvore; SEM a migration (rollback) as que dependem dela REPROVAM — cada prova nova falha sem a mudança",
+  nome: "(9a) as 12 sondas valem no estado da árvore; SEM a migration (rollback) as que dependem dela REPROVAM — cada prova nova falha sem a mudança",
   corpo: async (c) => {
     assert.deepEqual(
       falhas(await rodarSondas(c)),
@@ -1747,10 +1800,20 @@ const MUTANTES = [
         "NULL;",
       ),
   },
+  {
+    nome: "M12 sem a checagem de administrador atual do dono (o passo de auth.users grava sem gatilho)",
+    reprova: "dono_fraco_nao_promove_contraditorio",
+    sql: () =>
+      mutar(
+        DDL_DEFINIR,
+        "IF NOT public.is_admin_atual() THEN",
+        "IF false THEN",
+      ),
+  },
 ];
 
 PROVAS.push({
-  nome: "(9b) 11 mutantes (cada guarda tirada) deixam a SUA sonda vermelha; o resto das sondas segue verde onde a guarda não é a dele",
+  nome: "(9b) 12 mutantes (cada guarda tirada) deixam a SUA sonda vermelha; o resto das sondas segue verde onde a guarda não é a dele",
   corpo: async (c) => {
     for (const m of MUTANTES) {
       const sondas = await rodarSondas(c, [m.sql()]);

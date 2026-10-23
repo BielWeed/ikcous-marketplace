@@ -21,7 +21,7 @@ BEGIN
   -- Recusa estado desconhecido: so aceita o que ESTA migration deixa (ou nada).
   IF EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'definir_cargo'
        AND (oid <> COALESCE(to_regprocedure('public.definir_cargo(uuid,text)'), 0)
-            OR md5(replace(prosrc, chr(13), '')) <> '69258350cbaf598b1e0b8e0bf2f20211')) THEN
+            OR md5(replace(prosrc, chr(13), '')) <> '9b7591e74cf779ad50f8d8f0173ddd32')) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: definir_cargo desconhecida (sucessora no ar?); nada foi apagado.';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'papel_so_pelo_definir_cargo'

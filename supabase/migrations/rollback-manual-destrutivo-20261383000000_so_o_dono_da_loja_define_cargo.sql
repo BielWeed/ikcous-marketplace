@@ -2,6 +2,7 @@
 -- Apaga public.dono_da_loja (quem e' o dono da loja) e public.cargo_log (o historico de quem mudou o cargo de quem).
 -- O rollback comum preserva as duas tabelas. Faca copia antes: SELECT * FROM public.dono_da_loja; SELECT * FROM public.cargo_log;
 -- Sem o historico, nao ha como provar depois quem nomeou quem.
+-- (Lembrete: com dono_da_loja de pe, apagar a conta do dono e' bloqueado pela FK ON DELETE RESTRICT; trocar o dono = DELETE + novo INSERT.)
 -- So depois do rollback comum (rollback-manual-20261383000000_so_o_dono_da_loja_define_cargo.sql), numa transacao do caller,
 -- com confirmacao explicita:
 --   SET app.confirmo_apagar_cargos = 'APAGAR';

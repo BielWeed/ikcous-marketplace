@@ -112,7 +112,7 @@ const VERIFICACOES = {
     ["swap_banner_order", "IF NOT public.is_admin_atual() THEN"],
   ].map(([funcao, texto]) => ({ funcao, esperado: [{ texto, vezes: 1 }] })),
   // 20261383: so o dono da loja define cargo. As tabelas dono_da_loja e cargo_log, as politicas e o gatilho nao sao conferiveis aqui (so corpo
-  // de funcao): a consulta 88a e a prova viva fazem isso. Aqui: a porta (dono conferido na tabela, janela do gatilho, releitura, auth.users
+  // de funcao): a consulta 88a e a prova viva fazem isso. Aqui: a porta (dono conferido na tabela e admin atual, janela do gatilho, releitura, auth.users
   // sempre, log) e o gatilho (janela so para o dono da funcao, mensagem de recusa).
   "20261383000000_so_o_dono_da_loja_define_cargo.sql": [
     {
@@ -120,6 +120,10 @@ const VERIFICACOES = {
       esperado: [
         {
           texto: "FROM public.dono_da_loja d WHERE d.user_id = v_quem",
+          vezes: 1,
+        },
+        {
+          texto: "IF NOT public.is_admin_atual() THEN",
           vezes: 1,
         },
         {
