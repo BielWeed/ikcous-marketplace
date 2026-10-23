@@ -46,6 +46,11 @@ const COMPRA_ONLINE_TRAVA = Object.freeze({
 
 /** Desfaz a 20261350000000 na transação aberta, se no ar; repetir é no-op. Devolve true se desfez. */
 async function desfazerCompraOnlineTravaNaTransacao(cliente) {
+  // A 20261384000000 (o pedido pago pelo app exige conta) sucede o corpo da v24 desta migration: cai ANTES, senão o
+  // pré-voo do rollback da 350 recusa com o corpo dela no ar. Ver pedido-pelo-app-exige-conta-posterior.cjs.
+  await require("./pedido-pelo-app-exige-conta-posterior.cjs").desfazerPedidoPeloAppExigeContaNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(COMPRA_ONLINE_TRAVA.noAr);
   if (r.rows[0]?.sim !== true) return false;
   await cliente.query(

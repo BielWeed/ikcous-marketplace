@@ -78,6 +78,48 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261385: a busca de produtos do painel (get_admin_products_paged) acha pelo codigo de barras do produto e da variacao ativa e
+  // pelo SKU da variacao ativa. O filtro entra IGUAL nos dois blocos (total_count e pagina): cada marcador vale 2 vezes. O resto e o
+  // corpo da 20261381. A consulta 90a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261385000000_a_busca_de_produtos_do_painel_acha_pelo_codigo_de_barras_e_da_variacao.sql":
+    {
+      funcao: "get_admin_products_paged",
+      esperado: [
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "unaccent(p.codigo) ILIKE unaccent('%' || v_clean_search || '%') OR",
+          vezes: 2,
+        },
+        { texto: "p.codigo_barras = v_clean_search OR", vezes: 2 },
+        {
+          texto: "WHERE vc.product_id = p.id AND vc.active",
+          vezes: 2,
+        },
+        { texto: "AND (vc.codigo_barras = v_clean_search", vezes: 2 },
+        {
+          texto:
+            "OR unaccent(vc.sku) ILIKE unaccent('%' || v_clean_search || '%'))",
+          vezes: 2,
+        },
+      ],
+    },
+  // 20261384: o pedido pago pelo app exige conta. So create_marketplace_order_v24 muda (o corpo da 20261350 mais UM bloco 0-ter, depois da
+  // idempotencia e da forma de pagamento aceita): 'online' sem sessao (auth.uid() nulo) e recusado antes de reservar estoque. A consulta
+  // 89a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql":
+    [
+      {
+        funcao: "create_marketplace_order_v24",
+        esperado: [
+          {
+            texto: "IF p_payment_method = 'online' AND v_user_id IS NULL THEN",
+            vezes: 1,
+          },
+          { texto: "pedido_pelo_app_exige_conta:", vezes: 1 },
+        ],
+      },
+    ],
   // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
   // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {

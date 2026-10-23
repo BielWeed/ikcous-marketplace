@@ -300,7 +300,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
     "a 81a entra uma vez",
   );
   assertEquals(
-    canais.provasDeObjetos.slice(-8).map((p) => p.consulta),
+    canais.provasDeObjetos.slice(-10).map((p) => p.consulta),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
@@ -310,8 +310,10 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "86a-conferir-ex-admin-no-resto-do-painel-aplicado",
       "87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado",
       "88a-conferir-so-o-dono-define-cargo-aplicado",
+      "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado",
+      "90a-conferir-busca-do-painel-por-codigo-aplicado",
     ],
-    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a e a 88a sucedem a 81a no fim, sem reordenar lotes anteriores",
+    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a e a 90a sucedem a 81a no fim, sem reordenar lotes anteriores",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(
@@ -353,7 +355,11 @@ Deno.test("20261350 publicacao: as consultas 81a/81b trazem o corpo certo de cad
   assertStringIncludes(a31, `'${HASH_NOVO[V24]}'`);
   assertStringIncludes(a37, `'${HASH_NOVO[V24]}'`);
   assertStringIncludes(a47, `WHEN f.m = '${HASH_NOVO[V23]}'`);
-  assertStringIncludes(a47, `WHEN f.m = '${HASH_NOVO[V24]}'`);
+  // a v24 aceita tambem o corpo sucessor da 20261384000000 (o pedido pelo app exige conta)
+  assertStringIncludes(
+    a47,
+    `f.m IN ('${HASH_NOVO[V24]}', 'f8d6ed0c3622ab41123bacb98911a98f')`,
+  );
   // A 37a só tem a v24; a 31b/37b/47b (ANTES) não citam o corpo desta migration.
   assert(!a37.includes(HASH_NOVO[V23]));
   for (const b of [

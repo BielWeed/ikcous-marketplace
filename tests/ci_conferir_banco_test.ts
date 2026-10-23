@@ -7937,12 +7937,32 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo81.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
+  // A sucessora da 81 (a 20261385, a busca de produtos do painel acha pelo codigo de barras e da variacao): a 17a a aceita
+  // tambem (LF e CRLF); a 17b (o ANTES) nunca.
+  const texto85 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261385000000_a_busca_de_produtos_do_painel_acha_pelo_codigo_de_barras_e_da_variacao.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini85 = texto85.indexOf(
+    "CREATE OR REPLACE FUNCTION public.get_admin_products_paged(",
+  );
+  assert(ini85 >= 0, "a 20261385 não define get_admin_products_paged");
+  const abre85 =
+    texto85.indexOf("AS $function$", ini85) + "AS $function$".length;
+  const corpo85 = texto85.slice(abre85, texto85.indexOf("$function$", abre85));
+  const shaSucessora85 = {
+    lf: criarHash("sha256").update(corpo85).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo85.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
   for (const [nome, sql, lado, outro, rotulo] of [
     [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 2 da de get_admin_products_paged (a 20261381)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 4 da de get_admin_products_paged (a 20261381 e a 20261385)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
@@ -7965,6 +7985,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora51.crlf,
                 shaSucessora81.lf,
                 shaSucessora81.crlf,
+                shaSucessora85.lf,
+                shaSucessora85.crlf,
               ]
             : [];
         assertEquals(new Set(todos).size, 6);
@@ -8008,6 +8030,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                       x.crlf,
                       shaSucessora81.lf,
                       shaSucessora81.crlf,
+                      shaSucessora85.lf,
+                      shaSucessora85.crlf,
                       x.lf,
                     ]
                   : [x.lf, x.lf, x.crlf, x.lf],
@@ -8033,6 +8057,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora45.crlf,
               shaSucessora81.lf,
               shaSucessora81.crlf,
+              shaSucessora85.lf,
+              shaSucessora85.crlf,
             ])
               assert(!sql.includes(proibido), `${nome} aceitaria a sucessora`);
         }
@@ -12365,6 +12391,7 @@ const MIGRACAO_229 = `${MIGRATIONS_DIR}/20261229000000_o_endereco_da_compra_fica
 const MIGRACAO_236 = `${MIGRATIONS_DIR}/20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql`;
 const MIGRACAO_244 = `${MIGRATIONS_DIR}/20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql`;
 const MIGRACAO_350 = `${MIGRATIONS_DIR}/20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql`;
+const MIGRACAO_384 = `${MIGRATIONS_DIR}/20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql`;
 
 for (const [nome, linhasDoRol] of [
   [NOME_31A, 9],
@@ -12534,6 +12561,7 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
   const m236 = await Deno.readTextFile(MIGRACAO_236);
   const m244 = await Deno.readTextFile(MIGRACAO_244);
   const m350 = await Deno.readTextFile(MIGRACAO_350);
+  const m384 = await Deno.readTextFile(MIGRACAO_384);
   const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_31A}.sql`);
   const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_31B}.sql`);
   const v24da229 = md5(corpoDe(m229, "create_marketplace_order_v24"));
@@ -12543,17 +12571,19 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
   const v23da244 = md5(corpoDe(m244, "create_marketplace_order_v23"));
   const v24da350 = md5(corpoDe(m350, "create_marketplace_order_v24"));
   const v23da350 = md5(corpoDe(m350, "create_marketplace_order_v23"));
+  const v24da384 = md5(corpoDe(m384, "create_marketplace_order_v24"));
+  assert(v24da384 !== v24da350, "os corpos da v24 da 350 e da 384 sao o mesmo");
   assert(v24da229 !== v24da236, "os dois corpos da v24 sao o mesmo");
   assert(v24da244 !== v24da350, "os corpos da v24 da 244 e da 350 sao o mesmo");
   assert(v23da244 !== v23da350, "os corpos da v23 da 244 e da 350 sao o mesmo");
   assert(v24da236 !== v24da244, "os corpos da v24 da 236 e da 244 sao o mesmo");
   assert(v23da229 !== v23da244, "os corpos da v23 da 229 e da 244 sao o mesmo");
   const sa = sqlSemComentarios(a);
-  // a v24 aceita os QUATRO hashes (229, 236, 244 e a sucessora 350) e responde sempre com o da 20261229000000 (o rol e os rotulos nao mudam)
+  // a v24 aceita os CINCO hashes (229, 236, 244, 350 e a sucessora 384) e responde sempre com o da 20261229000000 (o rol e os rotulos nao mudam)
   assertStringIncludes(
     sa,
-    `f.m IN ('${v24da229}', '${v24da236}', '${v24da244}', '${v24da350}')`,
-    "31a: a v24 aceita o corpo da 20261229000000, o da 20261236000000, o da 20261244000000 OU o da 20261350000000",
+    `f.m IN ('${v24da229}', '${v24da236}', '${v24da244}', '${v24da350}', '${v24da384}')`,
+    "31a: a v24 aceita o corpo da 20261229000000, o da 20261236000000, o da 20261244000000, o da 20261350000000 OU o da 20261384000000",
   );
   assertStringIncludes(sa, `THEN '${v24da229}'`);
   // a v23 aceita os TRES (o da 229, o da 244 e o da 350) e responde sempre com o da 20261229000000
@@ -12588,6 +12618,11 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
     sa.split(v23da350).length - 1,
     1,
     "31a: o hash da v23 da 350 aparece uma vez so",
+  );
+  assertEquals(
+    sa.split(v24da384).length - 1,
+    1,
+    "31a: o hash da v24 da 384 aparece uma vez so",
   );
   assert(
     !b.includes(v24da350) && !b.includes(v23da350),

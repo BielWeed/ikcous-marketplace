@@ -176,7 +176,8 @@ Deno.test("1381: dez corpos anteriores exatos (iguais aos da ultima migration qu
         e.isFile &&
         e.name.endsWith(".sql") &&
         !e.name.startsWith("rollback") &&
-        e.name !== nome,
+        // So as ANTERIORES a esta: uma sucessora (a 20261385 redefine get_admin_products_paged) nao e' o corpo que o rollback devolve.
+        e.name < nome,
     )
     .map((e) => e.name)
     .sort();

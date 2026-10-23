@@ -324,6 +324,11 @@ async function estadoDe(c) {
 }
 /** Põe o clone (COMMITADO) no estado pedido: "antes" = corpos da 244 (rollback), "depois" = a migration. */
 async function noEstado(c, alvo) {
+  // A 20261384000000 (o pedido pago pelo app exige conta) sucede o corpo da v24 desta migration: este clone parte do estado
+  // da 350, então ela cai antes (no-op se não estiver no ar). Ver pedido-pelo-app-exige-conta-posterior.cjs.
+  await require("./pedido-pelo-app-exige-conta-posterior.cjs").desfazerPedidoPeloAppExigeContaNaTransacao(
+    c,
+  );
   if ((await estadoDe(c)) === alvo) return;
   // Corpo "misto" (um CONTROLE instalado à mão, sem o bloco da ordem global): volta ao corpo da migration direto, sem
   // passar pelo pré-voo (que só aceita o corpo da 244 ou o da migration).

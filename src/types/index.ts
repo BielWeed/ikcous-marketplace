@@ -82,6 +82,10 @@ export interface CartItem {
   product: Product;
   quantity: number;
   variantId?: string;
+  /** Produto de cadastro antigo com DUAS escolhas separadas (cor + tamanho):
+   *  `variantId` é a primeira, estas são as demais, na ordem do cadastro.
+   *  Ausente na imensa maioria das linhas (src/lib/escolhas-do-item.ts). */
+  outrasVariantIds?: string[];
   variantNames?: string;
   /** Epoch ms of the last local mutation — used for offline merge conflict resolution */
   lastModifiedAt?: number;

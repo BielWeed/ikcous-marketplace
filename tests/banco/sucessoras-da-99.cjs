@@ -93,6 +93,9 @@ const NOMES = [
   // O resultado mostra tarifa, juro e quebra como despesa: fin_dre sucede o corpo da 42 (a CADEIA 99 -> 42 -> 382: o
   // `hashVigente` da 382 e o `hashDesta` da 42; desfazer em ordem inversa devolve cada corpo ao anterior).
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql",
+  // O pedido pago pelo app exige conta: create_marketplace_order_v24 sucede o corpo da 350 (a CADEIA 229/236 -> 244 -> 350 -> 384: o
+  // `hashVigente` da 384 e o `hashDesta` da 350). Nao e um dos 42 da 99, mas o rollback da 350 recusa com o corpo novo no ar: ela cai antes.
+  "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

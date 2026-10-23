@@ -1,3 +1,4 @@
+import { somarUso } from "@/lib/escolhas-do-item";
 import { mapProductFromDB } from "@/lib/mappers";
 import { precoVendido } from "@/lib/preco-vendido";
 import { reconferirCarrinho } from "@/lib/reconferirCarrinho";
@@ -79,32 +80,50 @@ function faltaEscolherVariacao(
  * desativada não vende (o servidor exige `v.active = true`). Linha sem
  * variação: o estoque do produto, como `addToCart` e `updateQuantity` já
  * contam — salvo se o produto TEM variação ativa (ver `faltaEscolherVariacao`).
+ *
+ * Linha com DUAS escolhas separadas (cor + tamanho, cadastro antigo): vale o
+ * menor estoque entre elas, e qualquer uma que sumiu ou foi desativada tira a
+ * linha -- levar "Azul P" precisa das duas. `usado` é o que as linhas já
+ * conferidas levam de cada variação (ver `somarUso`).
  */
 function unidadesDisponiveis(
   produto: Product,
   variantId: string | undefined,
+  outrasVariantIds: readonly string[] = [],
+  usado: ReadonlyMap<string, number> = new Map(),
 ): number | null {
   if (!variantId) {
     return faltaEscolherVariacao(produto, variantId) ? null : produto.stock;
   }
-  const variacao = produto.variants?.find((v) => v.id === variantId);
-  if (!variacao || variacao.active === false) return null;
-  return variacao.stockIncrement;
+  let unidades: number | null = null;
+  for (const id of [variantId, ...outrasVariantIds]) {
+    const variacao = produto.variants?.find((v) => v.id === id);
+    if (!variacao || variacao.active === false) return null;
+    // Descontado o que as linhas ANTERIORES já levam desta variação: o
+    // servidor baixa todas contra o mesmo id.
+    const sobra = variacao.stockIncrement - (usado.get(id) ?? 0);
+    unidades = Math.min(unidades ?? sobra, sobra);
+  }
+  return unidades;
 }
 
 function renovarItem(
   item: CartItem,
   catalogo: CatalogoLido,
   agora: number,
+  usado: Map<string, number>,
 ): CartItem | null {
   const id = item.product.id;
   if (!catalogo.consultados.has(id)) return item;
 
   const atual = catalogo.produtos.get(id);
-  const disponivel = atual ? unidadesDisponiveis(atual, item.variantId) : null;
+  const disponivel = atual
+    ? unidadesDisponiveis(atual, item.variantId, item.outrasVariantIds, usado)
+    : null;
   if (!atual || disponivel === null || disponivel <= 0) return null;
 
   const quantity = Math.min(item.quantity, disponivel);
+  somarUso(usado, item, quantity);
   const mesmoProduto = JSON.stringify(item.product) === JSON.stringify(atual);
   if (mesmoProduto && quantity === item.quantity) return item;
 
@@ -138,8 +157,9 @@ export function aplicarCatalogoAoCarrinho(
 ): CartItem[] {
   let mudou = false;
   const resultado: CartItem[] = [];
+  const usado = new Map<string, number>();
   for (const item of itens) {
-    const novo = renovarItem(item, catalogo, agora);
+    const novo = renovarItem(item, catalogo, agora, usado);
     if (novo !== item) mudou = true;
     if (novo) resultado.push(novo);
   }
@@ -164,6 +184,7 @@ export async function avisosDoCarrinho(
   catalogo: CatalogoLido,
 ): Promise<string[]> {
   const frases: string[] = [];
+  const usado = new Map<string, number>();
 
   for (const item of itens) {
     const id = item.product.id;
@@ -171,8 +192,11 @@ export async function avisosDoCarrinho(
 
     const atual = catalogo.produtos.get(id);
     const disponivel = atual
-      ? unidadesDisponiveis(atual, item.variantId)
+      ? unidadesDisponiveis(atual, item.variantId, item.outrasVariantIds, usado)
       : null;
+    if (disponivel !== null && disponivel > 0) {
+      somarUso(usado, item, Math.min(item.quantity, disponivel));
+    }
 
     // Linha sem tamanho/cor de produto que exige escolha: a frase é PRÓPRIA
     // (não é "saiu do catálogo" nem "o preço mudou") e a linha sai em

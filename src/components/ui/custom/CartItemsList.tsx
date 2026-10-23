@@ -1,5 +1,6 @@
 import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { useStore } from "@/contexts/StoreContext";
+import { chaveDaLinha } from "@/lib/escolhas-do-item";
 import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem } from "@/types";
@@ -27,6 +28,13 @@ const CartItemCard = memo(function CartItemCard({
 }: Readonly<CartItemCardProps>) {
   // Removed unused config destructuring
   useStore();
+
+  // A identidade da linha: o id da variação, ou `idA~idB` quando o produto de
+  // cadastro antigo tem duas escolhas separadas (escolhas-do-item.ts). É ela
+  // que remover/mudar quantidade/marcar "removendo" usam -- Azul-P e Azul-M
+  // são linhas diferentes.
+  // Sem variação segue `undefined`, como as telas sempre repassaram.
+  const chaveDaVariacao = chaveDaLinha(item) || undefined;
 
   // O carrinho tem que mostrar a mesma coisa que o checkout
   // (CheckoutView.tsx:891): preferir `variantNames`, que ja vem
@@ -57,7 +65,7 @@ const CartItemCard = memo(function CartItemCard({
       <div
         className={cn(
           "flex gap-3 xs:gap-4 bg-white p-3 xs:p-4 rounded-2xl xs:rounded-[1.5rem] border border-zinc-100/80 shadow-[0_4px_20px_rgba(0,0,0,0.01)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.03)] hover:border-zinc-200/60 transition-all duration-300 relative z-10",
-          removingId === `${item.product.id}-${item.variantId || "default"}` &&
+          removingId === `${item.product.id}-${chaveDaVariacao || "default"}` &&
             "opacity-50",
         )}
       >
@@ -104,7 +112,7 @@ const CartItemCard = memo(function CartItemCard({
               <button
                 onClick={() => {
                   haptic.medium();
-                  onRemove(item.product.id, item.variantId);
+                  onRemove(item.product.id, chaveDaVariacao);
                 }}
                 className="relative -mr-1 flex size-7 flex-shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-all duration-300 before:absolute before:-inset-2 before:content-[''] hover:bg-red-50/50 hover:text-red-500 active:scale-90"
                 aria-label="Remover item"
@@ -157,7 +165,7 @@ const CartItemCard = memo(function CartItemCard({
                 quantity={item.quantity}
                 maxQuantity={item.product.stock}
                 onChange={(qty) =>
-                  onUpdateQuantity(item.product.id, qty, item.variantId)
+                  onUpdateQuantity(item.product.id, qty, chaveDaVariacao)
                 }
                 size="sm"
               />
@@ -227,7 +235,7 @@ export const CartItemsList = memo(function CartItemsList({
             .filter((item) => item?.product?.id)
             .map((item) => (
               <CartItemCard
-                key={`${item.product.id}-${item.variantId || "default"}`}
+                key={`${item.product.id}-${chaveDaLinha(item) || "default"}`}
                 item={item}
                 removingId={removingId}
                 onUpdateQuantity={onUpdateQuantity}

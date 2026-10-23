@@ -1,4 +1,20 @@
 {
+  "1.5.59": {
+    "titulo": "Busca de produtos por código, vitrine que pausa e carrinho com cor e tamanho certos",
+    "novidades": [
+      "Na busca de Produtos do painel, você também acha o produto pelo código de barras (digitado inteiro) do produto ou de uma variação e pelo código (SKU) de uma variação."
+    ],
+    "correcoes": [
+      "Em produto de cadastro antigo, com cor e tamanho em escolhas separadas, cada combinação (por exemplo Azul P e Azul M) agora é uma linha própria no carrinho, com a escolha certa, e a quantidade respeita o estoque da cor e do tamanho. A página do produto mostra o mesmo preço que o carrinho, e o pedido leva as duas escolhas.",
+      "Pagar pelo app agora exige estar logado, e isso passa a valer também no servidor: sem conta, o pedido é recusado com um aviso claro e o estoque não fica preso. Quem está sem conta continua podendo escolher pagar na retirada ou na entrega.",
+      "No Resultado do Financeiro, as margens e os percentuais sobre a receita aparecem como traço (—) quando a receita líquida do período é zero ou negativa, em vez de um percentual sem sentido.",
+      "A descrição de um lançamento do Financeiro aceita no máximo 140 caracteres, o mesmo limite do banco."
+    ],
+    "melhorias": [
+      "No desenho padrão das Ofertas, a troca automática de ofertas agora para quando você passa o mouse, navega pelo teclado dentro da vitrine ou encosta o dedo, e também com a aba em segundo plano; para quem pediu menos movimento ao aparelho, ela não troca sozinha.",
+      "Na tela de entrar, o botão de mostrar ou ocultar a senha tem nome para leitores de tela, e o aviso de erro é anunciado assim que aparece."
+    ]
+  },
   "1.5.58": {
     "titulo": "Resultado do Financeiro com as despesas no sinal certo",
     "novidades": [],

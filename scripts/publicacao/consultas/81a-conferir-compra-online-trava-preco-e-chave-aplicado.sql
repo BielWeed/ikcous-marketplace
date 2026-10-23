@@ -33,7 +33,10 @@ WITH alvo(nome, assinatura) AS (
          COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo e o da 20261350000000, com a ordem global das travas, a trava do produto e a espera da mesma chave (md5)', 'e3c124d25632aaa9bcf1995153bc5a7e',
-         COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
+         -- A 20261384000000 sucede so a v24 (o pedido pago pelo app exige conta: o mesmo corpo mais o bloco 0-ter): aceita os dois
+         -- corpos EXATOS; normaliza ao esperado historico do rol. O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN m IN ('e3c124d25632aaa9bcf1995153bc5a7e', 'f8d6ed0c3622ab41123bacb98911a98f') THEN 'e3c124d25632aaa9bcf1995153bc5a7e' ELSE m END
+                     FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
   UNION ALL
   SELECT 'as duas compras: as travas do carrinho saem em ordem global (variacoes por id, depois produtos por id) e a leitura do passo 3 tranca a variacao e o produto (ordem 2 vezes; OF v, p uma vez; nenhuma OF v sozinha)', 'v23=2/1/0 v24=2/1/0',
          CASE WHEN (SELECT count(*) FROM fn) < 2 THEN 'AUSENTE'

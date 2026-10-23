@@ -73,11 +73,12 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo e o da 20261229000000, com a copia do endereco (md5)',
          'b1ee9337105f442511c13a75977911b7',
-         -- 4 hashes aceitos: o corpo da 20261229000000 OU o da SUCESSORA dele, a 20261236000000 (a compra que da
+         -- 5 hashes aceitos: o corpo da 20261229000000 OU o da SUCESSORA dele, a 20261236000000 (a compra que da
          -- R$ 0,00 nao se paga pelo app: o mesmo corpo mais o bloco 6-ter) OU o da sucessora desta, a 20261244000000
          -- (a loja escolhe como entrega na cidade) OU o da sucessora dela, a 20261350000000 (a compra online trava o
-         -- preco e espera a mesma chave). O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN f.m IN ('b1ee9337105f442511c13a75977911b7', '6002fc8db6c1d402bc704f018a0c2621', '85c37af4baa2f5ce1375bdd9e943c746', 'e3c124d25632aaa9bcf1995153bc5a7e')
+         -- preco e espera a mesma chave) OU o da sucessora dela, a 20261384000000 (o pedido pago pelo app exige conta: o
+         -- mesmo corpo mais o bloco 0-ter). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN f.m IN ('b1ee9337105f442511c13a75977911b7', '6002fc8db6c1d402bc704f018a0c2621', '85c37af4baa2f5ce1375bdd9e943c746', 'e3c124d25632aaa9bcf1995153bc5a7e', 'f8d6ed0c3622ab41123bacb98911a98f')
                                THEN 'b1ee9337105f442511c13a75977911b7'
                                ELSE f.m END
                      FROM fn f WHERE f.nome = 'create_marketplace_order_v24'), 'AUSENTE')
