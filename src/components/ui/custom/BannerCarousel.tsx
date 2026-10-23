@@ -304,7 +304,8 @@ export const BannerCarousel = memo(function BannerCarousel({
                                 </p>
                               )}
 
-                            {banner.buttonText &&
+                            {destino !== null &&
+                              banner.buttonText &&
                               banner.buttonText.trim() !== "" && (
                                 <button
                                   type="button"
