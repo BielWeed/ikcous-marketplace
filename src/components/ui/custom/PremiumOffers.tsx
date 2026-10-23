@@ -182,8 +182,18 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
     setToqueAtivo(false);
   }, []);
 
-  const handleFocus = useCallback(() => {
-    setFocoAtivo(true);
+  const handleFocus = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    // So o foco de TECLADO pausa: clicar/tocar numa bolinha tambem foca o botao
+    // (Chrome), e a vitrine nao pode ficar parada depois que o mouse/dedo sai.
+    // Se o navegador nao souber `:focus-visible`, trata como teclado (falha
+    // do lado acessivel).
+    let deTeclado = true;
+    try {
+      deTeclado = (e.target as Element).matches(":focus-visible");
+    } catch {
+      deTeclado = true;
+    }
+    if (deTeclado) setFocoAtivo(true);
   }, []);
 
   const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {

@@ -59,6 +59,7 @@ function produto(id: string): Product {
 }
 
 let menosMovimento = false;
+let ouvintesDeMovimento: Array<(e: { matches: boolean }) => void> = [];
 function ocultarAba(oculta: boolean) {
   Object.defineProperty(document, "hidden", {
     configurable: true,
@@ -100,12 +101,16 @@ describe("vitrine de ofertas pausa a rotacao automatica", () => {
     vi.useFakeTimers();
     scrollNext.mockClear();
     menosMovimento = false;
+    ouvintesDeMovimento = [];
     vi.stubGlobal("ResizeObserver", ObservadorFalso);
     vi.stubGlobal("IntersectionObserver", ObservadorFalso);
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: menosMovimento && query.includes("prefers-reduced-motion"),
       media: query,
-      addEventListener: () => {},
+      addEventListener: (_t: string, fn: (e: { matches: boolean }) => void) => {
+        if (query.includes("prefers-reduced-motion"))
+          ouvintesDeMovimento.push(fn);
+      },
       removeEventListener: () => {},
       addListener: () => {},
       removeListener: () => {},
@@ -149,6 +154,7 @@ describe("vitrine de ofertas pausa a rotacao automatica", () => {
   it("para com o foco do teclado dentro e retoma quando o foco sai", async () => {
     const vitrine = await montar();
     const botao = vitrine.querySelector("button") as HTMLElement;
+    botao.matches = () => true; // foco de teclado
     await disparar(botao, "focusin");
     await avancar(20000);
     expect(scrollNext).not.toHaveBeenCalled();
@@ -191,6 +197,74 @@ describe("vitrine de ofertas pausa a rotacao automatica", () => {
     await act(async () => ocultarAba(false));
     await avancar(6100);
     expect(scrollNext).toHaveBeenCalledTimes(1);
+  });
+
+  it("mouse sai mas o foco de teclado continua dentro: segue parada", async () => {
+    const vitrine = await montar();
+    const botao = vitrine.querySelector("button") as HTMLElement;
+    botao.matches = () => true; // foco de teclado
+    await disparar(vitrine, "mouseover");
+    await disparar(botao, "focusin");
+    await disparar(vitrine, "mouseout");
+    await avancar(20000);
+    expect(scrollNext).not.toHaveBeenCalled();
+    await disparar(botao, "focusout");
+    await avancar(6100);
+    expect(scrollNext).toHaveBeenCalledTimes(1);
+  });
+
+  it("foco vindo de clique/toque (nao e :focus-visible) nao pausa", async () => {
+    const vitrine = await montar();
+    const botao = vitrine.querySelector("button") as HTMLElement;
+    botao.matches = () => false;
+    await disparar(botao, "focusin");
+    await avancar(6100);
+    expect(scrollNext).toHaveBeenCalledTimes(1);
+  });
+
+  it("se :focus-visible nao for suportado, o foco conta como teclado", async () => {
+    const vitrine = await montar();
+    const botao = vitrine.querySelector("button") as HTMLElement;
+    botao.matches = () => {
+      throw new SyntaxError("seletor invalido");
+    };
+    await disparar(botao, "focusin");
+    await avancar(20000);
+    expect(scrollNext).not.toHaveBeenCalled();
+  });
+
+  it("mouse real depois da janela do toque pausa", async () => {
+    const vitrine = await montar();
+    await disparar(vitrine, "touchstart");
+    await disparar(vitrine, "touchend");
+    await avancar(1100);
+    await disparar(vitrine, "mouseover");
+    scrollNext.mockClear();
+    await avancar(20000);
+    expect(scrollNext).not.toHaveBeenCalled();
+  });
+
+  it("ligar menos movimento ao vivo para a rotacao", async () => {
+    await montar();
+    await avancar(6100);
+    expect(scrollNext).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      for (const fn of ouvintesDeMovimento) fn({ matches: true });
+    });
+    scrollNext.mockClear();
+    await avancar(30000);
+    expect(scrollNext).not.toHaveBeenCalled();
+  });
+
+  it("remove o ouvinte de visibilitychange ao desmontar", async () => {
+    const espiao = vi.spyOn(document, "removeEventListener");
+    await montar();
+    act(() => {
+      raiz.unmount();
+    });
+    expect(espiao.mock.calls.map((c) => c[0])).toContain("visibilitychange");
+    espiao.mockRestore();
+    raiz = createRoot(hospedeiro);
   });
 
   it("limpa o intervalo ao desmontar", async () => {
