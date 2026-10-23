@@ -40,19 +40,36 @@ import {
   Camera,
   Check,
   CheckCircle2,
-  IdCard,
-  KeyRound,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
   Lock,
-  Mail,
-  Phone,
-  Shield,
   Trash2,
   UploadCloud,
   User,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+
+// Linguagem "Tinta" (redesenho de 23/10/2026): cor só pelas variáveis do tema.
+const ROTULO_MONO =
+  "font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground";
+const ROTULO_CAMPO = "block text-[13px] font-semibold text-foreground";
+// 16 px no celular (abaixo disso o iPhone dá zoom ao focar o campo).
+const CAMPO =
+  "h-[52px] rounded-[14px] border border-input bg-muted/40 px-3.5 text-base font-medium text-foreground shadow-none transition-colors placeholder:text-muted-foreground/60 focus-visible:bg-background disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px]";
+
+// Iniciais do cartão de identidade (primeira e última palavra do nome).
+function iniciaisDoNome(nome: string): string {
+  const palavras = nome.trim().split(/\s+/).filter(Boolean);
+  if (palavras.length === 0) return "";
+  const primeira = Array.from(palavras[0])[0] ?? "";
+  const ultima =
+    palavras.length > 1
+      ? (Array.from(palavras[palavras.length - 1])[0] ?? "")
+      : "";
+  return (primeira + ultima).toLocaleUpperCase("pt-BR");
+}
 
 export function AccountSettingsView() {
   const { user, profile, fetchProfile, updateProfile, updatePassword } =
@@ -68,6 +85,10 @@ export function AccountSettingsView() {
   const [loading, setLoading] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "security">("profile");
+  // "Privacidade e meus dados" é uma seção desta tela (sem rota): trocar de
+  // seção não desmonta o componente, então nome, WhatsApp, CPF, senha e a aba
+  // escolhida continuam onde estavam quando a pessoa volta.
+  const [secao, setSecao] = useState<"conta" | "privacidade">("conta");
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
   const [modalTab, setModalTab] = useState<"avatars" | "upload">("avatars");
@@ -652,344 +673,310 @@ export function AccountSettingsView() {
 
   if (!user) return null;
 
+  // O cartão mostra o nome JÁ SALVO (não o que está sendo digitado).
+  const nomeSalvo = profileDataOriginal.name.trim();
+  const iniciais = iniciaisDoNome(nomeSalvo);
+  const nomeDoCartao = nomeSalvo || user.email || "";
+
   return (
-    <div className="pb-customer min-h-full bg-zinc-50/40">
+    <div className="pb-customer min-h-full bg-background">
       <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="flex flex-col gap-1 border-b border-zinc-100 pb-4 text-center"
-        >
-          <h1 className="text-xl font-extrabold tracking-tight text-zinc-900">
-            Configurações da Conta
-          </h1>
-          <p className="text-xs text-zinc-500">
-            Gerencie suas informações de perfil e segurança de acesso.
-          </p>
-        </motion.div>
+        {secao === "privacidade" ? (
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={() => setSecao("conta")}
+              aria-label="Voltar para Conta"
+              className="-ml-2 inline-flex h-11 items-center gap-1 rounded-xl pl-1 pr-3 text-[15px] font-semibold text-foreground outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronLeft className="size-5" aria-hidden="true" />
+              Conta
+            </button>
+            {/* Privacidade e meus dados (LGPD): pedir a exclusão da conta ou a
+                correção do e-mail. O app só registra o pedido; a loja atende. */}
+            <PrivacidadeEMeusDados
+              userId={user.id}
+              emailAtual={user.email ?? ""}
+            />
+          </div>
+        ) : (
+          <>
+            {/* Cabeçalho */}
+            <header className="space-y-1">
+              <p className={ROTULO_MONO}>
+                Conta · {activeTab === "profile" ? "Perfil" : "Segurança"}
+              </p>
+              <h1 className="text-[28px] font-bold leading-8 tracking-tight text-foreground">
+                Sua conta
+              </h1>
+              <p className="text-[15px] text-muted-foreground">
+                Perfil e segurança de acesso.
+              </p>
+            </header>
 
-        {/* Tabs Selector */}
-        <div className="relative z-10 flex w-full rounded-xl bg-zinc-100/80 p-1 shadow-inner">
-          <button
-            type="button"
-            onClick={() => setActiveTab("profile")}
-            className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
-              activeTab === "profile"
-                ? "text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-900"
-            }`}
-          >
-            {activeTab === "profile" && (
-              <motion.div
-                layoutId="activeTabBackground"
-                className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm"
-                transition={{ type: "spring", stiffness: 380, damping: 30 }}
-              />
-            )}
-            <span className="relative z-10 flex items-center justify-center gap-1.5">
-              <User className="size-3.5" />
-              Perfil
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("security")}
-            className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
-              activeTab === "security"
-                ? "text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-900"
-            }`}
-          >
-            {activeTab === "security" && (
-              <motion.div
-                layoutId="activeTabBackground"
-                className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm"
-                transition={{ type: "spring", stiffness: 380, damping: 30 }}
-              />
-            )}
-            <span className="relative z-10 flex items-center justify-center gap-1.5">
-              <Shield className="size-3.5" />
-              Segurança
-            </span>
-          </button>
-        </div>
+            {/* Abas: controle segmentado */}
+            <div
+              role="tablist"
+              aria-label="Seções da conta"
+              className="flex w-full rounded-[14px] bg-muted p-1"
+            >
+              {(
+                [
+                  ["profile", "Perfil"],
+                  ["security", "Segurança"],
+                ] as const
+              ).map(([aba, rotulo]) => (
+                <button
+                  key={aba}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === aba}
+                  onClick={() => setActiveTab(aba)}
+                  className={`flex h-11 flex-1 items-center justify-center rounded-[10px] text-[15px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+                    activeTab === aba
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {rotulo}
+                </button>
+              ))}
+            </div>
 
-        {/* Animated Form container */}
-        <div className="relative min-h-[300px] overflow-hidden">
-          <AnimatePresence mode="wait">
             {activeTab === "profile" ? (
               <motion.section
                 key="profile-tab"
-                initial={{ opacity: 0, x: -15 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 15 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-4 rounded-2xl border border-zinc-200/50 bg-white p-5 shadow-sm"
+                role="tabpanel"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.15 }}
+                className="space-y-5"
               >
-                <div className="flex items-center gap-2.5">
-                  <div className="flex size-7 items-center justify-center rounded-lg bg-zinc-900 shadow-sm">
-                    <User className="size-3.5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-bold text-zinc-900">
-                      Informações Pessoais
-                    </h2>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-                      Dados da sua conta pública
-                    </p>
-                  </div>
-                </div>
-
-                <div className="group relative mb-6 w-full overflow-hidden rounded-2xl border border-zinc-100 bg-zinc-100 shadow-inner">
-                  {/* Cover Preview */}
-                  <div className="relative h-28 w-full overflow-hidden">
-                    <img
-                      src={profile?.cover_url || defaultCover}
-                      alt="Capa de Perfil"
-                      className="size-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/10" />
-
-                    {/* Edit Cover Button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCoverModalOpen(true);
-                        haptic.light();
-                      }}
-                      className="absolute right-2 top-2 flex items-center justify-center rounded-full border border-white/10 bg-black/40 p-2 text-white shadow-lg backdrop-blur-md transition-all hover:bg-black/60 active:scale-90"
-                      title="Alterar capa de fundo"
-                    >
-                      <Camera className="size-3.5" />
-                    </button>
-                  </div>
-
-                  {/* Avatar Preview, overlapping */}
-                  <div className="relative z-10 -mt-10 flex flex-col items-center justify-center pb-4">
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      className="group relative size-20 cursor-pointer overflow-hidden rounded-[20px] border-4 border-white bg-white shadow-premium focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                      onClick={openAvatarModal}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          openAvatarModal();
-                        }
-                      }}
-                    >
-                      {profile?.avatar_url ? (
-                        <img
-                          src={profile.avatar_url}
-                          alt="Profile Avatar"
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <User className="size-10 text-zinc-300" />
-                      )}
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                        <Camera className="size-4" />
+                {/* Cartão de identidade: foto e capa se trocam pelos links */}
+                <div className="flex items-center gap-4 rounded-[18px] border border-border bg-muted/30 p-4">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Alterar foto de perfil"
+                    className={`relative flex size-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-[20px] outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      !profile?.avatar_url && iniciais
+                        ? "bg-foreground text-background"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                    onClick={openAvatarModal}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openAvatarModal();
+                      }
+                    }}
+                  >
+                    {profile?.avatar_url ? (
+                      <img
+                        src={profile.avatar_url}
+                        alt="Profile Avatar"
+                        className="size-full object-cover"
+                      />
+                    ) : iniciais ? (
+                      <span
+                        aria-hidden="true"
+                        className="text-xl font-semibold tracking-tight"
+                      >
+                        {iniciais}
+                      </span>
+                    ) : (
+                      <User className="size-7" aria-hidden="true" />
+                    )}
+                    {isUpdatingAvatar && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
                       </div>
-                      {isUpdatingAvatar && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                          <Loader2 className="size-4 animate-spin text-zinc-600" />
-                        </div>
-                      )}
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-lg font-semibold text-foreground">
+                      {nomeDoCartao}
+                    </p>
+                    <div className="flex flex-wrap gap-x-4">
+                      <button
+                        type="button"
+                        onClick={openAvatarModal}
+                        className="min-h-11 text-[13px] font-semibold text-foreground underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        Alterar foto
+                      </button>
+                      <button
+                        type="button"
+                        title="Alterar capa de fundo"
+                        onClick={() => {
+                          setIsCoverModalOpen(true);
+                          haptic.light();
+                        }}
+                        className="min-h-11 text-[13px] font-semibold text-foreground underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        Alterar capa
+                      </button>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-3.5">
+                <div className="space-y-4">
                   {profileLoadState === "loading" && (
-                    <div className="flex items-center justify-center gap-2 rounded-xl border border-zinc-100 bg-zinc-50/50 py-6">
-                      <Loader2 className="size-4 animate-spin text-zinc-400" />
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    <div className="flex items-center justify-center gap-2 rounded-[14px] border border-border py-6">
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                      <p className="text-[13px] font-semibold text-muted-foreground">
                         Carregando seus dados...
                       </p>
                     </div>
                   )}
 
                   {profileLoadState === "error" && (
-                    <div className="flex flex-col items-center gap-2 rounded-xl border border-red-100 bg-red-50/30 p-4 text-center">
-                      <AlertTriangle className="size-4 text-red-500" />
-                      <p className="text-xs font-semibold text-red-700">
+                    <div className="flex flex-col items-center gap-3 rounded-[14px] border border-red-300 p-4 text-center">
+                      <AlertTriangle
+                        className="size-4 text-red-600 dark:text-red-400"
+                        aria-hidden="true"
+                      />
+                      <p className="text-sm font-semibold text-red-600 dark:text-red-400">
                         Não conseguimos carregar seus dados de perfil.
                       </p>
                       <Button
                         type="button"
                         variant="outline"
                         onClick={carregarPerfil}
-                        className="h-8 rounded-xl border-red-200 px-3 text-[10px] font-bold uppercase tracking-wider text-red-600 hover:bg-red-50"
+                        className="h-11 rounded-xl px-4 text-[13px] font-semibold"
                       >
                         Tentar de novo
                       </Button>
                     </div>
                   )}
 
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="full_name"
-                      className="ml-0.5 text-[10px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      Nome Completo
+                  <div className="space-y-1.5">
+                    <label htmlFor="full_name" className={ROTULO_CAMPO}>
+                      Nome completo
                     </label>
-                    <div className="group relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors group-focus-within:text-zinc-900">
-                        <User className="size-4" />
-                      </span>
-                      <Input
-                        id="full_name"
-                        name="full_name"
-                        autoComplete="name"
-                        value={profileData.name}
-                        disabled={profileLoadState !== "loaded"}
-                        onChange={(e) => {
-                          setProfileData((p) => ({
-                            ...p,
-                            name: e.target.value,
-                          }));
-                          if (nomeErro) setNomeErro(false);
-                        }}
-                        aria-invalid={nomeErro}
-                        aria-describedby={
-                          nomeErro ? "full_name-erro" : undefined
-                        }
-                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-                      />
-                    </div>
+                    <Input
+                      id="full_name"
+                      name="full_name"
+                      autoComplete="name"
+                      value={profileData.name}
+                      disabled={profileLoadState !== "loaded"}
+                      onChange={(e) => {
+                        setProfileData((p) => ({
+                          ...p,
+                          name: e.target.value,
+                        }));
+                        if (nomeErro) setNomeErro(false);
+                      }}
+                      aria-invalid={nomeErro}
+                      aria-describedby={nomeErro ? "full_name-erro" : undefined}
+                      className={CAMPO}
+                    />
                     {nomeErro && (
                       <p
                         id="full_name-erro"
                         role="alert"
-                        className="ml-0.5 text-xs font-bold text-red-600"
+                        className="text-xs font-semibold text-red-600 dark:text-red-400"
                       >
                         Informe seu nome
                       </p>
                     )}
                   </div>
 
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="phone"
-                      className="ml-0.5 text-[10px] font-black uppercase tracking-wider text-zinc-500"
-                    >
+                  <div className="space-y-1.5">
+                    <label htmlFor="phone" className={ROTULO_CAMPO}>
                       WhatsApp
                     </label>
-                    <div className="group relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors group-focus-within:text-zinc-900">
-                        <Phone className="size-4" />
-                      </span>
-                      <Input
-                        id="phone"
-                        name="phone"
-                        autoComplete="tel"
-                        inputMode="numeric"
-                        value={profileData.phone}
-                        disabled={profileLoadState !== "loaded"}
-                        onChange={(e) => {
-                          setWhatsappEditado(true);
-                          setProfileData((p) => ({
-                            ...p,
-                            // CONTA-09 (auditoria de 26/08/2026, camada 5) —
-                            // `formatarWhatsApp` puro trunca e REINTERPRETA
-                            // dígitos acima de 11 em silêncio; usar a versão
-                            // com guarda para não fabricar um número
-                            // diferente do que a pessoa digitou/colou.
-                            phone: formatarWhatsAppDigitando(e.target.value),
-                          }));
-                        }}
-                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-                        placeholder="(00) 00000-0000"
-                      />
-                    </div>
+                    <Input
+                      id="phone"
+                      name="phone"
+                      autoComplete="tel"
+                      inputMode="numeric"
+                      value={profileData.phone}
+                      disabled={profileLoadState !== "loaded"}
+                      onChange={(e) => {
+                        setWhatsappEditado(true);
+                        setProfileData((p) => ({
+                          ...p,
+                          // CONTA-09 (auditoria de 26/08/2026, camada 5) —
+                          // `formatarWhatsApp` puro trunca e REINTERPRETA
+                          // dígitos acima de 11 em silêncio; usar a versão
+                          // com guarda para não fabricar um número
+                          // diferente do que a pessoa digitou/colou.
+                          phone: formatarWhatsAppDigitando(e.target.value),
+                        }));
+                      }}
+                      className={CAMPO}
+                      placeholder="(00) 00000-0000"
+                    />
                   </div>
 
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="cpf"
-                      className="ml-0.5 text-[10px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      CPF (opcional)
-                    </label>
-                    <div className="group relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors group-focus-within:text-zinc-900">
-                        <IdCard className="size-4" />
+                  <div className="space-y-1.5">
+                    <label htmlFor="cpf" className={ROTULO_CAMPO}>
+                      CPF{" "}
+                      <span className="font-normal text-muted-foreground">
+                        opcional
                       </span>
-                      <Input
-                        id="cpf"
-                        name="cpf"
-                        autoComplete="off"
-                        inputMode="numeric"
-                        value={cpf}
-                        disabled={profileLoadState !== "loaded"}
-                        onChange={(e) => {
-                          setCpf(formatarCpf(e.target.value).formatado);
-                          if (cpfErro) setCpfErro(false);
-                        }}
-                        aria-invalid={cpfErro}
-                        aria-describedby={cpfErro ? "cpf-erro" : undefined}
-                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-                        placeholder="000.000.000-00"
-                      />
-                    </div>
+                    </label>
+                    <Input
+                      id="cpf"
+                      name="cpf"
+                      autoComplete="off"
+                      inputMode="numeric"
+                      value={cpf}
+                      disabled={profileLoadState !== "loaded"}
+                      onChange={(e) => {
+                        setCpf(formatarCpf(e.target.value).formatado);
+                        if (cpfErro) setCpfErro(false);
+                      }}
+                      aria-invalid={cpfErro}
+                      aria-describedby={cpfErro ? "cpf-erro" : undefined}
+                      className={CAMPO}
+                      placeholder="000.000.000-00"
+                    />
                     {cpfErro && (
                       <p
                         id="cpf-erro"
-                        className="ml-0.5 text-xs font-bold text-red-600"
+                        className="text-xs font-semibold text-red-600 dark:text-red-400"
                       >
                         CPF inválido. Confira os números ou deixe em branco.
                       </p>
                     )}
                   </div>
-
-                  <motion.div whileTap={{ scale: 0.995 }} className="pt-1">
-                    <Button
-                      onClick={handleUpdateProfile}
-                      disabled={loading || profileLoadState !== "loaded"}
-                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {loading ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        "Salvar Alterações"
-                      )}
-                    </Button>
-                  </motion.div>
                 </div>
+
+                {/* Linha-link: abre a seção de privacidade (sem rota). */}
+                <button
+                  type="button"
+                  onClick={() => setSecao("privacidade")}
+                  className="flex h-14 w-full items-center justify-between rounded-[14px] border border-input px-4 text-left text-[15px] font-semibold text-foreground outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Privacidade e meus dados
+                  <ChevronRight
+                    className="size-4 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                </button>
               </motion.section>
             ) : (
               <motion.section
                 key="security-tab"
-                initial={{ opacity: 0, x: 15 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -15 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-4 rounded-2xl border border-zinc-200/50 bg-white p-5 shadow-sm"
+                role="tabpanel"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.15 }}
+                className="space-y-5"
               >
-                <div className="flex items-center gap-2.5">
-                  <div className="flex size-7 items-center justify-center rounded-lg bg-amber-500 shadow-sm">
-                    <Shield className="size-3.5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-bold text-zinc-900">
-                      Segurança
-                    </h2>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-                      Credenciais e chave de acesso
-                    </p>
-                  </div>
-                </div>
-
-                {/* Password compromised warning */}
-                <div className="flex items-start gap-2.5 rounded-xl border border-red-100/50 bg-red-50/30 p-3">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-500" />
+                {/* Dica de segurança: atenção em âmbar, sem fundo pintado */}
+                <div className="flex items-start gap-3 rounded-[14px] border border-border p-3.5">
+                  <AlertTriangle
+                    className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400"
+                    aria-hidden="true"
+                  />
                   <div className="space-y-0.5">
-                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-red-600">
+                    <p className="text-[13px] font-semibold text-foreground">
                       Dica de Segurança
                     </p>
-                    <p className="text-[10px] font-semibold leading-normal text-red-700/80">
+                    <p className="text-[13px] leading-normal text-muted-foreground">
                       Evite reutilizar senhas de outros sites para proteção da
                       conta.
                     </p>
@@ -997,135 +984,127 @@ export function AccountSettingsView() {
                 </div>
 
                 <form
+                  id="form-senha"
                   onSubmit={handleChangePassword}
                   action="#"
-                  className="space-y-3.5"
+                  className="space-y-4"
                 >
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="email"
-                      className="ml-0.5 text-[10px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      E-mail (Login)
+                  <div className="space-y-1.5">
+                    <label htmlFor="email" className={ROTULO_CAMPO}>
+                      E-mail (login)
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400">
-                        <Mail className="size-4" />
-                      </span>
                       <Input
                         id="email"
                         name="email"
                         autoComplete="email"
                         value={profileData.email}
                         disabled
-                        className="h-10 cursor-not-allowed rounded-xl border border-zinc-200/50 bg-zinc-100/50 px-10 text-sm font-semibold text-zinc-500/80 shadow-none"
+                        className={`${CAMPO} pr-10`}
                       />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400">
-                        <Lock className="size-3.5" />
+                      <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+                        <Lock className="size-3.5" aria-hidden="true" />
                       </span>
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="new_password"
-                      className="ml-0.5 text-[10px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      Nova Chave de Acesso
+                  <div className="space-y-1.5">
+                    <label htmlFor="new_password" className={ROTULO_CAMPO}>
+                      Nova chave de acesso
                     </label>
-                    <div className="group relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors group-focus-within:text-zinc-900">
-                        <KeyRound className="size-4" />
-                      </span>
-                      <Input
-                        id="new_password"
-                        name="new_password"
-                        type="password"
-                        autoComplete="new-password"
-                        value={passwordData.newPassword}
-                        onChange={(e) =>
-                          setPasswordData((d) => ({
-                            ...d,
-                            newPassword: e.target.value,
-                          }))
-                        }
-                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900"
-                        placeholder="Mínimo 8 caracteres"
-                        required
-                      />
-                    </div>
+                    <Input
+                      id="new_password"
+                      name="new_password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={passwordData.newPassword}
+                      onChange={(e) =>
+                        setPasswordData((d) => ({
+                          ...d,
+                          newPassword: e.target.value,
+                        }))
+                      }
+                      className={CAMPO}
+                      placeholder="Mínimo 8 caracteres"
+                      required
+                    />
                   </div>
 
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="confirm_password"
-                      className="ml-0.5 text-[10px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      Confirmar Nova Chave
+                  <div className="space-y-1.5">
+                    <label htmlFor="confirm_password" className={ROTULO_CAMPO}>
+                      Confirmar nova chave
                     </label>
-                    <div className="group relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors group-focus-within:text-zinc-900">
-                        <KeyRound className="size-4" />
-                      </span>
-                      <Input
-                        id="confirm_password"
-                        name="confirm_password"
-                        type="password"
-                        autoComplete="new-password"
-                        value={passwordData.confirmPassword}
-                        onChange={(e) =>
-                          setPasswordData((d) => ({
-                            ...d,
-                            confirmPassword: e.target.value,
-                          }))
-                        }
-                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900"
-                        placeholder="Repita a nova senha"
-                        required
-                      />
-                    </div>
+                    <Input
+                      id="confirm_password"
+                      name="confirm_password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={passwordData.confirmPassword}
+                      onChange={(e) =>
+                        setPasswordData((d) => ({
+                          ...d,
+                          confirmPassword: e.target.value,
+                        }))
+                      }
+                      className={CAMPO}
+                      placeholder="Repita a nova senha"
+                      required
+                    />
                   </div>
-
-                  <motion.div whileTap={{ scale: 0.995 }} className="pt-1">
-                    <Button
-                      type="submit"
-                      disabled={updatingPassword}
-                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
-                    >
-                      {updatingPassword ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Shield className="size-4" />
-                          <span>Atualizar Senha</span>
-                        </div>
-                      )}
-                    </Button>
-                  </motion.div>
                 </form>
               </motion.section>
             )}
-          </AnimatePresence>
-        </div>
 
-        {/* Privacidade e meus dados (LGPD): pedir a exclusão da conta ou a
-            correção do e-mail. O app só registra o pedido; a loja atende. */}
-        <PrivacidadeEMeusDados userId={user.id} emailAtual={user.email ?? ""} />
+            {/* Footer simple info */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="text-center"
+            >
+              <div className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1">
+                <CheckCircle2
+                  className="size-3.5 text-emerald-600 dark:text-emerald-400"
+                  aria-hidden="true"
+                />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Proteção Supabase Auth Ativa
+                </span>
+              </div>
+            </motion.div>
 
-        {/* Footer simple info */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="pt-2 text-center"
-        >
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-100 bg-zinc-50 px-3 py-1">
-            <CheckCircle2 className="size-3.5 text-emerald-500" />
-            <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400">
-              Proteção Supabase Auth Ativa
-            </span>
-          </div>
-        </motion.div>
+            {/* Botão principal, fixo acima da navegação inferior. Na aba
+                Segurança ele é o botão de envio do formulário de senha. */}
+            <div className="bottom-docked-navigation sticky z-20 -mx-4 border-t border-border bg-background/95 px-4 pb-2.5 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:bottom-[104px]">
+              {activeTab === "profile" ? (
+                <Button
+                  onClick={handleUpdateProfile}
+                  disabled={loading || profileLoadState !== "loaded"}
+                  className="flex h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-foreground text-[15px] font-semibold text-background transition-all hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    "Salvar alterações"
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  form="form-senha"
+                  disabled={updatingPassword}
+                  className="flex h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-foreground text-[15px] font-semibold text-background transition-all hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {updatingPassword ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <span>Atualizar Senha</span>
+                  )}
+                </Button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
