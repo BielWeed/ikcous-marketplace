@@ -145,6 +145,23 @@ it("caixa transporta estorno externo sem recalcular esperado e assume zero se au
   });
 });
 
+it("movimento do caixa lê o horário que o banco devolve como criado_em", () => {
+  // fin_caixa_atual manda 'criado_em' (e não 'created_at') em cada movimento.
+  const caixa = parseCaixaAtual({
+    id: "sessao-1",
+    movimentos: [
+      { id: "m1", origem: "sangria", valor: 5, criado_em: "2026-10-23T11:05:00Z" },
+      { id: "m2", origem: "suprimento", valor: 9, created_at: "2026-10-23T12:00:00Z" },
+      { id: "m3", origem: "sangria", valor: 1 },
+    ],
+  });
+  expect(caixa?.movimentos.map((m) => m.em)).toEqual([
+    "2026-10-23T11:05:00Z",
+    "2026-10-23T12:00:00Z",
+    null,
+  ]);
+});
+
 describe("dinheiro em pt-BR", () => {
   it.each([
     ["1.234,56", 1234.56],

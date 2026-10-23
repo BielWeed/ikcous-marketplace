@@ -969,6 +969,8 @@ function movimentoDoCaixa(valor: unknown): MovimentoDoCaixa | null {
       (origem ? rotuloDaOrigem(origem) : "Movimento"),
     em:
       textoOuNulo(o.em) ??
+      // fin_caixa_atual devolve o horário do movimento como `criado_em`.
+      textoOuNulo(o.criado_em) ??
       textoOuNulo(o.created_at) ??
       textoOuNulo(o.data_realizacao) ??
       textoOuNulo(o.data),
