@@ -1,13 +1,23 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
-import {
-  AdminKpiCarousel,
-  type KpiCardConfig,
-} from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import {
+  Avatar,
+  AvisoDeProblema,
+  BOTAO_DE_ICONE_EXCLUIR,
+  BOTAO_NEUTRO,
+  BarraDeProporcao,
+  BuscaEModo,
+  CartaoDeNumero,
+  ConfirmarExclusao,
+  FiltroEmSegmentos,
+  Paginador,
+  ResumoRecolhivel,
+  VazioDaLista,
+  rolarAoTopo,
+} from "@/components/admin/atendimento/controles";
 import { AlternadorDeTelas } from "@/components/admin/primitivos/AlternadorDeTelas";
+import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
@@ -16,62 +26,48 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useReviews } from "@/hooks/useReviews";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { supabase } from "@/lib/supabase";
-import { getAvatarGradient } from "@/lib/utils";
+import { classeDoTexto } from "@/lib/tons-de-estado";
+import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
-  AlertCircle,
-  ArrowLeft,
-  ChevronDown,
-  ChevronUp,
-  Clock,
   HelpCircle,
-  LayoutGrid,
-  List,
-  Loader2,
-  MessageCircle,
   MessageSquare,
-  Package,
-  Search,
+  Send,
   ShieldCheck,
-  Sparkles,
   Star,
   ThumbsUp,
   Trash2,
-  User,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
+// Respostas rápidas do formulário: os mesmos textos de antes; os rótulos
+// perderam o emoji (a tela é neutra).
+const RESPOSTAS_RAPIDAS = [
+  {
+    label: "Agradecer feedback",
+    text: "Muito obrigado pela sua avaliação! Feedbacks como o seu nos motivam a continuar oferecendo a melhor qualidade.",
+  },
+  {
+    label: "Dar suporte",
+    text: "Olá! Lamentamos muito que sua experiência não tenha sido ideal. Já estamos cientes do seu relato e entraremos em contato via WhatsApp para resolver isso o quanto antes.",
+  },
+  {
+    label: "Feedback positivo",
+    text: "Que excelente notícia! Ficamos muito satisfeitos em saber que o produto atendeu suas expectativas. Conte sempre conosco!",
+  },
+  {
+    label: "Esclarecer produto",
+    text: "Agradecemos o seu comentário. Gostaríamos de ressaltar que as instruções de uso estão no manual do produto. Qualquer dúvida adicional, estamos à disposição no suporte.",
+  },
+] as const;
 
 interface AdminReviewsViewProps {
   readonly onNavigate: (view: View) => void;
   readonly active?: boolean;
   readonly onSetDirty?: (dirty: boolean) => void;
 }
-
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-    },
-  },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      type: "spring",
-      stiffness: 100,
-      damping: 15,
-    },
-  },
-};
 
 // Sem avaliação nenhuma a taxa é INDEFINIDA, não zero e não cem — o "—" marca isso.
 // Com avaliação, zero medido continua sendo "0%" (não vira "—").
@@ -102,7 +98,6 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const isOffline = useOnlineStatus();
   const { config, isLoaded: configLoaded, updateConfig } = useStore();
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
-  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
 
   const handleToggleReviews = async (checked: boolean) => {
     if (isOffline) {
@@ -351,7 +346,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
   const totalPages = Math.ceil(totalReviews / pageSize);
 
-  const mediaGlobalExibida = globaisDisponiveis ? globalAvgRating : "—";
+  const mediaGlobalExibida = globaisDisponiveis
+    ? globalAvgRating.replace(".", ",")
+    : "—";
   const totalGlobalExibido = globaisDisponiveis ? globalTotal : "—";
   // Global Dynamic metrics for display
   // Denominadores GLOBAIS (achado 5): as taxas usam o total sem filtro —
@@ -410,1089 +407,532 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   };
 
   const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    new Date(dateStr).toLocaleDateString("pt-BR");
 
+  const detalhado = viewMode === "detailed";
+  const filtroAtivo = searchQuery.trim().length > 0 || ratingFilter !== "all";
+  const corDaNotaBaixa = classeDoTexto("negativo");
+  const corDoSelo = classeDoTexto("positivo");
+
+  const limparBuscaEFiltros = () => {
+    setSearchQuery("");
+    setRatingFilter("all");
+    setPage(0);
+  };
+
+  // Estrelas: cheias para a nota, só contorno para o resto. Nota 1 ou 2 é
+  // negativa e leva o vermelho (texto/glifo, nunca bloco); o resto é neutro.
   const renderStars = (rating: number) => (
-    <div className="flex gap-0.5">
+    <span
+      role="img"
+      aria-label={`Nota ${rating} de 5`}
+      className="inline-flex shrink-0 gap-0.5"
+    >
       {[1, 2, 3, 4, 5].map((i) => (
         <Star
           key={i}
-          className={`size-4 transition-all duration-300 ${i <= rating ? "fill-admin-gold text-admin-gold drop-shadow-[0_0_8px_rgba(212,175,55,0.4)]" : "text-zinc-800"}`}
+          aria-hidden="true"
+          className={cn(
+            "size-4",
+            i <= rating
+              ? cn(
+                  "fill-current",
+                  rating <= 2 ? corDaNotaBaixa : "text-zinc-100",
+                )
+              : "text-zinc-400",
+          )}
+        />
+      ))}
+    </span>
+  );
+
+  const resumoNaLinha = (
+    <>
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-base font-bold tabular-nums text-white">
+        <Star aria-hidden="true" className="size-5 fill-current" />
+        {mediaGlobalExibida}
+      </span>
+      <span className="text-sm tabular-nums text-zinc-300">
+        · {totalGlobalExibido} avaliações
+      </span>
+      {pendentesNoBanco > 0 && (
+        <EstadoComPonto
+          tom="atencao"
+          texto={`${pendentesNoBanco} na fila`}
+          className="shrink-0 text-sm"
+        />
+      )}
+    </>
+  );
+
+  const renderSkeleton = () => (
+    <div aria-busy="true" className="space-y-3">
+      <span className="sr-only">Carregando…</span>
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          className="h-40 animate-pulse rounded-2xl border border-solid border-admin-border bg-admin-surface"
         />
       ))}
     </div>
   );
 
-  const kpiCards = useMemo<readonly KpiCardConfig[]>(
-    () => [
-      {
-        id: "media",
-        label: "Média Global",
-        icon: Star,
-        iconClass: "text-admin-gold fill-admin-gold",
-        iconBg: "bg-admin-gold/10 border-admin-gold/20",
-        hoverBorder:
-          "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)]",
-        // Global de verdade (achado 5): a média do cartão "Média Global"
-        // não segue o filtro — lê o campo global da RPC (20261002000000).
-        value: mediaGlobalExibida,
-        accent: "text-admin-gold",
-        content: (
-          <div className="mt-2 flex items-center gap-1.5 animate-in fade-in">
-            {globaisDisponiveis
-              ? renderStars(Math.round(Number(globalAvgRating) || 0))
-              : null}
-          </div>
-        ),
-        footer: "Satisfação dos compradores",
-      },
-      {
-        id: "total",
-        label: "Total Recebido",
-        icon: MessageCircle,
-        iconClass: "text-emerald-400",
-        iconBg: "bg-emerald-500/10 border-emerald-500/20",
-        hoverBorder:
-          "hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.05)]",
-        // Global de verdade (achado 5): "Total Recebido" é o total sem
-        // filtro — o filtrado continua governando o paginador.
-        value: totalGlobalExibido,
-        accent: "text-emerald-400",
-        content: (
-          <div className="mt-2 flex items-center gap-1.5 animate-in fade-in">
-            {/* Item 8 do laudo de 29/08: a moderação é REAL (migration
-                20261031000000). O rótulo pulsante era decoração: não havia
-                fila nenhuma. Laudo 0109 (A-4): a contagem é do BANCO —
-                pendentesNoBanco —, não da página carregada na lista. */}
-            {pendentesNoBanco > 0 ? (
-              <>
-                <span className="size-1.5 animate-pulse rounded-full bg-amber-400" />
-                <span className="text-xs font-semibold text-amber-400">
-                  {pendentesNoBanco} aguardando sua aprovação
+  const renderEmpty = () =>
+    filtroAtivo ? (
+      <VazioDaLista
+        icone={Star}
+        titulo="Nenhuma avaliação encontrada"
+        frase="Nada com essa busca ou essa nota. Tente outra ou limpe os filtros."
+        acao={{
+          rotulo: "Limpar busca e filtros",
+          aoClicar: limparBuscaEFiltros,
+        }}
+      />
+    ) : (
+      <VazioDaLista
+        icone={Star}
+        titulo="Sem avaliações ainda"
+        frase="As avaliações dos clientes vão aparecer aqui assim que começarem a chegar."
+      />
+    );
+
+  const renderFormularioDeResposta = (reviewId: string) => (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        <span className="block text-sm font-medium text-zinc-300">
+          Resposta rápida
+        </span>
+        <div className="grid grid-cols-2 gap-2">
+          {RESPOSTAS_RAPIDAS.map((sugestao) => (
+            <button
+              key={sugestao.label}
+              type="button"
+              onClick={() => setReplyText(sugestao.text)}
+              disabled={isOffline || isSubmittingReply}
+              className={cn(BOTAO_NEUTRO, "px-2")}
+            >
+              {sugestao.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <textarea
+        value={replyText}
+        onChange={(e) => setReplyText(e.target.value)}
+        onFocus={(e) => {
+          // O teclado do celular se sobrepõe à página: traz o campo à vista.
+          const campo = e.currentTarget;
+          window.setTimeout(
+            () => campo.scrollIntoView?.({ block: "center" }),
+            300,
+          );
+        }}
+        aria-label="Sua resposta"
+        placeholder={
+          isOffline
+            ? "Você está offline. Não é possível responder no momento."
+            : "Escreva uma resposta atenciosa para este cliente..."
+        }
+        className="h-32 w-full resize-none rounded-2xl border border-solid border-admin-border-strong bg-admin-bg p-3.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus-visible:outline focus-visible:outline-2 disabled:opacity-40"
+        disabled={isSubmittingReply || isOffline}
+      />
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={fecharResposta}
+          disabled={isSubmittingReply}
+          className={cn(BOTAO_NEUTRO, "flex-1 bg-transparent")}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={() => enviarResposta(reviewId)}
+          disabled={isSubmittingReply || !replyText.trim() || isOffline}
+          className={cn(BOTAO_NEUTRO, "flex-[2]")}
+        >
+          <Send aria-hidden="true" className="size-4" />
+          {isSubmittingReply ? "Publicando..." : "Publicar resposta"}
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderReview = (review: (typeof adminReviews)[number]) => {
+    const pendente = review.status === "pendente";
+    return (
+      <li
+        key={review.id}
+        className="rounded-2xl border border-solid border-admin-border bg-admin-surface p-3.5"
+      >
+        <div className="flex items-start gap-3">
+          <Avatar nome={review.customerName} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+                <p className="min-w-0 truncate text-base font-semibold text-white">
+                  {review.customerName}
+                </p>
+                {review.verified && (
+                  <span
+                    className={`inline-flex shrink-0 items-center gap-1 text-sm font-medium ${corDoSelo}`}
+                  >
+                    <ShieldCheck aria-hidden="true" className="size-4" />
+                    Verificada
+                  </span>
+                )}
+              </div>
+              {pendente && (
+                <EstadoComPonto
+                  tom="atencao"
+                  texto="Em moderação"
+                  className="shrink-0 text-sm"
+                />
+              )}
+            </div>
+            <div className="mt-0.5 flex items-center justify-between gap-3">
+              <p className="flex min-w-0 items-center gap-1.5 text-sm text-zinc-300">
+                <span className="shrink-0 tabular-nums">
+                  {formatDate(review.createdAt)}
                 </span>
-              </>
-            ) : (
-              <span className="text-xs font-medium text-zinc-400">
-                Nenhuma avaliação na fila de moderação
-              </span>
-            )}
-          </div>
-        ),
-        footer: "Depoimentos coletados",
-      },
-      {
-        id: "resposta",
-        label: "Taxa de Resposta",
-        icon: MessageSquare,
-        iconClass: "text-sky-400",
-        iconBg: "bg-sky-500/10 border-sky-500/20",
-        hoverBorder:
-          "hover:border-sky-500/30 hover:shadow-[0_0_30px_rgba(14,165,233,0.05)]",
-        value: responseRate.text,
-        accent: "text-sky-400",
-        content: (
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 animate-in fade-in">
-            <div
-              className="h-full rounded-full bg-sky-500 transition-all duration-500"
-              style={{ width: `${responseRate.width}%` }}
-            />
-          </div>
-        ),
-        footer: `${globalRepliedCount} respondidas no total`,
-      },
-      {
-        id: "verificada",
-        label: "Compras Verificadas",
-        icon: ShieldCheck,
-        iconClass: "text-purple-400",
-        iconBg: "bg-purple-500/10 border-purple-500/20",
-        hoverBorder:
-          "hover:border-purple-500/30 hover:shadow-[0_0_30px_rgba(168,85,247,0.05)]",
-        value: verifiedRate.text,
-        accent: "text-purple-400",
-        content: (
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 animate-in fade-in">
-            <div
-              className="bg-purple-550 h-full rounded-full transition-all duration-500"
-              style={{ width: `${verifiedRate.width}%` }}
-            />
-          </div>
-        ),
-        footer: `${globalVerifiedCount} verificadas no total`,
-      },
-    ],
-    [
-      responseRate,
-      globalRepliedCount,
-      verifiedRate,
-      globalVerifiedCount,
-      // Fila 1935, item 3 (catraca do lint). A razão honesta — contestação
-      // da revisão 2305, aceita: formatRate devolve objeto NOVO a cada
-      // render, logo verifiedRate/responseRate já invalidavam o memo em
-      // todo render e "cartões velhos" era bug inalcançável. As deps
-      // corretas valem por exhaustive-deps e robustez futura (se um dia
-      // as taxas forem memoizadas, o memo passa a reter — e as deps
-      // certas é o que o salvará). averageRating/totalReviews saíram:
-      // os cartões não leem mais as métricas FILTRADAS desde o conserto 3.
-      globalAvgRating,
-      // B2 da revisao final (3a vez nesta peca): os TRES valores lidos no
-      // memo entram nas deps; globalTotal sai (nao e lido aqui desde que
-      // mediaGlobalExibida/totalGlobalExibido nasceram).
-      globaisDisponiveis,
-      mediaGlobalExibida,
-      totalGlobalExibido,
-      // Item 8 do laudo de 29/08 + laudo 0109 (A-4): o cartão "Total
-      // Recebido" mostra a fila de moderação — contagem do BANCO.
-      pendentesNoBanco,
-    ],
-  );
-
-  const renderDetailedSkeleton = () => (
-    <div className="grid gap-6">
-      {[1, 2, 3].map((i) => (
-        <div
-          key={i}
-          className="animate-pulse space-y-6 rounded-2xl border border-admin-border bg-admin-surface p-6 lg:p-8"
-        >
-          <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
-            <div className="flex items-center gap-5">
-              <Skeleton className="size-16 animate-pulse rounded-2xl bg-white/5" />
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-32 animate-pulse bg-white/5" />
-                <Skeleton className="h-3 w-48 animate-pulse bg-white/5" />
-              </div>
-            </div>
-            <Skeleton className="h-10 w-24 animate-pulse rounded-2xl bg-white/5" />
-          </div>
-          <div className="space-y-2 border-l border-admin-border pl-6 lg:pl-10">
-            <Skeleton className="h-4 w-full animate-pulse bg-white/5" />
-            <Skeleton className="h-4 w-5/6 animate-pulse bg-white/5" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderCompactSkeleton = () => (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-        <div
-          key={i}
-          className="flex h-48 animate-pulse flex-col justify-between rounded-2xl border border-admin-border bg-admin-surface p-5"
-        >
-          <div>
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <Skeleton className="size-10 animate-pulse rounded-xl bg-white/5" />
-                <div className="space-y-1.5">
-                  <Skeleton className="h-3 w-20 animate-pulse bg-white/5" />
-                  <Skeleton className="h-2 w-12 animate-pulse bg-white/5" />
-                </div>
-              </div>
-              <Skeleton className="h-6 w-10 animate-pulse rounded-lg bg-white/5" />
-            </div>
-            <Skeleton className="mb-4 h-3 w-24 animate-pulse rounded-full bg-white/5" />
-            <div className="space-y-1.5">
-              <Skeleton className="h-3 w-full animate-pulse bg-white/5" />
-              <Skeleton className="h-3 w-5/6 animate-pulse bg-white/5" />
+                {review.productName && (
+                  <>
+                    <span aria-hidden="true">•</span>
+                    <span className="min-w-0 truncate">
+                      {review.productName}
+                    </span>
+                  </>
+                )}
+              </p>
+              {renderStars(review.rating)}
             </div>
           </div>
         </div>
-      ))}
-    </div>
-  );
+
+        <p
+          className={cn(
+            "mt-3 break-words text-base italic text-zinc-100",
+            detalhado ? "whitespace-pre-wrap" : "line-clamp-3",
+          )}
+        >
+          {review.comment
+            ? `“${review.comment}”`
+            : "Avaliação só com estrelas."}
+        </p>
+
+        {review.helpful > 0 && (
+          <p
+            className="mt-2 inline-flex items-center gap-1.5 text-sm text-zinc-300"
+            title="Clientes que acharam esta avaliação útil"
+          >
+            <ThumbsUp aria-hidden="true" className="size-3.5" />
+            <span className="tabular-nums">{review.helpful}</span>
+            <span className="sr-only">acharam útil</span>
+          </p>
+        )}
+
+        {review.merchantReply && (
+          <div className="mt-3 rounded-xl border border-l-[3px] border-solid border-admin-border border-l-admin-border-strong bg-admin-bg p-3">
+            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-300">
+              <MessageSquare aria-hidden="true" className="size-4" />
+              Resposta da loja
+            </span>
+            <p
+              className={cn(
+                "mt-1.5 break-words text-base text-zinc-100",
+                detalhado ? "whitespace-pre-wrap" : "line-clamp-2",
+              )}
+            >
+              {review.merchantReply}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-3">
+          {confirmDeleteId === review.id ? (
+            <ConfirmarExclusao
+              frase="Excluir esta avaliação? Não dá para desfazer."
+              aoCancelar={() => setConfirmDeleteId(null)}
+              aoConfirmar={() => handleDelete(review.id)}
+            />
+          ) : replyingTo === review.id ? (
+            renderFormularioDeResposta(review.id)
+          ) : (
+            <div className="flex items-center gap-2">
+              {/* Item 7 do laudo de 29/08: o botão manual "Verificar
+                  Compra/Remover Verificação" SAIU — o selo é derivado da
+                  compra com dinheiro reconhecido pelas triggers da
+                  20261030000000, e interruptor manual voltaria a significar
+                  "alguém clicou". O selo ao lado lê a MESMA coluna `verified`.
+                  Item 8: a fila de moderação é real — pendente ganha o botão
+                  de publicar. */}
+              {pendente && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleAprovar(review.id);
+                  }}
+                  disabled={isOffline}
+                  aria-label="Aprovar e Publicar"
+                  title="Aprovar e Publicar"
+                  className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
+                >
+                  <ShieldCheck
+                    aria-hidden="true"
+                    className={`size-4 ${corDoSelo}`}
+                  />
+                  Aprovar
+                </button>
+              )}
+              {!review.merchantReply && (
+                <button
+                  type="button"
+                  disabled={isOffline || isSubmittingReply}
+                  onClick={() => abrirResposta(review.id)}
+                  className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
+                >
+                  <MessageSquare aria-hidden="true" className="size-4" />
+                  Responder
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteId(review.id)}
+                disabled={isOffline}
+                aria-label="Excluir avaliação"
+                title="Excluir avaliação"
+                className={cn(BOTAO_DE_ICONE_EXCLUIR, "ml-auto")}
+              >
+                <Trash2 aria-hidden="true" className="size-5" />
+              </button>
+            </div>
+          )}
+        </div>
+      </li>
+    );
+  };
+
+  const carregando =
+    (loading || firstLoadRef.current) && adminReviews.length === 0;
 
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-admin-bg pb-admin lg:pb-12 font-sans text-zinc-400 duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-white"
+      className="h-auto bg-admin-bg pb-admin text-zinc-100 lg:pb-12"
     >
-      {/* Header / Stats Overlay */}
-      <div className="sticky top-0 z-50 bg-admin-bg/80 p-2 pb-0 backdrop-blur-md sm:p-4">
-        <div className="admin-glass rounded-2xl border border-admin-border p-3 shadow-2xl sm:rounded-[2rem] sm:p-4">
-          <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-            {/* Title & Stats */}
-            <div className="flex w-full flex-wrap items-center justify-between gap-3 lg:w-auto lg:justify-start">
-              <div className="flex items-center gap-2.5">
-                <div className="flex items-center gap-2">
-                  {/* Onda 3 da reforma visual (03/09): o título vivia com
-                      fórmula própria (text-lg, duas cores) — agora é o
-                      AdminPageHeader, igual ao de Pedidos/Produtos/Clientes. */}
-                  <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-reviews"]}>
-                    <button
-                      type="button"
-                      onClick={() => setShowHelpModal(true)}
-                      className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
-                      title="Guia de Avaliações e Ajuda"
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="flex size-8 items-center justify-center rounded-full border border-admin-border bg-admin-surface text-zinc-500 transition-all duration-300 group-hover:border-admin-border-strong group-hover:text-white"
-                      >
-                        <HelpCircle className="size-4.5" />
-                      </span>
-                    </button>
-                  </AdminPageHeader>
-                </div>
-              </div>
+      {/* O título da tela continua existindo para o leitor de tela (h1), mas
+          some da vista: o alternador logo abaixo já diz "Avaliações". */}
+      <div className="sr-only">
+        <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-reviews"]} />
+      </div>
 
-              {/* Compact Stats Badges */}
-              <div className="flex items-center gap-1.5">
-                <div
-                  className="shrink-0 rounded-lg border border-admin-gold/20 bg-admin-gold/10 px-2 py-0.5"
-                  title="Total de avaliações"
-                >
-                  <p className="text-[11px] font-black uppercase tracking-widest text-admin-gold">
-                    {totalReviews}
-                  </p>
-                </div>
-                <div
-                  className="flex shrink-0 items-center gap-1 rounded-lg border border-admin-border bg-white/5 px-2 py-0.5"
-                  title="Média global de estrelas"
-                >
-                  <Star className="size-3 fill-admin-gold text-admin-gold" />
-                  <span className="text-[11px] font-black tracking-widest text-white">
-                    {/* CORRIGE 1 da revisao 2305: o title diz "Média
-                      global" — o valor é o GLOBAL, nunca o filtrado. */}
-                    {mediaGlobalExibida}
-                  </span>
-                  <span className="hidden text-[11px] font-bold text-zinc-500 sm:inline">
-                    MÉDIA
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Search & Main Filter */}
-            <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-center lg:w-auto lg:max-w-2xl lg:flex-1 lg:justify-end">
-              <div className="group relative min-w-0 flex-1">
-                <div className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2">
-                  {loading || isTyping ? (
-                    <Loader2 className="size-3.5 animate-spin text-admin-gold" />
-                  ) : (
-                    <Search className="size-3.5 text-zinc-500 transition-colors group-focus-within:text-admin-gold" />
-                  )}
-                </div>
-                <label htmlFor="reviews-search" className="sr-only">
-                  Buscar avaliações
-                </label>
-                <DebouncedSearchInput
-                  id="reviews-search"
-                  name="search"
-                  placeholder="Buscar por cliente ou produto..."
-                  className="w-full rounded-xl border border-admin-border bg-black/40 py-2 pl-9 pr-3 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:bg-zinc-950/60 focus:outline-none focus:ring-2 focus:ring-admin-gold/20"
-                  value={searchQuery}
-                  onChange={(val) => {
-                    setSearchQuery(val);
-                    setPage(0);
-                  }}
-                  onTyping={setIsTyping}
-                  delay={300}
-                />
-              </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="no-scrollbar flex items-center gap-1 overflow-x-auto rounded-xl border border-admin-border bg-black/40 p-0.5">
-                  <button
-                    onClick={() => {
-                      setRatingFilter("all");
-                      setPage(0);
-                    }}
-                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
-                      ratingFilter === "all"
-                        ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
-                        : "text-zinc-500 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    Todas
-                  </button>
-                  {[5, 4, 3, 2, 1].map((star) => (
-                    <button
-                      key={star}
-                      onClick={() => {
-                        setRatingFilter(star);
-                        setPage(0);
-                      }}
-                      className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
-                        ratingFilter === star
-                          ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
-                          : "text-zinc-500 hover:bg-white/5 hover:text-white"
-                      }`}
-                    >
-                      {star}{" "}
-                      <Star
-                        className={`size-3 ${ratingFilter === star ? "fill-black text-black" : "fill-zinc-700 text-zinc-700"}`}
-                      />
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setViewMode((prev) =>
-                      prev === "detailed" ? "compact" : "detailed",
-                    )
-                  }
-                  className="group flex size-8 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-black/40 shadow-lg transition-all hover:border-admin-gold/50 hover:bg-zinc-900 active:scale-95 sm:size-9"
-                  title={
-                    viewMode === "detailed"
-                      ? "Visualização Compacta"
-                      : "Visualização Detalhada"
-                  }
-                >
-                  {viewMode === "detailed" ? (
-                    <LayoutGrid className="size-3.5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                  ) : (
-                    <List className="size-3.5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                  )}
-                </button>
-              </div>
-            </div>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 pt-3">
+        {/* Perguntas e Avaliações dividem uma porta só (Clientes): o
+            alternador leva de uma à outra, e a ajuda mora ao lado. */}
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <AlternadorDeTelas atual="admin-reviews" onNavigate={onNavigate} />
           </div>
-        </div>
-      </div>
-
-      {/* Perguntas e Avaliações dividem uma porta só (Clientes): o alternador
-          leva de uma à outra, logo abaixo do cabeçalho. */}
-      <div className="mx-auto mt-4 max-w-7xl px-4">
-        <AlternadorDeTelas atual="admin-reviews" onNavigate={onNavigate} />
-      </div>
-
-      {/* KPI Dashboard Section */}
-      <div className="mx-auto mt-6 max-w-7xl space-y-4 px-4">
-        <AdminKpiCarousel
-          active={active}
-          cards={kpiCards}
-          loading={loading || firstLoadRef.current}
-          title="Métricas de Avaliações"
-        />
-      </div>
-
-      <div className="mx-auto max-w-7xl p-4 lg:p-8">
-        {configLoaded && (
-          <div className="mb-6">
-            <div
-              className={`flex flex-col rounded-2xl border p-4 transition-all duration-300 ${
-                config.enableReviews
-                  ? "border-blue-500/20 bg-blue-500/5 shadow-[0_0_15px_rgba(59,130,246,0.05)]"
-                  : "border-admin-border bg-zinc-950/40 hover:border-admin-border-strong"
-              }`}
+          <button
+            type="button"
+            onClick={() => setShowHelpModal(true)}
+            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
+            title="Guia de Avaliações e Ajuda"
+          >
+            <span
+              aria-hidden="true"
+              className="flex size-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface text-zinc-200 transition-colors group-hover:bg-admin-raised"
             >
-              {/* Main Compact Row */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex size-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-300 ${
-                      config.enableReviews
-                        ? "border-blue-500/30 bg-blue-500/10 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.15)]"
-                        : "border-admin-border bg-admin-surface text-zinc-500"
-                    }`}
-                  >
-                    <MessageSquare className="size-4.5" />
-                  </div>
-                  <div className="text-left">
-                    <div className="flex items-center gap-2">
-                      <Label
-                        htmlFor="enable-reviews-switch"
-                        className="cursor-pointer text-[12px] font-bold text-white"
-                      >
-                        Avaliações dos Clientes
-                      </Label>
-                      <span
-                        className={`inline-block size-1.5 rounded-full ${config.enableReviews ? "animate-pulse bg-emerald-500" : "bg-zinc-600"}`}
-                      />
-                      <span className="rounded-full border border-admin-border bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold tracking-wider text-zinc-300 uppercase">
-                        {config.enableReviews ? "Ativo" : "Inativo"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <p className="text-[11px] text-zinc-400 leading-none">
-                        Exibir notas e comentários nas páginas dos produtos.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-                        className="flex items-center gap-0.5 text-[11px] font-medium text-blue-400 hover:text-blue-300 transition-colors leading-none"
-                      >
-                        Saiba mais
-                        {isDetailsExpanded ? (
-                          <ChevronUp className="size-3.5" />
-                        ) : (
-                          <ChevronDown className="size-3.5" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div className="pl-1.5">
+              <HelpCircle className="size-5" />
+            </span>
+          </button>
+        </div>
+
+        <BuscaEModo
+          id="reviews-search"
+          rotulo="Buscar avaliações"
+          placeholder="Buscar por cliente ou produto..."
+          valor={searchQuery}
+          aoMudar={(val) => {
+            setSearchQuery(val);
+            setPage(0);
+          }}
+          aoDigitar={setIsTyping}
+          buscando={loading || isTyping}
+          detalhado={detalhado}
+          aoTrocarModo={() =>
+            setViewMode((prev) =>
+              prev === "detailed" ? "compact" : "detailed",
+            )
+          }
+        />
+
+        <FiltroEmSegmentos
+          rotulo="Filtrar por nota"
+          valor={ratingFilter}
+          aoEscolher={(nova) => {
+            setRatingFilter(nova);
+            setPage(0);
+          }}
+          opcoes={[
+            { valor: "all", rotulo: "Todas", larga: true },
+            ...[5, 4, 3, 2, 1].map((star) => ({
+              valor: star as number | "all",
+              rotulo: (
+                <>
+                  {star}
+                  <Star aria-hidden="true" className="size-3.5 fill-current" />
+                </>
+              ),
+              nome: star === 1 ? "1 estrela" : `${star} estrelas`,
+            })),
+          ]}
+        />
+
+        <ResumoRecolhivel
+          nome="Métricas de Avaliações"
+          colunas={2}
+          linha={resumoNaLinha}
+        >
+          <CartaoDeNumero
+            rotulo="Média global"
+            // Global de verdade (achado 5): a média não segue o filtro — lê o
+            // campo global da RPC (20261002000000).
+            valor={
+              <>
+                {mediaGlobalExibida}
+                {globaisDisponiveis && (
+                  <span className="mt-0.5">
+                    {renderStars(Math.round(Number(globalAvgRating) || 0))}
+                  </span>
+                )}
+              </>
+            }
+            rodape="nota dos compradores"
+          />
+          <CartaoDeNumero
+            rotulo="Total recebido"
+            // Global de verdade (achado 5): é o total sem filtro — o filtrado
+            // continua governando o paginador.
+            valor={totalGlobalExibido}
+            // Item 8 + laudo 0109 (A-4): a moderação é REAL e a contagem é do
+            // BANCO — pendentesNoBanco —, não da página carregada.
+            rodape={
+              pendentesNoBanco > 0 ? (
+                <EstadoComPonto
+                  tom="atencao"
+                  texto={`${pendentesNoBanco} para aprovar`}
+                  className="font-medium"
+                />
+              ) : (
+                "Nenhuma na fila"
+              )
+            }
+          />
+          <CartaoDeNumero
+            rotulo="Taxa de resposta"
+            valor={responseRate.text}
+            extra={<BarraDeProporcao percentual={responseRate.width} />}
+            rodape={`${globalRepliedCount} respondidas no total`}
+          />
+          <CartaoDeNumero
+            rotulo="Compras verificadas"
+            valor={verifiedRate.text}
+            extra={<BarraDeProporcao percentual={verifiedRate.width} />}
+            rodape={`${globalVerifiedCount} verificadas no total`}
+          />
+        </ResumoRecolhivel>
+
+        {configLoaded && (
+          <div className="rounded-2xl border border-solid border-admin-border bg-admin-surface px-3.5 py-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <Label
+                htmlFor="enable-reviews-switch"
+                className="flex min-h-11 min-w-0 cursor-pointer items-center text-base font-semibold text-white"
+              >
+                Mostrar avaliações na loja
+              </Label>
+              <div className="flex shrink-0 items-center gap-1">
+                <EstadoComPonto
+                  tom={config.enableReviews ? "positivo" : "neutro"}
+                  texto={config.enableReviews ? "Ativo" : "Inativo"}
+                  className="text-sm"
+                />
+                <label
+                  htmlFor="enable-reviews-switch"
+                  className="flex size-11 cursor-pointer items-center justify-center"
+                >
                   <Switch
                     id="enable-reviews-switch"
                     checked={config.enableReviews}
                     onCheckedChange={handleToggleReviews}
-                    className="scale-90 data-[state=checked]:bg-blue-500"
+                    className="data-[state=checked]:bg-zinc-300 data-[state=unchecked]:bg-admin-border-strong"
                     disabled={isOffline || isUpdatingConfig}
                   />
-                </div>
+                </label>
               </div>
-
-              {/* Collapsible Humanized Explanatory Details */}
-              <AnimatePresence initial={false}>
-                {isDetailsExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-3 pt-3 border-t border-admin-border text-[11px] leading-relaxed text-zinc-500 text-left space-y-1.5">
-                      <p>
-                        Ativando esta opção, seus clientes poderão dar notas de
-                        1 a 5 estrelas e escrever depoimentos sobre os produtos
-                        comprados.
-                      </p>
-                      <p>
-                        Isso ajuda a construir{" "}
-                        <strong>confiança para novos compradores</strong>, tira
-                        dúvidas frequentes e pode aumentar significativamente
-                        suas vendas!
-                      </p>
-                      <p>
-                        Aqui no painel administrativo você terá total controle
-                        para ler, responder e decidir quais avaliações serão
-                        publicadas na sua loja.
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
+            {!config.enableReviews && (
+              <p className="pb-2 text-sm text-zinc-300">
+                Ligue para os clientes verem notas e comentários nas páginas dos
+                produtos.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <main className="mx-auto mt-4 w-full max-w-3xl px-4">
+        {isOffline && (
+          <div className="mb-3">
+            <AvisoDeProblema>
+              Sem conexão. Aprovar, responder e excluir voltam quando a internet
+              voltar.
+            </AvisoDeProblema>
           </div>
         )}
 
         {erroDaListagemAdmin && (
-          <div
-            role="alert"
-            className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-300"
-          >
-            <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
-            <p className="min-w-0 flex-1 text-xs">{erroDaListagemAdmin}</p>
-            <button
-              type="button"
-              onClick={triggerRefresh}
-              disabled={loading}
-              className="min-h-11 rounded-xl border border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider hover:bg-red-500/10 disabled:opacity-50"
+          <div className="mb-3">
+            <AvisoDeProblema
+              acao={
+                <button
+                  type="button"
+                  onClick={triggerRefresh}
+                  disabled={loading}
+                  className={cn(BOTAO_NEUTRO, "self-start")}
+                >
+                  Tentar de novo
+                </button>
+              }
             >
-              Tentar de novo
-            </button>
+              {erroDaListagemAdmin} Confira a internet e tente de novo.
+            </AvisoDeProblema>
           </div>
         )}
-        <AnimatePresence mode="wait">
-          {(loading || firstLoadRef.current) && adminReviews.length === 0 ? (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="py-12"
-            >
-              {viewMode === "detailed"
-                ? renderDetailedSkeleton()
-                : renderCompactSkeleton()}
-            </motion.div>
-          ) : adminReviews.length === 0 ? (
-            !erroDaListagemAdmin && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="relative flex flex-col items-center justify-center overflow-hidden rounded-[3rem] border border-admin-border bg-zinc-950/40 py-24 backdrop-blur-3xl"
-              >
-                <div className="bg-radial-gradient pointer-events-none absolute inset-0 from-admin-gold/5 via-transparent to-transparent" />
-                <div className="group relative mb-8 flex size-24 items-center justify-center rounded-3xl border border-admin-border bg-admin-surface">
-                  <Star className="size-12 text-zinc-700 transition-all duration-500 group-hover:rotate-12 group-hover:text-admin-gold" />
-                  <div className="absolute inset-0 rounded-full bg-admin-gold/20 opacity-50 blur-2xl" />
-                  <Sparkles className="absolute -right-2 -top-2 size-5 animate-bounce text-admin-gold" />
-                </div>
-                <h3 className="text-xl font-black uppercase tracking-tight text-white">
-                  Sem Feedback Ainda
-                </h3>
-                <p className="mt-2 max-w-xs text-center text-sm font-medium leading-relaxed text-zinc-500">
-                  As avaliações e depoimentos de satisfação dos seus clientes
-                  aparecerão aqui assim que começarem a chegar.
-                </p>
-              </motion.div>
-            )
-          ) : viewMode === "detailed" ? (
-            <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              className="grid grid-cols-1 gap-6"
-            >
-              {adminReviews.map((review) => (
-                <motion.div
-                  key={review.id}
-                  variants={itemVariants}
-                  layout
-                  className="group relative"
-                >
-                  <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-admin-gold/10 via-transparent to-emerald-500/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-                  <div className="content-visibility-auto relative overflow-hidden rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-6 shadow-2xl transition-all duration-500 hover:border-admin-border-strong lg:p-8">
-                    {/* Review Header */}
-                    <div className="mb-8 flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
-                      <div className="flex items-center gap-5">
-                        <div className="relative">
-                          <div
-                            className={`size-16 rounded-2xl bg-gradient-to-br ${getAvatarGradient(review.customerName)} flex transform items-center justify-center border border-admin-border text-2xl font-black text-white shadow-2xl ring-4 ring-admin-border transition-transform duration-300 group-hover:scale-105`}
-                          >
-                            {review.customerName.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-lg border-2 border-zinc-950 bg-admin-gold shadow-lg shadow-admin-gold/20">
-                            <User className="size-3.5 text-black" />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2.5">
-                            <p className="text-lg font-black uppercase tracking-tight text-white">
-                              {review.customerName}
-                            </p>
-                            {review.verified && (
-                              <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.15em] text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                                <ShieldCheck className="size-3.5" />
-                                Compra Verificada
-                              </div>
-                            )}
-                          </div>
-                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-semibold text-zinc-400">
-                              Produto:
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-admin-border bg-zinc-900 px-3 py-1 text-xs font-black text-admin-gold transition-colors group-hover:border-admin-gold/30">
-                              <Package className="size-3.5 text-admin-gold" />
-                              {review.productName}
-                            </span>
-                            {review.status === "pendente" && (
-                              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-400">
-                                Em moderação
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center gap-6">
-                        <div className="hidden text-right sm:block">
-                          <p className="text-[11px] font-black uppercase leading-none tracking-wider text-zinc-400">
-                            Data da Postagem
-                          </p>
-                          <p className="mt-2 flex items-center justify-end gap-1.5 text-sm font-bold tracking-tighter text-zinc-400">
-                            <Clock className="size-3.5 text-zinc-400" />
-                            {formatDate(review.createdAt)}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-4 rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-4">
-                          {renderStars(review.rating)}
-                          {review.helpful > 0 && (
-                            <>
-                              <div className="h-4 w-px bg-zinc-800" />
-                              <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1">
-                                <ThumbsUp className="size-3 fill-emerald-400/20 text-emerald-400" />
-                                <span className="text-[11px] font-bold tracking-tighter text-white">
-                                  {review.helpful}
-                                </span>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Content Area */}
-                    <div className="relative mb-8 border-l border-admin-border pl-6 transition-colors group-hover:border-admin-gold/30 lg:pl-10">
-                      <div className="pointer-events-none absolute -left-3 -top-2 select-none font-serif text-6xl leading-none text-white/[0.03] transition-colors group-hover:text-admin-gold/10">
-                        "
-                      </div>
-                      <p className="text-lg font-medium leading-relaxed tracking-tight text-zinc-200 lg:pr-12">
-                        {review.comment || "Avaliação só com estrelas."}
-                      </p>
-                    </div>
-
-                    {/* Merchant Reply Area */}
-                    {review.merchantReply && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="group/reply relative mb-8 overflow-hidden rounded-2xl border border-admin-gold/10 bg-admin-gold/[0.02] p-6 shadow-inner lg:p-8"
-                      >
-                        <div className="absolute right-0 top-0 p-8 opacity-5 transition-opacity group-hover/reply:opacity-10">
-                          <MessageSquare className="size-16 text-admin-gold" />
-                        </div>
-                        <div className="mb-4 flex items-center gap-3">
-                          <div className="flex size-8 items-center justify-center rounded-xl bg-admin-gold shadow-lg shadow-admin-gold/20">
-                            <MessageSquare className="size-4 text-black" />
-                          </div>
-                          <span className="text-[11px] font-black uppercase italic tracking-[0.2em] text-white">
-                            Resposta Oficial da Loja
-                          </span>
-                        </div>
-                        <p className="relative z-10 text-sm font-medium italic leading-relaxed text-admin-gold/80 lg:pr-12">
-                          "{review.merchantReply}"
-                        </p>
-                      </motion.div>
-                    )}
-
-                    {/* Action Bar */}
-                    <div className="flex flex-wrap items-center gap-3 border-t border-admin-border pt-6">
-                      {/* Item 7 do laudo de 29/08: o botão manual
-                          "Verificar Compra/Remover Verificação" SAIU — o selo
-                          é derivado da compra com dinheiro reconhecido pelas
-                          triggers da 20261030000000, e interruptor manual
-                          voltaria a significar "alguém clicou". O badge ao
-                          lado continua lendo a MESMA coluna `verified`. */}
-
-                      {/* Item 8 do laudo de 29/08: a fila de moderação é
-                          real — pendente ganha o botão de publicar. */}
-                      {review.status === "pendente" && (
-                        <button
-                          onClick={() => {
-                            handleAprovar(review.id);
-                          }}
-                          disabled={isOffline}
-                          className="flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-lg shadow-emerald-500/20 transition-all duration-300 hover:scale-[1.02] disabled:pointer-events-none disabled:opacity-40"
-                        >
-                          <ShieldCheck className="size-3.5" />
-                          Aprovar e Publicar
-                        </button>
-                      )}
-
-                      {!review.merchantReply && (
-                        <button
-                          disabled={isOffline || isSubmittingReply}
-                          onClick={() => abrirResposta(review.id)}
-                          className="flex items-center gap-2 rounded-2xl bg-admin-gold px-6 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/10 transition-all hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-                        >
-                          <MessageSquare className="size-3.5" /> Responder
-                        </button>
-                      )}
-
-                      <div className="flex-1" />
-
-                      {confirmDeleteId === review.id ? (
-                        <div className="flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-2 duration-300 animate-in slide-in-from-right-4">
-                          <span className="px-3 text-[11px] font-black uppercase tracking-widest text-red-400">
-                            Confirmar exclusão?
-                          </span>
-                          <button
-                            onClick={() => handleDelete(review.id)}
-                            className="rounded-xl bg-red-600 px-5 py-2.5 font-sans text-[11px] font-black uppercase tracking-widest text-white shadow-lg shadow-red-600/20 transition-all hover:bg-red-500"
-                          >
-                            Sim, Apagar
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="rounded-xl bg-white/5 px-5 py-2.5 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-white/10"
-                          >
-                            Cancelar
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmDeleteId(review.id)}
-                          className="flex size-12 items-center justify-center rounded-2xl border border-red-500/10 bg-red-500/10 text-red-400 transition-all duration-300 hover:bg-red-500 hover:text-white active:scale-95"
-                          title="Excluir Avaliação"
-                        >
-                          <Trash2 className="size-5" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Inline Reply Form */}
-                    <AnimatePresence>
-                      {replyingTo === review.id && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                          animate={{
-                            opacity: 1,
-                            height: "auto",
-                            marginTop: 24,
-                          }}
-                          exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="space-y-6 rounded-2xl border border-admin-border bg-zinc-950/60 p-8 shadow-2xl ring-1 ring-admin-border">
-                            <div className="flex items-center gap-3">
-                              <div className="flex size-8 items-center justify-center rounded-full bg-admin-gold/10">
-                                <MessageSquare className="size-4 text-admin-gold" />
-                              </div>
-                              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white">
-                                Formulário de Resposta
-                              </span>
-                            </div>
-
-                            {/* Suggested Responses */}
-                            <div className="space-y-2.5">
-                              <span className="block text-[11px] font-black uppercase tracking-widest text-zinc-500">
-                                Sugestões de Resposta Rápida:
-                              </span>
-                              <div className="flex flex-wrap gap-2">
-                                {[
-                                  {
-                                    label: "👍 Agradecer Feedback",
-                                    text: "Muito obrigado pela sua avaliação! Feedbacks como o seu nos motivam a continuar oferecendo a melhor qualidade.",
-                                  },
-                                  {
-                                    label: "🛠️ Dar Suporte",
-                                    text: "Olá! Lamentamos muito que sua experiência não tenha sido ideal. Já estamos cientes do seu relato e entraremos em contato via WhatsApp para resolver isso o quanto antes.",
-                                  },
-                                  {
-                                    label: "✨ Feedback Positivo",
-                                    text: "Que excelente notícia! Ficamos muito satisfeitos em saber que o produto atendeu suas expectativas. Conte sempre conosco!",
-                                  },
-                                  {
-                                    label: "📝 Esclarecer Produto",
-                                    text: "Agradecemos o seu comentário. Gostaríamos de ressaltar que as instruções de uso estão no manual do produto. Qualquer dúvida adicional, estamos à disposição no suporte.",
-                                  },
-                                ].map((suggestion, idx) => (
-                                  <button
-                                    key={idx}
-                                    type="button"
-                                    onClick={() =>
-                                      setReplyText(suggestion.text)
-                                    }
-                                    disabled={isOffline || isSubmittingReply}
-                                    className="rounded-xl border border-admin-border bg-white/5 px-3.5 py-2 text-xs font-bold text-zinc-300 transition-all hover:border-admin-gold/30 hover:bg-admin-gold/15 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-                                  >
-                                    {suggestion.label}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            <textarea
-                              value={replyText}
-                              onChange={(e) => setReplyText(e.target.value)}
-                              placeholder={
-                                isOffline
-                                  ? "Você está offline. Não é possível responder no momento."
-                                  : "Escreva uma resposta atenciosa para este cliente..."
-                              }
-                              className="min-h-[160px] w-full resize-none rounded-3xl border border-admin-border bg-black/40 p-6 text-base font-medium text-white transition-all placeholder:text-zinc-700 focus:border-admin-gold/30 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 disabled:opacity-40"
-                              disabled={isSubmittingReply || isOffline}
-                            />
-                            {isOffline && (
-                              <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-400">
-                                <AlertCircle className="size-4 shrink-0 animate-pulse" />
-                                <span className="text-[11px] font-black uppercase tracking-wider">
-                                  Modo Offline Ativo
-                                </span>
-                              </div>
-                            )}
-                            <div className="flex items-center justify-end gap-4">
-                              <button
-                                onClick={fecharResposta}
-                                className="px-6 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
-                                disabled={isSubmittingReply}
-                              >
-                                Cancelar
-                              </button>
-                              <button
-                                onClick={() => enviarResposta(review.id)}
-                                className="rounded-2xl bg-admin-gold px-8 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale"
-                                disabled={
-                                  isSubmittingReply ||
-                                  !replyText.trim() ||
-                                  isOffline
-                                }
-                              >
-                                {isSubmittingReply
-                                  ? "Publicando..."
-                                  : "Publicar Resposta"}
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div>
-          ) : (
-            <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-            >
-              {adminReviews.map((review) => (
-                <motion.div
-                  key={review.id}
-                  variants={itemVariants}
-                  layout
-                  className="group relative"
-                >
-                  <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-admin-gold/10 via-transparent to-emerald-500/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-                  <div className="content-visibility-auto relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-admin-border bg-admin-surface bg-gradient-to-b from-white/[0.06] to-transparent p-5 shadow-2xl transition-all duration-500 hover:border-admin-border-strong">
-                    <div>
-                      {/* Header with avatar, name and star rating */}
-                      <div className="mb-4 flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="relative shrink-0">
-                            <div
-                              className={`size-10 rounded-xl bg-gradient-to-br ${getAvatarGradient(review.customerName)} flex items-center justify-center border border-admin-border text-sm font-black text-white shadow-lg`}
-                            >
-                              {review.customerName.charAt(0).toUpperCase()}
-                            </div>
-                            <div className="border-zinc-955 absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded border bg-admin-gold">
-                              <User className="size-2.5 text-black" />
-                            </div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1">
-                              <p className="truncate text-sm font-black uppercase text-white">
-                                {review.customerName}
-                              </p>
-                              {review.verified && (
-                                <ShieldCheck className="text-emerald-450 size-3.5 shrink-0" />
-                              )}
-                            </div>
-                            <span className="block text-[11px] font-bold uppercase tracking-tight text-zinc-550">
-                              {formatDate(review.createdAt)}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1 rounded-lg border border-admin-border bg-admin-surface px-2 py-1">
-                          <Star className="size-3 fill-admin-gold text-admin-gold" />
-                          <span className="text-[11px] font-black text-white">
-                            {review.rating}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Product link tag */}
-                      <div className="mb-3">
-                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-admin-border bg-admin-surface px-2.5 py-0.5 text-[11px] font-black text-admin-gold">
-                          <Package className="size-3 shrink-0 text-admin-gold" />
-                          <span className="truncate">{review.productName}</span>
-                        </span>
-                      </div>
-
-                      {/* Comment */}
-                      <p className="mb-4 line-clamp-3 text-xs font-medium italic leading-relaxed text-zinc-400">
-                        {review.comment
-                          ? `"${review.comment}"`
-                          : "Avaliação só com estrelas."}
-                      </p>
-
-                      {/* Merchant Reply Indicator */}
-                      {review.merchantReply && (
-                        <div className="mb-4 flex items-start gap-2 rounded-xl border border-admin-gold/10 bg-admin-gold/[0.02] p-3">
-                          <MessageSquare className="mt-0.5 size-3.5 shrink-0 text-admin-gold" />
-                          <p className="line-clamp-2 text-[11px] italic text-admin-gold/80">
-                            "{review.merchantReply}"
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Item 8 do laudo de 29/08: a fila de moderação é
-                          real — pendente fica marcada no modo compacto. */}
-                      {review.status === "pendente" && (
-                        <span className="inline-flex w-fit items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-400">
-                          Em moderação
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="mt-auto flex items-center justify-between gap-2 border-t border-admin-border pt-4">
-                      <div className="flex items-center gap-1">
-                        {/* Item 7: o botão de verificação manual SAIU (as
-                            triggers da 20261030000000 derivam o selo da
-                            compra). O selo visual do card continua lendo a
-                            coluna `verified`. */}
-
-                        {review.status === "pendente" && (
-                          <button
-                            onClick={() => {
-                              handleAprovar(review.id);
-                            }}
-                            disabled={isOffline}
-                            className="rounded-xl bg-emerald-500 p-2 text-black shadow-md shadow-emerald-500/10 transition-all hover:scale-105 disabled:pointer-events-none disabled:opacity-40"
-                            title="Aprovar e Publicar"
-                          >
-                            <ShieldCheck className="size-4" />
-                          </button>
-                        )}
-
-                        {!review.merchantReply && (
-                          <button
-                            onClick={() => abrirResposta(review.id)}
-                            disabled={isOffline || isSubmittingReply}
-                            className="rounded-xl bg-admin-gold p-2 text-black shadow-md shadow-admin-gold/10 transition-all hover:scale-105"
-                            title="Responder"
-                          >
-                            <MessageSquare className="size-4" />
-                          </button>
-                        )}
-                      </div>
-
-                      {confirmDeleteId === review.id ? (
-                        <div className="flex items-center gap-1 rounded-xl border border-red-500/20 bg-red-500/10 p-1 duration-300 animate-in slide-in-from-right-4">
-                          <button
-                            onClick={() => handleDelete(review.id)}
-                            className="bg-red-650 hover:bg-red-550 rounded-lg px-2 py-1 text-[11px] font-black uppercase text-white transition-all"
-                          >
-                            Sim
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="rounded-lg bg-white/5 px-2 py-1 text-[11px] font-black text-zinc-400 transition-all hover:bg-white/10"
-                          >
-                            Não
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmDeleteId(review.id)}
-                          className="rounded-xl border border-red-500/10 bg-red-500/10 p-2 text-red-400 transition-all duration-300 hover:bg-red-500 hover:text-white active:scale-95"
-                          title="Excluir"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Inline Reply Form (Compact version) */}
-                    <AnimatePresence>
-                      {replyingTo === review.id && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                          animate={{
-                            opacity: 1,
-                            height: "auto",
-                            marginTop: 12,
-                          }}
-                          exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                          className="absolute inset-x-0 bottom-0 z-20 overflow-hidden rounded-b-[2rem] border-t border-admin-border bg-zinc-950 p-4"
-                        >
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-black uppercase tracking-widest text-white">
-                                Responder
-                              </span>
-                              <button
-                                onClick={fecharResposta}
-                                disabled={isSubmittingReply}
-                                className="text-[11px] text-zinc-550 hover:text-white"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                            <textarea
-                              value={replyText}
-                              onChange={(e) => setReplyText(e.target.value)}
-                              placeholder={
-                                isOffline
-                                  ? "Você está offline. Não é possível responder."
-                                  : "Resposta..."
-                              }
-                              className="min-h-[80px] w-full resize-none rounded-xl border border-admin-border bg-black/45 p-3 text-xs text-white transition-all placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-admin-gold/30 disabled:opacity-40"
-                              disabled={isSubmittingReply || isOffline}
-                            />
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => enviarResposta(review.id)}
-                                className="rounded-lg bg-admin-gold px-4 py-1.5 text-[11px] font-black uppercase text-black transition-all hover:scale-105 disabled:opacity-50"
-                                disabled={
-                                  isSubmittingReply ||
-                                  !replyText.trim() ||
-                                  isOffline
-                                }
-                              >
-                                {isSubmittingReply
-                                  ? "Enviando..."
-                                  : "Responder"}
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Modern Pagination */}
-        {totalPages > 1 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-16 flex items-center justify-center gap-6"
-          >
-            <button
-              onClick={(e) => {
-                setPage((prev) => Math.max(0, prev - 1));
-                const mainEl =
-                  e.currentTarget.closest(".admin-scroll-container") ||
-                  document.querySelector(".active-scroll-container") ||
-                  document.querySelector("main");
-                if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              disabled={page === 0}
-              className="flex size-14 items-center justify-center rounded-2xl border border-admin-border bg-zinc-950/50 text-white shadow-2xl transition-all hover:bg-zinc-900 active:scale-90 disabled:opacity-20"
-            >
-              <ArrowLeft className="size-5 text-zinc-400" />
-            </button>
-
-            <div className="flex items-center gap-3 rounded-3xl border border-admin-border bg-zinc-950/30 p-1.5">
-              {Array.from({ length: totalPages }, (_, i) => (
-                <button
-                  key={i}
-                  onClick={(e) => {
-                    setPage(i);
-                    const mainEl =
-                      e.currentTarget.closest(".admin-scroll-container") ||
-                      document.querySelector(".active-scroll-container") ||
-                      document.querySelector("main");
-                    if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  className={`size-11 rounded-xl text-[11px] font-black transition-all duration-300 ${
-                    page === i
-                      ? "scale-110 bg-admin-gold text-black shadow-xl shadow-admin-gold/20"
-                      : "text-zinc-500 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={(e) => {
-                setPage((prev) => Math.min(totalPages - 1, prev + 1));
-                const mainEl =
-                  e.currentTarget.closest(".admin-scroll-container") ||
-                  document.querySelector(".active-scroll-container") ||
-                  document.querySelector("main");
-                if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              disabled={page === totalPages - 1}
-              className="flex size-14 items-center justify-center rounded-2xl border border-admin-border bg-zinc-950/50 text-white shadow-2xl transition-all hover:bg-zinc-900 active:scale-90 disabled:opacity-20"
-            >
-              <ArrowLeft className="size-5 rotate-180 text-zinc-400" />
-            </button>
-          </motion.div>
+        {carregando ? (
+          renderSkeleton()
+        ) : adminReviews.length === 0 ? (
+          !erroDaListagemAdmin && renderEmpty()
+        ) : (
+          <ul className="space-y-3">{adminReviews.map(renderReview)}</ul>
         )}
-      </div>
+
+        {totalPages > 1 && (
+          <Paginador
+            pagina={page}
+            totalDePaginas={totalPages}
+            aoMudar={(nova, origem) => {
+              setPage(nova);
+              rolarAoTopo(origem);
+            }}
+          />
+        )}
+      </main>
 
       {/* Modal de Ajuda */}
       <AdminHelpModal
@@ -1501,73 +941,80 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         title="Guia de Moderação de Avaliações"
       >
         <div className="space-y-4">
-          <p className="text-xs leading-relaxed text-zinc-400">
+          <p className="text-sm leading-relaxed text-zinc-300">
             Esta tela permite auditar e moderar o feedback dos clientes sobre as
             compras. A moderação de avaliações garante que o feed de depoimentos
             se mantenha limpo, verídico e útil para novos compradores.
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-solid border-admin-border-strong pl-2 text-[11px] font-black uppercase tracking-wider text-zinc-300">
               Principais Recursos
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Star className="size-4 fill-admin-gold text-admin-gold" />
+              <div className="space-y-1 rounded-2xl border border-solid border-admin-border bg-admin-surface p-4">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  <Star aria-hidden="true" className="size-4 fill-current" />
                   Nota por Estrelas (1-5)
                 </div>
-                <p className="text-xs text-zinc-400">
+                <p className="text-sm text-zinc-300">
                   O nível de satisfação do cliente. A média global de estrelas é
                   calculada na parte superior de forma dinâmica.
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <ShieldCheck className="size-4 text-emerald-400" />
+              <div className="space-y-1 rounded-2xl border border-solid border-admin-border bg-admin-surface p-4">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  <ShieldCheck aria-hidden="true" className="size-4" />
                   Compra Verificada
                 </div>
-                <p className="text-xs text-zinc-400">
+                <p className="text-sm text-zinc-300">
                   Indica que a compra foi paga com pagamento reconhecido pela
                   plataforma. O selo é automático: nasce da confirmação do
                   pagamento — não existe interruptor para marcar ou desmarcar.
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <MessageSquare className="size-4 text-sky-400" />
+              <div className="space-y-1 rounded-2xl border border-solid border-admin-border bg-admin-surface p-4">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  <MessageSquare aria-hidden="true" className="size-4" />
                   Resposta Oficial da Loja
                 </div>
-                <p className="text-xs text-zinc-400">
+                <p className="text-sm text-zinc-300">
                   Você pode responder diretamente ao comentário do cliente com
                   atalhos de resposta rápidas predefinidas para dar suporte.
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Trash2 className="size-4 text-red-400" />
+              <div className="space-y-1 rounded-2xl border border-solid border-admin-border bg-admin-surface p-4">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  <Trash2 aria-hidden="true" className="size-4" />
                   Exclusão Preventiva
                 </div>
-                <p className="text-xs text-zinc-400">
+                <p className="text-sm text-zinc-300">
                   Avaliações com linguagem imprópria ou spam podem ser
                   permanentemente removidas do sistema clicando no ícone de
                   lixeira.
+                </p>
+              </div>
+
+              <div className="space-y-1 rounded-2xl border border-solid border-admin-border bg-admin-surface p-4 sm:col-span-2">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  <ThumbsUp aria-hidden="true" className="size-4" />
+                  Mostrar avaliações na loja
+                </div>
+                <p className="text-sm text-zinc-300">
+                  O interruptor mostra ou esconde as notas e os comentários nas
+                  páginas dos produtos. Com ele ligado, os clientes podem dar
+                  notas de 1 a 5 estrelas e escrever depoimentos — isso ajuda a
+                  construir confiança para novos compradores. Aqui no painel
+                  você lê, responde e decide quais avaliações serão publicadas.
                 </p>
               </div>
             </div>
           </div>
         </div>
       </AdminHelpModal>
-
-      {/* Background Decorative Elements */}
-      <div className="pointer-events-none fixed inset-0 z-[-1] overflow-hidden">
-        <div className="animate-duration-3000 absolute left-[-10%] top-[-10%] size-2/5 animate-pulse rounded-full bg-admin-gold/5 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] size-2/5 rounded-full bg-white/5 blur-[120px]" />
-        <div className="absolute left-1/2 top-1/2 z-[-2] size-full -translate-x-1/2 -translate-y-1/2 bg-admin-bg" />
-      </div>
     </div>
   );
 });

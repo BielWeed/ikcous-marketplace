@@ -35,6 +35,7 @@ const requisitar = createRequire(import.meta.url);
 /** Arquivos que o redesenho mexe. */
 const ARQUIVOS = [
   "src/views/admin/AdminQAView.tsx",
+  "src/views/admin/AdminReviewsView.tsx",
   "src/components/admin/atendimento/controles.tsx",
   "src/components/admin/atendimento/FolhaDeResposta.tsx",
   "src/components/admin/primitivos/AlternadorDeTelas.tsx",
@@ -141,6 +142,7 @@ const NAO_E_CLASSE = new Set([
   "admin-reviews",
   "qa-search",
   "reviews-search",
+  "enable-reviews-switch",
 ]);
 
 /** Classe que define LARGURA ou COR de borda (`border`, `border-2`, `border-t`, `border-zinc-900`...) — as que dependem do estilo `solid`. */
