@@ -139,7 +139,9 @@ describe("AdminLayout — barra ancorada de Banners", () => {
     expect(b.textContent?.trim()).toBe("Novo banner");
     expect(b.className).toContain("min-h-11");
     expect(b.className).toContain("rounded-full");
-    expect(b.className).toContain("bg-admin-gold");
+    expect(b.className).toContain("bg-foreground");
+    expect(b.className).toContain("text-background");
+    expect(b.className).not.toContain("admin-gold");
     expect(b.className).not.toContain("bg-gradient-to-b");
     expect(b.className).not.toContain("shadow-lg");
     expect(b.className).toContain("focus-visible:ring-2");

@@ -194,7 +194,7 @@ function BlocoDeSegmento({
       {selecionado ? (
         <span
           aria-hidden="true"
-          className="absolute right-2 top-2 flex size-4 items-center justify-center rounded-full bg-admin-gold text-black"
+          className="absolute right-2 top-2 flex size-4 items-center justify-center rounded-full bg-foreground text-background"
         >
           <Check className="size-3" strokeWidth={3} />
         </span>
@@ -992,7 +992,7 @@ export function ClientesDoCrm({
                     type="button"
                     onClick={() => onNavigate("admin-pdv")}
                     className={cn(
-                      "min-h-11 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-widest text-black transition-colors hover:bg-admin-gold/90",
+                      "min-h-11 rounded-xl bg-foreground px-4 text-[11px] font-black uppercase tracking-widest text-background transition-colors hover:opacity-90",
                       FOCO_DO_CRM,
                     )}
                   >

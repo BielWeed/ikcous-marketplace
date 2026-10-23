@@ -704,7 +704,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     }}
                     className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
                       ratingFilter === "all"
-                        ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
+                        ? "bg-foreground text-background "
                         : "text-zinc-500 hover:bg-white/5 hover:text-white"
                     }`}
                   >
@@ -719,7 +719,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       }}
                       className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
                         ratingFilter === star
-                          ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
+                          ? "bg-foreground text-background "
                           : "text-zinc-500 hover:bg-white/5 hover:text-white"
                       }`}
                     >
@@ -1075,7 +1075,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                         <button
                           disabled={isOffline || isSubmittingReply}
                           onClick={() => abrirResposta(review.id)}
-                          className="flex items-center gap-2 rounded-2xl bg-admin-gold px-6 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/10 transition-all hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                          className="flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-[11px] font-black uppercase tracking-widest text-background transition-all hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                         >
                           <MessageSquare className="size-3.5" /> Responder
                         </button>
@@ -1203,7 +1203,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                               </button>
                               <button
                                 onClick={() => enviarResposta(review.id)}
-                                className="rounded-2xl bg-admin-gold px-8 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale"
+                                className="rounded-2xl bg-foreground px-8 py-3 text-[11px] font-black uppercase tracking-widest text-background transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale"
                                 disabled={
                                   isSubmittingReply ||
                                   !replyText.trim() ||
@@ -1334,7 +1334,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                           <button
                             onClick={() => abrirResposta(review.id)}
                             disabled={isOffline || isSubmittingReply}
-                            className="rounded-xl bg-admin-gold p-2 text-black shadow-md shadow-admin-gold/10 transition-all hover:scale-105"
+                            className="rounded-xl bg-foreground p-2 text-background transition-all hover:scale-105"
                             title="Responder"
                           >
                             <MessageSquare className="size-4" />
@@ -1408,7 +1408,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             <div className="flex justify-end gap-2">
                               <button
                                 onClick={() => enviarResposta(review.id)}
-                                className="rounded-lg bg-admin-gold px-4 py-1.5 text-[11px] font-black uppercase text-black transition-all hover:scale-105 disabled:opacity-50"
+                                className="rounded-lg bg-foreground px-4 py-1.5 text-[11px] font-black uppercase text-background transition-all hover:scale-105 disabled:opacity-50"
                                 disabled={
                                   isSubmittingReply ||
                                   !replyText.trim() ||
@@ -1467,7 +1467,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   }}
                   className={`size-11 rounded-xl text-[11px] font-black transition-all duration-300 ${
                     page === i
-                      ? "scale-110 bg-admin-gold text-black shadow-xl shadow-admin-gold/20"
+                      ? "scale-110 bg-foreground text-background "
                       : "text-zinc-500 hover:bg-white/5 hover:text-white"
                   }`}
                 >

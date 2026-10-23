@@ -42,7 +42,7 @@ interface Inspecao {
 }
 
 export const BOTAO_PRINCIPAL =
-  "flex min-h-11 items-center justify-center gap-2 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-widest text-black transition-all hover:bg-admin-gold/90 active:scale-95 disabled:opacity-50";
+  "flex min-h-11 items-center justify-center gap-2 rounded-xl bg-foreground px-4 text-[11px] font-black uppercase tracking-widest text-background transition-all hover:opacity-90 active:scale-95 disabled:opacity-50";
 export const BOTAO_SECUNDARIO =
   "flex min-h-11 items-center justify-center gap-2 rounded-xl border border-admin-border bg-white/5 px-4 text-[11px] font-bold text-zinc-200 transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50";
 const BOTAO_PERIGO =

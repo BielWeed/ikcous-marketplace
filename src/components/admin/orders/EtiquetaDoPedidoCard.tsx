@@ -605,7 +605,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   type="button"
                   onClick={handleSalvarCpf}
                   disabled={cpfSalvando || isOffline}
-                  className="flex h-11 items-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 text-sm font-semibold text-black transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                  className="flex h-11 items-center gap-1.5 rounded-xl bg-foreground px-4 text-sm font-semibold text-background transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                 >
                   {cpfSalvando ? (
                     <RefreshCw className="size-4 animate-spin" />
@@ -623,7 +623,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               type="button"
               onClick={abrirConfirmacao}
               disabled={isOffline}
-              className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 text-sm font-semibold text-black transition-all hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+              className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 text-sm font-semibold text-background transition-all hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
             >
               <PackageCheck className="size-4" />
               <span>Gerar etiqueta</span>
@@ -657,7 +657,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   type="button"
                   onClick={handleGerarEtiqueta}
                   disabled={compraFase === "gerando" || isOffline}
-                  className="flex h-11 items-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 text-sm font-semibold text-black transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                  className="flex h-11 items-center gap-1.5 rounded-xl bg-foreground px-4 text-sm font-semibold text-background transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                 >
                   {compraFase === "gerando" ? (
                     <RefreshCw className="size-4 animate-spin" />

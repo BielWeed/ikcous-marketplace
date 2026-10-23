@@ -161,7 +161,7 @@ export function FolhaEditarVitrine({
             type="button"
             onClick={concluir}
             disabled={salvando}
-            className="h-12 flex-1 rounded-[14px] bg-admin-gold text-[15px] font-extrabold text-zinc-950 transition-colors hover:bg-admin-gold/90 active:scale-[0.99] disabled:opacity-60"
+            className="h-12 flex-1 rounded-[14px] bg-foreground text-[15px] font-extrabold text-background transition-colors hover:opacity-90 active:scale-[0.99] disabled:opacity-60"
           >
             {salvando ? "Salvando…" : "Concluir"}
           </button>
@@ -332,7 +332,7 @@ export function FolhaEditarVitrine({
                   className={cn(
                     "flex size-[26px] shrink-0 items-center justify-center rounded-[9px] border-[1.5px] text-xs font-extrabold tabular-nums",
                     marcado
-                      ? "border-admin-gold bg-admin-gold text-zinc-950"
+                      ? "border-foreground bg-foreground text-background"
                       : "border-zinc-700 text-transparent",
                   )}
                 >

@@ -1112,7 +1112,7 @@ export const AdminQAView = memo(function AdminQAView({
                     }}
                     className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
                       filter === "pending"
-                        ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
+                        ? "bg-foreground text-background "
                         : "text-zinc-500 hover:bg-white/5 hover:text-white"
                     }`}
                   >
@@ -1125,7 +1125,7 @@ export const AdminQAView = memo(function AdminQAView({
                     }}
                     className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
                       filter === "all"
-                        ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
+                        ? "bg-foreground text-background "
                         : "text-zinc-500 hover:bg-white/5 hover:text-white"
                     }`}
                   >

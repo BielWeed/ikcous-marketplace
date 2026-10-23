@@ -38,9 +38,9 @@ export function AlternadorDeTelas({
               if (!ativa) onNavigate(tela);
             }}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center rounded-xl px-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold",
+              "flex min-h-11 flex-1 items-center justify-center rounded-xl px-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               ativa
-                ? "bg-admin-gold text-black"
+                ? "bg-foreground text-background"
                 : "text-zinc-300 hover:bg-admin-raised",
             )}
           >
