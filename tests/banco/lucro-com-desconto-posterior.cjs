@@ -14,6 +14,10 @@ const LUCRO_COM_DESCONTO = Object.freeze({
     = 'ab25e738a3101cccbb0c09450b660ee0', false) AS sim`,
 });
 async function desfazerLucroComDescontoNaTransacao(c) {
+  // A 382 (sinal do fin_dre) sucede o fin_dre da 42: cai antes de qualquer rollback da 42.
+  await require("./fin-dre-sinal-posterior.cjs").desfazerSinalDaDreNaTransacao(
+    c,
+  );
   await require("./faturamento-potencial-posterior.cjs").desfazerFaturamentoPotencialNaTransacao(
     c,
   );

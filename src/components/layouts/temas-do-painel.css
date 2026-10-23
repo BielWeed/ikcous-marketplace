@@ -179,6 +179,16 @@ html.admin-mode[data-admin-tema] [data-tema-fixo] {
   --admin-pill: 0 0% 100%;
 }
 
+/* Esqueleto de "carregando" (Skeleton): o painel sempre leva `.dark`, e o brilho
+   base tem cinza escuro fixo sob `.dark`. Nos temas claros isso virava um bloco
+   quase preto; aqui o brilho segue os tokens do tema (e, dentro de
+   `data-tema-fixo`, os tokens do Escuro). */
+html.admin-mode[data-admin-tema] .shimmer {
+  --bg-shimmer-from: hsl(var(--admin-raised));
+  --bg-shimmer-via: hsl(var(--admin-hover));
+  --bg-shimmer-to: hsl(var(--admin-raised));
+}
+
 /* Gráficos: a grade e os números dos eixos vêm com cor fixa (branco a 5%, cinza
    médio) no atributo do SVG; aqui seguem o tema. O número do eixo usa !important
    porque o Recharts o grava em style="". */

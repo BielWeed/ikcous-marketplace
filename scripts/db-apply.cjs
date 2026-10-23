@@ -11,6 +11,9 @@
  * explicitamente o que aplicar.
  *
  * O QUE ELE FAZ, nesta ordem:
+ *   0. Guarda do ledger (só leitura): se alguma versão da lista já consta em
+ *      supabase_migrations.schema_migrations, RECUSA tudo, a menos que se passe
+ *      --permitir-reaplicar. Falha ao consultar também para.
  *   1. Salva num arquivo a definição ATUAL de cada função que a migration toca,
  *      para servir de rollback. ATENÇÃO AO ALCANCE: é só isso que ele salva.
  *      ADD COLUMN, CREATE INDEX, constraint e qualquer UPDATE/INSERT/DELETE da
@@ -38,6 +41,9 @@
  * USO:
  *   node scripts/db-apply.cjs <arquivo.sql> [outro.sql ...]
  *   node scripts/db-apply.cjs --dry-run <arquivo.sql>    # só mostra o plano
+ *   node scripts/db-apply.cjs --permitir-reaplicar <arquivo.sql>
+ *     # só para reaplicar DE PROPÓSITO: sem a flag, o script RECUSA (antes de
+ *     # qualquer rollback ou apply) versão que já consta no ledger do banco
  *
  * EXEMPLO:
  *   node scripts/db-apply.cjs \
@@ -72,6 +78,19 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
+  // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
+  "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {
+    funcao: "fin_dre",
+    esperado: [
+      "IF NOT public.is_admin() THEN",
+      "IF NOT public.is_admin_atual() THEN",
+      "CASE WHEN grupo_dre = 'financeiro'",
+      "THEN sum(CASE WHEN tipo = 'entrada' THEN valor ELSE -valor END)",
+      "ELSE sum(valor) END AS valor_dre,",
+      "'categoria', g.nome, 'valor', g.valor_dre)",
+    ],
+  },
   // 20261381: o ex-admin perde o acesso na hora no resto do painel. Dez RPCs trocam so o gate (is_admin -> is_admin_atual); as 21
   // politicas e a politica nova de banners nao sao conferiveis aqui (so corpo de funcao): a consulta 86a e a prova viva fazem isso.
   "20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql": [
@@ -4365,9 +4384,143 @@ async function definicaoAtual(client, nomeFuncao) {
   return rows.map((r) => r.def);
 }
 
+// Refs das duas lojas em que a faixa histórica nunca se reaplica: a CAF
+// (IKCOUS publicada) e a Savy. Não são segredo (aparecem no host do banco).
+const REFS_FAIXA_HISTORICA = ["cafkrminfnokvgjqtkle", "gnjsrucsmjkajijrakzr"];
+const FAIXA_HISTORICA = /^(rollback-manual-)?2026116[0-6][0-9]{6}_/;
+
+/** A conexão é de uma das lojas conhecidas? O ref aparece no host direto
+ * (`db.<ref>.supabase.co`) ou no usuário do pooler (`postgres.<ref>`). */
+function conexaoDeLojaConhecida(conexao) {
+  const texto = String(conexao || "");
+  return REFS_FAIXA_HISTORICA.some(
+    (ref) =>
+      texto.includes(`db.${ref}.supabase.co`) ||
+      texto.includes(`postgres.${ref}`),
+  );
+}
+
+/**
+ * FAIXA HISTÓRICA — a mesma recusa do aplicar-migrations.yml: as migrations
+ * 20261160..20261166 (e os rollback-manual delas) já estão vivas nas lojas
+ * conhecidas e reaplicá-las é regressivo e destrutivo. Roda ANTES de conectar
+ * e a flag --permitir-reaplicar NÃO a libera. Lojas novas e de teste seguem
+ * livres. A mensagem nunca traz a conexão nem o ref.
+ */
+function recusarFaixaHistorica(conexao, arquivos) {
+  if (!conexaoDeLojaConhecida(conexao)) return;
+  for (const arquivo of arquivos) {
+    const base = path.basename(arquivo);
+    if (FAIXA_HISTORICA.test(base)) {
+      throw new Error(
+        `RECUSADO (loja conhecida, faixa histórica 20261160..20261166: nunca se reaplica nem se desfaz; --permitir-reaplicar não libera): ${base}`,
+      );
+    }
+  }
+}
+
+/**
+ * A versão que o INSERT no ledger grava para este arquivo: o que vem antes do
+ * primeiro "_" do nome. Só aceita dígitos; qualquer outra coisa é null.
+ */
+function versaoDaMigration(nome) {
+  const m = /^([0-9]+)_/.exec(path.basename(nome || ""));
+  return m ? m[1] : null;
+}
+
+/**
+ * GUARDA DO LEDGER (23/10/2026) — a mesma do aplicar-migrations.yml (commit
+ * 1b7e734a). Reaplicar por engano uma migration ANTIGA troca em silêncio a função
+ * que uma mais nova recriou, e o INSERT do ledger faz ON CONFLICT DO NOTHING:
+ * o run terminava "verde". Por isso, ANTES de gerar rollback ou aplicar qualquer
+ * coisa, uma consulta SÓ DE LEITURA confere quais versões da lista já constam em
+ * supabase_migrations.schema_migrations.
+ *
+ *   - alguma já registrada, sem permitirReaplicar: lança RECUSADO (nada é
+ *     aplicado, nem as outras da lista);
+ *   - com permitirReaplicar (flag --permitir-reaplicar): segue, avisando em voz
+ *     alta quais versões serão reaplicadas;
+ *   - a mesma versão repetida na lista: recusada (o segundo apply seria uma
+ *     reaplicação), salvo com permitirReaplicar;
+ *   - consulta que falha, ou resposta que não se entende: lança SEMPRE, mesmo
+ *     com permitirReaplicar — "não consegui ver o ledger" não é "ledger vazio".
+ *
+ * Devolve os nomes (da lista) cuja versão já estava registrada.
+ */
+async function guardaDoLedger(client, arquivos, opcoes = {}) {
+  const permitirReaplicar = opcoes.permitirReaplicar === true;
+  if (arquivos.length === 0) return [];
+
+  const itens = arquivos.map((arquivo) => {
+    const versao = versaoDaMigration(arquivo);
+    if (versao === null) {
+      throw new Error(
+        `FALHOU a conferência do ledger: ${arquivo} não tem versão numérica antes do primeiro "_". Nada foi aplicado.`,
+      );
+    }
+    return { arquivo, versao };
+  });
+  const versoes = itens.map((item) => item.versao);
+
+  if (!permitirReaplicar) {
+    const vistas = new Set();
+    for (const item of itens) {
+      if (vistas.has(item.versao)) {
+        throw new Error(
+          `RECUSADO (versão repetida na lista: o segundo apply seria uma reaplicação; se for de propósito, use --permitir-reaplicar): ${item.arquivo}`,
+        );
+      }
+      vistas.add(item.versao);
+    }
+  }
+
+  let resposta;
+  try {
+    resposta = await client.query(
+      "SELECT version FROM supabase_migrations.schema_migrations WHERE version = ANY($1::text[])",
+      [versoes],
+    );
+  } catch (erro) {
+    throw new Error(
+      `FALHOU a conferência do ledger (${String(erro?.message).slice(0, 300)}). Sem ver o ledger não há como saber se a versão já foi aplicada: nada foi aplicado e o script não segue.`,
+    );
+  }
+  const linhas = resposta?.rows;
+  if (!Array.isArray(linhas)) {
+    throw new Error(
+      "FALHOU a conferência do ledger: a resposta não é uma lista de linhas. Nada foi aplicado e o script não segue.",
+    );
+  }
+  const achadas = new Set();
+  for (const l of linhas) {
+    if (!l || typeof l !== "object" || typeof l.version !== "string") {
+      throw new Error(
+        "FALHOU a conferência do ledger: linha sem version em texto. Nada foi aplicado e o script não segue.",
+      );
+    }
+    achadas.add(l.version);
+  }
+
+  const quais = itens
+    .filter((item) => achadas.has(item.versao))
+    .map((item) => item.arquivo);
+  if (quais.length > 0) {
+    if (!permitirReaplicar) {
+      throw new Error(
+        `RECUSADO (versão já aplicada neste banco; reaplicar pode desfazer correção mais nova): ${quais.join(", ")}. Nada foi aplicado. Para reaplicar DE PROPÓSITO, rode de novo com --permitir-reaplicar.`,
+      );
+    }
+    console.warn(
+      `REAPLICAÇÃO DELIBERADA (--permitir-reaplicar): já estão no ledger deste banco e serão aplicadas de novo: ${quais.join(", ")}`,
+    );
+  }
+  return quais;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
+  const permitirReaplicar = args.includes("--permitir-reaplicar");
   const arquivos = args.filter((a) => !a.startsWith("--"));
 
   if (arquivos.length === 0) {
@@ -4384,6 +4537,9 @@ async function main() {
     }
   }
 
+  // Antes de conectar: a flag não libera a faixa histórica nas lojas conhecidas.
+  recusarFaixaHistorica(lerDatabaseUrl(), arquivos);
+
   const Client = carregarClient();
   const client = new Client({
     connectionString: lerDatabaseUrl(),
@@ -4394,6 +4550,14 @@ async function main() {
   const host = new URL(lerDatabaseUrl()).hostname;
   console.log(`Conectado em ${host}`);
   console.log(`Migrations a aplicar: ${arquivos.length}\n`);
+
+  // 0. Guarda do ledger (só leitura): antes de gerar rollback ou aplicar.
+  try {
+    await guardaDoLedger(client, arquivos, { permitirReaplicar });
+  } catch (erro) {
+    await client.end().catch(() => {});
+    throw erro;
+  }
 
   // 1. Rollback das definições atuais.
   const restauracoes = [];
@@ -4534,6 +4698,10 @@ if (require.main === module) {
 // montarTarefasDeVerificacao). O guarda acima existe por causa disso: sem
 // ele, importar o módulo dispararia a aplicação das migrations.
 module.exports = {
+  recusarFaixaHistorica,
+  conexaoDeLojaConhecida,
+  guardaDoLedger,
+  versaoDaMigration,
   funcoesAlteradas,
   montarRollback,
   resumirVerificacao,

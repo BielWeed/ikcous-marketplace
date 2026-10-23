@@ -594,6 +594,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "85b-antes-aviso-de-cancelados-antigos-base-vigente",
   "86a-conferir-ex-admin-no-resto-do-painel-aplicado",
   "86b-antes-ex-admin-no-resto-do-painel-base-vigente",
+  "87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado",
+  "87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

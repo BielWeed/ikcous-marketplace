@@ -311,6 +311,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
     // 20261381: o ex-admin perde o acesso na hora no resto do painel (21 politicas, 10 RPCs; 4 ex-admins, mutantes, rollback e consultas 86a/86b).
     "tests/banco/admin-atual-endurecimento-viva.cjs",
+    // 20261382: o resultado mostra tarifa, juro e quebra como despesa (sinal das linhas do grupo financeiro; controle com o corpo anterior, mutantes, rollback e portoes 8e/45a/87a/87b).
+    "tests/banco/fin-dre-sinal-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -422,6 +424,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
     // 20261381: o ex-admin perde o acesso na hora no resto do painel (21 politicas, 10 RPCs; 4 ex-admins, mutantes, rollback e consultas 86a/86b).
     "tests/banco/admin-atual-endurecimento-viva.cjs",
+    // 20261382: o resultado mostra tarifa, juro e quebra como despesa (sinal das linhas do grupo financeiro; controle com o corpo anterior, mutantes, rollback e portoes 8e/45a/87a/87b).
+    "tests/banco/fin-dre-sinal-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",
