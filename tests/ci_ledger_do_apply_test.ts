@@ -116,6 +116,10 @@ const FP_OK = JSON.stringify([
 const ENVELOPE = "BEGIN ISOLATION LEVEL REPEATABLE READ;\n";
 
 function respostaSaudavel(q: string): Resposta {
+  // Guarda do ledger (23/10/2026): consulta só de leitura, "nada registrado".
+  // Ver tests/ci_aplicar_migrations_guarda_ledger_test.ts.
+  if (q.startsWith("SELECT version FROM supabase_migrations.schema_migrations"))
+    return { corpo: "[]" };
   if (q.includes("ikcous.sonda1")) return { corpo: SONDA };
   if (q.includes("txid_current_if_assigned"))
     return { corpo: '[{"pid":123,"txid":null}]' };
@@ -246,12 +250,22 @@ Deno.test({
     assert(iCorpo >= 0 && iCorpo < iReg && iReg < iFp && iFp < iCommit);
     // a prova termina em ROLLBACK, com o registro dentro dela
     assertEquals(prova[0], `BEGIN;\n${corpo}\n${REGISTRO_M201}\nROLLBACK;`);
+    // Guarda do ledger (23/10/2026): a ÚNICA outra requisição que toca o ledger é a
+    // consulta SELECT só de leitura (comportamento em
+    // tests/ci_aplicar_migrations_guarda_ledger_test.ts); escrita, só na prova e no apply.
+    const alemDaProvaEDoApply = r.chamadas
+      .filter((q) => q !== apply[0] && q !== prova[0])
+      .filter((q) => /schema_migrations/i.test(q));
     assertEquals(
-      r.chamadas
-        .filter((q) => q !== apply[0] && q !== prova[0])
-        .filter((q) => /schema_migrations/i.test(q)),
-      [],
-      "o ledger só aparece na prova e no apply",
+      alemDaProvaEDoApply.length,
+      1,
+      "o ledger só aparece na prova, no apply e na consulta de leitura",
+    );
+    assert(
+      alemDaProvaEDoApply[0].startsWith(
+        "SELECT version FROM supabase_migrations.schema_migrations WHERE version = ANY(ARRAY[",
+      ) && !/INSERT|DELETE|UPDATE/i.test(alemDaProvaEDoApply[0]),
+      "e essa consulta só lê",
     );
   },
 });
