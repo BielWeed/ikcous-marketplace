@@ -4,9 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
   BellOff,
-  Check,
   CheckCheck,
-  ChevronRight,
   Percent,
   Sparkles,
   Truck,
@@ -185,51 +183,32 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
     }
   }, [notifications, activeTab]);
 
-  // Type styling details
+  // Type styling details: cor só no glifo (significado), nunca bloco pintado
   const getTypeConfig = useCallback((type: string) => {
     switch (type) {
       case "order":
       case "delivery":
         return {
           icon: Truck,
-          bgClass:
-            "bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-100 dark:shadow-none text-white",
-          borderClass: "border-blue-100 dark:border-blue-950/40",
-          cardBg: "bg-blue-50/10 dark:bg-blue-950/5",
-          dotColor: "bg-blue-500",
-          accentColor: "text-indigo-600 dark:text-indigo-400",
+          glyphClass: "text-blue-600 dark:text-blue-400",
           actionText: "Acompanhar Pedido",
         };
       case "promotion":
         return {
           icon: Percent,
-          bgClass:
-            "bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-100 dark:shadow-none text-white",
-          borderClass: "border-amber-100 dark:border-amber-950/40",
-          cardBg: "bg-amber-50/10 dark:bg-amber-950/5",
-          dotColor: "bg-amber-500",
-          accentColor: "text-amber-600 dark:text-amber-400",
+          glyphClass: "text-amber-700 dark:text-amber-400",
           actionText: "Aproveitar Cupom",
         };
       case "sucesso":
         return {
           icon: Sparkles,
-          bgClass:
-            "bg-gradient-to-br from-emerald-400 to-teal-500 shadow-emerald-100 dark:shadow-none text-white",
-          borderClass: "border-emerald-100 dark:border-emerald-950/40",
-          cardBg: "bg-emerald-50/10 dark:bg-emerald-950/5",
-          dotColor: "bg-emerald-500",
-          accentColor: "text-emerald-700 dark:text-emerald-400",
+          glyphClass: "text-emerald-700 dark:text-emerald-400",
           actionText: "Ver Detalhes",
         };
       default:
         return {
           icon: Bell,
-          bgClass: "bg-gradient-to-br from-zinc-400 to-zinc-600 text-white",
-          borderClass: "border-zinc-100 dark:border-zinc-800/40",
-          cardBg: "bg-zinc-50/50 dark:bg-zinc-900/10",
-          dotColor: "bg-zinc-500",
-          accentColor: "text-zinc-600 dark:text-zinc-400",
+          glyphClass: "text-muted-foreground",
           actionText: "Ver Detalhes",
         };
     }
@@ -262,40 +241,38 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
   );
 
   return (
-    <div className="pb-customer flex min-h-full flex-col bg-zinc-50/40 dark:bg-zinc-950/40">
-      {/* Sticky Header & Filters */}
-      <div className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/80 px-4 py-3 backdrop-blur-xl dark:border-zinc-900/60 dark:bg-zinc-950/80">
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <div className="flex flex-col">
-            <h1 className="text-lg font-black leading-tight text-zinc-900 dark:text-zinc-100">
-              Notificações
-            </h1>
+    <div className="pb-customer flex min-h-full flex-col bg-background">
+      {/* Cabeçalho fixo: título, "marcar como lidas" e abas (Tinta) */}
+      <div className="sticky top-[-2px] z-50 border-b border-border bg-background/90 px-4 pb-3 pt-4 backdrop-blur-xl">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
             {counts.todas > 0 && (
-              <p className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500">
-                Você tem {counts.todas} não{" "}
-                {counts.todas === 1 ? "lida" : "lidas"}
+              <p className="mb-1 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                {counts.todas} não {counts.todas === 1 ? "lida" : "lidas"}
               </p>
             )}
+            <h1 className="text-[28px] font-bold leading-8 tracking-tight text-foreground">
+              Notificações
+            </h1>
           </div>
 
-          <div className="flex items-center gap-1">
-            {hasUnreadNotifications && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={markAllAsRead}
-                className="flex h-8 items-center gap-1 rounded-xl px-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-                title="Marcar todas como lidas"
-              >
-                <CheckCheck className="size-4" />
-                <span className="hidden xs:inline">Lidas</span>
-              </Button>
-            )}
-          </div>
+          {hasUnreadNotifications && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={markAllAsRead}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-[13px] font-semibold text-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+              title="Marcar todas como lidas"
+            >
+              <CheckCheck className="size-4" />
+              <span className="hidden xs:inline">Marcar como lidas</span>
+              <span className="xs:hidden">Lidas</span>
+            </Button>
+          )}
         </div>
 
-        {/* Categories Bar */}
-        <div className="scrollbar-none flex gap-1.5 overflow-x-auto pb-1">
+        {/* Abas */}
+        <div className="scrollbar-none -mx-1 mt-3 flex gap-2 overflow-x-auto px-1 py-1">
           {(
             [
               { id: "todas", label: "Todas" },
@@ -308,20 +285,22 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
             return (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative flex shrink-0 items-center rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                aria-pressed={isActive}
+                className={`flex h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-[15px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   isActive
-                    ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
-                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                    ? "bg-foreground text-background"
+                    : "border border-border bg-background text-foreground hover:bg-muted/40"
                 }`}
               >
                 {tab.label}
                 {tabUnread > 0 && (
                   <span
-                    className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none ${
+                    className={`font-mono text-[13px] font-medium tabular-nums ${
                       isActive
-                        ? "bg-amber-500 text-white dark:bg-amber-500"
-                        : "bg-amber-500 text-white"
+                        ? "text-background/70"
+                        : "text-amber-700 dark:text-amber-400"
                     }`}
                   >
                     {tabUnread}
@@ -333,10 +312,10 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
         </div>
       </div>
 
-      {/* Main List */}
-      <div className="flex flex-1 flex-col px-4 pt-4">
+      {/* Lista */}
+      <div className="flex flex-1 flex-col px-4 pt-2">
         {filteredNotifications.length > 0 ? (
-          <motion.div layout className="space-y-3">
+          <motion.div layout role="list">
             <AnimatePresence mode="popLayout">
               {filteredNotifications.map((notif: any) => {
                 const config = getTypeConfig(notif.type);
@@ -346,95 +325,79 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                 return (
                   <motion.div
                     key={notif.id}
+                    role="listitem"
                     layout
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{ duration: 0.2 }}
-                    onClick={() => handleNotificationClick(notif)}
-                    className={`group relative cursor-pointer rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-zinc-200 hover:shadow-md dark:border-zinc-900/60 dark:bg-zinc-900/50 dark:hover:border-zinc-800 ${
-                      !notif.read ? `${config.cardBg} border-l-2` : ""
-                    }`}
-                    style={{
-                      borderLeftColor: !notif.read
-                        ? "var(--admin-gold, #f59e0b)"
-                        : undefined,
-                    }}
+                    className="group relative border-b border-border"
                   >
-                    {/* Pulsing indicator for unread */}
-                    {!notif.read && (
-                      <div className="absolute right-4 top-4 flex items-center gap-1.5">
-                        <span className="relative flex size-2">
-                          <span
-                            className={`absolute inline-flex size-full animate-ping rounded-full opacity-75 ${config.dotColor}`}
-                          />
-                          <span
-                            className={`relative inline-flex size-2 rounded-full ${config.dotColor}`}
-                          />
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="flex gap-4">
-                      {/* Left Gradient Icon */}
-                      <div
-                        className={`flex size-11 shrink-0 items-center justify-center rounded-2xl shadow-sm ${config.bgClass}`}
-                      >
-                        <Icon className="size-5" />
+                    {/* A linha inteira é o "ver detalhes": mesmo destino de antes */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleNotificationClick(notif)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleNotificationClick(notif);
+                        }
+                      }}
+                      className="flex min-h-[72px] cursor-pointer gap-3 rounded-[18px] py-4 pr-12 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <div className="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-muted/40">
+                        <Icon
+                          data-testid="notif-glifo"
+                          className={`size-5 ${config.glyphClass}`}
+                        />
                       </div>
 
-                      {/* Content Area */}
-                      <div className="flex-1 space-y-1 pr-4">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold leading-tight text-zinc-900 dark:text-zinc-100">
-                            {notif.title}
-                          </h4>
-                        </div>
-                        <p className="text-xs font-medium leading-relaxed text-zinc-500 dark:text-zinc-400">
+                      <div className="min-w-0 flex-1">
+                        <h4
+                          className={`break-words text-[16px] leading-6 text-foreground ${
+                            notif.read ? "font-medium" : "font-semibold"
+                          }`}
+                        >
+                          {notif.title}
+                        </h4>
+                        <p className="break-words text-[14px] leading-5 text-muted-foreground">
                           {notif.message}
                         </p>
-                        <div className="flex items-center gap-2 pt-1">
-                          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-300 dark:text-zinc-600">
-                            {formatNotificationTime(notif.created_at)}
-                          </span>
-                        </div>
-
-                        {/* Interactive Link CTA */}
+                        <span className="mt-1 block font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                          {formatNotificationTime(notif.created_at)}
+                        </span>
                         {showAction && (
-                          <div className="flex justify-start pt-2">
-                            <span
-                              className={`inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider ${config.accentColor} group-hover:underline`}
-                            >
-                              {config.actionText}
-                              <ChevronRight className="size-3 transition-transform group-hover:translate-x-0.5" />
-                            </span>
-                          </div>
+                          <span className="sr-only">{config.actionText}</span>
                         )}
                       </div>
-
-                      {/* Dismiss Action */}
-                      {/* Laudo NotificationsView-421: `opacity-0` puro +
-                       * `group-hover` era o ÚNICO jeito de revelar o X — em
-                       * touch (a maioria dos celulares) nunca existe hover
-                       * de verdade, então o botão ficava invisível PARA
-                       * SEMPRE mas continuava tocável. Mesma convenção já
-                       * usada em ProductCard.tsx e ProductView.tsx: opaco
-                       * por padrão, e o esconder-até-hover só entra sob
-                       * `@media (hover: hover)` (variante `hover-hover` do
-                       * tailwind.config.js). `after:-inset-2` amplia a área
-                       * de toque (28px de base + 8px por lado = 44px) sem
-                       * aumentar o ícone visível. */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteNotification(notif.id);
-                        }}
-                        className="absolute bottom-3 right-3 rounded-lg p-1.5 text-zinc-400 opacity-100 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-100 hover:text-zinc-600 hover-hover:opacity-0 hover-hover:group-hover:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 xs:relative xs:bottom-0 xs:right-0 xs:self-start"
-                        title="Excluir notificação"
-                      >
-                        <X className="size-4" />
-                      </button>
                     </div>
+
+                    {/* Ponto de não lida (tinta): mesma regra do contador */}
+                    {!notif.read && (
+                      <span
+                        data-testid="notif-ponto-nao-lida"
+                        role="img"
+                        aria-label="Não lida"
+                        className="pointer-events-none absolute right-3 top-5 size-2 rounded-full bg-foreground"
+                      />
+                    )}
+
+                    {/* Dispensar. Laudo NotificationsView-421: opaco por padrão e
+                     * só some até o hover sob `@media (hover: hover)` (variante
+                     * `hover-hover`), senão em touch ficava invisível mas tocável.
+                     * size-11 = alvo de 44px. */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteNotification(notif.id);
+                      }}
+                      className="absolute bottom-2 right-0 flex size-11 items-center justify-center rounded-xl text-muted-foreground opacity-100 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover-hover:opacity-0 hover-hover:group-hover:opacity-100 hover-hover:focus-visible:opacity-100"
+                      title="Excluir notificação"
+                    >
+                      <X className="size-4" />
+                    </button>
                   </motion.div>
                 );
               })}
@@ -442,59 +405,50 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
           </motion.div>
         ) : loading && notifications.length === 0 ? (
           /* Laudo 02/09 #8 (onda 2): o PRIMEIRO carregamento não é caixa
-           * limpa — sem este ramo, a lista vazia caía no "Tudo em ordem"
-           * enquanto a consulta ainda andava (rede lenta mentindo para quem
-           * tem avisos a caminho). Skeleton simples no estilo da casa
-           * (ProductCardSkeleton é de outra frente); "Tudo em ordem" fica
-           * reservado para o vazio DE VERDADE. Prendado por
-           * tests/front/sino-carregando-nao-mente.test.tsx. */
+           * limpa — "Tudo em ordem" fica reservado para o vazio DE VERDADE.
+           * Prendado por tests/front/sino-carregando-nao-mente.test.tsx. */
           <div
             data-testid="sino-carregando"
             role="status"
             aria-label="Carregando notificações"
-            className="space-y-3"
           >
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="animate-pulse rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm dark:border-zinc-900/60 dark:bg-zinc-900/50"
+                className="flex animate-pulse gap-3 border-b border-border py-4"
               >
-                <div className="flex gap-4">
-                  <div className="size-11 shrink-0 rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
-                  <div className="flex-1 space-y-2 py-1">
-                    <div className="h-3 w-2/3 rounded bg-zinc-200 dark:bg-zinc-800" />
-                    <div className="h-2.5 w-full rounded bg-zinc-100 dark:bg-zinc-800/60" />
-                    <div className="h-2.5 w-1/4 rounded bg-zinc-100 dark:bg-zinc-800/60" />
-                  </div>
+                <div className="size-11 shrink-0 rounded-[14px] bg-muted" />
+                <div className="flex-1 space-y-2 py-1">
+                  <div className="h-3.5 w-2/3 rounded bg-muted" />
+                  <div className="h-3 w-full rounded bg-muted/60" />
+                  <div className="h-3 w-1/4 rounded bg-muted/60" />
                 </div>
               </div>
             ))}
           </div>
         ) : erro && filteredNotifications.length === 0 ? (
-          /* Estado de ERRO — falha de consulta não é caixa limpa: sem este
-           * ramo, a tela dizia "Tudo em ordem" para uma cliente com avisos
-           * que a consulta não conseguiu trazer. */
+          /* Estado de ERRO — falha de consulta não é caixa limpa. */
           <div className="flex h-full flex-col items-center justify-center px-6 py-20 text-center">
-            <div className="relative mb-6 flex size-20 items-center justify-center rounded-3xl bg-amber-50 shadow-inner dark:bg-amber-950/40">
-              <BellOff className="size-9 text-amber-500" />
+            <div className="mb-6 flex size-16 items-center justify-center rounded-[18px] border border-border bg-muted/30">
+              <BellOff className="size-7 text-red-600 dark:text-red-400" />
             </div>
-            <h2 className="mb-2 text-base font-black uppercase tracking-wider text-zinc-800 dark:text-zinc-200">
+            <h2 className="mb-2 text-[20px] font-bold leading-7 tracking-tight text-foreground">
               Não conseguimos carregar
             </h2>
-            <p className="mb-8 max-w-xs text-xs font-semibold leading-relaxed text-zinc-400 dark:text-zinc-500">
+            <p className="mb-8 max-w-xs break-words text-[14px] leading-5 text-muted-foreground">
               {erro} Verifique sua conexão e tente de novo.
             </p>
             <Button
               onClick={() => void refresh()}
-              className="rounded-2xl bg-zinc-900 px-6 py-4 text-xs font-bold text-white shadow-md transition-all hover:bg-zinc-800 hover:shadow-lg dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="h-[52px] rounded-2xl bg-foreground px-6 text-[15px] font-semibold text-background hover:bg-foreground/90"
             >
               Tentar de novo
             </Button>
           </div>
         ) : (
-          /* Premium Empty State */
+          /* Estado vazio */
           <div className="flex h-full flex-col items-center justify-center px-6 py-20 text-center">
-            <div className="relative mb-6 flex size-20 items-center justify-center rounded-3xl bg-zinc-100 shadow-inner dark:bg-zinc-900">
+            <div className="mb-6 flex size-16 items-center justify-center rounded-[18px] border border-border bg-muted/30">
               <motion.div
                 animate={{
                   rotate: [0, -8, 8, -6, 6, 0],
@@ -506,22 +460,19 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                   ease: "easeInOut",
                 }}
               >
-                <Bell className="size-9 text-zinc-400 dark:text-zinc-500" />
+                <Bell className="size-7 text-muted-foreground" />
               </motion.div>
-              <div className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md">
-                <Check className="size-3.5 stroke-[3]" />
-              </div>
             </div>
-            <h2 className="mb-2 text-base font-black uppercase tracking-wider text-zinc-800 dark:text-zinc-200">
+            <h2 className="mb-2 text-[20px] font-bold leading-7 tracking-tight text-foreground">
               {emptyStateConfig.title}
             </h2>
-            <p className="mb-8 max-w-xs text-xs font-semibold leading-relaxed text-zinc-400 dark:text-zinc-500">
+            <p className="mb-8 max-w-xs break-words text-[14px] leading-5 text-muted-foreground">
               {emptyStateConfig.desc}
             </p>
 
             <Button
               onClick={() => onNavigate?.("home")}
-              className="rounded-2xl bg-zinc-900 px-6 py-4 text-xs font-bold text-white shadow-md transition-all hover:bg-zinc-800 hover:shadow-lg dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="h-[52px] rounded-2xl bg-foreground px-6 text-[15px] font-semibold text-background hover:bg-foreground/90"
             >
               Explorar Ofertas
             </Button>

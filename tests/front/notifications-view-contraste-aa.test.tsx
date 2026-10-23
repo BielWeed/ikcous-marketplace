@@ -65,16 +65,16 @@ describe("NotificationsView — ação 'Ver Detalhes' (tipo sucesso) usa text-em
       raiz.render(<NotificationsView onNavigate={() => {}} />);
     });
 
-    // A armadilha precisa estar de fato presente: sem a ação renderizada de
-    // verdade, o par abaixo não prova nada sobre este defeito.
+    // Redesenho Tinta (23/10/2026): o "Ver Detalhes" deixou de ser texto
+    // visível (a linha inteira é o toque) e ficou só para leitor de tela; o
+    // tom do tipo "sucesso" agora vive no glifo, com o MESMO contraste AA.
     expect(hospedeiro.textContent).toContain("Ver Detalhes");
 
-    const spans = Array.from(hospedeiro.querySelectorAll("span"));
-    const acao = spans.find((el) => el.textContent?.includes("Ver Detalhes"));
-    expect(acao).not.toBeUndefined();
-    expect(acao?.classList.contains("text-emerald-700")).toBe(true);
-    expect(acao?.classList.contains("text-emerald-600")).toBe(false);
+    const glifo = hospedeiro.querySelector('[data-testid="notif-glifo"]');
+    expect(glifo).not.toBeNull();
+    expect(glifo?.classList.contains("text-emerald-700")).toBe(true);
+    expect(glifo?.classList.contains("text-emerald-600")).toBe(false);
     // O modo escuro não foi medido e não deve ser tocado por esta correção.
-    expect(acao?.classList.contains("dark:text-emerald-400")).toBe(true);
+    expect(glifo?.classList.contains("dark:text-emerald-400")).toBe(true);
   });
 });
