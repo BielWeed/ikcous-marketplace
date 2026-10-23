@@ -193,7 +193,9 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
     } catch {
       deTeclado = true;
     }
-    if (deTeclado) setFocoAtivo(true);
+    // Atribui (nao so liga): foco que passa de um botao de teclado para um
+    // clicado dentro do bloco nao deixa a vitrine parada.
+    setFocoAtivo(deTeclado);
   }, []);
 
   const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {

@@ -154,11 +154,26 @@ describe("vitrine de ofertas pausa a rotacao automatica", () => {
   it("para com o foco do teclado dentro e retoma quando o foco sai", async () => {
     const vitrine = await montar();
     const botao = vitrine.querySelector("button") as HTMLElement;
-    botao.matches = () => true; // foco de teclado
+    botao.matches = (seletor: string) => seletor === ":focus-visible"; // foco de teclado
     await disparar(botao, "focusin");
     await avancar(20000);
     expect(scrollNext).not.toHaveBeenCalled();
     await disparar(botao, "focusout");
+    await avancar(6100);
+    expect(scrollNext).toHaveBeenCalledTimes(1);
+  });
+
+  it("foco de teclado e depois foco por clique no mesmo bloco: volta a girar", async () => {
+    const vitrine = await montar();
+    const botoes = vitrine.querySelectorAll("button");
+    const teclado = botoes[0] as HTMLElement;
+    const clicado = (botoes[1] ?? botoes[0]) as HTMLElement;
+    teclado.matches = (seletor: string) => seletor === ":focus-visible";
+    clicado.matches = () => false;
+    await disparar(teclado, "focusin");
+    await avancar(20000);
+    expect(scrollNext).not.toHaveBeenCalled();
+    await disparar(clicado, "focusin");
     await avancar(6100);
     expect(scrollNext).toHaveBeenCalledTimes(1);
   });
@@ -202,7 +217,7 @@ describe("vitrine de ofertas pausa a rotacao automatica", () => {
   it("mouse sai mas o foco de teclado continua dentro: segue parada", async () => {
     const vitrine = await montar();
     const botao = vitrine.querySelector("button") as HTMLElement;
-    botao.matches = () => true; // foco de teclado
+    botao.matches = (seletor: string) => seletor === ":focus-visible"; // foco de teclado
     await disparar(vitrine, "mouseover");
     await disparar(botao, "focusin");
     await disparar(vitrine, "mouseout");
