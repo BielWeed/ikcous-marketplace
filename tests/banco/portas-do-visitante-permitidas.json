@@ -235,6 +235,14 @@
       "porque": "Lista os cupons que o checkout mostra a quem compra, inclusive o convidado (useCuponsDoCheckout)."
     },
     {
+      "funcao": "public.definir_cargo(p_user_id uuid, p_cargo text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Nomear e remover administrador (Definir cargo, no painel do dono): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo confere o chamador contra a tabela dono_da_loja NO BANCO (so o dono; nunca o JWT nem is_admin()), aceita so admin/customer, recusa mexer no dono e registra em cargo_log (migration 20261383000000); o visitante e o service_role nao a executam."
+    },
+    {
       "funcao": "public.devolucao_detalhe(p_id uuid)",
       "executa": ["authenticated"],
       "tipo": "leitura",

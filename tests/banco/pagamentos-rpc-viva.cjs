@@ -95,6 +95,7 @@ const {
 const {
   EX_ADMIN_RESTO_DO_PAINEL,
 } = require("./ex-admin-resto-do-painel-posterior.cjs");
+const { DEFINIR_CARGO } = require("./definir-cargo-posterior.cjs");
 const {
   desfazerReconciliacaoDoEntregueNaTransacao,
 } = require("./reconciliacao-do-entregue-posterior.cjs");
@@ -1827,6 +1828,10 @@ const POSTERIORES_A_97 = [
   // so devolve expressoes, apaga a politica nova e devolve os 10 corpos. Definicao unica em
   // tests/banco/ex-admin-resto-do-painel-posterior.cjs. No FIM da lista de proposito.
   EX_ADMIN_RESTO_DO_PAINEL,
+  // 20261383000000: as politicas de leitura de dono_da_loja e cargo_log citam rls_admin_atual(): sem esta entrada o rollback da
+  // 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira gatilho, funcoes e politicas e DEIXA as tabelas.
+  // Definicao unica em tests/banco/definir-cargo-posterior.cjs. No FIM da lista de proposito.
+  DEFINIR_CARGO,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

@@ -111,6 +111,51 @@ const VERIFICACOES = {
     ["reorder_banners_atomic", "IF NOT public.is_admin_atual() THEN"],
     ["swap_banner_order", "IF NOT public.is_admin_atual() THEN"],
   ].map(([funcao, texto]) => ({ funcao, esperado: [{ texto, vezes: 1 }] })),
+  // 20261383: so o dono da loja define cargo. As tabelas dono_da_loja e cargo_log, as politicas e o gatilho nao sao conferiveis aqui (so corpo
+  // de funcao): a consulta 88a e a prova viva fazem isso. Aqui: a porta (dono conferido na tabela e admin atual, janela do gatilho, releitura, auth.users
+  // sempre, log) e o gatilho (janela so para o dono da funcao, mensagem de recusa).
+  "20261383000000_so_o_dono_da_loja_define_cargo.sql": [
+    {
+      funcao: "definir_cargo",
+      esperado: [
+        {
+          texto: "FROM public.dono_da_loja d WHERE d.user_id = v_quem",
+          vezes: 1,
+        },
+        {
+          texto: "IF NOT public.is_admin_atual() THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "PERFORM set_config('ikcous.definir_cargo', p_user_id::text || ':' || p_cargo, true);",
+          vezes: 1,
+        },
+        {
+          texto: "AND (raw_app_meta_data ->> 'role') IS DISTINCT FROM p_cargo;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "INSERT INTO public.cargo_log (quem, alvo, de_cargo, para_cargo)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "papel_so_pelo_definir_cargo",
+      esperado: [
+        {
+          texto: "AND current_user = (SELECT pg_get_userbyid(p.proowner)",
+          vezes: 1,
+        },
+        {
+          texto: "RAISE EXCEPTION 'O cargo só muda pela função definir_cargo",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261380: o aviso de cancelados antigos (fora_da_janela) conta so pendencia real. Os gates de admin, a regra dos dois
   // baldes (mercadoria a voltar; dinheiro que entrou e ainda sobra) e o retorno ficam no corpo; o resto e o da 20261199.
   "20261380000000_o_aviso_de_cancelados_antigos_conta_so_pendencia_real.sql": {
