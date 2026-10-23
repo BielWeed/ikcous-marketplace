@@ -24,7 +24,10 @@ export function ProductQA({
   nomeDaLoja,
   onNavigate,
 }: ProductQAProps) {
-  const siglaDaLoja = iniciaisDaLoja(nomeDaLoja?.trim() || branding.appName);
+  const siglaDaLoja = iniciaisDaLoja(
+    nomeDaLoja?.trim() || branding.appName,
+    branding.appName,
+  );
   const {
     questions,
     loading,

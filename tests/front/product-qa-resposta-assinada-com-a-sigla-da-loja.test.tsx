@@ -69,8 +69,8 @@ describe("iniciaisDaLoja", () => {
     ["  savy  ", "SA"],
     ["Água Viva", "ÁV"],
     ["X", "X"],
-    ["", ""],
-    ["   ", ""],
+    ["", "•"],
+    ["   ", "•"],
   ])("'%s' vira '%s'", (nome, esperado) => {
     expect(iniciaisDaLoja(nome)).toBe(esperado);
   });
