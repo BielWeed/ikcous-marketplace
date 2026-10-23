@@ -228,7 +228,7 @@ export function VisaoGeralDoCrm({
             <button
               type="button"
               onClick={() => onNavigate("admin-pdv")}
-              className="bg-foreground text-background min-h-11 rounded-xl px-4 text-xs font-bold"
+              className="min-h-11 rounded-xl bg-foreground px-4 text-xs font-bold text-background"
             >
               Vender no balcão
             </button>
