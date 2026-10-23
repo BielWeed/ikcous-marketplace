@@ -806,10 +806,12 @@ export const CACHE_STALE_MAX_MS = 3_600_000;
 export const CACHE_MAPA_FRESCO_MS = 600_000;
 export const CACHE_MAPA_STALE_MAX_MS = 3_600_000;
 
-/** Os ids públicos de UMA loja, guardados por endereço (`scheme://host`):
- * o mapa de uma loja nunca é servido por outra porque a chave é o endereço
- * que respondeu. Guarda os ids, não o XML — o XML é barato de remontar e a
- * origem pode variar (porta/protocolo no ensaio local). */
+/** Os ids públicos de UMA loja, guardados por `host|supabaseUrl` (o domínio
+ * normalizado MAIS o banco da ficha que o provou): o mapa de uma loja nunca é
+ * servido por outra, e um domínio que muda de banco nunca serve os ids do
+ * banco antigo. Porta e protocolo ficam FORA da chave de propósito. Guarda os
+ * ids, não o XML — o XML é barato de remontar com o endereço de quem pediu
+ * (porta/protocolo variam no ensaio local). */
 export interface EntradaCacheMapa {
   readonly ids: readonly string[];
   readonly quando: number;
@@ -1212,8 +1214,9 @@ async function atenderMapaDoSite(
   deps: DependenciasPorteiro,
 ): Promise<Response> {
   const origem = enderecoDoMapa(request, ficha);
+  const chaveDoCache = `${ficha.host}|${ficha.conexao.supabaseUrl}`;
   const agora = (deps.agora ?? Date.now)();
-  const guardado = deps.cacheMapa?.get(origem);
+  const guardado = deps.cacheMapa?.get(chaveDoCache);
 
   const responder = (
     ids: readonly string[],
@@ -1245,7 +1248,7 @@ async function atenderMapaDoSite(
       },
       { fetchImpl: deps.fetchImpl },
     );
-    deps.cacheMapa?.set(origem, { ids, quando: agora });
+    deps.cacheMapa?.set(chaveDoCache, { ids, quando: agora });
     return responder(ids, "completo");
   } catch (erro) {
     // Falha de leitura NUNCA vira erro para o robô: o último mapa bom DESTA

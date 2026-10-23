@@ -3090,6 +3090,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "84a-conferir-produto-com-grade-aplicado",
     "85a-conferir-aviso-de-cancelados-antigos-aplicado",
     "86a-conferir-ex-admin-no-resto-do-painel-aplicado",
+    "87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado",
   ]);
 });
 

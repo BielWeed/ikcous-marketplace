@@ -184,6 +184,8 @@ on:
       - "scripts/publicacao/consultas/85b-antes-aviso-de-cancelados-antigos-base-vigente.sql"
       - "scripts/publicacao/consultas/86a-conferir-ex-admin-no-resto-do-painel-aplicado.sql"
       - "scripts/publicacao/consultas/86b-antes-ex-admin-no-resto-do-painel-base-vigente.sql"
+      - "scripts/publicacao/consultas/87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado.sql"
+      - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -337,6 +339,8 @@ on:
       - "scripts/publicacao/consultas/85b-antes-aviso-de-cancelados-antigos-base-vigente.sql"
       - "scripts/publicacao/consultas/86a-conferir-ex-admin-no-resto-do-painel-aplicado.sql"
       - "scripts/publicacao/consultas/86b-antes-ex-admin-no-resto-do-painel-base-vigente.sql"
+      - "scripts/publicacao/consultas/87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado.sql"
+      - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -495,6 +499,9 @@ jobs:
       - name: Prova viva do caixa somente na conta da loja (20261370)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-conta-da-loja-viva.cjs
+      - name: Prova viva do resultado com tarifa, juro e quebra no sinal certo (20261382)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/fin-dre-sinal-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

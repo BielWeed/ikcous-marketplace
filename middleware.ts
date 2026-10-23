@@ -72,7 +72,7 @@ export const config = {
 const cachePorteiro = new Map<string, EntradaCachePorteiro>();
 
 // Ids públicos do sitemap por loja (10 min frescos, 1h de stale-if-error,
-// chave = endereço que respondeu): ver `CACHE_MAPA_FRESCO_MS` no porteiro.
+// chave = `host|supabaseUrl` da ficha): ver `CACHE_MAPA_FRESCO_MS` no porteiro.
 const cacheMapaDoSite = new Map<string, EntradaCacheMapa>();
 
 // Caminho (a) do porteiro — a caderneta central (`resolver_loja`, T5,

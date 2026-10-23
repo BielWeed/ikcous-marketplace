@@ -1262,6 +1262,12 @@ async function main() {
         "20261380000000_o_aviso_de_cancelados_antigos_conta_so_pendencia_real.sql",
         "public.get_admin_orders_cancelados_recentes(integer,integer,integer)",
       ],
+      // A 20261382 (o resultado mostra tarifa, juro e quebra como despesa): fin_dre sobre o corpo da 42, funcao de fora destas tres
+      // (a 17a nao a le), o mesmo caso da 42 acima. O rollback dela devolve o corpo da 42 (o molde, abaixo, desfaz e mede).
+      [
+        "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql",
+        "public.fin_dre(date,date)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

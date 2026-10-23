@@ -90,6 +90,9 @@ const NOMES = [
   "20261370000000_o_caixa_abre_so_na_conta_da_loja.sql",
   // O aviso de cancelados antigos: get_admin_orders_cancelados_recentes sucede o corpo da 99 (so o bloco do fora_da_janela muda).
   "20261380000000_o_aviso_de_cancelados_antigos_conta_so_pendencia_real.sql",
+  // O resultado mostra tarifa, juro e quebra como despesa: fin_dre sucede o corpo da 42 (a CADEIA 99 -> 42 -> 382: o
+  // `hashVigente` da 382 e o `hashDesta` da 42; desfazer em ordem inversa devolve cada corpo ao anterior).
+  "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
