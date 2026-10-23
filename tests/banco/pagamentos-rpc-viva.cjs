@@ -96,6 +96,9 @@ const {
   EX_ADMIN_RESTO_DO_PAINEL,
 } = require("./ex-admin-resto-do-painel-posterior.cjs");
 const {
+  desfazerBuscaDoPainelNaTransacao,
+} = require("./busca-do-painel-por-codigo-posterior.cjs");
+const {
   desfazerReconciliacaoDoEntregueNaTransacao,
 } = require("./reconciliacao-do-entregue-posterior.cjs");
 
@@ -1830,6 +1833,8 @@ const POSTERIORES_A_97 = [
 ];
 
 async function desfazerPosterioresNaTransacao(c) {
+  // A 20261385 (a busca de produtos) sucede get_admin_products_paged da 81: sai ANTES dela (o rollback da 81 exige o corpo da 81).
+  await desfazerBuscaDoPainelNaTransacao(c);
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,

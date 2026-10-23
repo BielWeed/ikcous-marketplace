@@ -249,6 +249,8 @@ on:
           - 86b-antes-ex-admin-no-resto-do-painel-base-vigente
           - 87a-conferir-resultado-mostra-tarifa-juro-e-quebra-como-despesa-aplicado
           - 87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente
+          - 90a-conferir-busca-do-painel-por-codigo-aplicado
+          - 90b-antes-busca-do-painel-por-codigo-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

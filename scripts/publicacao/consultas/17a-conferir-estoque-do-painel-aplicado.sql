@@ -57,6 +57,9 @@
 -- na hora no resto do painel) o redefine depois deste lote, so trocando a guarda. A linha
 -- `get_admin_products_paged: corpo e o da 20261213000000` aceita o corpo da 13 OU o da 81 (LF e CRLF;
 -- o rol e os rotulos do rol nao mudam).
+-- JA DECIDIDO PARA `get_admin_products_paged` (23/10/2026): a 20261385000000 (a busca de produtos do painel
+-- acha pelo codigo de barras e pelo codigo da variacao) o redefine depois da 81, so ampliando o filtro de busca.
+-- A mesma linha aceita tambem o corpo da 85 (LF e CRLF).
 --
 -- sha256 = encode(sha256(convert_to(prosrc, 'UTF8')), 'hex'). Cada hash aparece aqui uma vez em
 -- LF e uma em CRLF; tests/ci_conferir_banco_test.ts os recalcula dos ARQUIVOS das migrations
@@ -163,12 +166,15 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'get_admin_products_paged: corpo e o da 20261213000000 (sha256)',
          'ce2d99a8fc28deece0e72a2c678bb92ab0ea50073631e2307c0d053b70e98501',
-         -- 4 hashes aceitos: o corpo da 20261213000000 (LF e CRLF) OU o da SUCESSORA dele, a 20261381000000 (a
-         -- guarda passa de is_admin() para o admin atual; LF e CRLF). O `vivo` mostra o esperado.
+         -- 6 hashes aceitos: o corpo da 20261213000000 (LF e CRLF) OU o da SUCESSORA dele, a 20261381000000 (a
+         -- guarda passa de is_admin() para o admin atual; LF e CRLF) OU o da sucessora desta, a 20261385000000 (o filtro de
+         -- busca acha tambem o codigo de barras e o codigo da variacao; LF e CRLF). O `vivo` mostra o esperado.
          COALESCE((SELECT CASE WHEN f.h IN ('ce2d99a8fc28deece0e72a2c678bb92ab0ea50073631e2307c0d053b70e98501',
                                             '0924946faa9dc2c66de1622a9ddc60fabf7abb96147aeba2584ca44d7025ca81',
                                             'e1f5529f7da9735c92d2a55606e9cb309d5de1ab9bd40723d2b2be3f58d4de97',
-                                            '5a4ed0e8186f0f7cd3a6c2420916b756464ae9f835e9537dd2fc078516c3ef6b')
+                                            '5a4ed0e8186f0f7cd3a6c2420916b756464ae9f835e9537dd2fc078516c3ef6b',
+                                            '2602b946af80d90cc7519bd3fdf57a7ea69e57b1d659587da1b1f4a035dd30bc',
+                                            '3152b3808fc8e5be2a5ad951a8f257384fd5c4ffc1a9204c62b693d94d73ff7d')
                                THEN 'ce2d99a8fc28deece0e72a2c678bb92ab0ea50073631e2307c0d053b70e98501'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_admin_products_paged'), 'AUSENTE')

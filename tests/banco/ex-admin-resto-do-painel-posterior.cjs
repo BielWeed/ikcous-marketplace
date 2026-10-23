@@ -13,6 +13,11 @@ const EX_ADMIN_RESTO_DO_PAINEL = Object.freeze({
   noAr: "SELECT EXISTS(SELECT 1 FROM pg_policy WHERE polname='banners_admin_select_policy' AND polrelid=to_regclass('public.banners')) sim",
 });
 async function desfazerExAdminRestoNaTransacao(c) {
+  // A 20261385 (a busca de produtos acha o codigo de barras) sucede get_admin_products_paged desta: o rollback da 81 exige o
+  // corpo DELA, entao a 385 sai antes (nao faz nada se nao esta no ar). Os 6 chamadores deste modulo herdam a ordem.
+  await require("./busca-do-painel-por-codigo-posterior.cjs").desfazerBuscaDoPainelNaTransacao(
+    c,
+  );
   if ((await c.query(EX_ADMIN_RESTO_DO_PAINEL.noAr)).rows[0].sim) {
     const arquivo = path.join(
       __dirname,
