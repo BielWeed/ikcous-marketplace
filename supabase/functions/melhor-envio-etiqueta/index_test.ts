@@ -2099,6 +2099,112 @@ Deno.test("handler - erro de BANCO ao ler user_addresses (timeout/conexão): 500
     })
 })
 
+// Cliente em que SÓ a leitura de `produtos` falha (timeout/conexão); o resto
+// (pedido, itens, credencial) segue do cliente falso normal.
+function clienteComLeituraDeProdutosQuebrada(base: ReturnType<typeof clienteFalso>, erro: Record<string, unknown>) {
+    return {
+        from(tabela: string) {
+            if (tabela !== 'produtos') return base.cliente.from(tabela)
+            const api: any = {
+                select: () => api,
+                in: () => api,
+                then: (ok: any, ko: any) => Promise.resolve({ data: null, error: erro }).then(ok, ko),
+            }
+            return api
+        },
+    }
+}
+
+Deno.test("handler - erro de BANCO ao ler as medidas dos produtos: 500 'tente de novo', NADA é pago nem reservado (nenhuma chamada ao ME, nenhuma reivindicação), loga só o código", async () => {
+    await comEnvAdmin(async () => {
+        const base = clienteFalso({
+            pedido: PEDIDO_FELIZ,
+            // Os dados REAIS do produto existem (4 kg, 40x30x20): se a função
+            // seguisse com as medidas de reserva (0,3 kg / 15 cm) compraria a
+            // etiqueta errada — o teste prova que ela nem chega perto.
+            produtosDb: [{ id: 'p1', nome: 'Halter', preco_venda: 10, peso_kg: 4, largura_cm: 40, altura_cm: 30, comprimento_cm: 20 }],
+        })
+        const clienteComBancoQuebrado = clienteComLeituraDeProdutosQuebrada(base, {
+            code: '57014',
+            message: 'canceling statement due to statement timeout — peso do Halter vazou aqui se alguém logasse a mensagem inteira',
+        })
+        const me = buscarMeFalso()
+        let res!: Response
+        const linhas = await comConsoleErrorCapturado(async () => {
+            res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: clienteComBancoQuebrado, buscar: me.buscar }))
+        })
+        assertEquals(res.status, 500)
+        const corpo = await res.json()
+        assertEquals(corpo.success, undefined)
+        assertEquals(String(corpo.error).toLowerCase().includes('nada foi pago'), true)
+        assertEquals(String(corpo.error).toLowerCase().includes('tente de novo'), true)
+        // Dinheiro: ZERO chamadas ao Melhor Envio (nem o GET /me) e nenhum
+        // estado gravado no pedido (nada reivindicado, nada a liberar).
+        assertEquals(me.registro.chamadasMe, 0)
+        assertEquals(me.registro.carrinho, 0)
+        assertEquals(me.registro.remocoes, 0)
+        assertEquals(me.registro.checkouts, 0)
+        assertEquals(me.registro.geracoes, 0)
+        assertEquals(base.registro.reivindicacoes.length, 0)
+        assertEquals(base.registro.liberacoes.length, 0)
+        assertEquals(base.registro.completacoes.length, 0)
+        assertEquals(base.registro.pedidoAtual.shipping_label_id ?? null, null)
+        // Log: só o CÓDIGO do erro — a mensagem crua do driver pode ecoar dado.
+        const logJuntado = linhas.join('\n')
+        assertEquals(logJuntado.includes('57014'), true)
+        assertEquals(logJuntado.toLowerCase().includes('vazou'), false)
+        assertEquals(logJuntado.toLowerCase().includes('timeout'), false)
+    })
+})
+
+Deno.test("handler - erro de BANCO nas medidas SEM código (só mensagem): ainda recusa antes do ME e a mensagem crua do driver NUNCA vai ao log", async () => {
+    await comEnvAdmin(async () => {
+        const base = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const clienteComBancoQuebrado = clienteComLeituraDeProdutosQuebrada(base, {
+            message: 'FetchError: conexão caiu com o valor secreto-do-driver',
+        })
+        const me = buscarMeFalso()
+        let res!: Response
+        const linhas = await comConsoleErrorCapturado(async () => {
+            res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: clienteComBancoQuebrado, buscar: me.buscar }))
+        })
+        assertEquals(res.status, 500)
+        assertEquals(me.registro.chamadasMe, 0)
+        assertEquals(me.registro.carrinho, 0)
+        assertEquals(me.registro.checkouts, 0)
+        assertEquals(base.registro.reivindicacoes.length, 0)
+        const logJuntado = linhas.join('\n')
+        assertEquals(logJuntado.includes('medidas dos produtos'), true)
+        assertEquals(logJuntado.includes('secreto-do-driver'), false)
+    })
+})
+
+Deno.test("handler - CONTROLE da leitura de produtos: leitura OK segue igual — medidas REAIS do banco no carrinho e a compra sai (200)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({
+            pedido: PEDIDO_FELIZ,
+            itens: [{ product_id: 'p1', quantity: 2, price: 10 }],
+            produtosDb: [{ id: 'p1', nome: 'Halter', preco_venda: 10, peso_kg: 4, largura_cm: 40, altura_cm: 30, comprimento_cm: 20 }],
+        })
+        const corposDoCarrinho: any[] = []
+        const me = buscarMeFalso()
+        const buscar = async (input: any, init?: any) => {
+            if (String(input).endsWith('/api/v2/me/cart') && String(init?.method) === 'POST') {
+                corposDoCarrinho.push(JSON.parse(String(init?.body)))
+            }
+            return me.buscar(input, init)
+        }
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.carrinho, 1)
+        assertEquals(me.registro.checkouts, 1)
+        assertEquals(corposDoCarrinho[0].volumes, [{ weight: 8, width: 40, height: 30, length: 20 }])
+        assertEquals(corposDoCarrinho[0].products[0].name, 'Halter')
+    })
+})
+
 // ── ACTION: definir_cpf_destinatario ────────────────────────────────────────
 
 function requisicaoDefinirCpf(cpf: unknown, orderId = 'pedido-2', extra: Record<string, unknown> = {}): Request {
