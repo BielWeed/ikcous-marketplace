@@ -1,7 +1,19 @@
 import { cn } from "@/lib/utils";
-import { corDaVariacao } from "@/utils/cor-da-variacao";
+import { coresDoNome } from "@/utils/cor-da-variacao";
 import type { FileiraDeVariacao } from "@/utils/fileiras-de-variacao";
-import { useId } from "react";
+import { type CSSProperties, useId } from "react";
+
+/** Uma cor vira fundo liso; duas ou mais, faixas iguais com paradas duras. */
+function estiloDaAmostra(cores: string[]): CSSProperties {
+  if (cores.length === 1) return { backgroundColor: cores[0] };
+  const fatia = 100 / cores.length;
+  const paradas = cores.map(
+    (cor, i) => `${cor} ${i * fatia}% ${(i + 1) * fatia}%`,
+  );
+  return {
+    backgroundImage: `linear-gradient(to bottom, ${paradas.join(", ")})`,
+  };
+}
 
 export function FileirasDeVariacao({
   fileiras,
@@ -15,11 +27,9 @@ export function FileirasDeVariacao({
   const selecionadas = new Map(Object.entries(escolha));
   const idBase = useId();
   return (
-    <div className="mb-4 space-y-1">
+    <div className="mb-4 space-y-5">
       {fileiras.map(({ nome, valores }, indice) => {
-        const bolinhas =
-          /^(cor|cores|color)$/i.test(nome.trim()) &&
-          valores.every((v) => corDaVariacao(v.valor));
+        const fileiraDeCor = /^(cor|cores|color)$/i.test(nome.trim());
         const selecionada = selecionadas.get(nome);
         const idNome = `${idBase}-${indice}`;
         return (
@@ -27,22 +37,28 @@ export function FileirasDeVariacao({
             key={nome}
             role="group"
             aria-labelledby={idNome}
-            className="flex min-w-0 items-start gap-2"
+            className="min-w-0"
           >
-            <div className="flex min-h-11 w-20 shrink-0 flex-col justify-center">
+            <div className="mb-2 flex items-baseline justify-between gap-3">
               <span
                 id={idNome}
-                className="break-words text-sm font-bold text-foreground"
+                className="break-words font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
               >
                 {nome}
               </span>
-              <span className="text-xs text-muted-foreground">
+              <span
+                className={cn(
+                  "min-w-0 break-words text-right text-[13px] font-semibold",
+                  selecionada ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
                 {selecionada ?? "Escolha"}
               </span>
             </div>
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-1">
+            <div className="flex min-w-0 flex-wrap gap-2">
               {valores.map(({ valor, disponivel }) => {
                 const ativa = selecionada === valor;
+                const amostra = fileiraDeCor ? coresDoNome(valor) : [];
                 return (
                   <button
                     key={valor}
@@ -53,46 +69,28 @@ export function FileirasDeVariacao({
                     title={disponivel ? valor : `${valor} — Esgotado`}
                     onClick={() => onEscolher(nome, valor)}
                     className={cn(
-                      "relative flex min-h-11 items-center justify-center bg-transparent text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
-                      bolinhas
-                        ? "w-11 rounded-xl border border-transparent disabled:opacity-60"
-                        : "min-w-[52px] rounded-full",
+                      "flex h-11 min-w-11 max-w-full items-center justify-center gap-2 rounded-[14px] border px-3.5 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-muted/30 disabled:text-muted-foreground",
+                      ativa
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border bg-background text-foreground",
                       !disponivel && "line-through",
                     )}
                   >
-                    {bolinhas && <span className="sr-only">{valor}</span>}
-                    {bolinhas ? (
+                    {amostra.length > 0 && (
                       <span
                         aria-hidden="true"
                         className={cn(
-                          "size-7 rounded-full border border-foreground",
-                          ativa &&
-                            "ring-2 ring-foreground ring-offset-2 ring-offset-background",
+                          "size-[18px] shrink-0 rounded-full border",
+                          ativa
+                            ? "border-transparent ring-1 ring-background"
+                            : "border-foreground/50",
                         )}
-                        style={{
-                          backgroundColor: corDaVariacao(valor) ?? undefined,
-                        }}
-                      >
-                        {!disponivel && (
-                          <span className="absolute inset-x-1 top-1/2 h-px -rotate-45 bg-foreground" />
-                        )}
-                      </span>
-                    ) : (
-                      <>
-                        <span
-                          className={cn(
-                            "flex h-9 min-w-[52px] items-center justify-center rounded-full border px-3",
-                            ativa
-                              ? "border-foreground bg-foreground text-background"
-                              : "border-border bg-background text-foreground",
-                          )}
-                        >
-                          {valor}
-                        </span>
-                        {!disponivel && (
-                          <span className="sr-only"> (Esgotado)</span>
-                        )}
-                      </>
+                        style={estiloDaAmostra(amostra)}
+                      />
+                    )}
+                    <span className="min-w-0 truncate">{valor}</span>
+                    {!disponivel && (
+                      <span className="sr-only"> (Esgotado)</span>
                     )}
                   </button>
                 );
