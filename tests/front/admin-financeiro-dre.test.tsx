@@ -143,7 +143,11 @@ describe("Financeiro — DRE", () => {
     const selo = linha("cmv").querySelector(
       "[data-aviso-de-estimativa]",
     ) as HTMLElement;
-    expect(normalizar(selo.textContent)).toBe("Inclui estimativa de custo");
+    expect(normalizar(selo.textContent)).toBe("Custo estimado");
+    expect(selo.className).toContain("whitespace-nowrap");
+    expect(selo.getAttribute("aria-label")).toBe(
+      "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado",
+    );
     expect(selo.title).toBe(
       "Inclui estimativa: usa o custo de hoje do produto, ou R$ 0 se ele não tem custo cadastrado",
     );
@@ -164,6 +168,7 @@ describe("Financeiro — DRE", () => {
     });
     await montar({ inicio: "2026-09-01", fim: "2026-09-30" });
     expect(normalizar(linha("cmv").textContent)).not.toContain("estimativa");
+    expect(normalizar(linha("cmv").textContent)).not.toContain("estimado");
     expect(normalizar(linha("cmv").textContent)).toContain("R$ 3.800,00");
   });
 
@@ -186,9 +191,12 @@ describe("Financeiro — DRE", () => {
         const texto = normalizar(quadro.textContent);
         // Selo curto no quadro (a explicação inteira vai no `title` e embaixo
         // da tabela — redesenho de 23/10/2026).
-        const aviso = "Inclui estimativa de custo";
+        const aviso = "Custo estimado";
         if (estimado) expect(texto, rotulo).toContain(aviso);
-        else expect(texto, rotulo).not.toContain("estimativa");
+        else {
+          expect(texto, rotulo).not.toContain("estimado");
+          expect(texto, rotulo).not.toContain("estimativa");
+        }
         expect(texto, rotulo).toContain(
           rotulo === "Lucro líquido"
             ? "Margem líquida 19,0%"
