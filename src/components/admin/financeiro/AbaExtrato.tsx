@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, ReceiptText } from "lucide-react";
+import { Plus, ReceiptText } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useExtratoFinanceiro } from "@/hooks/useFinanceiro";
@@ -10,7 +10,6 @@ import {
   rotuloDaOrigem,
   sentidoDoLancamento,
 } from "@/lib/financeiro";
-import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type {
   ContaFinanceira,
@@ -18,15 +17,9 @@ import type {
   IntervaloDeDatas,
   LinhaDoExtrato,
 } from "@/types/financeiro";
-import { IconeDaOrigem } from "./icones";
 import type { AbrirFolha } from "./navegacao";
 import {
   CLASSE_BOTAO_SECUNDARIO,
-  CLASSE_CAMPO,
-  CLASSE_CASCA_DO_CARTAO,
-  CLASSE_ROTULO_DO_CARTAO,
-  Campo,
-  CartaoSecao,
   Dinheiro,
   EsqueletoDeLista,
   EstadoDeErro,
@@ -35,6 +28,17 @@ import {
   Segmentado,
   corDoValor,
 } from "./partes";
+import {
+  CLASSE_CARTAO_DA_LISTA,
+  CLASSE_CARTAO_DO_TOPO,
+  CLASSE_ROTULO_CAIXA_ALTA,
+  ChipDaConta,
+  EsqueletoDoTopo,
+  ParDoTopo,
+  classeDoValorDaLinha,
+  classeDoValorDoTopo,
+  tituloDoDia,
+} from "./partesDoExtrato";
 
 type FiltroDoTipo = "todos" | "entradas" | "saidas" | "previstos";
 
@@ -69,100 +73,85 @@ function LinhaDoExtratoItem({
     linha.tipo === "transferencia"
       ? "Transferência"
       : (linha.categoriaNome ?? rotuloDaOrigem(linha.origem));
+  // Previsto e cancelado ficam de fora dos totais (só o realizado conta).
+  const foraDoTotal = previsto || cancelado;
 
   return (
-    <li>
+    <li className="border-t border-solid border-admin-border first:border-t-0">
       <button
         type="button"
         onClick={() => aoAbrir(linha)}
-        className={cn(
-          "group relative flex min-h-14 w-full flex-col items-stretch gap-3 rounded-3xl border border-admin-border bg-admin-surface p-4 text-left transition-colors hover:bg-admin-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center lg:gap-4",
-        )}
+        className="flex min-h-14 w-full items-center justify-between gap-3 rounded-xl py-3 text-left transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-300"
       >
-        <span className="flex min-w-0 flex-1 items-center gap-3">
+        <span className="min-w-0 flex-1">
           <span
             className={cn(
-              "flex size-10 shrink-0 items-center justify-center rounded-xl border",
-              sentido > 0 &&
-                "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
-              sentido < 0 && "border-red-500/20 bg-red-500/10 text-red-300",
-              sentido === 0 &&
-                "border-violet-400/25 bg-violet-400/10 text-violet-300",
+              "block break-words text-base font-semibold leading-snug text-white",
+              cancelado && "line-through",
             )}
           >
-            <IconeDaOrigem
-              origem={linha.origem}
-              tipo={linha.tipo}
-              className="size-4"
-            />
+            {linha.descricao}
+            {previsto ? (
+              <span className="ml-2 align-middle">
+                <Etiqueta tom="aviso">Previsto</Etiqueta>
+              </span>
+            ) : null}
+            {cancelado ? (
+              <span className="ml-2 align-middle">
+                <Etiqueta tom="perigo">Cancelado</Etiqueta>
+              </span>
+            ) : null}
           </span>
-          <span className="min-w-0">
-            <span
-              className={cn(
-                "block break-words pr-4 text-sm font-bold leading-relaxed text-white",
-                cancelado && "line-through",
-              )}
-            >
-              {linha.descricao}
-            </span>
-            <span className="mt-1 block break-words text-xs leading-relaxed text-zinc-400 lg:hidden">
-              {categoria} · {conta}
-            </span>
+          <span className="mt-1 block break-words text-sm leading-snug text-zinc-400">
+            {categoria} · {conta}
+            {foraDoTotal ? " · não entra no total" : ""}
           </span>
         </span>
-        <span className="hidden break-words text-xs text-zinc-400 lg:block">
-          {categoria}
-        </span>
-        <span className="hidden break-words text-xs text-zinc-400 lg:block">
-          {conta}
-        </span>
-        <span className="flex min-w-0 flex-col items-start gap-2 lg:items-end">
-          <Dinheiro
-            valor={linha.valor}
-            sentido={sentido}
-            className={cn(
-              "text-2xl font-bold lg:text-base",
-              cancelado
-                ? "text-zinc-400 line-through"
-                : sentido === 0
-                  ? "text-violet-300"
-                  : corDoValor(sentido),
-              previsto && classeDoTexto("atencao"),
-            )}
-          />
-          {previsto ? <Etiqueta tom="aviso">Previsto</Etiqueta> : null}
-          {cancelado ? <Etiqueta tom="perigo">Cancelado</Etiqueta> : null}
-        </span>
-        <ChevronRight
-          aria-hidden="true"
-          className="absolute right-4 top-4 size-4 text-zinc-400 lg:hidden"
+        <Dinheiro
+          valor={linha.valor}
+          sentido={sentido}
+          className={cn(
+            classeDoValorDaLinha(linha.valor, sentido !== 0),
+            foraDoTotal
+              ? "text-zinc-400"
+              : sentido === 0
+                ? "text-zinc-300"
+                : corDoValor(sentido),
+            cancelado && "line-through",
+          )}
         />
       </button>
     </li>
   );
 }
 
-function CabecalhoDoDia({ grupo }: { readonly grupo: DiaDoExtrato }) {
+function CabecalhoDoDia({
+  grupo,
+  hoje,
+}: { readonly grupo: DiaDoExtrato; readonly hoje: DataIso }) {
   return (
-    <div className="mb-3 flex flex-col gap-2 px-1 lg:flex-row lg:flex-wrap lg:items-baseline lg:justify-between">
-      <h3 className="text-xs font-black text-zinc-300">
-        {formatarDiaPorExtenso(grupo.dia)}
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pb-2 pt-4">
+      <h3 className="min-w-0 text-base font-bold text-white">
+        {tituloDoDia(grupo.dia, hoje, formatarDiaPorExtenso(grupo.dia))}
       </h3>
-      <p className="flex flex-wrap items-baseline gap-3 text-xs text-zinc-400">
-        <span>
-          Resultado{" "}
+      <p className="flex flex-wrap items-baseline justify-end gap-x-3 text-sm text-zinc-400">
+        <span className="whitespace-nowrap">
+          Dia{" "}
           <Dinheiro
             valor={grupo.resultado}
             comSinal
-            className={cn("font-black", corDoValor(grupo.resultado))}
+            className={cn(
+              "whitespace-nowrap font-semibold",
+              corDoValor(grupo.resultado),
+            )}
           />
         </span>
         {grupo.saldoAoFim !== null ? (
-          <span>
+          <span className="whitespace-nowrap">
             Saldo{" "}
             <Dinheiro
               valor={grupo.saldoAoFim}
-              className="font-black text-zinc-200"
+              className="whitespace-nowrap font-semibold text-zinc-200"
             />
           </span>
         ) : null}
@@ -173,8 +162,8 @@ function CabecalhoDoDia({ grupo }: { readonly grupo: DiaDoExtrato }) {
 
 /**
  * Aba "Extrato": tudo o que entrou e saiu (e o que está previsto), agrupado
- * por dia, com o resultado do dia. Com uma conta escolhida e o período
- * chegando até hoje, cada dia mostra também o saldo da conta ao fim dele.
+ * por dia, com o total do dia. Com uma conta escolhida e o período chegando
+ * até hoje, cada dia mostra também o saldo da conta ao fim dele.
  */
 export function AbaExtrato({
   ativo,
@@ -232,78 +221,85 @@ export function AbaExtrato({
       entradas += paraCentavos(g.entradas);
       saidas += paraCentavos(g.saidas);
     }
-    return { entradas: entradas / 100, saidas: saidas / 100 };
+    return {
+      entradas: entradas / 100,
+      saidas: saidas / 100,
+      resultado: (entradas - saidas) / 100,
+    };
   }, [grupos]);
 
   const quantidade = visiveis.reduce((soma, g) => soma + g.linhas.length, 0);
+  const houveEntrada = paraCentavos(totais.entradas) > 0;
+  const houveSaida = paraCentavos(totais.saidas) > 0;
 
   return (
-    <div className="flex flex-col gap-7">
-      <CartaoSecao className="border-0 bg-transparent p-0 sm:p-0">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <Campo id="fin-extrato-conta" rotulo="Conta" className="lg:w-64">
-            <select
-              id="fin-extrato-conta"
-              value={contaId}
-              onChange={(e) => setContaId(e.target.value)}
-              className={CLASSE_CAMPO}
-            >
-              <option value="">Todas as contas</option>
-              {contas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                  {c.ativa ? "" : " (inativa)"}
-                </option>
-              ))}
-            </select>
-          </Campo>
-          <Segmentado<FiltroDoTipo>
-            rotulo="Mostrar"
-            valor={filtro}
-            aoMudar={setFiltro}
-            className="lg:flex-1"
-            opcoes={[
-              { valor: "todos", rotulo: "Tudo" },
-              { valor: "entradas", rotulo: "Entradas" },
-              { valor: "saidas", rotulo: "Saídas" },
-              { valor: "previstos", rotulo: "Previstos" },
-            ]}
-          />
-        </div>
-        <dl
-          className={`mt-7 flex flex-col gap-4 p-4 ${CLASSE_CASCA_DO_CARTAO}`}
+    <div className="flex flex-col gap-4">
+      {extrato.erro && !extrato.dados ? null : !extrato.dados ? (
+        <EsqueletoDoTopo />
+      ) : (
+        <section
+          aria-label="Resultado do período"
+          className={CLASSE_CARTAO_DO_TOPO}
         >
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <dt className={CLASSE_ROTULO_DO_CARTAO}>Entrou</dt>
-            <dd className="text-sm font-bold text-emerald-300">
-              <Dinheiro valor={totais.entradas} sentido={1} />
-            </dd>
-          </div>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <dt className={CLASSE_ROTULO_DO_CARTAO}>Saiu</dt>
-            <dd className="text-sm font-bold text-red-300">
-              <Dinheiro valor={totais.saidas} sentido={-1} />
-            </dd>
-          </div>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <dt className={CLASSE_ROTULO_DO_CARTAO}>Resultado</dt>
-            <dd
-              className={cn(
-                "text-2xl font-bold",
-                corDoValor(totais.entradas - totais.saidas),
-              )}
-            >
-              <Dinheiro valor={totais.entradas - totais.saidas} comSinal />
-            </dd>
-          </div>
-        </dl>
-        <p className="mt-4 text-xs leading-relaxed text-zinc-400">
-          {rotuloDoPeriodo} · só o realizado entra nos totais
-          {conta && saldoAtual === null
-            ? " · o saldo por dia aparece quando o período chega até hoje"
-            : ""}
-        </p>
-      </CartaoSecao>
+          <h2 className={CLASSE_ROTULO_CAIXA_ALTA}>
+            {rotuloDoPeriodo} · só o realizado
+          </h2>
+          <Dinheiro
+            valor={totais.resultado}
+            comSinal
+            className={cn(
+              classeDoValorDoTopo(totais.resultado, true),
+              corDoValor(totais.resultado),
+            )}
+          />
+          <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+            <ParDoTopo rotulo="Entrou">
+              <Dinheiro
+                valor={totais.entradas}
+                sentido={houveEntrada ? 1 : 0}
+                className={cn(
+                  "whitespace-nowrap text-sm font-bold",
+                  corDoValor(totais.entradas),
+                )}
+              />
+            </ParDoTopo>
+            <ParDoTopo rotulo="Saiu">
+              <Dinheiro
+                valor={totais.saidas}
+                sentido={houveSaida ? -1 : 0}
+                className={cn(
+                  "whitespace-nowrap text-sm font-bold",
+                  corDoValor(-totais.saidas),
+                )}
+              />
+            </ParDoTopo>
+          </dl>
+          {conta && saldoAtual === null ? (
+            <p className="text-xs leading-relaxed text-zinc-400">
+              O saldo por dia aparece quando o período chega até hoje.
+            </p>
+          ) : null}
+        </section>
+      )}
+
+      <ChipDaConta
+        id="fin-extrato-conta"
+        valor={contaId}
+        aoMudar={setContaId}
+        contas={contas}
+      />
+      <Segmentado<FiltroDoTipo>
+        rotulo="Mostrar"
+        valor={filtro}
+        aoMudar={setFiltro}
+        className="lg:max-w-xl"
+        opcoes={[
+          { valor: "todos", rotulo: "Tudo" },
+          { valor: "entradas", rotulo: "Entradas" },
+          { valor: "saidas", rotulo: "Saídas" },
+          { valor: "previstos", rotulo: "Previstos" },
+        ]}
+      />
 
       {extrato.erro && !extrato.dados ? (
         <EstadoDeErro
@@ -337,35 +333,26 @@ export function AbaExtrato({
           }
         />
       ) : (
-        <CartaoSecao
-          titulo={`${quantidade} ${quantidade === 1 ? "lançamento" : "lançamentos"}`}
-          className="border-0 bg-transparent p-0 sm:p-0"
-        >
+        <>
           {extrato.erro ? (
-            <div className="mb-3">
-              <EstadoDeErro
-                mensagem={extrato.erro}
-                aoTentarDeNovo={extrato.recarregar}
-              />
-            </div>
+            <EstadoDeErro
+              mensagem={extrato.erro}
+              aoTentarDeNovo={extrato.recarregar}
+            />
           ) : null}
           <div
-            aria-hidden="true"
-            className="hidden border-b border-admin-border px-3 pb-2 text-xs font-black uppercase tracking-[0.2em] text-zinc-400 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:gap-4"
+            role="group"
+            aria-label={`${quantidade} ${quantidade === 1 ? "lançamento" : "lançamentos"}`}
+            className="flex flex-col gap-3"
           >
-            <span>Descrição</span>
-            <span>Categoria</span>
-            <span>Conta</span>
-            <span className="text-right">Valor</span>
-          </div>
-          <div className="flex flex-col gap-5 lg:mt-3">
             {visiveis.map(({ grupo, linhas }) => (
               <section
                 key={grupo.dia}
                 aria-label={formatarDiaPorExtenso(grupo.dia)}
+                className={cn(CLASSE_CARTAO_DA_LISTA, "px-4 pb-1")}
               >
-                <CabecalhoDoDia grupo={grupo} />
-                <ul className="mt-3 flex flex-col gap-3">
+                <CabecalhoDoDia grupo={grupo} hoje={hoje} />
+                <ul className="flex flex-col">
                   {linhas.map((linha) => (
                     <LinhaDoExtratoItem
                       key={linha.id}
@@ -378,12 +365,12 @@ export function AbaExtrato({
               </section>
             ))}
           </div>
-          <p className="mt-5 rounded-2xl bg-sky-400/5 p-3 text-xs leading-relaxed text-zinc-400">
-            Os totais e o resultado completo do dia não mudam ao filtrar
-            Mostrar. O saldo diário aparece com uma conta escolhida e o período
-            chegando até hoje.
-          </p>
-        </CartaoSecao>
+          {filtro !== "todos" ? (
+            <p className="text-xs leading-relaxed text-zinc-400">
+              Os totais e o total do dia não mudam ao filtrar Mostrar.
+            </p>
+          ) : null}
+        </>
       )}
     </div>
   );
