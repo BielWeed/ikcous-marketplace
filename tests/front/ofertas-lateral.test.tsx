@@ -167,13 +167,20 @@ describe("Ofertas Lateral", () => {
     expect(selo.textContent).toBe("50% OFF");
     expect(selo.className).toContain("bg-emerald-700");
     expect(selo.className).toContain("left-2.5");
-    expect(selo.className).toContain("top-2.5");
+    expect(selo.className).toContain("bottom-2.5");
+    expect(selo.className).not.toContain("top-2.5");
+    expect(selo.className).toContain("whitespace-nowrap");
+    expect(selo.className).toContain("max-w-");
     expect(selo.firstElementChild?.className).toContain("text-white");
     expect(selo.firstElementChild?.className).toContain("font-bold");
     const coracao = c.querySelector("[data-botao-favorito]") as HTMLElement;
     expect(coracao.className).toContain("absolute");
     expect(coracao.className).toContain("right-2.5");
     expect(coracao.className).toContain("z-20");
+    // Cantos diferentes: o coração (44px) nunca cobre o selo em tela de 360px.
+    expect(coracao.className).toContain("top-2.5");
+    expect(coracao.className).not.toContain("bottom-2.5");
+    expect(coracao.className).not.toContain("left-2.5");
     expect(coluna(c).contains(coracao)).toBe(true);
   });
 
@@ -187,7 +194,7 @@ describe("Ofertas Lateral", () => {
     expect(eco.textContent).toMatch(/^Economiza R\$\s12,00$/);
     expect(a.textContent).toMatch(/De R\$\s24,90/);
     expect(simples.querySelector("[data-economia-oferta]")).toBeNull();
-    expect(simples.textContent).not.toContain("economiza");
+    expect(simples.textContent).not.toContain("Economiza");
   });
 
   it("preço atual em destaque, verde quando promocional e escuro quando esgotado", async () => {

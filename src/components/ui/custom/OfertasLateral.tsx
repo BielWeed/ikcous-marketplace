@@ -196,7 +196,7 @@ function CartaoOfertaLateral({
         {precoAntigo && discount > 0 && (
           <div
             data-selo-desconto
-            className="pointer-events-none absolute left-2.5 top-2.5 rounded-full bg-emerald-700 px-3 py-1"
+            className="pointer-events-none absolute bottom-2.5 left-2.5 max-w-[calc(100%-20px)] whitespace-nowrap rounded-full bg-emerald-700 px-3 py-1"
           >
             <span className="text-xs font-bold leading-4 text-white">
               {discount}% OFF

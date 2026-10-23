@@ -1,7 +1,3 @@
-import {
-  ALTURA_CARTAO_LATERAL,
-  ALTURA_SECAO_LATERAL,
-} from "@/components/ui/custom/ofertas-lateral-altura";
 // @vitest-environment jsdom
 //
 // CONTRATO da frente cls-home-0409 ("A HOME PARA DE PULAR", dossiê
@@ -29,6 +25,10 @@ import {
 // que havia conteúdo, e nada reservam quando dizia que não havia. O
 // banner segue o mesmo princípio (memória dizia sem banner → esqueleto
 // do banner não nasce). Primeira visita = aposta de hoje (develop).
+import {
+  ALTURA_CARTAO_LATERAL,
+  ALTURA_SECAO_LATERAL,
+} from "@/components/ui/custom/ofertas-lateral-altura";
 import { describe, expect, it } from "vitest";
 
 // ── Caso comportamental (laudo edj3ka, E2): montar o HomeView DE VERDADE ──
