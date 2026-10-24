@@ -9,35 +9,23 @@ import { cn } from "@/lib/utils";
 import type { Order, OrderStatus, PaymentMethod, View } from "@/types";
 import { motion } from "framer-motion";
 import {
-  Banknote,
   Check,
-  ChevronRight,
-  ClipboardCheck,
   Copy,
-  CreditCard,
-  MapPin,
   Package,
-  PackageCheck,
-  PackageOpen,
-  QrCode,
   ShieldCheck,
-  Store,
   Truck,
   WifiOff,
-  XCircle,
 } from "lucide-react";
-import { memo, useState } from "react";
+import { type ReactNode, memo, useState } from "react";
 import { toast } from "sonner";
 
-const statusConfig: Record<
-  OrderStatus,
-  { icon: typeof Package; desc: string }
-> = {
-  pending: { icon: ClipboardCheck, desc: "A loja já recebeu seu pedido" },
-  processing: { icon: PackageOpen, desc: "Preparando seu envio" },
-  shipping: { icon: Truck, desc: "A caminho do seu endereço" },
-  delivered: { icon: PackageCheck, desc: "Pedido entregue" },
-  cancelled: { icon: XCircle, desc: "Este pedido foi cancelado" },
+// Cada situação é uma frase; o ponto colorido do cartão faz o papel do ícone.
+const statusConfig: Record<OrderStatus, { desc: string }> = {
+  pending: { desc: "A loja já recebeu seu pedido" },
+  processing: { desc: "Preparando seu envio" },
+  shipping: { desc: "A caminho do seu endereço" },
+  delivered: { desc: "Pedido entregue" },
+  cancelled: { desc: "Este pedido foi cancelado" },
 };
 
 const trailSteps = ["Recebido", "Separação", "A caminho", "Entregue"];
@@ -59,11 +47,11 @@ const statusStep = new Map<OrderStatus, number>([
   ["cancelled", -1],
 ]);
 
-const paymentConfig: Record<PaymentMethod, { label: string; icon: any }> = {
-  pix: { label: "PIX", icon: QrCode },
-  card: { label: "Cartão", icon: CreditCard },
-  cash: { label: "Dinheiro", icon: Banknote },
-  online: { label: "Pagamento online", icon: CreditCard },
+const paymentConfig: Record<PaymentMethod, string> = {
+  pix: "PIX",
+  card: "Cartão",
+  cash: "Dinheiro",
+  online: "Pagamento online",
 };
 
 // Só a etapa atual ocupa uma pílula: os nomes deixam de cortar no celular.
@@ -99,17 +87,19 @@ function OrderStatusTrail({
               <span
                 className={cn(
                   "h-0.5 min-w-0 flex-1",
-                  idx <= currentStep ? "bg-zinc-950" : "bg-zinc-300",
+                  idx <= currentStep
+                    ? "bg-foreground"
+                    : "bg-muted-foreground/40",
                 )}
               />
             )}
             {idx === currentStep ? (
               <span
                 className={cn(
-                  "flex h-7 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-xs font-semibold text-white",
+                  "flex h-7 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-xs font-semibold",
                   retiradaNaLoja && status === "shipping"
-                    ? "bg-emerald-700"
-                    : "bg-zinc-950",
+                    ? "bg-emerald-700 text-white"
+                    : "bg-foreground text-background",
                 )}
               >
                 {step}
@@ -117,10 +107,10 @@ function OrderStatusTrail({
             ) : (
               <span
                 className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                  "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
                   idx < currentStep
-                    ? "bg-zinc-950 text-white"
-                    : "border-[1.5px] border-zinc-500 text-zinc-600",
+                    ? "bg-foreground text-background"
+                    : "border-[1.5px] border-muted-foreground text-muted-foreground",
                 )}
               >
                 {idx < currentStep ? <Check className="size-3" /> : idx + 1}
@@ -159,30 +149,86 @@ function OrderCardSkeleton() {
     <div
       data-testid="order-card-skeleton"
       aria-hidden="true"
-      className="min-h-[278px] rounded-2xl border border-zinc-100 bg-white p-3.5"
+      className="min-h-[278px] rounded-[18px] border border-border bg-background p-4"
     >
       <div className="flex h-14 items-center gap-3">
-        <div className="size-14 shrink-0 rounded-xl bg-zinc-100" />
+        <div className="size-14 shrink-0 rounded-xl bg-muted" />
         <div className="flex-1 space-y-2">
-          <div className="h-3 w-3/4 rounded bg-zinc-100" />
-          <div className="h-3 w-1/2 rounded bg-zinc-100" />
+          <div className="h-3 w-3/4 rounded bg-muted" />
+          <div className="h-3 w-1/2 rounded bg-muted" />
         </div>
       </div>
-      <div className="mt-3 min-h-[136px] rounded-[14px] border border-zinc-200 bg-zinc-50 p-3">
-        <div className="h-[18px] w-3/4 rounded bg-zinc-200" />
-        <div className="mt-2 h-6 w-40 rounded-full bg-zinc-200" />
+      <div className="mt-3 min-h-[136px] border-t border-border pt-3">
+        <div className="h-[18px] w-3/4 rounded bg-muted" />
+        <div className="mt-2 h-6 w-40 rounded-full bg-muted" />
         <div className="mt-3 flex h-7 items-center justify-between">
-          <div className="h-7 w-24 rounded-full bg-zinc-200" />
-          <div className="size-6 rounded-full bg-zinc-200" />
-          <div className="size-6 rounded-full bg-zinc-200" />
-          <div className="size-6 rounded-full bg-zinc-200" />
+          <div className="h-7 w-24 rounded-full bg-muted" />
+          <div className="size-6 rounded-full bg-muted" />
+          <div className="size-6 rounded-full bg-muted" />
+          <div className="size-6 rounded-full bg-muted" />
         </div>
-        <div className="mt-2 h-3.5 w-1/2 rounded bg-zinc-200" />
+        <div className="mt-2 h-3.5 w-1/2 rounded bg-muted" />
       </div>
-      <div className="mt-3 flex h-8 items-center justify-between">
-        <div className="h-3 w-20 rounded bg-zinc-100" />
-        <div className="h-3 w-16 rounded bg-zinc-100" />
+      <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+        <div className="h-3 w-24 rounded bg-muted" />
+        <div className="h-11 w-28 rounded-2xl bg-muted" />
       </div>
+    </div>
+  );
+}
+
+// Estado sem lista (vazio, convidado, falha): o mesmo desenho — ladrilho com o
+// glifo, título, frase e, se houver, a ação. `compacto` é o uso dentro de
+// painéis estreitos.
+function EstadoDaLista({
+  compacto,
+  alerta,
+  glifo,
+  titulo,
+  children,
+  aviso,
+}: Readonly<{
+  compacto?: boolean;
+  alerta?: boolean;
+  glifo: ReactNode;
+  titulo: string;
+  children: ReactNode;
+  aviso?: ReactNode;
+}>) {
+  return (
+    <div
+      role={alerta ? "alert" : undefined}
+      className={cn("text-center px-6", compacto ? "py-2" : "py-8 xs:py-16")}
+    >
+      {aviso}
+      <motion.div
+        initial={{ scale: 0.5, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className={cn(
+          "mx-auto flex items-center justify-center bg-muted/40 text-muted-foreground",
+          compacto
+            ? "mb-2 size-10 rounded-[14px]"
+            : "mb-6 size-20 rounded-[22px]",
+        )}
+      >
+        {glifo}
+      </motion.div>
+      <h3
+        className={cn(
+          "font-bold tracking-tight text-foreground",
+          compacto ? "mb-1 text-base" : "mb-2 text-[22px] leading-7",
+        )}
+      >
+        {titulo}
+      </h3>
+      <p
+        className={cn(
+          "mx-auto leading-relaxed text-muted-foreground",
+          compacto ? "max-w-[220px] text-xs" : "max-w-[300px] text-base",
+        )}
+      >
+        {children}
+      </p>
     </div>
   );
 }
@@ -267,59 +313,38 @@ export const OrderList = memo(function OrderList({
   const tentarDeNovo = () => {
     if (!relendo) onRetry?.();
   };
+  const tamanhoDoGlifo = compact ? "size-5" : "size-9";
 
   if (falhou && !temPedidosEmMemoria && orders.length === 0) {
     return (
-      <div
-        role="alert"
-        className={cn("text-center px-6", compact ? "py-2" : "py-4 xs:py-16")}
-      >
-        <div
-          className={cn(
-            "bg-amber-50 rounded-full flex items-center justify-center mx-auto border border-amber-100 overflow-hidden",
-            compact ? "w-8 h-8 mb-2" : "w-12 h-12 xs:w-24 xs:h-24 mb-3 xs:mb-8",
-          )}
-        >
+      <EstadoDaLista
+        alerta
+        compacto={compact}
+        glifo={
           <WifiOff
-            className={cn(
-              "text-amber-500",
-              compact ? "w-4 h-4" : "w-6 h-6 xs:w-12 xs:h-12",
-            )}
+            className={cn(tamanhoDoGlifo, "text-amber-700 dark:text-amber-400")}
           />
-        </div>
-        <h3
-          className={cn(
-            "font-black italic uppercase tracking-tighter text-zinc-900",
-            compact ? "text-sm mb-0.5" : "text-base xs:text-2xl mb-1 xs:mb-3",
-          )}
-        >
-          {loadError}
-        </h3>
-        <p
-          className={cn(
-            "font-bold text-zinc-500 leading-relaxed mx-auto",
-            compact
-              ? "text-[10px] max-w-[220px]"
-              : "text-xs xs:text-sm max-w-[300px]",
-          )}
-        >
-          {semInternet
-            ? "Verifique sua conexão e tente de novo."
-            : "Tente de novo em instantes."}{" "}
-          Se você acabou de pagar, o pedido não sumiu — ele só não apareceu aqui
-          ainda.
-        </p>
+        }
+        titulo={loadError ?? ""}
+      >
+        {semInternet
+          ? "Verifique sua conexão e tente de novo."
+          : "Tente de novo em instantes."}{" "}
+        Se você acabou de pagar, o pedido não sumiu — ele só não apareceu aqui
+        ainda.
         {onRetry && (
-          <button
-            type="button"
-            onClick={tentarDeNovo}
-            aria-disabled={relendo}
-            className="mt-5 rounded-2xl bg-zinc-900 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-zinc-800 active:scale-95 aria-disabled:opacity-60"
-          >
-            {relendo ? "Carregando…" : "Tentar de novo"}
-          </button>
+          <span className="mt-5 block">
+            <button
+              type="button"
+              onClick={tentarDeNovo}
+              aria-disabled={relendo}
+              className="h-[52px] rounded-2xl bg-foreground px-6 text-[15px] font-semibold text-background transition-opacity active:scale-[0.98] aria-disabled:opacity-60"
+            >
+              {relendo ? "Carregando…" : "Tentar de novo"}
+            </button>
+          </span>
         )}
-      </div>
+      </EstadoDaLista>
     );
   }
 
@@ -329,7 +354,7 @@ export const OrderList = memo(function OrderList({
     falhou && temPedidosEmMemoria ? (
       <div
         role="status"
-        className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800"
+        className="mb-3 flex items-center justify-between gap-3 rounded-[14px] border border-border px-3 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400"
       >
         <span>
           Não foi possível atualizar agora. Mostrando o que já tínhamos.
@@ -339,7 +364,7 @@ export const OrderList = memo(function OrderList({
             type="button"
             onClick={tentarDeNovo}
             aria-disabled={relendo}
-            className="shrink-0 rounded-lg bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900 active:scale-95 aria-disabled:opacity-60"
+            className="min-h-11 shrink-0 rounded-xl border border-solid border-border px-3 text-xs font-semibold text-foreground active:scale-95 aria-disabled:opacity-60"
           >
             {relendo ? "Carregando…" : "Tentar de novo"}
           </button>
@@ -349,59 +374,39 @@ export const OrderList = memo(function OrderList({
 
   if (orders.length === 0 && !isLoadingOrders) {
     return (
-      <div
-        className={cn("text-center px-6", compact ? "py-2" : "py-4 xs:py-16")}
-      >
-        {avisoDeFalha}
-        <motion.div
-          initial={{ scale: 0.5, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className={cn(
-            "bg-zinc-50 rounded-full flex items-center justify-center mx-auto border border-zinc-100 shadow-inner overflow-hidden",
-            compact ? "w-8 h-8 mb-2" : "w-12 h-12 xs:w-24 xs:h-24 mb-3 xs:mb-8",
-          )}
-        >
-          {isGuest ? (
-            <ShieldCheck
-              className={cn(
-                "text-zinc-300",
-                compact ? "w-4 h-4" : "w-6 h-6 xs:w-12 xs:h-12",
-              )}
-            />
+      <EstadoDaLista
+        compacto={compact}
+        aviso={avisoDeFalha}
+        glifo={
+          isGuest ? (
+            <ShieldCheck className={tamanhoDoGlifo} />
           ) : (
-            <Package
-              className={cn(
-                "text-zinc-300",
-                compact ? "w-4 h-4" : "w-6 h-6 xs:w-12 xs:h-12",
-              )}
-            />
-          )}
-        </motion.div>
-        <h3
-          className={cn(
-            "font-black italic uppercase tracking-tighter text-zinc-900",
-            compact ? "text-sm mb-0.5" : "text-base xs:text-2xl mb-1 xs:mb-3",
-          )}
-        >
-          {emptyTitle || (isGuest ? "Histórico Protegido" : "Nenhum pedido")}
-        </h3>
-        <p
-          className={cn(
-            "font-bold text-zinc-400 uppercase tracking-widest leading-relaxed mx-auto",
-            compact
-              ? "text-[8px] max-w-[200px]"
-              : "text-[10px] xs:text-[12px] max-w-[280px]",
-          )}
-        >
-          {emptyDescription ||
-            (isGuest
-              ? compact
-                ? "Acesse para ver seu histórico."
-                : guestMessage ||
-                  "Seus pedidos são vinculados à sua conta. Acesse para visualizar seu histórico completo."
-              : "Seu carrinho de pedidos está vazio. Que tal começar a comprar?")}
-        </p>
-      </div>
+            <Package className={tamanhoDoGlifo} />
+          )
+        }
+        titulo={
+          emptyTitle || (isGuest ? "Histórico Protegido" : "Nenhum pedido")
+        }
+      >
+        {emptyDescription ||
+          (isGuest
+            ? compact
+              ? "Acesse para ver seu histórico."
+              : guestMessage ||
+                "Seus pedidos são vinculados à sua conta. Acesse para visualizar seu histórico completo."
+            : "Seu carrinho de pedidos está vazio. Que tal começar a comprar?")}
+        {!isGuest && !compact && (
+          <span className="mt-6 block">
+            <button
+              type="button"
+              onClick={() => onNavigate("home")}
+              className="h-12 rounded-2xl border border-solid border-border px-6 text-[15px] font-semibold text-foreground transition-colors hover:bg-muted/40 active:scale-[0.98]"
+            >
+              Ver produtos
+            </button>
+          </span>
+        )}
+      </EstadoDaLista>
     );
   }
 
@@ -420,24 +425,32 @@ export const OrderList = memo(function OrderList({
       )}
       {orders.map((order, idx) => {
         const statusBase = statusConfig[order.status] || statusConfig.pending;
-        const status =
-          order.retiradaNaLoja === true && order.status === "shipping"
-            ? {
-                ...statusBase,
-                icon: Store,
-                desc: "Venha retirar na loja",
-              }
-            : statusBase;
-        const payment = paymentConfig[order.paymentMethod] || paymentConfig.pix;
-        const PaymentIcon = payment.icon;
+        const retirada =
+          order.retiradaNaLoja === true && order.status === "shipping";
+        const desc = retirada ? "Venha retirar na loja" : statusBase.desc;
+        const formaBase =
+          paymentConfig[order.paymentMethod] || paymentConfig.pix;
         // Compra que fechou em R$ 0,00 (cupom de 100%): não há forma de
         // pagamento a mostrar. A regra é UMA só (`pedidoSemValorAPagar`).
         const formaDePagamento = pedidoSemValorAPagar(order)
           ? ROTULO_SEM_VALOR_A_PAGAR
-          : payment.label;
-        const StatusIcon = status.icon;
+          : formaBase;
         const total = order?.total || 0;
         const date = order?.createdAt ? new Date(order.createdAt) : new Date();
+        // Cor só com significado: vermelho = cancelado, verde = entregue ou
+        // pronto para retirar; o resto é tinta.
+        const tom =
+          order.status === "cancelled"
+            ? {
+                ponto: "bg-red-600 dark:bg-red-400",
+                texto: "text-red-600 dark:text-red-400",
+              }
+            : order.status === "delivered" || retirada
+              ? {
+                  ponto: "bg-emerald-600 dark:bg-emerald-400",
+                  texto: "text-emerald-700 dark:text-emerald-400",
+                }
+              : { ponto: "bg-foreground", texto: "text-foreground" };
 
         return (
           <motion.div
@@ -448,17 +461,17 @@ export const OrderList = memo(function OrderList({
             className="group"
           >
             {/* O card inteiro abre o pedido: o `after:` do botão "Ver
-                Detalhes" se estica sobre o card (padrão "stretched link"),
+                detalhes" se estica sobre o card (padrão "stretched link"),
                 então teclado e leitor de tela seguem vendo UM botão só. O
                 botão do #id fica acima dele (`relative z-10`) para copiar
                 sem abrir. */}
-            <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-100 bg-white p-3.5 shadow-sm transition-all duration-300 hover:border-zinc-200 hover:shadow-[0_12px_24px_rgba(0,0,0,0.05)] active:scale-[0.99]">
+            <div className="relative flex h-full flex-col overflow-hidden rounded-[18px] border border-border bg-background p-4 transition-colors duration-300 hover:border-foreground/30 active:scale-[0.99]">
               {/* Topo: foto, nome e resumo, e o valor. Uma foto só, com o
                   "+N" no canto: fotos lado a lado espremiam o nome e
                   quebravam o resumo em 3 linhas a 375px. */}
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="flex min-w-0 items-start gap-3">
                 <div className="relative size-14 flex-shrink-0">
-                  <div className="flex size-full items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                  <div className="flex size-full items-center justify-center overflow-hidden rounded-xl bg-muted">
                     {order.items[0]?.image ? (
                       <img
                         src={order.items[0].image}
@@ -466,65 +479,40 @@ export const OrderList = memo(function OrderList({
                         className="size-full object-cover"
                       />
                     ) : (
-                      <Package className="size-6 text-zinc-300" />
+                      <Package className="size-6 text-muted-foreground" />
                     )}
                   </div>
                   {order.items.length > 1 && (
-                    <span className="absolute -bottom-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-zinc-900 px-1 text-[9px] font-black text-white">
+                    <span className="absolute -bottom-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-foreground px-1 text-xs font-bold text-background">
                       +{order.items.length - 1}
                     </span>
                   )}
                 </div>
 
-                <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <h4 className="truncate text-[12px] font-black uppercase tracking-tight text-zinc-950">
+                <div className="min-w-0 flex-1">
+                  <h4 className="line-clamp-2 break-words text-base font-semibold leading-5 text-foreground">
                     {order.items[0]?.name || "N/A"}
                   </h4>
-
-                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-500">
-                    <div className="flex items-center gap-0.5">
-                      <Package className="size-3 stroke-[2.5] text-zinc-400" />
-                      <span>
-                        {order.items.length}{" "}
-                        {order.items.length === 1 ? "Item" : "Itens"}
-                      </span>
-                    </div>
-
-                    <span className="size-0.5 rounded-full bg-zinc-300" />
-
-                    <div className="flex items-center gap-0.5">
-                      <PaymentIcon className="size-3 stroke-[2.5] text-zinc-400" />
-                      <span>{formaDePagamento}</span>
-                    </div>
-
-                    {order.customer.neighborhood && (
-                      <>
-                        <span className="size-0.5 rounded-full bg-zinc-300" />
-                        <div className="flex max-w-[96px] items-center gap-0.5 truncate">
-                          <MapPin className="size-3 stroke-[2.5] text-zinc-400" />
-                          <span className="truncate">
-                            {order.customer.neighborhood}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  <p className="mt-1 text-[13px] leading-[18px] text-muted-foreground">
+                    {order.items.length}{" "}
+                    {order.items.length === 1 ? "item" : "itens"} ·{" "}
+                    {formaDePagamento}
+                    {order.customer.neighborhood
+                      ? ` · ${order.customer.neighborhood}`
+                      : ""}
+                  </p>
                 </div>
 
-                <div className="flex-shrink-0 self-center text-right">
-                  <span className="mb-0.5 block text-[8px] font-black uppercase tracking-widest text-zinc-500">
+                <div className="flex-shrink-0 text-right">
+                  <span className="block font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
                     Total
                   </span>
-                  <div className="flex items-baseline justify-end leading-none">
-                    <span className="mr-0.5 text-[9px] font-extrabold text-zinc-500">
-                      R$
-                    </span>
-                    <span className="text-base font-black tracking-tight text-zinc-950">
-                      {total.toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
+                  <span className="mt-0.5 block text-lg font-bold leading-6 tracking-tight text-foreground">
+                    R${" "}
+                    {total.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
                 </div>
               </div>
 
@@ -536,7 +524,7 @@ export const OrderList = memo(function OrderList({
                 role="group"
                 aria-label="Situação do pedido"
                 className={cn(
-                  "mt-3 rounded-[14px] border border-zinc-200 bg-zinc-50 p-3",
+                  "mt-3 border-t border-border py-3",
                   order.status === "delivered"
                     ? "min-h-[74px]"
                     : order.status === "cancelled"
@@ -548,28 +536,24 @@ export const OrderList = memo(function OrderList({
                         : "min-h-[104px]",
                 )}
               >
-                <div className="flex min-w-0 items-start gap-1.5">
-                  <StatusIcon
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
                     aria-hidden="true"
-                    className={cn(
-                      "mt-px size-4 shrink-0 stroke-[2.5]",
-                      order.status === "cancelled"
-                        ? "text-rose-700"
-                        : order.status === "delivered" ||
-                            (order.retiradaNaLoja &&
-                              order.status === "shipping")
-                          ? "text-emerald-700"
-                          : "text-zinc-950",
-                    )}
+                    className={cn("size-2.5 shrink-0 rounded-full", tom.ponto)}
                   />
-                  <span className="text-[13px] font-bold leading-[18px] text-zinc-950">
-                    {status.desc}
+                  <span
+                    className={cn(
+                      "text-base font-semibold leading-6",
+                      tom.texto,
+                    )}
+                  >
+                    {desc}
                   </span>
                 </div>
                 <CustomerPaymentBadge
                   paymentStatus={order.paymentStatus}
                   orderStatus={order.status}
-                  variant="lista"
+                  variant="perfil"
                   className="mt-2"
                 />
 
@@ -581,7 +565,7 @@ export const OrderList = memo(function OrderList({
                 {/* Código livre nunca é cortado; substitui a próxima etapa,
                     sem esconder rastreio já existente no histórico. */}
                 {order.trackingCode?.trim() ? (
-                  <div className="mt-2 flex min-w-0 items-start gap-1 text-[11px] leading-[14px] text-zinc-700">
+                  <div className="mt-2 flex min-w-0 items-start gap-1 text-xs leading-4 text-muted-foreground">
                     <Truck
                       aria-hidden="true"
                       className="mt-px size-3 shrink-0"
@@ -594,7 +578,7 @@ export const OrderList = memo(function OrderList({
                   order.status !== "delivered" ? (
                   <p
                     aria-hidden="true"
-                    className="mt-2 text-[11px] font-medium leading-[14px] text-zinc-600"
+                    className="mt-2 text-xs leading-4 text-muted-foreground"
                   >
                     Próxima etapa:{" "}
                     {
@@ -605,15 +589,15 @@ export const OrderList = memo(function OrderList({
                   </p>
                 ) : null}
                 {order.status === "cancelled" && (
-                  <p className="mt-2 min-h-7 text-[11px] font-medium leading-[14px] text-zinc-700">
+                  <p className="mt-2 min-h-7 text-[15px] leading-5 text-muted-foreground">
                     {fraseDoCancelado(order.paymentStatus)}
                   </p>
                 )}
               </div>
 
               {/* Rodapé: número (toque copia) e data, e o botão */}
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border pt-3">
+                <div className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -621,40 +605,36 @@ export const OrderList = memo(function OrderList({
                     }}
                     aria-label="Copiar número do pedido"
                     className={cn(
-                      "relative z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition-all duration-200 group/id",
+                      "relative z-10 -ml-1 flex min-h-11 items-center gap-1 rounded-lg px-1 transition-colors",
                       copiedId === order.id
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
-                        : "bg-zinc-50 border-zinc-100 hover:bg-zinc-100 text-zinc-500",
+                        ? "text-emerald-700 dark:text-emerald-400"
+                        : "hover:text-foreground",
                     )}
                   >
                     {copiedId === order.id ? (
                       <>
-                        <span className="text-[9px] font-extrabold uppercase tracking-wider">
-                          Copiado!
-                        </span>
-                        <Check className="size-2.5 text-emerald-500" />
+                        <span className="text-xs font-semibold">Copiado!</span>
+                        <Check className="size-3" />
                       </>
                     ) : (
                       <>
-                        <span className="font-mono text-[9px] font-bold uppercase tracking-tight">
+                        <span className="uppercase">
                           #{numeroDoPedido(order?.id) || "......."}
                         </span>
-                        <Copy className="size-2.5 text-zinc-400 transition-colors group-hover/id:text-zinc-500" />
+                        <Copy className="size-3" />
                       </>
                     )}
                   </button>
-                  <span className="font-mono text-[10px] font-semibold tracking-tight text-zinc-500">
-                    {date.toLocaleDateString("pt-BR")}
-                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span>{date.toLocaleDateString("pt-BR")}</span>
                 </div>
 
                 <button
                   onClick={() => onNavigate("order-details", order.id)}
                   data-testid="order-card-open"
-                  className="group/btn flex h-8 flex-shrink-0 items-center justify-center gap-1 rounded-lg bg-primary px-3 text-[9px] font-black uppercase tracking-widest text-primary-foreground shadow-sm transition-all after:absolute after:inset-0 after:rounded-2xl after:content-[''] hover:opacity-90 active:scale-[0.97]"
+                  className="ml-auto flex h-11 flex-shrink-0 items-center justify-center rounded-2xl bg-foreground px-5 text-[15px] font-semibold text-background transition-opacity after:absolute after:inset-0 after:rounded-[18px] after:content-[''] hover:opacity-90 active:scale-[0.97]"
                 >
-                  <span>Ver Detalhes</span>
-                  <ChevronRight className="size-3 transition-transform duration-200 group-hover/btn:translate-x-0.5" />
+                  Ver detalhes
                 </button>
               </div>
             </div>
