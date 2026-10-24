@@ -9,10 +9,8 @@ import {
 import { useMemo } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { useResumoFinanceiro } from "@/hooks/useFinanceiro";
+import { type useCaixaAtual, useResumoFinanceiro } from "@/hooks/useFinanceiro";
 import {
-  formatarDataHora,
-  formatarHora,
   formatarPercentual,
   marcoDoSaldoInicial,
   paraCentavos,
@@ -21,7 +19,7 @@ import {
   serieDoFluxoDeCaixa,
   ultimos30Dias,
 } from "@/lib/financeiro";
-import { classeDoPonto, classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type {
   ContaFinanceira,
@@ -30,10 +28,15 @@ import type {
   ResumoFinanceiro,
   TotaisPrevistos,
 } from "@/types/financeiro";
+import { CaixaDeHoje } from "./CaixaDeHoje";
 import { FluxoDeCaixaGrafico } from "./FluxoDeCaixaGrafico";
 import { IconeDaForma, corDaForma } from "./IconeDaForma";
 import { IconeDoTipoDeConta } from "./icones";
-import type { AbaDoFinanceiro, LadoDosPrevistos } from "./navegacao";
+import type {
+  AbaDoFinanceiro,
+  AbrirFolha,
+  LadoDosPrevistos,
+} from "./navegacao";
 import {
   CLASSE_BOTAO_SECUNDARIO,
   CartaoSecao,
@@ -329,6 +332,7 @@ function EsqueletoDaVisao() {
   return (
     <div className="flex flex-col gap-4" aria-busy="true" aria-live="polite">
       <span className="sr-only">Carregando…</span>
+      <Skeleton className="h-[12.8rem] rounded-[20px] bg-white/5" />
       <Skeleton className="h-[11.5rem] rounded-3xl bg-white/5" />
       <div className="grid grid-cols-2 gap-3">
         <Skeleton className="h-[5.5rem] rounded-3xl bg-white/5" />
@@ -357,6 +361,8 @@ export function AbaVisao({
   hoje,
   versao,
   contas,
+  caixa,
+  abrirFolha,
   irParaAba,
   verPrevistos,
 }: {
@@ -365,6 +371,9 @@ export function AbaVisao({
   readonly hoje: DataIso;
   readonly versao: number;
   readonly contas: readonly ContaFinanceira[];
+  /** A MESMA leitura do caixa que a aba Caixa e o ponto da aba usam (uma só por tela). */
+  readonly caixa: ReturnType<typeof useCaixaAtual>;
+  readonly abrirFolha: AbrirFolha;
   readonly irParaAba: (aba: AbaDoFinanceiro) => void;
   readonly verPrevistos: (lado: LadoDosPrevistos) => void;
 }) {
@@ -404,7 +413,6 @@ export function AbaVisao({
   const dados = resumo.dados;
   if (!dados) return <EsqueletoDaVisao />;
 
-  const caixa = dados.caixaAberto;
   // Saldo é texto neutro (a cor fica para a etiqueta do período); só um saldo
   // NEGATIVO ganha vermelho, porque aí a cor significa algo.
   const saldoNegativo = paraCentavos(dados.saldoTotal) < 0;
@@ -417,6 +425,12 @@ export function AbaVisao({
           aoTentarDeNovo={resumo.recarregar}
         />
       ) : null}
+
+      <CaixaDeHoje
+        consulta={caixa}
+        abrirFolha={abrirFolha}
+        irParaAba={irParaAba}
+      />
 
       <section
         aria-label="Saldo total"
@@ -489,44 +503,6 @@ export function AbaVisao({
           aoVer={verPrevistos}
         />
       </div>
-
-      <section
-        aria-label="Caixa"
-        data-faixa-do-caixa={caixa ? "aberto" : "fechado"}
-        className="flex min-h-16 items-center gap-3 rounded-3xl border border-admin-border bg-admin-surface py-2 pl-4 pr-2"
-      >
-        <span
-          aria-hidden="true"
-          className={cn(
-            "size-2.5 shrink-0 rounded-full",
-            classeDoPonto(caixa ? "positivo" : "neutro"),
-          )}
-        />
-        <div className="min-w-0 flex-1">
-          <p className="break-words text-sm font-semibold text-white">
-            {caixa
-              ? `Caixa aberto desde ${formatarHora(caixa.abertoEm)}`
-              : "Caixa fechado"}
-          </p>
-          {caixa ? (
-            <p className="text-xs text-zinc-400">
-              Caixa aberto em {formatarDataHora(caixa.abertoEm)} com{" "}
-              <Dinheiro
-                valor={caixa.valorAbertura}
-                className="whitespace-nowrap"
-              />{" "}
-              de troco.
-            </p>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          onClick={() => irParaAba("caixa")}
-          className="min-h-11 shrink-0 rounded-full bg-foreground px-4 text-sm font-bold text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98]"
-        >
-          {caixa ? "Ver o caixa" : "Abrir caixa"}
-        </button>
-      </section>
 
       {dados.contas.length === 0 ? (
         <EstadoVazio

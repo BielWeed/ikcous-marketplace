@@ -430,6 +430,7 @@ export function AbaCaixa({
   abrirFolha,
   aoNovoLancamento,
   mostrarAcaoFixa = false,
+  caixaDaTela,
 }: {
   readonly aoSessaoAtual?: (id: string | null) => void;
   readonly ativo: boolean;
@@ -438,8 +439,14 @@ export function AbaCaixa({
   readonly aoNovoLancamento?: () => void;
   /** Só vale enquanto o caixa carrega ou falha: sem cartão, "Novo lançamento" vai na barra. */
   readonly mostrarAcaoFixa?: boolean;
+  /**
+   * A leitura do caixa que a tela inteira já faz (cartão da Visão e ponto da
+   * aba leem a mesma). Sem ela, a aba lê sozinha, como sempre.
+   */
+  readonly caixaDaTela?: ReturnType<typeof useCaixaAtual>;
 }) {
-  const atual = useCaixaAtual(ativo, versao);
+  const propria = useCaixaAtual(ativo && !caixaDaTela, versao);
+  const atual = caixaDaTela ?? propria;
   const historico = useHistoricoDoCaixa(ativo, versao);
   const { user } = useAuth();
   const historicoLido = useRef<SessaoDeCaixa[] | null>(null);

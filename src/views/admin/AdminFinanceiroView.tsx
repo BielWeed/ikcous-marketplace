@@ -51,7 +51,6 @@ import type {
 import {
   CLASSE_ABA_DO_FINANCEIRO,
   CLASSE_BOTAO_REDONDO_DO_FINANCEIRO,
-  CLASSE_CHIP,
   CLASSE_CHIP_COMUM,
   CLASSE_CHIP_SELECIONADO,
   type ConfirmacaoFinanceira,
@@ -66,6 +65,7 @@ import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   ContextoDoCacheFinanceiro,
   conferirCaixaParaReconciliar,
+  useCaixaAtual,
   useCategoriasFinanceiras,
   useContasFinanceiras,
   useValoresOcultos,
@@ -80,6 +80,12 @@ interface AdminFinanceiroViewProps {
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
   onSetBackOverride?: (fn: (() => void) | null) => void;
+  /**
+   * Aba com que a tela abre (o `id` de `onNavigate("admin-financeiro", id)`):
+   * só vale se for uma das abas da fila; qualquer outro valor é ignorado e a
+   * tela abre na Visão, como sempre.
+   */
+  abaInicial?: string | null;
 }
 
 // O `valor` é a chave da aba (o "dre" busca `fin_dre`); o `rotulo` é o que a
@@ -91,14 +97,31 @@ const ABAS: readonly {
   rotulo: string;
 }[] = [
   { valor: "visao", rotulo: "Visão" },
+  { valor: "caixa", rotulo: "Caixa" },
   { valor: "extrato", rotulo: "Extrato" },
   { valor: "previstos", rotulo: "Pagar e receber" },
-  { valor: "caixa", rotulo: "Caixa" },
   { valor: "dre", rotulo: "Resultado" },
 ];
 
+// Contas e Ocultar do cabeçalho: chip de 36px (desenho de 24/10/2026) com
+// toque de 44px — a área extra de 4px em cima e embaixo é um pseudo-elemento do
+// próprio botão, então o chip não engorda. `border-solid`: o index.css zera a
+// borda de todo `<button>`. Cantos de 12px por valor: o `rounded-xl` deste
+// projeto vale 28px (`--radius` de 1.5rem), quase uma pílula.
+// Ponto "caixa aberto" da aba: verde claro nos temas escuros e verde escuro no
+// Claro, onde o claro some sobre o fundo (1,7:1 medido); o texto fica no
+// `aria-label` da aba.
+const CLASSE_PONTO_DA_ABA =
+  "size-2 shrink-0 rounded-full bg-emerald-400 [html[data-admin-tema=claro]_&]:bg-emerald-700";
+const CLASSE_CHIP_DO_TOPO =
+  "relative inline-flex h-9 items-center justify-center gap-1.5 rounded-[12px] border border-solid px-2.5 text-[13px] font-semibold transition-colors before:absolute before:inset-x-0 before:-inset-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98]";
+
 function ehAba(valor: string): valor is AbaDoFinanceiro {
   return ABAS.some((aba) => aba.valor === valor);
+}
+
+function abaDeAbertura(valor: string | null | undefined): AbaDoFinanceiro {
+  return valor && ehAba(valor) ? valor : "visao";
 }
 
 export function AdminFinanceiroView({
@@ -106,6 +129,7 @@ export function AdminFinanceiroView({
   active = true,
   onSetDirty,
   onSetBackOverride,
+  abaInicial,
 }: AdminFinanceiroViewProps) {
   const ativo = active;
   const { user } = useAuth();
@@ -113,7 +137,9 @@ export function AdminFinanceiroView({
   const [cache] = useState(() => new Map<string, unknown>());
   const hoje = useDiaDeSaoPaulo(ativo);
 
-  const [aba, setAba] = useState<AbaDoFinanceiro>("visao");
+  const [aba, setAba] = useState<AbaDoFinanceiro>(() =>
+    abaDeAbertura(abaInicial),
+  );
   const listaDeAbas = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!ativo) return;
@@ -145,6 +171,10 @@ export function AdminFinanceiroView({
 
   const contas = useContasFinanceiras(ativo, versao);
   const categorias = useCategoriasFinanceiras(ativo, versao);
+  // UMA leitura do caixa para a tela toda: o cartão da Visão, o ponto da aba e
+  // a aba Caixa mostram o mesmo estado e nunca discordam.
+  const caixa = useCaixaAtual(ativo, versao);
+  const caixaAberto = caixa.dados?.sessao != null;
 
   const fecharFolha = useCallback(() => {
     if (folhaEmEnvio.current) return;
@@ -401,12 +431,12 @@ export function AdminFinanceiroView({
                 : "pb-[calc(var(--admin-tab-pb,6.25rem)_+_4rem)] lg:pb-28",
             )}
           >
-            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-5 pb-2 pt-4 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-5 pb-2 pt-4 [&_h1]:text-[28px] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:leading-8 [&_h1]:tracking-tight [&_h1_span]:not-italic">
               <AdminPageHeader
                 titulo={NOMES_DO_PAINEL["admin-financeiro"]}
                 acoes={
-                  // Chips compactos (px-2.5, 6px entre eles) para título e chips
-                  // caberem na MESMA linha já em 338px, como no desenho aprovado.
+                  // Chips compactos (px-2.5, 6px entre eles): título e chips ficam
+                  // na mesma linha quando cabem e quebram para a de baixo quando não.
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
@@ -415,8 +445,7 @@ export function AdminFinanceiroView({
                       }
                       aria-pressed={aba === "contas"}
                       className={cn(
-                        CLASSE_CHIP,
-                        "gap-1.5 px-2.5",
+                        CLASSE_CHIP_DO_TOPO,
                         aba === "contas"
                           ? CLASSE_CHIP_SELECIONADO
                           : CLASSE_CHIP_COMUM,
@@ -432,11 +461,7 @@ export function AdminFinanceiroView({
                         ocultos ? "Mostrar valores" : "Ocultar valores"
                       }
                       title={ocultos ? "Mostrar valores" : "Ocultar valores"}
-                      className={cn(
-                        CLASSE_CHIP,
-                        CLASSE_CHIP_COMUM,
-                        "gap-1.5 px-2.5",
-                      )}
+                      className={cn(CLASSE_CHIP_DO_TOPO, CLASSE_CHIP_COMUM)}
                     >
                       {ocultos ? (
                         <EyeOff aria-hidden="true" className="size-4" />
@@ -495,8 +520,20 @@ export function AdminFinanceiroView({
                         key={item.valor}
                         value={item.valor}
                         className={CLASSE_ABA_DO_FINANCEIRO}
+                        aria-label={
+                          item.valor === "caixa" && caixaAberto
+                            ? "Caixa, aberto"
+                            : undefined
+                        }
                       >
                         {item.rotulo}
+                        {item.valor === "caixa" && caixaAberto ? (
+                          <span
+                            data-ponto-do-caixa=""
+                            aria-hidden="true"
+                            className={CLASSE_PONTO_DA_ABA}
+                          />
+                        ) : null}
                       </TabsTrigger>
                     ))}
                   </TabsList>
@@ -509,6 +546,8 @@ export function AdminFinanceiroView({
                     hoje={hoje}
                     versao={versao}
                     contas={listaDeContas}
+                    caixa={caixa}
+                    abrirFolha={abrirFolha}
                     irParaAba={setAba}
                     verPrevistos={(lado) => {
                       setLadoDosPrevistos(lado);
@@ -548,6 +587,7 @@ export function AdminFinanceiroView({
                     abrirFolha={abrirFolha}
                     aoNovoLancamento={() => novoLancamento()}
                     mostrarAcaoFixa={ativo && !folha}
+                    caixaDaTela={caixa}
                   />
                 </TabsContent>
                 <TabsContent value="dre">

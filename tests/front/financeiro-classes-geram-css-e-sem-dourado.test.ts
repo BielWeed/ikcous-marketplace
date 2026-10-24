@@ -145,7 +145,12 @@ describe("Financeiro — toda classe da casca e da Visão novas gera CSS", () =>
       "text-[22px]",
       "text-[18px]",
       "text-[13px]",
-      "[&_h1]:text-2xl",
+      // Título da tela com 28px (desenho de 24/10/2026) e chips do topo de 36px.
+      "[&_h1]:text-[28px]",
+      "[&_h1]:leading-8",
+      "h-9",
+      "rounded-[12px]",
+      "before:-inset-y-1",
     ]) {
       expect(usadas, esperada).toContain(esperada);
     }

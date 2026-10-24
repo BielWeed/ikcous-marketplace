@@ -15,6 +15,7 @@ import { AbaCaixa } from "@/components/admin/financeiro/AbaCaixa";
 import { AbaPrevistos } from "@/components/admin/financeiro/AbaPrevistos";
 import { AbaVisao } from "@/components/admin/financeiro/AbaVisao";
 import { Etiqueta } from "@/components/admin/financeiro/partes";
+import { CAIXA_FECHADO_DA_VISAO } from "./helpers/caixa-da-visao";
 
 let host: HTMLDivElement;
 let root: Root;
@@ -53,6 +54,8 @@ it("a receber e a pagar seguem entrada e saída no resumo; o saldo total é neut
       hoje="2026-09-30"
       versao={0}
       contas={[]}
+      caixa={CAIXA_FECHADO_DA_VISAO}
+      abrirFolha={noop}
       irParaAba={noop}
       verPrevistos={noop}
     />,
@@ -80,6 +83,8 @@ it("totais zerados da visão geral são cinza, não entrada e saída", async () 
       hoje="2026-09-30"
       versao={0}
       contas={[]}
+      caixa={CAIXA_FECHADO_DA_VISAO}
+      abrirFolha={noop}
       irParaAba={noop}
       verPrevistos={noop}
     />,

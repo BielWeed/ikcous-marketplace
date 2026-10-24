@@ -146,7 +146,14 @@ const PREVIA_DE_APARELHO =
   "prévia do WhatsApp/celular (bloco com data-tema-fixo): imita um aparelho escuro, fora do tema";
 const CLARO_SOLIDO =
   "preenchimento claro sólido (miolo de interruptor, selo claro) com texto escuro por cima: fica claro nos três temas";
+const VERDE_SOBRE_TINTA_ESCURA =
+  "estado do cartão Caixa de hoje: no Claro a tinta é escura, então o tom claro é o legível (nos outros temas vale o tom escuro da base)";
 const MANTIDAS = new Map<string, string>([
+  [
+    "[html[data-admin-tema=claro]_&]:text-emerald-400",
+    VERDE_SOBRE_TINTA_ESCURA,
+  ],
+  ["[html[data-admin-tema=claro]_&]:text-red-400", VERDE_SOBRE_TINTA_ESCURA],
   ["bg-zinc-100", CLARO_SOLIDO],
   ["hover:bg-zinc-200", CLARO_SOLIDO],
   ["bg-[#BE123C]", "ação negativa sólida com texto branco AA nos três temas"],

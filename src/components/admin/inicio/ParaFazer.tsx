@@ -36,7 +36,7 @@ export function ParaFazer({
 }: Readonly<{
   painel: PainelInicio | null;
   carregando: boolean;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, id?: string) => void;
   preparoEmDestaque?: boolean;
 }>) {
   const pend = painel?.pendencias;
@@ -57,6 +57,8 @@ export function ParaFazer({
     contagem: number | null;
     pendente: boolean;
     destino: View;
+    /** Aba/ficha com que a tela de destino abre (o `id` de `onNavigate`). */
+    alvo?: string;
   }[] = [
     {
       chave: "preparar",
@@ -115,6 +117,7 @@ export function ParaFazer({
       contagem: null,
       pendente: caixaAberto,
       destino: "admin-financeiro",
+      alvo: "caixa",
     },
     {
       chave: "estoque",
@@ -189,7 +192,11 @@ export function ParaFazer({
               <li key={item.chave}>
                 <button
                   type="button"
-                  onClick={() => onNavigate(item.destino)}
+                  onClick={() =>
+                    item.alvo
+                      ? onNavigate(item.destino, item.alvo)
+                      : onNavigate(item.destino)
+                  }
                   aria-label={`${item.rotulo}: ${item.titulo}. ${item.descricao}`}
                   className={cn(LINHA_INICIO, "hover:bg-white/[0.02]")}
                 >

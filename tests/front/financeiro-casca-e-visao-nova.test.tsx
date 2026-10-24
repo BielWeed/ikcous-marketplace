@@ -27,6 +27,7 @@ vi.mock("@/components/admin/financeiro/FluxoDeCaixaGrafico", () => ({
 
 import { AbaVisao } from "@/components/admin/financeiro/AbaVisao";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
+import { CAIXA_FECHADO_DA_VISAO } from "./helpers/caixa-da-visao";
 
 const RESUMO_BASE = {
   periodo: { inicio: "2026-10-01", fim: "2026-10-31" },
@@ -48,6 +49,23 @@ const RESUMO_BASE = {
 };
 
 let resumoAtual: Record<string, unknown> = RESUMO_BASE;
+// O que `fin_caixa_atual` devolve (o cartão Caixa de hoje, o ponto da aba e a
+// aba Caixa leem esta mesma resposta). Nulo = caixa fechado.
+let caixaAtual: Record<string, unknown> | null = null;
+
+const CAIXA_ABERTO_BASE = {
+  id: "s1",
+  conta_id: "c1",
+  conta_nome: "Caixa da loja",
+  aberto_em: "2026-10-23T12:00:00Z",
+  valor_abertura: 77.77,
+  vendas_dinheiro: 0,
+  devolucoes_dinheiro: 0,
+  entradas_manuais: 0,
+  saidas_manuais: 0,
+  esperado: 77.77,
+  movimentos: [],
+};
 
 const normalizar = (t: string | null | undefined) =>
   (t ?? "").replace(/\s+/g, " ").trim();
@@ -67,9 +85,11 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
   beforeEach(() => {
     localStorage.clear();
     resumoAtual = RESUMO_BASE;
+    caixaAtual = null;
     rpcFalso.mockReset();
     rpcFalso.mockImplementation(async (nome: string) => {
       if (nome === "fin_resumo") return { data: resumoAtual, error: null };
+      if (nome === "fin_caixa_atual") return { data: caixaAtual, error: null };
       return { data: [], error: null };
     });
     hospedeiro = document.createElement("div");
@@ -124,15 +144,17 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       const ocultar = botao("Ocultar")!;
       expect(contas).toBeDefined();
       expect(ocultar).toBeDefined();
-      // Chip, não cartão: pílula de 44px, com moldura sólida (o index.css zera
-      // a borda de todo botão) e sem dourado.
+      // Chip, não cartão: 36px com cantos de 12px (desenho de 24/10/2026), com
+      // moldura sólida (o index.css zera a borda de todo botão) e sem dourado.
+      // O toque de 44px vem de uma área extra do próprio botão.
       for (const chip of [contas, ocultar]) {
         expect([...chip.classList]).toEqual(
           expect.arrayContaining([
-            "min-h-11",
-            "rounded-full",
+            "h-9",
+            "rounded-[12px]",
             "border",
             "border-solid",
+            "before:-inset-y-1",
           ]),
         );
         expect(chip.className).not.toContain("admin-gold");
@@ -176,15 +198,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
     });
 
     it("Ocultar esconde valores dos blocos NOVOS (herói, etiqueta, entradas, a pagar/receber, caixa e contas) e o chip diz Mostrar", async () => {
-      resumoAtual = {
-        ...RESUMO_BASE,
-        caixa_aberto: {
-          id: "s1",
-          conta_id: "c1",
-          aberto_em: "2026-10-23T12:00:00Z",
-          valor_abertura: 77.77,
-        },
-      };
+      caixaAtual = CAIXA_ABERTO_BASE;
       await montar();
       const visivel = normalizar(hospedeiro.textContent);
       for (const numero of [
@@ -230,9 +244,9 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       const abas = [...lista.querySelectorAll<HTMLElement>('[role="tab"]')];
       expect(abas.map((a) => normalizar(a.textContent))).toEqual([
         "Visão",
+        "Caixa",
         "Extrato",
         "Pagar e receber",
-        "Caixa",
         "Resultado",
       ]);
       for (const aba of abas) {
@@ -461,6 +475,8 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
             hoje="2026-10-23"
             versao={0}
             contas={[]}
+            caixa={CAIXA_FECHADO_DA_VISAO}
+            abrirFolha={vi.fn()}
             irParaAba={vi.fn()}
             verPrevistos={verPrevistos}
           />,
@@ -476,14 +492,14 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       expect(verPrevistos.mock.calls).toEqual([["saida"], ["entrada"]]);
     });
 
-    it("faixa do Caixa: fechado → ponto cinza + 'Abrir caixa'; aberto → ponto verde, hora, troco e 'Ver o caixa'; os dois levam à aba Caixa", async () => {
+    it("cartão Caixa de hoje: fechado → ponto cinza + 'Abrir caixa' ABRE A FOLHA; aberto → ponto verde, esperado e troco; 'Ver caixa' leva à aba Caixa", async () => {
       await montar();
-      let faixa = secao("Caixa");
-      expect(faixa.getAttribute("data-faixa-do-caixa")).toBe("fechado");
-      expect(normalizar(faixa.textContent)).toContain("Caixa fechado");
-      expect(faixa.querySelector(".bg-zinc-400")).not.toBeNull();
-      const abrir = faixa.querySelector("button")!;
-      expect(normalizar(abrir.textContent)).toBe("Abrir caixa");
+      let cartao = secao("Caixa");
+      expect(cartao.getAttribute("data-faixa-do-caixa")).toBe("fechado");
+      expect(normalizar(cartao.textContent)).toContain("Caixa fechado");
+      expect(
+        cartao.querySelector("[class*='bg-background/60']"),
+      ).not.toBeNull();
       // Segundo "Abrir o caixa" (duplicado) e atalho "Ver saldos…" saíram.
       expect(hospedeiro.textContent).not.toContain("Abrir o caixa");
       expect(hospedeiro.textContent).not.toContain(
@@ -491,43 +507,48 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       );
       expect(hospedeiro.querySelector("#fin-saldos-e-analises")).toBeNull();
 
+      // Desde 24/10/2026 "Abrir caixa" abre a folha de abertura na hora, em vez
+      // de só navegar para a aba Caixa (o 1º toque economiza dois).
+      const abrir = [...cartao.querySelectorAll("button")].find(
+        (b) => normalizar(b.textContent) === "Abrir caixa",
+      )!;
       await act(async () => {
         abrir.click();
+      });
+      await esperar();
+      expect(
+        document.querySelector('[data-slot="sheet-content"]')?.textContent,
+      ).toContain("Dinheiro na gaveta (R$)");
+      expect(
+        hospedeiro.querySelector('[role="tab"][data-state="active"]')
+          ?.textContent,
+      ).toBe("Visão");
+
+      act(() => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      document.querySelector('[data-slot="sheet-content"]')?.remove();
+      caixaAtual = { ...CAIXA_ABERTO_BASE, valor_abertura: 150, esperado: 150 };
+      await montar();
+      cartao = secao("Caixa");
+      expect(cartao.getAttribute("data-faixa-do-caixa")).toBe("aberto");
+      expect(normalizar(cartao.textContent)).toContain("Aberto");
+      expect(normalizar(cartao.textContent)).toContain("troco R$ 150,00");
+      expect(cartao.querySelector("[class*='bg-emerald-']")).not.toBeNull();
+      const ver = [...cartao.querySelectorAll("button")].find(
+        (b) => normalizar(b.textContent) === "Ver caixa",
+      )!;
+      // Botão grande de 52px, alvo de toque folgado.
+      expect([...ver.classList]).toEqual(
+        expect.arrayContaining(["h-[52px]", "rounded-2xl", "border-solid"]),
+      );
+      await act(async () => {
+        ver.click();
       });
       await esperar();
       expect(
         hospedeiro.querySelector('[role="tab"][data-state="active"]')
           ?.textContent,
       ).toBe("Caixa");
-
-      act(() => raiz.unmount());
-      raiz = createRoot(hospedeiro);
-      resumoAtual = {
-        ...RESUMO_BASE,
-        caixa_aberto: {
-          id: "s1",
-          conta_id: "c1",
-          aberto_em: "2026-10-23T12:30:00Z",
-          valor_abertura: 150,
-        },
-      };
-      await montar();
-      faixa = secao("Caixa");
-      expect(faixa.getAttribute("data-faixa-do-caixa")).toBe("aberto");
-      expect(normalizar(faixa.textContent)).toContain("Caixa aberto desde");
-      expect(normalizar(faixa.textContent)).toContain("com R$ 150,00 de troco");
-      expect(faixa.querySelector(".bg-emerald-400")).not.toBeNull();
-      expect(normalizar(faixa.querySelector("button")!.textContent)).toBe(
-        "Ver o caixa",
-      );
-      // Botão pequeno claro: neutro de alto contraste, alvo de 44px.
-      expect([...faixa.querySelector("button")!.classList]).toEqual(
-        expect.arrayContaining([
-          "bg-foreground",
-          "text-background",
-          "min-h-11",
-        ]),
-      );
     });
 
     it("saldo por conta: lista compacta nome ↔ valor; sem contas, só o estado vazio com o botão que leva a Contas", async () => {
@@ -596,11 +617,11 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
     it("blocos novos na ordem do desenho e o rodapé explicativo no fim", async () => {
       await montar();
       const ordem = [
+        secao("Caixa"),
         secao("Saldo total"),
         secao("Movimentos do período"),
         secao("A pagar"),
         secao("A receber"),
-        secao("Caixa"),
         secao("Saldo por conta"),
         secao("Fluxo de caixa · últimos 30 dias"),
         secao("Recebimentos por forma"),
@@ -680,17 +701,13 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
           proximos_7_dias: 9999.99,
         },
         a_receber: { total: 7654321.09, vencido: 100, proximos_7_dias: 300 },
-        caixa_aberto: {
-          id: "s1",
-          conta_id: "c1",
-          aberto_em: "2026-10-23T12:00:00Z",
-          valor_abertura: 150,
-        },
       };
+      caixaAtual = { ...CAIXA_ABERTO_BASE, valor_abertura: 150, esperado: 150 };
       await montar();
       const lista = valores();
-      // Herói, etiqueta, entradas, saídas, 2×(total, vencido, 7 dias), troco,
-      // 3 contas, 1 forma e os 2 canais: nenhum pode ficar de fora.
+      // Herói, etiqueta, entradas, saídas, 2×(total, vencido, 7 dias), esperado
+      // e troco do caixa, 3 contas, 1 forma e os 2 canais: nenhum pode ficar
+      // de fora.
       expect(lista.length).toBeGreaterThanOrEqual(17);
       for (const el of lista) {
         expect(
@@ -753,9 +770,9 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       const titulo = hospedeiro.querySelector("h1")!;
       const linha = titulo.parentElement!;
       // O wrapper da linha deixa quebrar só se faltar espaço (`flex-wrap`) e o
-      // título é text-2xl (não os 32px de antes).
+      // título tem 28px (desenho de 24/10/2026; não os 32px de antes).
       expect(linha.classList.contains("flex-wrap")).toBe(true);
-      expect(linha.className).toContain("[&_h1]:text-2xl");
+      expect(linha.className).toContain("[&_h1]:text-[28px]");
       expect(linha.className).not.toContain("[&_h1]:text-[32px]");
       // Os dois chips moram no MESMO bloco (6px entre eles), irmão do título.
       const contas = [...hospedeiro.querySelectorAll("button")].find(
@@ -768,7 +785,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       expect(contas.parentElement!.parentElement!.parentElement).toBe(linha);
       for (const chip of [contas, ocultar]) {
         expect(chip.classList.contains("px-2.5")).toBe(true);
-        expect(chip.classList.contains("min-h-11")).toBe(true);
+        expect(chip.classList.contains("h-9")).toBe(true);
       }
       // O chip de Ocultar continua com o rótulo curto (o nome acessível é
       // "Ocultar valores").
