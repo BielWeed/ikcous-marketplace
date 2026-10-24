@@ -187,6 +187,7 @@ function tokenHsl(bloco: "root" | "dark", nome: string): string {
   expect(ini, `bloco ${bloco} nao achado em index.css`).toBeGreaterThan(-1);
   const corpo = CSS.slice(ini, CSS.indexOf("}", ini));
   const m = corpo.match(
+    // eslint-disable-next-line security/detect-non-literal-regexp -- `nome` é um token fixo do próprio teste, nunca entrada externa
     new RegExp(`--${nome}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`),
   );
   expect(m, `--${nome} nao achado no bloco ${bloco}`).not.toBeNull();
@@ -207,6 +208,7 @@ describe("rodape do carrinho: rotulos Total/Frete/Seu Carrinho", () => {
   for (const rotulo of ["Seu Carrinho", "Total"]) {
     it(`rotulo ${rotulo} sem zinc-400, com o token secundario do tema`, () => {
       const m = RODAPE.match(
+        // eslint-disable-next-line security/detect-non-literal-regexp -- `rotulo` vem da lista fixa acima, nunca de entrada externa
         new RegExp(`<span([^>]*)>\\s*${rotulo}\\s*</span>`),
       );
       expect(m, `rotulo ${rotulo} nao achado`).not.toBeNull();

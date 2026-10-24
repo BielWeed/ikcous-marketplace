@@ -77,7 +77,7 @@ export function CartFooterSummary({
         transition={{ duration: 0.25, ease: "easeOut" }}
         className="w-full border-t border-border bg-background/95 backdrop-blur-md md:rounded-b-none md:rounded-t-[18px] md:border-x md:border-b-0 md:border-t md:border-border"
       >
-        <div className="mx-auto flex max-w-screen-xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-4 min-[380px]:px-5">
+        <div className="mx-auto flex max-w-screen-xl flex-wrap items-center justify-between gap-x-4 gap-y-3 p-4 min-[380px]:px-5">
           {/* Visual context */}
           <div className="hidden w-full items-baseline justify-between gap-2 md:flex">
             <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
