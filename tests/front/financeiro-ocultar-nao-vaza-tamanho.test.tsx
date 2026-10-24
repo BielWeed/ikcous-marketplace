@@ -32,6 +32,7 @@ import { AbaExtrato } from "@/components/admin/financeiro/AbaExtrato";
 import { AbaVisao } from "@/components/admin/financeiro/AbaVisao";
 import { ContextoValoresOcultos } from "@/components/admin/financeiro/partes";
 import { CONTA_BANCARIA } from "@/types/financeiro";
+import { CAIXA_FECHADO_DA_VISAO } from "./helpers/caixa-da-visao";
 
 const CURTO = 50;
 const GIGANTE = 1234567.89;
@@ -143,6 +144,8 @@ const SUPERFICIES: readonly Superficie[] = [
         hoje="2026-10-23"
         versao={0}
         contas={[]}
+        caixa={CAIXA_FECHADO_DA_VISAO}
+        abrirFolha={noop}
         irParaAba={noop}
         verPrevistos={noop}
       />
@@ -161,6 +164,8 @@ const SUPERFICIES: readonly Superficie[] = [
         hoje="2026-10-23"
         versao={0}
         contas={[]}
+        caixa={CAIXA_FECHADO_DA_VISAO}
+        abrirFolha={noop}
         irParaAba={noop}
         verPrevistos={noop}
       />
@@ -181,6 +186,8 @@ const SUPERFICIES: readonly Superficie[] = [
         hoje="2026-10-23"
         versao={0}
         contas={[]}
+        caixa={CAIXA_FECHADO_DA_VISAO}
+        abrirFolha={noop}
         irParaAba={noop}
         verPrevistos={noop}
       />

@@ -26,6 +26,11 @@ import { toast } from "sonner";
 const limparFragmentoDoPedido = (valor: string) =>
   valor.replaceAll(/[#\s]/g, "");
 
+// Campo Tinta: 16 px (o iPhone dá zoom abaixo disso), 48 px de altura. O
+// texto digitado fica em caixa normal; só o rótulo-exemplo vem em maiúsculas.
+const campo =
+  "h-12 w-full rounded-[14px] border border-input bg-muted/40 pl-11 pr-4 text-base text-foreground placeholder:text-sm placeholder:text-muted-foreground transition-colors focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground/20";
+
 interface OrderSearchProps {
   onNavigate: (view: View) => void;
   title?: string;
@@ -195,12 +200,10 @@ export function OrderSearch({
 
   return (
     <div className="space-y-4 xs:space-y-6">
-      <div className="group relative overflow-hidden rounded-3xl border border-zinc-100 bg-zinc-50/20 p-4 text-slate-800 xs:p-6">
-        <div className="absolute right-0 top-0 size-32 -translate-y-1/2 translate-x-1/2 rounded-full bg-secondary/5 blur-2xl transition-all duration-1000 group-hover:bg-secondary/10" />
-
-        <div className="relative z-10 flex h-full flex-col">
+      <div className="rounded-[18px] border border-border bg-background p-4 text-foreground xs:p-6">
+        <div className="flex h-full flex-col">
           {/* Mode selector tab header */}
-          <div className="mb-4 flex rounded-2xl border border-zinc-100 bg-zinc-50/50 p-1.5 xs:mb-6">
+          <div className="mb-5 flex rounded-2xl bg-muted/40 p-1">
             <button
               type="button"
               onClick={() => {
@@ -208,10 +211,10 @@ export function OrderSearch({
                 setTab("login");
               }}
               className={cn(
-                "flex-1 py-2 text-[10px] xs:text-[11px] font-black uppercase tracking-[0.1em] rounded-xl transition-all duration-300",
+                "min-h-11 flex-1 rounded-xl text-sm font-semibold transition-colors",
                 tab === "login"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "text-slate-500 hover:text-slate-800",
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               Entrar na Conta
@@ -223,10 +226,10 @@ export function OrderSearch({
                 setTab("guest");
               }}
               className={cn(
-                "flex-1 py-2 text-[10px] xs:text-[11px] font-black uppercase tracking-[0.1em] rounded-xl transition-all duration-300",
+                "min-h-11 flex-1 rounded-xl text-sm font-semibold transition-colors",
                 tab === "guest"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "text-slate-500 hover:text-slate-800",
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               Rastrear sem Conta
@@ -235,20 +238,20 @@ export function OrderSearch({
 
           {tab === "login" ? (
             <div className="space-y-4">
-              <div className="flex size-10 items-center justify-center rounded-2xl bg-secondary/10 text-primary xs:size-12">
-                <User className="size-5 text-primary xs:size-6" />
+              <div className="flex size-12 items-center justify-center rounded-[14px] bg-muted/40 text-foreground">
+                <User className="size-6" />
               </div>
               <div>
-                <h3 className="mb-1 text-base font-black uppercase italic tracking-tighter xs:mb-2 xs:text-xl">
+                <h3 className="mb-2 text-xl font-bold tracking-tight">
                   {title}
                 </h3>
-                <p className="mb-4 text-[10px] font-bold uppercase leading-relaxed tracking-widest text-slate-500 xs:mb-6 xs:text-[12px]">
+                <p className="mb-4 text-base leading-relaxed text-muted-foreground">
                   {description}
                 </p>
               </div>
               <button
                 onClick={() => onNavigate("auth")}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-primary-foreground transition-all hover:bg-primary/90 active:scale-[0.98] xs:py-4 xs:text-[11px]"
+                className="flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-base font-semibold text-background transition-opacity hover:opacity-90 active:scale-[0.98]"
               >
                 Entrar
                 <ChevronRight className="size-4" />
@@ -259,20 +262,20 @@ export function OrderSearch({
               {step === "request" ? (
                 <form onSubmit={handleSendOtp} className="space-y-4">
                   <div>
-                    <h3 className="mb-1 text-base font-black uppercase italic tracking-tighter xs:mb-2 xs:text-xl">
+                    <h3 className="mb-2 text-xl font-bold tracking-tight">
                       Rastrear Pedido
                     </h3>
-                    <p className="mb-4 text-[10px] font-bold uppercase leading-relaxed tracking-widest text-slate-500 xs:text-[11px]">
+                    <p className="mb-4 text-base leading-relaxed text-muted-foreground">
                       Preencha as informações do pedido para receber um código
                       de validação.
                     </p>
                   </div>
 
-                  <div className="space-y-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-900">
-                    <p className="text-[11px] font-black uppercase tracking-wide">
+                  <div className="space-y-2 rounded-[14px] border border-border p-3">
+                    <p className="font-mono text-xs uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400">
                       Comprou sem criar conta?
                     </p>
-                    <p className="text-[11px] font-medium leading-relaxed">
+                    <p className="text-sm leading-relaxed text-muted-foreground">
                       Este rastreio só encontra pedidos feitos com e-mail. Se
                       você comprou sem conta, fale com a loja e informe o
                       identificador do pedido (aparece ao finalizar a compra).
@@ -287,7 +290,7 @@ export function OrderSearch({
                           haptic.light();
                           handleFalarComALoja();
                         }}
-                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber-600/30 bg-white py-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-amber-800 transition-all active:scale-[0.98]"
+                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-solid border-border py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted/40 active:scale-[0.98]"
                       >
                         Falar com a loja no WhatsApp
                       </button>
@@ -296,31 +299,31 @@ export function OrderSearch({
 
                   <div className="space-y-3">
                     <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-primary" />
+                      <Mail className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                       <input
                         type="email"
                         required
                         placeholder="SEU E-MAIL"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-2xl border border-zinc-100 bg-white py-3 pl-11 pr-4 text-[11px] font-bold uppercase tracking-wider text-slate-800 placeholder-zinc-400 transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                        className={campo}
                       />
                     </div>
 
                     <div className="relative">
-                      <Phone className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-primary" />
+                      <Phone className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                       <input
                         type="tel"
                         required
                         placeholder="SEU WHATSAPP"
                         value={whatsapp}
                         onChange={handleWhatsappChange}
-                        className="w-full rounded-2xl border border-zinc-100 bg-white py-3 pl-11 pr-4 text-[11px] font-bold uppercase tracking-wider text-slate-800 placeholder-zinc-400 transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                        className={campo}
                       />
                     </div>
 
                     <div className="relative">
-                      <Hash className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-primary" />
+                      <Hash className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                       <input
                         type="text"
                         required
@@ -328,7 +331,7 @@ export function OrderSearch({
                         placeholder="ÚLTIMOS 6 DÍGITOS DO ID DO PEDIDO"
                         value={orderFragment}
                         onChange={(e) => setOrderFragment(e.target.value)}
-                        className="w-full rounded-2xl border border-zinc-100 bg-white py-3 pl-11 pr-4 text-[11px] font-bold uppercase tracking-wider text-slate-800 placeholder-zinc-400 transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                        className={campo}
                       />
                     </div>
                   </div>
@@ -336,7 +339,7 @@ export function OrderSearch({
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-primary-foreground transition-all hover:bg-primary/90 active:scale-[0.98] disabled:opacity-55 xs:text-[11px]"
+                    className="flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-base font-semibold text-background transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-55"
                   >
                     {isLoading ? (
                       <>
@@ -353,9 +356,9 @@ export function OrderSearch({
                 </form>
               ) : (
                 <form onSubmit={handleVerifyOtp} className="space-y-4">
-                  <div className="flex items-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-800">
-                    <KeyRound className="size-4 flex-shrink-0 text-amber-600" />
-                    <span className="text-[9px] font-bold uppercase tracking-wide xs:text-[10px]">
+                  <div className="flex items-center gap-2 rounded-[14px] border border-border p-3 text-amber-700 dark:text-amber-400">
+                    <KeyRound className="size-4 flex-shrink-0" />
+                    <span className="min-w-0 break-words text-sm font-medium">
                       Código enviado para {email}
                     </span>
                   </div>
@@ -372,7 +375,7 @@ export function OrderSearch({
                       onChange={(e) =>
                         setOtp(e.target.value.replace(/\D/g, ""))
                       }
-                      className="w-full rounded-2xl border border-zinc-100 bg-white py-4 text-center text-lg font-black tracking-[0.3em] text-slate-800 transition-colors focus:border-primary focus:outline-none"
+                      className="h-14 w-full rounded-[14px] border border-input bg-muted/40 text-center text-lg font-bold tracking-[0.3em] text-foreground transition-colors placeholder:text-sm placeholder:font-medium placeholder:tracking-normal placeholder:text-muted-foreground focus:border-foreground focus:outline-none"
                     />
                   </div>
 
@@ -384,14 +387,14 @@ export function OrderSearch({
                         setStep("request");
                         setOtp("");
                       }}
-                      className="flex-1 rounded-2xl border border-zinc-100 py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 transition-all hover:bg-zinc-50/50 hover:text-slate-800 active:scale-[0.98]"
+                      className="h-[52px] flex-1 rounded-2xl border border-solid border-border text-base font-semibold text-foreground transition-colors hover:bg-muted/40 active:scale-[0.98]"
                     >
                       Voltar
                     </button>
                     <button
                       type="submit"
                       disabled={isLoading}
-                      className="flex flex-[2] items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-primary-foreground transition-all hover:bg-primary/90 active:scale-[0.98] disabled:opacity-55"
+                      className="flex h-[52px] flex-[2] items-center justify-center gap-2 rounded-2xl bg-foreground text-base font-semibold text-background transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-55"
                     >
                       {isLoading ? (
                         <>

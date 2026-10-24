@@ -3,10 +3,7 @@
  * Cada regra troca UMA classe solta do painel (feita para fundo escuro) por um
  * token do tema. No Escuro, so texto zinc-400 a 700 muda. O prefixo pesa
  * zero (:where) de proposito: a cascata fica igual a do Tailwind. */
-:where(html.admin-mode[data-admin-tema="claro"]) .bg-\[\#192A31\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:#e0f2fe}
-:where(html.admin-mode[data-admin-tema="confortavel"]) .bg-\[\#192A31\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-raised))}
 :where(html.admin-mode[data-admin-tema="claro"]) .bg-\[\#2B151D\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:#fff1f2}
-:where(html.admin-mode[data-admin-tema="claro"]) .bg-\[\#401A24\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:#ffe4e6}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill))}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold\/\[0\.06\]:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.06)}
 :where(html.admin-mode[data-admin-tema]) .bg-admin-gold\/10:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-gold-fill) / 0.1)}
@@ -51,6 +48,7 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .border-amber-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:#d97706}
 :where(html.admin-mode[data-admin-tema="claro"]) .border-blue-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:#2563eb}
 :where(html.admin-mode[data-admin-tema="claro"]) .border-emerald-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:#059669}
+:where(html.admin-mode[data-admin-tema="claro"]) .border-red-300:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .border-sky-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:#0284c7}
 :where(html.admin-mode[data-admin-tema="claro"]) .border-violet-300:where(:not([data-tema-fixo], [data-tema-fixo] *)){border-color:#7c3aed}
@@ -145,7 +143,6 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&_\.text-amber-500\]\:text-orange-300:where(:not([data-tema-fixo], [data-tema-fixo] *)) .text-amber-500{color:#9a3412}
 :where(html.admin-mode[data-admin-tema]) .\[\&_\.text-zinc-500\]\:text-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *)) .text-zinc-500{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&_\[data-testid\=alertas-cancelados-alavanca\]\]\:text-red-300:where(:not([data-tema-fixo], [data-tema-fixo] *)) [data-testid=alertas-cancelados-alavanca]{color:#b91c1c}
-:where(html.admin-mode[data-admin-tema]) .\[\&\>button\]\:text-zinc-300:where(:not([data-tema-fixo], [data-tema-fixo] *))>button{color:hsl(var(--admin-text-2))}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>input\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>input{border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>select\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>select{border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>textarea\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>textarea{border-color:#dc2626}

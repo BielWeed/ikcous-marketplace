@@ -94,7 +94,7 @@ describe("OrderList — card do pedido redesenhado", () => {
       const trilha = painel?.querySelector(
         '[data-testid="order-status-trail"]',
       );
-      expect(painel?.classList.contains("bg-zinc-50")).toBe(true);
+      expect(painel?.classList.contains("border-t")).toBe(true);
       expect(painel?.classList.contains("min-h-[136px]")).toBe(true);
       expect(
         painel?.querySelector('[class*="truncate"], [class*="line-clamp"]'),
@@ -106,7 +106,8 @@ describe("OrderList — card do pedido redesenhado", () => {
       expect(trilha?.getAttribute("aria-valuenow")).toBe(String(numero));
       expect(trilha?.getAttribute("aria-valuetext")).toContain(atual);
       expect(
-        trilha?.querySelector("span.h-7.rounded-full.bg-zinc-950")?.textContent,
+        trilha?.querySelector("span.h-7.rounded-full.bg-foreground")
+          ?.textContent,
       ).toBe(atual);
       for (const etapa of ["Recebido", "Separação", "A caminho", "Entregue"]) {
         expect(trilha?.textContent).toContain(etapa);
@@ -116,7 +117,7 @@ describe("OrderList — card do pedido redesenhado", () => {
       const selo = painel?.querySelector(
         '[data-testid="customer-payment-badge"]',
       );
-      expect(selo?.classList.contains("h-6")).toBe(true);
+      expect(selo?.classList.contains("h-7")).toBe(true);
       expect(selo?.querySelector("svg")).not.toBeNull();
     },
   );
@@ -236,7 +237,7 @@ describe("OrderList — card do pedido redesenhado", () => {
     expect(hospedeiro.textContent).toContain("N/A");
   });
 
-  it("cancelado: bloco neutro, ícone rosa e o aviso 'não pague' dentro dele", async () => {
+  it("cancelado: faixa neutra, ponto vermelho e o aviso 'não pague' dentro dele", async () => {
     await renderizar({
       ...pedidoBase,
       status: "cancelled",
@@ -249,8 +250,9 @@ describe("OrderList — card do pedido redesenhado", () => {
     const faixa = hospedeiro.querySelector(
       '[data-testid="order-status-panel"]',
     );
-    expect(faixa?.classList.contains("bg-zinc-50")).toBe(true);
-    expect(faixa?.querySelector("svg.text-rose-700")).not.toBeNull();
+    expect(faixa?.classList.contains("border-t")).toBe(true);
+    // O ponto vermelho (cor só com significado) faz o papel do ícone antigo.
+    expect(faixa?.querySelector("span.bg-red-600")).not.toBeNull();
     expect(faixa?.textContent).toContain(
       "Se o pagamento ainda estiver aberto no seu banco, não pague.",
     );
@@ -262,7 +264,7 @@ describe("OrderList — card do pedido redesenhado", () => {
   // O toque no card inteiro vem do `after:` do botão esticado sobre o card
   // (jsdom não desenha pseudo-elemento, então o que se prova aqui é a
   // montagem: o card é o `relative` que contém a camada, e o #id fica acima).
-  it("o card inteiro é área de toque do 'Ver Detalhes', e o número fica por cima", async () => {
+  it("o card inteiro é área de toque do 'Ver detalhes', e o número fica por cima", async () => {
     await renderizar(pedidoBase);
 
     const botao = hospedeiro.querySelector('[data-testid="order-card-open"]');
@@ -270,7 +272,7 @@ describe("OrderList — card do pedido redesenhado", () => {
     expect(botao?.classList.contains("after:inset-0")).toBe(true);
     expect(botao?.classList.contains("relative")).toBe(false);
 
-    const card = botao?.closest(".rounded-2xl");
+    const card = botao?.closest("div.relative.flex-col");
     expect(card?.classList.contains("relative")).toBe(true);
 
     const botaoId = Array.from(hospedeiro.querySelectorAll("button")).find(
@@ -280,11 +282,11 @@ describe("OrderList — card do pedido redesenhado", () => {
     expect(botaoId?.classList.contains("z-10")).toBe(true);
   });
 
-  it("'Ver Detalhes' abre o pedido uma vez só (sem somar com o clique do card)", async () => {
+  it("'Ver detalhes' abre o pedido uma vez só (sem somar com o clique do card)", async () => {
     await renderizar(pedidoBase);
 
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Ver Detalhes"),
+      b.textContent?.includes("Ver detalhes"),
     );
     await act(async () => {
       botao?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

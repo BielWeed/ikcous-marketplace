@@ -80,25 +80,32 @@ describe("OrderList — contraste do texto no cartão do pedido (WCAG AA)", () =
     );
   }
 
-  it("'Total': usa text-zinc-500 (contraste AA), não mais text-zinc-300", async () => {
+  // Redesenho Tinta (24/10/2026): o cartão deixou os degraus de zinc e passou
+  // a ler os tokens do tema. `text-muted-foreground` (#71717a no claro, 4,83
+  // sobre `bg-background`) é o mesmo degrau AA que o zinc-500 antigo, e acompanha
+  // o escuro. O que importa aqui continua sendo: nenhum texto secundário cai
+  // abaixo do AA, e o texto principal segue na cor cheia (`text-foreground`).
+  it("'Total': usa text-muted-foreground (contraste AA), nunca um zinc claro", async () => {
     await renderizar(pedidoBase);
 
     const rotulo = acharSpanPorTexto("Total");
     expect(rotulo).not.toBeUndefined();
-    expect(rotulo?.classList.contains("text-zinc-500")).toBe(true);
-    expect(rotulo?.classList.contains("text-zinc-300")).toBe(false);
+    expect(rotulo?.classList.contains("text-muted-foreground")).toBe(true);
+    expect(rotulo?.className).not.toMatch(/text-zinc-[1-4]00/);
   });
 
-  it("'R$' do preço: usa text-zinc-500 (contraste AA), não mais text-zinc-400", async () => {
+  it("valor com 'R$': na cor cheia do texto, sem cifrão apagado à parte", async () => {
     await renderizar(pedidoBase);
 
-    const cifrao = acharSpanPorTexto("R$");
-    expect(cifrao).not.toBeUndefined();
-    expect(cifrao?.classList.contains("text-zinc-500")).toBe(true);
-    expect(cifrao?.classList.contains("text-zinc-400")).toBe(false);
+    const valor = acharSpanPorTexto(
+      `R$ ${pedidoBase.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+    );
+    expect(valor).not.toBeUndefined();
+    expect(valor?.classList.contains("text-foreground")).toBe(true);
+    expect(acharSpanPorTexto("R$")).toBeUndefined();
   });
 
-  it("data do pedido: usa text-zinc-500 (contraste AA), sem a opacidade /90 que ainda reprovava", async () => {
+  it("data do pedido: usa text-muted-foreground (contraste AA), sem opacidade que reprovava", async () => {
     await renderizar(pedidoBase);
 
     const dataFormatada = new Date(pedidoBase.createdAt).toLocaleDateString(
@@ -106,56 +113,42 @@ describe("OrderList — contraste do texto no cartão do pedido (WCAG AA)", () =
     );
     const data = acharSpanPorTexto(dataFormatada);
     expect(data).not.toBeUndefined();
-    expect(data?.classList.contains("text-zinc-500")).toBe(true);
-    // O token que o Tailwind emite para a classe antiga é com a barra — é ela
-    // que carrega o defeito (zinc-500/90 medido = 3,97, ainda reprova).
-    expect(data?.classList.contains("text-zinc-400/90")).toBe(false);
+    // A cor vive no contêiner do rodapé (número, ponto e data a herdam).
+    const rodape = data?.parentElement;
+    expect(rodape?.classList.contains("text-muted-foreground")).toBe(true);
+    expect(data?.className).not.toMatch(/\/\d+/);
   });
 
-  it("linha de metadados ('1 Item'): usa text-zinc-500 (contraste AA), não mais text-zinc-400", async () => {
+  it("linha de metadados ('1 item'): usa text-muted-foreground (contraste AA)", async () => {
     await renderizar(pedidoBase);
 
-    // O container da linha de metadados é o pai comum de "1 Item", do
-    // separador e do meio de pagamento — é nele que a classe de cor vive.
-    const itemTexto = Array.from(hospedeiro.querySelectorAll("span")).find(
-      (el) => el.textContent === "1 Item",
+    const linha = Array.from(hospedeiro.querySelectorAll("p")).find((el) =>
+      el.textContent?.startsWith("1 item"),
     );
-    const linha = itemTexto?.closest("div.flex-wrap");
     expect(linha).not.toBeUndefined();
-    expect(linha).not.toBeNull();
-    expect(linha?.classList.contains("text-zinc-500")).toBe(true);
-    expect(linha?.classList.contains("text-zinc-400")).toBe(false);
+    expect(linha?.classList.contains("text-muted-foreground")).toBe(true);
+    expect(linha?.textContent).toBe("1 item · PIX");
   });
 
-  // Controle negativo: o que não devia mudar não mudou. Correção de
-  // interface vaza para o vizinho com muito mais facilidade do que deixa de
-  // funcionar.
-  it("controle: nome do produto e valor do preço continuam text-zinc-950, nenhum dos dois virou zinc-500", async () => {
+  // Controle negativo: o que não devia mudar não mudou.
+  it("controle: nome do produto e valor continuam na cor cheia, nenhum dos dois virou secundário", async () => {
     await renderizar(pedidoBase);
 
     const titulo = hospedeiro.querySelector("h4");
     expect(titulo).not.toBeNull();
-    expect(titulo?.classList.contains("text-zinc-950")).toBe(true);
-    expect(titulo?.classList.contains("text-zinc-500")).toBe(false);
+    expect(titulo?.classList.contains("text-foreground")).toBe(true);
+    expect(titulo?.classList.contains("text-muted-foreground")).toBe(false);
 
     const valor = acharSpanPorTexto(
-      pedidoBase.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+      `R$ ${pedidoBase.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
     );
-    expect(valor).not.toBeUndefined();
-    expect(valor?.classList.contains("text-zinc-950")).toBe(true);
-    expect(valor?.classList.contains("text-zinc-500")).toBe(false);
+    expect(valor?.classList.contains("text-foreground")).toBe(true);
+    expect(valor?.classList.contains("text-muted-foreground")).toBe(false);
   });
 
-  // Prova de que a colisão de classe é real, não hipotética: depois desta
-  // mudança, text-zinc-500 passa a existir em vários pontos do cartão. Esta
-  // asserção precisa estar ancorada no elemento QUE ESTA TAREFA introduziu
-  // (o rótulo "Total") — nunca em "existe algum .text-zinc-500 no cartão",
-  // porque o cartão já tinha quatro pontos com essa classe antes desta
-  // tarefa (botão do #id, contador "+N", código de rastreio, subtexto do
-  // status). Uma asserção de existência genérica seria verdadeira mesmo sem
-  // o diff, e continuaria verdadeira se as quatro linhas fossem revertidas —
-  // ou seja, não provaria nada sobre esta tarefa.
-  it("colisão real com o selo 'expirado': o rótulo 'Total' desta tarefa (text-zinc-500) coexiste fora do selo, que continua com text-zinc-600 (sem text-zinc-500)", async () => {
+  // O selo de pagamento é compartilhado e tem as suas próprias cores medidas:
+  // o rótulo "Total" (secundário) coexiste fora dele sem emprestar classe.
+  it("colisão real com o selo 'expirado': o selo segue com text-zinc-600 e o 'Total' fica fora dele", async () => {
     const pedidoExpirado: Order = {
       ...pedidoBase,
       paymentStatus: "expirado" as PaymentStatus,
@@ -164,7 +157,7 @@ describe("OrderList — contraste do texto no cartão do pedido (WCAG AA)", () =
 
     const rotuloTotal = acharSpanPorTexto("Total");
     expect(rotuloTotal).not.toBeUndefined();
-    expect(rotuloTotal?.classList.contains("text-zinc-500")).toBe(true);
+    expect(rotuloTotal?.classList.contains("text-muted-foreground")).toBe(true);
     expect(
       rotuloTotal?.closest('[data-testid="customer-payment-badge"]'),
     ).toBeNull();
@@ -174,6 +167,6 @@ describe("OrderList — contraste do texto no cartão do pedido (WCAG AA)", () =
     );
     expect(selo).not.toBeNull();
     expect(selo?.querySelector(".text-zinc-600")).not.toBeNull();
-    expect(selo?.querySelector(".text-zinc-500")).toBeNull();
+    expect(selo?.querySelector(".text-muted-foreground")).toBeNull();
   });
 });

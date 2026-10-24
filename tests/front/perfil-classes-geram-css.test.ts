@@ -11,8 +11,8 @@
 // `border-<cor>` só definem largura e cor, então botão com borda precisa de
 // `border-solid` (medido: sem ele a borda NÃO aparece no celular).
 //
-// `JA_NAO_GERAVAM` é o retrato do que já não gerava ANTES do redesenho (nos
-// diálogos de avatar e de capa, que o redesenho não mexe). Só impede NOVA.
+// `JA_NAO_GERAVAM` e `BOTOES_ANTIGOS_SEM_BORDA_SOLIDA` ficam vazios: nada é
+// tolerado. A versão Tinta da tela tem teste próprio de classes novas.
 /* eslint-disable security/detect-non-literal-fs-filename --
    lê arquivos-fonte de caminho fixo do repositório */
 import { readFileSync } from "node:fs";
@@ -33,17 +33,9 @@ const ARQUIVOS = [
   "src/components/ui/custom/CustomerPaymentBadge.tsx",
 ] as const;
 
-const JA_NAO_GERAVAM: Record<string, readonly string[]> = {
-  "src/views/customer/ProfileView.tsx": [
-    "group-hover:scale-102",
-    "hover:scale-102",
-    "scale-98",
-    "text-red-650",
-    "scrollbar-thin",
-    "scrollbar-thumb-zinc-800",
-    "scrollbar-track-transparent",
-  ],
-};
+// Redesenho Tinta do Perfil (24/10/2026): os diálogos de avatar e de capa foram
+// refeitos e as classes que já não geravam CSS saíram; a lista ficou vazia.
+const JA_NAO_GERAVAM: Record<string, readonly string[]> = {};
 
 /** Textos que têm cara de classe mas são valor de variante, id de teste ou política de referrer. */
 const NAO_E_CLASSE = new Set([
@@ -57,12 +49,7 @@ const NAO_E_CLASSE = new Set([
   "no-referrer-when-downgrade",
 ]);
 
-/** Botões dos diálogos de avatar e de capa (fora do redesenho) que já tinham borda sem `border-solid`. */
-const BOTOES_ANTIGOS_SEM_BORDA_SOLIDA = new Set([
-  "flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-red-100 text-[10px] font-bold uppercase tracking-wider text-red-600 transition-colors hover:border-red-200 hover:bg-red-50/50",
-  "text-red-650 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-red-100 text-[10px] font-bold uppercase tracking-wider transition-colors hover:border-red-200 hover:bg-red-50/50",
-  "flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border-zinc-100 bg-transparent text-[9px] font-black uppercase tracking-wider text-red-500 shadow-none transition-all hover:border-red-500/30 hover:bg-red-500/5",
-]);
+const BOTOES_ANTIGOS_SEM_BORDA_SOLIDA = new Set<string>();
 
 function arvoreDe(fonte: string) {
   return ts.createSourceFile(

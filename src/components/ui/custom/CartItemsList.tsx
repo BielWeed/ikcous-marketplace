@@ -72,122 +72,113 @@ const CartItemCard = memo(function CartItemCard({
         })()
       : undefined);
 
+  const variant = item.variantId
+    ? item.product.variants?.find((v) => v.id === item.variantId)
+    : null;
+  // Laudo 31/08 (menor E): regra única em preco-vendido.ts —
+  // `||` tratava o override ZERO como ausência.
+  const price = precoVendido(item.product, variant);
+  const hasDiscount =
+    item.product.originalPrice && item.product.originalPrice > price;
+
   return (
     <motion.div
       layout={removingId !== null}
       initial={{ opacity: 1, height: "auto" }}
       exit={{ opacity: 0, height: 0, marginBottom: 0, overflow: "hidden" }}
       transition={{ duration: 0.3, ease: "easeInOut" }}
-      className="group relative overflow-hidden rounded-2xl xs:rounded-3xl"
+      className="relative overflow-hidden rounded-[18px]"
     >
       <div
         className={cn(
-          "flex gap-3 xs:gap-4 bg-white p-3 xs:p-4 rounded-2xl xs:rounded-[1.5rem] border border-zinc-100/80 shadow-[0_4px_20px_rgba(0,0,0,0.01)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.03)] hover:border-zinc-200/60 transition-all duration-300 relative z-10",
+          "relative z-10 flex gap-3 rounded-[18px] border border-border bg-background p-3 transition-opacity",
           removingId === `${item.product.id}-${chaveDaVariacao || "default"}` &&
             "opacity-50",
         )}
       >
-        <div className="relative size-20 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100/50 bg-zinc-50 xs:size-24 xs:rounded-2xl">
+        <div className="size-16 flex-shrink-0 overflow-hidden rounded-xl bg-muted min-[380px]:size-20">
           <img
             src={
               item.product.images?.[0] ||
               "https://placehold.co/600x400?text=Sem+Imagem"
             }
             alt={item.product.name}
-            className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className="size-full object-cover"
           />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col justify-between py-0">
-          <div>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1 space-y-1">
-                <h2 className="line-clamp-1 text-xs font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-950 xs:line-clamp-2 xs:text-sm">
-                  {item.product.name}
-                </h2>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <p className="select-none truncate text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-                    {item.product.category}
-                    {variantText && (
-                      <>
-                        <span className="mx-1 text-zinc-300">•</span>
-                        <span className="text-zinc-500">{variantText}</span>
-                      </>
-                    )}
-                  </p>
-                  {estoqueDaEscolha <= 3 && estoqueDaEscolha > 0 && (
-                    <div className="py-0.25 animate-fade-in inline-flex select-none items-center gap-1 whitespace-nowrap rounded-md border border-rose-100/50 bg-rose-50/80 px-1.5 text-[8px] font-black uppercase tracking-wider text-rose-600">
-                      <span className="relative flex size-1">
-                        <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
-                        <span className="relative inline-flex size-1 rounded-full bg-rose-500" />
-                      </span>
-                      Só {estoqueDaEscolha}{" "}
-                      {estoqueDaEscolha === 1 ? "restante" : "restantes"}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  haptic.medium();
-                  onRemove(item.product.id, chaveDaVariacao);
-                }}
-                className="relative -mr-1 flex size-7 flex-shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-all duration-300 before:absolute before:-inset-2 before:content-[''] hover:bg-red-50/50 hover:text-red-500 active:scale-90"
-                aria-label="Remover item"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-            </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-snug text-foreground">
+              {item.product.name}
+            </h2>
+            <button
+              onClick={() => {
+                haptic.medium();
+                onRemove(item.product.id, chaveDaVariacao);
+              }}
+              className="relative -mr-1 -mt-0.5 flex size-7 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors before:absolute before:-inset-2 before:content-[''] hover:text-red-600 active:scale-90 dark:hover:text-red-400"
+              aria-label="Remover item"
+            >
+              <Trash2 className="size-[18px]" />
+            </button>
           </div>
 
-          <div className="mt-auto flex items-end justify-between pt-1">
+          <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground">
+            <span className="min-w-0 break-words">
+              {item.product.category}
+              {variantText && (
+                <>
+                  <span className="mx-1">•</span>
+                  <span
+                    data-testid="cart-item-variacao"
+                    className="text-foreground/70"
+                  >
+                    {variantText}
+                  </span>
+                </>
+              )}
+            </span>
+            {estoqueDaEscolha <= 3 && estoqueDaEscolha > 0 && (
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-semibold text-amber-700 dark:text-amber-400">
+                <span className="size-1.5 rounded-full bg-amber-500" />
+                Só {estoqueDaEscolha}{" "}
+                {estoqueDaEscolha === 1 ? "restante" : "restantes"}
+              </span>
+            )}
+          </p>
+
+          <div className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-2">
             <div className="flex flex-col justify-end">
-              {(() => {
-                const variant = item.variantId
-                  ? item.product.variants?.find((v) => v.id === item.variantId)
-                  : null;
-                // Laudo 31/08 (menor E): regra única em preco-vendido.ts —
-                // `||` tratava o override ZERO como ausência.
-                const price = precoVendido(item.product, variant);
-                const hasDiscount =
-                  item.product.originalPrice &&
-                  item.product.originalPrice > price;
-                return (
-                  <>
-                    {hasDiscount && (
-                      <div className="mb-0.5 flex items-center gap-1.5">
-                        <span className="text-[9px] font-bold text-zinc-400 line-through">
-                          {formatCurrency(item.product.originalPrice ?? 0)}
-                        </span>
-                        <span className="py-0.25 rounded bg-emerald-50 px-1 text-[8px] font-black uppercase text-emerald-700">
-                          -
-                          {Math.round(
-                            ((item.product.originalPrice! - price) /
-                              item.product.originalPrice!) *
-                              100,
-                          )}
-                          %
-                        </span>
-                      </div>
+              {hasDiscount && (
+                <div className="mb-0.5 flex items-center gap-1.5 text-xs leading-none">
+                  <span className="text-muted-foreground line-through">
+                    {formatCurrency(item.product.originalPrice ?? 0)}
+                  </span>
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                    -
+                    {Math.round(
+                      ((item.product.originalPrice! - price) /
+                        item.product.originalPrice!) *
+                        100,
                     )}
-                    <p className="text-sm font-black leading-none tracking-tight text-zinc-900 xs:text-base">
-                      {formatCurrency(price)}
-                    </p>
-                  </>
-                );
-              })()}
+                    %
+                  </span>
+                </div>
+              )}
+              <p className="text-lg font-bold leading-none tracking-tight text-foreground">
+                {formatCurrency(price)}
+              </p>
             </div>
 
-            <div className="flex origin-bottom-right scale-90 items-center gap-2">
-              <QuantitySelector
-                quantity={item.quantity}
-                maxQuantity={estoqueDaEscolha}
-                onChange={(qty) =>
-                  onUpdateQuantity(item.product.id, qty, chaveDaVariacao)
-                }
-                size="sm"
-              />
-            </div>
+            <QuantitySelector
+              quantity={item.quantity}
+              maxQuantity={estoqueDaEscolha}
+              onChange={(qty) =>
+                onUpdateQuantity(item.product.id, qty, chaveDaVariacao)
+              }
+              size="pill"
+            />
           </div>
         </div>
       </div>
@@ -217,37 +208,31 @@ export const CartItemsList = memo(function CartItemsList({
   const cartCount = cart.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
   return (
-    <div className="pt-0">
-      <div className="mb-1 flex flex-col px-6 py-2">
-        <div className="flex items-center gap-2.5">
-          <div className="h-0.5 w-6 rounded-full bg-zinc-900" />
-          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-500">
-            {cartCount}{" "}
-            {cartCount === 1 ? "Item Adicionado" : "Itens Adicionados"}
-          </p>
-        </div>
-      </div>
+    <div>
+      <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+        {cartCount} {cartCount === 1 ? "Item Adicionado" : "Itens Adicionados"}
+      </p>
 
       {cart.length > 50 && (
-        <div className="mx-6 mb-6 flex items-center justify-between rounded-[2rem] border border-red-200 bg-red-50 p-4">
-          <div>
-            <p className="text-sm font-bold text-red-800">
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-[18px] border border-red-300 p-4 dark:border-red-500/60">
+          <div className="min-w-0">
+            <p className="text-[15px] font-semibold text-foreground">
               Instabilidade detectada
             </p>
-            <p className="text-[10px] font-black uppercase tracking-widest text-red-600">
+            <p className="text-[13px] text-red-700 dark:text-red-400">
               O carrinho excedeu o limite seguro.
             </p>
           </div>
           <button
             onClick={handleClearCart}
-            className="rounded-xl bg-black px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:bg-zinc-800"
+            className="h-11 shrink-0 rounded-xl bg-foreground px-4 text-[13px] font-semibold text-background transition-colors hover:bg-foreground/90"
           >
             Limpar Tudo
           </button>
         </div>
       )}
 
-      <div className="space-y-4 px-4 py-2 pb-4">
+      <div className="space-y-3">
         <AnimatePresence mode="popLayout">
           {cart
             .filter((item) => item?.product?.id)

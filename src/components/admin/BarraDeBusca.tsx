@@ -78,9 +78,13 @@ export function OpcoesDaBusca({
         onClick={onClick}
         className={cn(
           BOTAO,
+          // Anéis por DENTRO da caixa: a faixa rola na horizontal (overflow-x
+          // vira auto e corta o que sai da caixa), então um anel por fora
+          // aparecia cortado em cima, embaixo e na ponta que encosta na borda.
+          "focus-visible:ring-inset",
           folha ? "w-full" : "max-w-full shrink-0",
           selecionada &&
-            "border-solid border-foreground bg-admin-hover text-foreground ring-1 ring-foreground",
+            "border-solid border-foreground bg-admin-hover text-foreground ring-1 ring-inset ring-foreground",
         )}
       >
         {Icone ? (

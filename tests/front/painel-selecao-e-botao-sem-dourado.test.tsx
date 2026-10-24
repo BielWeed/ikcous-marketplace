@@ -120,6 +120,12 @@ describe("painel — selecionado e botão principal são neutros", () => {
     expect(sel.getAttribute("aria-pressed")).toBe("true");
     expect(sel.className).toContain("border-foreground");
     expect(sel.className).toContain("border-solid");
+    // O anel do filtro escolhido fica por DENTRO: a faixa de filtros rola na
+    // horizontal e o overflow cortava um anel por fora (em cima, embaixo e na
+    // ponta encostada na borda). O jsdom não vê o corte; a regra é esta.
+    expect(sel.className).toContain("ring-inset");
+    expect(sel.className).toContain("focus-visible:ring-inset");
+    expect(nao.className).toContain("focus-visible:ring-inset");
     expect(sel.className).not.toContain("admin-gold");
     expect(sel.querySelector('svg[data-marca="selecionado"]')).toBeTruthy();
     expect(nao.querySelector('svg[data-marca="selecionado"]')).toBeNull();
@@ -135,6 +141,8 @@ describe("painel — as classes neutras geram CSS", () => {
       "border-foreground",
       "border-solid",
       "ring-1",
+      "ring-inset",
+      "focus-visible:ring-inset",
       "ring-foreground",
       "bg-admin-hover",
       "text-foreground",
