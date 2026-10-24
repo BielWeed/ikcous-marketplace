@@ -1,4 +1,12 @@
 {
+  "1.5.64": {
+    "titulo": "Botão Avisar clientes visível no tema claro do painel",
+    "novidades": [],
+    "correcoes": [
+      "Na tela de Clientes do painel, o botão \"Avisar clientes\" agora mostra o ícone de megafone também no tema claro. Antes o ícone ficava escuro sobre o fundo escuro do botão e não aparecia."
+    ],
+    "melhorias": []
+  },
   "1.5.63": {
     "titulo": "Avisos do painel no celular e ficha do cliente preparada para dar acesso de administrador",
     "novidades": [
