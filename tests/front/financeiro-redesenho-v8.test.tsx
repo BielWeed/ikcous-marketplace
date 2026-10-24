@@ -30,7 +30,10 @@ beforeEach(() => {
     data:
       nome === "fin_resumo"
         ? { saldo_total: 120, a_pagar: { total: 20 }, a_receber: { total: 40 } }
-        : [],
+        : // Sem caixa aberto o servidor devolve nulo (não uma lista).
+          nome === "fin_caixa_atual"
+          ? null
+          : [],
     error: null,
   }));
   host = document.createElement("div");
@@ -56,7 +59,7 @@ it("a barra de abas apresenta os cinco destinos só com texto e mantém a seleç
   // Desenho de 22/10/2026: "Contas e categorias" saiu da fila (vira o chip
   // "Contas" do cabeçalho) e "A pagar e receber" virou "Pagar e receber".
   expect(opcoes.map((b) => b.textContent?.replace(/\s+/g, " ").trim())).toEqual(
-    ["Visão", "Extrato", "Pagar e receber", "Caixa", "Resultado"],
+    ["Visão", "Caixa", "Extrato", "Pagar e receber", "Resultado"],
   );
   expect(menu!.classList.contains("hidden")).toBe(false);
   for (const opcao of opcoes) {
@@ -72,13 +75,13 @@ it("a barra de abas apresenta os cinco destinos só com texto e mantém a seleç
   expect(menu!.parentElement!.classList.contains("top-0")).toBe(true);
   expect(opcoes[0].getAttribute("aria-selected")).toBe("true");
   await act(async () =>
-    opcoes[2].dispatchEvent(
+    opcoes[3].dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, button: 0 }),
     ),
   );
   expect(host.textContent).toContain("Todos os vencimentos");
   expect(opcoes[0].getAttribute("aria-selected")).toBe("false");
-  expect(opcoes[2].getAttribute("aria-selected")).toBe("true");
+  expect(opcoes[3].getAttribute("aria-selected")).toBe("true");
   expect(
     host.querySelector('[role="tab"][data-state="active"]')?.textContent,
   ).toBe("Pagar e receber");
@@ -91,9 +94,9 @@ it("revela a aba ativa ao selecionar e leva ao chip Contas pelo atalho do conte�
   );
   const abas = [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
   const revelarExtrato = vi.fn();
-  Object.defineProperty(abas[1], "scrollIntoView", { value: revelarExtrato });
+  Object.defineProperty(abas[2], "scrollIntoView", { value: revelarExtrato });
   await act(async () =>
-    abas[1].dispatchEvent(
+    abas[2].dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, button: 0 }),
     ),
   );
@@ -152,11 +155,11 @@ it.each(["carregando", "erro", "vazio"])(
     const abas = [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
     expect(abas).toHaveLength(5);
     await act(async () =>
-      abas[1].dispatchEvent(
+      abas[2].dispatchEvent(
         new MouseEvent("mousedown", { bubbles: true, button: 0 }),
       ),
     );
-    expect(abas[1].getAttribute("aria-selected")).toBe("true");
+    expect(abas[2].getAttribute("aria-selected")).toBe("true");
     expect(host.textContent).toContain("Nenhum lançamento no período");
     expect(host.querySelector('[aria-label="Novo lançamento"]')).not.toBeNull();
   },

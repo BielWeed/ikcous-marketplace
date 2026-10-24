@@ -9,6 +9,7 @@ import {
   corDaForma,
 } from "@/components/admin/financeiro/IconeDaForma";
 import { parseResumo } from "@/lib/financeiro";
+import { CAIXA_FECHADO_DA_VISAO } from "./helpers/caixa-da-visao";
 
 const FORMAS_CONHECIDAS = [
   "pix",
@@ -66,6 +67,8 @@ async function montarAba() {
         hoje="2026-10-17"
         versao={0}
         contas={[]}
+        caixa={CAIXA_FECHADO_DA_VISAO}
+        abrirFolha={vi.fn()}
         irParaAba={vi.fn()}
         verPrevistos={vi.fn()}
       />,
