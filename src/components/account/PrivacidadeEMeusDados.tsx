@@ -228,7 +228,11 @@ export function PrivacidadeEMeusDados({
     pronta && (pedidoDeEmail === null || pedidoDeEmail.situacao !== "aberto");
 
   function alternar(linha: LinhaDaSanfona) {
-    setAbertas((antes) => ({ ...antes, [linha]: !antes[linha] }));
+    setAbertas((antes) => ({
+      guarda: linha === "guarda" ? !antes.guarda : antes.guarda,
+      apaga: linha === "apaga" ? !antes.apaga : antes.apaga,
+      fica: linha === "fica" ? !antes.fica : antes.fica,
+    }));
   }
 
   function abrir(tipo: TipoDoPedidoDePrivacidade) {

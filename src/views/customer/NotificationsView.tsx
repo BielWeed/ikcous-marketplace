@@ -272,7 +272,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
         </div>
 
         {/* Abas */}
-        <div className="scrollbar-none -mx-1 mt-3 flex gap-2 overflow-x-auto px-1 py-1">
+        <div className="scrollbar-none -mx-1 mt-3 flex gap-2 overflow-x-auto p-1">
           {(
             [
               { id: "todas", label: "Todas" },
@@ -393,7 +393,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                         e.stopPropagation();
                         deleteNotification(notif.id);
                       }}
-                      className="absolute bottom-2 right-0 flex size-11 items-center justify-center rounded-xl text-muted-foreground opacity-100 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover-hover:opacity-0 hover-hover:group-hover:opacity-100 hover-hover:focus-visible:opacity-100"
+                      className="absolute bottom-2 right-0 flex size-11 items-center justify-center rounded-xl text-muted-foreground opacity-100 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover-hover:opacity-0 hover-hover:focus-visible:opacity-100 hover-hover:group-hover:opacity-100"
                       title="Excluir notificação"
                     >
                       <X className="size-4" />
