@@ -99,11 +99,20 @@ describe("rodape do carrinho quebra linha em vez de sobrepor o preco", () => {
     expect(linha).toMatch(/\bjustify-between\b/);
   });
 
-  it("o grupo Frete + FINALIZAR tambem quebra (zoom 200%: o botao saia pela direita)", () => {
+  it("o botao Finalizar tambem quebra para a linha de baixo (zoom 200%: o botao saia pela direita)", () => {
+    // Redesenho Tinta (24/10/2026): o Frete foi para baixo do Total e o botao
+    // virou filho direto da linha com flex-wrap. Ele cresce (`flex-1`) a partir
+    // de uma base minima (`basis-[...]`): sem espaco ao lado do Total, desce
+    // para a linha de baixo em vez de sair pela direita.
     const i = RODAPE.indexOf("{/* Main Action */}");
     expect(i).toBeGreaterThan(-1);
-    const linha = RODAPE.slice(i).split("\n")[1] as string;
-    expect(linha).toMatch(/\bflex-wrap\b/);
+    const botao = RODAPE.slice(
+      i,
+      RODAPE.indexOf(">", RODAPE.indexOf("className=", i)),
+    );
+    expect(botao).toMatch(/\bflex-1\b/);
+    expect(botao).toMatch(/\bbasis-\[\d+px\]/);
+    expect(botao).toMatch(/\bmin-w-0\b/);
   });
 });
 
@@ -153,14 +162,73 @@ describe("checkout: texto pequeno sem zinc-400 / red-500", () => {
   });
 });
 
+// Redesenho Tinta (24/10/2026): o texto secundario do rodape deixou de usar
+// zinc-500 fixo e passou para `text-muted-foreground`, que muda com o tema.
+// A troca so e honesta se o token medir o MESMO que o zinc-500 que ela
+// substitui (>= 4,5:1) nos dois temas -- por isso a medicao abaixo le o valor
+// dos tokens em index.css em vez de presumir.
+function hslParaHex(h: number, s: number, l: number): string {
+  const sat = s / 100;
+  const luz = l / 100;
+  const a = sat * Math.min(luz, 1 - luz);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const v = luz - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(v * 255)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function tokenHsl(bloco: "root" | "dark", nome: string): string {
+  const abre = bloco === "root" ? "  :root {" : "  .dark {";
+  const ini = CSS.indexOf(abre);
+  expect(ini, `bloco ${bloco} nao achado em index.css`).toBeGreaterThan(-1);
+  const corpo = CSS.slice(ini, CSS.indexOf("}", ini));
+  const m = corpo.match(
+    // eslint-disable-next-line security/detect-non-literal-regexp -- `nome` é um token fixo do próprio teste, nunca entrada externa
+    new RegExp(`--${nome}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`),
+  );
+  expect(m, `--${nome} nao achado no bloco ${bloco}`).not.toBeNull();
+  return hslParaHex(Number(m?.[1]), Number(m?.[2]), Number(m?.[3]));
+}
+
 describe("rodape do carrinho: rotulos Total/Frete/Seu Carrinho", () => {
-  for (const rotulo of ["Seu Carrinho", "Total", "Frete"]) {
-    it(`rotulo ${rotulo} sem zinc-400`, () => {
-      const i = RODAPE.indexOf(`${rotulo}\n`);
-      expect(i).toBeGreaterThan(-1);
-      const tag = RODAPE.slice(RODAPE.lastIndexOf("<span", i), i);
+  it("linha do Frete: cinza do tema quando cotado/a calcular, verde 700 quando gratis, nunca zinc-400", () => {
+    // O rotulo "Frete" herda a cor do paragrafo que o envolve.
+    const i = RODAPE.indexOf("<span>Frete</span>");
+    expect(i).toBeGreaterThan(-1);
+    const paragrafo = RODAPE.slice(RODAPE.lastIndexOf("<p", i), i);
+    expect(paragrafo).not.toMatch(/text-zinc-400/);
+    expect(paragrafo).toMatch(/\btext-muted-foreground\b/);
+    expect(paragrafo).toMatch(/\btext-emerald-700\b/);
+  });
+
+  for (const rotulo of ["Seu Carrinho", "Total"]) {
+    it(`rotulo ${rotulo} sem zinc-400, com o token secundario do tema`, () => {
+      const m = RODAPE.match(
+        // eslint-disable-next-line security/detect-non-literal-regexp -- `rotulo` vem da lista fixa acima, nunca de entrada externa
+        new RegExp(`<span([^>]*)>\\s*${rotulo}\\s*</span>`),
+      );
+      expect(m, `rotulo ${rotulo} nao achado`).not.toBeNull();
+      const tag = m?.[1] as string;
       expect(tag).not.toMatch(/text-zinc-400/);
-      expect(tag).toMatch(/text-zinc-500/);
+      expect(tag).toMatch(/\btext-muted-foreground\b/);
+      expect(tag).not.toMatch(/text-muted-foreground\//);
+    });
+  }
+
+  for (const [bloco, fundo] of [
+    ["root", "background"],
+    ["dark", "background"],
+  ] as const) {
+    it(`o token muted-foreground passa de 4,5:1 sobre o fundo no tema ${bloco}`, () => {
+      PALETA.set("token-texto", tokenHsl(bloco, "muted-foreground"));
+      PALETA.set("token-fundo", tokenHsl(bloco, fundo));
+      expect(contraste("token-texto", "token-fundo")).toBeGreaterThanOrEqual(
+        4.5,
+      );
     });
   }
 });

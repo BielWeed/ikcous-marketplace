@@ -32,7 +32,6 @@ import {
 import { FolhaFinanceira } from "./FolhaFinanceira";
 import {
   CLASSE_BOTAO_PRIMARIO,
-  CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
   Campo,
   Dinheiro,
@@ -273,27 +272,18 @@ export function NovoLancamentoFolha({
       titulo="Novo lançamento"
       descricao="Receitas e despesas que não vêm de pedido: aluguel, fornecedor, taxa, conta de luz."
       aoFechar={fechar}
+      fecharBloqueado={enviando}
       rodape={
         <div className="flex flex-col gap-3">
           {erroDoServidor ? <EstadoDeErro mensagem={erroDoServidor} /> : null}
-          <div className="flex flex-col-reverse gap-3">
-            <button
-              type="button"
-              onClick={fechar}
-              disabled={enviando}
-              className={`${CLASSE_BOTAO_SECUNDARIO} flex-1`}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              form={ID_FORM}
-              disabled={enviando}
-              className={`${CLASSE_BOTAO_PRIMARIO} flex-[2]`}
-            >
-              {enviando ? "Salvando…" : "Salvar lançamento"}
-            </button>
-          </div>
+          <button
+            type="submit"
+            form={ID_FORM}
+            disabled={enviando}
+            className={CLASSE_BOTAO_PRIMARIO}
+          >
+            {enviando ? "Salvando…" : "Salvar lançamento"}
+          </button>
         </div>
       }
     >

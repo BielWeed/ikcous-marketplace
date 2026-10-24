@@ -27,7 +27,6 @@ import type {
 import { FolhaFinanceira } from "./FolhaFinanceira";
 import {
   CLASSE_BOTAO_PRIMARIO,
-  CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
   CLASSE_CASCA_DO_CARTAO,
   CLASSE_ROTULO,
@@ -42,33 +41,22 @@ function Rodape({
   erro,
   enviando,
   aoSalvar,
-  aoVoltar,
 }: {
   readonly erro: string | null;
   readonly enviando: boolean;
   readonly aoSalvar: () => void;
-  readonly aoVoltar: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
       {erro ? <EstadoDeErro mensagem={erro} /> : null}
-      <div className="flex flex-col-reverse gap-3">
-        <button
-          type="button"
-          onClick={aoVoltar}
-          className={`${CLASSE_BOTAO_SECUNDARIO} flex-1`}
-        >
-          Cancelar
-        </button>
-        <button
-          type="button"
-          disabled={enviando}
-          onClick={aoSalvar}
-          className={`${CLASSE_BOTAO_PRIMARIO} flex-[2]`}
-        >
-          {enviando ? "Salvando…" : "Salvar"}
-        </button>
-      </div>
+      <button
+        type="button"
+        disabled={enviando}
+        onClick={aoSalvar}
+        className={CLASSE_BOTAO_PRIMARIO}
+      >
+        {enviando ? "Salvando…" : "Salvar"}
+      </button>
     </div>
   );
 }
@@ -216,7 +204,6 @@ export function ContaFolha({
           erro={erroDoServidor}
           enviando={enviando}
           aoSalvar={() => void salvar()}
-          aoVoltar={aoFechar}
         />
       }
     >
@@ -401,7 +388,6 @@ export function CategoriaFolha({
           erro={erroDoServidor}
           enviando={enviando}
           aoSalvar={() => void salvar()}
-          aoVoltar={aoFechar}
         />
       }
     >

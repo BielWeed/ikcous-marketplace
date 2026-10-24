@@ -164,25 +164,25 @@ describe("ShippingProgress — contraste do subtítulo nos estados não-liberado
     });
   }
 
-  it("estado 'gratis_so_na_mais_barata': subtítulo usa text-zinc-600, não mais text-zinc-400", async () => {
+  it("estado 'gratis_so_na_mais_barata': subtítulo usa text-muted-foreground, não mais text-zinc-400", async () => {
     await renderizarComEstado("gratis_so_na_mais_barata");
 
     const subtitulo = Array.from(hospedeiro.querySelectorAll("p")).find(
       (el) => el.textContent === "A opção escolhida não entra no grátis",
     );
     expect(subtitulo).not.toBeUndefined();
-    expect(subtitulo?.classList.contains("text-zinc-600")).toBe(true);
+    expect(subtitulo?.classList.contains("text-muted-foreground")).toBe(true);
     expect(subtitulo?.classList.contains("text-zinc-400")).toBe(false);
   });
 
-  it("estado 'meta_atingida_sem_gratis': subtítulo usa text-zinc-600, não mais text-zinc-400", async () => {
+  it("estado 'meta_atingida_sem_gratis': subtítulo usa text-muted-foreground, não mais text-zinc-400", async () => {
     await renderizarComEstado("meta_atingida_sem_gratis");
 
     const subtitulo = Array.from(hospedeiro.querySelectorAll("p")).find(
       (el) => el.textContent === "Recalcule o frete para aplicar o grátis",
     );
     expect(subtitulo).not.toBeUndefined();
-    expect(subtitulo?.classList.contains("text-zinc-600")).toBe(true);
+    expect(subtitulo?.classList.contains("text-muted-foreground")).toBe(true);
     expect(subtitulo?.classList.contains("text-zinc-400")).toBe(false);
   });
 });

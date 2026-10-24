@@ -22,6 +22,7 @@ const ARQUIVOS = [
   "src/views/customer/AccountSettingsView.tsx",
   "src/views/customer/AboutStoreView.tsx",
   "src/views/customer/NotificationsView.tsx",
+  "src/views/customer/ProfileView.tsx",
   "src/views/admin/AdminNotificationsView.tsx",
 ];
 

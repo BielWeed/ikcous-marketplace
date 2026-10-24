@@ -60,15 +60,15 @@ export function OrderTimeline({
             >
               <div
                 aria-hidden="true"
-                className={`h-1 rounded-full ${index <= safeIndex ? "bg-zinc-900" : "bg-zinc-200"}`}
+                className={`h-1 rounded-full ${index <= safeIndex ? "bg-foreground" : "bg-border"}`}
               />
               <span
                 className={`mt-2 block text-xs leading-tight max-[359px]:tracking-tight ${
                   index === safeIndex
-                    ? "font-bold text-zinc-900"
+                    ? "font-bold text-foreground"
                     : index < safeIndex
-                      ? "font-medium text-zinc-900"
-                      : "font-medium text-zinc-600"
+                      ? "font-medium text-foreground"
+                      : "font-medium text-muted-foreground"
                 }`}
               >
                 {step.label}

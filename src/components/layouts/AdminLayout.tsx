@@ -1025,7 +1025,7 @@ export function AdminLayout({
             a lista rola por baixo dele (mesmo caso da barra inferior); com
             95% + blur o texto de baixo ainda se lia atrás dos títulos. */}
         <header
-          className="sticky top-0 z-50 flex-shrink-0 border-b border-admin-border bg-admin-nav px-5 py-0 shadow-md lg:border-0 lg:shadow-none"
+          className="sticky top-0 z-50 flex-shrink-0 border-b border-admin-border bg-admin-nav px-4 py-0 shadow-md min-[360px]:px-5 lg:border-0 lg:shadow-none"
           style={
             {
               viewTransitionName: isViewTransitionSupported
@@ -1035,7 +1035,7 @@ export function AdminLayout({
           }
         >
           <div className="mx-auto max-w-7xl lg:hidden">
-            <div className="flex min-h-14 items-center gap-3 py-1">
+            <div className="flex items-center gap-2 py-2.5 min-[360px]:gap-3">
               <Button
                 variant="ghost"
                 onClick={() => {
@@ -1048,14 +1048,9 @@ export function AdminLayout({
                 }}
                 onMouseEnter={() => handleMouseEnter(parentView as any)}
                 onMouseLeave={handleMouseLeave}
-                className="min-h-11 min-w-11 shrink-0 gap-1.5 rounded-full border border-admin-border-strong bg-admin-raised px-2 text-xs font-semibold text-zinc-50 hover:bg-admin-hover"
+                className="min-h-11 min-w-11 shrink-0 gap-1.5 rounded-2xl border border-solid border-admin-border-strong bg-admin-raised px-3 text-[15px] font-semibold text-foreground hover:bg-admin-hover min-[360px]:gap-2 min-[360px]:px-3.5 min-[360px]:text-base"
               >
-                <span className="flex size-6 items-center justify-center rounded-full border border-violet-300/20 bg-violet-300/10">
-                  <ArrowLeft
-                    aria-hidden="true"
-                    className="size-3.5 text-violet-300"
-                  />
-                </span>
+                <ArrowLeft aria-hidden="true" className="size-5" />
                 {isSubView ? "Voltar" : "Perfil"}
               </Button>
               <ConexaoDoPainel
@@ -1075,10 +1070,10 @@ export function AdminLayout({
                       : "Notificações"
                 }
                 className={cn(
-                  "relative min-h-11 min-w-11 shrink-0 rounded-full border p-0 active:scale-95",
+                  "relative size-11 min-h-11 min-w-11 shrink-0 rounded-full border border-solid p-0 active:scale-95",
                   naoConseguiuConferirAvisos
-                    ? "border-rose-300/25 bg-[#401A24] text-[#FFA1B0]"
-                    : "border-sky-300/20 bg-[#192A31] text-[#75DBFF]",
+                    ? "border-red-300 bg-admin-raised text-red-400"
+                    : "border-admin-border-strong bg-admin-raised text-foreground",
                 )}
                 onClick={() => {
                   haptic.light();
@@ -1087,14 +1082,14 @@ export function AdminLayout({
                 onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
                 onMouseLeave={handleMouseLeave}
               >
-                <Bell aria-hidden="true" className="size-5" />
+                <Bell aria-hidden="true" className="size-5 fill-current" />
                 {temAvisoNoSino && (
                   <span
                     aria-hidden="true"
                     className={
                       naoConseguiuConferirAvisos
-                        ? "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1 text-[11px] font-bold text-white"
-                        : "absolute right-0 top-0 size-2 animate-pulse rounded-full bg-red-500 ring-2 ring-admin-nav"
+                        ? "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1 text-xs font-bold text-white"
+                        : "absolute right-0.5 top-0 size-2.5 animate-pulse rounded-full bg-red-500 ring-2 ring-admin-nav"
                     }
                   >
                     {naoConseguiuConferirAvisos ? "!" : null}
@@ -1107,7 +1102,7 @@ export function AdminLayout({
             {currentView === "admin-banners" && (
               <div className="border-t border-admin-border py-2">
                 <div className="flex min-h-11 items-center justify-between gap-3">
-                  <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-zinc-50">
+                  <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
                     {NOMES_DO_PAINEL["admin-banners"]}
                   </h1>
 
@@ -1125,7 +1120,7 @@ export function AdminLayout({
                       className={cn(
                         "flex h-11 min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-admin-nav",
                         isOffline
-                          ? "border border-admin-border-strong bg-admin-raised text-zinc-400"
+                          ? "border border-solid border-admin-border-strong bg-admin-raised text-muted-foreground"
                           : "bg-foreground text-background hover:opacity-90",
                       )}
                     >
@@ -1143,7 +1138,7 @@ export function AdminLayout({
                 {isOffline && !editorDeBannerAberto && (
                   <p
                     id="motivo-banner-offline"
-                    className="mt-1 text-xs text-zinc-400"
+                    className="mt-1 text-xs text-muted-foreground"
                   >
                     Disponível quando a conexão retornar.
                   </p>
@@ -1155,10 +1150,10 @@ export function AdminLayout({
             {currentView === "admin-carousels" && (
               <div className="flex min-h-11 items-center gap-2 border-t border-admin-border py-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-violet-300/20 bg-violet-300/10 text-violet-300">
+                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-solid border-admin-border-strong bg-admin-raised text-foreground">
                     <Layers className="size-3" />
                   </div>
-                  <h1 className="min-w-0 break-words text-sm font-semibold text-zinc-50">
+                  <h1 className="min-w-0 break-words text-sm font-semibold text-foreground">
                     {NOMES_DO_PAINEL["admin-carousels"]}
                   </h1>
                 </div>

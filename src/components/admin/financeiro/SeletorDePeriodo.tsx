@@ -16,7 +16,6 @@ import type {
 import { FolhaFinanceira } from "./FolhaFinanceira";
 import {
   CLASSE_BOTAO_PRIMARIO,
-  CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
   CLASSE_CHIP,
   CLASSE_CHIP_COMUM,
@@ -188,22 +187,13 @@ export function PeriodoPersonalizadoFolha({
       descricao="Escolha o primeiro e o último dia (os dois entram na conta)."
       aoFechar={aoFechar}
       rodape={
-        <div className="flex flex-col-reverse gap-3">
-          <button
-            type="button"
-            onClick={aoFechar}
-            className={`${CLASSE_BOTAO_SECUNDARIO} flex-1`}
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={aplicar}
-            className={`${CLASSE_BOTAO_PRIMARIO} flex-[2]`}
-          >
-            Aplicar período
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={aplicar}
+          className={CLASSE_BOTAO_PRIMARIO}
+        >
+          Aplicar período
+        </button>
       }
     >
       <div className="grid grid-cols-1 gap-5">
