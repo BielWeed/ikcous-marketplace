@@ -217,7 +217,7 @@ describe("CartView — a aba Meus Pedidos reflete o estado VIVO do hook (laudo #
         .querySelector('[data-testid="pedido-ped-1"]')
         ?.getAttribute("data-status"),
     ).toBe("pending");
-    expect(contadores()).toContain("Em Andamento (1)");
+    expect(contadores()).toContain("Em andamento (1)");
     expect(duble.chamadasFetch).toBe(1);
   });
 
@@ -233,7 +233,7 @@ describe("CartView — a aba Meus Pedidos reflete o estado VIVO do hook (laudo #
 
     // A aba VIU a mudança: o pedido saiu de "Em Andamento" para "Histórico".
     expect(hospedeiro.querySelector('[data-testid="pedido-ped-1"]')).toBeNull();
-    expect(contadores()).toContain("Em Andamento (0)");
+    expect(contadores()).toContain("Em andamento (0)");
     expect(contadores()).toContain("Histórico (1)");
 
     // E a mudança veio do estado VIVO, não de uma nova busca.

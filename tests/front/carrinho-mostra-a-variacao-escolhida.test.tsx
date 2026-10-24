@@ -150,10 +150,12 @@ describe("CartItemsList — a linha do carrinho mostra a OPÇÃO escolhida, não
 
     const host = await renderizarCarrinho([item]);
 
-    // O span que mostra a variação tem a classe "text-zinc-500"
-    // (CartItemsList.tsx:69) — é ele, isolado, que a mutação (voltar para
+    // O span que mostra a variação tem o data-testid "cart-item-variacao"
+    // (CartItemsList.tsx) — é ele, isolado, que a mutação (voltar para
     // `?.name`) faz virar "Cor" em vez de conter "Rosa".
-    const spanVariacao = host.querySelector("span.text-zinc-500");
+    const spanVariacao = host.querySelector(
+      '[data-testid="cart-item-variacao"]',
+    );
     expect(spanVariacao?.textContent).not.toBe("Cor");
     expect(spanVariacao?.textContent).toContain("Rosa");
   });

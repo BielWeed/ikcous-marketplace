@@ -10,34 +10,18 @@ interface EmptyCartProps {
 export function EmptyCart({ onNavigate }: EmptyCartProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
+      initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="flex h-full flex-col items-center justify-center px-10 text-center"
+      className="flex h-full flex-col items-center justify-center px-8 py-10 text-center"
     >
-      <div className="relative mb-8">
-        <motion.div
-          animate={{
-            scale: [1, 1.1, 1],
-            rotate: [0, 5, -5, 0],
-          }}
-          transition={{
-            duration: 4,
-            repeat: Number.POSITIVE_INFINITY,
-            ease: "easeInOut",
-          }}
-          className="relative z-10 flex size-32 items-center justify-center rounded-[3rem] border border-zinc-200/50 bg-zinc-100/50 shadow-inner"
-        >
-          <ShoppingBag className="size-12 text-zinc-300" strokeWidth={1.5} />
-        </motion.div>
-
-        {/* Decorative Blobs */}
-        <div className="absolute left-1/2 top-1/2 -z-10 size-48 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-400/5 blur-3xl" />
+      <div className="mb-6 flex size-20 items-center justify-center rounded-[22px] bg-muted/60 text-muted-foreground">
+        <ShoppingBag className="size-9" strokeWidth={1.5} />
       </div>
 
-      <h2 className="mb-3 text-2xl font-black tracking-tight text-zinc-900">
+      <h2 className="mb-2 text-2xl font-bold tracking-tight text-foreground">
         Seu carrinho está vazio
       </h2>
-      <p className="mx-auto max-w-[280px] text-xs font-medium leading-relaxed text-zinc-500">
+      <p className="mx-auto mb-8 max-w-[280px] text-[15px] leading-snug text-muted-foreground">
         Parece que você ainda não adicionou nenhum item ao seu carrinho. Que tal
         explorar nossas novidades?
       </p>
@@ -47,11 +31,10 @@ export function EmptyCart({ onNavigate }: EmptyCartProps) {
           haptic.medium();
           onNavigate("home");
         }}
-        className="group relative flex items-center gap-3 overflow-hidden rounded-[2rem] bg-primary px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-primary-foreground shadow-xl shadow-black/10 transition-all hover:opacity-90 active:scale-95"
+        className="flex h-[52px] items-center justify-center gap-3 rounded-2xl bg-foreground px-8 text-[15px] font-semibold text-background transition-colors hover:bg-foreground/90 active:scale-[0.98]"
       >
-        <div className="absolute inset-0 bg-gradient-to-r from-white/20 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
         <span>Explorar Produtos</span>
-        <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+        <ArrowRight className="size-5" />
       </button>
     </motion.div>
   );
