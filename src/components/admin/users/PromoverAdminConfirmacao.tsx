@@ -22,6 +22,12 @@ import type { AcaoDeCargo } from "./PromoverAdminAcoes";
  * e esta confirmação (z-50) ficaria escondida atrás dela. Por isso o cartão
  * fecha a folha primeiro e só então abre esta, uma camada por vez.
  *
+ * O cartão sobe para z-[70] porque a barra inferior do painel é z-[60]: em
+ * celular baixo (320x640) ela cobria o "Cancelar". O fundo escurecido (z-50)
+ * vem do AlertDialogContent compartilhado e continua abaixo da barra de
+ * propósito; a barra não recebe toque (o Radix tira o toque de tudo fora do
+ * diálogo). `max-h` + rolagem interna: o "Cancelar" nunca fica fora da tela.
+ *
  * O foco abre em "Cancelar" (o Radix já faz isso no AlertDialog) para que um
  * Enter distraído nunca dê acesso a ninguém; ao fechar, o foco volta ao botão
  * da folha (`retornoDoFoco`).
@@ -88,7 +94,7 @@ export function PromoverAdminConfirmacao({
       }}
     >
       <AlertDialogContent
-        className="max-w-md rounded-3xl border border-admin-border bg-admin-raised"
+        className="z-[70] max-h-[calc(100dvh-2rem)] max-w-[calc(100%-2rem)] gap-3 overflow-y-auto rounded-3xl border border-admin-border bg-admin-raised p-4 sm:max-w-md sm:gap-4 sm:p-6"
         onCloseAutoFocus={(e) => {
           e.preventDefault();
           retornoDoFoco.current?.focus();
@@ -123,7 +129,7 @@ export function PromoverAdminConfirmacao({
         <AlertDialogFooter className="mt-2 gap-2">
           <AlertDialogCancel
             disabled={emVoo}
-            className="min-h-11 rounded-xl border-0 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white"
+            className="min-h-11 rounded-xl border-0 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
           >
             Cancelar
           </AlertDialogCancel>
