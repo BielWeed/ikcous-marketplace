@@ -153,12 +153,17 @@ describe("ProfileView — botão Sobre a Loja para TODOS os usuários (peça 24)
     expect(cartao!.textContent).toContain("Segurança e conta");
     expect(cartao!.textContent).not.toContain("Encerrar sessão");
 
-    // Encerrar sessão ganhou cartão PRÓPRIO, DEPOIS do cartão do botão novo.
-    const cartoes = [...hospedeiro.querySelectorAll("div.overflow-hidden")];
-    const indiceDoCartao = cartoes.indexOf(cartao!);
-    const cartaoEncerrar = cartoes
-      .slice(indiceDoCartao + 1)
-      .find((c) => c.textContent?.includes("Encerrar sessão"));
-    expect(cartaoEncerrar).toBeDefined();
+    // Encerrar sessão é um botão PRÓPRIO, FORA do cartão do botão novo e
+    // DEPOIS dele na página (o invólucro não tem mais overflow-hidden: ele
+    // cortava o anel de foco do teclado).
+    const encerrar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Encerrar sessão"),
+    );
+    expect(encerrar).toBeDefined();
+    expect(cartao!.contains(encerrar!)).toBe(false);
+    expect(
+      cartao!.compareDocumentPosition(encerrar!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

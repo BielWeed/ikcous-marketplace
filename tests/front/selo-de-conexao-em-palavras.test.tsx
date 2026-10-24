@@ -134,6 +134,12 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     return Array.from(hospedeiro.querySelectorAll<HTMLElement>(".cursor-help"));
   }
 
+  // O selo do cabeçalho do celular lê "Estado · Admin" (desenho Tinta); o da
+  // barra lateral lê só o estado. O que este teste vigia é a PALAVRA do estado.
+  function palavra(selo: HTMLElement): string {
+    return (selo.textContent ?? "").trim().replace(/ · Admin$/, "");
+  }
+
   it("mostra o selo na barra lateral e no cabeçalho do celular", async () => {
     await montar();
     expect(selos()).toHaveLength(2);
@@ -142,7 +148,7 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
   it("conexão boa: 'Online', title 'Conexão boa', sem milissegundo", async () => {
     await montar();
     for (const selo of selos()) {
-      expect(selo.textContent?.trim()).toBe("Online");
+      expect(palavra(selo)).toBe("Online");
       expect(selo.getAttribute("title")).toBe("Conexão boa");
     }
   });
@@ -151,7 +157,7 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     diagnostico.atual = { isOffline: false, quality: "good", latency: 240 };
     await montar();
     for (const selo of selos()) {
-      expect(selo.textContent?.trim()).toBe("Online");
+      expect(palavra(selo)).toBe("Online");
       expect(selo.getAttribute("title")).toBe("Conexão boa");
     }
   });
@@ -160,7 +166,7 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     diagnostico.atual = { isOffline: false, quality: "slow", latency: 1800 };
     await montar();
     for (const selo of selos()) {
-      expect(selo.textContent?.trim()).toBe("Lenta");
+      expect(palavra(selo)).toBe("Lenta");
       expect(selo.getAttribute("title")).toBe("Conexão lenta");
     }
   });
@@ -169,7 +175,7 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     diagnostico.atual = { isOffline: true, quality: "offline", latency: 0 };
     await montar();
     for (const selo of selos()) {
-      expect(selo.textContent?.trim()).toBe("Sem internet");
+      expect(palavra(selo)).toBe("Sem internet");
       expect(selo.getAttribute("title")).toBe("Sem conexão com o servidor");
     }
   });
@@ -229,9 +235,10 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
   it("o texto do selo tem pelo menos 11px (nada de text-[7px] / [6.5px])", async () => {
     await montar();
     for (const selo of selos()) {
-      const texto = selo.querySelector(
-        ":scope > span:last-child",
-      ) as HTMLElement;
+      // Barra lateral: o texto é o último span do selo. Cabeçalho do celular
+      // (Tinta): o selo é só o texto, e o tamanho vem do span que o envolve.
+      const texto = (selo.querySelector(":scope > span:last-child") ??
+        selo.parentElement) as HTMLElement;
       // Nenhum `text-[Npx]` abaixo de 11 (a régua do painel, spec §7).
       const tamanhos = texto.className
         .split(/\s+/)
@@ -240,7 +247,10 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
         .map(Number);
       expect(tamanhos.length).toBeGreaterThan(0);
       expect(Math.min(...tamanhos)).toBeGreaterThanOrEqual(11);
-      expect(texto.className).toContain("text-[11px]");
+      // A barra lateral mantém exatamente 11px.
+      if (selo.querySelector(":scope > span:last-child")) {
+        expect(texto.className).toContain("text-[11px]");
+      }
     }
   });
 
@@ -251,7 +261,7 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
       diagnostico.atual = { isOffline: true, quality: "offline", latency: 0 };
       await montar();
       for (const selo of selos()) {
-        expect(selo.textContent?.trim()).toBe("Sem internet");
+        expect(palavra(selo)).toBe("Sem internet");
       }
 
       // 2) a internet volta: o efeito do AdminLayout acende o flash por 4s
@@ -263,7 +273,7 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
       await montar();
       expect(selos()).toHaveLength(2);
       for (const selo of selos()) {
-        expect(selo.textContent?.trim()).toBe("Sincronizado");
+        expect(palavra(selo)).toBe("Sincronizado");
         expect(selo.getAttribute("title")).toBe("Sincronização concluída!");
       }
 
@@ -272,7 +282,7 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
         vi.advanceTimersByTime(4100);
       });
       for (const selo of selos()) {
-        expect(selo.textContent?.trim()).toBe("Online");
+        expect(palavra(selo)).toBe("Online");
         expect(selo.getAttribute("title")).toBe("Conexão boa");
       }
     } finally {
@@ -292,7 +302,7 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
 
       expect(selos()).toHaveLength(2);
       for (const selo of selos()) {
-        expect(selo.textContent?.trim()).toBe("Lenta");
+        expect(palavra(selo)).toBe("Lenta");
         expect(selo.getAttribute("title")).toBe("Conexão lenta");
       }
     } finally {
