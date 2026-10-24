@@ -153,15 +153,21 @@ export const AddressList = memo(function AddressList({
       <div
         className={
           onAdd
-            ? "rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center"
+            ? "px-4 py-6 text-center"
             : "rounded-lg border border-dashed border-gray-200 bg-gray-50 py-8 text-center"
         }
       >
-        <MapPin className="mx-auto mb-3 size-10 text-gray-300" />
+        <MapPin
+          className={
+            onAdd
+              ? "mx-auto mb-3 size-10 text-muted-foreground"
+              : "mx-auto mb-3 size-10 text-gray-300"
+          }
+        />
         <p
           className={
             onAdd
-              ? "text-base font-bold text-zinc-900"
+              ? "text-base font-bold text-foreground"
               : "text-sm text-gray-500"
           }
         >
@@ -171,7 +177,7 @@ export const AddressList = memo(function AddressList({
           <button
             type="button"
             onClick={onAdd}
-            className="mt-4 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-zinc-900 px-5 text-sm font-semibold text-white transition-colors hover:bg-zinc-800"
+            className="mt-4 inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-foreground px-5 text-sm font-semibold text-background transition-colors hover:bg-foreground/90"
           >
             <Plus aria-hidden="true" className="size-4" />
             Adicionar endereço
@@ -186,36 +192,40 @@ export const AddressList = memo(function AddressList({
   if (compact && !selectable) {
     return (
       <>
-        <ul className="divide-y divide-zinc-100">
+        <ul className="divide-y divide-border">
           {addresses.map((address) => (
             <li key={address.id} className="flex items-center gap-3 py-3">
               <span
                 aria-hidden="true"
-                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-600"
+                className="flex size-12 shrink-0 items-center justify-center rounded-[14px] bg-foreground text-background max-[359px]:hidden"
               >
                 <MapPin className="size-5" />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2">
-                  <span className="max-w-full truncate text-base font-bold text-zinc-900">
+                  <span className="max-w-full break-words text-base font-bold text-foreground">
                     {address.name}
                   </span>
-                  {address.is_default && (
-                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                      Principal
-                    </span>
-                  )}
                 </div>
-                <p className="truncate text-sm text-zinc-600">
+                <p className="break-words text-sm text-muted-foreground">
                   {address.street}, {address.number} ·{" "}
                   {address.neighborhood || address.city}
                 </p>
+                {address.is_default && (
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                    <span
+                      aria-hidden="true"
+                      className="size-2 rounded-full bg-emerald-600"
+                    />
+                    Principal
+                  </span>
+                )}
               </div>
               {onEdit && (
                 <button
                   type="button"
                   onClick={() => onEdit(address)}
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted"
                   aria-label={`Editar endereço ${address.name}`}
                 >
                   <Edit aria-hidden="true" className="size-5" />
@@ -225,7 +235,7 @@ export const AddressList = memo(function AddressList({
                 <button
                   type="button"
                   onClick={() => setApagando(address)}
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-red-600 transition-colors hover:bg-red-50"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-red-600 transition-colors hover:bg-muted dark:text-red-400"
                   aria-label={`Excluir endereço ${address.name}`}
                 >
                   <Trash2 aria-hidden="true" className="size-5" />

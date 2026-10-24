@@ -32,11 +32,9 @@ import {
   CreditCard,
   Loader2,
   LogOut,
-  type LucideIcon,
   Package,
   Plus,
   Shield,
-  Store,
   Trash2,
   UploadCloud,
   User,
@@ -77,50 +75,39 @@ import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import { haptic } from "@/utils/haptic";
 import { formatarWhatsAppParaExibicao } from "@/utils/telefone";
 
-// Cartão branco padrão das seções do Perfil.
-const CARTAO = "rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm";
+// Rótulo mono de seção, cartão e cabeçalho de seção do Perfil (linguagem Tinta).
+const ROTULO =
+  "font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground";
+const CARTAO = "rounded-[18px] border border-border bg-background";
+const CABECALHO = "flex min-h-11 items-center justify-between gap-3";
 
-// Linha de atalho (Segurança e conta, Sobre a loja, Encerrar sessão): alvo de
-// toque de 64 px; `perigo` pinta de vermelho e some com a setinha.
+// Linha de atalho do cartão "Conta" (Segurança e conta, Sobre a loja): alvo de
+// toque de 64 px, título, descrição e seta.
 function LinhaDoMenu({
-  icone: Icone,
   titulo,
   descricao,
   onClick,
-  perigo = false,
 }: {
-  icone: LucideIcon;
   titulo: string;
   descricao: string;
   onClick: () => void;
-  perigo?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex min-h-16 w-full items-center gap-3 px-5 py-3 text-left transition-colors ${perigo ? "hover:bg-red-50" : "hover:bg-zinc-50"}`}
+      className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50"
     >
-      <span
-        aria-hidden="true"
-        className={`flex size-10 shrink-0 items-center justify-center rounded-full ${perigo ? "bg-red-50 text-red-600" : "bg-zinc-100 text-zinc-700"}`}
-      >
-        <Icone className="size-5" />
-      </span>
       <span className="min-w-0 flex-1">
-        <span
-          className={`block text-base font-bold ${perigo ? "text-red-700" : "text-zinc-900"}`}
-        >
+        <span className="block text-base font-semibold text-foreground">
           {titulo}
         </span>
-        <span className="block text-sm text-zinc-600">{descricao}</span>
+        <span className="block text-sm text-muted-foreground">{descricao}</span>
       </span>
-      {!perigo && (
-        <ChevronRight
-          aria-hidden="true"
-          className="size-5 shrink-0 text-zinc-500"
-        />
-      )}
+      <ChevronRight
+        aria-hidden="true"
+        className="size-5 shrink-0 text-muted-foreground"
+      />
     </button>
   );
 }
@@ -432,30 +419,27 @@ export function ProfileView({
   }
 
   return (
-    <div className="pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50">
-      <div className="group relative h-48 w-full overflow-hidden bg-zinc-100 shadow-inner">
+    <div className="pb-customer min-h-full bg-background text-foreground">
+      <div className="relative h-[120px] w-full overflow-hidden bg-muted">
         <img
           src={profile?.cover_url || defaultCover}
           alt="Capa de Perfil"
-          className="group-hover:scale-102 size-full object-cover transition-transform duration-700"
+          className="size-full object-cover"
         />
 
-        {/* Visual Glassmorphism overlay for gradient/depth */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/10" />
-
-        {/* Trocar capa: botão com a palavra "Capa" (antes era só um ícone) */}
+        {/* Trocar capa: chip com texto (antes era só um ícone) */}
         <button
           type="button"
           onClick={() => {
             setIsCoverModalOpen(true);
             haptic.light();
           }}
-          className="absolute right-4 top-4 z-10 flex h-11 items-center gap-2 rounded-full bg-black/60 px-4 text-sm font-semibold text-white backdrop-blur-md transition-all hover:bg-black/70 active:scale-95"
+          className="absolute right-4 top-4 z-10 flex h-11 items-center gap-2 rounded-full bg-background/90 px-4 text-sm font-semibold text-foreground backdrop-blur-md transition-colors hover:bg-background"
           title="Alterar capa de fundo"
           aria-label="Alterar capa de fundo"
         >
           <Camera aria-hidden="true" className="size-4" />
-          Capa
+          Alterar capa
         </button>
       </div>
 
@@ -463,14 +447,11 @@ export function ProfileView({
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="mx-auto max-w-md space-y-4 px-4"
+        className="mx-auto max-w-md space-y-7 px-4"
       >
         {/* Cabeçalho: avatar sobreposto à capa, nome e e-mail legíveis */}
-        <motion.div
-          variants={itemVariants}
-          className="relative z-10 -mt-14 pb-2"
-        >
-          <div className="flex items-end justify-between gap-3">
+        <motion.div variants={itemVariants} className="relative z-10 -mt-11">
+          <div className="flex items-end gap-4">
             <div
               role="button"
               tabIndex={0}
@@ -482,9 +463,9 @@ export function ProfileView({
                   openAvatarModal();
                 }
               }}
-              className="relative size-28 shrink-0 cursor-pointer rounded-[28px] focus:outline-none focus:ring-2 focus:ring-zinc-900"
+              className="relative size-[88px] shrink-0 cursor-pointer rounded-[28px] focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              <div className="flex size-full items-center justify-center overflow-hidden rounded-[28px] border-[6px] border-white bg-zinc-100 shadow-premium">
+              <div className="flex size-full items-center justify-center overflow-hidden rounded-[28px] border-4 border-solid border-background bg-muted">
                 {profile?.avatar_url ? (
                   <img
                     src={profile.avatar_url}
@@ -494,43 +475,45 @@ export function ProfileView({
                 ) : (
                   <span
                     aria-hidden="true"
-                    className="text-4xl font-bold text-zinc-600"
+                    className="text-4xl font-bold text-muted-foreground"
                   >
                     {profileName.trim().charAt(0).toUpperCase()}
                   </span>
                 )}
                 {isUpdatingAvatar && (
-                  <div className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-white/80">
-                    <Loader2 className="size-6 animate-spin text-zinc-600" />
+                  <div className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-background/80">
+                    <Loader2 className="size-6 animate-spin text-muted-foreground" />
                   </div>
                 )}
               </div>
               {/* Emblema sempre visível (no celular não existe hover) */}
               <span
                 aria-hidden="true"
-                className="absolute -bottom-1 -right-1 flex size-9 items-center justify-center rounded-full border-2 border-white bg-zinc-900 text-white"
+                className="absolute -bottom-1 -right-1 flex size-8 items-center justify-center rounded-full border-2 border-solid border-background bg-foreground text-background"
               >
                 <Camera className="size-4" />
               </span>
             </div>
             {clienteDesde && (
-              <span className="mb-2 rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700">
+              <span className={`${ROTULO} mb-2 min-w-0 break-words`}>
                 Cliente desde {clienteDesde}
               </span>
             )}
           </div>
 
-          <h1 className="mt-3 break-words text-2xl font-bold leading-tight text-zinc-900">
+          <h1 className="mt-4 break-words text-[26px] font-bold leading-8 tracking-tight text-foreground">
             {profileName}
           </h1>
-          <p className="mt-1 break-all text-base text-zinc-600">{user.email}</p>
+          <p className="mt-1 break-all text-sm text-muted-foreground">
+            {user.email}
+          </p>
 
           {isAdmin && (
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-zinc-900 p-3 text-white">
+            <div className="mt-5 flex items-center justify-between gap-3 rounded-[20px] bg-foreground p-3 text-background">
               <div className="flex min-w-0 items-center gap-3">
                 <span
                   aria-hidden="true"
-                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white/10"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-background/10"
                 >
                   <Shield className="size-5" />
                 </span>
@@ -538,14 +521,14 @@ export function ProfileView({
                   <p className="text-base font-bold leading-tight">
                     Modo admin
                   </p>
-                  <p className="text-sm text-zinc-300">
+                  <p className="text-sm text-background/70">
                     Painel de controle ativo
                   </p>
                 </div>
               </div>
               <Button
                 onClick={() => onNavigate("admin-dashboard")}
-                className="h-11 shrink-0 rounded-full bg-white px-4 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                className="h-11 shrink-0 rounded-xl bg-background px-4 text-sm font-semibold text-foreground hover:bg-background/90"
               >
                 Acessar painel
               </Button>
@@ -553,82 +536,21 @@ export function ProfileView({
           )}
         </motion.div>
 
-        {/* Meus dados: o que a conta já tem; Editar abre Segurança e conta */}
-        <motion.section variants={itemVariants} className={CARTAO}>
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-bold text-zinc-900">Meus dados</h2>
-            <button
-              type="button"
-              onClick={() => onNavigate("account-settings")}
-              className="flex h-11 items-center gap-0.5 text-base font-semibold text-zinc-900"
-            >
-              Editar
-              <ChevronRight aria-hidden="true" className="size-4" />
-            </button>
-          </div>
-          <div className="divide-y divide-zinc-100 border-t border-zinc-100">
-            <div className="py-3">
-              <p className="text-sm text-zinc-600">Nome completo</p>
-              <p className="break-words text-base font-medium text-zinc-900">
-                {profileName}
-              </p>
-            </div>
-            {profile &&
-              (whatsapp ? (
-                <div className="py-3">
-                  <p className="text-sm text-zinc-600">WhatsApp</p>
-                  <p className="text-base font-medium text-zinc-900">
-                    {formatarWhatsAppParaExibicao(whatsapp)}
-                  </p>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onNavigate("account-settings")}
-                  className="flex min-h-11 w-full items-center justify-between gap-3 py-3 text-left"
-                >
-                  <span>
-                    <span className="block text-sm text-zinc-600">
-                      WhatsApp
-                    </span>
-                    <span className="block text-base text-zinc-600">
-                      Adicionar WhatsApp
-                    </span>
-                  </span>
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="size-5 shrink-0 text-zinc-500"
-                  />
-                </button>
-              ))}
-            <div className="pt-3">
-              <p className="text-sm text-zinc-600">E-mail</p>
-              <p className="break-all text-base font-medium text-zinc-900">
-                {user.email}
-              </p>
-            </div>
-          </div>
-        </motion.section>
-
-        {/* Pedidos em andamento (mesmo dado de antes, em cartão) */}
+        {/* Pedidos em andamento: o que o cliente mais quer ver vem primeiro */}
         {activeOrders.length > 0 && (
-          <motion.section variants={itemVariants} className={CARTAO}>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="flex items-center gap-2 text-lg font-bold text-zinc-900">
-                <span
-                  aria-hidden="true"
-                  className="size-2.5 rounded-full bg-emerald-500"
-                />
+          <motion.section variants={itemVariants}>
+            <div className={CABECALHO}>
+              <h2 className={`${ROTULO} flex items-center gap-2`}>
                 Pedidos em andamento
               </h2>
               <span
                 data-testid="contagem-em-andamento"
-                className="flex size-8 items-center justify-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-900"
+                className="flex size-7 items-center justify-center rounded-full bg-muted text-sm font-bold text-foreground"
               >
                 {activeOrders.length}
               </span>
             </div>
-            <div className="mt-4 space-y-4">
+            <div className="mt-1 space-y-3">
               {(isOrdersExpanded ? activeOrders : activeOrders.slice(0, 1)).map(
                 (order) => {
                   const firstItem = order.items?.[0];
@@ -638,10 +560,10 @@ export function ProfileView({
                   return (
                     <div
                       key={order.id}
-                      className="space-y-4 rounded-2xl border border-zinc-100 bg-zinc-50 p-4"
+                      className="space-y-4 rounded-[18px] border border-border bg-muted/30 p-4"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-zinc-200">
+                        <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-muted">
                           {firstItemImage ? (
                             <img
                               src={firstItemImage}
@@ -651,40 +573,41 @@ export function ProfileView({
                           ) : (
                             <Package
                               aria-hidden="true"
-                              className="size-6 text-zinc-500"
+                              className="size-6 text-muted-foreground"
                             />
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h3 className="truncate text-base font-bold text-zinc-900">
+                          <h3 className="truncate text-base font-bold text-foreground">
                             {firstItemName}
                           </h3>
-                          {order.items.length > 1 && (
-                            <p className="text-sm text-zinc-600">
-                              +{order.items.length - 1}{" "}
-                              {order.items.length - 1 === 1
-                                ? "outro item"
-                                : "outros itens"}
-                            </p>
-                          )}
+                          <p className="text-sm text-muted-foreground">
+                            #{numeroDoPedido(order.id)} ·{" "}
+                            {new Date(order.createdAt).toLocaleDateString(
+                              "pt-BR",
+                            )}
+                            {order.items.length > 1 && (
+                              <>
+                                {" "}
+                                · +{order.items.length - 1}{" "}
+                                {order.items.length - 1 === 1
+                                  ? "outro item"
+                                  : "outros itens"}
+                              </>
+                            )}
+                          </p>
+                          {/* Pedido pago pelo app e ainda não pago: o cartão não
+                              pode parecer um pedido "Recebido" qualquer (em 30
+                              min ele é cancelado). Mesmo selo da lista de
+                              pedidos e mesma regra de "Retomar pagamento" do
+                              detalhe. Sem moldura: ponto/ícone e texto na cor. */}
+                          <CustomerPaymentBadge
+                            paymentStatus={order.paymentStatus}
+                            orderStatus={order.status}
+                            variant="perfil"
+                            className="mt-1 border-transparent bg-transparent px-0"
+                          />
                         </div>
-                      </div>
-
-                      <p className="w-fit rounded-lg bg-zinc-100 px-2.5 py-1 text-sm font-medium text-zinc-700">
-                        #{numeroDoPedido(order.id)} ·{" "}
-                        {new Date(order.createdAt).toLocaleDateString("pt-BR")}
-                      </p>
-
-                      {/* Pedido pago pelo app e ainda não pago: o cartão não
-                          pode parecer um pedido "Recebido" qualquer (em 30
-                          min ele é cancelado). Mesmo selo da lista de pedidos
-                          e mesma regra de "Retomar pagamento" do detalhe. */}
-                      <div>
-                        <CustomerPaymentBadge
-                          paymentStatus={order.paymentStatus}
-                          orderStatus={order.status}
-                          variant="perfil"
-                        />
                       </div>
 
                       <OrderTimeline
@@ -701,7 +624,7 @@ export function ProfileView({
                         }) && (
                           <Button
                             onClick={() => onRetomarPagamento(order.id)}
-                            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-base font-semibold text-white"
+                            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-base font-semibold text-background hover:bg-foreground/90"
                           >
                             <CreditCard className="size-4" aria-hidden="true" />
                             Retomar pagamento
@@ -711,7 +634,7 @@ export function ProfileView({
                       <div className="flex flex-wrap gap-2">
                         <Button
                           onClick={() => onNavigate("order-details", order.id)}
-                          className="h-12 flex-1 rounded-2xl bg-zinc-900 text-base font-semibold text-white hover:bg-zinc-800"
+                          className="h-12 flex-1 rounded-2xl bg-foreground text-base font-semibold text-background hover:bg-foreground/90"
                         >
                           Ver detalhes
                         </Button>
@@ -719,7 +642,7 @@ export function ProfileView({
                           <Button
                             variant="outline"
                             onClick={() => handleWhatsAppSupport(order.id)}
-                            className="h-12 flex-1 rounded-2xl border-2 border-solid border-zinc-200 bg-white text-base font-semibold text-zinc-900 hover:bg-zinc-50"
+                            className="h-12 flex-1 rounded-2xl border border-solid border-border bg-background text-base font-semibold text-foreground hover:bg-muted"
                           >
                             WhatsApp
                           </Button>
@@ -737,7 +660,7 @@ export function ProfileView({
                   setIsOrdersExpanded(!isOrdersExpanded);
                   haptic.light();
                 }}
-                className="mt-2 flex h-11 w-full items-center justify-center gap-1 text-base font-semibold text-zinc-600 hover:text-zinc-900"
+                className="mt-2 flex h-11 w-full items-center justify-center gap-1 text-base font-semibold text-muted-foreground hover:text-foreground"
               >
                 {isOrdersExpanded
                   ? "Ver menos"
@@ -753,34 +676,86 @@ export function ProfileView({
           </motion.section>
         )}
 
+        {/* Meus dados: o que a conta já tem; Editar abre Segurança e conta */}
+        <motion.section variants={itemVariants}>
+          <div className={CABECALHO}>
+            <h2 className={ROTULO}>Meus dados</h2>
+            <button
+              type="button"
+              onClick={() => onNavigate("account-settings")}
+              className="flex h-11 items-center px-1 text-[15px] font-semibold text-foreground"
+            >
+              Editar
+            </button>
+          </div>
+          <div className={`${CARTAO} mt-1 divide-y divide-border px-4`}>
+            <div className="py-3.5">
+              <p className={ROTULO}>Nome completo</p>
+              <p className="mt-1 break-words text-[15px] text-foreground">
+                {profileName}
+              </p>
+            </div>
+            {profile &&
+              (whatsapp ? (
+                <div className="py-3.5">
+                  <p className={ROTULO}>WhatsApp</p>
+                  <p className="mt-1 text-[15px] text-foreground">
+                    {formatarWhatsAppParaExibicao(whatsapp)}
+                  </p>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("account-settings")}
+                  className="flex min-h-11 w-full items-center justify-between gap-3 py-3.5 text-left"
+                >
+                  <span>
+                    <span className={`${ROTULO} block`}>WhatsApp</span>
+                    <span className="mt-1 block text-[15px] text-muted-foreground">
+                      Adicionar WhatsApp
+                    </span>
+                  </span>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-5 shrink-0 text-muted-foreground"
+                  />
+                </button>
+              ))}
+            <div className="py-3.5">
+              <p className={ROTULO}>E-mail</p>
+              <p className="mt-1 break-all text-[15px] text-foreground">
+                {user.email}
+              </p>
+            </div>
+          </div>
+        </motion.section>
+
         {/* Endereços de entrega: carregando, erro, vazio ou lista */}
-        <motion.section variants={itemVariants} className={CARTAO}>
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-bold text-zinc-900">
-              Endereços de entrega
-            </h2>
+        <motion.section variants={itemVariants}>
+          <div className={CABECALHO}>
+            <h2 className={ROTULO}>Endereços de entrega</h2>
             <Button
               onClick={() => onNavigate("address-form")}
-              className="h-11 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-900 hover:bg-zinc-200"
+              className="h-11 gap-1 rounded-xl bg-transparent px-2 text-[15px] font-semibold text-foreground hover:bg-muted"
             >
               <Plus aria-hidden="true" className="size-4" />
               Novo
             </Button>
           </div>
-          <div className="mt-3">
+          <div className={`${CARTAO} mt-1 px-4 py-1`}>
             {addressesLoading && addresses.length === 0 ? (
               <div
                 role="status"
                 aria-busy="true"
-                className="animate-pulse space-y-4 py-2"
+                className="animate-pulse space-y-4 py-3"
               >
                 <span className="sr-only">Carregando endereços</span>
                 {[0, 1].map((i) => (
                   <div key={i} className="flex items-center gap-3">
-                    <div className="size-10 shrink-0 rounded-full bg-zinc-100" />
+                    <div className="size-12 shrink-0 rounded-[14px] bg-muted" />
                     <div className="flex-1 space-y-2">
-                      <div className="h-3.5 w-full rounded bg-zinc-100" />
-                      <div className="h-3 w-2/5 rounded bg-zinc-100" />
+                      <div className="h-3.5 w-full rounded bg-muted" />
+                      <div className="h-3 w-2/5 rounded bg-muted" />
                     </div>
                   </div>
                 ))}
@@ -790,7 +765,7 @@ export function ProfileView({
                 {erroAoCarregar && (
                   <div
                     role="alert"
-                    className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800"
+                    className="my-3 rounded-2xl border border-red-300 p-4 text-red-600 dark:text-red-400"
                   >
                     <p className="text-base">
                       Não conseguimos carregar seus endereços agora.
@@ -799,7 +774,7 @@ export function ProfileView({
                       type="button"
                       onClick={() => void fetchAddresses()}
                       disabled={addressesLoading}
-                      className="mt-3 min-h-11 rounded-xl border border-solid border-red-200 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      className="mt-3 min-h-11 rounded-xl border border-solid border-red-300 bg-background px-4 text-sm font-semibold text-red-600 hover:bg-muted disabled:opacity-50 dark:text-red-400"
                     >
                       Tentar de novo
                     </button>
@@ -818,71 +793,74 @@ export function ProfileView({
                   />
                 )}
                 {addresses.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddressesExpanded(!isAddressesExpanded);
-                      haptic.light();
-                    }}
-                    className="mt-1 flex h-11 w-full items-center justify-center gap-1 text-base font-semibold text-zinc-600 hover:text-zinc-900"
-                  >
-                    {isAddressesExpanded
-                      ? "Ver menos detalhes"
-                      : "Ver detalhes dos endereços"}
-                    <ChevronRight
-                      aria-hidden="true"
-                      className={`size-4 ${isAddressesExpanded ? "-rotate-90" : ""}`}
-                    />
-                  </button>
+                  <div className="border-t border-border">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddressesExpanded(!isAddressesExpanded);
+                        haptic.light();
+                      }}
+                      className="flex h-11 w-full items-center justify-center gap-1 text-base font-semibold text-muted-foreground hover:text-foreground"
+                    >
+                      {isAddressesExpanded
+                        ? "Ver menos detalhes"
+                        : "Ver detalhes dos endereços"}
+                      <ChevronRight
+                        aria-hidden="true"
+                        className={`size-4 ${isAddressesExpanded ? "-rotate-90" : ""}`}
+                      />
+                    </button>
+                  </div>
                 )}
               </>
             )}
           </div>
         </motion.section>
 
-        {/* Atalhos. "Sobre a loja" — a marca do lojista assinante (peça 24;
+        {/* Conta. "Sobre a loja" — a marca do lojista assinante (peça 24;
             ordem do dono, 14/09): logo ABAIXO de Segurança e conta, no mesmo
             cartão, visível a TODOS os usuários (não mora em isAdmin nem em
             outro ramo condicional). */}
-        <motion.div
-          variants={itemVariants}
-          className="divide-y divide-zinc-100 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm"
-        >
-          <LinhaDoMenu
-            icone={Shield}
-            titulo="Segurança e conta"
-            descricao="Alterar senha e dados pessoais"
-            onClick={() => onNavigate("account-settings")}
-          />
-          <LinhaDoMenu
-            icone={Store}
-            titulo="Sobre a loja"
-            descricao="A loja por trás deste app"
-            onClick={() => onNavigate("about-store")}
-          />
-        </motion.div>
+        <motion.section variants={itemVariants}>
+          <div className={CABECALHO}>
+            <h2 className={ROTULO}>Conta</h2>
+          </div>
+          <div
+            className={`${CARTAO} mt-1 divide-y divide-border overflow-hidden`}
+          >
+            <LinhaDoMenu
+              titulo="Segurança e conta"
+              descricao="Alterar senha e dados pessoais"
+              onClick={() => onNavigate("account-settings")}
+            />
+            <LinhaDoMenu
+              titulo="Sobre a loja"
+              descricao="A loja por trás deste app"
+              onClick={() => onNavigate("about-store")}
+            />
+          </div>
+        </motion.section>
 
-        {/* Encerrar sessão — cartão PRÓPRIO no fim do perfil (ordem do dono,
+        {/* Encerrar sessão — botão PRÓPRIO no fim do perfil (ordem do dono,
             14/09): a ação destrutiva fica separada das navegações. */}
-        <motion.div
-          variants={itemVariants}
-          className="overflow-hidden rounded-3xl border border-red-100 bg-white shadow-sm"
-        >
-          <LinhaDoMenu
-            perigo
-            icone={LogOut}
-            titulo="Encerrar sessão"
-            descricao="Sair da sua conta"
+        <motion.div variants={itemVariants} className="overflow-hidden">
+          <button
+            type="button"
             onClick={logout}
-          />
+            className="flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-solid border-red-300 bg-background text-base font-semibold text-red-600 transition-colors hover:bg-muted dark:text-red-400"
+          >
+            <LogOut aria-hidden="true" className="size-4" />
+            Encerrar sessão
+            <span className="sr-only">. Sair da sua conta</span>
+          </button>
         </motion.div>
       </motion.div>
 
       {/* Custom Avatar Sheet/Dialog Modal */}
       <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
-        <DialogContent className="max-w-xs overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-premium sm:max-w-md">
+        <DialogContent className="max-w-xs overflow-hidden rounded-[18px] border border-border bg-background p-5 text-foreground sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-center text-[11px] font-black uppercase tracking-wider text-zinc-900">
+            <DialogTitle className="text-center text-base font-bold tracking-tight text-foreground">
               Escolher Avatar ou Foto
             </DialogTitle>
             <DialogDescription className="sr-only">
@@ -892,28 +870,28 @@ export function ProfileView({
           </DialogHeader>
 
           {/* Modal Tab Selector */}
-          <div className="relative z-10 my-2 flex w-full rounded-xl bg-zinc-100/80 p-1 shadow-inner">
+          <div className="relative z-10 my-2 flex w-full rounded-xl bg-muted p-1">
             <button
               type="button"
               onClick={() => {
                 setModalTab("avatars");
                 haptic.light();
               }}
-              className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
                 modalTab === "avatars"
-                  ? "text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900"
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {modalTab === "avatars" && (
                 <motion.div
                   layoutId="modalTabBackground"
-                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm"
+                  className="absolute inset-0 rounded-lg border border-solid border-border bg-background"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
               <span className="relative z-10 flex items-center justify-center gap-1.5">
-                <User className="size-3.5" />
+                <User className="size-4" />
                 Avatares
               </span>
             </button>
@@ -923,21 +901,21 @@ export function ProfileView({
                 setModalTab("upload");
                 haptic.light();
               }}
-              className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
                 modalTab === "upload"
-                  ? "text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900"
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {modalTab === "upload" && (
                 <motion.div
                   layoutId="modalTabBackground"
-                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm"
+                  className="absolute inset-0 rounded-lg border border-solid border-border bg-background"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
               <span className="relative z-10 flex items-center justify-center gap-1.5">
-                <Camera className="size-3.5" />
+                <Camera className="size-4" />
                 Foto Própria
               </span>
             </button>
@@ -945,9 +923,9 @@ export function ProfileView({
 
           <div className="relative space-y-4 py-2">
             {isUpdatingAvatar && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center space-y-2 rounded-[2rem] bg-white/85">
-                <Loader2 className="size-6 animate-spin text-zinc-900" />
-                <span className="animate-pulse text-[10px] font-black uppercase tracking-wider text-zinc-500">
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center space-y-2 rounded-2xl bg-background/85">
+                <Loader2 className="size-6 animate-spin text-foreground" />
+                <span className="animate-pulse text-sm font-semibold text-muted-foreground">
                   Atualizando...
                 </span>
               </div>
@@ -964,10 +942,10 @@ export function ProfileView({
                   className="space-y-4"
                 >
                   <div>
-                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    <p className={`${ROTULO} mb-3 text-center`}>
                       Avatares Prontos
                     </p>
-                    <div className="scrollbar-thin grid max-h-[250px] select-none grid-cols-4 gap-3 overflow-y-auto pr-1">
+                    <div className="grid max-h-[250px] select-none grid-cols-4 gap-3 overflow-y-auto p-1">
                       {PREDEFINED_AVATARS.map((avatar) => {
                         const svgUrl = getPredefinedAvatarSvg(
                           avatar.emoji,
@@ -978,41 +956,28 @@ export function ProfileView({
                         return (
                           <motion.button
                             key={avatar.id}
-                            whileHover={{ scale: 1.08 }}
+                            type="button"
                             whileTap={{ scale: 0.95 }}
                             onClick={() => handleSelectPredefinedAvatar(avatar)}
-                            className={`group relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 transition-all duration-300 ${
+                            className={`relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-solid transition-colors ${
                               isSelected
-                                ? "scale-105 border-zinc-950 shadow-lg"
-                                : "border-transparent shadow-sm hover:border-zinc-200/50"
+                                ? "border-foreground"
+                                : "border-transparent hover:border-border"
                             }`}
                             style={{
                               background: `linear-gradient(135deg, ${avatar.start}, ${avatar.end})`,
-                              boxShadow: isSelected
-                                ? `0 0 14px ${avatar.start}66, 0 4px 12px rgba(0,0,0,0.12)`
-                                : undefined,
                             }}
                             title={avatar.label}
                           >
-                            {/* Animated Emoji on Hover */}
-                            <motion.span
-                              className="select-none text-4xl drop-shadow-sm filter"
-                              initial={{ y: 0 }}
-                              whileHover={{ y: [0, -6, 0] }}
-                              transition={{ duration: 0.4, ease: "easeOut" }}
-                            >
+                            <span className="select-none text-4xl">
                               {avatar.emoji}
-                            </motion.span>
+                            </span>
 
                             {/* Selected Checkmark Badge */}
                             {isSelected && (
-                              <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full border border-white bg-emerald-500 shadow-sm"
-                              >
-                                <Check className="size-2.5 stroke-[3.5] text-white" />
-                              </motion.div>
+                              <div className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-foreground text-background">
+                                <Check className="size-3 stroke-[3.5]" />
+                              </div>
                             )}
                           </motion.button>
                         );
@@ -1030,7 +995,7 @@ export function ProfileView({
                   className="space-y-4"
                 >
                   <div>
-                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    <p className={`${ROTULO} mb-3 text-center`}>
                       Sua Foto de Perfil
                     </p>
 
@@ -1038,15 +1003,15 @@ export function ProfileView({
                     !profile.avatar_url.includes("data:image/svg+xml") ? (
                       /* High fidelity preview of custom photo */
                       <div className="flex flex-col items-center justify-center space-y-4 py-2">
-                        <div className="group relative">
-                          <div className="flex size-28 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-zinc-100 shadow-xl">
+                        <div className="relative">
+                          <div className="flex size-28 items-center justify-center overflow-hidden rounded-full border-4 border-solid border-background bg-muted">
                             <img
                               src={profile.avatar_url}
                               alt="Foto customizada"
                               className="size-full object-cover duration-300 animate-in fade-in"
                             />
                           </div>
-                          <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-colors hover:bg-primary/90">
+                          <div className="absolute -bottom-2 -right-2 flex size-11 cursor-pointer items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/90">
                             <label
                               htmlFor="profile-avatar-upload-icon"
                               className="flex size-full cursor-pointer items-center justify-center"
@@ -1068,7 +1033,7 @@ export function ProfileView({
                           </div>
                         </div>
 
-                        <p className="text-center text-[10px] font-semibold leading-relaxed text-zinc-400">
+                        <p className="text-center text-xs font-medium leading-relaxed text-muted-foreground">
                           Esta foto é exibida publicamente no marketplace.
                           <br />
                           Você pode trocá-la ou removê-la a qualquer momento.
@@ -1088,8 +1053,8 @@ export function ProfileView({
                               onChange={handlePhotoUpload}
                               disabled={isUpdatingAvatar}
                             />
-                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95">
-                              <Camera className="size-3.5" />
+                            <span className="flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-foreground text-sm font-semibold text-background transition-colors hover:bg-foreground/90">
+                              <Camera className="size-4" />
                               Escolher Outra Foto
                             </span>
                           </label>
@@ -1097,9 +1062,9 @@ export function ProfileView({
                             variant="outline"
                             onClick={handleRemoveAvatar}
                             disabled={isUpdatingAvatar}
-                            className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-red-100 text-[10px] font-bold uppercase tracking-wider text-red-600 transition-colors hover:border-red-200 hover:bg-red-50/50"
+                            className="flex h-12 w-full items-center justify-center gap-1.5 rounded-2xl border border-solid border-red-300 bg-background text-sm font-semibold text-red-600 transition-colors hover:bg-muted dark:text-red-400"
                           >
-                            <Trash2 className="size-3.5" />
+                            <Trash2 className="size-4" />
                             Remover Foto
                           </Button>
                         </div>
@@ -1121,18 +1086,17 @@ export function ProfileView({
                             disabled={isUpdatingAvatar}
                           />
                           <motion.div
-                            whileHover={{ scale: 1.01, borderColor: "#71717a" }}
                             whileTap={{ scale: 0.99 }}
-                            className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-[2rem] border-2 border-dashed border-zinc-200 bg-zinc-50/50 p-8 text-center transition-colors hover:border-zinc-300"
+                            className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-[18px] border-2 border-dashed border-border bg-muted/30 p-8 text-center transition-colors hover:border-foreground/40"
                           >
-                            <div className="flex size-12 items-center justify-center rounded-2xl border border-zinc-100 bg-white text-zinc-400 shadow-sm">
-                              <UploadCloud className="size-6 text-zinc-500" />
+                            <div className="flex size-12 items-center justify-center rounded-[14px] border border-solid border-border bg-background text-foreground">
+                              <UploadCloud className="size-6" />
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs font-bold text-zinc-700">
+                              <p className="text-sm font-semibold text-foreground">
                                 Enviar foto do dispositivo
                               </p>
-                              <p className="px-4 text-[10px] font-semibold leading-normal text-zinc-400">
+                              <p className="px-4 text-xs leading-normal text-muted-foreground">
                                 Selecione uma imagem para fazer upload. Ela será
                                 redimensionada automaticamente.
                               </p>
@@ -1145,9 +1109,9 @@ export function ProfileView({
                             variant="outline"
                             onClick={handleRemoveAvatar}
                             disabled={isUpdatingAvatar}
-                            className="text-red-650 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-red-100 text-[10px] font-bold uppercase tracking-wider transition-colors hover:border-red-200 hover:bg-red-50/50"
+                            className="flex h-12 w-full items-center justify-center gap-1.5 rounded-2xl border border-solid border-red-300 bg-background text-sm font-semibold text-red-600 transition-colors hover:bg-muted dark:text-red-400"
                           >
-                            <Trash2 className="size-3.5" />
+                            <Trash2 className="size-4" />
                             Remover Avatar Atual
                           </Button>
                         )}
@@ -1163,32 +1127,31 @@ export function ProfileView({
 
       {/* Custom Cover Sheet/Dialog Modal */}
       <Dialog open={isCoverModalOpen} onOpenChange={setIsCoverModalOpen}>
-        <DialogContent className="mx-auto w-[90%] max-w-sm overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 text-slate-800 shadow-2xl">
+        <DialogContent className="mx-auto w-[90%] max-w-sm overflow-hidden rounded-[18px] border border-border bg-background p-5 text-foreground">
           <DialogHeader className="space-y-1.5">
-            <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-slate-800">
-              <span className="size-1.5 animate-pulse rounded-full bg-secondary" />
+            <DialogTitle className="text-base font-bold tracking-tight text-foreground">
               Capa de Fundo
             </DialogTitle>
-            <DialogDescription className="text-[10px] leading-relaxed text-slate-500">
+            <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
               Personalize a capa do seu perfil com gradientes premium ou uma
               imagem de sua preferência.
             </DialogDescription>
           </DialogHeader>
 
           {/* Live Preview Banner */}
-          <div className="group relative mb-2 mt-3 h-20 w-full overflow-hidden rounded-2xl border border-zinc-100 shadow-inner">
+          <div className="relative mb-2 mt-3 h-20 w-full overflow-hidden rounded-2xl border border-border">
             <img
               src={profile?.cover_url || defaultCover}
               alt="Capa de Perfil"
-              className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="size-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-black/30" />
             <div className="absolute inset-0 flex flex-col justify-between p-2.5">
-              <span className="self-start rounded-md border border-white/5 bg-white/5 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-white/70 backdrop-blur-md">
+              <span className="self-start rounded-md bg-black/40 px-2 py-0.5 text-xs font-medium text-white backdrop-blur-md">
                 Pré-visualização Real
               </span>
               <div className="mt-auto flex items-center gap-2 self-start">
-                <div className="flex size-6 items-center justify-center overflow-hidden rounded-lg border border-white/20 bg-white/10 text-[10px] backdrop-blur-sm">
+                <div className="flex size-6 items-center justify-center overflow-hidden rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm">
                   {profile?.avatar_url ? (
                     <img
                       src={profile.avatar_url}
@@ -1199,27 +1162,25 @@ export function ProfileView({
                     <User className="size-3 text-white/85" />
                   )}
                 </div>
-                <div className="leading-none">
-                  <p className="max-w-[120px] truncate text-[9px] font-black text-white">
-                    {profileName}
-                  </p>
-                </div>
+                <p className="max-w-[160px] truncate text-xs font-semibold leading-none text-white">
+                  {profileName}
+                </p>
               </div>
             </div>
           </div>
 
           {/* Tabs navigation */}
-          <div className="my-3.5 flex rounded-2xl border border-zinc-100 bg-zinc-50/50 p-1">
+          <div className="my-3.5 flex rounded-xl bg-muted p-1">
             <button
               type="button"
               onClick={() => {
                 setCoverModalTab("presets");
                 haptic.light();
               }}
-              className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
+              className={`min-h-11 flex-1 rounded-lg text-sm font-semibold transition-colors ${
                 coverModalTab === "presets"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "text-slate-500 hover:text-slate-800"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               Gradientes
@@ -1230,10 +1191,10 @@ export function ProfileView({
                 setCoverModalTab("upload");
                 haptic.light();
               }}
-              className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
+              className={`min-h-11 flex-1 rounded-lg text-sm font-semibold transition-colors ${
                 coverModalTab === "upload"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "text-slate-500 hover:text-slate-800"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               Enviar Foto
@@ -1242,8 +1203,8 @@ export function ProfileView({
 
           <div className="flex min-h-[160px] flex-col justify-between">
             {coverModalTab === "presets" ? (
-              <div className="scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent -mr-1.5 max-h-[220px] overflow-y-auto pr-1.5">
-                <div className="grid grid-cols-3 gap-2 pb-1">
+              <div className="max-h-[220px] overflow-y-auto">
+                <div className="grid grid-cols-3 gap-2 p-1">
                   {PREDEFINED_COVERS.map((cover) => {
                     const svgPreview = getPredefinedCoverSvg(
                       cover.start,
@@ -1256,34 +1217,33 @@ export function ProfileView({
 
                     return (
                       <motion.button
-                        whileHover={{ scale: 1.04 }}
                         whileTap={{ scale: 0.96 }}
                         type="button"
                         key={cover.id}
                         onClick={() => handleSelectPredefinedCover(cover)}
                         disabled={isUpdatingCover}
-                        className={`group relative flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-xl border-2 p-1.5 transition-all active:scale-95 ${
+                        className={`relative flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-xl border-2 border-solid p-1.5 transition-colors ${
                           isSelected || isDefault
-                            ? "scale-98 border-primary bg-zinc-50/30 shadow-[0_0_12px_rgba(24,24,27,0.3)]"
-                            : "border-zinc-100 bg-zinc-50/30 hover:border-zinc-300"
+                            ? "border-foreground"
+                            : "border-border hover:border-foreground/40"
                         }`}
                         title={cover.label}
                       >
                         <img
                           src={svgPreview}
                           alt={cover.label}
-                          className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          className="absolute inset-0 size-full object-cover"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent transition-opacity group-hover:opacity-75" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
 
-                        <span className="relative z-10 w-full truncate text-[7px] font-black uppercase tracking-wider text-white/95">
+                        <span className="relative z-10 w-full truncate text-xs font-semibold text-white">
                           {cover.label}
                         </span>
 
                         {(isSelected || isDefault) && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-secondary/10 backdrop-blur-[0.5px]">
-                            <div className="flex size-5 items-center justify-center rounded-full border border-white/25 bg-secondary shadow-lg">
-                              <Check className="size-3 text-white" />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+                            <div className="flex size-6 items-center justify-center rounded-full bg-foreground text-background">
+                              <Check className="size-3.5" />
                             </div>
                           </div>
                         )}
@@ -1305,20 +1265,17 @@ export function ProfileView({
                     className="hidden"
                   />
                   <motion.div
-                    whileHover={{
-                      scale: 1.01,
-                    }}
                     whileTap={{ scale: 0.99 }}
-                    className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-2xl border-2 border-dashed border-zinc-100 bg-zinc-50/10 p-6 text-center transition-colors hover:border-primary/25 hover:bg-primary/[0.04]"
+                    className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-[18px] border-2 border-dashed border-border bg-muted/30 p-6 text-center transition-colors hover:border-foreground/40"
                   >
-                    <div className="flex size-10 items-center justify-center rounded-xl border border-zinc-100 bg-zinc-50 text-primary">
-                      <UploadCloud className="size-5 text-primary" />
+                    <div className="flex size-10 items-center justify-center rounded-[14px] border border-solid border-border bg-background text-foreground">
+                      <UploadCloud className="size-5" />
                     </div>
                     <div className="space-y-1">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-700">
+                      <p className="text-sm font-semibold text-foreground">
                         Escolher Imagem do Dispositivo
                       </p>
-                      <p className="px-4 text-[8px] font-bold uppercase leading-normal tracking-tight text-slate-400">
+                      <p className="px-4 text-xs leading-normal text-muted-foreground">
                         Selecione JPEG, PNG até 5MB. A imagem será ajustada para
                         a proporção ideal.
                       </p>
@@ -1328,7 +1285,7 @@ export function ProfileView({
               </div>
             )}
 
-            <div className="mt-4 flex gap-2 border-t border-zinc-100 pt-3.5">
+            <div className="mt-4 flex gap-2 border-t border-border pt-4">
               {profile?.cover_url && (
                 <motion.div whileTap={{ scale: 0.97 }} className="flex-1">
                   <Button
@@ -1336,9 +1293,9 @@ export function ProfileView({
                     variant="outline"
                     onClick={handleRemoveCover}
                     disabled={isUpdatingCover}
-                    className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border-zinc-100 bg-transparent text-[9px] font-black uppercase tracking-wider text-red-500 shadow-none transition-all hover:border-red-500/30 hover:bg-red-500/5"
+                    className="flex h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-solid border-red-300 bg-background text-sm font-semibold text-red-600 shadow-none transition-colors hover:bg-muted dark:text-red-400"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-4" />
                     Remover
                   </Button>
                 </motion.div>
@@ -1351,11 +1308,11 @@ export function ProfileView({
                     haptic.light();
                   }}
                   disabled={isUpdatingCover}
-                  className="flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[9px] font-black font-bold uppercase tracking-wider text-primary-foreground shadow-md transition-all hover:bg-primary/90"
+                  className="flex h-11 w-full items-center justify-center rounded-2xl bg-foreground text-sm font-semibold text-background transition-colors hover:bg-foreground/90"
                 >
                   {isUpdatingCover ? (
                     <>
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      <Loader2 className="mr-1.5 size-4 animate-spin" />
                       Salvando...
                     </>
                   ) : (
