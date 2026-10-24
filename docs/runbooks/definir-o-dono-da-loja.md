@@ -34,8 +34,9 @@ mesma pessoa pode ser dona de mais de uma, ou não).
 
 **Como você sabe que ficou pronto.** O programador roda uma conferência (a consulta 89,
 abaixo) e mostra que **todas** as linhas dela dizem "sim" para aquela loja. Depois, quem
-estava com o painel aberto precisa fechar e abrir de novo (ou recarregar a página), senão a
-opção **Tornar administrador** só aparece na abertura seguinte.
+estava com o painel aberto precisa **recarregar a página (F5)** ou fechar a aba (ou o aplicativo)
+e abrir de novo; sair da tela do painel e voltar dentro do aplicativo não basta. Senão a opção
+**Tornar administrador** só aparece na abertura seguinte.
 
 ## 2. Ordem das migrations (confirmada nos arquivos)
 
@@ -99,27 +100,43 @@ Repita este bloco **inteiro** para cada loja (ver seção 5). Uma loja de cada v
 **Quem faz: você, o dono do produto, na sua conta do Supabase.** O e-mail da pessoa escolhida
 é dado pessoal (na Savy, de cliente) e **o programador (o agente) nunca o digita, nunca o
 lê e não o recebe**. Por isso o cadastro é feito por você, em cinco telas, uma de cada vez.
-Se alguma tela aparecer diferente do que está descrito, **pare nela** e avise o programador
-dizendo só o número da tela e o que apareceu (sem e-mail no texto; se mandar print, apague
-o e-mail do texto da consulta antes).
+
+**Regra geral para qualquer dúvida ou erro (vale em todas as telas e na seção 4):**
+
+- Se uma tela aparecer diferente do que está descrito, **pare nela** e avise o programador
+  dizendo **só o número da tela** ("a Tela 2 está diferente") e, em palavras suas, o que
+  aparece, **sem citar e-mail**.
+- Se aparecer um **erro em vermelho**, o motivo mais comum é uma aspa apagada ou o marcador
+  `<e-mail-do-dono>` que ficou sem trocar. Apague tudo, **cole o texto de novo do jeito que está
+  neste roteiro** e tente outra vez.
+- Se o erro continuar, avise **só** "deu erro na Tela N". **Nunca copie nem fotografe a
+  mensagem de erro**: ela pode repetir pedaços do e-mail, e a linha de erro do editor pode
+  mostrar a consulta inteira, com o e-mail dentro.
 
 Antes de começar, tenha à mão: o nome da loja, e o e-mail da pessoa que você escolheu como dono
 dela (conta que já existe na loja e já é administradora). Faça uma loja por vez.
 
 **Tela 1. Abrir o projeto da loja.**
 1. Entre em `supabase.com/dashboard` com a sua conta.
-2. Clique no projeto **daquela loja** (IKCOUS ou Savy, conforme a seção 5).
-   - Vai aparecer: o painel do projeto, com o nome da loja no alto e um menu na esquerda.
+2. Clique no projeto **daquela loja** (IKCOUS ou Savy, conforme a seção 5). Você reconhece o
+   projeto pelo nome que você mesmo deu a ele.
+   - Vai aparecer: o painel do projeto, com o nome dele no alto e um menu na esquerda.
    - Deu certo se: o nome no alto é o da loja certa. Confira, porque o cadastro vale só para
      essa loja.
-   - Se não aparecer o projeto na sua lista: pare e avise o programador (falta acesso).
+   - Se aparecer diferente, **pare e avise "Tela 1"**: não aparece o projeto na sua lista (falta
+     acesso); ou há **dois projetos com nomes parecidos** e você não tem certeza de qual é a
+     loja; ou aparece um projeto chamado **`ikcous-loja`**, que é o antigo e **não deve ser
+     usado**.
 
 **Tela 2. Abrir o editor de SQL.**
 1. No menu da esquerda, clique em **SQL Editor**.
 2. Clique em **New query** (consulta nova; um botão com "+").
-   - Vai aparecer: uma caixa de texto grande e vazia, e um botão verde **Run** no canto de baixo.
+   - Vai aparecer: uma caixa de texto grande e vazia, e um botão para executar (**Run**).
    - Deixe a opção de papel (role) como está, em `postgres`: é ela que tem permissão de escrever
      na tabela do dono.
+   - Se aparecer diferente (por exemplo, o menu da esquerda mostra só ícones, sem nomes):
+     passe o mouse sobre os ícones ou abra o menu para ver os nomes. Se não achar o editor
+     de SQL, **pare e avise "Tela 2"**.
 
 **Tela 3. Conferir a pessoa (só leitura; não grava nada).**
 1. Copie o texto abaixo e cole na caixa.
@@ -141,11 +158,13 @@ dela (conta que já existe na loja e já é administradora). Faça uma loja por 
    - Se aparecer diferente, **pare** (não passe para a Tela 4):
      - `0, 0, 0`: não existe conta com esse e-mail nesta loja. Confira se digitou certo e se é a
        loja certa (Tela 1).
-     - `1` e depois um ou dois `0`: a conta existe, mas não é administradora nas duas fontes do cargo.
-       A função `definir_cargo` recusaria esse dono. Corrigir o cargo dela é decisão sua e
-       um passo à parte: avise o programador, sem o e-mail.
-     - Erro em vermelho (`syntax error`): quase sempre as aspas foram apagadas ou ficou o
-       texto `<e-mail-do-dono>`. Refaça a colagem.
+     - O primeiro número é **2 ou mais** (duas contas com o mesmo e-mail): **pare e avise "deu 2
+       na Tela 3"** (ou o número que veio). Não siga adiante.
+     - O primeiro é `1` e depois vem um ou dois `0`: a conta existe, mas não é administradora
+       nas duas fontes do cargo. A função `definir_cargo` recusaria esse dono. Corrigir o cargo
+       dela é decisão sua e um passo à parte: avise o programador, sem o e-mail.
+     - Erro em vermelho: siga a regra geral acima (cole de novo do jeito do roteiro; se
+       continuar, avise "deu erro na Tela 3" sem copiar a mensagem).
 
 **Tela 4. Cadastrar o dono.**
 1. Apague o texto da caixa, cole o texto abaixo, troque o e-mail como na Tela 3 e clique em **Run**.
@@ -168,21 +187,27 @@ dela (conta que já existe na loja e já é administradora). Faça uma loja por 
    - **Deu certo se** o número for `1`.
    - Se aparecer diferente:
      - `0`: nada foi gravado (e-mail errado ou conta que não é admin nas duas fontes). Volte à Tela 3.
-     - Erro com `dono_da_loja_pkey`: esta loja **já tem** um dono, e nada foi mudado.
-       Para trocar o dono, veja a seção 4.
-     - Qualquer outro erro: pare e avise o programador, copiando só a frase do erro.
+     - Um erro em vermelho que fala de **`dono_da_loja_pkey`**: esta loja **já tem** um dono, e
+       nada foi mudado. Para trocar o dono, veja a seção 4. (Você só reconhece a palavra;
+       não copie a mensagem.)
+     - Qualquer outro erro em vermelho: regra geral acima (cole de novo do jeito do roteiro;
+       se continuar, avise "deu erro na Tela 4", sem copiar a mensagem).
    - Depois do `1`, não clique em **Run** de novo: rodar outra vez só dá o erro
      `dono_da_loja_pkey` (a loja só aceita um dono). É inofensivo, mas desnecessário.
 
-**Tela 5. Avisar o programador e conferir.**
-1. Feche a aba do editor (o e-mail fica só no seu histórico do Supabase, não no nosso trabalho).
+**Tela 5. Limpar o rastro, avisar o programador e conferir.**
+1. **Apague a consulta salva.** O editor costuma guardar o que você rodou (com o e-mail dentro)
+   numa lista de consultas salvas ou num histórico, na lateral do editor. Se achar essa lista,
+   apague a consulta que você usou e feche a aba do editor. Se não achar a lista, não é
+   bloqueio: avise "Tela 5" e siga.
 2. Diga ao programador apenas: "cadastrei o dono na loja X".
 3. Ele roda a consulta 89 daquela loja, que **não usa e-mail nenhum**, e responde se as
    **9 linhas** estão `sim`. Só então a loja está pronta para a opção **Tornar administrador**.
 
-**Depois do cadastro: reabrir o painel.** Quem estava com o painel da loja aberto antes do
-cadastro precisa **fechar e abrir de novo** o painel (ou recarregar a página). O painel guarda na
-memória da página a leitura "sem dono" feita antes, e só uma abertura nova lê o dono cadastrado.
+**Depois do cadastro: recarregar o painel.** Quem estava com o painel da loja aberto antes do
+cadastro precisa **recarregar a página (tecla F5)** ou **fechar a aba (ou o aplicativo)** e abrir
+de novo. **Sair da tela do painel e voltar dentro do aplicativo não adianta**: o painel guarda na
+memória da página a leitura "sem dono" feita antes, e só uma página nova lê o dono cadastrado.
 Até lá, **Tornar administrador** continua sem aparecer, mesmo com o cadastro certo.
 
 ### 3.4 Lendo a consulta 89
@@ -207,34 +232,61 @@ Hoje ela é conferência manual do programador: não é portão automático do `
 
 ## 4. Trocar o dono (raro; decisão do dono do produto)
 
-Quem faz é o dono do produto, no mesmo SQL Editor da seção 3.3 (Telas 1 e 2) e com a mesma
-regra: o agente nunca vê o e-mail. Primeiro a conferência da Tela 3 com o **novo** e-mail
-(`1`, `1`, `1`), e depois, tudo de uma vez, nesta ordem (`DELETE` e `INSERT` na mesma
-transação; o aviso do editor sobre "operação destrutiva" é esperado, porque é um `DELETE`
-sem `WHERE`, na tabela de uma linha só):
+Quem faz é o dono do produto, no mesmo SQL Editor da seção 3.3, com as mesmas regras: o agente
+nunca vê o e-mail, e a **regra geral de erro** da seção 3.3 vale aqui inteira. Por isso a
+receita também é em telas, uma de cada vez.
 
-```sql
-BEGIN;
-DELETE FROM public.dono_da_loja;
-INSERT INTO public.dono_da_loja (user_id)
-SELECT u.id
-  FROM auth.users u
-  JOIN public.profiles p ON p.id = u.id
- WHERE lower(u.email) = lower('<e-mail-do-novo-dono>')
-   AND (u.raw_app_meta_data ->> 'role') = 'admin'
-   AND p.role = 'admin';
-DO $$ BEGIN
-  IF (SELECT count(*) FROM public.dono_da_loja) <> 1 THEN
-    RAISE EXCEPTION 'o novo dono nao foi cadastrado: nada foi trocado';
-  END IF;
-END $$;
-COMMIT;
-```
+**Tela A. Abrir o editor.** Faça as Telas 1 e 2 da seção 3.3 (projeto certo da loja, editor
+de SQL, consulta nova). Se algo aparecer diferente, pare e avise "Tela A".
 
-Se o novo e-mail não for admin nas duas fontes, a verificação final dá erro e a transação
-desfaz também o `DELETE`: o dono antigo continua. Em seguida, o programador roda a consulta 89,
-e quem estava com o painel aberto fecha e abre de novo (ou recarrega a página), pelo mesmo
-motivo da seção 3.3.
+**Tela B. Conferir o novo dono.** Faça a Tela 3 da seção 3.3 com o e-mail do **novo** dono.
+Só siga se vier `1`, `1`, `1`. Qualquer outra coisa: pare e avise "Tela B", dizendo só o que
+apareceu em palavras suas (sem e-mail).
+
+**Tela C. Trocar.**
+1. Apague o texto da caixa, cole o texto abaixo, troque `<e-mail-do-novo-dono>` (mantendo as
+   aspas simples) e clique em **Run**.
+
+   ```sql
+   BEGIN;
+   DELETE FROM public.dono_da_loja;
+   INSERT INTO public.dono_da_loja (user_id)
+   SELECT u.id
+     FROM auth.users u
+     JOIN public.profiles p ON p.id = u.id
+    WHERE lower(u.email) = lower('<e-mail-do-novo-dono>')
+      AND (u.raw_app_meta_data ->> 'role') = 'admin'
+      AND p.role = 'admin';
+   DO $$ BEGIN
+     IF (SELECT count(*) FROM public.dono_da_loja) <> 1 THEN
+       RAISE EXCEPTION 'o novo dono nao foi cadastrado: nada foi trocado';
+     END IF;
+   END $$;
+   COMMIT;
+   SELECT count(*) AS donos_na_loja FROM public.dono_da_loja;
+   ```
+
+2. **Pode aparecer um aviso do editor** perguntando se você quer mesmo executar, porque o texto
+   tem um comando que apaga (`DELETE`). Isso é esperado: ele apaga só a linha do dono antigo, e
+   a mesma execução já grava o novo. Clique no botão que **confirma** a execução (o que não é
+   cancelar). Se o aviso tiver outra forma e você não tiver certeza de qual botão confirma,
+   **pare e avise "Tela C"**.
+   - Vai aparecer: uma tabelinha com um número.
+   - **Deu certo se** o número for `1`. Foi trocado.
+   - Se aparecer diferente:
+     - Erro em vermelho com a frase **`o novo dono nao foi cadastrado`**: o novo e-mail não é
+       administrador nas duas fontes. **Nada foi trocado** (a execução inteira é desfeita, o
+       `DELETE` junto) e o dono antigo continua. Volte à Tela B. Essa frase é do roteiro e
+       não tem e-mail; mesmo assim não copie a mensagem inteira.
+     - Qualquer outro erro: regra geral (cole de novo do jeito do roteiro; se continuar, avise
+       "deu erro na Tela C", sem copiar a mensagem).
+     - Não aparece número nenhum e nem erro: **pare e avise "Tela C"**. Não rode de novo
+       antes de o programador conferir.
+
+**Tela D. Limpar o rastro e conferir.** Apague a consulta salva e feche a aba (como na Tela 5 da
+seção 3.3). Diga ao programador apenas "troquei o dono da loja X". Ele roda a consulta 89
+(9 linhas `sim`). Depois quem estava com o painel aberto **recarrega a página (F5)** ou fecha a
+aba (ou o aplicativo) e abre de novo, pelo mesmo motivo da seção 3.3.
 
 Cuidados que valem na troca e no dia a dia:
 
