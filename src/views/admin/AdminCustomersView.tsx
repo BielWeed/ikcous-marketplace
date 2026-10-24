@@ -820,7 +820,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           >
             <Megaphone
               aria-hidden="true"
-              className="size-[22px] shrink-0 text-[#1B1300]"
+              className="size-[22px] shrink-0"
               strokeWidth={1.9}
             />
             <span>{NOMES_DO_PAINEL["admin-push"]}</span>

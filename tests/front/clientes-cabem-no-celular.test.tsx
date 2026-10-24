@@ -279,9 +279,12 @@ describe("Clientes no celular (J4)", () => {
     expect(
       botoes[0].querySelector("svg")?.classList.contains("text-violet-300"),
     ).toBe(true);
-    expect(
-      botoes[1].querySelector("svg")?.classList.contains("text-[#1B1300]"),
-    ).toBe(true);
+    // O ícone de "Avisar clientes" herda a cor do botão: o CSS dos temas do
+    // painel (`.admin-acoes-da-barra .admin-barra-principal`) troca fundo e
+    // texto do botão, e uma cor fixa no ícone sumia no tema Claro (preto sobre preto).
+    expect(botoes[1].querySelector("svg")?.getAttribute("class")).not.toMatch(
+      /(^|\s)text-/,
+    );
   });
 
   it("(a) a lista compacta mostra o papel EXATO de cada linha, em português", async () => {
