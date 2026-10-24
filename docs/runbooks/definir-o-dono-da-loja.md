@@ -54,8 +54,10 @@ grava nada) se as peças da 197 e da 199 não estiverem no estado esperado.
 | 6 | `20261383000000_so_o_dono_da_loja_define_cargo` | `dono_da_loja`, `cargo_log`, `definir_cargo()` e o gatilho `tr_papel_so_pelo_definir_cargo` | (esta) |
 
 **Por que a 360 e a 381 vêm antes, mesmo a 1383 não exigindo.** Quando o dono passa a poder
-tirar um cargo, o ex-administrador precisa perder o acesso **na hora**, e não em até uma hora
-(o tempo de vida do login antigo). Essas duas migrations é que garantem isso. Abrir
+tirar um cargo, o ex-administrador precisa perder o acesso **aos dados na hora**, e não em até
+uma hora (o tempo de vida do login antigo). Essas duas migrations é que garantem isso. A tela
+do painel já aberta no aparelho dele pode continuar visível por até cerca de 1 hora, mas sem
+dados novos; é o que o aviso do app diz. Abrir
 "Tornar administrador" antes delas daria à loja um botão de rebaixar que não fecha a porta.
 
 Se o aplicador parar com `B1_BASELINE_DIVERGENT`, o pré-voo achou uma peça diferente do
