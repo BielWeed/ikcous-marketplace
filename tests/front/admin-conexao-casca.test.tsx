@@ -45,7 +45,7 @@ describe("casca — detalhes da conexão sem nova consulta", () => {
     expect(botao.textContent).toContain(
       "Ateliê das Marés & Casa Coleção Jardim das Dunas",
     );
-    expect(botao.textContent).toContain("Admin · Online");
+    expect(botao.textContent).toContain("Online · Admin");
     expect(botao.querySelector(".truncate, .line-clamp-1")).toBeNull();
     expect(botao.getAttribute("aria-expanded")).toBe("false");
     expect(botao.title).toBe("Conexão boa");
