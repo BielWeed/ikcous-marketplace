@@ -32,7 +32,7 @@ mesma pessoa pode ser dona de mais de uma, ou não).
   (erro `42501`, "só o dono da loja define cargos");
 - quem já é administrador **continua administrador**; só ninguém consegue nomear nem remover.
 
-**Como você sabe que ficou pronto.** O programador roda uma conferência (a consulta 89,
+**Como você sabe que ficou pronto.** O programador roda uma conferência (a consulta 88c,
 abaixo) e mostra que **todas** as linhas dela dizem "sim" para aquela loja. Depois, quem
 estava com o painel aberto precisa **recarregar a página (F5)** ou fechar a aba (ou o aplicativo)
 e abrir de novo; sair da tela do painel e voltar dentro do aplicativo não basta. Senão a opção
@@ -76,7 +76,7 @@ Repita este bloco **inteiro** para cada loja (ver seção 5). Uma loja de cada v
    - "admins pelas duas fontes" maior que zero (senão a loja nem tem administrador de verdade);
    - "admin só no app_metadata" e "admin só no profiles" idealmente zero. Se não for zero,
      o dono do produto decide qual das duas fontes está certa para cada caso, **antes**
-     de aplicar. O **futuro dono** não pode ser um desses casos (a 89 prova isso depois).
+     de aplicar. O **futuro dono** não pode ser um desses casos (a 88c prova isso depois).
 3. **Antes de aplicar, o SQL da 1383 precisa de revisão Opus.** O cabeçalho da migration (linhas
    2 a 5) diz que ela é rascunho para essa revisão e que, mesmo aditiva, **muda permissão**
    (o gatilho novo recusa o que antes passava). Sem a aprovação da revisão sobre o SQL que vai
@@ -91,7 +91,7 @@ Repita este bloco **inteiro** para cada loja (ver seção 5). Uma loja de cada v
 
 4. **Consulta 88a** (`88a-conferir-so-o-dono-define-cargo-aplicado`): 9 linhas, todas `ok`.
    Prova que os **objetos** existem com o corpo certo. Ela **não** prova que há dono.
-5. **Consulta 89** (`89-dono-cadastrado`): neste momento as linhas do dono dizem **"nao"**.
+5. **Consulta 88c** (`88c-conferir-o-dono-cadastrado`): neste momento as linhas do dono dizem **"nao"**.
    Isso é o esperado (tabela vazia). As três linhas de controle e as duas primeiras
    (tabela e função existem) devem estar `sim`.
 
@@ -104,8 +104,8 @@ lê e não o recebe**. Por isso o cadastro é feito por você, em cinco telas, u
 **Regra geral para qualquer dúvida ou erro (vale em todas as telas e na seção 4):**
 
 - Se uma tela aparecer diferente do que está descrito, **pare nela** e avise o programador
-  dizendo **só o número da tela** ("a Tela 2 está diferente") e, em palavras suas, o que
-  aparece, **sem citar e-mail**.
+  dizendo **só o número da tela** ("a Tela 2 está diferente"). **Não descreva em palavras suas o
+  que apareceu**: a descrição pode repetir pedaços do e-mail.
 - Se aparecer um **erro em vermelho**, o motivo mais comum é uma aspa apagada ou o marcador
   `<e-mail-do-dono>` que ficou sem trocar. Apague tudo, **cole o texto de novo do jeito que está
   neste roteiro** e tente outra vez.
@@ -201,7 +201,7 @@ dela (conta que já existe na loja e já é administradora). Faça uma loja por 
    apague a consulta que você usou e feche a aba do editor. Se não achar a lista, não é
    bloqueio: avise "Tela 5" e siga.
 2. Diga ao programador apenas: "cadastrei o dono na loja X".
-3. Ele roda a consulta 89 daquela loja, que **não usa e-mail nenhum**, e responde se as
+3. Ele roda a consulta 88c daquela loja, que **não usa e-mail nenhum**, e responde se as
    **9 linhas** estão `sim`. Só então a loja está pronta para a opção **Tornar administrador**.
 
 **Depois do cadastro: recarregar o painel.** Quem estava com o painel da loja aberto antes do
@@ -210,9 +210,9 @@ de novo. **Sair da tela do painel e voltar dentro do aplicativo não adianta**: 
 memória da página a leitura "sem dono" feita antes, e só uma página nova lê o dono cadastrado.
 Até lá, **Tornar administrador** continua sem aparecer, mesmo com o cadastro certo.
 
-### 3.4 Lendo a consulta 89
+### 3.4 Lendo a consulta 88c
 
-A 89 só lê e só devolve `sim`/`nao`. Nenhum identificador de pessoa sai nela.
+A 88c só lê e só devolve `sim`/`nao`. Nenhum identificador de pessoa sai nela.
 
 | Linha | Se vier "nao" |
 |---|---|
@@ -226,7 +226,7 @@ A 89 só lê e só devolve `sim`/`nao`. Nenhum identificador de pessoa sai nela.
 | o dono é admin em `profiles.role` | O cargo dele no perfil não é `admin`. A função recusa tudo (42501). |
 | o dono é admin em `auth.users` (role) | O cargo dele no login não é `admin`. A função recusa tudo (42501). |
 
-Rode a 89 de novo **sempre que** o dono for trocado, o cargo dele for mexido (inclusive
+Rode a 88c de novo **sempre que** o dono for trocado, o cargo dele for mexido (inclusive
 direto no painel do Supabase) ou antes de liberar uma release que mexa na tela de cargos.
 Hoje ela é conferência manual do programador: não é portão automático do `publicar-release`.
 
@@ -240,8 +240,7 @@ receita também é em telas, uma de cada vez.
 de SQL, consulta nova). Se algo aparecer diferente, pare e avise "Tela A".
 
 **Tela B. Conferir o novo dono.** Faça a Tela 3 da seção 3.3 com o e-mail do **novo** dono.
-Só siga se vier `1`, `1`, `1`. Qualquer outra coisa: pare e avise "Tela B", dizendo só o que
-apareceu em palavras suas (sem e-mail).
+Só siga se vier `1`, `1`, `1`. Qualquer outra coisa: pare e avise "Tela B", dizendo só os três números que apareceram, sem descrever mais nada.
 
 **Tela C. Trocar.**
 1. Apague o texto da caixa, cole o texto abaixo, troque `<e-mail-do-novo-dono>` (mantendo as
@@ -284,7 +283,7 @@ apareceu em palavras suas (sem e-mail).
        antes de o programador conferir.
 
 **Tela D. Limpar o rastro e conferir.** Apague a consulta salva e feche a aba (como na Tela 5 da
-seção 3.3). Diga ao programador apenas "troquei o dono da loja X". Ele roda a consulta 89
+seção 3.3). Diga ao programador apenas "troquei o dono da loja X". Ele roda a consulta 88c
 (9 linhas `sim`). Depois quem estava com o painel aberto **recarrega a página (F5)** ou fecha a
 aba (ou o aplicativo) e abre de novo, pelo mesmo motivo da seção 3.3.
 
@@ -319,7 +318,7 @@ resposta dele junto com a loja, sem e-mail nem identificador neste repositório.
 - Não aplica nada sozinho e não guarda e-mail, identificador ou credencial de ninguém. O agente
   nunca digita nem lê o e-mail do dono.
 - Não decide quem é o dono nem corrige cargo de ninguém.
-- A consulta 89 prova o **cadastro** e o cargo **de agora**. A prova de que `definir_cargo`
+- A consulta 88c prova o **cadastro** e o cargo **de agora**. A prova de que `definir_cargo`
   funciona de ponta a ponta (dono nomeia, nomeado não nomeia, ninguém rebaixa o dono) está
   em `tests/banco/definir-cargo-so-o-dono-viva.cjs`, no Postgres efêmero do CI, e não toca
   nenhuma loja.
@@ -327,4 +326,4 @@ resposta dele junto com a loja, sem e-mail nem identificador neste repositório.
 Referências: cabeçalho de
 [`20261383000000_so_o_dono_da_loja_define_cargo.sql`](../../supabase/migrations/20261383000000_so_o_dono_da_loja_define_cargo.sql),
 seção "Domínio do negócio — entidades, dinheiro e papéis" do [`AGENTS.md`](../../AGENTS.md), consultas em
-[`scripts/publicacao/consultas/`](../../scripts/publicacao/consultas/) (`8b`, `88a`, `88b`, `89-dono-cadastrado`).
+[`scripts/publicacao/consultas/`](../../scripts/publicacao/consultas/) (`8b`, `88a`, `88b`, `88c-conferir-o-dono-cadastrado`).

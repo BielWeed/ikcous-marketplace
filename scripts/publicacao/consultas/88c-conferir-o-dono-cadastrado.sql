@@ -1,4 +1,4 @@
--- 89-dono-cadastrado: DEPOIS da 20261383000000 e DEPOIS do INSERT manual do dono (roteiro: docs/runbooks/definir-o-dono-da-loja.md).
+-- 88c-conferir-o-dono-cadastrado: DEPOIS da 20261383000000 e DEPOIS do INSERT manual do dono (roteiro: docs/runbooks/definir-o-dono-da-loja.md).
 -- SO LEITURA, um unico SELECT, rol fechado de 9 linhas. A 88a prova que os OBJETOS existem. Esta prova que o DONO existe:
 -- a tabela public.dono_da_loja tem exatamente uma linha e essa pessoa e administradora de verdade nas DUAS fontes do papel
 -- (profiles.role e auth.users.raw_app_meta_data), a mesma conta que is_admin_atual() e definir_cargo() fazem.
