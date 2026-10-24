@@ -69,7 +69,7 @@ export function FileirasDeVariacao({
                     title={disponivel ? valor : `${valor} — Esgotado`}
                     onClick={() => onEscolher(nome, valor)}
                     className={cn(
-                      "flex min-h-11 min-w-11 max-w-full items-center justify-center gap-2 rounded-[14px] border px-3.5 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-muted/30 disabled:text-muted-foreground",
+                      "flex min-h-11 min-w-11 max-w-full items-center justify-center gap-2 rounded-[14px] border border-solid px-3.5 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-muted/30 disabled:text-muted-foreground",
                       ativa
                         ? "border-foreground bg-foreground text-background"
                         : "border-border bg-background text-foreground",

@@ -34,7 +34,7 @@ interface AdminNotificationsViewProps {
 
 const FOCO =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-const BOTAO_BASE = `flex min-h-11 items-center justify-center gap-2 border border-border bg-muted/40 px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted/70 ${FOCO}`;
+const BOTAO_BASE = `flex min-h-11 items-center justify-center gap-2 border border-solid border-border bg-muted/40 px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted/70 ${FOCO}`;
 const SECUNDARIO = `${BOTAO_BASE} rounded-2xl`;
 // Linguagem Tinta: rótulo mono em caixa alta, o mesmo nas seções e nos cartões.
 const ROTULO_MONO =
@@ -298,7 +298,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
       type="button"
       data-aviso={aviso.tipo}
       onClick={() => onNavigate(aviso.destino.view, aviso.destino.id)}
-      className={`group block min-h-11 w-full min-w-0 whitespace-pre-line break-words rounded-[18px] border border-border bg-muted/30 p-4 text-left text-foreground transition-colors hover:bg-muted/50 ${FOCO}`}
+      className={`group block min-h-11 w-full min-w-0 whitespace-pre-line break-words rounded-[18px] border border-solid border-border bg-muted/30 p-4 text-left text-foreground transition-colors hover:bg-muted/50 ${FOCO}`}
     >
       <div className="mb-2 flex items-center gap-2">
         <span
@@ -509,7 +509,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
               titulo?.scrollIntoView({ block: "start" });
               titulo?.focus();
             }}
-            className={`flex min-h-11 w-full items-center gap-3 rounded-[18px] border border-border bg-muted/30 px-4 py-3 text-left text-base font-semibold text-foreground hover:bg-muted/50 ${FOCO}`}
+            className={`flex min-h-11 w-full items-center gap-3 rounded-[18px] border border-solid border-border bg-muted/30 px-4 py-3 text-left text-base font-semibold text-foreground hover:bg-muted/50 ${FOCO}`}
           >
             <span
               aria-hidden="true"

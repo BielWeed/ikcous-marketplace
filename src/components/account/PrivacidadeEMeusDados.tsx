@@ -380,7 +380,7 @@ export function PrivacidadeEMeusDados({
             type="button"
             variant="outline"
             onClick={() => void recarregar()}
-            className="mt-2 min-h-11 rounded-xl"
+            className="mt-2 min-h-11 rounded-xl border-solid"
           >
             {TEXTOS_DA_CLIENTE.recarregar}
           </Button>
@@ -401,7 +401,7 @@ export function PrivacidadeEMeusDados({
             variant="outline"
             disabled={ocupada}
             onClick={() => abrir("corrigir_email")}
-            className="h-[52px] min-h-11 w-full rounded-2xl border-[1.5px] border-foreground bg-background text-[15px] font-semibold text-foreground shadow-none hover:bg-muted/40 hover:text-foreground dark:border-foreground dark:bg-background dark:hover:bg-muted/40"
+            className="h-[52px] min-h-11 w-full rounded-2xl border-[1.5px] border-solid border-foreground bg-background text-[15px] font-semibold text-foreground shadow-none hover:bg-muted/40 hover:text-foreground dark:border-foreground dark:bg-background dark:hover:bg-muted/40"
           >
             {TEXTOS_DA_CLIENTE.botaoCorrigirEmail}
           </Button>
@@ -414,7 +414,7 @@ export function PrivacidadeEMeusDados({
             variant="outline"
             disabled={ocupada}
             onClick={() => abrir("excluir_conta")}
-            className="h-[52px] min-h-11 w-full rounded-2xl border-[1.5px] border-red-300 bg-background text-[15px] font-semibold text-red-600 shadow-none hover:bg-muted/40 hover:text-red-600 dark:border-red-300 dark:bg-background dark:text-red-400 dark:hover:bg-muted/40 dark:hover:text-red-400"
+            className="h-[52px] min-h-11 w-full rounded-2xl border-[1.5px] border-solid border-red-300 bg-background text-[15px] font-semibold text-red-600 shadow-none hover:bg-muted/40 hover:text-red-600 dark:border-red-300 dark:bg-background dark:text-red-400 dark:hover:bg-muted/40 dark:hover:text-red-400"
           >
             {TEXTOS_DA_CLIENTE.botaoExcluir}
           </Button>

@@ -759,7 +759,7 @@ export function AddressForm({
                   })
                 }
                 className={cn(
-                  "inline-flex h-11 items-center rounded-xl border px-3 text-[12px] font-semibold transition-colors",
+                  "inline-flex h-11 items-center rounded-xl border border-solid px-3 text-[12px] font-semibold transition-colors",
                   semNumero
                     ? "border-foreground bg-foreground text-background"
                     : "border-border bg-background text-muted-foreground",
@@ -939,7 +939,7 @@ export function AddressForm({
                       );
                     }}
                     className={cn(
-                      "inline-flex h-11 items-center justify-center rounded-xl border px-5 text-sm font-semibold transition-colors",
+                      "inline-flex h-11 items-center justify-center rounded-xl border border-solid px-5 text-sm font-semibold transition-colors",
                       ligado
                         ? "border-foreground bg-foreground text-background"
                         : "border-border bg-background text-foreground/80",

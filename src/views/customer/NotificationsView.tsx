@@ -261,7 +261,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
               variant="ghost"
               size="sm"
               onClick={markAllAsRead}
-              className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-[13px] font-semibold text-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-solid border-border bg-background px-3 text-[13px] font-semibold text-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
               title="Marcar todas como lidas"
             >
               <CheckCheck className="size-4" />
@@ -291,7 +291,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                 className={`flex h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-[15px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   isActive
                     ? "bg-foreground text-background"
-                    : "border border-border bg-background text-foreground hover:bg-muted/40"
+                    : "border border-solid border-border bg-background text-foreground hover:bg-muted/40"
                 }`}
               >
                 {tab.label}

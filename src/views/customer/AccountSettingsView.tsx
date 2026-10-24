@@ -879,7 +879,7 @@ export function AccountSettingsView() {
                         type="button"
                         variant="outline"
                         onClick={carregarPerfil}
-                        className="h-11 rounded-xl px-4 text-[13px] font-semibold"
+                        className="h-11 rounded-xl border-solid px-4 text-[13px] font-semibold"
                       >
                         Tentar de novo
                       </Button>
@@ -989,7 +989,7 @@ export function AccountSettingsView() {
                       raizRef.current?.closest("main")?.scrollTop ?? 0;
                     setSecao("privacidade");
                   }}
-                  className="flex h-14 w-full items-center justify-between rounded-[14px] border border-input px-4 text-left text-[15px] font-semibold text-foreground outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-14 w-full items-center justify-between rounded-[14px] border border-solid border-input px-4 text-left text-[15px] font-semibold text-foreground outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Privacidade e meus dados
                   <ChevronRight
@@ -1368,7 +1368,7 @@ export function AccountSettingsView() {
                             variant="outline"
                             onClick={handleRemoveAvatar}
                             disabled={isUpdatingAvatar}
-                            className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-red-100 text-[10px] font-bold uppercase tracking-wider text-red-600 transition-colors hover:border-red-200 hover:bg-red-50/50"
+                            className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-solid border-red-100 text-[10px] font-bold uppercase tracking-wider text-red-600 transition-colors hover:border-red-200 hover:bg-red-50/50"
                           >
                             <Trash2 className="size-3.5" />
                             Remover Foto
@@ -1416,7 +1416,7 @@ export function AccountSettingsView() {
                             variant="outline"
                             onClick={handleRemoveAvatar}
                             disabled={isUpdatingAvatar}
-                            className="text-red-650 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-red-100 text-[10px] font-bold uppercase tracking-wider transition-colors hover:border-red-200 hover:bg-red-50/50"
+                            className="text-red-650 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-solid border-red-100 text-[10px] font-bold uppercase tracking-wider transition-colors hover:border-red-200 hover:bg-red-50/50"
                           >
                             <Trash2 className="size-3.5" />
                             Remover Avatar Atual
