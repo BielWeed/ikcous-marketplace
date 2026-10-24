@@ -183,8 +183,12 @@ module.exports = [
     // 22/10/2026 (autorizado pelo dono): 472 -> 476 kB. O excesso vem das telas
     // pedidas pelo dono no painel redesenhado (Avisar clientes, Financeiro,
     // Banners, ficha do pedido e alertas), lote da versao 1.5.53.
+    // 24/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 476 -> 480 kB na 1.5.65 (folhas do Financeiro, Caixa na frente e barra de
+    // cima do painel). Medido no CI do commit de merge: 476,02 kB, 20 B acima do
+    // teto (o mesmo codigo mediu 475,97 kB no PR: o hash dos chunks oscila ~50 B).
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "476 kB",
+    limit: "480 kB",
     webpack: false,
     running: false,
   },

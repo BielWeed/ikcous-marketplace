@@ -57,6 +57,18 @@ describe("QuantitySelector: cores da pílula", () => {
     }
   });
 
+  it("nenhuma classe dos botões vem colada na vizinha (o espaço perdido desligava o 'apertar' e o cursor de bloqueado)", () => {
+    for (const size of ["pill", "sm", "md"] as const) {
+      montar(size);
+      for (const botao of contedor.querySelectorAll("button")) {
+        expect(botao.className, size).toContain(
+          "active:scale-90 disabled:cursor-not-allowed disabled:opacity-30",
+        );
+        expect(botao.className, size).not.toMatch(/scale-90disabled/);
+      }
+    }
+  });
+
   it("tamanhos sm e md continuam como eram", () => {
     for (const size of ["sm", "md"] as const) {
       montar(size);
