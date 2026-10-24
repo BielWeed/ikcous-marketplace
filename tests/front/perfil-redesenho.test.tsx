@@ -235,13 +235,13 @@ describe("ProfileView — redesenho aprovado", () => {
       expect(avatar!.innerHTML).not.toContain("group-hover/avatar:opacity-100");
     });
 
-    it("câmera da capa vira botão com palavra 'Capa' e continua abrindo o seletor", async () => {
+    it("câmera da capa vira chip 'Alterar capa' e continua abrindo o seletor", async () => {
       await renderizar();
       const capa = hospedeiro.querySelector<HTMLButtonElement>(
         'button[title="Alterar capa de fundo"]',
       );
       expect(capa).not.toBeNull();
-      expect(capa!.textContent).toContain("Capa");
+      expect(capa!.textContent).toContain("Alterar capa");
       await clicar(capa!);
       expect(document.body.textContent).toContain("Capa de Fundo");
     });
@@ -335,6 +335,20 @@ describe("ProfileView — redesenho aprovado", () => {
       expect(botaoQueContem("WhatsApp")).toBeDefined();
     });
 
+    it("Tinta (24/10/2026): o pedido em andamento vem ANTES de Meus dados, e a ordem segue até Conta", async () => {
+      estado.orders = [pedido({})];
+      await renderizar();
+      const titulos = [...hospedeiro.querySelectorAll("h2")].map(
+        (h) => h.textContent,
+      );
+      expect(titulos).toEqual([
+        "Pedidos em andamento",
+        "Meus dados",
+        "Endereços de entrega",
+        "Conta",
+      ]);
+    });
+
     it("não aparece sem pedido em andamento (nada novo é adicionado)", async () => {
       estado.orders = [pedido({ status: "delivered" })];
       await renderizar();
@@ -412,7 +426,10 @@ describe("ProfileView — redesenho aprovado", () => {
         (h) => h.textContent === "Endereços de entrega",
       );
       expect(titulo).toBeDefined();
-      expect(titulo!.className).not.toMatch(/uppercase|tracking-\[/);
+      // Tinta (24/10/2026): rótulo mono de seção do desenho aprovado; o texto
+      // continua legível (a caixa alta é só CSS) e o espaçamento é o do rótulo.
+      expect(titulo!.className).toContain("font-mono");
+      expect(titulo!.className).toContain("tracking-[0.12em]");
       const novo = botaoComTexto("Novo");
       expect(novo!.className).toMatch(ALVO_44);
       await clicar(novo);
@@ -544,11 +561,11 @@ describe("ProfileView — redesenho aprovado", () => {
       expect(onNavigate).toHaveBeenLastCalledWith("about-store");
     });
 
-    it("Encerrar sessão é cartão com texto vermelho e continua saindo da conta", async () => {
+    it("Encerrar sessão é botão de contorno vermelho e continua saindo da conta", async () => {
       await renderizar();
       const sair = botaoQueContem("Encerrar sessão");
       expect(sair).toBeDefined();
-      expect(sair!.innerHTML).toMatch(/text-red-(600|700)/);
+      expect(sair!.outerHTML).toMatch(/text-red-(600|700)/);
       expect(sair!.textContent).toContain("Sair da sua conta");
       await clicar(sair);
       expect(logout).toHaveBeenCalledTimes(1);
@@ -568,7 +585,21 @@ describe("ProfileView — redesenho aprovado", () => {
           const m = /^text-\[(\d+)px\]$/.exec(c);
           return m ? Number(m[1]) < 12 : false;
         });
-      expect([...new Set(pequenas)]).toEqual([]);
+      // Exceção do desenho Tinta: o rótulo mono de seção é 11 px. Só vale com a
+      // receita completa (font-mono + uppercase + tracking-[0.12em]).
+      const rotulosMono = [...hospedeiro.querySelectorAll("*")].filter(
+        (el) =>
+          el.classList.contains("text-[11px]") &&
+          !(
+            el.classList.contains("font-mono") &&
+            el.classList.contains("uppercase") &&
+            el.classList.contains("tracking-[0.12em]")
+          ),
+      );
+      expect(rotulosMono).toEqual([]);
+      expect([...new Set(pequenas)].filter((c) => c !== "text-[11px]")).toEqual(
+        [],
+      );
     });
 
     it("nenhum dourado e nenhuma caixa alta com espaçamento largo na tela", async () => {
