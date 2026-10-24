@@ -1,5 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import type { CargoDaConta } from "@/lib/cargo-da-conta";
 import { formatarInteiro } from "@/lib/crm";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
@@ -16,8 +17,11 @@ import {
   Phone,
   Zap,
 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { FOCO_CLIENTES, FolhaClientes } from "./FolhaClientes";
+import { PromoverAdminAcoes } from "./PromoverAdminAcoes";
+import type { AcaoDeCargo } from "./PromoverAdminAcoes";
+import { PromoverAdminConfirmacao } from "./PromoverAdminConfirmacao";
 
 const CORES_DO_AVATAR = [
   "bg-fuchsia-900",
@@ -104,13 +108,32 @@ export const CartaoCliente = memo(function CartaoCliente({
   detalhado = false,
   onNavigate,
   onPrefetch,
+  onCargoMudou,
 }: {
   readonly customer: Customer;
   readonly detalhado?: boolean;
   readonly onNavigate: (view: View, id?: string) => void;
   readonly onPrefetch: () => void;
+  /** Avisa a lista que o cargo mudou (para o selo mudar sem recarregar). */
+  readonly onCargoMudou?: (id: string, novoCargo: CargoDaConta) => void;
 }) {
   const [menuAberto, setMenuAberto] = useState(false);
+  // Ação de cargo escolhida na folha. A confirmação é um diálogo à parte: a
+  // folha fecha primeiro e só depois ela abre (uma camada por vez).
+  const [acaoPendente, setAcaoPendente] = useState<AcaoDeCargo | null>(null);
+  const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
+  const gatilhoRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (acaoPendente && !menuAberto) setConfirmacaoAberta(true);
+  }, [acaoPendente, menuAberto]);
+  const escolherAcao = (acao: AcaoDeCargo) => {
+    setAcaoPendente(acao);
+    setMenuAberto(false);
+  };
+  const fecharConfirmacao = () => {
+    setConfirmacaoAberta(false);
+    setAcaoPendente(null);
+  };
   const abrir = (view: View) => {
     setMenuAberto(false);
     onNavigate(view, customer.id);
@@ -252,6 +275,7 @@ export const CartaoCliente = memo(function CartaoCliente({
           titulo="Gestão de Cliente"
           gatilho={
             <button
+              ref={gatilhoRef}
               type="button"
               aria-label={`Gestão de Cliente: ${customer.full_name || "Usuário"}`}
               className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-admin-border bg-admin-raised text-zinc-300 hover:bg-admin-hover ${FOCO_CLIENTES}`}
@@ -306,8 +330,17 @@ export const CartaoCliente = memo(function CartaoCliente({
               </span>
               <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
             </button>
+            <PromoverAdminAcoes customer={customer} aoEscolher={escolherAcao} />
           </div>
         </FolhaClientes>
+        <PromoverAdminConfirmacao
+          acao={acaoPendente}
+          aberta={confirmacaoAberta}
+          customer={customer}
+          aoFechar={fecharConfirmacao}
+          aoConcluir={(id, cargo) => onCargoMudou?.(id, cargo)}
+          retornoDoFoco={gatilhoRef}
+        />
       </div>
     </div>
   );
