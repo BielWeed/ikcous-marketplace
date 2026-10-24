@@ -249,11 +249,17 @@ describe.each(imagens)(
     function esperarContaBIntocada() {
       esperarSemAviso();
       expect(campo("full_name").value).toBe("Nome conta-b");
-      expect(
-        document
-          .querySelector<HTMLImageElement>("img[alt='Capa de Perfil']")!
-          .getAttribute("src"),
-      ).toBe(PERFIL_B.cover_url);
+      // A prévia grande da capa saiu da tela (redesenho Tinta, 23/10/2026): a
+      // imagem da capa só existe dentro do editor de capa, aberto no caso "capa".
+      if (imagem.nome === "capa") {
+        expect(
+          document
+            .querySelector<HTMLImageElement>("img[alt='Capa de Perfil']")!
+            .getAttribute("src"),
+        ).toBe(PERFIL_B.cover_url);
+      } else {
+        expect(document.querySelector("img[alt='Capa de Perfil']")).toBeNull();
+      }
       if (imagem.nome === "foto") {
         expect(
           document

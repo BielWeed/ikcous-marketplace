@@ -153,7 +153,7 @@ describe("AccountSettingsView — carga que falha não apaga o cadastro", () => 
     expect(nome.value).toBe("");
     expect(telefone.value).toBe("");
 
-    const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações");
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações");
     expect(botaoSalvar).toBeTruthy();
     expect(botaoSalvar!.disabled).toBe(true);
   });
@@ -177,7 +177,7 @@ describe("AccountSettingsView — carga que falha não apaga o cadastro", () => 
     expect(hospedeiro.textContent).toContain("Não conseguimos carregar");
     expect(hospedeiro.textContent).toContain("Tentar de novo");
 
-    const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações");
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações");
     expect(botaoSalvar!.disabled).toBe(true);
 
     const nome = document.getElementById("full_name") as HTMLInputElement;
@@ -222,7 +222,7 @@ describe("AccountSettingsView — carga que falha não apaga o cadastro", () => 
     });
 
     const nome = document.getElementById("full_name") as HTMLInputElement;
-    const botaoSalvar = localizarBotaoPorTexto("Salvar Alterações");
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações");
     expect(nome.disabled).toBe(false);
     expect(botaoSalvar!.disabled).toBe(false);
   });
@@ -237,7 +237,7 @@ describe("AccountSettingsView — carga que falha não apaga o cadastro", () => 
     await montar();
 
     const botaoSalvar = localizarBotaoPorTexto(
-      "Salvar Alterações",
+      "Salvar alterações",
     ) as HTMLButtonElement;
     expect(botaoSalvar.disabled).toBe(true);
 

@@ -14,16 +14,63 @@ const cores = new Map(
     }),
 );
 
-export function corDaVariacao(
-  valor: string,
-  hex?: string | null,
-): string | null {
-  if (hex && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) return hex;
-  const nome = valor
+function normalizar(texto: string): string {
+  return texto
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
-  return cores.get(nome) ?? null;
+}
+
+export function corDaVariacao(
+  valor: string,
+  hex?: string | null,
+): string | null {
+  if (hex && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) return hex;
+  return cores.get(normalizar(valor)) ?? null;
+}
+
+const MAIOR_CHAVE = Math.max(
+  ...[...cores.keys()].map((chave) => chave.split(" ").length),
+);
+
+/** Separador real entre cores citadas: vírgula, barra, &, +, ; ou " e " / " com ". */
+const SEPARADOR = /\s*[,/&+;]\s*|\s+(?:e|com)\s+/;
+
+/**
+ * A cor de um trecho SEM separador. Chaves de várias palavras ("azul
+ * marinho") vencem as de uma palavra, sempre por palavra inteira. Se o trecho
+ * cita mais de uma cor vizinha ("verde musgo"), é UM tom só: vale a última,
+ * a mais específica.
+ */
+function corDoTrecho(trecho: string): string | undefined {
+  const palavras = trecho.split(/[^a-z0-9]+/).filter(Boolean);
+  const usada = palavras.map(() => false);
+  const achadas: { posicao: number; hex: string }[] = [];
+  for (let tamanho = MAIOR_CHAVE; tamanho >= 1; tamanho--) {
+    for (let i = 0; i + tamanho <= palavras.length; i++) {
+      if (usada.slice(i, i + tamanho).some(Boolean)) continue;
+      const hex = cores.get(palavras.slice(i, i + tamanho).join(" "));
+      if (!hex) continue;
+      usada.fill(true, i, i + tamanho);
+      achadas.push({ posicao: i, hex });
+    }
+  }
+  return achadas.sort((a, b) => b.posicao - a.posicao)[0]?.hex;
+}
+
+/**
+ * Cores (hex) citadas num nome composto, na ordem em que aparecem e sem
+ * repetir. O nome inteiro vem primeiro; senão o nome é partido nos
+ * separadores reais e cada trecho vira UMA cor (nunca bicolor sem separador).
+ */
+export function coresDoNome(valor: string): string[] {
+  const inteiro = corDaVariacao(valor);
+  if (inteiro) return [inteiro];
+  const achadas = normalizar(valor)
+    .split(SEPARADOR)
+    .map(corDoTrecho)
+    .filter((hex): hex is string => Boolean(hex));
+  return [...new Set(achadas)];
 }

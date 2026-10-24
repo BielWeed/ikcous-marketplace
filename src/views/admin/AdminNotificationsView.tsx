@@ -10,10 +10,10 @@ import {
 import type { View } from "@/types";
 import type { Aviso, TipoDeAviso } from "@/utils/avisos-do-lojista";
 import {
-  Bell,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  type LucideIcon,
   MessageSquare,
   Package,
   RefreshCw,
@@ -33,8 +33,12 @@ interface AdminNotificationsViewProps {
 }
 
 const FOCO =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
-const SECUNDARIO = `flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-xs font-semibold text-zinc-100 transition-colors hover:bg-admin-hover ${FOCO}`;
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const BOTAO_BASE = `flex min-h-11 items-center justify-center gap-2 border border-solid border-border bg-muted/40 px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted/70 ${FOCO}`;
+const SECUNDARIO = `${BOTAO_BASE} rounded-2xl`;
+// Linguagem Tinta: rótulo mono em caixa alta, o mesmo nas seções e nos cartões.
+const ROTULO_MONO =
+  "font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground";
 
 /**
  * O que cada tipo de aviso veste. Tabela em vez de uma escada de `if`: o
@@ -43,53 +47,53 @@ const SECUNDARIO = `flex min-h-11 items-center justify-center gap-2 rounded-2xl 
  */
 const APARENCIA: Record<
   TipoDeAviso,
-  { Icone: typeof Bell; cor: string; rotulo: string; fonte: string }
+  { Icone: LucideIcon; cor: string; rotulo: string; fonte: string }
 > = {
   pedido: {
     Icone: ShoppingBag,
-    cor: "#34D399",
+    cor: "text-emerald-400",
     rotulo: "Pedido",
     fonte: "pedidos",
   },
   cancelamento: {
     Icone: XCircle,
-    cor: "#FF8BB2",
+    cor: "text-red-400",
     rotulo: "Cancelado",
     fonte: "cancelamentos de clientes",
   },
   devolucao: {
     Icone: RotateCcw,
-    cor: "#BA9AFF",
+    cor: "text-amber-400",
     rotulo: "Devolução",
     fonte: "devoluções",
   },
   privacidade: {
     Icone: ShieldCheck,
-    cor: "#2DD4BF",
+    cor: "text-red-400",
     rotulo: "Privacidade",
     fonte: "pedidos de privacidade",
   },
   recebimento: {
     Icone: Wallet,
-    cor: "#66CEDC",
+    cor: "text-emerald-400",
     rotulo: "Pagamento",
     fonte: "pagamentos por marcar",
   },
   pergunta: {
     Icone: MessageSquare,
-    cor: "#69C8FF",
+    cor: "text-sky-300",
     rotulo: "Pergunta",
     fonte: "perguntas",
   },
   avaliacao: {
     Icone: Star,
-    cor: "#E9BA7C",
+    cor: "text-amber-400",
     rotulo: "Avaliação",
     fonte: "avaliações",
   },
   estoque: {
     Icone: Package,
-    cor: "#FF9F5A",
+    cor: "text-amber-400",
     rotulo: "Estoque",
     fonte: "produtos",
   },
@@ -130,7 +134,7 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
   }
 
   return (
-    <article className="break-words rounded-2xl border border-admin-border bg-admin-raised">
+    <article className="break-words rounded-[18px] border border-border bg-muted/30">
       <h3>
         <button
           ref={botaoDoCartao}
@@ -138,26 +142,26 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
           aria-expanded={aberta}
           aria-controls={conteudoId}
           onClick={alternar}
-          className={`flex min-h-11 w-full items-start gap-3 rounded-2xl p-3.5 text-left hover:bg-white/5 ${FOCO}`}
+          className={`flex min-h-11 w-full items-start gap-3 rounded-[18px] p-3.5 text-left hover:bg-muted/40 ${FOCO}`}
         >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-violet-400/20 bg-violet-400/10 text-violet-300">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-border text-sky-300">
             <Sparkles aria-hidden="true" className="size-5" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[15px] font-bold text-white">
+            <span className="block text-[15px] font-bold text-foreground">
               {novidade.titulo}
             </span>
-            <span className="mt-1 block text-xs text-zinc-400">
+            <span className="mt-1 block text-xs text-muted-foreground">
               Versão {novidade.versao} ·{" "}
               <time dateTime={novidade.registradaEm}>
                 {new Date(novidade.registradaEm).toLocaleDateString("pt-BR")}
               </time>
             </span>
             {!novidade.lida && (
-              <span className="mt-2 flex w-fit items-center gap-1.5 rounded-full bg-sky-400/10 px-2 py-1 text-[11px] font-semibold text-sky-300">
+              <span className="mt-2 flex w-fit items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-300">
                 <span
                   aria-hidden="true"
-                  className="size-1.5 shrink-0 rounded-full bg-sky-300"
+                  className="size-1.5 shrink-0 rounded-full bg-current"
                 />
                 Não lida
               </span>
@@ -165,7 +169,7 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
           </span>
           <ChevronDown
             aria-hidden="true"
-            className={`size-5 shrink-0 text-zinc-400 ${
+            className={`size-5 shrink-0 text-muted-foreground ${
               aberta ? "rotate-180" : ""
             }`}
           />
@@ -175,15 +179,15 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
       <div
         id={conteudoId}
         hidden={!aberta}
-        className="mx-3.5 space-y-3 border-t border-admin-border py-3.5"
+        className="mx-3.5 space-y-3 border-t border-border py-3.5"
       >
         {grupos.map(({ titulo, itens }) =>
           itens.length > 0 ? (
             <div key={titulo} className="space-y-1">
-              <h4 className="text-xs font-bold text-zinc-300">{titulo}</h4>
+              <h4 className={`${ROTULO_MONO} font-semibold`}>{titulo}</h4>
               <ul
                 className="list-disc space-y-1 pl-5 text-sm
-                  leading-snug text-zinc-300"
+                  leading-snug text-foreground"
               >
                 {itens.map((texto, indice) => (
                   <li key={`${indice}-${texto}`}>{texto}</li>
@@ -231,7 +235,7 @@ function NovidadesDoApp({
           ref={titulo}
           id={tituloId}
           tabIndex={-1}
-          className={`scroll-mt-40 rounded text-lg font-bold text-zinc-50 ${FOCO}`}
+          className={`scroll-mt-40 rounded ${ROTULO_MONO} ${FOCO}`}
         >
           Novidades do app
         </h2>
@@ -293,30 +297,24 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
     <button
       type="button"
       data-aviso={aviso.tipo}
-      style={{ color: cor }}
       onClick={() => onNavigate(aviso.destino.view, aviso.destino.id)}
-      className={`group block min-h-11 w-full min-w-0 whitespace-pre-line break-words rounded-2xl border p-3.5 text-left transition-colors hover:border-white/30 ${FOCO} ${
-        privacidade
-          ? "border-rose-300/20 bg-gradient-to-b from-[#25191D] to-[#151115]"
-          : orientacao
-            ? "border-rose-300/20 bg-gradient-to-b from-[#23171F] to-admin-surface"
-            : "border-admin-border bg-admin-surface"
-      }`}
+      className={`group block min-h-11 w-full min-w-0 whitespace-pre-line break-words rounded-[18px] border border-solid border-border bg-muted/30 p-4 text-left text-foreground transition-colors hover:bg-muted/50 ${FOCO}`}
     >
-      <div className="mb-2 flex items-start gap-2">
+      <div className="mb-2 flex items-center gap-2">
         <span
-          className="flex size-8 shrink-0 items-center justify-center rounded-xl border"
-          style={{ backgroundColor: `${cor}26`, borderColor: `${cor}40` }}
+          className={`flex min-w-0 flex-1 items-center gap-2 font-mono text-[11px] font-semibold uppercase leading-none tracking-[0.12em] ${cor}`}
         >
-          <Icone aria-hidden="true" className="size-5" strokeWidth={1.8} />
-        </span>
-        <span className="min-w-0 flex-1 pt-1 text-[11px] font-bold uppercase leading-none tracking-wider">
+          <Icone
+            aria-hidden="true"
+            className="size-4 shrink-0"
+            strokeWidth={1.8}
+          />
           {rotulo}
         </span>
         {quando && (
           <time
             dateTime={aviso.quando}
-            className="shrink-0 pt-0.5 text-[11px] text-zinc-400"
+            className="shrink-0 font-mono text-[11px] text-muted-foreground"
           >
             {quando}
           </time>
@@ -325,35 +323,35 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
 
       <div className="flex items-start gap-3">
         <h3
-          className={`min-w-0 flex-1 text-[15px] font-bold leading-snug ${privacidade ? "text-rose-300" : "text-zinc-50"}`}
+          className={`min-w-0 flex-1 text-[18px] font-bold leading-snug tracking-tight ${privacidade ? "text-red-400" : "text-foreground"}`}
         >
           {recebimento ? "Confirmar recebimento" : aviso.titulo}
         </h3>
         {!privacidade && (
           <ChevronRight
             aria-hidden="true"
-            className="size-5 shrink-0 text-zinc-400"
+            className="size-5 shrink-0 text-muted-foreground"
           />
         )}
       </div>
 
       {recebimento && (
         <>
-          <p className="mt-1 text-[13px] font-semibold leading-relaxed text-zinc-50">
+          <p className="mt-2 text-base font-semibold leading-relaxed text-foreground">
             Você já recebeu o pagamento?
           </p>
-          <p className="mt-1 text-[13px] leading-relaxed text-zinc-400">
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
             {recebimento[0]} entregue
           </p>
           {recebimento[1] && (
-            <p className="text-[13px] leading-relaxed text-zinc-400">
+            <p className="text-sm leading-relaxed text-muted-foreground">
               {recebimento[1]}
             </p>
           )}
         </>
       )}
       {!recebimento && detalhe && (
-        <p className="mt-1 text-[13px] leading-relaxed text-zinc-400">
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
           {privacidade
             ? detalhe.replace("Abra Ajustes > Minha loja. ", "")
             : detalhe}
@@ -361,28 +359,28 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
       )}
       {valor && (
         <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-          <p className="text-lg font-bold leading-snug tracking-tight text-zinc-50">
+          <p className="text-[22px] font-bold leading-snug tracking-tight text-foreground">
             {valor}
           </p>
           {status && (
-            <span className="rounded-full bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
+            <span className="rounded-xl border border-border px-2.5 py-1 text-[11px] font-semibold text-emerald-400">
               {status}
             </span>
           )}
         </div>
       )}
       {recebimento && (
-        <p className="mt-2 text-[13px] leading-relaxed text-zinc-400 first-letter:uppercase">
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground first-letter:uppercase">
           {detalhe}
         </p>
       )}
 
       {privacidade && (
         <>
-          <p className="mt-1 text-[13px] font-semibold leading-relaxed text-zinc-50">
+          <p className="mt-2 text-base font-semibold leading-relaxed text-foreground">
             Responder em Ajustes &gt; Minha loja
           </p>
-          <span className="mt-3 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] p-3 text-sm font-bold text-[#1B1300]">
+          <span className="mt-3 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-foreground p-3 text-[15px] font-semibold text-background">
             <ChevronRight aria-hidden="true" className="size-5" />
             Revisar privacidade
           </span>
@@ -391,7 +389,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
       {orientacao && (
         <span
           data-orientacao
-          className="mt-3 flex min-h-11 items-center gap-2 rounded-xl bg-rose-400/10 px-3 py-2 text-sm font-bold text-rose-300"
+          className="mt-3 flex min-h-11 items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-bold text-red-400"
         >
           <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
           <span className="min-w-0 flex-1">{orientacao}</span>
@@ -423,11 +421,11 @@ function Bloco({
     <section data-bloco={nome} className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-zinc-50">{titulo}</h2>
-          <p className="mt-0.5 text-xs text-zinc-400">{legenda}</p>
+          <h2 className={ROTULO_MONO}>{titulo}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{legenda}</p>
         </div>
         {nome === "precisa-de-voce" && (
-          <span className="text-3xl font-bold leading-none text-zinc-50">
+          <span className="text-3xl font-bold leading-none text-foreground">
             {avisos.length}
           </span>
         )}
@@ -463,42 +461,40 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
   const deOlho = avisos.filter((aviso) => !aviso.contaNoCracha);
 
   return (
-    <div className="pb-admin min-h-screen bg-admin-bg text-zinc-50 duration-200 animate-in fade-in lg:pb-12">
-      <div className="sticky top-0 z-20 bg-admin-bg/95 px-5 py-4 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg border border-admin-gold/30 bg-admin-gold/10 text-admin-gold">
-              <Bell className="size-4" />
-            </div>
-            <div className="[&_h1]:text-2xl [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+    <div className="pb-admin min-h-screen bg-background text-foreground duration-200 animate-in fade-in lg:pb-12">
+      <div className="sticky top-0 z-20 bg-background/95 px-5 pb-3 pt-4 backdrop-blur-xl">
+        <div className="mx-auto max-w-3xl">
+          <p className={ROTULO_MONO}>Painel · Avisos</p>
+          <div className="mt-1 flex items-start justify-between gap-3">
+            <div className="min-w-0 [&_h1]:text-[28px] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:leading-8 [&_h1]:tracking-tight [&_h1_span]:not-italic">
               <AdminPageHeader
                 titulo={NOMES_DO_PAINEL["admin-notifications"]}
               />
             </div>
-          </div>
 
-          <button
-            type="button"
-            data-acao="recarregar"
-            onClick={recarregar}
-            aria-label="Atualizar os avisos"
-            title="Atualizar os avisos"
-            className={`${SECUNDARIO} min-w-11 shrink-0`}
+            <button
+              type="button"
+              data-acao="recarregar"
+              onClick={recarregar}
+              aria-label="Atualizar os avisos"
+              title="Atualizar os avisos"
+              className={`${BOTAO_BASE} size-11 shrink-0 rounded-full p-0`}
+            >
+              <RefreshCw
+                aria-hidden="true"
+                className={`size-5 ${carregando ? "animate-spin text-sky-300" : "text-muted-foreground"}`}
+              />
+            </button>
+          </div>
+          <p
+            role="status"
+            className={`mt-1 text-base ${carregando ? "text-sky-300" : "text-muted-foreground"}`}
           >
-            <RefreshCw
-              aria-hidden="true"
-              className={`size-5 ${carregando ? "animate-spin text-sky-300" : "text-zinc-400"}`}
-            />
-          </button>
+            {carregando
+              ? "Atualizando os avisos..."
+              : "O que está esperando por você"}
+          </p>
         </div>
-        <p
-          role="status"
-          className={`mx-auto mt-2 max-w-3xl text-sm ${carregando ? "text-sky-300" : "text-zinc-400"}`}
-        >
-          {carregando
-            ? "Atualizando os avisos..."
-            : "O que está esperando por você"}
-        </p>
       </div>
 
       <div className="mx-auto max-w-3xl space-y-7 px-5 pb-6 pt-2">
@@ -513,16 +509,19 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
               titulo?.scrollIntoView({ block: "start" });
               titulo?.focus();
             }}
-            className={`flex min-h-11 w-full items-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-left text-sm text-violet-300 ${FOCO}`}
+            className={`flex min-h-11 w-full items-center gap-3 rounded-[18px] border border-solid border-border bg-muted/30 px-4 py-3 text-left text-base font-semibold text-foreground hover:bg-muted/50 ${FOCO}`}
           >
-            <Sparkles aria-hidden="true" className="size-5 shrink-0" />
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full bg-current text-sky-300"
+            />
             <span className="min-w-0 flex-1">
               {naoLidas}{" "}
               {naoLidas === 1 ? "novidade não lida" : "novidades não lidas"}
             </span>
             <ChevronDown
               aria-hidden="true"
-              className="size-4 shrink-0 text-zinc-400"
+              className="size-4 shrink-0 text-muted-foreground"
             />
           </button>
         )}
@@ -530,9 +529,9 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
         {fontesComFalha.length > 0 && (
           <div
             role="alert"
-            className="space-y-3 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-3.5"
+            className="space-y-3 rounded-[18px] border border-border p-4"
           >
-            <div className="flex items-center gap-2 text-amber-300">
+            <div className="flex items-center gap-2 text-amber-400">
               <TriangleAlert aria-hidden="true" className="size-6 shrink-0" />
               <h2 className="text-[15px] font-bold">
                 {fontesComFalha.length}{" "}
@@ -541,7 +540,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
                   : "fontes sem atualização"}
               </h2>
             </div>
-            <p className="text-[13px] leading-relaxed text-zinc-300">
+            <p className="text-sm leading-relaxed text-muted-foreground">
               Não consegui conferir{" "}
               {fontesComFalha
                 .map((fonte) => NOME_DA_FONTE.get(fonte) ?? fonte)
@@ -588,14 +587,14 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
           escolheu dizer a verdade; a tela nao pode desmentir a fonte dela.
         */}
         {avisos.length === 0 && !carregando && fontesComFalha.length === 0 && (
-          <div className="flex flex-col items-center gap-4 rounded-3xl border border-admin-border bg-gradient-to-b from-emerald-400/10 to-admin-surface px-6 py-8 text-center">
-            <div className="flex size-14 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
+          <div className="flex flex-col items-center gap-4 rounded-[18px] border border-border bg-muted/30 px-6 py-8 text-center">
+            <div className="flex size-14 items-center justify-center rounded-2xl border border-border text-emerald-400">
               <CheckCircle2 aria-hidden="true" className="size-6" />
             </div>
-            <h2 className="text-2xl font-bold tracking-tight text-zinc-50">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">
               Tudo em dia
             </h2>
-            <p className="max-w-xs text-sm leading-relaxed text-zinc-400">
+            <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
               Nenhum pedido, devolução, pergunta ou avaliação esperando por
               você, e nenhum produto acabando.
             </p>
@@ -608,7 +607,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
           tituloId={novidadesId}
         />
         {avisos.length > 0 && (
-          <p className="py-2 text-center text-xs text-zinc-400">
+          <p className={`py-2 text-center ${ROTULO_MONO}`}>
             {avisos.length} {avisos.length === 1 ? "aviso" : "avisos"} no total
           </p>
         )}
