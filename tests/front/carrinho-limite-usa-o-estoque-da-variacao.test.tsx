@@ -128,6 +128,19 @@ describe("CartItemsList — o limite da linha é o estoque da VARIAÇÃO escolhi
     expect(host.textContent).toContain("Só 2 restantes");
   });
 
+  it("linha corrompida sem produto (localStorage antigo) não derruba as outras linhas", async () => {
+    const corrompida = { quantity: 1 } as unknown as CartItem;
+    const host = await renderizar([
+      corrompida,
+      { product: camisa, quantity: 1, variantId: "var-m" },
+    ]);
+
+    expect(host.textContent).toContain("Camisa Teste");
+    expect(
+      host.querySelectorAll('button[aria-label="Aumentar quantidade"]'),
+    ).toHaveLength(1);
+  });
+
   it("estoque dividido entre linhas: Azul-P e Azul-M dividem os 5 azuis", async () => {
     const azulM: CartItem = {
       product: camisa,

@@ -26,6 +26,7 @@ const { rpcFalso, servidor } = vi.hoisted(() => ({
   servidor: {
     caixa: null as Record<string, unknown> | null,
     contas: null as Record<string, unknown>[] | null,
+    falhasAbertura: [] as unknown[],
     falhasMovimento: [] as unknown[],
     falhasFechamento: [] as unknown[],
     falhasLeituraCaixa: [] as unknown[],
@@ -126,9 +127,12 @@ rpcFalso.mockImplementation(async (nome: string) => {
         data: servidor.historico,
         error: servidor.falhasLeituraHistorico.shift() ?? null,
       };
-    case "fin_caixa_abrir":
+    case "fin_caixa_abrir": {
+      // Outro aparelho abriu antes: o banco recusa e o caixa JÁ está aberto.
       servidor.caixa = CAIXA_ABERTO;
-      return { data: { id: "sessao-1" }, error: null };
+      const error = servidor.falhasAbertura.shift() ?? null;
+      return { data: error ? null : { id: "sessao-1" }, error };
+    }
     case "fin_caixa_movimentar_com_chave": {
       await servidor.emVoo;
       const error = servidor.falhasMovimento.shift() ?? null;
@@ -244,6 +248,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     vi.stubGlobal("localStorage", armazenamento);
     servidor.caixa = null;
     servidor.contas = null;
+    servidor.falhasAbertura = [];
     servidor.falhasMovimento = [];
     servidor.falhasFechamento = [];
     servidor.falhasLeituraCaixa = [];
@@ -1090,6 +1095,23 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(folha()).toBeNull();
     expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
     expect(normalizar(hospedeiro.textContent)).toContain("Caixa fechado");
+  });
+
+  it("o banco recusa 'já está aberto' (outro aparelho abriu): a tela se atualiza para o caixa aberto", async () => {
+    servidor.falhasAbertura = [
+      { code: "23505", message: "Este caixa já está aberto." },
+    ];
+    expect(normalizar(hospedeiro.textContent)).toContain("Caixa fechado");
+
+    await clicar(botaoEm(hospedeiro, "Abrir caixa"));
+    await digitar("fin-caixa-abertura", "15000");
+    await clicar(botaoEm(folha() as HTMLElement, "Abrir caixa"));
+
+    expect(folha()).toBeNull();
+    expect(toast.info).toHaveBeenCalledWith("Este caixa já está aberto.");
+    const depois = normalizar(hospedeiro.textContent);
+    expect(depois).toContain("Esperado na gaveta agora");
+    expect(depois).not.toContain("Caixa fechado");
   });
 
   it("abertura sem valor não vai ao banco", async () => {

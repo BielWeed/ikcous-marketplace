@@ -20,6 +20,7 @@ import {
 import {
   VALOR_MAXIMO,
   diferencaDoFechamento,
+  ehCaixaJaAberto,
   ehDivergenciaDoCaixa,
   mensagemDeErroFinanceiro,
   parseValorBR,
@@ -92,7 +93,10 @@ function useEnvio(
     try {
       await acao();
     } catch (falha) {
-      if (aoDivergir && ehDivergenciaDoCaixa(falha)) {
+      if (
+        aoDivergir &&
+        (ehDivergenciaDoCaixa(falha) || ehCaixaJaAberto(falha))
+      ) {
         try {
           await aoDivergir(falha);
         } catch (falhaDaRecarga) {
@@ -113,11 +117,13 @@ function useEnvio(
 /** "Abrir caixa": o dinheiro CONTADO na gaveta vira o valor de abertura. */
 export function AbrirCaixaFolha({
   contas,
+  aoReconciliar,
   aoFechar,
   aoSalvar,
   aoMudarSujo,
 }: {
   readonly contas: readonly ContaFinanceira[];
+  readonly aoReconciliar: (mensagem: string) => Promise<void>;
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
@@ -127,7 +133,14 @@ export function AbrirCaixaFolha({
     contas.find((c) => c.id === CONTA_CAIXA_DA_LOJA)?.nome ?? "Caixa da loja";
   const [valor, setValor] = useState("");
   const [tentou, setTentou] = useState(false);
-  const { enviando, erro, enviar } = useEnvio();
+  const { enviando, erro, enviar } = useEnvio(undefined, async (falha) => {
+    // 23505 cai na frase genérica de "dados recusados"; aqui o motivo é um só.
+    await aoReconciliar(
+      ehCaixaJaAberto(falha)
+        ? "Este caixa já está aberto."
+        : mensagemDeErroFinanceiro(falha),
+    );
+  });
 
   useEffect(() => {
     aoMudarSujo(valor !== "");
