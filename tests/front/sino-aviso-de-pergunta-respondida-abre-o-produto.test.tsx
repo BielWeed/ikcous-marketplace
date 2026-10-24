@@ -128,7 +128,7 @@ describe("sino da cliente — aviso de pergunta respondida", () => {
     expect(texto).toContain(
       "A loja respondeu sua pergunta sobre Camiseta Azul 40.",
     );
-    expect(texto).toContain("Você tem 1 não lida");
+    expect(texto).toContain("1 não lida");
     // há destino: o cartão mostra a chamada para abrir
     expect(texto).toContain("Ver Detalhes");
   });

@@ -123,7 +123,10 @@ describe("M3 — anel de foco reposto nos 11 pontos que apagavam", () => {
     ["chips de categoria da vitrine", CATEGORY_FILTER, 1],
     ["abas Detalhes/Avaliações/Perguntas", PRODUCT_VIEW, 1],
     ["abas do modal de avatar do perfil", PROFILE_VIEW, 2],
-    ["abas Perfil/Segurança e do modal de avatar", ACCOUNT_SETTINGS, 4],
+    // Redesenho Tinta (23/10/2026): as duas abas Perfil/Segurança saem de UM
+    // modelo (.map), então o par aparece 1x no fonte para as 2 abas + 2x nas
+    // abas do modal de avatar = 3 ocorrências, os mesmos 4 pontos na tela.
+    ["abas Perfil/Segurança e do modal de avatar", ACCOUNT_SETTINGS, 3],
     ["campo de cupom", COUPON_INPUT, 1],
     ["logo do cabeçalho", HEADER, 1],
     ["painel de resumo do pedido no checkout", CHECKOUT, 1],
