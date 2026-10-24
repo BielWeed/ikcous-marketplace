@@ -640,6 +640,8 @@ export function AdminArea({
                           props={{
                             onNavigate: onNavigate,
                             active: currentView === "admin-financeiro",
+                            // `onNavigate("admin-financeiro", "caixa")`: o id é a aba.
+                            abaInicial: selectedProductId,
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
                           }}

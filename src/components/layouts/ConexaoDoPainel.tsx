@@ -27,7 +27,7 @@ export function ConexaoDoPainel({
         rotulo: "Sem internet",
         titulo: "Sem conexão com o servidor",
         detalhe: "Aguarde o retorno do servidor.",
-        cor: "text-[#FFA1B0]",
+        cor: "text-red-400",
         Icone: WifiOff,
       }
     : showSyncFlash
@@ -67,6 +67,10 @@ export function ConexaoDoPainel({
     }
   }
 
+  // Estado fora do normal: a palavra também ganha a cor do estado (a bolinha
+  // sozinha não basta); no normal fica o cinza de apoio, como no desenho.
+  const anormal = isOffline || showSyncFlash || quality === "slow";
+
   return (
     <div className={cn("min-w-0 flex-1", !nome && "relative")}>
       <button
@@ -80,60 +84,94 @@ export function ConexaoDoPainel({
         onClick={() => setAberta(!aberta)}
         onKeyDown={aoPressionar}
         className={cn(
-          "flex min-h-11 w-full min-w-11 items-center gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
+          "flex min-h-11 w-full min-w-11 items-center gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           !nome && "border border-admin-border bg-admin-raised px-3",
         )}
       >
-        <span className="min-w-0 flex-1">
-          {nome && (
+        {nome ? (
+          // Desenho "Tinta": nome com a seta colada no fim dele e, embaixo,
+          // bolinha do estado + "Estado · Admin". Nome comprido QUEBRA em
+          // linhas (a seta acompanha a última).
+          <span className="min-w-0">
             <span
               className={cn(
-                "block break-words font-semibold leading-4 text-zinc-50",
-                nome.length > 26 ? "text-[12.5px]" : "text-[15px]",
+                "block break-words font-semibold leading-5 text-foreground",
+                nome.length > 26
+                  ? "text-[14px]"
+                  : "text-[15px] min-[360px]:text-[17px]",
               )}
             >
               {nome}
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "ml-1 inline size-4 align-[-3px] text-muted-foreground",
+                  aberta && "rotate-180",
+                )}
+              />
             </span>
-          )}
-          <span className="flex items-center gap-1 text-[11px] leading-4 text-[#A1A1AD]">
-            <Icone
-              aria-hidden="true"
-              className={cn("size-3.5 shrink-0", visual.cor)}
-            />
-            {nome && <span>Admin · </span>}
-            <span
-              className={cn(
-                "cursor-help flex shrink-0 items-center gap-1",
-                isOffline || showSyncFlash || quality === "slow"
-                  ? visual.cor
-                  : "text-[#A1A1AD]",
-                showSyncFlash && "animate-pulse",
-              )}
-              title={visual.titulo}
-            >
-              <span className="text-[11px]">{visual.rotulo}</span>
+            <span className="mt-0.5 flex items-center gap-1.5 text-[13px] leading-4 text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "size-2 shrink-0 rounded-full bg-current",
+                  visual.cor,
+                  showSyncFlash && "animate-pulse",
+                )}
+              />
+              <span
+                className={cn(
+                  "cursor-help",
+                  anormal && visual.cor,
+                  showSyncFlash && "animate-pulse",
+                )}
+                title={visual.titulo}
+              >
+                {visual.rotulo} · Admin
+              </span>
             </span>
           </span>
-        </span>
-        <ChevronDown
-          aria-hidden="true"
-          className={cn(
-            "size-3.5 shrink-0 text-[#A1A1AD]",
-            aberta && "rotate-180",
-          )}
-        />
+        ) : (
+          <>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1 text-[11px] leading-4 text-muted-foreground">
+                <Icone
+                  aria-hidden="true"
+                  className={cn("size-3.5 shrink-0", visual.cor)}
+                />
+                <span
+                  className={cn(
+                    "cursor-help flex shrink-0 items-center gap-1",
+                    anormal && visual.cor,
+                    showSyncFlash && "animate-pulse",
+                  )}
+                  title={visual.titulo}
+                >
+                  <span className="text-[11px]">{visual.rotulo}</span>
+                </span>
+              </span>
+            </span>
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "size-3.5 shrink-0 text-muted-foreground",
+                aberta && "rotate-180",
+              )}
+            />
+          </>
+        )}
       </button>
       {aberta && (
         <div
           id={id}
           className={cn(
-            "absolute top-full z-[110] mt-2 flex items-center gap-3 rounded-2xl border border-admin-border-strong bg-admin-raised p-3 shadow-xl",
+            "absolute top-full z-[110] mt-2 flex items-center gap-3 rounded-[18px] border border-admin-border-strong bg-admin-raised p-3 shadow-xl",
             nome ? "inset-x-5" : "inset-x-0",
           )}
         >
           <span
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-xl border border-current bg-white/5",
+              "flex size-8 shrink-0 items-center justify-center rounded-xl border border-current",
               visual.cor,
             )}
           >
@@ -144,17 +182,17 @@ export function ConexaoDoPainel({
             )}
           </span>
           <div className="min-w-0 flex-1 text-xs">
-            <p className="font-semibold text-zinc-50">
+            <p className="font-semibold text-foreground">
               {isOffline ? "Reconexão automática" : visual.titulo}
             </p>
-            <p className="mt-1 text-[#A1A1AD]">{visual.detalhe}</p>
+            <p className="mt-1 text-muted-foreground">{visual.detalhe}</p>
           </div>
           <button
             type="button"
             aria-label="Fechar detalhes da conexão"
             onClick={fechar}
             onKeyDown={aoPressionar}
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border-strong bg-admin-hover text-[#A1A1AD] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border-strong bg-admin-hover text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X aria-hidden="true" className="size-5" />
           </button>

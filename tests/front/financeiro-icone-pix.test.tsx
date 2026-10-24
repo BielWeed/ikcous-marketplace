@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { AbaVisao } from "@/components/admin/financeiro/AbaVisao";
 import { parseResumo } from "@/lib/financeiro";
+import { CAIXA_FECHADO_DA_VISAO } from "./helpers/caixa-da-visao";
 
 const estado = vi.hoisted(() => ({
   formas: [
@@ -51,6 +52,8 @@ async function montar() {
         hoje="2026-10-17"
         versao={0}
         contas={[]}
+        caixa={CAIXA_FECHADO_DA_VISAO}
+        abrirFolha={vi.fn()}
         irParaAba={vi.fn()}
         verPrevistos={vi.fn()}
       />,

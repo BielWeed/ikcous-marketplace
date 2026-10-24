@@ -258,7 +258,7 @@ describe("CartView — aba Meus Pedidos: falha de carregamento não é lista vaz
     await montarAbaPedidos();
 
     expect(texto()).toContain("Blusa Teste");
-    expect(texto()).toContain("Em Andamento (1)");
+    expect(texto()).toContain("Em andamento (1)");
     expect(texto()).toContain("Não foi possível atualizar");
     expect(texto()).not.toContain(
       "Não conseguimos carregar seus pedidos agora",
@@ -273,10 +273,15 @@ describe("CartView — aba Meus Pedidos: falha de carregamento não é lista vaz
     duble.proximaFalha = true;
     await montarAbaPedidos();
 
-    expect(texto()).toContain("Sem pedidos ativos");
+    expect(texto()).toContain("Nenhum pedido em andamento");
+    expect(texto()).toContain(
+      "Quando você comprar, o andamento do pedido aparece aqui.",
+    );
     expect(texto()).not.toContain(
       "Não conseguimos carregar seus pedidos agora",
     );
-    expect(texto()).not.toContain("Nenhum pedido");
+    // O vazio GENÉRICO ("Nenhum pedido", sem lista nenhuma) não pode aparecer:
+    // o título da aba vazia começa igual, por isso a exclusão da continuação.
+    expect(texto()).not.toMatch(/Nenhum pedido(?! em andamento)/);
   });
 });

@@ -17,14 +17,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem, Order, Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AnimatePresence, motion, usePresence } from "framer-motion";
-import {
-  ArrowRight,
-  Package,
-  ShieldCheck,
-  ShoppingCart,
-  Sparkles,
-  Truck,
-} from "lucide-react";
+import { ArrowRight, ShieldCheck, Sparkles, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // Sub-components
@@ -633,7 +626,7 @@ export function CartView({
     [onRemove],
   );
   return (
-    <div className="pb-customer-summary flex min-h-full flex-col bg-zinc-50/30 transition-all duration-300">
+    <div className="pb-customer-summary flex min-h-full flex-col bg-background text-foreground">
       {/* Laudo de acessibilidade 05/09 (onda 3, item B1): o carrinho não
           tinha NENHUM heading — leitor de tela sem título de página.
           sr-only: zero pixel muda. Rodada 2 (Codex, 08/09, item 4): com
@@ -642,15 +635,16 @@ export function CartView({
       <h1 className="sr-only">
         {activeTab === "orders" ? "Meus Pedidos" : "Carrinho"}
       </h1>
-      {/* Tab Switcher Premium */}
-      <div className="sticky top-[-2px] z-50 flex flex-col gap-2 border-b border-zinc-100 bg-white/80 px-4 py-2 backdrop-blur-md xs:gap-4 xs:px-6 xs:pb-2.5 xs:pt-3">
+      {/* Abas Carrinho / Meus pedidos: o indicador de tinta desliza sob o
+          texto da aba ativa (estilo Tinta, 24/10/2026). */}
+      <div className="sticky top-[-2px] z-50 bg-background/95 px-4 py-3 backdrop-blur-md min-[380px]:px-5">
         <div
-          className="relative flex overflow-hidden rounded-2xl bg-zinc-100/50 p-1"
+          className="relative flex overflow-hidden rounded-2xl bg-muted/60 p-1"
           role="tablist"
         >
           <motion.div
             aria-hidden="true"
-            className="absolute inset-y-1 rounded-xl border border-zinc-200/50 bg-white shadow-sm"
+            className="absolute inset-y-1 rounded-xl bg-foreground"
             initial={false}
             animate={{
               left: activeTab === "cart" ? "4px" : "50%",
@@ -670,14 +664,13 @@ export function CartView({
               onNavigate("cart");
             }}
             className={cn(
-              "flex-1 py-3 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest relative z-10 transition-colors duration-300",
-              activeTab === "cart" ? "text-zinc-950" : "text-zinc-400",
+              "relative z-10 h-11 flex-1 rounded-xl px-3 text-[15px] font-semibold transition-colors duration-300",
+              activeTab === "cart"
+                ? "text-background"
+                : "text-muted-foreground",
             )}
           >
-            <div className="flex items-center justify-center gap-2">
-              <ShoppingCart className="size-4" />
-              Carrinho ({cartCount})
-            </div>
+            Carrinho ({cartCount})
           </button>
 
           <button
@@ -691,14 +684,13 @@ export function CartView({
               onNavigate("orders");
             }}
             className={cn(
-              "flex-1 py-3 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest relative z-10 transition-colors duration-300",
-              activeTab === "orders" ? "text-zinc-950" : "text-zinc-400",
+              "relative z-10 h-11 flex-1 rounded-xl px-3 text-[15px] font-semibold transition-colors duration-300",
+              activeTab === "orders"
+                ? "text-background"
+                : "text-muted-foreground",
             )}
           >
-            <div className="flex items-center justify-center gap-2">
-              <Package className="size-4" />
-              Meus Pedidos
-            </div>
+            Meus pedidos
           </button>
         </div>
       </div>
@@ -727,7 +719,7 @@ export function CartView({
                   <EmptyCart onNavigate={onNavigate} />
                 </div>
               ) : (
-                <div className="mx-auto flex w-full max-w-7xl flex-col items-stretch gap-8 px-4 pb-6 pt-2 xs:px-6 lg:flex-row lg:items-start lg:px-8 lg:py-6">
+                <div className="mx-auto flex w-full max-w-7xl flex-col items-stretch gap-6 px-4 pb-6 pt-1 min-[380px]:px-5 lg:flex-row lg:items-start lg:gap-8 lg:px-8 lg:py-6">
                   {/* Coluna Esquerda: Itens, Frete Grátis e Checkout Convidado */}
                   <div className="w-full min-w-0 flex-1 space-y-6">
                     <CartItemsList
@@ -765,7 +757,7 @@ export function CartView({
                         checkout tem a própria. Fora da aba, esta desmonta —
                         o lacre do desmonte descarta a resposta em voo. */}
                     {cart.length > 0 && isActive && (
-                      <div className="mt-3 space-y-3">
+                      <div className="space-y-3">
                         <ShippingCalculator
                           key={user?.id ?? "convidado"}
                           cart={cart}
@@ -802,7 +794,7 @@ export function CartView({
                                   devolverFocoAoTrocarRef.current = true;
                                   setEscolhendoEndereco(true);
                                 }}
-                                className="select-none rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-700 hover:border-zinc-300"
+                                className="min-h-11 select-none rounded-xl border border-solid border-border bg-background px-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-muted"
                               >
                                 Trocar
                               </button>
@@ -810,7 +802,7 @@ export function CartView({
                               <button
                                 type="button"
                                 onClick={cadastrarEndereco}
-                                className="select-none rounded-xl bg-primary px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-primary-foreground hover:bg-primary/90"
+                                className="min-h-11 select-none rounded-xl bg-foreground px-3 text-[13px] font-semibold text-background transition-colors hover:bg-foreground/90"
                               >
                                 Cadastrar endereço
                               </button>
@@ -859,10 +851,10 @@ export function CartView({
                             }}
                           >
                             <SheetHeader className="shrink-0 px-5 pb-3 pr-12 pt-5">
-                              <SheetTitle className="text-base font-black tracking-tight text-zinc-950">
+                              <SheetTitle className="text-base font-bold tracking-tight text-foreground">
                                 Entregar em
                               </SheetTitle>
-                              <SheetDescription className="text-xs text-zinc-500">
+                              <SheetDescription className="text-[13px] text-muted-foreground">
                                 Escolha onde receber o pedido. O frete é
                                 recalculado para o endereço escolhido.
                               </SheetDescription>
@@ -896,11 +888,11 @@ export function CartView({
                             {/* Rodapé FIXO da folha: fora da área que rola,
                                 com a área segura do aparelho (mesma
                                 variável dos rodapés da casa). */}
-                            <SheetFooter className="mt-0 shrink-0 border-t border-zinc-100 bg-background px-5 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-3">
+                            <SheetFooter className="mt-0 shrink-0 border-t border-border bg-background px-5 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-3">
                               <button
                                 type="button"
                                 onClick={cadastrarEndereco}
-                                className="flex h-12 w-full select-none items-center justify-center rounded-2xl border border-dashed border-zinc-300 text-[11px] font-black uppercase tracking-wider text-zinc-700 hover:border-zinc-400"
+                                className="flex h-12 w-full select-none items-center justify-center rounded-2xl border border-dashed border-input text-[13px] font-semibold text-foreground transition-colors hover:bg-muted"
                               >
                                 + Cadastrar novo endereço
                               </button>
@@ -957,113 +949,107 @@ export function CartView({
                       )}
 
                     {!user && cart.length > 0 && (
-                      <div className="group relative overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-zinc-50 p-6 shadow-lg shadow-black/10 sm:p-8">
-                        <div className="relative z-10">
-                          {/* Header */}
-                          <div className="mb-6 flex items-center gap-3">
-                            <div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
-                              <Sparkles className="size-5" />
+                      <div className="rounded-[18px] border border-border bg-muted/30 p-5">
+                        {/* Header */}
+                        <div className="mb-5 flex items-center gap-3">
+                          <div className="flex size-11 items-center justify-center rounded-xl bg-foreground text-background">
+                            <Sparkles className="size-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-[15px] font-semibold text-foreground">
+                              Opções de Compra
+                            </h3>
+                            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                              Rápido e Seguro
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Options/Benefits List */}
+                        <div className="mb-5 space-y-4 border-t border-border pt-4">
+                          <div className="flex gap-3">
+                            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
+                              <Truck className="size-4 text-foreground/70" />
                             </div>
-                            <div>
-                              <h3 className="text-sm font-black uppercase tracking-tight text-slate-800">
-                                Opções de Compra
-                              </h3>
-                              <p className="text-[10px] font-black uppercase tracking-widest text-primary">
-                                Rápido e Seguro
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-semibold text-foreground">
+                                Identificar-se (Entrar)
+                              </p>
+                              <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
+                                {/* FRETE V2 (onda D-1, 03/09): a promessa
+                                    "e ativar o frete grátis (acima de
+                                    R$ X)" morreu com a trava de login da
+                                    regra — convidado tem o MESMO direito
+                                    do logado (frente B no CartContext;
+                                    mesmo corte do "Faça login para
+                                    liberar o Frete VIP" no CartReminder).
+                                    "Acumular pontos" nunca existiu no app.
+                                    Prometer ao convidado que o login
+                                    libera o que ele JÁ ganha é promessa
+                                    falsa. */}
+                                Faça login para salvar seus itens.
                               </p>
                             </div>
                           </div>
 
-                          {/* Options/Benefits List */}
-                          <div className="mb-6 space-y-4 border-t border-zinc-100 pt-5">
-                            <div className="flex gap-3">
-                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-zinc-100 bg-white/80">
-                                <Truck className="size-3.5 text-emerald-500" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-800">
-                                  Identificar-se (Entrar)
-                                </p>
-                                <p className="mt-0.5 text-[9px] font-medium leading-relaxed text-slate-500">
-                                  {/* FRETE V2 (onda D-1, 03/09): a promessa
-                                      "e ativar o frete grátis (acima de
-                                      R$ X)" morreu com a trava de login da
-                                      regra — convidado tem o MESMO direito
-                                      do logado (frente B no CartContext;
-                                      mesmo corte do "Faça login para
-                                      liberar o Frete VIP" no CartReminder).
-                                      "Acumular pontos" nunca existiu no app.
-                                      Prometer ao convidado que o login
-                                      libera o que ele JÁ ganha é promessa
-                                      falsa. */}
-                                  Faça login para salvar seus itens.
-                                </p>
-                              </div>
+                          <div className="flex gap-3">
+                            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
+                              <Sparkles className="size-4 text-foreground/70" />
                             </div>
-
-                            <div className="flex gap-3">
-                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-zinc-100 bg-white/80">
-                                <Sparkles className="size-3.5 text-amber-500" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-800">
-                                  Comprar como Convidado
-                                </p>
-                                <p className="mt-0.5 text-[9px] font-medium leading-relaxed text-slate-500">
-                                  Finalize sua compra instantaneamente sem
-                                  precisar criar senha ou cadastro.
-                                </p>
-                              </div>
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-semibold text-foreground">
+                                Comprar como Convidado
+                              </p>
+                              <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
+                                Finalize sua compra instantaneamente sem
+                                precisar criar senha ou cadastro.
+                              </p>
                             </div>
-                          </div>
-
-                          {/* Button Actions */}
-                          <div className="flex flex-col gap-3">
-                            <button
-                              onClick={() => {
-                                haptic.medium();
-                                onNavigate("auth" as any);
-                              }}
-                              className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-3.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-emerald-500/10 transition-colors hover:from-emerald-400 hover:to-emerald-500 active:scale-95"
-                            >
-                              Identificar-se e Entrar
-                              <ArrowRight className="size-3.5" />
-                            </button>
-
-                            <div className="flex items-center justify-center gap-2 py-1">
-                              <div className="h-px flex-1 bg-zinc-100" />
-                              <span className="text-[8px] font-black uppercase tracking-widest text-primary">
-                                ou se preferir
-                              </span>
-                              <div className="h-px flex-1 bg-zinc-100" />
-                            </div>
-
-                            <button
-                              onClick={() => {
-                                haptic.light();
-                                onNavigate("checkout");
-                              }}
-                              className="w-full rounded-2xl border border-zinc-100/50 py-3.5 text-[10px] font-black uppercase tracking-widest text-primary transition-colors hover:border-zinc-200 active:scale-95"
-                            >
-                              Continuar como Convidado
-                            </button>
                           </div>
                         </div>
 
-                        {/* Premium Subtle Glow Background */}
-                        <div className="pointer-events-none absolute right-0 top-0 -mr-32 -mt-32 size-64 rounded-full bg-emerald-500/5 blur-3xl" />
-                        <div className="pointer-events-none absolute bottom-0 left-0 -mb-16 -ml-16 size-32 rounded-full bg-secondary/10 blur-2xl" />
+                        {/* Button Actions */}
+                        <div className="flex flex-col gap-3">
+                          <button
+                            onClick={() => {
+                              haptic.medium();
+                              onNavigate("auth" as any);
+                            }}
+                            className="flex h-[52px] w-full items-center justify-center gap-2.5 rounded-2xl bg-foreground text-[15px] font-semibold text-background transition-colors hover:bg-foreground/90 active:scale-[0.98]"
+                          >
+                            Identificar-se e Entrar
+                            <ArrowRight className="size-5" />
+                          </button>
+
+                          <div className="flex items-center justify-center gap-3">
+                            <div className="h-px flex-1 bg-border" />
+                            <span className="text-[13px] text-muted-foreground">
+                              ou se preferir
+                            </span>
+                            <div className="h-px flex-1 bg-border" />
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              haptic.light();
+                              onNavigate("checkout");
+                            }}
+                            className="h-[52px] w-full rounded-2xl border border-solid border-border bg-background text-[15px] font-semibold text-foreground transition-colors hover:bg-muted active:scale-[0.98]"
+                          >
+                            Continuar como Convidado
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
 
                   {/* Coluna Direita: Resumo do Pedido (Desktop Only) */}
-                  <div className="sticky top-24 hidden w-full shrink-0 space-y-6 rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.02)] lg:block lg:w-[380px]">
+                  <div className="sticky top-24 hidden w-full shrink-0 space-y-5 rounded-[18px] border border-border bg-background p-6 lg:block lg:w-[380px]">
                     <div>
-                      <h3 className="mb-1 text-lg font-black uppercase tracking-tight text-zinc-950">
+                      <h3 className="mb-1 text-lg font-bold tracking-tight text-foreground">
                         Resumo do Pedido
                       </h3>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                         {cartCount}{" "}
                         {cartCount > 1
                           ? "itens selecionados"
@@ -1071,28 +1057,24 @@ export function CartView({
                       </p>
                     </div>
 
-                    <div className="space-y-4 border-t border-zinc-50 pt-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold uppercase tracking-wider text-zinc-400">
-                          Subtotal
-                        </span>
-                        <span className="font-black text-zinc-950">
+                    <div className="space-y-3 border-t border-border pt-4">
+                      <div className="flex items-center justify-between text-[15px]">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-semibold text-foreground">
                           {formatCurrency(subtotal)}
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold uppercase tracking-wider text-zinc-400">
-                          Frete
-                        </span>
+                      <div className="flex items-center justify-between text-[15px]">
+                        <span className="text-muted-foreground">Frete</span>
                         <span
                           className={cn(
-                            "font-black tracking-tight",
+                            "font-semibold",
                             shipping === 0
-                              ? "text-emerald-500"
+                              ? "text-emerald-700 dark:text-emerald-400"
                               : shipping === null
-                                ? "text-zinc-500"
-                                : "text-zinc-950",
+                                ? "text-muted-foreground"
+                                : "text-foreground",
                           )}
                         >
                           {shipping === 0
@@ -1104,35 +1086,36 @@ export function CartView({
                       </div>
 
                       {shipping === 0 && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold uppercase tracking-wider text-zinc-400">
-                            Bônus
-                          </span>
-                          <span className="flex items-center gap-1 font-black uppercase tracking-tighter text-emerald-500">
-                            <Sparkles className="size-3 fill-emerald-500/20" />
+                        <div className="flex items-center justify-between text-[15px]">
+                          <span className="text-muted-foreground">Bônus</span>
+                          <span className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400">
+                            <Sparkles className="size-3.5" />
                             Frete Grátis
                           </span>
                         </div>
                       )}
 
                       {amountToFree > 0 && (
-                        <div className="rounded-2xl border border-amber-100/50 bg-amber-50/50 p-3 text-[10px] font-medium leading-relaxed text-amber-800">
-                          Adicione mais{" "}
-                          <span className="font-black">
-                            {formatCurrency(amountToFree)}
-                          </span>{" "}
-                          para garantir{" "}
-                          <span className="font-black">Frete Grátis</span>!
-                        </div>
+                        <p className="flex items-start gap-2 rounded-[14px] border border-border p-3 text-[13px] leading-snug text-foreground">
+                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
+                          <span>
+                            Adicione mais{" "}
+                            <span className="font-bold">
+                              {formatCurrency(amountToFree)}
+                            </span>{" "}
+                            para garantir{" "}
+                            <span className="font-bold">Frete Grátis</span>!
+                          </span>
+                        </p>
                       )}
                     </div>
 
-                    <div className="flex items-end justify-between border-t border-zinc-100 pt-4">
+                    <div className="flex items-end justify-between gap-3 border-t border-border pt-4">
                       <div>
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                        <span className="mb-1 block font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                           Total
                         </span>
-                        <span className="text-2xl font-black tracking-tighter text-zinc-950">
+                        <span className="text-2xl font-bold tracking-tight text-foreground">
                           {formatCurrency(total)}
                         </span>
                       </div>
@@ -1141,7 +1124,8 @@ export function CartView({
                            "Economizou R$ X" contra `config.shippingFee` —
                            preço morto da taxa fixa. Sem cotação alternativa
                            em mãos não há número honesto: só o fato. */
-                        <span className="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-emerald-700">
+                        <span className="flex items-center gap-1.5 pb-1 text-[13px] font-medium text-emerald-700 dark:text-emerald-400">
+                          <span className="size-1.5 rounded-full bg-emerald-500" />
                           Frete grátis aplicado
                         </span>
                       )}
@@ -1152,15 +1136,10 @@ export function CartView({
                         haptic.medium();
                         onNavigate("checkout");
                       }}
-                      className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl bg-primary px-6 text-primary-foreground shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-[0.98]"
+                      className="flex h-[52px] w-full items-center justify-center gap-3 rounded-2xl bg-foreground text-[15px] font-semibold text-background transition-colors hover:bg-foreground/90 active:scale-[0.98]"
                     >
-                      <span className="relative z-10 text-[11px] font-black uppercase tracking-widest">
-                        Finalizar Compra
-                      </span>
-                      <div className="relative z-10 flex size-8 items-center justify-center rounded-xl bg-white/10 transition-colors group-hover:bg-white/20">
-                        <ArrowRight className="size-4 text-primary-foreground transition-transform group-hover:translate-x-0.5" />
-                      </div>
-                      <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
+                      Finalizar Compra
+                      <ArrowRight className="size-5" />
                     </button>
 
                     {/*
@@ -1179,10 +1158,10 @@ export function CartView({
                       o cumpre — a trava está em
                       tests/front/cart-view-promessas-que-a-loja-nao-cumpre.test.tsx.
                     */}
-                    <div className="space-y-3 border-t border-zinc-50 pt-4">
-                      <div className="flex items-center gap-3 text-zinc-500">
-                        <ShieldCheck className="size-4 flex-shrink-0 text-emerald-500" />
-                        <span className="text-[10px] font-semibold leading-tight tracking-tight">
+                    <div className="space-y-3 border-t border-border pt-4">
+                      <div className="flex items-center gap-3 text-muted-foreground">
+                        <ShieldCheck className="size-4 flex-shrink-0" />
+                        <span className="text-[13px] leading-tight">
                           Ambiente de pagamento 100% seguro
                         </span>
                       </div>
@@ -1207,7 +1186,7 @@ export function CartView({
                 x: { ease: [0.16, 1, 0.3, 1], duration: 0.38 },
                 opacity: { duration: 0.2 },
               }}
-              className="flex w-full flex-1 flex-col px-6 pb-6 pt-0 focus:outline-none"
+              className="flex w-full flex-1 flex-col px-4 pb-6 pt-0 focus:outline-none min-[380px]:px-5"
             >
               {orderViewMode === "guest" && (
                 <OrderSearch
@@ -1220,65 +1199,37 @@ export function CartView({
               )}
 
               {orders.length > 0 && !isLoadingOrders && (
-                <div className="relative mx-auto mb-6 flex w-full max-w-md overflow-hidden rounded-2xl border border-zinc-200/20 bg-zinc-100/50 p-1">
-                  <motion.div
-                    className="absolute inset-y-1 rounded-xl border border-zinc-200/50 bg-white shadow-sm"
-                    initial={false}
-                    animate={{
-                      left: ordersTab === "active" ? "4px" : "50%",
-                      width: "calc(50% - 4px)",
-                    }}
-                    transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
-                  />
-
+                <div className="mb-4 flex flex-wrap gap-2">
                   <button
+                    aria-pressed={ordersTab === "active"}
                     onClick={() => {
                       haptic.light();
                       setOrdersTab("active");
                     }}
                     className={cn(
-                      "flex-1 py-2.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest relative z-10 transition-colors duration-300",
+                      "h-11 rounded-xl border border-solid px-4 text-[15px] font-semibold transition-colors",
                       ordersTab === "active"
-                        ? "text-zinc-950"
-                        : "text-zinc-400 hover:text-zinc-600",
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border text-foreground/80 hover:bg-muted",
                     )}
                   >
-                    <div className="flex items-center justify-center gap-1.5">
-                      <span
-                        className={cn(
-                          "w-1.5 h-1.5 rounded-full transition-colors duration-300",
-                          ordersTab === "active"
-                            ? "bg-amber-500 animate-pulse"
-                            : "bg-amber-400/60",
-                        )}
-                      />
-                      Em Andamento ({activeOrdersCount})
-                    </div>
+                    Em andamento ({activeOrdersCount})
                   </button>
 
                   <button
+                    aria-pressed={ordersTab === "history"}
                     onClick={() => {
                       haptic.light();
                       setOrdersTab("history");
                     }}
                     className={cn(
-                      "flex-1 py-2.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest relative z-10 transition-colors duration-300",
+                      "h-11 rounded-xl border border-solid px-4 text-[15px] font-semibold transition-colors",
                       ordersTab === "history"
-                        ? "text-zinc-950"
-                        : "text-zinc-400 hover:text-zinc-600",
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border text-foreground/80 hover:bg-muted",
                     )}
                   >
-                    <div className="flex items-center justify-center gap-1.5">
-                      <span
-                        className={cn(
-                          "w-1.5 h-1.5 rounded-full transition-colors duration-300",
-                          ordersTab === "history"
-                            ? "bg-emerald-500"
-                            : "bg-zinc-300",
-                        )}
-                      />
-                      Histórico ({historyOrdersCount})
-                    </div>
+                    Histórico ({historyOrdersCount})
                   </button>
                 </div>
               )}
@@ -1313,15 +1264,15 @@ export function CartView({
                       emptyTitle={
                         orders.length > 0
                           ? ordersTab === "active"
-                            ? "Sem pedidos ativos"
-                            : "Histórico vazio"
+                            ? "Nenhum pedido em andamento"
+                            : "Nenhum pedido no histórico"
                           : undefined
                       }
                       emptyDescription={
                         orders.length > 0
                           ? ordersTab === "active"
-                            ? "Você não tem nenhum pedido em andamento no momento."
-                            : "Você ainda não possui pedidos finalizados ou cancelados."
+                            ? "Quando você comprar, o andamento do pedido aparece aqui."
+                            : "Quando um pedido for concluído ou cancelado, ele aparece aqui."
                           : undefined
                       }
                     />

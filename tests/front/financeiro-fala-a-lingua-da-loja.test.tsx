@@ -205,12 +205,13 @@ describe("Financeiro fala a língua da loja", () => {
   it("Contas e categorias saiu da fila de abas: abre pelo chip Contas e o selo Avançado some", async () => {
     await montar(<AdminFinanceiroView onNavigate={vi.fn()} active />);
 
-    // Desenho de 22/10/2026: as abas são só as cinco do dia a dia.
+    // Desenho de 22/10/2026: as abas são só as cinco do dia a dia; desde
+    // 24/10/2026 o Caixa é o 2º, logo depois da Visão.
     expect(abas()).toEqual([
       "Visão",
+      "Caixa",
       "Extrato",
       "Pagar e receber",
-      "Caixa",
       "Resultado",
     ]);
     expect(hospedeiro.querySelectorAll("[data-selo-avancado]")).toHaveLength(0);
