@@ -95,7 +95,11 @@ module.exports = [
     // 23/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
     // 568 -> 572 kB na 1.5.60 (Perfil redesenhado e carrinho com estoque da variacao;
     // medido na integracao antes de subir: ver o PR do lote). Folga de ~40 B nao basta.
-    limit: "572 kB",
+    // 23/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 572 -> 576 kB na 1.5.62 (sete telas no estilo Tinta: endereco, conta, privacidade,
+    // sobre a loja, notificacoes e o seletor de variantes). Medido na integracao:
+    // 572,28 kB, 284 B acima do teto anterior; o painel ficou em 473,01 kB (cabe em 476).
+    limit: "576 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
