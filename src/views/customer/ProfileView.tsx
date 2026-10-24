@@ -843,7 +843,7 @@ export function ProfileView({
 
         {/* Encerrar sessão — botão PRÓPRIO no fim do perfil (ordem do dono,
             14/09): a ação destrutiva fica separada das navegações. */}
-        <motion.div variants={itemVariants} className="overflow-hidden">
+        <motion.div variants={itemVariants}>
           <button
             type="button"
             onClick={logout}
