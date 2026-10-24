@@ -17,6 +17,7 @@ import { useAnalytics } from "@/hooks/useAnalytics";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import type { CargoDaConta } from "@/lib/cargo-da-conta";
 import { formatarInteiro } from "@/lib/crm";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -152,6 +153,32 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   // Missão 06 (C2): alinhado com pedidos/produtos (era 10 — terceiro tamanho
   // de página que não existia por desenho nenhum).
   const PAGE_SIZE = 12;
+
+  // Promover/rebaixar pela folha do cartão: o selo muda na hora, sem recarregar,
+  // e o cache de módulo acompanha (senão, voltar a esta tela mostraria o cargo
+  // velho). A lista da tela é espelhada numa ref para a troca não depender de
+  // um fechamento velho.
+  const listaRef = useRef(customers);
+  useEffect(() => {
+    listaRef.current = customers;
+  }, [customers]);
+  const handleCargoMudou = useCallback(
+    (id: string, novoCargo: CargoDaConta) => {
+      const nova = listaRef.current.map((c) =>
+        c.id === id ? { ...c, role: novoCargo } : c,
+      );
+      listaRef.current = nova;
+      setCustomers(nova);
+      if (globalStats) {
+        setCachedCustomersData({
+          customers: nova,
+          total: totalCustomers,
+          stats: globalStats,
+        });
+      }
+    },
+    [globalStats, totalCustomers],
+  );
 
   const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {
     const saved = localStorage.getItem("admin_customers_view_mode");
@@ -736,6 +763,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                             customer={customer}
                             onNavigate={handleLocalNavigate}
                             onPrefetch={handlePrefetchUserDetail}
+                            onCargoMudou={handleCargoMudou}
                           />
                         ))}
                       </div>
@@ -748,6 +776,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           customer={customer}
                           onNavigate={handleLocalNavigate}
                           onPrefetch={handlePrefetchUserDetail}
+                          onCargoMudou={handleCargoMudou}
                         />
                       ))}
                     </div>

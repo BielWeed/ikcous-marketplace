@@ -251,6 +251,7 @@ on:
           - 87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente
           - 88a-conferir-so-o-dono-define-cargo-aplicado
           - 88b-antes-so-o-dono-define-cargo-ausente
+          - 88c-conferir-o-dono-cadastrado
           - 89a-conferir-o-pedido-pelo-app-exige-conta-aplicado
           - 89b-antes-o-pedido-pelo-app-exige-conta-base-vigente
           - 90a-conferir-busca-do-painel-por-codigo-aplicado
