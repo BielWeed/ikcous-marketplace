@@ -1,4 +1,17 @@
 {
+  "1.5.65": {
+    "titulo": "Perfil, carrinho e pedidos renovados; Caixa na frente do Financeiro",
+    "novidades": [
+      "Três telas do app ganharam um visual novo, mais limpo e moderno: Perfil, Carrinho e Meus pedidos (Em andamento e Histórico). Nada mudou no que cada tela faz, nem nos valores.",
+      "No painel, o Caixa ficou em destaque no Financeiro: a tela de Visão abre com o cartão \"Caixa de hoje\", e dele dá para abrir ou fechar o caixa com um toque. A aba Caixa passou a ser a segunda, com um ponto verde quando o caixa está aberto, e a linha Caixa do Início leva direto a ela.",
+      "No painel, a barra de cima ficou mais limpa: botão de voltar neutro, estado da conexão com uma bolinha de cor e o sino de avisos mais simples."
+    ],
+    "correcoes": [
+      "As janelas que sobem do Financeiro (novo lançamento, baixa, cadastros e caixa) agora têm um só botão de fechar, deixam o fundo da tela visível e escurecido e podem ser fechadas arrastando para baixo.",
+      "O contorno do filtro escolhido em Clientes, Produtos e Pedidos não fica mais cortado quando ele encosta na ponta da fileira."
+    ],
+    "melhorias": []
+  },
   "1.5.64": {
     "titulo": "Botão Avisar clientes visível no tema claro do painel",
     "novidades": [],
