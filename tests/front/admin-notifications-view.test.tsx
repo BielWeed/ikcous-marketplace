@@ -18,6 +18,7 @@
 //    cracha; "De olho" e o estoque, que nao conta. Os casos contam os itens
 //    de cada bloco em vez de procurar um texto — texto de titulo muda com o
 //    dado, e a asserção passaria a medir a fixture em vez da separacao.
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -275,28 +276,30 @@ describe("AdminNotificationsView", () => {
 });
 
 describe("AvisoCard — desenho aprovado v5", () => {
-  it("o cartão é um botão com borda, superfície escura e alvo mínimo de 44px", async () => {
+  it("o cartão é um botão com borda fina, superfície do tema e alvo mínimo de 44px", async () => {
     await montar();
     const cartao = container?.querySelector('[data-aviso="pedido"]');
     expect(cartao).not.toBeNull();
-    for (const classe of ["rounded-2xl", "min-h-11", "bg-admin-surface"]) {
+    for (const classe of ["rounded-[18px]", "min-h-11", "bg-muted/30"]) {
       expect(cartao?.classList.contains(classe)).toBe(true);
     }
-    expect(cartao?.className).toContain("border-admin-border");
+    expect(cartao?.className).toContain("border-border");
     // Seta no padrão novo: ChevronRight de 20px.
     expect(
       cartao?.querySelector("svg.lucide-chevron-right.size-5"),
     ).not.toBeNull();
   });
 
-  it("o rótulo do tipo é legível (nada de cinza 500) e o nome do aviso é 15px", async () => {
+  it("o rótulo do tipo é legível (nada de cinza 500) e o nome do aviso é 18px", async () => {
     await montar();
     const cartao = container?.querySelector('[data-aviso="pedido"]');
     const rotulo = cartao?.querySelector("span.uppercase");
     expect(rotulo?.className).not.toMatch(/text-zinc-[567]00/);
-    expect((cartao as HTMLElement).style.color).toBe("rgb(52, 211, 153)");
+    // A cor vem de classe com significado (verde = pedido), nunca de hex em style.
+    expect((cartao as HTMLElement).getAttribute("style")).toBeNull();
+    expect(rotulo?.className).toContain("text-emerald-400");
     expect(rotulo?.className).not.toContain("text-zinc-");
-    expect(cartao?.querySelector("h3")?.className).toContain("text-[15px]");
+    expect(cartao?.querySelector("h3")?.className).toContain("text-[18px]");
   });
 
   it("a legenda do bloco também passa do cinza 500", async () => {
@@ -591,5 +594,87 @@ describe("AdminNotificationsView — cancelamento do cliente", () => {
 
     expect(raizDom.textContent).toContain("cancelamentos de clientes");
     expect(raizDom.textContent).not.toContain("Tudo em dia");
+  });
+});
+
+// Redesenho "Tinta" (23/10/2026): estrutura nova, só com tokens do tema.
+describe("Notificações do painel — linguagem Tinta", () => {
+  it("o cabeçalho tem rótulo mono, título de 28px e botão redondo de 44px", async () => {
+    await montar();
+    expect(container?.textContent).toContain("Painel · Avisos");
+    const botao = container?.querySelector('[data-acao="recarregar"]');
+    expect(botao?.className).toContain("size-11");
+    expect(botao?.className).toContain("rounded-full");
+    expect(container?.querySelector("h1")?.parentElement?.className).toContain(
+      "[&_h1]:text-[28px]",
+    );
+  });
+
+  it("o bloco mostra rótulo mono, a legenda e o número grande só em Precisa de você", async () => {
+    await montar();
+    const precisa = container?.querySelector('[data-bloco="precisa-de-voce"]');
+    expect(precisa?.querySelector("h2")?.className).toContain("font-mono");
+    expect(precisa?.querySelector("h2")?.className).toContain("uppercase");
+    expect(precisa?.textContent).toContain("3 itens");
+    expect(precisa?.querySelector("span.text-3xl")?.textContent).toBe("3");
+    expect(
+      container?.querySelector('[data-bloco="de-olho"] span.text-3xl'),
+    ).toBeNull();
+  });
+
+  it("o pagamento mostra o selo Entregue com borda verde, sem bloco pintado", async () => {
+    AVISOS = oitoTipos();
+    await montar();
+    const pagamento = container?.querySelector('[data-aviso="recebimento"]');
+    const selo = Array.from(pagamento?.querySelectorAll("span") ?? []).find(
+      (no) => no.textContent === "Entregue",
+    );
+    expect(selo?.className).toContain("border-border");
+    expect(selo?.className).toContain("text-emerald-400");
+    expect(selo?.className).not.toMatch(/(^|\s)bg-/);
+  });
+
+  it("a ação de privacidade é a tinta do tema (bg-foreground), nunca o amarelo da marca", async () => {
+    AVISOS = oitoTipos();
+    await montar();
+    const acao = container?.querySelector(
+      '[data-aviso="privacidade"] .min-h-14',
+    );
+    expect(acao?.className).toContain("bg-foreground");
+    expect(acao?.className).toContain("text-background");
+    expect(acao?.className).toContain("rounded-2xl");
+  });
+
+  it("o atalho das novidades não lidas é um cartão com ponto azul e alvo de 44px ou mais", async () => {
+    localStorage.setItem(
+      "notificacoes-novidades-do-app-v1",
+      JSON.stringify([
+        {
+          versao: "1.5.99",
+          titulo: "Novidade de teste",
+          registradaEm: "2026-10-16T12:00:00.000Z",
+          lida: false,
+          novidades: ["Algo novo."],
+          correcoes: [],
+          melhorias: [],
+        },
+      ]),
+    );
+    await montar();
+    const atalho = container?.querySelector('[data-atalho="novidades"]');
+    expect(atalho?.textContent).toContain("1 novidade não lida");
+    expect(atalho?.className).toContain("min-h-11");
+    expect(atalho?.className).toContain("rounded-[18px]");
+    expect(atalho?.querySelector("span.bg-current")).not.toBeNull();
+  });
+
+  it("a tela não traz cor literal nem a paleta fixa do tema escuro", () => {
+    const fonte = readFileSync(
+      "src/views/admin/AdminNotificationsView.tsx",
+      "utf8",
+    );
+    expect(fonte).not.toMatch(
+      /[[("'`]#[0-9a-fA-F]{3,8}\b|rgb\(|zinc-|slate-|bg-white|bg-black|bg-primary|admin-(bg|surface|raised|border|hover|gold)/,
+    );
   });
 });

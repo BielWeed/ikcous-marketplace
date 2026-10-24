@@ -172,7 +172,7 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
       "https://www.google.com/maps/search/?api=1&query=38500-000",
     );
     expect(abrirMaps!.textContent?.toLowerCase()).toContain(
-      "abre no google maps",
+      "abrir no google maps",
     );
 
     // Pin da CASA: gota PRETA sólida (corpo #18181b) e o ÍCONE DO APP
@@ -335,11 +335,10 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
 
     const texto = await renderizarPagina();
 
-    // A página continua de pé: título em SVG vetorial nomeado + nome da
-    // marca do build.
-    expect(
-      hospedeiro.querySelector("svg[aria-label='Sobre a Loja']"),
-    ).not.toBeNull();
+    // A página continua de pé: rótulo "Sobre a loja" + h1 com o nome da
+    // marca do build (redesenho Tinta, 23/10/2026: o título em SVG saiu).
+    expect(hospedeiro.textContent).toContain("Sobre a loja");
+    expect(hospedeiro.querySelector("h1")?.textContent).toBe("Aurora");
     expect(texto).toContain("Aurora");
 
     // O que a loja não preencheu NÃO vira bloco vazio.

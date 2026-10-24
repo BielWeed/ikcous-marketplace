@@ -87,7 +87,7 @@ function digitar(id: string, valor: string) {
 
 async function salvar() {
   const botao = [...document.body.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes("Salvar Alterações"),
+    b.textContent?.includes("Salvar alterações"),
   )!;
   await act(async () => {
     botao.click();

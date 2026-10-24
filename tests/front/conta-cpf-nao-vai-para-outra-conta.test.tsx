@@ -89,7 +89,7 @@ function digitar(id: string, valor: string) {
 
 function botaoSalvar() {
   return [...document.body.querySelectorAll("button")].find((botao) =>
-    botao.textContent?.includes("Salvar Alterações"),
+    botao.textContent?.includes("Salvar alterações"),
   )!;
 }
 
