@@ -4,7 +4,15 @@
 // arrasta; o X é o único botão de fechar; no computador não há alça.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { FolhaFinanceira } from "@/components/admin/financeiro/FolhaFinanceira";
 
@@ -24,7 +32,7 @@ const ALTURA = 600; // 25% = 150 px
 let raiz: Root;
 let contedor: HTMLDivElement;
 let agora = 0;
-let aoFechar: ReturnType<typeof vi.fn>;
+let aoFechar: Mock<() => void>;
 let descritorAltura: PropertyDescriptor | undefined;
 
 function montar(props: { fecharBloqueado?: boolean } = {}) {
@@ -71,7 +79,7 @@ function ponteiro(alvo: Element, tipo: string, y: number, dt: number) {
 beforeEach(() => {
   mockLarga = false;
   agora = 0;
-  aoFechar = vi.fn();
+  aoFechar = vi.fn<() => void>();
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.spyOn(performance, "now").mockImplementation(() => agora);
   descritorAltura = Object.getOwnPropertyDescriptor(
