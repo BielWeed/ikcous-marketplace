@@ -145,7 +145,6 @@
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&_\.text-amber-500\]\:text-orange-300:where(:not([data-tema-fixo], [data-tema-fixo] *)) .text-amber-500{color:#9a3412}
 :where(html.admin-mode[data-admin-tema]) .\[\&_\.text-zinc-500\]\:text-zinc-400:where(:not([data-tema-fixo], [data-tema-fixo] *)) .text-zinc-500{color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&_\[data-testid\=alertas-cancelados-alavanca\]\]\:text-red-300:where(:not([data-tema-fixo], [data-tema-fixo] *)) [data-testid=alertas-cancelados-alavanca]{color:#b91c1c}
-:where(html.admin-mode[data-admin-tema]) .\[\&\>button\]\:text-zinc-300:where(:not([data-tema-fixo], [data-tema-fixo] *))>button{color:hsl(var(--admin-text-2))}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>input\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>input{border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>select\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>select{border-color:#dc2626}
 :where(html.admin-mode[data-admin-tema="claro"]) .\[\&\>textarea\]\:border-red-400:where(:not([data-tema-fixo], [data-tema-fixo] *))>textarea{border-color:#dc2626}
