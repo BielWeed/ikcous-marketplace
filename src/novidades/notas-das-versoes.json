@@ -1,4 +1,14 @@
 {
+  "1.5.63": {
+    "titulo": "Avisos do painel no celular e ficha do cliente preparada para dar acesso de administrador",
+    "novidades": [
+      "Na ficha do cliente, o dono da loja poderá dar e tirar o acesso de administrador de uma pessoa, com uma confirmação antes. O recurso só aparece depois que a loja for preparada pelo suporte."
+    ],
+    "correcoes": [
+      "Os avisos do painel (como \"Acesso negado\" ou \"Salvo\") agora aparecem também no celular, abaixo do cabeçalho. Antes eles não eram mostrados nessa tela."
+    ],
+    "melhorias": []
+  },
   "1.5.62": {
     "titulo": "Telas renovadas: endereço, conta, privacidade, sobre a loja e notificações",
     "novidades": [
