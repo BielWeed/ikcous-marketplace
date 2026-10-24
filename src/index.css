@@ -1530,9 +1530,11 @@ body.admin-modal-open .active-scroll-container {
   }
 }
 
-/* Mobile Customer: Suppress floating Sonner overlay box to rely cleanly on Header Dynamic Island Toast */
+/* Mobile Customer: Suppress floating Sonner overlay box to rely cleanly on Header Dynamic Island Toast.
+   `admin-mode` vive na <html> (useTemaDoPainelNaRaiz), nunca no <body>: com `body:not(.admin-mode)`
+   a regra valia SEMPRE e escondia também os avisos do painel no celular. */
 @media (max-width: 640px) {
-  body:not(.admin-mode) [data-sonner-toaster] {
+  html:not(.admin-mode) [data-sonner-toaster] {
     display: none !important;
   }
 }

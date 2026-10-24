@@ -1,4 +1,22 @@
 {
+  "1.5.64": {
+    "titulo": "Botão Avisar clientes visível no tema claro do painel",
+    "novidades": [],
+    "correcoes": [
+      "Na tela de Clientes do painel, o botão \"Avisar clientes\" agora mostra o ícone de megafone também no tema claro. Antes o ícone ficava escuro sobre o fundo escuro do botão e não aparecia."
+    ],
+    "melhorias": []
+  },
+  "1.5.63": {
+    "titulo": "Avisos do painel no celular e ficha do cliente preparada para dar acesso de administrador",
+    "novidades": [
+      "Na ficha do cliente, o dono da loja poderá dar e tirar o acesso de administrador de uma pessoa, com uma confirmação antes. O recurso só aparece depois que a loja for preparada pelo suporte."
+    ],
+    "correcoes": [
+      "Os avisos do painel (como \"Acesso negado\" ou \"Salvo\") agora aparecem também no celular, abaixo do cabeçalho. Antes eles não eram mostrados nessa tela."
+    ],
+    "melhorias": []
+  },
   "1.5.62": {
     "titulo": "Telas renovadas: endereço, conta, privacidade, sobre a loja e notificações",
     "novidades": [

@@ -1,0 +1,27 @@
+{
+  "plano": "promover-a-administrador",
+  "frentes": [
+    {
+      "nome": "promover-front",
+      "descricao": "Folha Gestão de Cliente: Tornar administrador / Remover acesso, confirmação, gancho que descobre se quem olha é o dono da loja",
+      "posse": [
+        "src/components/admin/users/CartaoCliente.tsx",
+        "src/components/admin/users/PromoverAdmin*.tsx",
+        "src/hooks/useDonoDaLoja.ts",
+        "src/lib/cargo-da-conta.ts",
+        "src/views/admin/AdminCustomersView.tsx",
+        "tests/front/promover-*.test.tsx",
+        "tests/front/promover-*.test.ts"
+      ]
+    },
+    {
+      "nome": "dono-banco",
+      "descricao": "Consulta de prova (só leitura) de que o dono da loja está cadastrado e roteiro de cadastro por loja",
+      "posse": [
+        "scripts/publicacao/consultas/89-dono-cadastrado.sql",
+        "docs/runbooks/definir-o-dono-da-loja.md"
+      ]
+    }
+  ],
+  "liberados": {}
+}
