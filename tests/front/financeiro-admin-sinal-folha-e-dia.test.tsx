@@ -59,6 +59,13 @@ function botaoEm(raiz: ParentNode, rotulo: string): HTMLButtonElement {
   return el;
 }
 
+// O X do topo é o único botão de fechar da folha (o rodapé leva só a ação).
+function botaoX(raiz: ParentNode): HTMLButtonElement {
+  const el = raiz.querySelector<HTMLButtonElement>('[aria-label="Fechar"]');
+  if (!el) throw new Error("botão X da folha não existe");
+  return el;
+}
+
 function campo(id: string): HTMLInputElement {
   const el = document.getElementById(id);
   if (!(el instanceof HTMLInputElement)) {
@@ -314,7 +321,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     expect(onFlush).toHaveBeenLastCalledWith("0.01");
   });
 
-  it("bloqueia Cancelar, X, Esc, véu, Voltar e nova abertura durante o envio", async () => {
+  it("bloqueia o X, Esc, véu, Voltar e nova abertura durante o envio", async () => {
     const envio = pendente();
     await montarPainel();
     rpcFalso.mockImplementation((nome: string) => {
@@ -324,8 +331,8 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     await abrirLancamentoValido();
     const atual = folha();
     await clicar(botaoEm(atual, "Salvar lançamento"));
-    expect(botaoEm(atual, "Cancelar").disabled).toBe(true);
-    await clicar(botaoEm(atual, "Cancelar"));
+    expect(botaoX(atual).disabled).toBe(true);
+    await clicar(botaoX(atual));
     // Com a folha aberta a ação da barra some: não há como abrir outra por cima.
     expect(
       [...hospedeiro.querySelectorAll("button")].some(
@@ -395,7 +402,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     );
     // Outro cadastro ainda pode sair enquanto espera: exercita a defesa da
     // view contra resposta antiga, independentemente da trava do lançamento.
-    await clicar(botaoEm(folha(), "Cancelar"));
+    await clicar(botaoX(folha()));
     await clicar(botaoEm(hospedeiro, "Novo lançamento"));
     await digitar("fin-lanc-descricao", "Lançamento B");
     const nova = folha();
@@ -421,7 +428,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
       return Promise.resolve({ data: [], error: null });
     });
     await clicar(botaoEm(folha(), "Salvar"));
-    await clicar(botaoEm(folha(), "Cancelar"));
+    await clicar(botaoX(folha()));
     await abrirLancamentoValido();
     await digitar("fin-lanc-descricao", "Lançamento B");
     await clicar(botaoEm(folha(), "Salvar lançamento"));
@@ -429,7 +436,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     await act(async () => cadastro.resolver({ data: null, error: null }));
     await esperar();
     expect(folha()).toBe(nova);
-    expect(botaoEm(nova, "Cancelar").disabled).toBe(true);
+    expect(botaoX(nova).disabled).toBe(true);
     expect(campo("fin-lanc-descricao").value).toBe("Lançamento B");
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
     await act(async () =>
@@ -444,8 +451,8 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     await abrirLancamentoValido();
     rpcFalso.mockRejectedValueOnce(new Error("Falha na conexão"));
     await clicar(botaoEm(folha(), "Salvar lançamento"));
-    expect(botaoEm(folha(), "Cancelar").disabled).toBe(false);
-    await clicar(botaoEm(folha(), "Cancelar"));
+    expect(botaoX(folha()).disabled).toBe(false);
+    await clicar(botaoX(folha()));
     expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
   });
 
@@ -463,12 +470,12 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(29_999);
     });
-    expect(botaoEm(atual, "Cancelar").disabled).toBe(true);
+    expect(botaoX(atual).disabled).toBe(true);
     expect(atual.textContent).not.toContain("A internet demorou demais.");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
-    expect(botaoEm(atual, "Cancelar").disabled).toBe(false);
+    expect(botaoX(atual).disabled).toBe(false);
     expect(botaoEm(atual, "Salvar lançamento").disabled).toBe(false);
     expect(atual.textContent).toContain(
       "A internet demorou demais. O lançamento pode ter sido salvo; se salvar de novo sem mudar os campos, não duplica.",
@@ -480,7 +487,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     expect(
       rpcFalso.mock.calls.filter(([nome]) => nome === "fin_lancamento_salvar"),
     ).toHaveLength(1);
-    await clicar(botaoEm(atual, "Cancelar"));
+    await clicar(botaoX(atual));
     expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
     await clicar(botaoEm(hospedeiro, "Novo lançamento"));
     expect(campo("fin-lanc-descricao").value).toBe("");
@@ -499,7 +506,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
-    await clicar(botaoEm(folha(), "Cancelar"));
+    await clicar(botaoX(folha()));
     await clicar(botaoEm(hospedeiro, "Novo lançamento"));
     await digitar("fin-lanc-descricao", "Lançamento B");
     const nova = folha();

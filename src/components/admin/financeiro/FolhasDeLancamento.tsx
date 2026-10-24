@@ -342,23 +342,14 @@ export function BaixarLancamentoFolha({
       rodape={
         <div className="flex flex-col gap-3">
           {erroDoServidor ? <EstadoDeErro mensagem={erroDoServidor} /> : null}
-          <div className="flex flex-col-reverse gap-3">
-            <button
-              type="button"
-              onClick={aoFechar}
-              className={`${CLASSE_BOTAO_SECUNDARIO} flex-1`}
-            >
-              Voltar
-            </button>
-            <button
-              type="button"
-              disabled={enviando}
-              onClick={() => void confirmar()}
-              className={`${CLASSE_BOTAO_PRIMARIO} flex-[2]`}
-            >
-              {enviando ? "Registrando…" : "Confirmar baixa"}
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={enviando}
+            onClick={() => void confirmar()}
+            className={CLASSE_BOTAO_PRIMARIO}
+          >
+            {enviando ? "Registrando…" : "Confirmar baixa"}
+          </button>
         </div>
       }
     >
