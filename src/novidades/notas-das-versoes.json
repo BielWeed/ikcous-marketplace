@@ -2,14 +2,14 @@
   "1.5.62": {
     "titulo": "Telas renovadas: endereço, conta, privacidade, sobre a loja e notificações",
     "novidades": [
-      "Seis telas do app ganharam um visual novo, mais limpo e moderno: cadastro de endereço (com uma barra que mostra quantos passos já foram preenchidos), Configurações da Conta (com abas Perfil e Segurança), Privacidade e meus dados, Sobre a Loja e Notificações.",
+      "Cinco telas do app ganharam um visual novo, mais limpo e moderno: cadastro de endereço (com uma barra que mostra quantos passos já foram preenchidos), Segurança e conta (com abas Perfil e Segurança), Privacidade e meus dados, Sobre a Loja e Notificações.",
       "Quem administra a loja também vê as Notificações do painel renovadas, com as cores certas nos três temas do painel."
     ],
     "correcoes": [
       "Na página do produto, opções de cor com nome composto, como \"Verde Musgo\" ou \"Xadrez Preto, Cinza e Branco\", agora aparecem com a amostra da cor e não só em texto. Nomes longos de opção deixam de ser cortados."
     ],
     "melhorias": [
-      "Os campos de Configurações da Conta ficaram maiores no celular, para o iPhone não dar zoom ao digitar.",
+      "Os campos de Segurança e conta ficaram maiores no celular, para o iPhone não dar zoom ao digitar.",
       "Ao abrir Privacidade e meus dados dentro da Conta, a tela volta ao início da seção, e o teclado e o leitor de tela acompanham."
     ]
   },
