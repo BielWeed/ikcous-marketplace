@@ -179,6 +179,13 @@ function botaoEm(raiz: ParentNode, rotulo: string): HTMLButtonElement {
   return achado as HTMLButtonElement;
 }
 
+// O X do topo é o único botão de fechar da folha (o rodapé leva só a ação).
+function botaoX(raiz: ParentNode): HTMLButtonElement {
+  const el = raiz.querySelector<HTMLButtonElement>('[aria-label="Fechar"]');
+  if (!el) throw new Error("botão X da folha não existe");
+  return el;
+}
+
 async function esperar() {
   for (let i = 0; i < 4; i += 1) {
     await act(async () => {
@@ -683,7 +690,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       expect(nome).toContain("autor-1");
       expect(nome).toContain("sessao-1");
       expect(nome).toContain("sangria");
-      await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
+      await clicar(botaoX(folha() as HTMLElement));
       if (remonta) await remontar();
       await reabrirMovimento();
       await digitar("fin-caixa-mov-valor", "6000");
@@ -776,7 +783,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
         nome.includes("sessao-2"),
       ) as string;
       expect(guardado.get(enderecoS2)).toBe(primeira.p_chave);
-      await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
+      await clicar(botaoX(folha() as HTMLElement));
       const leituras = rpcFalso.mock.calls.filter(([nome]) =>
         ["fin_caixa_atual", "fin_caixa_historico"].includes(nome),
       ).length;
@@ -788,7 +795,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
         ),
       ).toHaveLength(leituras);
       expect(guardado.get(enderecoS2)).toBe(primeira.p_chave);
-      await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
+      await clicar(botaoX(folha() as HTMLElement));
 
       // Reabrir A usa a mesma identidade; não libera uma segunda transferência.
       await clicar(botaoEm(hospedeiroA, "Sangria"));
@@ -809,7 +816,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     await prepararMovimento();
     await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
     const primeira = { ...movimentos()[0] };
-    await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
+    await clicar(botaoX(folha() as HTMLElement));
     const futuro = Date.now() + 365 * 86400000;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(futuro);
@@ -876,7 +883,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     await prepararMovimento();
     await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
     const primeira = { ...movimentos()[0] };
-    await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
+    await clicar(botaoX(folha() as HTMLElement));
     await reabrirMovimento("Suprimento");
     await clicar(botaoEm(folha() as HTMLElement, "Registrar suprimento"));
     expect(movimentos()[1].p_chave).not.toBe(primeira.p_chave);
@@ -967,14 +974,14 @@ describe("Financeiro — abrir e fechar o caixa", () => {
           tipo === "movimento" ? "Registrar sangria" : "Fechar caixa",
         ),
       );
-      await clicar(botaoEm(painel, "Voltar"));
+      await clicar(botaoX(painel));
       expect(folha()).toBe(painel);
       const atualizador = onSetBackOverride.mock.calls.at(
         -1,
       )?.[0] as unknown as () => () => void;
       await act(async () => atualizador()());
       expect(folha()).toBe(painel);
-      await clicar(botaoEm(painel, "Close"));
+      await clicar(botaoX(painel));
       expect(folha()).toBe(painel);
       await act(async () => liberar());
       await esperar();

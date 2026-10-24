@@ -35,7 +35,6 @@ import {
 import { FolhaFinanceira } from "./FolhaFinanceira";
 import {
   CLASSE_BOTAO_PRIMARIO,
-  CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
   CLASSE_ROTULO_DO_CARTAO,
   Campo,
@@ -54,35 +53,24 @@ function RodapeDeAcao({
   rotuloEnviando,
   enviando,
   aoConfirmar,
-  aoVoltar,
 }: {
   readonly erro: string | null;
   readonly rotulo: string;
   readonly rotuloEnviando: string;
   readonly enviando: boolean;
   readonly aoConfirmar: () => void;
-  readonly aoVoltar: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
       {erro ? <EstadoDeErro mensagem={erro} /> : null}
-      <div className="flex flex-col-reverse gap-3">
-        <button
-          type="button"
-          onClick={aoVoltar}
-          className={`${CLASSE_BOTAO_SECUNDARIO} flex-1`}
-        >
-          Voltar
-        </button>
-        <button
-          type="button"
-          disabled={enviando}
-          onClick={aoConfirmar}
-          className={`${CLASSE_BOTAO_PRIMARIO} flex-[2]`}
-        >
-          {enviando ? rotuloEnviando : rotulo}
-        </button>
-      </div>
+      <button
+        type="button"
+        disabled={enviando}
+        onClick={aoConfirmar}
+        className={CLASSE_BOTAO_PRIMARIO}
+      >
+        {enviando ? rotuloEnviando : rotulo}
+      </button>
     </div>
   );
 }
@@ -191,7 +179,6 @@ export function AbrirCaixaFolha({
           rotuloEnviando="Abrindo…"
           enviando={enviando}
           aoConfirmar={confirmar}
-          aoVoltar={aoFechar}
         />
       }
     >
@@ -363,7 +350,6 @@ export function MovimentarCaixaFolha({
           rotuloEnviando="Registrando…"
           enviando={enviando}
           aoConfirmar={confirmar}
-          aoVoltar={aoFechar}
         />
       }
     >
@@ -561,7 +547,6 @@ export function FecharCaixaFolha({
           rotuloEnviando="Fechando…"
           enviando={enviando}
           aoConfirmar={confirmar}
-          aoVoltar={aoFechar}
         />
       }
     >
