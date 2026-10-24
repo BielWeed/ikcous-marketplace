@@ -3,7 +3,7 @@
     "titulo": "Perfil, carrinho e pedidos renovados; Caixa na frente do Financeiro",
     "novidades": [
       "Três telas do app ganharam um visual novo, mais limpo e moderno: Perfil, Carrinho e Meus pedidos (Em andamento e Histórico). Nada mudou no que cada tela faz, nem nos valores.",
-      "No painel, o Caixa ficou em destaque no Financeiro: a tela de Visão abre com o cartão \"Caixa de hoje\", e dele dá para abrir ou fechar o caixa com um toque. A aba Caixa passou a ser a segunda, com um ponto verde quando o caixa está aberto, e a linha Caixa do Início leva direto a ela.",
+      "No painel, o Caixa ficou em destaque no Financeiro: a tela de Visão abre com o cartão \"Caixa de hoje\", e dele um toque leva direto à janela de abrir ou fechar o caixa (o valor continua sendo conferido e confirmado por você). A aba Caixa passou a ser a segunda, com um ponto verde quando o caixa está aberto, e a linha Caixa do Início leva direto a ela.",
       "No painel, a barra de cima ficou mais limpa: botão de voltar neutro, estado da conexão com uma bolinha de cor e o sino de avisos mais simples."
     ],
     "correcoes": [

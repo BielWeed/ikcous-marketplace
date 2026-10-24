@@ -57,7 +57,7 @@ export function QuantitySelector({
         aria-label="Diminuir quantidade"
         type="button"
         title="Diminuir"
-        className={`${buttonSize} flex items-center justify-center ${size === "pill" ? "rounded-full" : "rounded-xl"} ${size === "folha" ? "focus-visible:outline-2 focus-visible:outline-zinc-900" : size === "pill" ? "" : "border border-zinc-200/50 bg-white shadow-sm"} transition-all ${size === "pill" ? "hover:bg-background" : "hover:bg-zinc-50"} active:scale-90disabled:cursor-not-allowed disabled:opacity-30`}
+        className={`${buttonSize} flex items-center justify-center ${size === "pill" ? "rounded-full" : "rounded-xl"} ${size === "folha" ? "focus-visible:outline-2 focus-visible:outline-zinc-900" : size === "pill" ? "" : "border border-zinc-200/50 bg-white shadow-sm"} transition-all ${size === "pill" ? "hover:bg-background" : "hover:bg-zinc-50"} active:scale-90 disabled:cursor-not-allowed disabled:opacity-30`}
       >
         <Minus
           className={`${iconSize} ${size === "pill" ? "text-foreground" : "text-zinc-600"}`}
@@ -97,7 +97,7 @@ export function QuantitySelector({
         aria-label="Aumentar quantidade"
         type="button"
         title="Aumentar"
-        className={`${buttonSize} flex items-center justify-center ${size === "pill" ? "rounded-full" : "rounded-xl"} ${size === "folha" ? "focus-visible:outline-2 focus-visible:outline-zinc-900" : size === "pill" ? "" : "border border-zinc-200/50 bg-white shadow-sm"} transition-all ${size === "pill" ? "hover:bg-background" : "hover:bg-zinc-50"} active:scale-90disabled:cursor-not-allowed disabled:opacity-30`}
+        className={`${buttonSize} flex items-center justify-center ${size === "pill" ? "rounded-full" : "rounded-xl"} ${size === "folha" ? "focus-visible:outline-2 focus-visible:outline-zinc-900" : size === "pill" ? "" : "border border-zinc-200/50 bg-white shadow-sm"} transition-all ${size === "pill" ? "hover:bg-background" : "hover:bg-zinc-50"} active:scale-90 disabled:cursor-not-allowed disabled:opacity-30`}
       >
         <Plus
           className={`${iconSize} ${size === "pill" ? "text-foreground" : "text-zinc-600"}`}
