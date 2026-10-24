@@ -39,10 +39,13 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const esperar = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms));
 
 let ultimo: ReturnType<typeof useDonoDaLoja> | null = null;
+// Cada render que chegou ao DOM: com que usuário e o que o gancho disse.
+let historico: Array<{ uid: string | null; souODono: boolean }> = [];
 function Sonda() {
   const estado = useDonoDaLoja();
   useEffect(() => {
     ultimo = estado;
+    historico.push({ uid: h.uid, souODono: estado.souODono });
   });
   return (
     <span data-testid="s">
@@ -58,6 +61,7 @@ describe("useDonoDaLoja", () => {
   beforeEach(() => {
     h.uid = "dono-1";
     ultimo = null;
+    historico = [];
     limparDonoDaLoja();
     h.leitura.mockReset();
     h.resposta = undefined;
@@ -211,6 +215,43 @@ describe("useDonoDaLoja", () => {
     });
     expect(ultimo).toMatchObject({ souODono: false, carregando: false });
     expect(h.from).toHaveBeenCalledTimes(2);
+  });
+
+  it("leitura PENDENTE: carregando=true e souODono=false (carregando não é dono)", async () => {
+    h.from.mockImplementation(() => ({
+      select: () => ({ maybeSingle: () => new Promise(() => {}) }),
+    }));
+    await montar();
+    expect(ultimo).toMatchObject({ souODono: false, carregando: true });
+    expect(historico.every((r) => !r.souODono)).toBe(true);
+  });
+
+  it("troca DIRETA de conta (A dono -> B, sem logout): B nunca é dono, nem por um render", async () => {
+    responde({ data: { user_id: "dono-1" }, error: null });
+    await montar();
+    expect(ultimo?.souODono).toBe(true);
+    const aDoDono = historico.length;
+
+    // B entra sem passar por logout; para B a leitura volta vazia (RLS).
+    h.uid = "cliente-B";
+    responde({ data: null, error: null });
+    await act(async () => {
+      raiz.render(<Sonda />);
+    });
+    await act(async () => {
+      await esperar(5);
+    });
+
+    const deB = historico.slice(aDoDono).filter((r) => r.uid === "cliente-B");
+    expect(deB.length).toBeGreaterThan(0);
+    expect(deB.every((r) => !r.souODono)).toBe(true);
+    // B foi lido de novo (a resposta de A não vale para B) e não herdou o dono de A.
+    expect(h.from).toHaveBeenCalledTimes(2);
+    expect(ultimo).toMatchObject({
+      souODono: false,
+      carregando: false,
+      donoId: null,
+    });
   });
 
   it("sem usuário logado: false e nenhuma consulta", async () => {

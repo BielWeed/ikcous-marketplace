@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   meuId: "dono-1" as string | null,
   donoId: "dono-1" as string | null,
   offline: false,
+  leituraPendente: false,
   rpc: vi.fn(),
   leituraDono: vi.fn(),
 }));
@@ -24,6 +25,8 @@ vi.mock("@/lib/supabase", () => ({
       select: () => ({
         maybeSingle: () => {
           h.leituraDono(tabela);
+          // Leitura que nunca volta: o gancho fica "carregando".
+          if (h.leituraPendente) return new Promise(() => {});
           return Promise.resolve(
             h.donoId
               ? { data: { user_id: h.donoId }, error: null }
@@ -88,6 +91,7 @@ describe("promover a administrador (folha do cartão)", () => {
     h.meuId = "dono-1";
     h.donoId = "dono-1";
     h.offline = false;
+    h.leituraPendente = false;
     h.rpc.mockReset();
     h.leituraDono.mockReset();
     toast.success.mockReset();
@@ -227,6 +231,16 @@ describe("promover a administrador (folha do cartão)", () => {
       expect(h.leituraDono).not.toHaveBeenCalled();
       await abrirFolha();
       expect(h.leituraDono).toHaveBeenCalledTimes(1);
+    });
+
+    it("leitura do dono PENDENTE com a folha aberta: nenhuma ação (carregando não é dono)", async () => {
+      h.leituraPendente = true;
+      await render(cliente());
+      await abrirFolha();
+      expect(h.leituraDono).toHaveBeenCalledTimes(1);
+      expect(linha(TITULO_PROMOVER)).toBeUndefined();
+      expect(linha(TITULO_REMOVER)).toBeUndefined();
+      expect(linha("Ver ficha do cliente")).toBeTruthy();
     });
 
     it("offline: a linha aparece mas não dispara nada", async () => {

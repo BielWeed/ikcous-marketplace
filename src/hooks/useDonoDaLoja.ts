@@ -90,50 +90,60 @@ function carregarDono(uid: string): Promise<string | null> {
   return promessa;
 }
 
-function estadoDe(donoId: string | null, uid: string | null): EstadoDoDono {
-  return {
-    souODono: donoId !== null && donoId === uid,
-    carregando: false,
-    donoId,
-  };
+// O que o efeito já resolveu, COM o id de quem era o usuário na hora. O estado
+// devolvido a quem chama é sempre derivado no render contra o usuário de AGORA
+// (abaixo): numa troca direta de conta (A dono -> B, sem logout) um render com
+// o estado de A e o uid de B nunca vira "sou o dono".
+interface Resolvido {
+  readonly uid: string | null;
+  readonly donoId: string | null;
+  readonly carregando: boolean;
 }
 
-const SEM_USUARIO: EstadoDoDono = {
-  souODono: false,
-  carregando: false,
-  donoId: null,
-};
-
-function estadoInicial(uid: string | null): EstadoDoDono {
-  if (!uid) return SEM_USUARIO;
-  if (leituraFeita?.uid === uid) return estadoDe(leituraFeita.donoId, uid);
-  return { souODono: false, carregando: true, donoId: null };
+function resolvidoInicial(uid: string | null): Resolvido {
+  if (!uid) return { uid, donoId: null, carregando: false };
+  if (leituraFeita?.uid === uid) {
+    return { uid, donoId: leituraFeita.donoId, carregando: false };
+  }
+  return { uid, donoId: null, carregando: true };
 }
 
 export function useDonoDaLoja(): EstadoDoDono {
   const uid = useAuth()?.user?.id ?? null;
-  const [estado, setEstado] = useState<EstadoDoDono>(() => estadoInicial(uid));
+  const [resolvido, setResolvido] = useState<Resolvido>(() =>
+    resolvidoInicial(uid),
+  );
 
   useEffect(() => {
     if (!uid) {
       // Saiu da conta: apaga o que a sessão anterior leu.
       limparDonoDaLoja();
-      setEstado(SEM_USUARIO);
+      setResolvido({ uid, donoId: null, carregando: false });
       return;
     }
     if (leituraFeita?.uid === uid) {
-      setEstado(estadoDe(leituraFeita.donoId, uid));
+      setResolvido({ uid, donoId: leituraFeita.donoId, carregando: false });
       return;
     }
     let vivo = true;
-    setEstado({ souODono: false, carregando: true, donoId: null });
+    setResolvido({ uid, donoId: null, carregando: true });
     carregarDono(uid).then((donoId) => {
-      if (vivo) setEstado(estadoDe(donoId, uid));
+      if (vivo) setResolvido({ uid, donoId, carregando: false });
     });
     return () => {
       vivo = false;
     };
   }, [uid]);
 
-  return estado;
+  // Resolvido para OUTRO usuário (troca de conta ainda não processada pelo
+  // efeito) vale como "carregando": nunca herda o dono da conta anterior.
+  if (!uid) return { souODono: false, carregando: false, donoId: null };
+  if (resolvido.uid !== uid || resolvido.carregando) {
+    return { souODono: false, carregando: true, donoId: null };
+  }
+  return {
+    souODono: resolvido.donoId !== null && resolvido.donoId === uid,
+    carregando: false,
+    donoId: resolvido.donoId,
+  };
 }
