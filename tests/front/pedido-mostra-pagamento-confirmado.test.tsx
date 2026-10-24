@@ -672,7 +672,7 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     );
   }
 
-  it("status 'processing': título neutro em zinc-950 sem perder o contraste AA", async () => {
+  it("status 'processing': título na cor cheia do texto (tinta) sem perder o contraste AA", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const order: Order = {
       ...pedidoComPagamento("aguardando"),
@@ -689,8 +689,8 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     const titulo = Array.from(painel?.querySelectorAll("span") ?? []).find(
       (el) => el.textContent === "Preparando seu envio",
     );
-    expect(titulo?.classList.contains("text-zinc-950")).toBe(true);
-    expect(painel?.classList.contains("bg-zinc-50")).toBe(true);
+    expect(titulo?.classList.contains("text-foreground")).toBe(true);
+    expect(painel?.classList.contains("border-t")).toBe(true);
     // Guarda contra um portador NOVO de "-600" fora do selo (hoje: zero).
     // Se cair por regressão do pill, é a asserção acima que estoura antes;
     // se cair por um ÍCONE (3:1, não 4,5:1), estreite o seletor, não apague.
@@ -744,16 +744,19 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     expect(selo).not.toBeNull();
     expect(selo?.querySelector(".text-rose-700")).not.toBeNull();
 
-    expect(elementoForaDoSelo(".text-rose-700")).not.toBeNull();
-    // Guarda contra um portador NOVO de "-600" fora do selo (hoje: zero).
-    // Se cair por regressão do pill, é a asserção acima que estoura antes;
-    // se cair por um ÍCONE (3:1, não 4,5:1), estreite o seletor, não apague.
+    // Redesenho Tinta: o título do cancelado é vermelho (red-600 = 4,83 sobre
+    // branco, AA) e vem com o ponto da mesma cor; no escuro vira red-400.
+    const tituloVermelho = elementoForaDoSelo(".text-red-600");
+    expect(tituloVermelho?.textContent).toBe("Este pedido foi cancelado");
+    expect(tituloVermelho?.className).toContain("dark:text-red-400");
+    expect(elementoForaDoSelo(".bg-red-600")).not.toBeNull();
+    // Guarda contra um portador NOVO de "-600" rosa fora do selo (hoje: zero).
     expect(elementoForaDoSelo(".text-rose-600")).toBeNull();
   });
 
-  // O redesenho neutro preserva a guarda de contraste do título:
-  // zinc-950 sobre zinc-50, sem depender de cor para identificar a etapa.
-  it("frase do status (status.desc) fica no bloco neutro em zinc-950, nunca zinc-400", async () => {
+  // O redesenho Tinta preserva a guarda de contraste do título: cor cheia do
+  // texto sobre o fundo do cartão, sem depender de cor para a etapa.
+  it("frase do status (status.desc) fica na faixa do cartão em text-foreground, nunca zinc-400", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const order: Order = { ...pedidoComPagamento(null), status: "pending" };
 
@@ -766,14 +769,14 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
       (el) => el.textContent === "A loja já recebeu seu pedido",
     );
     expect(frase).not.toBeUndefined();
-    const portadorDaCor = frase?.closest(".text-zinc-950");
+    const portadorDaCor = frase?.closest(".text-foreground");
     expect(portadorDaCor).not.toBeNull();
     expect(frase?.closest(".text-zinc-400")).toBeNull();
     expect(frase?.closest(".text-blue-500")).toBeNull();
     expect(
       frase
         ?.closest('[data-testid="order-status-panel"]')
-        ?.classList.contains("bg-zinc-50"),
+        ?.classList.contains("border-t"),
     ).toBe(true);
   });
 });
