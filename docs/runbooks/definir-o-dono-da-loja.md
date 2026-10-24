@@ -21,7 +21,8 @@ pelo app.
 
 **O que precisa ser decidido por você, e só por você:** quem é o dono de **cada** loja.
 É uma pessoa que já tem conta na loja e já é administradora. O programador não escolhe e
-não presume: ele pergunta e cadastra a pessoa que você disser. A escolha é por loja (a
+não presume, e **nem fica sabendo o e-mail**: quem cadastra é você, por uma receita de telas
+(seção 3.3). A escolha é por loja (a
 mesma pessoa pode ser dona de mais de uma, ou não).
 
 **O que acontece enquanto não houver dono cadastrado.** Nada quebra, mas nada se move:
@@ -32,7 +33,9 @@ mesma pessoa pode ser dona de mais de uma, ou não).
 - quem já é administrador **continua administrador**; só ninguém consegue nomear nem remover.
 
 **Como você sabe que ficou pronto.** O programador roda uma conferência (a consulta 89,
-abaixo) e mostra que **todas** as linhas dela dizem "sim" para aquela loja.
+abaixo) e mostra que **todas** as linhas dela dizem "sim" para aquela loja. Depois, quem
+estava com o painel aberto precisa fechar e abrir de novo (ou recarregar a página), senão a
+opção **Tornar administrador** só aparece na abertura seguinte.
 
 ## 2. Ordem das migrations (confirmada nos arquivos)
 
@@ -73,8 +76,12 @@ Repita este bloco **inteiro** para cada loja (ver seção 5). Uma loja de cada v
    - "admin só no app_metadata" e "admin só no profiles" idealmente zero. Se não for zero,
      o dono do produto decide qual das duas fontes está certa para cada caso, **antes**
      de aplicar. O **futuro dono** não pode ser um desses casos (a 89 prova isso depois).
-3. Aplicar a 1383 pelo fluxo normal de migrations da loja (workflow `Aplicar migrations`,
-   alvo da loja; as lojas `ikcous-publicada` e `savy` exigem o SHA completo do commit).
+3. **Antes de aplicar, o SQL da 1383 precisa de revisão Opus.** O cabeçalho da migration (linhas
+   2 a 5) diz que ela é rascunho para essa revisão e que, mesmo aditiva, **muda permissão**
+   (o gatilho novo recusa o que antes passava). Sem a aprovação da revisão sobre o SQL que vai
+   ser aplicado, não aplique. Depois: aplicar pelo fluxo normal de migrations da loja (workflow
+   `Aplicar migrations`, alvo da loja; as lojas `ikcous-publicada` e `savy` exigem o SHA
+   completo do commit).
    A migration é **aditiva** (tabelas novas vazias, duas funções e um gatilho) e não muda
    nenhuma linha existente. Reaplicar deixa o mesmo estado (idempotente), mas o aplicador só
    deixa reaplicar com `permitir_reaplicar=true`, por causa do registro de migrations já aplicadas.
@@ -87,16 +94,38 @@ Repita este bloco **inteiro** para cada loja (ver seção 5). Uma loja de cada v
    Isso é o esperado (tabela vazia). As três linhas de controle e as duas primeiras
    (tabela e função existem) devem estar `sim`.
 
-### 3.3 Cadastrar o dono (uma vez por loja)
+### 3.3 Cadastrar o dono (uma vez por loja): receita para o dono do produto
 
-Quem faz: o programador, no **SQL Editor** do projeto Supabase daquela loja (ele roda como
-`postgres`, que é quem escreve nessa tabela; nenhum papel de aplicação escreve nela).
-Quem decide **quem** é o dono: o dono do produto.
+**Quem faz: você, o dono do produto, na sua conta do Supabase.** O e-mail da pessoa escolhida
+é dado pessoal (na Savy, de cliente) e **o programador (o agente) nunca o digita, nunca o
+lê e não o recebe**. Por isso o cadastro é feito por você, em cinco telas, uma de cada vez.
+Se alguma tela aparecer diferente do que está descrito, **pare nela** e avise o programador
+dizendo só o número da tela e o que apareceu (sem e-mail no texto; se mandar print, apague
+o e-mail do texto da consulta antes).
 
-> O e-mail é digitado só no editor, na hora. Não vai para o repositório, para chat, para
-> log nem para este arquivo. Abaixo, `<e-mail-do-dono>` é um espaço em branco a preencher.
+Antes de começar, tenha à mão: o nome da loja, e o e-mail da pessoa que você escolheu como dono
+dela (conta que já existe na loja e já é administradora). Faça uma loja por vez.
 
-6. **Conferir a pessoa nas duas fontes** (devolve só contagens). O esperado é `1 | 1 | 1`:
+**Tela 1. Abrir o projeto da loja.**
+1. Entre em `supabase.com/dashboard` com a sua conta.
+2. Clique no projeto **daquela loja** (IKCOUS ou Savy, conforme a seção 5).
+   - Vai aparecer: o painel do projeto, com o nome da loja no alto e um menu na esquerda.
+   - Deu certo se: o nome no alto é o da loja certa. Confira, porque o cadastro vale só para
+     essa loja.
+   - Se não aparecer o projeto na sua lista: pare e avise o programador (falta acesso).
+
+**Tela 2. Abrir o editor de SQL.**
+1. No menu da esquerda, clique em **SQL Editor**.
+2. Clique em **New query** (consulta nova; um botão com "+").
+   - Vai aparecer: uma caixa de texto grande e vazia, e um botão verde **Run** no canto de baixo.
+   - Deixe a opção de papel (role) como está, em `postgres`: é ela que tem permissão de escrever
+     na tabela do dono.
+
+**Tela 3. Conferir a pessoa (só leitura; não grava nada).**
+1. Copie o texto abaixo e cole na caixa.
+2. Troque `<e-mail-do-dono>` pelo e-mail da pessoa, **mantendo as aspas simples** em volta
+   (fica `'fulana@exemplo.com'`).
+3. Clique em **Run**.
 
    ```sql
    SELECT count(*) AS contas_com_esse_email,
@@ -107,31 +136,54 @@ Quem decide **quem** é o dono: o dono do produto.
     WHERE lower(u.email) = lower('<e-mail-do-dono>');
    ```
 
-   Se qualquer número for diferente de 1, **pare**: a pessoa não existe, ou não é admin
-   nas duas fontes, e a função `definir_cargo` recusaria o dono. Corrigir o cargo dela é
-   decisão do dono do produto, não do programador.
+   - Vai aparecer: uma tabelinha embaixo com três números.
+   - **Deu certo se** os três forem `1`, `1`, `1`.
+   - Se aparecer diferente, **pare** (não passe para a Tela 4):
+     - `0, 0, 0`: não existe conta com esse e-mail nesta loja. Confira se digitou certo e se é a
+       loja certa (Tela 1).
+     - `1` e depois um ou dois `0`: a conta existe, mas não é administradora nas duas fontes do cargo.
+       A função `definir_cargo` recusaria esse dono. Corrigir o cargo dela é decisão sua e
+       um passo à parte: avise o programador, sem o e-mail.
+     - Erro em vermelho (`syntax error`): quase sempre as aspas foram apagadas ou ficou o
+       texto `<e-mail-do-dono>`. Refaça a colagem.
 
-7. **Cadastrar.** O comando abaixo só insere se a pessoa for admin nas duas fontes, então
-   um e-mail errado resulta em `INSERT 0 0` em vez de um dono inválido. O esperado é
-   `INSERT 0 1`:
+**Tela 4. Cadastrar o dono.**
+1. Apague o texto da caixa, cole o texto abaixo, troque o e-mail como na Tela 3 e clique em **Run**.
 
    ```sql
-   INSERT INTO public.dono_da_loja (user_id)
-   SELECT u.id
-     FROM auth.users u
-     JOIN public.profiles p ON p.id = u.id
-    WHERE lower(u.email) = lower('<e-mail-do-dono>')
-      AND (u.raw_app_meta_data ->> 'role') = 'admin'
-      AND p.role = 'admin';
+   WITH novo AS (
+     INSERT INTO public.dono_da_loja (user_id)
+     SELECT u.id
+       FROM auth.users u
+       JOIN public.profiles p ON p.id = u.id
+      WHERE lower(u.email) = lower('<e-mail-do-dono>')
+        AND (u.raw_app_meta_data ->> 'role') = 'admin'
+        AND p.role = 'admin'
+     RETURNING 1
+   )
+   SELECT count(*) AS donos_cadastrados_agora FROM novo;
    ```
 
-   É o mesmo cadastro do cabeçalho da migration
-   (`INSERT INTO public.dono_da_loja (user_id) VALUES ('<uuid>')`), com a conferência
-   embutida. Se já existir um dono, o banco recusa (`dono_da_loja_pkey`): a tabela só
-   aceita **uma** linha por banco. Para trocar, veja a seção 4.
+   - Vai aparecer: uma tabelinha com um número.
+   - **Deu certo se** o número for `1`.
+   - Se aparecer diferente:
+     - `0`: nada foi gravado (e-mail errado ou conta que não é admin nas duas fontes). Volte à Tela 3.
+     - Erro com `dono_da_loja_pkey`: esta loja **já tem** um dono, e nada foi mudado.
+       Para trocar o dono, veja a seção 4.
+     - Qualquer outro erro: pare e avise o programador, copiando só a frase do erro.
+   - Depois do `1`, não clique em **Run** de novo: rodar outra vez só dá o erro
+     `dono_da_loja_pkey` (a loja só aceita um dono). É inofensivo, mas desnecessário.
 
-8. **Provar com a consulta 89.** Esperado: **as 9 linhas `sim`** (`ok = true`).
-   Só então a loja está pronta para a opção **Tornar administrador**.
+**Tela 5. Avisar o programador e conferir.**
+1. Feche a aba do editor (o e-mail fica só no seu histórico do Supabase, não no nosso trabalho).
+2. Diga ao programador apenas: "cadastrei o dono na loja X".
+3. Ele roda a consulta 89 daquela loja, que **não usa e-mail nenhum**, e responde se as
+   **9 linhas** estão `sim`. Só então a loja está pronta para a opção **Tornar administrador**.
+
+**Depois do cadastro: reabrir o painel.** Quem estava com o painel da loja aberto antes do
+cadastro precisa **fechar e abrir de novo** o painel (ou recarregar a página). O painel guarda na
+memória da página a leitura "sem dono" feita antes, e só uma abertura nova lê o dono cadastrado.
+Até lá, **Tornar administrador** continua sem aparecer, mesmo com o cadastro certo.
 
 ### 3.4 Lendo a consulta 89
 
@@ -155,9 +207,11 @@ Hoje ela é conferência manual do programador: não é portão automático do `
 
 ## 4. Trocar o dono (raro; decisão do dono do produto)
 
-Mesma conferência do passo 6 para o **novo** e-mail, e depois, tudo de uma vez, nesta ordem
-(`DELETE` e `INSERT` na mesma transação; o aviso do editor sobre "operação destrutiva" é
-esperado, porque é um `DELETE` sem `WHERE`, na tabela de uma linha só):
+Quem faz é o dono do produto, no mesmo SQL Editor da seção 3.3 (Telas 1 e 2) e com a mesma
+regra: o agente nunca vê o e-mail. Primeiro a conferência da Tela 3 com o **novo** e-mail
+(`1`, `1`, `1`), e depois, tudo de uma vez, nesta ordem (`DELETE` e `INSERT` na mesma
+transação; o aviso do editor sobre "operação destrutiva" é esperado, porque é um `DELETE`
+sem `WHERE`, na tabela de uma linha só):
 
 ```sql
 BEGIN;
@@ -178,7 +232,9 @@ COMMIT;
 ```
 
 Se o novo e-mail não for admin nas duas fontes, a verificação final dá erro e a transação
-desfaz também o `DELETE`: o dono antigo continua. Em seguida, rodar a consulta 89.
+desfaz também o `DELETE`: o dono antigo continua. Em seguida, o programador roda a consulta 89,
+e quem estava com o painel aberto fecha e abre de novo (ou recarrega a página), pelo mesmo
+motivo da seção 3.3.
 
 Cuidados que valem na troca e no dia a dia:
 
@@ -198,7 +254,7 @@ Cada loja tem o **seu** banco, e por isso o seu dono. Confirmado em `AGENTS.md`,
 | IKCOUS (a "CAF", loja de desenvolvimento) | `ikcous-publicada` (é o mesmo banco do alvo `loja`) | exige o SHA completo do commit |
 | Savy (loja cliente) | `savy` | exige o SHA completo do commit |
 | Sandbox | `sandbox` | só ensaio, sem cliente; cadastre um dono de teste se for provar a tela |
-| Loja nova | a que o cadastro da frota (`frota_lojas`) registrar | entra neste roteiro assim que tiver banco; o inventário vem do cadastro, não deste arquivo |
+| Loja nova | o alvo dos workflows de banco vem de `scripts/frota/canais-de-backend.json` (a loja entra ali uma vez, quando o dono cria o segredo e o alvo do workflow); até entrar, a publicação bloqueia e diz o nome dela | entra neste roteiro assim que tiver banco. O cadastro `frota_lojas` só dá o inventário (quais lojas existem), não o alvo do apply |
 
 As lojas Almeida, Brand Meliz e Space foram descontinuadas pelo dono em 16/10/2026 e não
 entram na atualização.
@@ -208,7 +264,8 @@ resposta dele junto com a loja, sem e-mail nem identificador neste repositório.
 
 ## 6. O que este roteiro não faz
 
-- Não aplica nada sozinho e não guarda e-mail, identificador ou credencial de ninguém.
+- Não aplica nada sozinho e não guarda e-mail, identificador ou credencial de ninguém. O agente
+  nunca digita nem lê o e-mail do dono.
 - Não decide quem é o dono nem corrige cargo de ninguém.
 - A consulta 89 prova o **cadastro** e o cargo **de agora**. A prova de que `definir_cargo`
   funciona de ponta a ponta (dono nomeia, nomeado não nomeia, ninguém rebaixa o dono) está
