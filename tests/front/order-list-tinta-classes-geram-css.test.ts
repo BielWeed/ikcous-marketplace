@@ -142,6 +142,7 @@ describe("Meus Pedidos Tinta: toda classe vira regra no Tailwind do projeto", ()
       "src/components/ui/custom/OrderList.tsx",
       "src/components/ui/custom/OrderSearch.tsx",
     ]) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- `arq` vem da lista fixa acima, caminhos do próprio repositório
       const fonte = readFileSync(arq, "utf8");
       expect(fonte, arq).not.toMatch(/text-\[(?:[0-9]|1[01])px\]/);
       expect(fonte, arq).not.toMatch(/tracking-(?:widest|\[0\.2em\])/);

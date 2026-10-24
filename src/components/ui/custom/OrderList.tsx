@@ -66,6 +66,7 @@ function OrderStatusTrail({
   const passos = retiradaNaLoja ? trailStepsRetirada : trailSteps;
   const currentStep = statusStep.get(status) ?? 0;
   if (currentStep < 0 || status === "delivered") return null;
+  // eslint-disable-next-line security/detect-object-injection -- índice numérico vindo de statusStep (Map fixo), nunca de entrada externa
   const atual = passos[currentStep];
   const proxima = passos[currentStep + 1];
 

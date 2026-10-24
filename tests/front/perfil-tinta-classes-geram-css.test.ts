@@ -89,6 +89,7 @@ describe("Perfil Tinta — classes novas viram CSS com o valor certo", () => {
     const css = await cssGerado(nomes);
     const falhas = nomes.filter((classe) => {
       const corpo = corpoDaRegra(css, classe);
+      // eslint-disable-next-line security/detect-object-injection -- `classe` sai de Object.keys(CLASSES), chave conhecida
       return !corpo.includes(CLASSES[classe] as string);
     });
     expect(falhas).toEqual([]);
