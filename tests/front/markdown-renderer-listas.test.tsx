@@ -78,4 +78,18 @@ describe("MarkdownRenderer — listas, separador e parágrafo", () => {
     expect(alvo.querySelector("ul")).toBeNull();
     expect(alvo.querySelector("p")!.textContent).toContain("* começa no meio");
   });
+
+  it("lista logo depois de uma linha em negrito vira <ul>, sem asterisco literal", async () => {
+    const alvo = await renderizar(
+      "**Características do Produto**\n* Tema: Stitch\n* Quantidade: 50 páginas",
+    );
+    const itens = Array.from(alvo.querySelectorAll("ul li")).map(
+      (li) => li.textContent,
+    );
+    expect(itens).toEqual(["Tema: Stitch", "Quantidade: 50 páginas"]);
+    expect(alvo.querySelector("strong")!.textContent).toBe(
+      "Características do Produto",
+    );
+    expect(alvo.textContent).not.toContain("*");
+  });
 });

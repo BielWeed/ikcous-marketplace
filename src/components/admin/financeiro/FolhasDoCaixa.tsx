@@ -28,6 +28,7 @@ import {
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import {
+  CONTA_BANCARIA,
   CONTA_CAIXA_DA_LOJA,
   type CaixaAtual,
   type ContaFinanceira,
@@ -53,12 +54,15 @@ function RodapeDeAcao({
   rotulo,
   rotuloEnviando,
   enviando,
+  bloqueado = false,
   aoConfirmar,
 }: {
   readonly erro: string | null;
   readonly rotulo: string;
   readonly rotuloEnviando: string;
   readonly enviando: boolean;
+  /** Falta algo que a tela não resolve sozinha: o botão não registra. */
+  readonly bloqueado?: boolean;
   readonly aoConfirmar: () => void;
 }) {
   return (
@@ -66,7 +70,7 @@ function RodapeDeAcao({
       {erro ? <EstadoDeErro mensagem={erro} /> : null}
       <button
         type="button"
-        disabled={enviando}
+        disabled={enviando || bloqueado}
         onClick={aoConfirmar}
         className={CLASSE_BOTAO_PRIMARIO}
       >
@@ -129,8 +133,9 @@ export function AbrirCaixaFolha({
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
-  const nomeDaConta =
-    contas.find((c) => c.id === CONTA_CAIXA_DA_LOJA)?.nome ?? "Caixa da loja";
+  const contaDoCaixa = contas.find((c) => c.id === CONTA_CAIXA_DA_LOJA);
+  const nomeDaConta = contaDoCaixa?.nome ?? "Caixa da loja";
+  const saldoDoSistema = contaDoCaixa?.saldo ?? null;
   const [valor, setValor] = useState("");
   const [tentou, setTentou] = useState(false);
   const { enviando, erro, enviar } = useEnvio(undefined, async (falha) => {
@@ -153,6 +158,13 @@ export function AbrirCaixaFolha({
       : tentou && numero !== null && numero > VALOR_MAXIMO
         ? "Valor acima do limite."
         : undefined;
+  const diferencaNaAbertura =
+    saldoDoSistema !== null &&
+    numero !== null &&
+    numero >= 0 &&
+    numero <= VALOR_MAXIMO
+      ? diferencaDoFechamento(saldoDoSistema, numero)
+      : null;
 
   function confirmar() {
     setTentou(true);
@@ -216,6 +228,48 @@ export function AbrirCaixaFolha({
         <p className="text-xs text-zinc-400">
           Conta: <strong className="text-zinc-300">{nomeDaConta}</strong>
         </p>
+        {saldoDoSistema !== null ? (
+          <dl className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <dt className="text-zinc-400">O sistema tem na gaveta</dt>
+            <dd className="text-xl font-bold">
+              <Dinheiro valor={saldoDoSistema} />
+            </dd>
+          </dl>
+        ) : null}
+        {diferencaNaAbertura && diferencaNaAbertura.situacao !== "bateu" ? (
+          <p
+            role="status"
+            className={cn(
+              "flex items-start gap-2 rounded-xl p-3 text-xs",
+              classeDoTexto("atencao"),
+            )}
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0"
+            />
+            <span>
+              {diferencaNaAbertura.situacao === "quebra" ? (
+                <>
+                  Faltam{" "}
+                  <Dinheiro valor={Math.abs(diferencaNaAbertura.diferenca)} />{" "}
+                  em relação ao sistema. Se o caixa já foi fechado antes, a
+                  diferença fica registrada como quebra de caixa e pesa no
+                  resultado. Se esse dinheiro foi para o banco ou outra conta,
+                  registre antes uma transferência do Caixa para essa conta (em
+                  Novo lançamento, escolha Transferência): isso evita a quebra.
+                </>
+              ) : (
+                <>
+                  Sobram{" "}
+                  <Dinheiro valor={Math.abs(diferencaNaAbertura.diferenca)} />{" "}
+                  em relação ao sistema. A sobra fica registrada como entrada
+                  fora do lucro.
+                </>
+              )}
+            </span>
+          </p>
+        ) : null}
       </div>
     </FolhaFinanceira>
   );
@@ -251,7 +305,8 @@ export function MovimentarCaixaFolha({
   const sangria = movimento === "sangria";
   const [valor, setValor] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [contrapartida, setContrapartida] = useState("");
+  // null = a lojista ainda não mexeu: vale o padrão (Conta bancária).
+  const [contaEscolhida, setContaEscolhida] = useState<string | null>(null);
   const chave = useRef<string | null>(null);
   const [tentou, setTentou] = useState(false);
   function esquecer() {
@@ -266,11 +321,27 @@ export function MovimentarCaixaFolha({
     },
   );
 
+  // O servidor, sem conta, lançaria a contrapartida na Conta bancária: a tela
+  // não oferece "nenhuma" e mostra de antemão para onde o dinheiro vai.
+  const outrasContas = contas.filter((c) => c.ativa && c.id !== contaDoCaixa);
+  const contaPadrao = outrasContas.some((c) => c.id === CONTA_BANCARIA)
+    ? CONTA_BANCARIA
+    : "";
+  const contrapartida = contaEscolhida ?? contaPadrao;
+  const contrapartidaValida = outrasContas.some((c) => c.id === contrapartida);
+  // Lista vazia = ainda não chegou (ou falhou): toda loja tem as duas contas
+  // de sistema. Só com a lista carregada "nenhuma outra conta" é verdade.
+  const contasChegaram = contas.length > 0;
+  const semContaDeDestino = contasChegaram && outrasContas.length === 0;
+  const semOpcaoDeConta = outrasContas.length === 0;
+
   useEffect(() => {
     aoMudarSujo(
-      valor !== "" || descricao.trim() !== "" || contrapartida !== "",
+      valor !== "" ||
+        descricao.trim() !== "" ||
+        (contaEscolhida !== null && contaEscolhida !== contaPadrao),
     );
-  }, [valor, descricao, contrapartida, aoMudarSujo]);
+  }, [valor, descricao, contaEscolhida, contaPadrao, aoMudarSujo]);
 
   const numero = parseValorBR(valor);
   const erroValor =
@@ -284,11 +355,18 @@ export function MovimentarCaixaFolha({
     numero !== null &&
     Math.round(numero * 100) > Math.round(esperado * 100);
 
-  const outrasContas = contas.filter((c) => c.ativa && c.id !== contaDoCaixa);
+  const erroConta = !contasChegaram
+    ? "As contas ainda não carregaram. Aguarde um instante ou atualize a página."
+    : semContaDeDestino
+      ? `Não há outra conta ativa ${sangria ? "para receber" : "de onde tirar"} esse dinheiro. Crie ou reative uma conta em Contas e categorias antes de registrar.`
+      : tentou && !contrapartidaValida
+        ? `Escolha a conta de ${sangria ? "destino" : "origem"}.`
+        : undefined;
 
   function confirmar() {
     setTentou(true);
     if (numero === null || numero <= 0 || numero > VALOR_MAXIMO) return;
+    if (!contrapartidaValida) return;
     void enviar(async () => {
       // Campos podem mudar, identidade não: o servidor devolve o original
       // ou recusa a divergência, sem gravar uma segunda transferência.
@@ -301,7 +379,7 @@ export function MovimentarCaixaFolha({
         descricao:
           descricao.trim() ||
           (sangria ? "Sangria do caixa" : "Suprimento do caixa"),
-        contaContrapartida: contrapartida || null,
+        contaContrapartida: contrapartida,
       };
       const resultado = await movimentarCaixa(enviada);
       esquecer();
@@ -337,7 +415,7 @@ export function MovimentarCaixaFolha({
             rotulo: "Contrapartida",
             texto:
               contas.find((c) => c.id === enviada.contaContrapartida)?.nome ??
-              "Nenhuma conta da loja",
+              "Conta da loja",
           },
         ],
       });
@@ -362,6 +440,7 @@ export function MovimentarCaixaFolha({
           rotulo={sangria ? "Registrar sangria" : "Registrar suprimento"}
           rotuloEnviando="Registrando…"
           enviando={enviando}
+          bloqueado={semOpcaoDeConta}
           aoConfirmar={confirmar}
         />
       }
@@ -400,13 +479,9 @@ export function MovimentarCaixaFolha({
             />
             <span>
               É mais do que o esperado na gaveta (<Dinheiro valor={esperado} />
-              ). Confira a contagem antes de registrar.
+              ). O sistema não registra uma sangria maior que o esperado:
+              confira a contagem.
             </span>
-          </p>
-        ) : null}
-        {passaDoEsperado ? (
-          <p className="text-xs text-zinc-400">
-            O aviso não impede o registro.
           </p>
         ) : null}
         <Campo id="fin-caixa-mov-descricao" rotulo="Descrição">
@@ -423,18 +498,25 @@ export function MovimentarCaixaFolha({
         </Campo>
         <Campo
           id="fin-caixa-mov-conta"
-          rotulo={
-            sangria ? "Para onde foi (opcional)" : "De onde veio (opcional)"
+          rotulo={sangria ? "Para onde foi" : "De onde veio"}
+          erro={erroConta}
+          ajuda={
+            sangria
+              ? "Escolha a conta que recebeu o dinheiro. O valor muda de conta, sem virar despesa."
+              : "Escolha a conta de onde veio o dinheiro. O valor muda de conta, sem virar despesa."
           }
-          ajuda="Se saiu para outra conta da loja ou veio dela, escolha-a. O valor muda de conta, sem virar despesa."
         >
           <select
             id="fin-caixa-mov-conta"
             value={contrapartida}
-            onChange={(e) => setContrapartida(e.target.value)}
+            onChange={(e) => setContaEscolhida(e.target.value)}
             className={CLASSE_CAMPO}
           >
-            <option value="">Nenhuma conta da loja</option>
+            {contrapartidaValida || semOpcaoDeConta ? null : (
+              <option value="" disabled>
+                Escolha uma conta
+              </option>
+            )}
             {outrasContas.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nome}
