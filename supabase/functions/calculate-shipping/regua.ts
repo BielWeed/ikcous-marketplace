@@ -26,6 +26,40 @@ export function medidaPositivaDoBanco(valor: unknown): number | null {
     return Number.isFinite(numero) && numero > 0 ? numero : null
 }
 
+/**
+ * Um uuid em qualquer grafia que o Postgres aceita: 32 dígitos hex, com hífen
+ * (opcional) só depois de um grupo de 4 — cada pedaço entre hífens tem tamanho
+ * múltiplo de 4. Sem regex aninhada de propósito (o lint a marca como insegura).
+ */
+function ehUuidEmQualquerGrafia(texto: string): boolean {
+    const pedacos = texto.split('-')
+    return pedacos.join('').length === 32
+        && pedacos.every((pedaco) => pedaco.length > 0 && pedaco.length % 4 === 0 && /^[0-9a-f]+$/.test(pedaco))
+}
+
+/**
+ * O id de produto/variação do CLIENTE na forma CANÔNICA do banco (uuid em
+ * minúsculas, com hífens 8-4-4-4-12): é a única que casa com o id que o banco
+ * DEVOLVE. O Postgres aceita o mesmo uuid em MAIÚSCULAS, sem hífens, entre
+ * chaves e com hífen depois de qualquer grupo de 4 dígitos; sem isto a busca
+ * `.in('id', …)` achava o produto, o Map em memória (indexado pelo id devolvido)
+ * não, e a cotação saía de pacote padrão de 0,3 kg — a lojista pagava a
+ * diferença na etiqueta. Também é a forma que entra no `cart_hash`, que a RPC
+ * do pedido compara por TEXTO exato: pedido com id em outra grafia deixa de
+ * casar e é recusado como cotação desatualizada.
+ *
+ * Id que não é uuid (as fixtures usam "p1") só perde caixa e espaços das
+ * pontas. `null`/`undefined` = `null`.
+ */
+export function idCanonico(valor: unknown): string | null {
+    if (valor === null || valor === undefined) return null
+    const id = String(valor).trim().toLowerCase()
+    const miolo = id.startsWith('{') && id.endsWith('}') ? id.slice(1, -1) : id
+    if (!ehUuidEmQualquerGrafia(miolo)) return id
+    const d = miolo.replaceAll('-', '')
+    return `${d.slice(0, 8)}-${d.slice(8, 12)}-${d.slice(12, 16)}-${d.slice(16, 20)}-${d.slice(20)}`
+}
+
 /** Número do banco (numeric chega como number ou texto): finito e >= 0, senão `null`. */
 function numeroNaoNegativoDoBanco(valor: unknown): number | null {
     const numero = typeof valor === 'number'

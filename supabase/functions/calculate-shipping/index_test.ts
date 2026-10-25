@@ -92,6 +92,90 @@ Deno.test("getCartHash - stable sorting and hashing", () => {
   assertEquals(getCartHash(cart1), "prod-a:v1:2,prod-b:v2:1");
 });
 
+// ── Id canônico: a MESMA identidade do banco (uuid) vale em qualquer grafia ──
+// O Postgres aceita uuid em MAIÚSCULAS e sem hífens; o Map em memória é
+// indexado pelo id que o banco DEVOLVE (minúsculo, com hífens). Sem a forma
+// canônica o produto "não existia" e o frete saía de pacote padrão de 0,3 kg.
+const UUID_P = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+const UUID_V = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+
+Deno.test("idCanonico: minúsculas, sem espaços, uuid sem hífens/com chaves vira a forma do banco; id que não é uuid só perde caixa e espaço", () => {
+  assertEquals(edge.idCanonico(UUID_P.toUpperCase()), UUID_P);
+  assertEquals(edge.idCanonico(`  ${UUID_P.toUpperCase()}\t`), UUID_P);
+  assertEquals(edge.idCanonico(UUID_P.replaceAll("-", "")), UUID_P);
+  assertEquals(edge.idCanonico(UUID_P.replaceAll("-", "").toUpperCase()), UUID_P);
+  assertEquals(edge.idCanonico(`{${UUID_P.toUpperCase()}}`), UUID_P);
+  // o Postgres aceita o hífen depois de QUALQUER grupo de 4 dígitos
+  assertEquals(edge.idCanonico("3f2504e04f89-41d39a0c-0305e82c3301"), UUID_P);
+  assertEquals(edge.idCanonico("p1"), "p1");
+  assertEquals(edge.idCanonico("  P1 "), "p1");
+  assertEquals(edge.idCanonico("prod-a"), "prod-a");
+  assertEquals(edge.idCanonico(7), "7");
+  // 32 caracteres que NÃO são hexadecimais não viram uuid
+  assertEquals(edge.idCanonico("Z".repeat(32)), "z".repeat(32));
+  assertEquals(edge.idCanonico(null), null);
+  assertEquals(edge.idCanonico(undefined), null);
+});
+
+Deno.test("getCartHash - o id em MAIÚSCULAS, com espaços ou sem hífens dá o MESMO hash do minúsculo (a RPC compara texto exato)", () => {
+  const minusculo = [{ product: { id: UUID_P }, quantity: 2, variantId: UUID_V }];
+  const esperado = `${UUID_P}:${UUID_V}:2`;
+  assertEquals(getCartHash(minusculo), esperado);
+  assertEquals(getCartHash([{ product: { id: UUID_P.toUpperCase() }, quantity: 2, variantId: UUID_V.toUpperCase() }]), esperado);
+  assertEquals(getCartHash([{ productId: `  ${UUID_P.toUpperCase()} `, quantity: 2, variantId: ` ${UUID_V} ` }]), esperado);
+  assertEquals(getCartHash([{ product: { id: UUID_P.replaceAll("-", "") }, quantity: 2, variantId: UUID_V.replaceAll("-", "") }]), esperado);
+});
+
+Deno.test("getCartHash - a ordem continua estável com caixas misturadas", () => {
+  const outro = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+  const a = [{ product: { id: UUID_P.toUpperCase() }, quantity: 1 }, { product: { id: outro }, quantity: 3 }];
+  const b = [{ product: { id: outro.toUpperCase() }, quantity: 3 }, { product: { id: UUID_P }, quantity: 1 }];
+  assertEquals(getCartHash(a), getCartHash(b));
+});
+
+Deno.test("getCartHash - regressão: id que não é uuid ('p1'), sem variação, e quantidade ausente = 1", () => {
+  assertEquals(getCartHash([{ product: { id: "p1" } }]), "p1::1");
+  assertEquals(getCartHash([{ productId: "p1", quantity: 4, variantId: "v1" }]), "p1:v1:4");
+});
+
+// ── montarInsumos: o produto do banco é achado em qualquer grafia do id ──────
+const PRODUTO_PESADO = { id: UUID_P, preco_venda: 100, peso_kg: 12, comprimento_cm: 60, largura_cm: 40, altura_cm: 30 };
+const VARIANTE_V = { id: UUID_V, product_id: UUID_P, price_override: 80 };
+const mapaDoBanco = () => ({
+  produtos: new Map<unknown, any>([[PRODUTO_PESADO.id, PRODUTO_PESADO]]),
+  variantes: new Map<unknown, any>([[VARIANTE_V.id, VARIANTE_V]]),
+});
+
+Deno.test("montarInsumos - id do produto e da variação em MAIÚSCULAS acha o cadastro: peso, medidas e valor reais, igual ao minúsculo", () => {
+  const { produtos, variantes } = mapaDoBanco();
+  const minusculo = edge.montarInsumos([{ product: { id: UUID_P }, variantId: UUID_V, quantity: 2 }], produtos, variantes);
+  assertEquals(minusculo.produtosSemCadastro, 0);
+  assertEquals(minusculo.itens[0].peso, 12);
+  assertEquals(minusculo.itens[0].valor, 80);
+  for (const grafia of [
+    (id: string) => id.toUpperCase(),
+    (id: string) => ` ${id.toUpperCase()} `,
+    (id: string) => id.replaceAll("-", ""),
+  ]) {
+    const r = edge.montarInsumos([{ productId: grafia(UUID_P), variantId: grafia(UUID_V), quantity: 2 }], produtos, variantes);
+    assertEquals(r.produtosSemCadastro, 0);
+    assertEquals(r.camposPadrao, 0);
+    // o resultado INTEIRO é igual (inclusive o id que entra na assinatura do cache)
+    assertEquals(r, minusculo);
+  }
+});
+
+Deno.test("montarInsumos - regressão: id que não é uuid acha o mapa do mesmo jeito; produto que não existe continua nos padrões", () => {
+  const produtos = new Map<unknown, any>([["p1", { id: "p1", preco_venda: 10, peso_kg: 2, comprimento_cm: 20, largura_cm: 20, altura_cm: 20 }]]);
+  const achado = edge.montarInsumos([{ product: { id: "p1" }, quantity: 1 }], produtos, new Map());
+  assertEquals(achado.produtosSemCadastro, 0);
+  assertEquals(achado.itens[0].peso, 2);
+  const sumido = edge.montarInsumos([{ product: { id: UUID_P.toUpperCase() }, quantity: 1 }], produtos, new Map());
+  assertEquals(sumido.produtosSemCadastro, 1);
+  assertEquals(sumido.itens[0].peso, 0.3);
+  assertEquals(sumido.itens[0].valor, null);
+});
+
 Deno.test("isLocalCep - default fallback", () => {
   // Same first 5 digits
   assertEquals(isLocalCep("38500-000", "38500-120"), true);

@@ -148,6 +148,8 @@ export type Registro = {
     cacheLinhas: any[]
     /** Quantas vezes a cotação foi buscar `store_address` (a retirada só lê quando vai oferecer). */
     leiturasDeEndereco: number
+    /** Cada `.in(coluna, valores)` pedido ao banco, na ordem — prova QUE ids o handler mandou buscar. */
+    filtrosIn: Array<{ tabela: string; coluna: string; valores: unknown[] }>
 }
 
 export function bancoFalso(opts: {
@@ -197,6 +199,7 @@ export function bancoFalso(opts: {
         deletesCache: 0,
         cacheLinhas: (opts.cache ?? []).map((l) => structuredClone(l)),
         leiturasDeEndereco: 0,
+        filtrosIn: [],
     }
 
     const construtor = (tabela: string, operacao: string, carga?: any, opcoesUpsert?: any) => {
@@ -319,7 +322,10 @@ export function bancoFalso(opts: {
             },
             gt: () => b,
             gte: () => b,
-            in: () => b,
+            in: (coluna: string, valores: unknown[]) => {
+                registro.filtrosIn.push({ tabela, coluna, valores: [...valores] })
+                return b
+            },
             order: () => b,
             limit: (n: number) => {
                 limite = n
