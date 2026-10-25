@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
   // do hook: (página, tamanho, status, busca, início, fim, silencioso,
   // pagamento, canal).
   cargas: [] as unknown[][],
+  // Chamadas de "levar a rolagem ao topo" da tela Pedidos.
+  reiniciarScroll: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -64,6 +66,7 @@ vi.mock("@/hooks/useScrollRestoration", () => ({
     ref: { current: null },
     saveScroll: vi.fn(),
     resetRestored: vi.fn(),
+    reiniciarScroll: h.reiniciarScroll,
   }),
 }));
 vi.mock("@/hooks/usePrefetchOnHover", () => ({
@@ -194,6 +197,7 @@ describe("Início → Pedidos: o atalho abre limpo, o menu respeita o que ficou 
     vi.resetModules();
     h.respostas.clear();
     h.cargas.length = 0;
+    h.reiniciarScroll.mockClear();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -271,6 +275,9 @@ describe("Início → Pedidos: o atalho abre limpo, o menu respeita o que ficou 
     );
     expect(window.localStorage.getItem("admin_orders_search_query")).toBe('""');
     expect(window.localStorage.getItem("admin_orders_current_page")).toBe("0");
+
+    // A rolagem da última visita também não volta: a lista abre no topo.
+    expect(h.reiniciarScroll).toHaveBeenCalledTimes(1);
   });
 
   it("a linha 'Pedidos para preparar' do Para fazer (quando o Início não tem os números) também abre limpo", async () => {
@@ -319,6 +326,8 @@ describe("Início → Pedidos: o atalho abre limpo, o menu respeita o que ficou 
     expect(window.localStorage.getItem("admin_orders_filter_v2")).toBe(
       '"delivered"',
     );
+    // Pelo menu a rolagem da última visita é conveniência: não se mexe nela.
+    expect(h.reiniciarScroll).not.toHaveBeenCalled();
   });
 });
 

@@ -446,6 +446,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     ref: viewRef,
     saveScroll,
     resetRestored,
+    reiniciarScroll,
   } = useScrollRestoration(
     "admin-orders",
     active ?? false,
@@ -476,8 +477,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     setSearchQuery("");
     setDateRange({ start: "", end: "" });
     setCurrentPage(0);
+    // A rolagem da última visita (devolvida antes deste efeito) também sai:
+    // a lista "Em aberto" abre no topo.
+    reiniciarScroll();
   }, [
     active,
+    reiniciarScroll,
     setFilter,
     setPaymentFilter,
     setCanalFilter,
