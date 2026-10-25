@@ -297,6 +297,24 @@ describe("CartContext — a lixeira do carrinho oferece Desfazer", () => {
     expect(atual.cart).toHaveLength(0);
   });
 
+  it("depois de tirar linhas em silêncio (compra concluída), o Desfazer antigo não devolve nada", async () => {
+    await act(async () => {
+      atual.removeFromCart("p2", undefined, { comDesfazer: true });
+    });
+    const { onClick } = acaoDesfazer();
+    await act(async () => {
+      atual.removeFromCart("p1", undefined, { silencioso: true });
+    });
+    const antes = JSON.stringify(atual.cart);
+
+    await act(async () => {
+      onClick();
+    });
+
+    expect(JSON.stringify(atual.cart)).toBe(antes);
+    expect(atual.cart.some((i) => i.product.id === "p2")).toBe(false);
+  });
+
   it("se entrou OUTRA conta no meio, o Desfazer não devolve item da conta anterior", async () => {
     await act(async () => {
       atual.removeFromCart("p2", undefined, { comDesfazer: true });

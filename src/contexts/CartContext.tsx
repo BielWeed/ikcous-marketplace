@@ -1213,7 +1213,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       tombstones.set(key, { key, deletedAt });
       saveTombstones(tombstones);
       setCart((prev) => prev.filter((linha) => chaveDoItem(linha) !== key));
-      if (opcoes?.silencioso) return;
+      if (opcoes?.silencioso) {
+        // Tirada por conclusão de compra: um "Desfazer" ainda na tela não
+        // pode devolver linha antiga por cima do carrinho que a compra limpou.
+        geracaoDoCarrinhoRef.current += 1;
+        return;
+      }
       if (item) {
         const removida = {
           item,
