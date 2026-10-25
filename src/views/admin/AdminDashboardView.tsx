@@ -28,6 +28,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { pedirPedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
@@ -142,6 +143,24 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     atualizar,
   } = usePainelInicio(ativo);
   const [mostrarAjuda, setMostrarAjuda] = useState(false);
+
+  // Toda saída do Início passa por aqui. Quem toca num atalho para Pedidos
+  // ("Preparar pedidos", a linha do Para fazer) quer ver os pedidos a
+  // preparar, não o filtro e a busca que ficaram salvos da última visita à
+  // tela: o recado faz Pedidos abrir limpa (abrir pelo menu não passa por
+  // aqui e continua respeitando o que ela deixou). Com `id`, é a ficha de um
+  // pedido, que não é lista. A aridade é preservada: `onNavigate(view)` sem
+  // segundo argumento.
+  const irPara = useCallback(
+    (view: View, id?: string) => {
+      if (view === "admin-orders" && id === undefined) {
+        pedirPedidosSemFiltroAntigo();
+      }
+      if (id === undefined) onNavigate(view);
+      else onNavigate(view, id);
+    },
+    [onNavigate],
+  );
 
   const responsavel =
     typeof profile?.full_name === "string" && profile.full_name.trim() !== ""
@@ -270,7 +289,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 <SecaoLojaProntaEEstoqueBaixo
                   estoqueBaixo={painel.pendencias.estoqueBaixo}
                   estoqueCarregando={semNumeros}
-                  onNavigate={onNavigate}
+                  onNavigate={irPara}
                   onTentarDeNovo={() => void atualizar()}
                   somenteBoasVindas
                 />
@@ -281,14 +300,14 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 hoje={painel?.hoje ?? null}
                 carregando={semNumeros}
                 paraPreparar={painel?.pendencias.pedidosParaPreparar ?? null}
-                onPreparar={() => onNavigate("admin-orders")}
+                onPreparar={() => irPara("admin-orders")}
               />
             </LocalErrorBoundary>
             <LocalErrorBoundary>
               <ParaFazer
                 painel={painel}
                 carregando={semNumeros}
-                onNavigate={onNavigate}
+                onNavigate={irPara}
                 preparoEmDestaque
               />
             </LocalErrorBoundary>
@@ -296,7 +315,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           <div className="min-w-0 space-y-6">
             <AtalhosDoInicio
               ativa={ativo}
-              onNavigate={onNavigate}
+              onNavigate={irPara}
               aoPrepararDestino={prefetchView}
             />
             <LocalErrorBoundary>
@@ -317,7 +336,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
               <DinheiroNasContas
                 painel={painel}
                 carregando={semNumeros}
-                onNavigate={onNavigate}
+                onNavigate={irPara}
               />
             </LocalErrorBoundary>
             <section
@@ -362,7 +381,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                   <SecaoLojaProntaEEstoqueBaixo
                     estoqueBaixo={painel?.pendencias.estoqueBaixo ?? null}
                     estoqueCarregando={semNumeros}
-                    onNavigate={onNavigate}
+                    onNavigate={irPara}
                     onTentarDeNovo={() => void atualizar()}
                   />
                 </LocalErrorBoundary>

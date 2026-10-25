@@ -622,7 +622,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     expect(hospedeiro.textContent).not.toContain("100,00");
   });
 
-  it("clicar em 'O produto voltou' chama confirmarRetornoDoProduto com o id do pedido certo", async () => {
+  it("clicar em 'O produto voltou' e confirmar chama confirmarRetornoDoProduto com o id do pedido certo", async () => {
     mockPedidosCancelados = [
       pedidoFake({
         id: "ped-clique",
@@ -647,6 +647,20 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
 
     await act(async () => {
       botao!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    // O toque só ABRE a pergunta (O3): devolver estoque pede confirmação, e a
+    // chamada que mexe no estoque ainda não saiu. A prova da pergunta em si
+    // (texto, "Voltar" em foco, toque dentro dela) está em
+    // produto-voltou-pede-confirmacao-antes-de-devolver-estoque.test.tsx.
+    expect(confirmarRetornoDoProdutoMock).not.toHaveBeenCalled();
+    const confirmar = Array.from(document.body.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Sim, o produto voltou",
+    );
+    expect(confirmar).toBeTruthy();
+    await act(async () => {
+      confirmar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
 

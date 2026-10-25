@@ -1133,6 +1133,11 @@ export const mensagemAmigavelErroOtp = (error: unknown): string => {
  */
 export const mensagemAmigavelErroAtualizacaoStatus = (
   error: unknown,
+  // Frase para tudo que não for uma frase nossa em português. O padrão fala
+  // de "atualizar o status", certo para quem muda o status; as ações do
+  // lojista que NÃO são mudança de status (confirmar que o produto voltou,
+  // registrar o pagamento recebido) passam a frase que cabe nelas.
+  frasePadrao = "Não foi possível atualizar o status do pedido agora. Tente novamente em instantes.",
 ): string => {
   // S1 (04/10/2026): o desfecho da edge de cancelamento já chega com a frase
   // escrita para quem lê (contrato de criar-pagamento/cancelar-pedido.ts).
@@ -1165,8 +1170,11 @@ export const mensagemAmigavelErroAtualizacaoStatus = (
     return textoOriginal;
   }
 
-  return "Não foi possível atualizar o status do pedido agora. Tente novamente em instantes.";
+  return frasePadrao;
 };
+
+/** Descrição dos avisos de falha das ações do lojista que não mudam o status. */
+const FRASE_DE_NOVA_TENTATIVA = "Tente novamente em instantes.";
 
 /**
  * Funde a linha que o realtime do Supabase entrega em `payload.new` sobre o
@@ -3649,8 +3657,14 @@ export function useOrders(
       // vez de desfazer a própria. A correção é subtrativa: sem estado
       // otimista para desfazer, não há nada para restaurar.
       console.error("Error confirming product return:", err);
+      // O texto cru do erro ("TypeError: Failed to fetch", "JWT expired") não
+      // é palavra de lojista: passa pela tradução dos avisos do pedido. A
+      // frase em português que a própria RPC escreve (P0001) continua inteira.
       toast.error("Não foi possível confirmar o retorno do produto.", {
-        description: err?.message,
+        description: mensagemAmigavelErroAtualizacaoStatus(
+          err,
+          FRASE_DE_NOVA_TENTATIVA,
+        ),
       });
       throw err;
     }
@@ -3730,7 +3744,13 @@ export function useOrders(
           recebido
             ? "Não foi possível registrar o pagamento recebido."
             : "Não foi possível desfazer o recebimento.",
-          { description: err?.message },
+          {
+            // Mesma regra do aviso do retorno do produto, acima.
+            description: mensagemAmigavelErroAtualizacaoStatus(
+              err,
+              FRASE_DE_NOVA_TENTATIVA,
+            ),
+          },
         );
         throw err;
       } finally {
