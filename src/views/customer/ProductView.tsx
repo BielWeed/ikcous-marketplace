@@ -671,11 +671,11 @@ export const ProductView = React.memo(function ProductView({
           (_marcador, qual: string) => {
             const tipo = qual.toLowerCase();
             if (tipo === "nome") return product.name;
-            if (tipo === "preco") return reais(product.price);
+            if (tipo === "preco") return reais(currentPrice);
             return globalThis.location.href;
           },
         )
-      : `${config.shareText} ${product.name} por ${reais(product.price)}`;
+      : `${config.shareText} ${product.name} por ${reais(currentPrice)}`;
     const shareData = {
       title: product.name,
       text: textoDoShare,

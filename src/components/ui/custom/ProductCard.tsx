@@ -179,12 +179,6 @@ export const ProductCard = memo(function ProductCard({
   // de acessibilidade 03/09 e 08/09) foi embora junto com o painel.
   const botaoDeAcaoRef = useRef<HTMLButtonElement>(null);
 
-  const discount = product.originalPrice
-    ? Math.round(
-        ((product.originalPrice - product.price) / product.originalPrice) * 100,
-      )
-    : 0;
-
   // ProductCard-520 + T3 (23/09): o selo "Frete Grátis" confiava cegamente
   // em `product.freeShipping`, que só é verdade DENTRO do preset "por
   // produto marcado" (local OU nacional) ou em "sempre" de qualquer um dos
@@ -456,6 +450,15 @@ export const ProductCard = memo(function ProductCard({
 
   const promocional =
     !!product.originalPrice && product.originalPrice > precoAtual;
+  // Caça 4 (V1): o "% OFF" sai do MESMO preço que o card mostra (o da
+  // variação escolhida), nunca do preço base do produto -- senão a variação
+  // mais cara/barata mostrava um selo que não bate com "De/Por".
+  const discount =
+    promocional && product.originalPrice
+      ? Math.round(
+          ((product.originalPrice - precoAtual) / product.originalPrice) * 100,
+        )
+      : 0;
   const textoDoBotao = semEstoqueNoCard
     ? "Esgotado"
     : hasActiveVariant
