@@ -62,6 +62,10 @@ import {
 } from "@/lib/rascunho-do-produto";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
+import {
+  camposQueMudaram,
+  variacoesQueMudaram,
+} from "@/utils/campos-mexidos-do-produto";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
   estoqueDoProdutoFoiMexido,
@@ -438,6 +442,107 @@ function lerEstoqueMinimo(texto: string): {
   return { valor: numero, erro: "" };
 }
 
+const limparNumeroDoCampo = (val: string) => {
+  if (!val) return "";
+  let clean = val.replace(",", ".").replace(/[^\d.-]/g, "");
+  const parts = clean.split(".");
+  if (parts.length > 2) {
+    clean = `${parts[0]}.${parts.slice(1).join("")}`;
+  }
+  return clean;
+};
+
+/** Texto de número do formulário -> número, ou `undefined` se vazio/ilegível. */
+const numeroOpcionalDoCampo = (val: string): number | undefined => {
+  const limpo = limparNumeroDoCampo(val);
+  if (!limpo) return undefined;
+  const numero = Number.parseFloat(limpo);
+  return Number.isNaN(numero) ? undefined : numero;
+};
+
+/**
+ * O que o formulário grava no produto (sem a lista de variações), a partir dos
+ * textos dos campos. É a MESMA função para o formulário de agora e para o que a
+ * tela leu ao abrir: a edição compara os dois resultados e manda só o que
+ * mudou (ver `campos-mexidos-do-produto.ts`), então a normalização de número,
+ * código e foto não pode divergir entre os dois lados.
+ *
+ * CAMPO VAZIO VAI COMO `null`, NUNCA COMO `undefined` (ADMIN-050, #96).
+ * `undefined` significaria "não mexi": a guarda `updates.X !== undefined` do
+ * useProducts descarta a chave, o UPDATE sai sem a coluna, o valor antigo
+ * sobrevive — e a tela confirma "Salvo". Era assim que desmarcar "Produto em
+ * Promoção" mantinha o preço riscado na loja. `null` atravessa a guarda e apaga
+ * de verdade. A comparação da edição preserva isso: vazio que mudou vai `null`.
+ */
+function dadosDoProdutoDoFormulario(
+  form: ProductFormFields,
+  opcoes: { promocaoLigada: boolean; entregaLocal: boolean },
+) {
+  const pPrice = numeroOpcionalDoCampo(form.price) || 0;
+  const pCost = numeroOpcionalDoCampo(form.costPrice);
+  const pOriginal = numeroOpcionalDoCampo(form.originalPrice);
+  const pStock = Number(form.stock) || 0;
+  const pWeight = numeroOpcionalDoCampo(form.weightKg);
+  const pWidth = numeroOpcionalDoCampo(form.widthCm);
+  const pHeight = numeroOpcionalDoCampo(form.heightCm);
+  const pLength = numeroOpcionalDoCampo(form.lengthCm);
+
+  const sanitizedSku = form.sku
+    ? form.sku.trim().toUpperCase().replace(/\s+/g, "-")
+    : undefined;
+  const sanitizedCodigoBarras = form.codigoBarras
+    ? normalizarCodigoBarras(form.codigoBarras)
+    : undefined;
+
+  // As dimensões são a ÚNICA exceção à regra do cabeçalho, e de propósito: com
+  // entrega local a tela nem mostra esses campos, então `undefined` ali é
+  // literalmente "não mexi" — é o que impede que ligar entrega local apague
+  // peso e medidas que a lojista já tinha cadastrado para o Melhor Envio. Com
+  // entrega nacional a tela mostra os campos, e aí vazio quer dizer limpar.
+  const medida = (valor: number | undefined) =>
+    opcoes.entregaLocal
+      ? undefined
+      : valor !== undefined
+        ? Math.max(0, valor)
+        : null;
+
+  const dados = {
+    name: form.name.trim(),
+    description: form.description.trim(),
+    price: Math.max(0, pPrice),
+    costPrice: pCost !== undefined ? Math.max(0, pCost) : null,
+    originalPrice:
+      opcoes.promocaoLigada && pOriginal !== undefined
+        ? Math.max(0, pOriginal)
+        : null,
+    // `stock` e `sold` NÃO estão aqui: o número que a tela leu ao abrir fica
+    // velho quando uma venda o desconta no banco, e mandá-lo de volta
+    // devolvia a peça vendida à prateleira. Na edição o estoque só vai se a
+    // lojista mexeu (ver `estoqueDoProdutoFoiMexido`) e o vendido nunca vai;
+    // no produto novo os dois vão no `addProduct`.
+    // Vazio = `null` (volta ao padrão, 5); número inteiro >= 0 vai como está.
+    // Texto inválido já bloqueou o salvar, então aqui nunca é NaN.
+    estoqueMinimo: lerEstoqueMinimo(form.estoqueMinimo).valor,
+    category: form.category,
+    // Nunca o marcador "Sem Imagem" (placehold.co): a vitrine mostra
+    // `images[0]`, e foto de verdade não pode ficar atrás dele. Sem foto, a
+    // lista vai vazia e a exibição põe o marcador por conta própria.
+    images: soFotosReais(form.images),
+    freeShipping: form.freeShipping,
+    isBestseller: form.isBestseller,
+    isActive: form.isActive,
+    metaTitle: form.metaTitle.trim(),
+    metaDescription: form.metaDescription.trim(),
+    sku: sanitizedSku || null,
+    codigoBarras: sanitizedCodigoBarras || null,
+    weightKg: medida(pWeight),
+    widthCm: medida(pWidth),
+    heightCm: medida(pHeight),
+    lengthCm: medida(pLength),
+  };
+  return { dados, estoque: pStock };
+}
+
 function isProductFormDirty(
   a: ProductFormFields,
   b: ProductFormFields,
@@ -765,6 +870,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // mais escrever na chave de produto novo: recuperaria o rascunho sem id e o
   // próximo "Publicar" criaria um segundo produto idêntico.
   const produtoNovoJaCriadoRef = useRef(false);
+  // Um salvar desta tela JÁ gravou o produto no caminho de duas etapas (produto,
+  // depois grade) e pode ter terminado pela metade. O banco então já tem valores
+  // que a tela não registrou em `initialData`: voltar um campo ao valor de
+  // abertura não é "não mexi". Ligado, o próximo salvar manda tudo (como antes
+  // de mandar só o que mudou) em vez de comparar com a abertura.
+  const salvarAnteriorGravouProdutoRef = useRef(false);
   const [imageUploadStep, setImageUploadStep] = useState<
     "compressing" | "uploading" | "idle"
   >("idle");
@@ -958,6 +1069,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setInitialData(productFields);
           setIsPromoActive(!!product.originalPrice);
           setCurrentProduct(product);
+          salvarAnteriorGravouProdutoRef.current = false;
         } else {
           toast.error("Produto não encontrado");
           onNavigate("admin-products");
@@ -2109,146 +2221,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       }
     }
 
-    const cleanNumberString = (val: string) => {
-      if (!val) return "";
-      let clean = val.replace(",", ".").replace(/[^\d.-]/g, "");
-      const parts = clean.split(".");
-      if (parts.length > 2) {
-        clean = `${parts[0]}.${parts.slice(1).join("")}`;
-      }
-      return clean;
-    };
-
-    const sanitizedPrice = cleanNumberString(formData.price);
-    const sanitizedCost = cleanNumberString(formData.costPrice);
-    const sanitizedOriginal = cleanNumberString(formData.originalPrice);
-    const sanitizedWeight = cleanNumberString(formData.weightKg);
-    const sanitizedWidth = cleanNumberString(formData.widthCm);
-    const sanitizedHeight = cleanNumberString(formData.heightCm);
-    const sanitizedLength = cleanNumberString(formData.lengthCm);
-
-    const pPrice = Number.parseFloat(sanitizedPrice) || 0;
-    const pCostRaw = sanitizedCost
-      ? Number.parseFloat(sanitizedCost)
-      : undefined;
-    const pCost =
-      pCostRaw !== undefined && !Number.isNaN(pCostRaw) ? pCostRaw : undefined;
-    const pOriginalRaw = sanitizedOriginal
-      ? Number.parseFloat(sanitizedOriginal)
-      : undefined;
-    const pOriginal =
-      pOriginalRaw !== undefined && !Number.isNaN(pOriginalRaw)
-        ? pOriginalRaw
-        : undefined;
-    const pStock = Number(formData.stock) || 0;
-
-    const pWeightRaw = sanitizedWeight
-      ? Number.parseFloat(sanitizedWeight)
-      : undefined;
-    const pWeight =
-      pWeightRaw !== undefined && !Number.isNaN(pWeightRaw)
-        ? pWeightRaw
-        : undefined;
-    const pWidthRaw = sanitizedWidth
-      ? Number.parseFloat(sanitizedWidth)
-      : undefined;
-    const pWidth =
-      pWidthRaw !== undefined && !Number.isNaN(pWidthRaw)
-        ? pWidthRaw
-        : undefined;
-    const pHeightRaw = sanitizedHeight
-      ? Number.parseFloat(sanitizedHeight)
-      : undefined;
-    const pHeight =
-      pHeightRaw !== undefined && !Number.isNaN(pHeightRaw)
-        ? pHeightRaw
-        : undefined;
-    const pLengthRaw = sanitizedLength
-      ? Number.parseFloat(sanitizedLength)
-      : undefined;
-    const pLength =
-      pLengthRaw !== undefined && !Number.isNaN(pLengthRaw)
-        ? pLengthRaw
-        : undefined;
-
-    const sanitizedSku = formData.sku
-      ? formData.sku.trim().toUpperCase().replace(/\s+/g, "-")
-      : undefined;
-    const sanitizedCodigoBarras = formData.codigoBarras
-      ? normalizarCodigoBarras(formData.codigoBarras)
-      : undefined;
-
-    /*
-      CAMPO VAZIO VAI COMO `null`, NUNCA COMO `undefined` (ADMIN-050, #96).
-
-      Este formulário sempre envia o objeto inteiro — não existe patch parcial
-      saindo daqui. Logo, campo vazio aqui só pode significar "quero limpar", e
-      nunca "não mexi nesse". `undefined` significaria a segunda coisa: a guarda
-      `updates.X !== undefined` do useProducts descarta a chave, o UPDATE sai
-      sem a coluna, o valor antigo sobrevive — e a tela confirma "Salvo".
-
-      Era assim que desmarcar "Produto em Promoção" mantinha o preço riscado na
-      loja. `null` atravessa a guarda e apaga de verdade.
-    */
-    const productData = {
-      name: formData.name.trim(),
-      description: formData.description.trim(),
-      price: Math.max(0, pPrice),
-      costPrice: pCost !== undefined ? Math.max(0, pCost) : null,
-      originalPrice:
-        isPromoActive && pOriginal !== undefined
-          ? Math.max(0, pOriginal)
-          : null,
-      // `stock` e `sold` NÃO estão aqui: o número que a tela leu ao abrir fica
-      // velho quando uma venda o desconta no banco, e mandá-lo de volta
-      // devolvia a peça vendida à prateleira. Na edição o estoque só vai se a
-      // lojista mexeu (ver `estoqueDoProdutoFoiMexido`) e o vendido nunca vai;
-      // no produto novo os dois vão no `addProduct`, abaixo.
-      // Vazio = `null` (volta ao padrão, 5); número inteiro >= 0 vai como está.
-      // Texto inválido já bloqueou o salvar acima, então aqui nunca é NaN.
-      estoqueMinimo: lerEstoqueMinimo(formData.estoqueMinimo).valor,
-      category: formData.category,
-      // Nunca o marcador "Sem Imagem" (placehold.co): a vitrine mostra
-      // `images[0]`, e foto de verdade não pode ficar atrás dele. Sem foto, a
-      // lista vai vazia e a exibição põe o marcador por conta própria.
-      images: soFotosReais(formData.images),
-      freeShipping: formData.freeShipping,
-      isBestseller: formData.isBestseller,
-      isActive: formData.isActive,
-      metaTitle: formData.metaTitle.trim(),
-      metaDescription: formData.metaDescription.trim(),
-      sku: sanitizedSku || null,
-      codigoBarras: sanitizedCodigoBarras || null,
-      variants: formData.variants,
-      /*
-        As dimensões são a ÚNICA exceção à regra do bloco acima, e de propósito:
-        com entrega local a tela nem mostra esses campos, então `undefined` aqui
-        é literalmente "não mexi" — é o que impede que ligar entrega local apague
-        peso e medidas que a lojista já tinha cadastrado para o Melhor Envio.
-        Com entrega nacional a tela mostra os campos, e aí vazio quer dizer
-        limpar, como no resto do formulário.
-      */
-      weightKg: isLocalShipping
-        ? undefined
-        : pWeight !== undefined
-          ? Math.max(0, pWeight)
-          : null,
-      widthCm: isLocalShipping
-        ? undefined
-        : pWidth !== undefined
-          ? Math.max(0, pWidth)
-          : null,
-      heightCm: isLocalShipping
-        ? undefined
-        : pHeight !== undefined
-          ? Math.max(0, pHeight)
-          : null,
-      lengthCm: isLocalShipping
-        ? undefined
-        : pLength !== undefined
-          ? Math.max(0, pLength)
-          : null,
-    };
+    // O que o formulário grava no produto (campo vazio = `null`, medidas com
+    // entrega local = `undefined`: ver `dadosDoProdutoDoFormulario`).
+    const { dados: dadosDoFormulario, estoque: pStock } =
+      dadosDoProdutoDoFormulario(formData, {
+        promocaoLigada: isPromoActive,
+        entregaLocal: isLocalShipping,
+      });
+    const productData = { ...dadosDoFormulario, variants: formData.variants };
 
     const fim = marcarOperacaoSensivel("salvar-produto");
     try {
@@ -2267,8 +2247,40 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             formData.variants,
             initialData.variants,
           ).some((v) => "stockIncrement" in v);
+        // SÓ O QUE MUDOU (ver `campos-mexidos-do-produto.ts`): duas pessoas no
+        // mesmo produto não podem desfazer o preço, o "ativo" e as fotos uma da
+        // outra com a cópia velha de cada campo que a tela leu ao abrir. Depois
+        // de um salvar que gravou o produto e terminou pela metade, a
+        // comparação com a abertura não vale mais (o banco já tem outro valor
+        // que a tela não registrou): aí manda tudo, como antes.
+        const mandarTudo = salvarAnteriorGravouProdutoRef.current;
+        const variantesAMandar = mandarTudo
+          ? formData.variants
+          : variacoesQueMudaram(formData.variants, initialData.variants);
+        // Produto antigo gravado com o marcador "Sem Imagem" NA FRENTE de fotos
+        // reais: o formulário já o tirou da tela, e qualquer salvar o tira do
+        // banco (a vitrine mostra `images[0]`). Produto sem foto nenhuma não
+        // entra: o marcador ali é só o da exibição, o banco está vazio.
+        const fotosDoBanco: unknown = currentProduct?.images;
+        const bancoTemMarcadorNaFrenteDeFotos =
+          Array.isArray(fotosDoBanco) &&
+          soFotosReais(fotosDoBanco).length > 0 &&
+          soFotosReais(fotosDoBanco).length !== fotosDoBanco.length;
+        const camposQueMudaramNaTela = mandarTudo
+          ? dadosDoFormulario
+          : camposQueMudaram(
+              dadosDoFormulario,
+              dadosDoProdutoDoFormulario(initialData, {
+                promocaoLigada:
+                  (numeroOpcionalDoCampo(initialData.originalPrice) ?? 0) > 0,
+                entregaLocal: isLocalShipping,
+              }).dados,
+            );
+        const camposDoProduto = bancoTemMarcadorNaFrenteDeFotos
+          ? { ...camposQueMudaramNaTela, images: dadosDoFormulario.images }
+          : camposQueMudaramNaTela;
         const variantsWithSanitizedSku = variacoesSoComEstoqueMexido(
-          formData.variants,
+          variantesAMandar,
           initialData.variants,
         ).map((v) => ({
           ...v,
@@ -2286,9 +2298,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           navigator.onLine &&
           (formData.variants.length > 0 || deletedVariantIds.length > 0);
         const updates = {
-          ...productData,
+          ...camposDoProduto,
+          variants: productData.variants,
           ...(mexeuNoEstoqueDoProduto ? { stock: Math.max(0, pStock) } : {}),
         };
+        // Um UPDATE sem coluna nenhuma não é um pedido válido: sem campo mudado
+        // (e sem estoque), o caminho de duas etapas nem chama o banco.
+        const haCampoParaGravar =
+          Object.keys(camposDoProduto).length > 0 || mexeuNoEstoqueDoProduto;
         const conferencia = mexeuNoEstoque
           ? { baseUpdatedAt: currentProduct?.updatedAt }
           : undefined;
@@ -2306,8 +2323,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           }
           produtoSalvo = retorno.produto;
           naoApagadas = retorno.recusadas;
-        } else {
+        } else if (haCampoParaGravar) {
           produtoSalvo = await updateProduct(productId, updates, conferencia);
+          if (produtoSalvo !== undefined) {
+            salvarAnteriorGravouProdutoRef.current = true;
+          }
         }
         // O produto já foi gravado mesmo se a grade falhar depois. A próxima
         // tentativa deve usar a versão devolvida pelo banco, não a da abertura.
@@ -2354,7 +2374,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
         // Só o caminho antigo (offline) grava a grade separadamente.
         // Online, produto, exclusões e grade já foram gravados pela RPC.
-        if (!salvarEmTransacao && formData.variants.length > 0) {
+        if (!salvarEmTransacao && variantsWithSanitizedSku.length > 0) {
           await upsertVariants(productId, variantsWithSanitizedSku);
         }
 

@@ -510,19 +510,12 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
     const [id, , opcoes] = salvarProdutoComGrade.mock.calls[0];
     const lote = opcoes.variantes as Array<Record<string, unknown>>;
     expect(id).toBe("prod-1");
-    expect(lote).toHaveLength(2);
-
-    const existente = lote.find((v) => v.value === "Branca / PP");
-    // A linha que JÁ existia não mudou: mesmo id, mesmo SKU, mesmo estoque.
-    // "Mesmo estoque" = a lojista não mexeu nele, então o número NÃO viaja
-    // (o banco guarda o dele; mandar o que a tela leu ao abrir desfaria uma
-    // venda feita no meio tempo).
-    expect(existente).toMatchObject({
-      id: "v1",
-      sku: "BLU-BRC-PP",
-      active: true,
-    });
-    expect(existente).not.toHaveProperty("stockIncrement");
+    // A linha que JÁ existia não mudou (mesmo id, SKU, estoque e preço próprio)
+    // e por isso nem viaja: o banco regrava a linha inteira, e mandar a cópia que
+    // a tela leu ao abrir desfaria o que outra pessoa ou uma venda mudou no meio
+    // tempo. Só a nova vai.
+    expect(lote).toHaveLength(1);
+    expect(lote.some((v) => v.value === "Branca / PP")).toBe(false);
 
     const nova = lote.find((v) => v.value === "Amarela / P");
     expect(nova).toMatchObject({

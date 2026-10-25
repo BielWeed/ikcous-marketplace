@@ -306,8 +306,10 @@ describe("AdminProductFormView — restaurar rascunho não devolve estoque vendi
 
     expect(remendoEnviado().name).toBe("Camiseta de algodão");
     expect(remendoEnviado()).not.toHaveProperty("stock");
+    // O estoque de cada existente é o do banco, igual ao da abertura: nenhuma
+    // foi mexida, então nenhuma viaja (e nenhuma leva `stockIncrement`).
     const enviadas = variacoesEnviadas();
-    expect(enviadas.map((v) => v.id)).toEqual(["v1", "v2"]);
+    expect(enviadas).toEqual([]);
     for (const v of enviadas) {
       expect(v).not.toHaveProperty("stockIncrement");
     }
@@ -335,9 +337,9 @@ describe("AdminProductFormView — restaurar rascunho não devolve estoque vendi
 
     const enviadas = variacoesEnviadas();
     const nova = enviadas.find((v) => v.id === "temp-123");
-    const rosa = enviadas.find((v) => v.id === "v1");
+    // A existente (Rosa) fica com o estoque do banco: não foi mexida, não viaja.
+    expect(enviadas.map((v) => v.id)).toEqual(["temp-123"]);
     expect(nova?.stockIncrement).toBe(4);
-    expect(rosa).not.toHaveProperty("stockIncrement");
     // O estoque do produto é a soma do que existe HOJE (1) + a nova (4).
     expect(remendoEnviado().stock).toBe(5);
   });
@@ -362,7 +364,8 @@ describe("AdminProductFormView — restaurar rascunho não devolve estoque vendi
     await restaurar();
     await salvar();
 
-    expect(variacoesEnviadas().map((v) => v.id)).toEqual(["v1"]);
+    // A apagada não volta, nem com o estoque de antes nem com outro.
+    expect(variacoesEnviadas().some((v) => v.id === "v-apagada")).toBe(false);
   });
 
   it("avisa que o estoque não foi restaurado quando o do rascunho era outro", async () => {

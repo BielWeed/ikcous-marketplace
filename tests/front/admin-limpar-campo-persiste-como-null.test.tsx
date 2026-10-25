@@ -242,10 +242,33 @@ describe("AdminProductFormView — limpar campo persiste como null (#96)", () =>
 
     await salvar();
 
+    // Desde que a edição manda só o que mudou, salvar sem tocar em nada não
+    // manda campo nenhum (nem `null`): o banco fica exatamente como estava.
+    expect(updateProduct).not.toHaveBeenCalled();
+  });
+
+  it("mudar só a descrição NÃO manda os campos opcionais, nem como null nem como o valor de abertura", async () => {
+    await abrirProdutoEmPromocao();
+    const campo = document.getElementById(
+      "product-description",
+    ) as HTMLTextAreaElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        globalThis.HTMLTextAreaElement.prototype,
+        "value",
+      )?.set?.call(campo, "Outra descrição");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 300));
+    });
+
+    await salvar();
+
     expect(updateProduct).toHaveBeenCalledTimes(1);
     const [, payload] = updateProduct.mock.calls[0];
-    expect(payload.originalPrice).toBe(120);
-    expect(payload.costPrice).toBe(30);
-    expect(payload.sku).toBe("BLU-01");
+    expect(payload.description).toBe("Outra descrição");
+    // O que não mudou não viaja: nem apagado (null), nem regravado.
+    for (const chave of ["originalPrice", "costPrice", "sku", "price"]) {
+      expect(payload).not.toHaveProperty(chave);
+    }
   });
 });
