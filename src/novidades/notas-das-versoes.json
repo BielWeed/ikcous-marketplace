@@ -1,4 +1,18 @@
 {
+  "1.5.68": {
+    "titulo": "Painel mais claro: pedidos, estoque, grade e entrega",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Início: \"Preparar pedidos\" e os atalhos do Para fazer abrem a lista de Pedidos em \"Em aberto\", sem a busca e os filtros antigos que ficavam guardados e faziam parecer que os pedidos tinham sumido. Pelo menu, a tela continua como você deixou.",
+      "Painel, Pedidos: o botão \"O produto voltou\" agora pergunta antes (\"O estoque será devolvido…\"). O estoque só volta quando você confirma.",
+      "Painel, avisos: quando o retorno do produto ou o registro do pagamento falha por problema de conexão, o aviso mostra \"Tente novamente em instantes.\" em vez de texto técnico.",
+      "Painel, grade de variações: estoque negativo ou quebrado (como 2.5) agora avisa e não cria a variação, igual ao formulário comum. Antes, \"-5\" virava 5 sem aviso.",
+      "Painel, frete: valor de entrega negativo agora avisa e não salva. Antes virava entrega grátis sem aviso. Campo vazio continua significando entrega grátis.",
+      "Conta de lojista: se a loja estava atualizando o catálogo no instante em que você saiu da conta, o custo dos produtos não é mais gravado no aparelho depois do Sair.",
+      "Carrinho: um item guardado no aparelho sem identificação de produto deixa de entrar na conta do carrinho."
+    ],
+    "melhorias": []
+  },
   "1.5.67": {
     "titulo": "Vitrine, conta, finalização e painel de produtos mais certinhos",
     "novidades": [],
