@@ -19,6 +19,10 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  atributoMarcado,
+  escolherAtributo,
+} from "./helpers/atributo-da-variacao";
 
 const fetchProduct = vi.fn();
 const upsertVariants = vi.fn().mockResolvedValue(undefined);
@@ -218,7 +222,7 @@ describe("AdminProductFormView — bordas da grade", () => {
 
   /** Passo 1 de uma camada: nome do atributo + valores digitados. */
   async function camada(indice: number, nome: string, valores: string[]) {
-    await digitarCampo(`grade-nome-${indice}`, nome);
+    await escolherAtributo(indice, nome, `grade-nome-${indice}`, digitarCampo);
     for (const valor of valores) {
       await digitarCampo(`grade-valor-${indice}`, valor);
       await act(async () => {
@@ -305,7 +309,7 @@ describe("AdminProductFormView — bordas da grade", () => {
       clicarObrigatorio("+ Grade");
     });
     // O produto já usa "Tamanho" (grupo único): a grade completa o mesmo grupo.
-    expect(valorDoCampo("grade-nome-0")).toBe("Tamanho");
+    expect(atributoMarcado(0)).toBe("Tamanho");
     for (const valor of ["N1", "N2", "N3"]) {
       await digitarCampo("grade-valor-0", valor);
       await act(async () => {

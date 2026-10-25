@@ -128,12 +128,12 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     }
   });
 
-  it("e. chip de atributo e '+ Atributo' do modal de variante com min-h-11", () => {
-    const sugestoes = FONTE.indexOf("suggestedAttributes.map(");
-    expect(sugestoes).toBeGreaterThan(-1);
-    const chip = tagAPartirDe(FONTE.indexOf("<button", sugestoes));
-    expect(chip).toContain("min-h-11");
-    expect(chip).toContain('type="button"');
+  it("e. o seletor de atributo e o '+ Atributo' do modal de variante com min-h-11", () => {
+    // As sugestões digitáveis viraram as peças de toque do `SeletorDeAtributo`
+    // (a medida de 44px delas é provada em grade-do-produto-letra-e-toque-l):
+    // aqui só se confere que o modal as usa e leva o que o produto já usa.
+    expect(FONTE).toContain("<SeletorDeAtributo");
+    expect(FONTE).toContain("sugestoes={suggestedAttributes}");
 
     // a última ocorrência é o texto do botão (as anteriores são comentários)
     const posicaoTexto = FONTE.lastIndexOf("+ Atributo");
@@ -142,7 +142,7 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
       FONTE.lastIndexOf("<button", posicaoTexto),
     );
     expect(maisAtributo).toContain("min-h-11");
-    expect(maisAtributo).toContain("text-[11px]");
+    expect(maisAtributo).toMatch(/text-(?:sm|\[11px\])/);
   });
 
   it("f. editar, ligar/desligar e excluir da lista de variações com size-11", () => {

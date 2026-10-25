@@ -117,24 +117,26 @@ function clicarPorRotulo(rotulo: string) {
 
 /** Chip por valor EXATO — includes("P") pegaria "PP" também. */
 function clicarChipObrigatorio(valor: string) {
-  // Só os chips (`aria-pressed`): os cabeçalhos das seções recolhidas do
-  // formulário ("Peso e medidas"...) também são botões e começam com "P".
-  const chip = [...document.body.querySelectorAll("button[aria-pressed]")].find(
-    (b) =>
-      (b.textContent ?? "")
-        .replace("já usado", "")
-        .trim()
-        .toLocaleLowerCase()
-        .startsWith(valor.toLocaleLowerCase()),
+  // Só os chips dos valores do produto: os cabeçalhos das seções recolhidas do
+  // formulário ("Peso e medidas"...) e as bolinhas e tamanhos prontos do
+  // seletor também são botões e podem começar com a mesma letra.
+  const chip = [
+    ...document.body.querySelectorAll('[data-testid="chip-do-produto"]'),
+  ].find((b) =>
+    (b.textContent ?? "")
+      .replace("já usado", "")
+      .trim()
+      .toLocaleLowerCase()
+      .startsWith(valor.toLocaleLowerCase()),
   );
   if (!chip) throw new Error(`Chip "${valor}" não está na tela.`);
   (chip as HTMLButtonElement).click();
 }
 
 function chipsNaTela(): string[] {
-  return [...document.body.querySelectorAll("button[aria-pressed]")].map((b) =>
-    (b.textContent ?? "").replace("já usado", "").trim(),
-  );
+  return [
+    ...document.body.querySelectorAll('[data-testid="chip-do-produto"]'),
+  ].map((b) => (b.textContent ?? "").replace("já usado", "").trim());
 }
 
 function digitar(id: string, valor: string) {

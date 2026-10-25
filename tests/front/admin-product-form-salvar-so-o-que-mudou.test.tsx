@@ -23,6 +23,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const fetchProduct = vi.fn();
 const addProduct = vi.fn();
@@ -370,7 +371,7 @@ describe("AdminProductFormView — editar manda só o que a lojista mudou", () =
       if (!novo) throw new Error("O botão de variação nova não está na tela.");
       novo.click();
     });
-    await digitarCampo("variant-name", "Cor");
+    await escolherAtributo(0, "Cor", "variant-name", digitarCampo);
     await digitarCampo("variant-value", "Verde");
     await digitarCampo("variant-stock", "4");
     await confirmarVariacao();

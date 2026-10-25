@@ -103,7 +103,7 @@ function clicar(el: HTMLElement) {
 
 /** Passo 1 → passo 2 com as três combinações P, M, G (atributo "Tamanho"). */
 function irParaOPasso2() {
-  digitar(campo("#grade-nome-0"), "Tamanho");
+  clicar(botao("Tamanho"));
   for (const valor of ["P", "M", "G"]) {
     digitar(campo("#grade-valor-0"), valor);
     clicar(

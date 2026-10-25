@@ -14,6 +14,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const fetchProduct = vi.fn();
 vi.mock("@/hooks/useProducts", () => ({
@@ -149,12 +150,16 @@ describe("AdminProductFormView — um tipo de variação por produto", () => {
   }
 
   /** Abre "Nova Variante", preenche atributo/valor e clica em efetivar. */
-  async function cadastrarVariante(atributo: string, valor: string) {
+  async function cadastrarVariante(
+    atributo: string,
+    valor: string,
+    viaOutro = false,
+  ) {
     await act(async () => {
       clicarObrigatorio("+ Novo");
     });
+    await escolherAtributo(0, atributo, "variant-name", digitar, { viaOutro });
     await act(async () => {
-      digitar("variant-name", atributo);
       digitar("variant-value", valor);
       // Flush do debounce (200ms) do LocalBufferedInput.
       await new Promise((r) => setTimeout(r, 300));
@@ -190,7 +195,9 @@ describe("AdminProductFormView — um tipo de variação por produto", () => {
     const antes = variantesNaTela();
     expect(antes).toEqual(["Cor: Rosa"]);
 
-    await cadastrarVariante("Tamanho", "P");
+    // O seletor já não oferece a peça Tamanho a quem usa Cor: o que sobra é o
+    // "Outro" (nome livre), e a trava recusa do mesmo jeito.
+    await cadastrarVariante("Tamanho", "P", true);
 
     expect(toastError).toHaveBeenCalledTimes(1);
     const [titulo, opcoes] = toastError.mock.calls[0] as [

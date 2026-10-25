@@ -14,6 +14,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const fetchProduct = vi.fn();
 
@@ -205,17 +206,19 @@ describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
     expect(document.body.textContent).not.toMatch(/O SKU deve/);
   });
 
-  it("o modal de variação usa 'Aparece na loja?', 'Preço diferente nesta variação' e 'Salvar variação'", async () => {
+  it("o modal de variação usa 'Aparece na loja', 'Preço desta variação' e 'Salvar variação'", async () => {
     await montar();
     await act(async () => {
       botaoComTexto("+ Novo")?.click();
     });
 
     expect(textoDoRotulo("variant-sku")).toBe("Código interno (SKU)");
-    expect(textoDoRotulo("variant-status")).toBe("Aparece na loja?");
-    expect(textoDoRotulo("variant-price")).toBe(
-      "Preço diferente nesta variação",
+    // O "Aparece na loja" agora é a própria linha do interruptor (o botão
+    // inteiro é o alvo de toque), não um rótulo solto acima dele.
+    expect(document.getElementById("variant-status")?.textContent).toContain(
+      "Aparece na loja",
     );
+    expect(textoDoRotulo("variant-price")).toBe("Preço desta variação");
     expect(textoDoRotulo("variant-codigo-barras")).toBe("Código de barras");
     expect(botaoComTexto("Salvar variação")).toBeDefined();
     expect(botaoComTexto("Efetivar Variante")).toBeUndefined();
@@ -271,7 +274,7 @@ describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
         await new Promise((r) => setTimeout(r, 300));
       });
     };
-    await digitar("grade-nome-0", "Cor");
+    await escolherAtributo(0, "Cor", "grade-nome-0", digitar);
     await digitar("grade-valor-0", "Azul");
     await act(async () => {
       (
