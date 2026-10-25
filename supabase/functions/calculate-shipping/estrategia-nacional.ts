@@ -7,7 +7,7 @@
  *
  * Tudo aqui é função pura: nada lê banco (isso é do `configuracao.ts`/`index.ts`).
  */
-import { aoCentavo, valorUnitarioDoBanco } from './regua.ts'
+import { aoCentavo, idCanonico, valorUnitarioDoBanco } from './regua.ts'
 
 const ESTRATEGIAS_NACIONAIS = ['desligado', 'acima_de_valor', 'sempre', 'por_produto', 'desconto_na_mais_barata'] as const
 const TIPOS_DE_DESCONTO = ['percentual', 'fixo'] as const
@@ -105,8 +105,8 @@ export function subtotalDoCarrinho(
 ): number {
     let total = 0
     for (const item of Array.isArray(itens) ? itens : []) {
-        const produtoId = item?.product?.id ?? item?.productId ?? null
-        const varianteId = item?.variantId ?? null
+        const produtoId = idCanonico(item?.product?.id ?? item?.productId)
+        const varianteId = idCanonico(item?.variantId)
         const qtd = Number(item?.quantity ?? 1) || 1
         const produto = dbProductsMap.get(produtoId)
         if (!produto) continue
