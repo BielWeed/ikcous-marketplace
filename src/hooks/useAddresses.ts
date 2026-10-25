@@ -67,12 +67,17 @@ export function useAddresses() {
   const estadoRef = useRef(estado);
   const [identidade] = useState(() => Symbol("useAddresses"));
   const consultaRef = useRef(0);
+  // Conta cuja lista JÁ foi lida COM SUCESSO do servidor (nesta tela ou em
+  // outra, via publicação). Lista vazia em memória não prova "a conta não tem
+  // endereço": também é o que sobra quando a leitura falhou ou ainda não veio.
+  const leituraConfirmadaDeRef = useRef<string | null>(null);
 
   const gravarLista = useCallback(
     (dono: string, itens: Address[], leituraConfirmada = false) => {
       // Uma gravação confirmada invalida buscas iniciadas antes dela.
       consultaRef.current++;
       setLoading(false);
+      if (leituraConfirmada) leituraConfirmadaDeRef.current = dono;
       const novo = { dono, itens };
       estadoRef.current = novo;
       setEstado(novo);
@@ -105,7 +110,10 @@ export function useAddresses() {
       estadoRef.current = novo;
       setEstado(novo);
       // Mutação sobre o cache não confirma que a lista inteira foi lida.
-      if (leituraConfirmada) setContaComErro(null);
+      if (leituraConfirmada) {
+        leituraConfirmadaDeRef.current = dono;
+        setContaComErro(null);
+      }
     };
     ouvintesDaLista.add(ouvir);
     return () => {
@@ -119,6 +127,7 @@ export function useAddresses() {
   useEffect(() => {
     usuarioAtualRef.current = user?.id;
     consultaRef.current++;
+    leituraConfirmadaDeRef.current = null;
     setLoading(false);
     setContaComErro(null);
   }, [user?.id]);
@@ -199,8 +208,12 @@ export function useAddresses() {
     }
     const idDaConta = user.id;
     try {
-      // If this is the first address, make it default automatically
-      const isFirst = addresses.length === 0;
+      // O primeiro endereço da conta vira o principal sozinho -- mas só quando
+      // a lista foi LIDA com sucesso e está vazia. Lista vazia por leitura que
+      // falhou (ou que ainda não veio) faria o endereço novo tomar a marca de
+      // um principal que já existe (o gatilho do banco desmarca os outros).
+      const isFirst =
+        addresses.length === 0 && leituraConfirmadaDeRef.current === idDaConta;
       const newAddress = {
         ...address,
         user_id: user.id,

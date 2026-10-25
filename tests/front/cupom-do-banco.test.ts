@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 //
 // O mapeador ÚNICO do cupom (frente B, 28/09/2026): a linha de `coupons`
-// (banco) vira o `Coupon` da tela por UMA função, usada pelo hook do painel,
-// pelo espelho de tempo real e pelo pré-carregamento do admin. Antes eram três
-// cópias que já tinham divergido uma vez (PAINEL-12). Aqui se prova a função
-// e se prova que os TRÊS caminhos chegam ao mesmo resultado — inclusive com o
-// campo novo `alcance` ("quem pode usar").
+// (banco) vira o `Coupon` da tela por UMA função, usada pelo hook do painel
+// e pelo pré-carregamento do admin. Antes eram três cópias que já tinham
+// divergido uma vez (PAINEL-12). Aqui se prova a função e se prova que os
+// caminhos chegam ao mesmo resultado — inclusive com o campo novo `alcance`
+// ("quem pode usar"). O espelho de tempo real saiu em 24/10/2026 (caça 4, A1):
+// cupom não é mais gravado no aparelho, ver
+// tests/front/cupons-nao-ficam-gravados-no-aparelho.test.ts.
 //
 // A regra que dói: banco antigo (sem a coluna) ou valor desconhecido vira
 // 'codigo' (secreto). O mapeador NUNCA inventa 'vitrine' — inventar poria um
@@ -126,10 +128,7 @@ describe("os três caminhos de leitura chegam ao mesmo cupom", () => {
     LINHAS.push(cru);
   });
 
-  it("espelho de tempo real", async () => {
-    const { TABLE_CONFIGS } = await import("@/lib/realtimeSyncEngine");
-    const tabela = TABLE_CONFIGS.find((c) => c.table === "coupons");
-    expect(tabela?.mapRecord?.(cru)).toEqual(esperado);
+  it("o alcance 'vitrine' da linha chega à tela sem ser rebaixado", () => {
     expect(esperado.alcance).toBe("vitrine");
   });
 

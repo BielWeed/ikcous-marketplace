@@ -23,7 +23,7 @@ type TabType = "todas" | "avisos";
  * pura e virou função própria — o clique precisa navegar ANTES de qualquer
  * espera (o `await markAsRead` antigo congelava o toque sob rede lenta).
  */
-function navegarPorUrl(
+export function navegarPorUrl(
   url: string,
   onNavigate?: (view: any, id?: string) => void,
 ) {
@@ -37,6 +37,17 @@ function navegarPorUrl(
       const id = searchParams.get("id");
       if (id) {
         onNavigate?.("product-detail", id);
+        return;
+      }
+    }
+
+    // Formato antigo de link de produto, ainda aceito pelo painel
+    // (`destinoDaUrl`): o id vem no CAMINHO, `/product/<id>`. Sem id
+    // (`/product/`) o caminho vira "product" e segue o fluxo normal.
+    if (cleanPath.startsWith("product/")) {
+      const idNoCaminho = cleanPath.slice("product/".length).split("/")[0];
+      if (idNoCaminho) {
+        onNavigate?.("product-detail", idNoCaminho);
         return;
       }
     }
