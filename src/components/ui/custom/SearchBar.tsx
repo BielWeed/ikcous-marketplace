@@ -461,7 +461,7 @@ export function SearchBar({
             </div>
 
             {/* 4. ACTION BANNER FOR FULL SEARCH RESULTS */}
-            <div className="mt-3 border-t border-zinc-100 pt-2.5">
+            <div className="sticky bottom-0 -mx-4 -mb-4 mt-3 border-t border-zinc-100 bg-white px-4 pb-4 pt-2.5 sm:-mx-5 sm:-mb-5 sm:px-5 sm:pb-5">
               <button
                 type="button"
                 onClick={() => {

@@ -551,7 +551,7 @@ export function AddressForm({
                     CAMPO,
                     // 22 px já passa dos 16 px do iPhone; o `md:` repete o 22 px
                     // para o `md:text-[15px]` do CAMPO não encolher o CEP no desktop.
-                    "h-16 rounded-[20px] px-4 pr-12 text-[22px] md:text-[22px] font-bold tracking-[0.04em] tabular-nums placeholder:font-bold placeholder:text-muted-foreground/40",
+                    "h-16 rounded-[20px] px-4 pr-12 max-[359px]:pr-10 text-[22px] max-[359px]:text-[18px] md:text-[22px] font-bold tracking-[0.04em] tabular-nums placeholder:font-bold placeholder:text-muted-foreground/40",
                     cepAchado &&
                       "border-2 border-emerald-300 bg-background dark:border-emerald-500/50",
                     (cepComProblema || !!erros.cep) && CAMPO_COM_ERRO,
