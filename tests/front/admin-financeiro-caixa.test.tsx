@@ -691,6 +691,20 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       expect(toast.success).not.toHaveBeenCalled();
     });
 
+    it("lista de contas que não chegou não vira o aviso falso de falta de conta", async () => {
+      servidor.contas = [];
+      await remontar();
+      await abrirMovimento("Sangria");
+      await digitar("fin-caixa-mov-valor", "5000");
+      const texto = normalizar(folha()?.textContent);
+      expect(texto).toContain("As contas ainda não carregaram");
+      expect(texto).not.toContain("Não há outra conta ativa");
+      const registrar = botaoEm(folha() as HTMLElement, "Registrar sangria");
+      expect(registrar.disabled).toBe(true);
+      await clicar(registrar);
+      expect(movimentos()).toHaveLength(0);
+    });
+
     it("sem a Conta bancária ativa nada vem marcado e escolher a conta é obrigatório", async () => {
       servidor.contas = [CONTAS[0], { ...CONTAS[1], ativa: false }, COFRE];
       await remontar();

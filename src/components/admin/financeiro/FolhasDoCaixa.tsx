@@ -329,7 +329,11 @@ export function MovimentarCaixaFolha({
     : "";
   const contrapartida = contaEscolhida ?? contaPadrao;
   const contrapartidaValida = outrasContas.some((c) => c.id === contrapartida);
-  const semContaDeDestino = outrasContas.length === 0;
+  // Lista vazia = ainda não chegou (ou falhou): toda loja tem as duas contas
+  // de sistema. Só com a lista carregada "nenhuma outra conta" é verdade.
+  const contasChegaram = contas.length > 0;
+  const semContaDeDestino = contasChegaram && outrasContas.length === 0;
+  const semOpcaoDeConta = outrasContas.length === 0;
 
   useEffect(() => {
     aoMudarSujo(
@@ -351,11 +355,13 @@ export function MovimentarCaixaFolha({
     numero !== null &&
     Math.round(numero * 100) > Math.round(esperado * 100);
 
-  const erroConta = semContaDeDestino
-    ? `Não há outra conta ativa ${sangria ? "para receber" : "de onde tirar"} esse dinheiro. Crie ou reative uma conta em Contas e categorias antes de registrar.`
-    : tentou && !contrapartidaValida
-      ? `Escolha a conta de ${sangria ? "destino" : "origem"}.`
-      : undefined;
+  const erroConta = !contasChegaram
+    ? "As contas ainda não carregaram. Feche esta folha e abra de novo em instantes."
+    : semContaDeDestino
+      ? `Não há outra conta ativa ${sangria ? "para receber" : "de onde tirar"} esse dinheiro. Crie ou reative uma conta em Contas e categorias antes de registrar.`
+      : tentou && !contrapartidaValida
+        ? `Escolha a conta de ${sangria ? "destino" : "origem"}.`
+        : undefined;
 
   function confirmar() {
     setTentou(true);
@@ -434,7 +440,7 @@ export function MovimentarCaixaFolha({
           rotulo={sangria ? "Registrar sangria" : "Registrar suprimento"}
           rotuloEnviando="Registrando…"
           enviando={enviando}
-          bloqueado={semContaDeDestino}
+          bloqueado={semOpcaoDeConta}
           aoConfirmar={confirmar}
         />
       }
@@ -506,7 +512,7 @@ export function MovimentarCaixaFolha({
             onChange={(e) => setContaEscolhida(e.target.value)}
             className={CLASSE_CAMPO}
           >
-            {contrapartidaValida || semContaDeDestino ? null : (
+            {contrapartidaValida || semOpcaoDeConta ? null : (
               <option value="" disabled>
                 Escolha uma conta
               </option>
