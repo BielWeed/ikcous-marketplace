@@ -211,8 +211,15 @@ describe("registrarPagamentoRecebido — limpa o cache do useAnalytics, senao a 
 
   it("o aviso de erro fala do que a lojista tentou: registrar no 'Recebi', desfazer no 'Desfazer' (com a frase do servidor embaixo)", async () => {
     const { toast } = await import("sonner");
-    const erro = new Error(
-      "Este pedido tem devolução em andamento ou concluída.",
+    // Forma REAL da recusa de negócio do servidor: um RAISE EXCEPTION simples
+    // do plpgsql chega com `code: "P0001"` (migration 20261243000000). O aviso
+    // só repassa a frase quando o erro vem assim: sem `code`, ou com código de
+    // infraestrutura, o texto é cru ("Failed to fetch", "JWT expired") e vira
+    // "Tente novamente em instantes." — ver
+    // falha-ao-confirmar-retorno-ou-pagamento-nao-mostra-erro-cru.test.tsx.
+    const erro = Object.assign(
+      new Error("Este pedido tem devolução em andamento ou concluída."),
+      { code: "P0001" },
     );
     rpc.mockResolvedValue({ data: null, error: erro });
     const { registrarPagamentoRecebido } = await montarSondaAdmin(raiz);
