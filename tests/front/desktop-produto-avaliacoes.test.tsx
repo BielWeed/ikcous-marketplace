@@ -31,14 +31,14 @@ it("F3.6 amplia comentário e resposta no computador preservando as classes do c
     );
     const comentario = host.querySelector("p")!;
     expect(classesDoCelular(comentario.className)).toBe(
-      "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
+      "mb-4 mt-3 break-words text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
     );
     expect(comentario.classList.contains("lg:text-sm")).toBe(true);
     const resposta = [...host.querySelectorAll("p")].find((p) =>
       p.textContent?.includes("Obrigada"),
     )!;
     expect(classesDoCelular(resposta.className)).toBe(
-      "font-medium italic leading-relaxed text-zinc-600",
+      "break-words font-medium italic leading-relaxed text-zinc-600",
     );
     expect(resposta.classList.contains("lg:text-sm")).toBe(true);
   } finally {

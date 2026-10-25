@@ -161,7 +161,7 @@ export function ReviewCard({
       {review.comment && (
         <p
           className={cn(
-            "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
+            "mb-4 mt-3 break-words text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
             "lg:text-sm",
           )}
         >
@@ -217,7 +217,7 @@ export function ReviewCard({
             </div>
             <p
               className={cn(
-                "font-medium italic leading-relaxed text-zinc-600",
+                "break-words font-medium italic leading-relaxed text-zinc-600",
                 "lg:text-sm",
               )}
             >

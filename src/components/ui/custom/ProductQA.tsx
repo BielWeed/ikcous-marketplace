@@ -170,6 +170,7 @@ export function ProductQA({
                 setNewQuestion(e.target.value);
               }}
               placeholder="Escreva sua dúvida sobre o produto..."
+              maxLength={500}
               aria-label="Sua dúvida sobre o produto"
               className="min-h-[52px] w-full rounded-full border border-border bg-background px-4 py-3 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
@@ -337,7 +338,7 @@ export function ProductQA({
               {/* Question Text */}
               <p
                 className={cn(
-                  "pl-12 text-xs font-medium leading-relaxed text-zinc-800 md:text-sm",
+                  "break-words pl-12 text-xs font-medium leading-relaxed text-zinc-800 md:text-sm",
                   "lg:text-sm",
                 )}
               >
@@ -378,7 +379,7 @@ export function ProductQA({
                         </div>
                         <p
                           className={cn(
-                            "pl-0.5 font-medium italic leading-relaxed text-zinc-700",
+                            "break-words pl-0.5 font-medium italic leading-relaxed text-zinc-700",
                             "lg:text-sm",
                           )}
                         >
