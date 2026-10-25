@@ -656,18 +656,17 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       });
       expect(mocks.salvarProdutoComGrade).toHaveBeenCalledTimes(1);
       expect(mocks.updateProduct).not.toHaveBeenCalled();
-      expect(
-        (mocks.salvarProdutoComGrade.mock.calls[0]?.[1] as { price: number })
-          .price,
-      ).toBe(89.9);
+      // O produto não muda: o preço nem viaja (continua 89,90 no banco).
+      expect(mocks.salvarProdutoComGrade.mock.calls[0]?.[1]).not.toHaveProperty(
+        "price",
+      );
       const lote = mocks.salvarProdutoComGrade.mock.calls[0]?.[2]
         .variantes as Array<{
         value: string;
         priceOverride?: number;
       }>;
-      expect(lote.find((v) => v.value === "Branca / PP")?.priceOverride).toBe(
-        undefined,
-      );
+      // A antiga em Auto não é remarcada: não foi mexida, então nem viaja.
+      expect(lote.some((v) => v.value === "Branca / PP")).toBe(false);
       expect(lote.find((v) => v.value === "Amarela / P")?.priceOverride).toBe(
         60,
       );

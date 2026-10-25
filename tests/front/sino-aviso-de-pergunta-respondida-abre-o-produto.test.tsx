@@ -7,9 +7,11 @@
 // banco dublê devolvendo EXATAMENTE a linha que a migration cria, e prova o
 // contrato: o aviso aparece, não lido, e o toque abre a tela do PRODUTO.
 //
-// O controle mostra por que o destino precisa ser `/product-detail?id=<id>`:
-// a forma `/product/<id>` (a que a linha falsa do log de push carregava) cai na
-// tela inicial — a cliente tocaria no aviso e não chegaria à resposta.
+// O contrato que a migration grava é `/product-detail?id=<id>`. A forma antiga
+// `/product/<id>` (a que a linha falsa do log de push carregava) caía na tela
+// inicial; desde a caça 4 (A3, 24/10/2026) ela também abre o produto -- o
+// controle abaixo prende isso (ver também
+// tests/front/aviso-com-link-antigo-de-produto-abre-o-produto.test.ts).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -142,12 +144,13 @@ describe("sino da cliente — aviso de pergunta respondida", () => {
     expect(onNavigate).toHaveBeenCalledWith("product-detail", "prod-1");
   });
 
-  it("CONTROLE: o destino '/product/<id>' (o da linha falsa do log de push) cairia na tela inicial", async () => {
+  it("o formato antigo '/product/<id>' (o da linha falsa do log de push) também abre o PRODUTO, não a tela inicial", async () => {
     linhasDaCliente = [avisoDaPergunta("/product/prod-1")];
     await montar();
     tocarNoAviso();
 
-    expect(onNavigate).toHaveBeenCalledWith("home");
-    expect(onNavigate).not.toHaveBeenCalledWith("product-detail", "prod-1");
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith("product-detail", "prod-1");
+    expect(onNavigate).not.toHaveBeenCalledWith("home");
   });
 });

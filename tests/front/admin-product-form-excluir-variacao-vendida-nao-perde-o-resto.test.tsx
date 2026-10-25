@@ -223,6 +223,30 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     });
   }
 
+  // A variação que fica só vai ao banco se a lojista a MEXEU (o banco regrava a
+  // linha inteira e variação intacta não viaja): estes testes mexem no estoque
+  // da Rosa para ter "o resto do salvar" a gravar.
+  async function mexerNaRosa() {
+    const linha = [
+      ...document.querySelectorAll('[data-testid="variante-cadastrada"]'),
+    ].find((el) => el.textContent?.includes("Rosa"));
+    const caneta = linha
+      ?.closest("div.group")
+      ?.querySelector("button") as HTMLButtonElement | null;
+    if (!caneta) throw new Error("A linha da variação Rosa não existe.");
+    await act(async () => {
+      caneta.click();
+    });
+    await digitarCampo("variant-stock", "6");
+    await act(async () => {
+      (
+        [...document.querySelectorAll("button")]
+          .filter((b) => b.textContent?.trim() === "Salvar variação")
+          .at(-1) as HTMLButtonElement
+      ).click();
+    });
+  }
+
   const linhasNaTela = () =>
     [...document.querySelectorAll('[data-testid="variante-cadastrada"]')].map(
       (el) => el.textContent?.replace(/\s+/g, " ").trim() ?? "",
@@ -234,6 +258,7 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     expect(linhasNaTela()).toHaveLength(1);
     deleteVariants.mockRejectedValueOnce(ERRO_VENDIDA);
     await digitarCampo("product-sale-price", "60,00");
+    await mexerNaRosa();
 
     await salvar();
 
@@ -283,6 +308,7 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     ]);
     await excluirDaTela("Azul");
     await excluirDaTela("Verde");
+    await mexerNaRosa();
     // O hook apaga uma por vez e devolve quais o banco recusou (`recusadas`).
     deleteVariants.mockRejectedValueOnce({
       ...ERRO_VENDIDA,
@@ -306,6 +332,7 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
   it("um novo Salvar depois da recusa não tenta apagar de novo a que já foi recusada", async () => {
     await montarProduto([variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)]);
     await excluirDaTela("Azul");
+    await mexerNaRosa();
     deleteVariants.mockRejectedValueOnce(ERRO_VENDIDA);
     await salvar();
     expect(deleteVariants).toHaveBeenCalledTimes(1);
@@ -313,12 +340,15 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     await salvar();
 
     expect(deleteVariants).toHaveBeenCalledTimes(1);
-    expect(upsertVariants).toHaveBeenCalledTimes(2);
+    // A Rosa já foi gravada no primeiro Salvar e não foi mexida de novo: o
+    // segundo não a regrava (e muito menos tenta apagar a Azul outra vez).
+    expect(upsertVariants).toHaveBeenCalledTimes(1);
   });
 
   it("caminho feliz intacto: tudo apagado e gravado sai para a lista de produtos", async () => {
     await montarProduto([variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)]);
     await excluirDaTela("Azul");
+    await mexerNaRosa();
 
     await salvar();
     await act(async () => {
@@ -334,6 +364,7 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
   it("se o banco falhar por OUTRO motivo ao apagar (ex.: sem rede), o resto também é gravado e a variação volta — nada some em silêncio", async () => {
     await montarProduto([variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)]);
     await excluirDaTela("Azul");
+    await mexerNaRosa();
     deleteVariants.mockRejectedValueOnce(new Error("falha qualquer"));
 
     await salvar();
@@ -428,8 +459,10 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     }>;
     // Nenhuma linha com id provisório: nada vai ser inserido de novo.
     expect(segundoLote.filter((v) => v.id.startsWith("temp-"))).toEqual([]);
+    // A Verde já está no banco com o id real e não foi mexida desde a releitura:
+    // não vai de novo (nem com o id provisório, que a inseriria em duplicata).
     const verdes = segundoLote.filter((v) => v.value === "Verde");
-    expect(verdes.map((v) => v.id)).toEqual(["v-verde-real"]);
+    expect(verdes).toEqual([]);
     expect(segundoLote.find((v) => v.id === "v2")?.active).toBe(false);
   });
 
@@ -464,6 +497,9 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
 
     expect(botaoPorTexto("Salvar")?.disabled).toBe(false);
     expect(linhasNaTela()).toHaveLength(2);
+    // Sem mudar nada o segundo Salvar não tem o que gravar; com uma mudança
+    // nova, ele segue liberado e grava.
+    await digitarCampo("product-sale-price", "60,00");
     await salvar();
     expect(updateProduct).toHaveBeenCalledTimes(2);
   });

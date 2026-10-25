@@ -410,7 +410,9 @@ describe("AdminProductFormView — código automático e Na loja", () => {
         await esperar(300);
       });
       await salvarEdicao();
-      expect(updateProduct.mock.calls[0][1].sku).toBe("ABC-1");
+      // O código não mudou, então nem viaja: nunca foi trocado sozinho.
+      expect(updateProduct.mock.calls[0][1].name).toBe("Camiseta Nova");
+      expect(updateProduct.mock.calls[0][1]).not.toHaveProperty("sku");
     });
 
     it("produto já salvo: ligar troca (ela pediu) e desligar traz o código salvo de volta", async () => {
@@ -421,7 +423,8 @@ describe("AdminProductFormView — código automático e Na loja", () => {
       await tocar(chave("Gerar código automático"));
       expect(campo("product-sku").value).toBe("ABC-1");
       await salvarEdicao();
-      expect(updateProduct.mock.calls[0][1].sku).toBe("ABC-1");
+      // De volta ao código salvo = nada mudou: nenhum código novo vai ao banco.
+      expect(updateProduct).not.toHaveBeenCalled();
     });
 
     it("a grade nasce com o código do produto como base", async () => {
@@ -487,11 +490,10 @@ describe("AdminProductFormView — código automático e Na loja", () => {
       expect(ligado("Frete grátis neste produto")).toBe("true");
       await tocar(chave("Aparece na loja"));
       await salvarEdicao();
-      expect(updateProduct.mock.calls[0][1]).toMatchObject({
-        isActive: true,
-        isBestseller: true,
-        freeShipping: true,
-      });
+      // Só a chave que ela mexeu viaja; as outras duas ficam como no banco.
+      expect(updateProduct.mock.calls[0][1]).toMatchObject({ isActive: true });
+      expect(updateProduct.mock.calls[0][1]).not.toHaveProperty("isBestseller");
+      expect(updateProduct.mock.calls[0][1]).not.toHaveProperty("freeShipping");
     });
 
     it("avisa quando a loja não usa só produtos marcados e a marca não terá efeito", async () => {

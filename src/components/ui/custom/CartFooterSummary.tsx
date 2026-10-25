@@ -11,6 +11,9 @@ interface CartFooterSummaryProps {
   /** `null` = frete indefinido (cotação real ainda não escolhida): a barra
    *  mostra "A calcular" em vez de um valor chutado (laudo caça-bugs 30/08). */
   shipping: number | null;
+  /** Retirada na loja escolhida: o rodapé diz "Retirada na loja" em vez de
+   *  "GRÁTIS" (a retirada chega a R$ 0 por natureza, não é frete grátis). */
+  retiradaNaLoja?: boolean;
   total: number;
   onNavigate: (view: View) => void;
 }
@@ -18,6 +21,7 @@ interface CartFooterSummaryProps {
 export function CartFooterSummary({
   cartCount,
   shipping,
+  retiradaNaLoja = false,
   total,
   onNavigate,
 }: CartFooterSummaryProps) {
@@ -100,21 +104,29 @@ export function CartFooterSummary({
             <p
               className={cn(
                 "mt-1.5 flex items-center gap-1.5 text-[13px] font-medium leading-none",
-                shipping === 0
+                shipping === 0 && !retiradaNaLoja
                   ? "text-emerald-700 dark:text-emerald-400"
                   : "text-muted-foreground",
               )}
             >
-              {shipping === 0 && (
+              {shipping === 0 && !retiradaNaLoja && (
                 <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
               )}
               <span>Frete</span>{" "}
-              <span className={shipping === 0 ? "lowercase" : "font-semibold"}>
-                {shipping === 0
-                  ? "GRÁTIS"
-                  : shipping === null
-                    ? "A calcular"
-                    : formatCurrency(shipping)}
+              <span
+                className={
+                  shipping === 0 && !retiradaNaLoja
+                    ? "lowercase"
+                    : "font-semibold"
+                }
+              >
+                {retiradaNaLoja
+                  ? "Retirada na loja"
+                  : shipping === 0
+                    ? "GRÁTIS"
+                    : shipping === null
+                      ? "A calcular"
+                      : formatCurrency(shipping)}
               </span>
             </p>
           </div>
