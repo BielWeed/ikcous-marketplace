@@ -65,6 +65,7 @@ import React, {
   useCallback,
   useRef,
   useMemo,
+  useId,
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -138,6 +139,10 @@ export const ProductView = React.memo(function ProductView({
     Record<string, string>
   >({});
   const [folhaAberta, setFolhaAberta] = useState(false);
+  // A pessoa tocou em "Adicionar" sem escolher a opção: a linha que falta (na
+  // página, na folha e no atalho da barra) fica em alerta até ela escolher.
+  const [tentouSemEscolher, setTentouSemEscolher] = useState(false);
+  const idDoAvisoDaEscolha = useId();
   const escolhaDaBarraRef = useRef<HTMLButtonElement>(null);
   const [editandoPergunta, setEditandoPergunta] = useState(false);
 
@@ -435,6 +440,16 @@ export const ProductView = React.memo(function ProductView({
   const variantGroups = Object.fromEntries(
     fileiras.map((f) => [f.nome, f.valores]),
   );
+  const pendentes = tentouSemEscolher
+    ? fileiras.filter((f) => !selectedVariants[f.nome]).map((f) => f.nome)
+    : [];
+  const escolhaPendente = pendentes.length > 0;
+  // Tudo escolhido: o alerta cumpriu o papel. Desmarcar depois não o traz de
+  // volta -- só um novo toque em "Adicionar" sem escolher.
+  const faltaAlgo = fileiras.some((f) => !selectedVariants[f.nome]);
+  useEffect(() => {
+    if (!faltaAlgo) setTentouSemEscolher(false);
+  }, [faltaAlgo]);
   const legadoIndependente =
     new Set(product.variants?.filter((v) => v.active).map((v) => v.name)).size >
     1;
@@ -619,6 +634,7 @@ export const ProductView = React.memo(function ProductView({
       // que faltava escolher.
       const artigoEOpcao =
         missingVariations.length === 1 ? "a opção de" : "as opções de";
+      setTentouSemEscolher(true);
       toast.warning("Falta escolher", {
         description: `Escolha ${artigoEOpcao} ${missingVariations.join(", ")} antes de adicionar ao carrinho.`,
       });
@@ -1042,6 +1058,7 @@ export const ProductView = React.memo(function ProductView({
                 fileiras={fileiras}
                 escolha={selectedVariants}
                 onEscolher={alternarVariante}
+                pendentes={pendentes}
               />
             )}
 
@@ -1617,6 +1634,7 @@ export const ProductView = React.memo(function ProductView({
             fileiras={fileiras}
             escolha={selectedVariants}
             onEscolher={alternarVariante}
+            pendentes={pendentes}
           />
           <QuantitySelector
             quantity={quantity}
@@ -1686,30 +1704,48 @@ export const ProductView = React.memo(function ProductView({
                     {reais(currentPrice)}
                   </p>
                   {fileiras.length > 0 && (
-                    <button
-                      ref={escolhaDaBarraRef}
-                      type="button"
-                      onClick={() => setFolhaAberta(true)}
-                      className="min-h-11 w-full py-1 text-left text-[13px] leading-tight text-muted-foreground [overflow-wrap:anywhere]"
-                    >
-                      {variante
-                        ? fileiras
-                            .map((f) => selectedVariants[f.nome])
-                            .join(" · ")
-                        : `Escolher ${fileiras.map((f) => f.nome.toLowerCase()).join(" e ")}`}{" "}
-                      ›
-                    </button>
+                    <>
+                      <button
+                        ref={escolhaDaBarraRef}
+                        type="button"
+                        onClick={() => setFolhaAberta(true)}
+                        aria-describedby={
+                          escolhaPendente ? idDoAvisoDaEscolha : undefined
+                        }
+                        className={cn(
+                          "min-h-11 w-full py-1 text-left text-[13px] leading-tight [overflow-wrap:anywhere]",
+                          escolhaPendente
+                            ? "font-semibold text-red-700 dark:text-red-400"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {variante
+                          ? fileiras
+                              .map((f) => selectedVariants[f.nome])
+                              .join(" · ")
+                          : `Escolher ${fileiras.map((f) => f.nome.toLowerCase()).join(" e ")}`}{" "}
+                        ›
+                      </button>
+                      {escolhaPendente && (
+                        <span id={idDoAvisoDaEscolha} className="sr-only">
+                          Falta escolher a opção antes de adicionar ao carrinho.
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
                 <button
                   type="button"
                   disabled={isOutOfStock}
                   aria-disabled={cartStatus !== "idle" || undefined}
-                  onClick={(e) =>
-                    fileiras.length > 0 && !variante
-                      ? setFolhaAberta(true)
-                      : handleAddToCart(e)
-                  }
+                  onClick={(e) => {
+                    if (fileiras.length > 0 && !variante) {
+                      setTentouSemEscolher(true);
+                      setFolhaAberta(true);
+                      return;
+                    }
+                    handleAddToCart(e);
+                  }}
                   className={cn(
                     "ml-auto min-h-[52px] max-w-full shrink-0 rounded-full px-4 py-3 text-sm font-bold text-primary-foreground [overflow-wrap:anywhere]",
                     cartStatus === "idle"
