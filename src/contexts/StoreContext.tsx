@@ -459,6 +459,16 @@ export function StoreProvider({
           setCofrePronto(true);
         }
 
+        // Caça 4 (A1): versões antigas gravavam os cupons da loja (código,
+        // valor, limite) na gaveta `coupons`, que nada lê e nada mais grava.
+        // Aparelho que já tinha saído antes da atualização guardaria os
+        // códigos para sempre: esvazia na abertura. Disparar-e-esquecer e
+        // blindado contra lançamento síncrono (dublê/cofre sem o método): uma
+        // falha aqui não pode cair no `catch` abaixo, que purga TODAS as gavetas.
+        void Promise.resolve()
+          .then(() => vault.clear("coupons"))
+          .catch(() => {});
+
         // Load config from IDB
         const cachedConfig = await vault.getById<any>(
           "store_config",

@@ -57,8 +57,25 @@ export function ProductQA({
     };
   }, [productId, getQuestionsByProduct, subscribeToQuestions]);
 
+  // Caça 4 (V3): trava de duplo envio. O ref vale já no segundo toque do mesmo
+  // instante (o estado do React ainda não mudou); o estado só serve para
+  // desligar o botão na tela.
+  const perguntaEmVooRef = useRef(false);
+  const [enviandoPergunta, setEnviandoPergunta] = useState(false);
+
   const handleAsk = async () => {
-    if (!newQuestion.trim()) return;
+    if (!newQuestion.trim() || perguntaEmVooRef.current) return;
+    perguntaEmVooRef.current = true;
+    setEnviandoPergunta(true);
+    try {
+      await enviarPergunta();
+    } finally {
+      perguntaEmVooRef.current = false;
+      setEnviandoPergunta(false);
+    }
+  };
+
+  const enviarPergunta = async () => {
     // addQuestion devolve null quando o envio falha (o hook trata o erro
     // com toast e NÃO lança): limpar o campo incondicionalmente apagaria o
     // texto que a cliente acabou de escrever — em rede fraca ela perdia a
@@ -153,12 +170,13 @@ export function ProductQA({
                 setNewQuestion(e.target.value);
               }}
               placeholder="Escreva sua dúvida sobre o produto..."
+              maxLength={500}
               aria-label="Sua dúvida sobre o produto"
               className="min-h-[52px] w-full rounded-full border border-border bg-background px-4 py-3 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <button
               onClick={handleAsk}
-              disabled={!newQuestion.trim()}
+              disabled={!newQuestion.trim() || enviandoPergunta}
               className="absolute right-1 top-1 flex size-11 items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 disabled:opacity-30"
               title="Enviar pergunta"
               aria-label="Enviar pergunta"
@@ -320,7 +338,7 @@ export function ProductQA({
               {/* Question Text */}
               <p
                 className={cn(
-                  "pl-12 text-xs font-medium leading-relaxed text-zinc-800 md:text-sm",
+                  "break-words pl-12 text-xs font-medium leading-relaxed text-zinc-800 md:text-sm",
                   "lg:text-sm",
                 )}
               >
@@ -361,7 +379,7 @@ export function ProductQA({
                         </div>
                         <p
                           className={cn(
-                            "pl-0.5 font-medium italic leading-relaxed text-zinc-700",
+                            "break-words pl-0.5 font-medium italic leading-relaxed text-zinc-700",
                             "lg:text-sm",
                           )}
                         >

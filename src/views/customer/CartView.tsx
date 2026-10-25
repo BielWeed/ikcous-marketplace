@@ -625,6 +625,10 @@ export function CartView({
     },
     [onRemove],
   );
+  // Caça 4 (C5): a retirada na loja chega com preço 0 por natureza -- os dois
+  // resumos (computador e rodapé do celular) dizem "Retirada na loja" e não
+  // anunciam "frete grátis", que seria promessa que a loja pode não ter.
+  const retiradaEscolhida = ehRetiradaNaLoja(selectedShippingOption?.id);
   return (
     <div className="pb-customer-summary flex min-h-full flex-col bg-background text-foreground">
       {/* Laudo de acessibilidade 05/09 (onda 3, item B1): o carrinho não
@@ -1070,22 +1074,26 @@ export function CartView({
                         <span
                           className={cn(
                             "font-semibold",
-                            shipping === 0
-                              ? "text-emerald-700 dark:text-emerald-400"
-                              : shipping === null
-                                ? "text-muted-foreground"
-                                : "text-foreground",
+                            retiradaEscolhida
+                              ? "text-foreground"
+                              : shipping === 0
+                                ? "text-emerald-700 dark:text-emerald-400"
+                                : shipping === null
+                                  ? "text-muted-foreground"
+                                  : "text-foreground",
                           )}
                         >
-                          {shipping === 0
-                            ? "GRÁTIS"
-                            : shipping === null
-                              ? "A calcular"
-                              : formatCurrency(shipping)}
+                          {retiradaEscolhida
+                            ? "Retirada na loja"
+                            : shipping === 0
+                              ? "GRÁTIS"
+                              : shipping === null
+                                ? "A calcular"
+                                : formatCurrency(shipping)}
                         </span>
                       </div>
 
-                      {shipping === 0 && (
+                      {shipping === 0 && !retiradaEscolhida && (
                         <div className="flex items-center justify-between text-[15px]">
                           <span className="text-muted-foreground">Bônus</span>
                           <span className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400">
@@ -1095,7 +1103,7 @@ export function CartView({
                         </div>
                       )}
 
-                      {amountToFree > 0 && (
+                      {amountToFree > 0 && !retiradaEscolhida && (
                         <p className="flex items-start gap-2 rounded-[14px] border border-border p-3 text-[13px] leading-snug text-foreground">
                           <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
                           <span>
@@ -1119,7 +1127,7 @@ export function CartView({
                           {formatCurrency(total)}
                         </span>
                       </div>
-                      {shipping === 0 && (
+                      {shipping === 0 && !retiradaEscolhida && (
                         /* REVISÃO A3 (frete v2, 03/09): o selo dizia
                            "Economizou R$ X" contra `config.shippingFee` —
                            preço morto da taxa fixa. Sem cotação alternativa
@@ -1293,6 +1301,7 @@ export function CartView({
             <CartFooterSummary
               cartCount={cartCount}
               shipping={shipping}
+              retiradaNaLoja={retiradaEscolhida}
               total={total}
               onNavigate={onNavigate}
             />

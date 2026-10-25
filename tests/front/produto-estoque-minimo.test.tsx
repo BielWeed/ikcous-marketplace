@@ -318,13 +318,25 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
   });
 
   describe("c. o que vai no payload", () => {
-    it("salvar sem mexer num produto com 8 devolve 8 (não apaga o que já estava lá)", async () => {
+    it("salvar sem mexer num produto com 8 não apaga o 8 (nem manda o campo)", async () => {
       fetchProduct.mockResolvedValue({ ...produtoDoBanco, estoqueMinimo: 8 });
       await montar("prod-1");
       await salvarEdicao();
 
+      // Nada mudou: nenhum UPDATE, e o 8 fica no banco do jeito que estava.
+      expect(updateProduct).not.toHaveBeenCalled();
+    });
+
+    it("mexer em outro campo de um produto com 8 não manda estoqueMinimo (nem null)", async () => {
+      fetchProduct.mockResolvedValue({ ...produtoDoBanco, estoqueMinimo: 8 });
+      await montar("prod-1");
+      await digitarCampo("product-sale-price", "60,00");
+      await salvarEdicao();
+
       expect(updateProduct).toHaveBeenCalledTimes(1);
-      expect(updateProduct.mock.calls[0][1].estoqueMinimo).toBe(8);
+      expect(updateProduct.mock.calls[0][1]).not.toHaveProperty(
+        "estoqueMinimo",
+      );
     });
 
     it("digitar 7 manda 7", async () => {

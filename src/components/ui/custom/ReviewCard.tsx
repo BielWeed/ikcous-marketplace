@@ -133,6 +133,14 @@ export function ReviewCard({
                   Verificado
                 </span>
               )}
+              {/* Caça 4 (V4): a avaliação ainda não aprovada só aparece para o
+              autor e para quem administra -- o selo diz que ela ainda não é
+              pública e não conta na nota. */}
+              {review.status === "pendente" && (
+                <span className="flex items-center gap-0.5 rounded-md border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">
+                  Em análise
+                </span>
+              )}
             </div>
             <div className="mt-0.5">
               <StarRating rating={review.rating} size={11} readonly />
@@ -153,7 +161,7 @@ export function ReviewCard({
       {review.comment && (
         <p
           className={cn(
-            "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
+            "mb-4 mt-3 break-words text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
             "lg:text-sm",
           )}
         >
@@ -209,7 +217,7 @@ export function ReviewCard({
             </div>
             <p
               className={cn(
-                "font-medium italic leading-relaxed text-zinc-600",
+                "break-words font-medium italic leading-relaxed text-zinc-600",
                 "lg:text-sm",
               )}
             >

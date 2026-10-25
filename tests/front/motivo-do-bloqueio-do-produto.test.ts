@@ -40,6 +40,18 @@ describe("motivoDoBloqueioDoProduto", () => {
     );
   });
 
+  it("promoção ligada sem o preço original diz o que fazer", () => {
+    expect(motivoDoBloqueioDoProduto(completo, false, true, true)).toBe(
+      "Escreva o preço original (De:) ou desligue a promoção.",
+    );
+  });
+
+  it("campo obrigatório faltando vem antes da promoção sem preço original", () => {
+    expect(
+      motivoDoBloqueioDoProduto({ ...completo, name: "" }, false, true, true),
+    ).toBe("Para salvar, falta preencher: nome.");
+  });
+
   it("produto já salvo fala em salvar, não em publicar", () => {
     expect(
       motivoDoBloqueioDoProduto({ ...completo, name: "" }, false, true),

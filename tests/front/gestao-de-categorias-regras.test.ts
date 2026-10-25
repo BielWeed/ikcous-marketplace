@@ -6,6 +6,7 @@ import {
   ErroDeCategoria,
   categoriaEmUso,
   categoriaExisteNaLista,
+  categoriaParecida,
   chaveDaCategoria,
   descreverUso,
   erroDoNomeReservado,
@@ -15,6 +16,7 @@ import {
   lerResultadoDoRenome,
   mensagemDaFalhaDeCategoria,
   mesmaCategoria,
+  slugDaCategoria,
   trocarNomeNaLista,
 } from "@/lib/gestao-de-categorias";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -324,5 +326,39 @@ describe("categoriaExisteNaLista", () => {
     expect(categoriaExisteNaLista("Brinquedo", lista)).toBe(false);
     expect(categoriaExisteNaLista("Gerais", lista)).toBe(false);
     expect(categoriaExisteNaLista("Geral", [])).toBe(false);
+  });
+});
+
+describe("slugDaCategoria e categoriaParecida", () => {
+  it("o endereço ignora maiúscula, acento e pontuação", () => {
+    expect(slugDaCategoria("Vestuário Infantil!")).toBe("vestuario-infantil");
+    expect(slugDaCategoria("  Calçados  ")).toBe("calcados");
+  });
+
+  it("acha a categoria que só difere em maiúscula ou acento", () => {
+    const lista = [
+      { name: "Vestuário", slug: "vestuario" },
+      { name: "Geral", slug: "geral" },
+    ];
+    expect(categoriaParecida("VESTUARIO", lista)?.name).toBe("Vestuário");
+    expect(categoriaParecida("vestuário", lista)?.name).toBe("Vestuário");
+  });
+
+  it("nome diferente de verdade não acusa", () => {
+    expect(
+      categoriaParecida("Calçados", [{ name: "Vestuário", slug: "vestuario" }]),
+    ).toBeNull();
+  });
+
+  it("categoria sem endereço guardado é comparada pelo nome", () => {
+    expect(
+      categoriaParecida("geral", [{ name: "Geral", slug: "" }])?.name,
+    ).toBe("Geral");
+  });
+
+  it("nome só de símbolos (endereço vazio) não acusa ninguém", () => {
+    expect(
+      categoriaParecida("!!!", [{ name: "Geral", slug: "geral" }]),
+    ).toBeNull();
   });
 });

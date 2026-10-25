@@ -936,6 +936,10 @@ export const AdminProductsView = memo(function AdminProductsView({
       };
 
       const copia = await addProduct(duplicateData);
+      // A cópia existe (mesmo a que ficou sem grade): recarrega a lista, como a
+      // exclusão, para ela entrar na ordem e no total em vez de aparecer solta
+      // na página atual. Usa a página e os filtros de AGORA.
+      if (copia) recarregarAtualRef.current();
       if (copia?.variantesNaoSalvas) {
         // A cópia já existe e `addProduct` já avisou (com o motivo) que a grade
         // não foi salva: anunciar sucesso a esconderia, e um segundo aviso aqui

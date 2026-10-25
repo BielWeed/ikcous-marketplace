@@ -281,7 +281,28 @@ describe("AdminProductFormView — produto sem foto não ganha a capa 'Sem Image
     });
     await salvar();
 
-    expect(imagensEnviadas()).toEqual([]);
+    // Produto sem foto: a lista não mudou (continua vazia), então nem viaja; o
+    // que nunca pode viajar é o marcador.
+    const gravadas = updateProduct.mock.calls.flatMap(
+      (c) => (c[1] as { images?: string[] }).images ?? [],
+    );
+    expect(gravadas).toEqual([]);
+    expect(updateProduct).toHaveBeenCalledTimes(1);
+    expect(updateProduct.mock.calls[0][1]).toHaveProperty("price", 60);
+  });
+
+  it("produto antigo com o marcador NA FRENTE das fotos reais: qualquer salvar limpa o marcador do banco", async () => {
+    // Sem isto a vitrine (que mostra images[0]) seguiria com o cartão cinza
+    // "Sem Imagem" até a lojista mexer nas fotos por acaso.
+    fetchProduct.mockResolvedValue(produtoDoBanco([MARCADOR, FOTO_REAL]));
+    await montar();
+    digitar("product-sale-price", "60,00");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await salvar();
+
+    expect(imagensEnviadas()).toEqual([FOTO_REAL]);
   });
 
   it("trava do salvar: mesmo que um marcador chegue à lista por outro caminho, ele não é gravado", async () => {
@@ -294,7 +315,12 @@ describe("AdminProductFormView — produto sem foto não ganha a capa 'Sem Image
     await enviarFoto();
     await salvar();
 
-    expect(imagensEnviadas()).toEqual([FOTO_REAL]);
+    // O marcador não conta como mudança: sobra a mesma lista de antes e nada
+    // de foto vai ao banco. O que nunca pode acontecer é ele ser gravado.
+    const gravadas = updateProduct.mock.calls.flatMap(
+      (c) => (c[1] as { images?: string[] }).images ?? [],
+    );
+    expect(gravadas.some((s) => s.includes("placehold.co"))).toBe(false);
   });
 
   it("o limite de 10 fotos conta só as reais: 9 reais + marcador aceita a décima", async () => {

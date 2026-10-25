@@ -272,5 +272,33 @@ export function mensagemDaFalhaDeCategoria(erro: unknown): string {
   return "Não foi possível concluir agora. Nada foi mudado; tente de novo.";
 }
 
+/**
+ * O endereço da categoria: o nome sem maiúscula, acento nem pontuação. O banco
+ * tem nome único E endereço único, então "Vestuário" e "vestuario" colidem.
+ */
+export function slugDaCategoria(nome: string): string {
+  return nome
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
+}
+
+/**
+ * A categoria carregada que colide com este nome (mesmo endereço), ou `null`.
+ * Serve para avisar ANTES de gravar, com o nome da que já existe, em vez do
+ * erro genérico do banco.
+ */
+export function categoriaParecida<
+  C extends { readonly name: string; readonly slug?: string | null },
+>(nome: string, existentes: readonly C[]): C | null {
+  const slug = slugDaCategoria(nome);
+  if (slug === "") return null;
+  return (
+    existentes.find((c) => (c.slug || slugDaCategoria(c.name)) === slug) ?? null
+  );
+}
+
 /** Texto de apoio do campo de nome: o limite que o banco impõe. */
 export const LIMITE_DO_NOME_DA_CATEGORIA = 80;

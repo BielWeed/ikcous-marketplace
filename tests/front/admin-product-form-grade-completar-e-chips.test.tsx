@@ -304,8 +304,9 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
       "Cor / Tamanho: Branca / GG",
     ]);
 
-    // E o salvar prova a preservação: 3 linhas no lote, as duas antigas com
-    // o MESMO id, SKU e estoque de antes — só a GG é nova.
+    // E o salvar prova a preservação: as duas antigas NEM VIAJAM (o banco regrava
+    // a linha inteira, então a única forma de preservar id, SKU, estoque e preço
+    // próprio de antes é não as mandar) — só a GG, nova, vai no lote.
     await act(async () => {
       clicarObrigatorio("Salvar");
     });
@@ -315,25 +316,8 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
     const lote = salvarProdutoComGrade.mock.calls[0][2].variantes as Array<
       Record<string, unknown>
     >;
-    expect(lote).toHaveLength(3);
-    // As que já existiam e a lojista não mexeu no estoque seguem SEM o número
-    // (o banco guarda o dele); ver admin-product-form-salvar-nao-devolve-estoque-velho.
-    expect(lote.find((v) => v.value === "Branca / PP")).toMatchObject({
-      id: "v1",
-      sku: "BLU-BRC-PP",
-      active: true,
-    });
-    expect(lote.find((v) => v.value === "Branca / PP")).not.toHaveProperty(
-      "stockIncrement",
-    );
-    expect(lote.find((v) => v.value === "Branca / P")).toMatchObject({
-      id: "v2",
-      sku: "BLU-BRC-P",
-      active: true,
-    });
-    expect(lote.find((v) => v.value === "Branca / P")).not.toHaveProperty(
-      "stockIncrement",
-    );
+    expect(lote).toHaveLength(1);
+    expect(lote.some((v) => v.id === "v1" || v.id === "v2")).toBe(false);
     expect(lote.find((v) => v.value === "Branca / GG")).toMatchObject({
       stockIncrement: 0,
       sku: undefined,
