@@ -8,7 +8,7 @@
       "Painel, avisos: quando o retorno do produto ou o registro do pagamento falha por problema de conexão, o aviso mostra \"Tente novamente em instantes.\" em vez de texto técnico.",
       "Painel, grade de variações: estoque negativo ou quebrado (como 2.5) agora avisa e não cria a variação, igual ao formulário comum. Antes, \"-5\" virava 5 sem aviso.",
       "Painel, frete: valor de entrega negativo agora avisa e não salva. Antes virava entrega grátis sem aviso. Campo vazio continua significando entrega grátis.",
-      "Conta de lojista: se a loja estava atualizando o catálogo no instante em que você saiu da conta, o custo dos produtos não é mais gravado no aparelho depois do Sair.",
+      "Conta de lojista: se a loja estava atualizando o catálogo no instante em que você saiu da conta (com o painel aberto em uma aba só), o custo dos produtos não é mais gravado no aparelho depois do Sair.",
       "Carrinho: um item guardado no aparelho sem identificação de produto deixa de entrar na conta do carrinho."
     ],
     "melhorias": []
