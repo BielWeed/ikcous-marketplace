@@ -121,8 +121,11 @@ export interface CartActions {
     productId: string,
     variantId?: string,
     /** `silencioso`: tirada por conclusão de compra, sem o aviso "Produto
-     *  removido do carrinho" por cima da tela de sucesso. */
-    opcoes?: { silencioso?: boolean },
+     *  removido do carrinho" por cima da tela de sucesso.
+     *  `comDesfazer`: tirada pela lixeira do carrinho -- o aviso ganha a
+     *  ação "Desfazer", que devolve a linha como estava (uma vez só, por
+     *  alguns segundos). Os demais fluxos não passam e seguem como antes. */
+    opcoes?: { silencioso?: boolean; comDesfazer?: boolean },
   ) => void;
   updateQuantity: (
     productId: string,
@@ -163,6 +166,9 @@ const ESPERA_BASE_REENVIO_MS = 2_000;
 const ESPERA_MAX_REENVIO_MS = 30_000;
 const CART_STORAGE_KEY = "marketplace_cart_v1";
 const CART_TOMBSTONES_KEY = "marketplace_cart_tombstones_v1";
+// Quanto tempo o aviso da lixeira oferece "Desfazer" (o padrão do aviso, ~4 s,
+// é curto para quem tocou sem querer).
+const DURACAO_DO_DESFAZER_MS = 6_000;
 
 /** Tombstone entry: tracks when a cart item was intentionally deleted locally */
 interface CartTombstone {
@@ -1114,22 +1120,121 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [user],
   );
 
+  // Contador que o esvaziar do carrinho (`clearCart`) incrementa: um "Desfazer"
+  // de antes do esvaziamento não devolve nada a um carrinho que a pessoa (ou a
+  // conclusão da compra) acabou de zerar.
+  const geracaoDoCarrinhoRef = useRef(0);
+
+  // "Desfazer" da lixeira: devolve a linha tirada, com a quantidade, a variação e
+  // a posição de antes. Reaproveita a mecânica que já existe -- a linha volta
+  // com carimbo novo (mais novo que a lápide, então a junção não a apaga) e a
+  // lápide dessa linha sai, para não ficar valendo contra o item devolvido; o
+  // envio ao banco é o do efeito de sempre, sem estado novo.
+  const restaurarLinhaRemovida = useCallback(
+    (removida: {
+      item: CartItem;
+      indice: number;
+      key: string;
+      deletedAt: number;
+      uid: string | null;
+      geracao: number;
+    }) => {
+      // Outra conta entrou/saiu ou o carrinho foi esvaziado depois da tirada: o
+      // item é de outro momento, não se devolve.
+      if (
+        userIdAtualRef.current !== removida.uid ||
+        geracaoDoCarrinhoRef.current !== removida.geracao
+      ) {
+        toast.info("Não deu para desfazer: o carrinho mudou.");
+        return;
+      }
+      const atual = cartRef.current;
+      // Já voltou (Desfazer repetido, ou a pessoa pôs o produto de novo): não
+      // soma quantidade por cima do que ela mesma escolheu.
+      if (atual.some((linha) => chaveDoItem(linha) === removida.key)) {
+        toast.info("Esse produto já está no carrinho.");
+        return;
+      }
+      // O estoque de hoje, descontado o que as outras linhas levam da mesma
+      // variação (a regra única do addToCart/updateQuantity).
+      const cabe = estoqueDaLinha(
+        removida.item.product,
+        removida.item.variantId,
+        removida.item.outrasVariantIds,
+        atual,
+      );
+      if (cabe <= 0) {
+        toast.error("Este produto está esgotado.");
+        return;
+      }
+      const quantity = Math.min(removida.item.quantity, cabe);
+      if (quantity < removida.item.quantity) {
+        toast.info(`Devolvemos ${quantity} (limite do estoque).`);
+      }
+      // Só a lápide que ESTA tirada gravou; a de outra tirada, não.
+      const tombstones = loadTombstones();
+      if (tombstones.get(removida.key)?.deletedAt === removida.deletedAt) {
+        tombstones.delete(removida.key);
+        saveTombstones(tombstones);
+      }
+      setCart((prev) => {
+        if (prev.some((linha) => chaveDoItem(linha) === removida.key)) {
+          return prev;
+        }
+        const devolvida: CartItem = {
+          ...removida.item,
+          quantity,
+          lastModifiedAt: Date.now(),
+        };
+        const proxima = [...prev];
+        proxima.splice(Math.min(removida.indice, prev.length), 0, devolvida);
+        return proxima;
+      });
+    },
+    [],
+  );
+
   const removeFromCart = useCallback(
     (
       productId: string,
       variantIdInput?: string,
-      opcoes?: { silencioso?: boolean },
+      opcoes?: { silencioso?: boolean; comDesfazer?: boolean },
     ) => {
       const chave = normalizarChave(variantIdInput);
       // Record tombstone so offline merge doesn't resurrect this item
       const key = `${productId}-${chave}`;
+      const deletedAt = Date.now();
+      // A linha como está AGORA, para o "Desfazer" poder devolvê-la.
+      const indice = opcoes?.comDesfazer
+        ? cartRef.current.findIndex((item) => chaveDoItem(item) === key)
+        : -1;
+      const item = indice >= 0 ? cartRef.current.at(indice) : undefined;
       const tombstones = loadTombstones();
-      tombstones.set(key, { key, deletedAt: Date.now() });
+      tombstones.set(key, { key, deletedAt });
       saveTombstones(tombstones);
-      setCart((prev) => prev.filter((item) => chaveDoItem(item) !== key));
-      if (!opcoes?.silencioso) toast.info("Produto removido do carrinho");
+      setCart((prev) => prev.filter((linha) => chaveDoItem(linha) !== key));
+      if (opcoes?.silencioso) return;
+      if (item) {
+        const removida = {
+          item,
+          indice,
+          key,
+          deletedAt,
+          uid: userIdAtualRef.current,
+          geracao: geracaoDoCarrinhoRef.current,
+        };
+        toast.info("Produto removido do carrinho", {
+          duration: DURACAO_DO_DESFAZER_MS,
+          action: {
+            label: "Desfazer",
+            onClick: () => restaurarLinhaRemovida(removida),
+          },
+        });
+        return;
+      }
+      toast.info("Produto removido do carrinho");
     },
-    [],
+    [restaurarLinhaRemovida],
   );
 
   const updateQuantity = useCallback(
@@ -1195,6 +1300,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clearCart = useCallback(
     (opcoes?: { silencioso?: boolean }) => {
+      geracaoDoCarrinhoRef.current += 1;
       // Tombstone all current items before clearing
       setCart((prev) => {
         const tombstones = loadTombstones();
