@@ -10,6 +10,7 @@ export function useScrollRestoration(
 ) {
   const elementRef = useRef<HTMLDivElement | null>(null);
   const hasRestoredRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
 
   const saveScroll = useCallback(() => {
     if (elementRef.current) {
@@ -26,6 +27,22 @@ export function useScrollRestoration(
   const resetRestored = useCallback(() => {
     hasRestoredRef.current = false;
   }, []);
+
+  // Abertura "do zero" (atalho que zera filtros): leva ao topo, esquece a
+  // posição guardada e cancela a reaplicação agendada pelo efeito abaixo,
+  // senão ela devolveria a rolagem antiga no quadro seguinte.
+  const reiniciarScroll = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    Reflect.deleteProperty(scrollCache, key);
+    const container =
+      elementRef.current?.closest(".admin-scroll-container") ||
+      document.querySelector(".active-scroll-container") ||
+      document.querySelector("main");
+    if (container) container.scrollTop = 0;
+  }, [key]);
 
   useLayoutEffect(() => {
     if (!active) {
@@ -47,10 +64,12 @@ export function useScrollRestoration(
         container.scrollTop = savedPos;
 
         const raf = requestAnimationFrame(() => {
+          rafRef.current = null;
           if (container) {
             container.scrollTop = savedPos;
           }
         });
+        rafRef.current = raf;
         return () => cancelAnimationFrame(raf);
       }
     }
@@ -72,5 +91,5 @@ export function useScrollRestoration(
     };
   }, [key]);
 
-  return { ref: elementRef, saveScroll, resetRestored };
+  return { ref: elementRef, saveScroll, resetRestored, reiniciarScroll };
 }

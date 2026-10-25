@@ -314,6 +314,9 @@ export function CategoriaFolha({
   const [erroDoServidor, setErroDoServidor] = useState<string | null>(null);
   const trava = useRef(false);
   const sistema = categoria?.sistema ?? false;
+  // Trocar Receita↔Despesa de categoria que já tem lançamentos os tira do
+  // resultado: a natureza só é livre na criação.
+  const naturezaTravada = categoria !== null;
 
   const sujo = JSON.stringify(form) !== JSON.stringify(inicial);
   useEffect(() => {
@@ -416,15 +419,20 @@ export function CategoriaFolha({
               {
                 valor: "despesa",
                 rotulo: "Despesa",
-                desabilitada: sistema || enviando,
+                desabilitada: naturezaTravada || enviando,
               },
               {
                 valor: "receita",
                 rotulo: "Receita",
-                desabilitada: sistema || enviando,
+                desabilitada: naturezaTravada || enviando,
               },
             ]}
           />
+          {naturezaTravada && !sistema ? (
+            <p className="text-xs leading-relaxed text-zinc-400">
+              Para mudar, crie uma categoria nova e desative esta.
+            </p>
+          ) : null}
         </div>
         <fieldset className="flex flex-col gap-2">
           <legend className={`${CLASSE_ROTULO} mb-1.5`}>

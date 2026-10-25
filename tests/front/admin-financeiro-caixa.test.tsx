@@ -80,6 +80,17 @@ const CONTAS = [
   },
 ];
 
+// Terceira conta ativa: permite trocar o destino da sangria sem voltar ao banco.
+const COFRE = {
+  ...CONTAS[1],
+  id: "f1000000-0000-4000-8000-0000000000aa",
+  nome: "Cofre da loja",
+  tipo: "outro",
+  ordem: 3,
+  sistema: false,
+  saldo: 0,
+};
+
 const RESUMO = {
   periodo: { inicio: "2026-09-01", fim: "2026-09-30" },
   saldo_total: 5150,
@@ -446,6 +457,63 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(folha()).toBeNull();
   });
 
+  it("abrir caixa mostra o que o sistema tem e avisa da quebra antes de gravar", async () => {
+    await clicar(botaoEm(hospedeiro, "Abrir caixa"));
+    const abertura = folha() as HTMLElement;
+    // Conta Caixa da loja do cenário: R$ 150,00 no sistema.
+    expect(normalizar(abertura.textContent)).toContain(
+      "O sistema tem na gaveta",
+    );
+    expect(normalizar(abertura.textContent)).toMatch(/R\$\s?150,00/);
+    // Sem digitar nada, nada a avisar.
+    expect(abertura.querySelector('[role="status"]')).toBeNull();
+
+    await digitar("fin-caixa-abertura", "10000");
+    const falta = normalizar(
+      abertura.querySelector('[role="status"]')?.textContent,
+    );
+    expect(falta).toMatch(/Faltam R\$\s?50,00/);
+    expect(falta).toContain("quebra de caixa");
+    expect(rpcFalso).not.toHaveBeenCalledWith(
+      "fin_caixa_abrir",
+      expect.anything(),
+    );
+
+    await digitar("fin-caixa-abertura", "20000");
+    const sobra = normalizar(
+      abertura.querySelector('[role="status"]')?.textContent,
+    );
+    expect(sobra).toMatch(/Sobram R\$\s?50,00/);
+    expect(sobra).not.toContain("quebra de caixa");
+
+    await digitar("fin-caixa-abertura", "15000");
+    expect(abertura.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("a falta na abertura manda registrar uma transferência (com o caixa fechado não há sangria)", async () => {
+    await clicar(botaoEm(hospedeiro, "Abrir caixa"));
+    await digitar("fin-caixa-abertura", "10000");
+    const aviso = normalizar(
+      (folha() as HTMLElement).querySelector('[role="status"]')?.textContent,
+    );
+    expect(aviso).toContain("Faltam");
+    expect(aviso).toContain("transferência do Caixa para essa conta");
+    expect(aviso).toContain("Novo lançamento");
+    expect(aviso).toContain("evita a quebra");
+    expect(aviso).not.toMatch(/sangria|registrou a saída/i);
+  });
+
+  it("sangria acima do esperado não promete que o registro passa", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Sangria"));
+    await digitar("fin-caixa-mov-valor", "50000");
+    const texto = normalizar(folha()!.textContent);
+    expect(texto).toContain(
+      "O sistema não registra uma sangria maior que o esperado",
+    );
+    expect(texto).not.toContain("não impede o registro");
+  });
+
   it("aviso de sangria acima do esperado usa âmbar sem bloco pintado", async () => {
     await abrirSessao();
     await clicar(botaoEm(hospedeiro, "Sangria"));
@@ -533,6 +601,129 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     },
   );
 
+  describe("conta de destino da sangria e do suprimento é obrigatória", () => {
+    function seletor() {
+      return document.getElementById(
+        "fin-caixa-mov-conta",
+      ) as HTMLSelectElement;
+    }
+
+    async function abrirMovimento(movimento: string) {
+      await abrirSessao();
+      await clicar(botaoEm(hospedeiro, movimento));
+    }
+
+    it.each([
+      { movimento: "Sangria", rotulo: "Para onde foi" },
+      { movimento: "Suprimento", rotulo: "De onde veio" },
+    ])(
+      "$movimento: sem opção vazia, rótulo sem 'opcional' e Conta bancária já marcada",
+      async ({ movimento, rotulo }) => {
+        await abrirMovimento(movimento);
+        const texto = normalizar(folha()?.textContent);
+        expect(texto).toContain(rotulo);
+        expect(texto).not.toContain("opcional");
+        expect(texto).not.toContain("Nenhuma conta da loja");
+        expect(seletor().value).toBe(CONTA_BANCARIA);
+        const valores = [...seletor().options].map((o) => o.value);
+        expect(valores).not.toContain("");
+        expect(valores).toEqual([CONTA_BANCARIA]);
+      },
+    );
+
+    it.each(["Sangria", "Suprimento"])(
+      "%s sem mexer no destino envia a Conta bancária ao servidor",
+      async (movimento) => {
+        await abrirMovimento(movimento);
+        await digitar("fin-caixa-mov-valor", "5000");
+        await clicar(
+          botaoEm(
+            folha() as HTMLElement,
+            `Registrar ${movimento.toLowerCase()}`,
+          ),
+        );
+        expect(movimentos()).toHaveLength(1);
+        expect(movimentos()[0].p_conta_contrapartida).toBe(CONTA_BANCARIA);
+      },
+    );
+
+    it("o comprovante sempre diz o nome da conta de contrapartida", async () => {
+      await abrirMovimento("Sangria");
+      await digitar("fin-caixa-mov-valor", "5000");
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      expect(movimentos()).toHaveLength(1);
+      const texto = normalizar(document.body.textContent);
+      expect(texto).toContain("Contrapartida");
+      expect(texto).toContain("Conta bancária");
+      expect(texto).not.toContain("Nenhuma conta da loja");
+    });
+
+    it("a folha não nasce suja só porque o destino já vem marcado", async () => {
+      servidor.contas = [...CONTAS, COFRE];
+      await remontar();
+      await abrirSessao();
+      onSetDirty.mockClear();
+      await clicar(botaoEm(hospedeiro, "Sangria"));
+      expect(seletor().value).toBe(CONTA_BANCARIA);
+      expect(onSetDirty).not.toHaveBeenCalledWith(true);
+      await escolherConta(COFRE.id);
+      expect(onSetDirty).toHaveBeenLastCalledWith(true);
+      await escolherConta(CONTA_BANCARIA);
+      expect(onSetDirty).toHaveBeenLastCalledWith(false);
+      await digitar("fin-caixa-mov-valor", "5000");
+      expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    });
+
+    it("sem nenhuma outra conta ativa avisa e não deixa registrar", async () => {
+      servidor.contas = [CONTAS[0], { ...CONTAS[1], ativa: false }];
+      await remontar();
+      await abrirMovimento("Sangria");
+      vi.mocked(toast.success).mockClear();
+      await digitar("fin-caixa-mov-valor", "5000");
+      expect(normalizar(folha()?.textContent)).toContain(
+        "Não há outra conta ativa",
+      );
+      expect(seletor().options).toHaveLength(0);
+      const registrar = botaoEm(folha() as HTMLElement, "Registrar sangria");
+      expect(registrar.disabled).toBe(true);
+      await clicar(registrar);
+      expect(movimentos()).toHaveLength(0);
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it("lista de contas que não chegou não vira o aviso falso de falta de conta", async () => {
+      servidor.contas = [];
+      await remontar();
+      await abrirMovimento("Sangria");
+      await digitar("fin-caixa-mov-valor", "5000");
+      const texto = normalizar(folha()?.textContent);
+      expect(texto).toContain("As contas ainda não carregaram");
+      expect(texto).not.toContain("Não há outra conta ativa");
+      const registrar = botaoEm(folha() as HTMLElement, "Registrar sangria");
+      expect(registrar.disabled).toBe(true);
+      await clicar(registrar);
+      expect(movimentos()).toHaveLength(0);
+    });
+
+    it("sem a Conta bancária ativa nada vem marcado e escolher a conta é obrigatório", async () => {
+      servidor.contas = [CONTAS[0], { ...CONTAS[1], ativa: false }, COFRE];
+      await remontar();
+      await abrirMovimento("Sangria");
+      await digitar("fin-caixa-mov-valor", "5000");
+      expect(seletor().value).toBe("");
+      expect([...seletor().options].map((o) => o.value)).toContain(COFRE.id);
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      expect(movimentos()).toHaveLength(0);
+      expect(normalizar(folha()?.textContent)).toContain(
+        "Escolha a conta de destino",
+      );
+      await escolherConta(COFRE.id);
+      await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+      expect(movimentos()).toHaveLength(1);
+      expect(movimentos()[0].p_conta_contrapartida).toBe(COFRE.id);
+    });
+  });
+
   it("resposta perdida e retry preservam chave e todos os dados congelados", async () => {
     servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
     await prepararMovimento();
@@ -552,6 +743,10 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     "edição de %s depois da falha conserva a identidade da intenção",
     async (campo) => {
       servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
+      if (campo === "conta") {
+        servidor.contas = [...CONTAS, COFRE];
+        await remontar();
+      }
       await prepararMovimento();
       await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
       expect(movimentos()).toHaveLength(1);
@@ -559,7 +754,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       if (campo === "valor") await digitar("fin-caixa-mov-valor", "6000");
       if (campo === "descricao")
         await digitar("fin-caixa-mov-descricao", "Outro destino");
-      if (campo === "conta") await escolherConta("");
+      if (campo === "conta") await escolherConta(COFRE.id);
       if (campo === "editar e voltar") {
         await digitar("fin-caixa-mov-descricao", "Outro destino");
         await digitar("fin-caixa-mov-descricao", "  Guardar no cofre  ");
@@ -573,7 +768,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
         p_valor: campo === "valor" ? 60 : 50,
         p_descricao:
           campo === "descricao" ? "Outro destino" : "Guardar no cofre",
-        p_conta_contrapartida: campo === "conta" ? undefined : CONTA_BANCARIA,
+        p_conta_contrapartida: campo === "conta" ? COFRE.id : CONTA_BANCARIA,
       });
     },
   );
