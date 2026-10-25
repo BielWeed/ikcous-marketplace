@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { adminAtualDaSessao } from "../_shared/admin-atual.ts"
 import { ID_RETIRADA_NA_LOJA } from "../_shared/retirada-na-loja.ts"
-import { textoSemSegredo } from './regua.ts'
+import { idCanonico, textoSemSegredo } from './regua.ts'
 import {
     cotarPeloProvedor,
     FalhaDoProvedor,
@@ -47,6 +47,7 @@ export {
     aoCentavo,
     buscarComTempo,
     codigoDeServicoValido,
+    idCanonico,
     jsonCanonico,
     medidaPositivaDoBanco,
     nomeDaOpcao,
@@ -601,15 +602,19 @@ export function isLocalCep(originCep: string, destCep: string, localCepRange?: s
 // Helper to generate a stable, order-independent cart hash representation
 export function getCartHash(cart: any[]): string {
     if (!cart || !Array.isArray(cart)) return 'empty'
+    // Ids na forma CANÔNICA (`idCanonico`: uuid minúsculo, com hífens): a RPC
+    // do pedido compara este texto com o `product_id` que o cliente manda, e o
+    // Postgres aceita o mesmo uuid em outras grafias — só a canônica casa.
     const sorted = [...cart].sort((a, b) => {
-        const idA = (a.product?.id || a.productId || '') + (a.variantId || '')
-        const idB = (b.product?.id || b.productId || '') + (b.variantId || '')
+        const idA = (idCanonico(a.product?.id || a.productId) ?? '') + (idCanonico(a.variantId) ?? '')
+        const idB = (idCanonico(b.product?.id || b.productId) ?? '') + (idCanonico(b.variantId) ?? '')
         return idA.localeCompare(idB)
     })
     
     return sorted.map((item: any) => {
-        const prodId = item.product?.id || item.productId
-        const variantId = item.variantId || ''
+        const bruto = item.product?.id || item.productId
+        const prodId = idCanonico(bruto) ?? bruto
+        const variantId = idCanonico(item.variantId) ?? ''
         const quantity = item.quantity || 1
         return `${prodId}:${variantId}:${quantity}`
     }).join(',')
@@ -909,7 +914,10 @@ async function cotarUmaVez(
     // 2. Produtos (e variações) pelo BANCO — o navegador não decide peso,
     // medida nem valor.
     const itensDoCarrinho = Array.isArray(cart) ? cart : []
-    const productIds = itensDoCarrinho.map((item: any) => item?.product?.id || item?.productId).filter(Boolean)
+    // Os ids vão ao banco e voltam aos Maps na forma CANÔNICA (`idCanonico`): o
+    // Postgres aceita uuid em maiúsculas, mas o Map é indexado pelo id que ele
+    // devolve — sem isto o produto "sumia" e a cotação saía de pacote de 0,3 kg.
+    const productIds = itensDoCarrinho.map((item: any) => idCanonico(item?.product?.id || item?.productId)).filter(Boolean)
     let dbProducts: any[] = []
     if (productIds.length > 0) {
         const { data: prods, error: prodsError } = await supabaseClient
@@ -919,8 +927,8 @@ async function cotarUmaVez(
         if (prodsError) console.error('[calculate-shipping] Error querying database products:', prodsError?.code ?? prodsError)
         else dbProducts = prods || []
     }
-    const dbProductsMap = new Map(dbProducts.map((p) => [p.id, p]))
-    const variantIds = itensDoCarrinho.map((item: any) => item?.variantId).filter(Boolean)
+    const dbProductsMap = new Map(dbProducts.map((p) => [idCanonico(p.id), p]))
+    const variantIds = itensDoCarrinho.map((item: any) => idCanonico(item?.variantId)).filter(Boolean)
     let variantes: any[] = []
     if (variantIds.length > 0) {
         const { data, error } = await supabaseClient
@@ -930,7 +938,7 @@ async function cotarUmaVez(
         if (error) console.error('[calculate-shipping] Error querying product variants:', error?.code ?? error)
         else variantes = data || []
     }
-    const variantesMap = new Map(variantes.map((v) => [v.id, v]))
+    const variantesMap = new Map(variantes.map((v) => [idCanonico(v.id), v]))
 
     // FRETE V2 (revisão A1): `produtos.frete_gratis` vale SÓ no preset
     // "por_produto" (`free_shipping_min < 0`); basta UM item marcado (`some`,
@@ -938,7 +946,7 @@ async function cotarUmaVez(
     // `src/lib/presets-de-frete-gratis.ts`.
     const presetPorProduto = Number(storeConfig.free_shipping_min ?? 0) < 0
     const itemComFreteGratisMarcado = itensDoCarrinho.length > 0 && itensDoCarrinho.some((item: any) => {
-        const dbProd = dbProductsMap.get(item?.product?.id || item?.productId)
+        const dbProd = dbProductsMap.get(idCanonico(item?.product?.id || item?.productId))
         return !!(dbProd?.frete_gratis ?? item?.product?.freeShipping)
     })
     const allFree = presetPorProduto && itemComFreteGratisMarcado

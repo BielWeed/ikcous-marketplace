@@ -12,7 +12,7 @@
  * - `assinaturaCotacao`: hash de `{contrato:3, revisaoConfig, insumos}`.
  */
 import { ID_RETIRADA_NA_LOJA } from '../_shared/retirada-na-loja.ts'
-import { aoCentavo, jsonCanonico, MEDIDA_PADRAO_CM, medidaPositivaDoBanco, PESO_PADRAO_KG, sha256Hex, valorUnitarioDoBanco } from './regua.ts'
+import { aoCentavo, idCanonico, jsonCanonico, MEDIDA_PADRAO_CM, medidaPositivaDoBanco, PESO_PADRAO_KG, sha256Hex, valorUnitarioDoBanco } from './regua.ts'
 import {
     emOrdemCanonica,
     ehProvedor,
@@ -262,14 +262,17 @@ export async function calcularRevisaoConfig(
  * pela régua da 1.5.6 (`medidaPositivaDoBanco`, padrão 0,3 kg / 15 cm só no
  * campo ruim); valor = `COALESCE(variante.price_override, produto.preco_venda)`
  * (a regra da RPC). Produto desconhecido: todos os padrões e valor `null`.
- * Na ORDEM do carrinho (o corpo das APIs segue a 1.5.6).
+ * Na ORDEM do carrinho (o corpo das APIs segue a 1.5.6). Os Maps são
+ * indexados pelo id CANÔNICO (`idCanonico`); o id do carrinho é normalizado aqui.
  */
 export function montarInsumos(cart: any[], produtosPorId: Map<unknown, any>, variantesPorId: Map<unknown, any>) {
     let produtosSemCadastro = 0
     let camposPadrao = 0
     const itens: ItemDoInsumo[] = cart.map((item: any) => {
-        const produtoId = item?.product?.id || item?.productId || null
-        const varianteId = item?.variantId || null
+        // Id na forma CANÔNICA do banco (`idCanonico`): os Maps vêm indexados
+        // pelo id que o banco devolve, e o mesmo id também entra na assinatura.
+        const produtoId = idCanonico(item?.product?.id || item?.productId) || null
+        const varianteId = idCanonico(item?.variantId) || null
         const qtd = Number(item?.quantity || 1)
         const produto = produtosPorId.get(produtoId)
         if (!produto) {
