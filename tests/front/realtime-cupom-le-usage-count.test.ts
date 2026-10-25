@@ -19,16 +19,15 @@
 // Realtime/DataVault.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+// 24/10/2026 (caça 4, A1): o espelho de tempo real de cupons saiu (a gaveta
+// do aparelho guardava os códigos e nunca era lida). O que este arquivo
+// protege -- uma só leitura da coluna de uso -- agora mora no mapeador único
+// `cupomDoBanco`, que o hook e o pré-carregamento do admin compartilham.
+import { cupomDoBanco } from "@/lib/cupom-do-banco";
 
-const { TABLE_CONFIGS } = await import("@/lib/realtimeSyncEngine");
-
-describe("O espelho de tempo real lê a MESMA coluna de uso de cupom que o hook", () => {
+describe("O mapeador de cupom lê a MESMA coluna de uso que o hook", () => {
   function mapearCupom(raw: Record<string, unknown>) {
-    const tabela = TABLE_CONFIGS.find((c) => c.table === "coupons");
-    expect(tabela).toBeDefined();
-    expect(tabela!.mapRecord).not.toBeNull();
-    return tabela!.mapRecord!(raw);
+    return cupomDoBanco(raw);
   }
 
   beforeEach(() => {

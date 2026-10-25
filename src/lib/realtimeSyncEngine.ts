@@ -10,14 +10,15 @@
  * - categorias      → categories store
  * - banners         → banners store
  * - store_config    → store_config store
- * - coupons         → coupons store
  * - product_variants → product_variants store
+ *
+ * Cupons NÃO são espelhados: a gaveta nunca foi lida e guardava os códigos
+ * no aparelho (ver o comentário em TABLE_CONFIGS).
  *
  * @module realtimeSyncEngine
  */
 
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
-import { cupomDoBanco } from "@/lib/cupom-do-banco";
 import { DataVault, type StoreName } from "@/lib/dataVault";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
@@ -211,12 +212,10 @@ export const TABLE_CONFIGS: TableConfig[] = [
       ),
     }),
   },
-  {
-    table: "coupons",
-    store: "coupons",
-    // PAINEL-12 + frente B: o mapeador único (usage_count só, alcance).
-    mapRecord: (raw: any) => cupomDoBanco(raw),
-  },
+  // CUPONS NÃO ENTRAM AQUI (caça 4, A1): a gaveta `coupons` do cofre nunca foi
+  // lida por ninguém (a tela de Cupons usa o próprio hook e o cache em
+  // memória) e guardava código, valor e limite de todos os cupons no aparelho
+  // do lojista, legíveis no DevTools depois do "Sair".
   {
     table: "product_variants",
     store: "product_variants",
@@ -808,33 +807,16 @@ export const RealtimeSyncEngine = {
       }
 
       // Execute queries in parallel
-      const [
-        configResult,
-        categoriesResult,
-        bannersResult,
-        couponsResult,
-        summaryResult,
-      ] = await Promise.all([
-        supabase
-          .from(tableSourceConfig as any)
-          .select("*")
-          .single(),
-        supabase.from("categorias").select("*").order("nome"),
-        supabase.from("banners").select("*").order("order"),
-        isAdmin
-          ? supabase
-              .from("coupons")
-              .select("*")
-              .order("created_at", { ascending: false })
-              // P-6 (laudo varredura 01/09, ressalva da revisão): teto no
-              // ramo admin — aqui é SEGURO limitar (replaceAll, sem
-              // reconciliação por exclusão, ao contrário do resumo de
-              // produtos, onde limitar causaria falso-sync). 500 cupons é
-              // catálogo de desconto além de qualquer loja deste molde.
-              .limit(500)
-          : Promise.resolve({ data: null, error: null }),
-        productsQuery,
-      ]);
+      const [configResult, categoriesResult, bannersResult, summaryResult] =
+        await Promise.all([
+          supabase
+            .from(tableSourceConfig as any)
+            .select("*")
+            .single(),
+          supabase.from("categorias").select("*").order("nome"),
+          supabase.from("banners").select("*").order("order"),
+          productsQuery,
+        ]);
 
       // Log queries with errors so they don't fail silently
       if (configResult.error) {
@@ -853,12 +835,6 @@ export const RealtimeSyncEngine = {
         console.warn(
           "[RealtimeSyncEngine] bannersResult sync failed:",
           bannersResult.error,
-        );
-      }
-      if (couponsResult.error) {
-        console.warn(
-          "[RealtimeSyncEngine] couponsResult sync failed:",
-          couponsResult.error,
         );
       }
       if (summaryResult.error) {
@@ -946,31 +922,7 @@ export const RealtimeSyncEngine = {
         }
       }
 
-      // 4. Sync coupons if admin (overwrite)
-      if (isAdmin && couponsResult.data) {
-        const rawCoupons = couponsResult.data;
-        const couponRecord = TABLE_CONFIGS.find((c) => c.table === "coupons");
-        if (couponRecord) {
-          const mappedCoupons = rawCoupons.map((raw: any) =>
-            couponRecord.mapRecord ? couponRecord.mapRecord(raw) : raw,
-          );
-          await vault.replaceAll("coupons", mappedCoupons);
-          await vault.setLastSync("coupons");
-          bc?.postMessage({
-            type: "db_change_bulk",
-            table: "coupons",
-            data: rawCoupons,
-          });
-          const event: SyncEvent = {
-            table: "coupons",
-            store: "coupons",
-            eventType: "UPDATE",
-          };
-          for (const cb of _listeners) {
-            cb(event);
-          }
-        }
-      }
+      // 4. (cupons não são sincronizados para o aparelho -- ver TABLE_CONFIGS)
 
       // 5. Sync products (delta update + reconciliation of deleted/inactive)
       const serverProductsSummary = summaryResult.data;
