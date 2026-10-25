@@ -52,6 +52,7 @@ import { useViewTransition } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
 import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
+import { consumirPedidoDePedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
 import { formatarInteiro } from "@/lib/crm";
 import { recorteDaListaDePedidos } from "@/lib/filtro-da-lista-de-pedidos";
 import {
@@ -455,6 +456,35 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     0,
   );
   const itemsPerPage = 12;
+
+  // Atalho do Início ("Preparar pedidos"): abre Pedidos LIMPO. O filtro, a
+  // busca, o período, o pagamento, o canal e a página da última visita ficam
+  // salvos no aparelho (conveniência de quem abre pelo menu), mas quem toca
+  // num atalho que promete "os pedidos para preparar" e cai numa lista de
+  // outro assunto acha que os pedidos sumiram. O recado é de uma vez só e tem
+  // validade (src/lib/atalho-do-inicio-para-pedidos.ts); abrir pelo menu não
+  // o gera, então a preferência salva de quem usa o menu não é tocada. Como a
+  // tela fica montada atrás das outras abas, o gancho é `active` virar `true`
+  // (vale também para a primeira abertura). As trocas abaixo cancelam a carga
+  // com o filtro antigo que o efeito de carga já agendou (espera de 320 ms).
+  useEffect(() => {
+    if (!active) return;
+    if (!consumirPedidoDePedidosSemFiltroAntigo()) return;
+    setFilter("open");
+    setPaymentFilter("all");
+    setCanalFilter("all");
+    setSearchQuery("");
+    setDateRange({ start: "", end: "" });
+    setCurrentPage(0);
+  }, [
+    active,
+    setFilter,
+    setPaymentFilter,
+    setCanalFilter,
+    setSearchQuery,
+    setDateRange,
+    setCurrentPage,
+  ]);
 
   const ordersLengthRef = useRef(orders.length);
   useEffect(() => {
