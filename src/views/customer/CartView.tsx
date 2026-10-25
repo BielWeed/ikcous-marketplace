@@ -229,7 +229,6 @@ export function CartView({
 
   const cart = propCart ?? ctxCart;
   const onUpdateQuantity = propOnUpdateQuantity ?? updateQuantity;
-  const onRemove = propOnRemove ?? removeFromCart;
 
   // O DESTINO DO FRETE É O ENDEREÇO DE ENTREGA: o escolhido
   // (`enderecoSelecionadoId`, compartilhado com o checkout) ou, na falta, o
@@ -619,11 +618,14 @@ export function CartView({
       const key = `${productId}-${variantId || "default"}`;
       setRemovingId(key);
       setTimeout(() => {
-        onRemove(productId, variantId);
+        // A lixeira é o fluxo que pede o aviso com "Desfazer" (UI-170): quem
+        // injeta o próprio `onRemove` segue com o contrato de antes.
+        if (propOnRemove) propOnRemove(productId, variantId);
+        else removeFromCart(productId, variantId, { comDesfazer: true });
         setRemovingId(null);
       }, 300);
     },
-    [onRemove],
+    [propOnRemove, removeFromCart],
   );
   // Caça 4 (C5): a retirada na loja chega com preço 0 por natureza -- os dois
   // resumos (computador e rodapé do celular) dizem "Retirada na loja" e não
