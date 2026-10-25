@@ -23,7 +23,8 @@
 //   - a mensagem de `ErroDeCategoria` (src/lib/gestao-de-categorias.ts) no
 //     "Criar setor" de AdminProductFormView: a classe só carrega frase fixa
 //     nossa ou a que `mensagemDaFalhaDeCategoria` curou.
-// NÃO trocar `useOrders.ts` (`description: err?.message`): as RPCs de pedido
+// NÃO trocar `useOrders.ts` por `mensagemDeErroDoPainel` (os avisos passam por
+// `mensagemAmigavelErroAtualizacaoStatus`, que deixa a frase P0001 inteira): as RPCs de pedido
 // levantam frases em português com P0001 ("Pedido cancelado não recebe
 // pagamento.") e `mensagemDeErroDoPainel` as esconderia; está fora das pastas
 // varridas de propósito.

@@ -584,6 +584,20 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
+    // O campo aceita digitar "-3" e o `Math.max(0, …)` de baixo gravava 0 =
+    // entrega grátis, sem aviso. Valor negativo não salva.
+    if (
+      !soMototaxiPendente &&
+      formData.modo !== "so_retiro" &&
+      formData.localDeliveryFee < 0
+    ) {
+      toast.error("O valor da entrega não pode ser negativo.", {
+        description:
+          "Digite 0 ou mais. Para entrega grátis, deixe o campo vazio.",
+      });
+      return;
+    }
+
     sincronizacaoSuspensaRef.current = true;
     setIsSaving(true);
     haptic.medium();
