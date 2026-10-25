@@ -156,3 +156,31 @@ describe("grade — estoque inválido em Aplicar para todas", () => {
     expect(toastErro).not.toHaveBeenCalled();
   });
 });
+
+describe("grade — estoque inválido em Aplicar para todas, sem apertar Aplicar", () => {
+  const DICA = expect.stringContaining('"Aplicar para todas"');
+
+  it.each([
+    ["-5", NEGATIVO],
+    ["2.5", QUEBRADO],
+  ])(
+    "%s ao Salvar: a frase é a mesma e o aviso diz QUAL campo está errado",
+    (digitado, frase) => {
+      abrirNoPasso2();
+      digitar(porRotulo("Estoque para todas as linhas"), digitado);
+      clicar(botao("Salvar"));
+      expect(toastErro).toHaveBeenCalledWith(
+        frase,
+        expect.objectContaining({ description: DICA }),
+      );
+      expect(onEfetivar).not.toHaveBeenCalled();
+    },
+  );
+
+  it("erro numa linha (não no Aplicar para todas) segue sem apontar para o Aplicar", () => {
+    abrirNoPasso2();
+    digitar(porRotulo("Estoque de P"), "-5");
+    clicar(botao("Salvar"));
+    expect(toastErro).toHaveBeenCalledWith(NEGATIVO);
+  });
+});

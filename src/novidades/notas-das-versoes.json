@@ -1,4 +1,22 @@
 {
+  "1.5.69": {
+    "titulo": "Caixa mais claro, finalização no celular e pequenos acertos",
+    "novidades": [],
+    "correcoes": [
+      "Financeiro, Caixa: ao abrir o caixa, a tela mostra quanto o sistema tem na gaveta e avisa, antes de gravar, se o valor que você contou é menor (a falta pode virar quebra de caixa, se o caixa já foi fechado antes) ou maior (sobra).",
+      "Financeiro, Caixa: na sangria e no suprimento, a conta de destino agora é sempre escolhida e já vem marcada na Conta bancária. A opção \"Nenhuma conta da loja\" saiu, porque o dinheiro já era registrado na Conta bancária.",
+      "Financeiro, Caixa: o aviso de sangria maior que o esperado agora diz que o sistema não registra essa sangria. Antes dizia que o aviso não impedia o registro.",
+      "Financeiro, categorias: depois de criada, a categoria não troca mais entre Receita e Despesa. Para mudar, crie uma nova e desative a antiga.",
+      "Financeiro: a etiqueta embaixo do saldo agora diz \"Entrou menos saiu no período\", para não parecer o lucro.",
+      "Painel, Pedidos: ao fechar a pergunta \"O produto voltou\", o foco do teclado volta ao botão do pedido. O atalho \"Preparar pedidos\" abre a lista no topo.",
+      "Painel, grade de variações: quando o estoque de \"Aplicar para todas\" é inválido, o aviso diz que o erro está nesse campo.",
+      "Finalização: a página reserva espaço embaixo para o campo em que você toca não ficar escondido atrás da barra de baixo.",
+      "Produto: uma descrição com título em negrito seguido de lista agora mostra a lista, sem os asteriscos.",
+      "Busca: o botão \"Ver todos os resultados\" fica fixo no fim da lista de sugestões, sem ser cortado.",
+      "Celular estreito (menos de 360 px): ajuste do botão \"Escolher opções\" dos cards e do exemplo do CEP para o texto caber."
+    ],
+    "melhorias": []
+  },
   "1.5.68": {
     "titulo": "Painel mais claro: pedidos, estoque, grade e entrega",
     "novidades": [],

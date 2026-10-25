@@ -218,11 +218,13 @@
     "tinham os mesmos 13 avisos na base). Corrigidos nos testes: 7 de object-injection",
     "viraram charAt/Map/Reflect.deleteProperty, 6 de fs-filename ganharam o cabeçalho",
     "com motivo que 87 testes da casa já usam, e 1 diretiva sobrando saiu. Resultado",
-    "303, um abaixo do teto antigo. Baixado antes do CI a pedido da hub."
+    "303, um abaixo do teto antigo. Baixado antes do CI a pedido da hub.",
+    "",
+    "25/10/2026 — warnings de eslint de 303 para 302. Medido com a catraca local (lote de polimento da 1.5.68: 'eslint warnings 302 / teto 303 / baixou -1'), com o código deste lote incluído (0 aviso novo). Baixado antes do CI."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 303
+    "warnings": 302
   },
   "biome": {
     "errors": 13,

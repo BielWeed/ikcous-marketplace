@@ -316,6 +316,13 @@
     padding-bottom: var(--customer-pb-summary);
   }
 
+  /* Campo com foco na tela de finalizar não fica atrás da barra fixa: o que
+     rola é o <main>, e a borda dele fica sob a barra e a navegação. A mesma
+     reserva do padding vale como folga de rolagem. */
+  main:has(.pb-customer-summary) {
+    scroll-padding-bottom: var(--customer-pb-summary);
+  }
+
   /* A apresentação do resumo fica no CSS para não engrossar o JS da loja. */
   .checkout-values {
     @apply grid items-center gap-4;

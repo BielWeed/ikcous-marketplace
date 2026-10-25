@@ -113,8 +113,8 @@ function EtiquetaDoResultado({ resultado }: { readonly resultado: number }) {
     >
       <Icone aria-hidden="true" className="size-3.5 shrink-0" />
       <span className="min-w-0">
-        <Dinheiro valor={resultado} comSinal className="whitespace-nowrap" /> no
-        período
+        Entrou menos saiu no período:{" "}
+        <Dinheiro valor={resultado} comSinal className="whitespace-nowrap" />
       </span>
     </p>
   );

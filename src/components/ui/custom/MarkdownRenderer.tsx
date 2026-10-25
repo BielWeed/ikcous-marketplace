@@ -26,6 +26,33 @@ const ehItemDeLista = (linha: string) => /^[*-]\s+/.test(linha);
 const ehSeparador = (linha: string) =>
   /^\s*(-{3,}|_{3,}|\*{3,})\s*$/.test(linha);
 
+const ehTituloEmNegrito = (linha: string) =>
+  /^\*\*[^*]+\*\*:?\s*$/.test(linha.trim());
+
+function renderLista(itens: string[], chave: number) {
+  return (
+    <ul
+      key={chave}
+      className={cn(
+        "list-disc space-y-1.5 pl-5 marker:text-zinc-400",
+        "lg:pl-6",
+      )}
+    >
+      {itens.map((line, lineIdx) => (
+        <li
+          key={lineIdx}
+          className={cn(
+            "text-sm leading-relaxed text-gray-600",
+            "lg:text-base",
+          )}
+        >
+          {processInline(line.replace(/^[*-]\s+/, ""))}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function MarkdownRenderer({
   content,
   className = "",
@@ -60,26 +87,32 @@ export function MarkdownRenderer({
         // <ul> com marcador; linha solta no meio de texto segue parágrafo.
         const naoVazias = lines.filter((l) => l.trim() !== "");
         if (naoVazias.length > 0 && naoVazias.every(ehItemDeLista)) {
+          return renderLista(naoVazias, i);
+        }
+
+        // Lista colada numa linha de título em negrito, sem linha em branco
+        // (título em negrito seguido de "* Tema: …"): o título vira parágrafo e
+        // o resto vira lista. Só esse caso — "texto comum" seguido de "* item"
+        // segue parágrafo.
+        const [primeira, ...resto] = naoVazias;
+        if (
+          primeira !== undefined &&
+          ehTituloEmNegrito(primeira) &&
+          resto.length > 0 &&
+          resto.every(ehItemDeLista)
+        ) {
           return (
-            <ul
-              key={i}
-              className={cn(
-                "list-disc space-y-1.5 pl-5 marker:text-zinc-400",
-                "lg:pl-6",
-              )}
-            >
-              {naoVazias.map((line, lineIdx) => (
-                <li
-                  key={lineIdx}
-                  className={cn(
-                    "text-sm leading-relaxed text-gray-600",
-                    "lg:text-base",
-                  )}
-                >
-                  {processInline(line.replace(/^[*-]\s+/, ""))}
-                </li>
-              ))}
-            </ul>
+            <React.Fragment key={i}>
+              <p
+                className={cn(
+                  "text-sm leading-relaxed text-gray-600",
+                  "lg:text-base",
+                )}
+              >
+                {processInline(primeira)}
+              </p>
+              {renderLista(resto, i)}
+            </React.Fragment>
           );
         }
 

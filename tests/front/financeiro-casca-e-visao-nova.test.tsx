@@ -358,7 +358,9 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       expect(etiqueta.getAttribute("data-resultado-do-periodo")).toBe(
         "positivo",
       );
-      expect(normalizar(etiqueta.textContent)).toBe("+R$ 453,88 no período");
+      expect(normalizar(etiqueta.textContent)).toBe(
+        "Entrou menos saiu no período: +R$ 453,88",
+      );
       expect([...etiqueta.classList]).toEqual(
         expect.arrayContaining(["text-emerald-400", "bg-emerald-400/10"]),
       );
@@ -378,7 +380,9 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       expect(etiqueta.getAttribute("data-resultado-do-periodo")).toBe(
         "negativo",
       );
-      expect(normalizar(etiqueta.textContent)).toBe("−R$ 120,50 no período");
+      expect(normalizar(etiqueta.textContent)).toBe(
+        "Entrou menos saiu no período: −R$ 120,50",
+      );
       expect([...etiqueta.classList]).toEqual(
         expect.arrayContaining(["text-red-400", "bg-red-400/10"]),
       );
@@ -395,7 +399,9 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
         "[data-resultado-do-periodo]",
       )!;
       expect(etiqueta.getAttribute("data-resultado-do-periodo")).toBe("neutro");
-      expect(normalizar(etiqueta.textContent)).toBe("R$ 0,00 no período");
+      expect(normalizar(etiqueta.textContent)).toBe(
+        "Entrou menos saiu no período: R$ 0,00",
+      );
       expect(etiqueta.classList.contains("text-zinc-400")).toBe(true);
       expect(etiqueta.className).not.toMatch(/emerald|red-/);
     });
