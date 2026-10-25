@@ -1,4 +1,12 @@
 {
+  "1.5.71": {
+    "titulo": "Frete calculado com o peso real em qualquer caso",
+    "novidades": [],
+    "correcoes": [
+      "Frete: o cálculo agora encontra o produto pelo código mesmo se ele chegar escrito de outro jeito (letras maiúsculas ou sem hifens). Antes, nesse caso o frete saía como se o pacote pesasse 0,3 kg, e a loja pagava a diferença na etiqueta. Para quem compra pelo app nada muda. Pedido com o código escrito de outro jeito passa a ser recusado e a cotação é refeita."
+    ],
+    "melhorias": []
+  },
   "1.5.70": {
     "titulo": "Desfazer no carrinho e aviso de data antiga no Caixa",
     "novidades": [],

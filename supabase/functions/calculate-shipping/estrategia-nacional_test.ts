@@ -118,6 +118,16 @@ Deno.test("subtotalDoCarrinho: price_override da variação vence preco_venda; n
     assertEquals(subtotalDoCarrinho(overrideNulo, PRODUTOS, VARIANTES), 59.9 * 3)
 })
 
+Deno.test("subtotalDoCarrinho: id do produto e da variação em MAIÚSCULAS ou sem hífens acha o cadastro (uuid do banco é minúsculo)", () => {
+    const P = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+    const V = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+    const produtos = new Map([[P, { id: P, preco_venda: 100 }]])
+    const variantes = new Map([[V, { id: V, product_id: P, price_override: 80 }]])
+    assertEquals(subtotalDoCarrinho([{ product: { id: P }, variantId: V, quantity: 2 }], produtos, variantes), 160)
+    assertEquals(subtotalDoCarrinho([{ product: { id: P.toUpperCase() }, variantId: V.toUpperCase(), quantity: 2 }], produtos, variantes), 160)
+    assertEquals(subtotalDoCarrinho([{ productId: P.replaceAll("-", ""), quantity: 1 }], produtos, variantes), 100)
+})
+
 Deno.test("subtotalDoCarrinho: carrinho vazio → 0; produto desconhecido não entra na soma", () => {
     assertEquals(subtotalDoCarrinho([], PRODUTOS, VARIANTES), 0)
     assertEquals(subtotalDoCarrinho([{ product: { id: "fantasma" }, quantity: 5 }], PRODUTOS, VARIANTES), 0)

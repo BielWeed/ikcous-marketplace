@@ -272,6 +272,26 @@ Deno.test("ME: preço efetivo = custom_price (regra da conta), prazo = custom_de
     assertEquals(porId.get("melhor-envio-31")?.price, 10.49)
 })
 
+Deno.test("id em MAIÚSCULAS no carrinho: o handler busca os ids em minúsculas, cota com o peso do BANCO e grava o cart_hash em minúsculas", async () => {
+    const P = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+    const V = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+    const banco = multi(["melhor_envio", "superfrete"], [], {
+        produtos: [{ ...PRODUTO_P1, id: P, peso_kg: 12, largura_cm: 40, altura_cm: 30, comprimento_cm: 60 }],
+        variantes: [{ id: V, product_id: P, price_override: 80 }],
+    })
+    const maiusculo = [{ product: { id: P.toUpperCase(), price: 1 }, variantId: V.toUpperCase(), quantity: 1 }]
+    const { chamadas, registro } = await rodar(cotacao({ cart: maiusculo }), { banco })
+    // (a) o banco é consultado com a forma canônica
+    assertEquals(registro.filtrosIn.filter((f) => f.tabela === "produtos"), [{ tabela: "produtos", coluna: "id", valores: [P] }])
+    assertEquals(registro.filtrosIn.filter((f) => f.tabela === "product_variants"), [{ tabela: "product_variants", coluna: "id", valores: [V] }])
+    // (b) peso e valor reais, não o pacote padrão de 0,3 kg
+    assertEquals(corpoDe(chamadasPara(chamadas, SF)[0]).products, [{ quantity: 1, weight: 12, height: 30, width: 40, length: 60 }])
+    assertEquals(corpoDe(chamadasPara(chamadas, ME)[0]).products[0].weight, 12)
+    assertEquals(corpoDe(chamadasPara(chamadas, ME)[0]).products[0].insurance_value, 80)
+    // (c) o cart_hash gravado é o canônico: a RPC (texto exato) recusa pedido com id em maiúsculas
+    assertEquals(registro.upsertsCache[0].linha.cart_hash, `${P}:${V}:1`)
+})
+
 Deno.test("preço do banco AUSENTE: ME e Frenet falham FECHADO (nem chamam), a SF (sem seguro) cota com os padrões de medida", async () => {
     const { resposta, corpo, chamadas } = await rodar(cotacao({ cart: [{ product: { id: "p-sumiu", price: 999 }, quantity: 1 }] }), {
         banco: multi(["melhor_envio", "superfrete", "frenet"]),
