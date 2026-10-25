@@ -3115,8 +3115,16 @@ export function CheckoutViewDaConta({
     [setSelectedAddressId],
   );
 
+  // ENDEREÇO ESCOLHIDO QUE SAIU DA LISTA (caça 4, C3): apagado em outra tela
+  // ou aparelho, o id continuava no CartContext — a tela e o frete já usavam o
+  // principal (`enderecoDeEntregaEfetivo`), mas o pedido saía com o id velho e
+  // o servidor o recusava. Id que não está na lista (já carregada: lista vazia
+  // é "ainda não sei", nunca "apagado") cede à escolha automática.
   useEffect(() => {
-    if (addresses.length > 0 && !selectedAddressId) {
+    if (addresses.length === 0) return;
+    const escolhaValida =
+      !!selectedAddressId && addresses.some((a) => a.id === selectedAddressId);
+    if (!escolhaValida) {
       const defaultAddr = addresses.find((a) => a.is_default) || addresses[0];
       handleSelectAddress(defaultAddr);
     }
@@ -4188,7 +4196,10 @@ export function CheckoutViewDaConta({
             (atual.quantity === item.quantity ||
               (pedido === pedidoRestaurado && atual.quantity <= item.quantity))
           ) {
-            removeFromCart(item.product.id, chaveDaLinha(item) || undefined);
+            // Conclusão de compra: sem o aviso por cima da tela de sucesso.
+            removeFromCart(item.product.id, chaveDaLinha(item) || undefined, {
+              silencioso: true,
+            });
             itensDoPedidoParaRestaurarRef.current.push(atual);
           }
         }

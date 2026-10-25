@@ -324,7 +324,9 @@ describe("CheckoutView — resposta atrasada, centavos e reserva por método", (
     await act(async () => resposta.resolver({ id: "ped-777" }));
     expect(mockCart.map((linha) => linha.product.id)).toEqual(["novo"]);
     expect(limparCarrinho).not.toHaveBeenCalled();
-    expect(removerDoCarrinho).toHaveBeenCalledWith("prod-1", undefined);
+    expect(removerDoCarrinho).toHaveBeenCalledWith("prod-1", undefined, {
+      silencioso: true,
+    });
   });
 
   it.each(["quantidade", "variacao"])(
