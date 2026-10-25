@@ -293,7 +293,12 @@ describe("CheckoutView — endereço escolhido que foi apagado", () => {
     lista.atual = [];
     await desenhar();
     await esperar(50);
-    lista.atual = [endereco("addr-1", "01310-100", true)];
+    // Quando a lista volta, o PRINCIPAL já é outro: se a lista vazia tivesse
+    // apagado a escolha, o efeito assumiria esse principal em vez do addr-1.
+    lista.atual = [
+      endereco("addr-outro", "30100-000", true),
+      endereco("addr-1", "01310-100", false),
+    ];
     await desenhar();
     await esperar(50);
 

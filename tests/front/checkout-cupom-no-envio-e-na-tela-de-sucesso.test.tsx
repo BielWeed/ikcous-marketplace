@@ -16,6 +16,14 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+/** Os props que o React guardou no nó: o handler real, mesmo com `disabled`. */
+function propsDoReact(el: Element): { onClick?: () => void } {
+  const entrada = Object.entries(el).find(([k]) =>
+    k.startsWith("__reactProps$"),
+  );
+  return (entrada?.[1] ?? {}) as { onClick?: () => void };
+}
+
 const createOrder = vi.fn();
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
@@ -106,8 +114,18 @@ vi.mock("@/hooks/useCart", async () => {
   };
 });
 
-const { mockValidateCoupon } = vi.hoisted(() => ({
+const { mockValidateCoupon, cuponsDaLista } = vi.hoisted(() => ({
   mockValidateCoupon: vi.fn(),
+  cuponsDaLista: { atual: [] as unknown[] },
+}));
+// A lista de cartões do checkout: vazia na maioria dos testes; um cartão
+// tocável só onde o teste precisa chamar o "Aplicar" do cartão por fora.
+vi.mock("@/hooks/useCuponsDoCheckout", () => ({
+  useCuponsDoCheckout: () => ({
+    cupons: cuponsDaLista.atual,
+    situacao: "pronto",
+    tentarDeNovo: vi.fn(),
+  }),
 }));
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: mockValidateCoupon }),
@@ -257,6 +275,7 @@ describe("CheckoutView — cupom no envio e na tela de sucesso", () => {
           : { valid: false, message: "Compra mínima de R$ 50,00" },
     );
     mockConfig.enableCoupons = true;
+    cuponsDaLista.atual = [];
     flagPagamentoOnline = false;
     globalThis.sessionStorage.clear();
     const armazem = new Map<string, string>();
@@ -374,12 +393,7 @@ describe("CheckoutView — cupom no envio e na tela de sucesso", () => {
 
     // Quem chama o handler por fora do botão apagado (o `disabled` do DOM só
     // barra o clique) também é barrado: o handler capturado dos props do React.
-    const chaveProps = Object.keys(botaoRemoverCupom()!).find((k) =>
-      k.startsWith("__reactProps$"),
-    )!;
-    const props = (
-      botaoRemoverCupom() as unknown as Record<string, { onClick?: () => void }>
-    )[chaveProps];
+    const props = propsDoReact(botaoRemoverCupom()!);
     expect(typeof props?.onClick).toBe("function");
     await act(async () => {
       props.onClick!();
@@ -427,6 +441,51 @@ describe("CheckoutView — cupom no envio e na tela de sucesso", () => {
         .dispatchEvent(
           new Event("submit", { bubbles: true, cancelable: true }),
         );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await esperar(50);
+
+    expect(mockValidateCoupon).not.toHaveBeenCalled();
+    expect(cupomAplicadoNaTela()).toBeNull();
+  });
+
+  it("C4: com o pedido sendo enviado, o cartão de cupom da lista chamado por fora do botão apagado também é barrado", async () => {
+    cuponsDaLista.atual = [
+      {
+        codigo: "DEZ",
+        tipo: "fixed",
+        valor: 10,
+        minimo: 0,
+        validoAte: null,
+        exclusivo: false,
+        aplica: true,
+        falta: 0,
+        desconto: 10,
+      },
+    ];
+    createOrder.mockReturnValue(new Promise(() => {}));
+    await montar();
+    await preencherIdentificacao();
+
+    await act(async () => {
+      botaoFinalizar()!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    mockValidateCoupon.mockClear();
+
+    const cartao = document.body.querySelector(
+      'button[aria-label="Aplicar o cupom DEZ"]',
+    ) as HTMLButtonElement;
+    expect(cartao).not.toBeNull();
+    expect(cartao.disabled).toBe(true);
+    // O handler real do cartão (props do React), como se o toque passasse
+    // entre o clique no Finalizar e o botão ficar apagado.
+    const props = propsDoReact(cartao);
+    expect(typeof props.onClick).toBe("function");
+    await act(async () => {
+      props.onClick!();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     await esperar(50);
