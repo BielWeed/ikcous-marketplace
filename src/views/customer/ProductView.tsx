@@ -409,12 +409,24 @@ export const ProductView = React.memo(function ProductView({
   }, [recsVisible, recommendations, prefetchImage]);
 
   // Calculate average rating and count on the fly based on fetched reviews, with fallbacks from mapped product view
+  // Caça 4 (V4): quem está logado também lê a avaliação AINDA NÃO APROVADA
+  // (a do próprio autor e, para quem administra, todas). Ela aparece na lista
+  // com o selo "Em análise", mas não entra na nota, na contagem nem nas
+  // barras. Sem `status` = publicada (vitrine pública, avaliações antigas).
+  const avaliacoesPublicadas = reviews.filter(
+    (r) => (r.status ?? "publicada") === "publicada",
+  );
   const reviewCount =
-    reviews.length > 0 ? reviews.length : (product.reviewCount ?? 0);
-  const averageRating =
     reviews.length > 0
-      ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
-      : (product.rating ?? 5);
+      ? avaliacoesPublicadas.length
+      : (product.reviewCount ?? 0);
+  const averageRating =
+    avaliacoesPublicadas.length > 0
+      ? avaliacoesPublicadas.reduce((acc, r) => acc + r.rating, 0) /
+        avaliacoesPublicadas.length
+      : reviews.length > 0
+        ? 0
+        : (product.rating ?? 5);
 
   const { fileiras, variante } = fileirasDeVariacao(
     product.variants,
@@ -1403,69 +1415,71 @@ export const ProductView = React.memo(function ProductView({
                   ) : (
                     <>
                       {/* Rating Distribution Chart */}
-                      <div className="group relative mb-6 overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 text-white shadow-xl">
-                        {/* Subtle blur highlights */}
-                        <div className="absolute right-0 top-0 size-48 -translate-y-1/2 translate-x-1/2 rounded-full bg-amber-500/10 blur-[60px]" />
+                      {avaliacoesPublicadas.length > 0 && (
+                        <div className="group relative mb-6 overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 text-white shadow-xl">
+                          {/* Subtle blur highlights */}
+                          <div className="absolute right-0 top-0 size-48 -translate-y-1/2 translate-x-1/2 rounded-full bg-amber-500/10 blur-[60px]" />
 
-                        <div className="relative z-10 flex flex-col items-center justify-between gap-6 md:flex-row md:gap-8">
-                          {/* Left Panel */}
-                          <div className="flex flex-col items-center text-center md:items-start md:text-left">
-                            <div className="flex items-baseline justify-center gap-1.5 md:justify-start">
-                              <span className="bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-5xl font-extrabold tracking-tighter text-transparent">
-                                {averageRating.toFixed(1)}
-                              </span>
-                              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                                / 5
+                          <div className="relative z-10 flex flex-col items-center justify-between gap-6 md:flex-row md:gap-8">
+                            {/* Left Panel */}
+                            <div className="flex flex-col items-center text-center md:items-start md:text-left">
+                              <div className="flex items-baseline justify-center gap-1.5 md:justify-start">
+                                <span className="bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-5xl font-extrabold tracking-tighter text-transparent">
+                                  {averageRating.toFixed(1)}
+                                </span>
+                                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                                  / 5
+                                </span>
+                              </div>
+                              <div className="mt-1.5">
+                                <StarRating
+                                  rating={averageRating}
+                                  size={14}
+                                  readonly
+                                />
+                              </div>
+                              <span className="mt-4 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                                Baseado em {reviewCount}{" "}
+                                {reviewCount === 1
+                                  ? "experiência"
+                                  : "experiências"}
                               </span>
                             </div>
-                            <div className="mt-1.5">
-                              <StarRating
-                                rating={averageRating}
-                                size={14}
-                                readonly
-                              />
-                            </div>
-                            <span className="mt-4 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                              Baseado em {reviewCount}{" "}
-                              {reviewCount === 1
-                                ? "experiência"
-                                : "experiências"}
-                            </span>
-                          </div>
 
-                          {/* Right Panel: Bars */}
-                          <div className="w-full flex-1 space-y-2 md:border-l md:border-zinc-800 md:pl-6">
-                            {[5, 4, 3, 2, 1].map((star) => {
-                              const count = reviews.filter(
-                                (r) => r.rating === star,
-                              ).length;
-                              const percentage =
-                                reviewCount > 0
-                                  ? (count / reviewCount) * 100
-                                  : 0;
-                              return (
-                                <div
-                                  key={star}
-                                  className="group/row flex items-center gap-3.5"
-                                >
-                                  <span className="w-3 text-[10px] font-bold text-zinc-500 transition-colors group-hover/row:text-white">
-                                    {star}
-                                  </span>
-                                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60 p-px">
-                                    <div
-                                      className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)] transition-all duration-700 ease-out"
-                                      style={{ width: `${percentage}%` }}
-                                    />
+                            {/* Right Panel: Bars */}
+                            <div className="w-full flex-1 space-y-2 md:border-l md:border-zinc-800 md:pl-6">
+                              {[5, 4, 3, 2, 1].map((star) => {
+                                const count = avaliacoesPublicadas.filter(
+                                  (r) => r.rating === star,
+                                ).length;
+                                const percentage =
+                                  reviewCount > 0
+                                    ? (count / reviewCount) * 100
+                                    : 0;
+                                return (
+                                  <div
+                                    key={star}
+                                    className="group/row flex items-center gap-3.5"
+                                  >
+                                    <span className="w-3 text-[10px] font-bold text-zinc-500 transition-colors group-hover/row:text-white">
+                                      {star}
+                                    </span>
+                                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60 p-px">
+                                      <div
+                                        className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)] transition-all duration-700 ease-out"
+                                        style={{ width: `${percentage}%` }}
+                                      />
+                                    </div>
+                                    <span className="w-8 text-right text-[10px] font-bold text-zinc-600 transition-colors group-hover/row:text-zinc-300">
+                                      {count}
+                                    </span>
                                   </div>
-                                  <span className="w-8 text-right text-[10px] font-bold text-zinc-600 transition-colors group-hover/row:text-zinc-300">
-                                    {count}
-                                  </span>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                       <div className="space-y-4">
                         {reviews.map((review) => (
                           <ReviewCard

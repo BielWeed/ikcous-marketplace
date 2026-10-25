@@ -133,6 +133,14 @@ export function ReviewCard({
                   Verificado
                 </span>
               )}
+              {/* Caça 4 (V4): a avaliação ainda não aprovada só aparece para o
+              autor e para quem administra -- o selo diz que ela ainda não é
+              pública e não conta na nota. */}
+              {review.status === "pendente" && (
+                <span className="flex items-center gap-0.5 rounded-md border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">
+                  Em análise
+                </span>
+              )}
             </div>
             <div className="mt-0.5">
               <StarRating rating={review.rating} size={11} readonly />
