@@ -282,6 +282,7 @@ export function ProductQA({
                     <Avatar className="size-9 border border-zinc-200/50 shadow-sm transition-transform duration-300 hover:scale-105">
                       <AvatarImage
                         src={q.customerAvatar || undefined}
+                        alt=""
                         className="object-cover"
                       />
                       <AvatarFallback className="flex select-none items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-xs font-bold text-zinc-700">
