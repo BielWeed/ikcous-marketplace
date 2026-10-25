@@ -388,4 +388,96 @@ describe("Financeiro — Novo lançamento", () => {
       expect(aoSalvar).toHaveBeenCalledWith("Lançamento salvo.");
     });
   });
+
+  // A transferência com origem OU destino no Caixa tem a mesma regra do servidor:
+  // só entra na conferência do caixa aberto se a data for a de HOJE.
+  describe("aviso de transferência antiga com o Caixa da loja", () => {
+    const ONTEM = "2026-09-25";
+    const CHAVE = "conferência do caixa aberto";
+
+    const avisos = () =>
+      [...folha().querySelectorAll('[role="status"]')].filter((el) =>
+        (el.textContent ?? "").includes(CHAVE),
+      );
+
+    async function transferir(origem: string, destino: string, data: string) {
+      await clicar(botao("Transferência"));
+      await escolher("fin-lanc-conta", origem);
+      await escolher("fin-lanc-conta-destino", destino);
+      await mudarData("fin-lanc-realizacao", data);
+    }
+
+    it("aparece quando o Caixa é a origem, com o texto da transferência", async () => {
+      await transferir(CONTA_CAIXA_DA_LOJA, CONTA_BANCARIA, ONTEM);
+
+      expect(avisos()).toHaveLength(1);
+      expect(avisos().at(0)?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+        "Esta transferência com a conta Caixa não entra na conferência do caixa aberto. Se o dinheiro saiu ou entrou na gaveta hoje, use a data de hoje.",
+      );
+    });
+
+    it("aparece quando o Caixa é o destino", async () => {
+      await transferir(CONTA_BANCARIA, CONTA_CAIXA_DA_LOJA, ONTEM);
+
+      expect(avisos()).toHaveLength(1);
+    });
+
+    it("não aparece com a data de hoje", async () => {
+      await transferir(CONTA_CAIXA_DA_LOJA, CONTA_BANCARIA, HOJE);
+
+      expect(avisos()).toHaveLength(0);
+    });
+
+    it("não aparece sem o Caixa em nenhuma ponta", async () => {
+      await transferir(CONTA_BANCARIA, "", ONTEM);
+
+      expect(avisos()).toHaveLength(0);
+    });
+
+    it("não aparece com a data apagada", async () => {
+      await transferir(CONTA_CAIXA_DA_LOJA, CONTA_BANCARIA, "");
+
+      expect(avisos()).toHaveLength(0);
+    });
+
+    it("voltar para despesa troca o texto: o da transferência some", async () => {
+      await transferir(CONTA_CAIXA_DA_LOJA, CONTA_BANCARIA, ONTEM);
+      await clicar(botao("Despesa"));
+
+      // Despesa no Caixa com data de ontem: aviso de despesa, nunca o da transferência.
+      expect(texto()).not.toContain("Esta transferência com a conta Caixa");
+      expect(avisos()).toHaveLength(1);
+    });
+
+    it("não trava o salvar e manda a data passada igual ao de antes", async () => {
+      rpcFalso.mockResolvedValue({ data: { ids: ["t"] }, error: null });
+
+      await digitar("fin-lanc-valor", "10000");
+      await digitar("fin-lanc-descricao", "Depósito do caixa");
+      await transferir(CONTA_CAIXA_DA_LOJA, CONTA_BANCARIA, ONTEM);
+      expect(avisos()).toHaveLength(1);
+
+      const salvar = botao("Salvar lançamento");
+      expect(salvar.disabled).toBe(false);
+      await clicar(salvar);
+
+      expect(rpcFalso).toHaveBeenCalledTimes(1);
+      expect(rpcFalso).toHaveBeenCalledWith("fin_lancamento_salvar", {
+        p: {
+          chave_idempotencia: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+          ),
+          tipo: "transferencia",
+          valor: 100,
+          conta_id: CONTA_CAIXA_DA_LOJA,
+          conta_destino_id: CONTA_BANCARIA,
+          descricao: "Depósito do caixa",
+          data_competencia: HOJE,
+          status: "realizado",
+          data_realizacao: ONTEM,
+        },
+      });
+      expect(aoSalvar).toHaveBeenCalledWith("Lançamento salvo.");
+    });
+  });
 });

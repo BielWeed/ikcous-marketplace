@@ -122,15 +122,24 @@ export function NovoLancamentoFolha({
   const transferencia = form.tipo === "transferencia";
   const previsto = !transferencia && form.situacao === "previsto";
   const receita = form.tipo === "entrada";
-  // O servidor só liga ao caixa aberto o que foi pago/recebido HOJE na conta Caixa;
-  // com data anterior o valor mexe no saldo da conta, mas fica fora da conferência.
-  // Só avisa (lançar coisa antiga é legítimo); `ehDataIso` ignora o campo apagado.
-  const foraDaConferenciaDoCaixa =
-    !transferencia &&
+  // O servidor só liga ao caixa aberto o que foi pago/recebido HOJE numa conta Caixa
+  // (na transferência, em qualquer das duas pontas); com data anterior o valor mexe
+  // no saldo, mas fica fora da conferência. Só avisa (lançar coisa antiga é legítimo);
+  // `ehDataIso` ignora o campo apagado.
+  const dataAnteriorAHoje =
     form.situacao === "realizado" &&
-    form.contaId === CONTA_CAIXA_DA_LOJA &&
     ehDataIso(form.dataRealizacao) &&
     form.dataRealizacao < hoje;
+  const avisoDaConferenciaDoCaixa = !dataAnteriorAHoje
+    ? null
+    : transferencia
+      ? form.contaId === CONTA_CAIXA_DA_LOJA ||
+        form.contaDestinoId === CONTA_CAIXA_DA_LOJA
+        ? "Esta transferência com a conta Caixa não entra na conferência do caixa aberto. Se o dinheiro saiu ou entrou na gaveta hoje, use a data de hoje."
+        : null
+      : form.contaId === CONTA_CAIXA_DA_LOJA
+        ? "Este valor não entra na conferência do caixa aberto. Se o dinheiro saiu ou entrou na gaveta hoje, use a data de hoje."
+        : null;
 
   const categoriasDoTipo = useMemo(
     () =>
@@ -528,7 +537,7 @@ export function NovoLancamentoFolha({
             escolhida.
           </p>
         )}
-        {foraDaConferenciaDoCaixa ? (
+        {avisoDaConferenciaDoCaixa ? (
           <p
             role="status"
             className={cn(
@@ -540,10 +549,7 @@ export function NovoLancamentoFolha({
               aria-hidden="true"
               className="mt-0.5 size-4 shrink-0"
             />
-            <span>
-              Este valor não entra na conferência do caixa aberto. Se o dinheiro
-              saiu ou entrou na gaveta hoje, use a data de hoje.
-            </span>
+            <span>{avisoDaConferenciaDoCaixa}</span>
           </p>
         ) : null}
 
