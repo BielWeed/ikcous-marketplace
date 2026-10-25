@@ -42,7 +42,16 @@ import { z } from "zod";
 const MAX_ITEM_QUANTITY = 500; // Nuclear deterrent against inflation
 
 const cartItemSchema = z.object({
-  product: z.custom<Product>((v) => typeof v === "object" && v !== null),
+  // K2 (caça 4): sem `id` de produto a linha sumia da lista (a tela só desenha
+  // linhas com id) mas seguia no total e na contagem -- a cliente pagaria por
+  // item que não vê. Linha assim é descartada ao carregar.
+  product: z.custom<Product>(
+    (v) =>
+      typeof v === "object" &&
+      v !== null &&
+      typeof (v as { id?: unknown }).id === "string" &&
+      (v as { id: string }).id.length > 0,
+  ),
   quantity: z.number().int().positive().max(MAX_ITEM_QUANTITY),
   variantId: z.string().optional().nullable(),
   // Achado da revisão (17/08/2026): sem esta chave o Zod descarta
