@@ -190,6 +190,9 @@ export interface CuponsDoCheckoutProps {
   readonly couponError: string;
   /** Código em validação agora (toque em "Aplicar"), ou null. */
   readonly aplicando: string | null;
+  /** O pedido está sendo enviado: o desconto já foi para o servidor, então
+   *  aplicar ou tirar cupom agora só mudaria a tela. Trava os dois. */
+  readonly emEnvio?: boolean;
   readonly onApply: (code: string) => void;
   readonly onRemove: () => void;
 }
@@ -201,6 +204,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
   appliedCoupon,
   couponError,
   aplicando,
+  emEnvio = false,
   onApply,
   onRemove,
 }: CuponsDoCheckoutProps) {
@@ -273,6 +277,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
             onApply={onApply}
             onRemove={onRemove}
             appliedCoupon={appliedCoupon}
+            travado={emEnvio}
             destaque={
               cupomAplicadoDaLista
                 ? destaqueDoCupom(cupomAplicadoDaLista)
@@ -334,7 +339,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
                   cupom={cupom}
                   melhor={cupom.codigo === melhor}
                   aplicandoEste={aplicando === cupom.codigo}
-                  travado={aplicando !== null}
+                  travado={aplicando !== null || emEnvio}
                   onAplicar={onApply}
                 />
               ))}
@@ -390,6 +395,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
                 appliedCoupon={null}
                 error={couponError}
                 aplicando={aplicando !== null}
+                travado={emEnvio}
               />
             </div>
           </div>
