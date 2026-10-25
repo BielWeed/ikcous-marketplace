@@ -28,6 +28,7 @@ import {
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import {
+  CONTA_BANCARIA,
   CONTA_CAIXA_DA_LOJA,
   type CaixaAtual,
   type ContaFinanceira,
@@ -53,12 +54,15 @@ function RodapeDeAcao({
   rotulo,
   rotuloEnviando,
   enviando,
+  bloqueado = false,
   aoConfirmar,
 }: {
   readonly erro: string | null;
   readonly rotulo: string;
   readonly rotuloEnviando: string;
   readonly enviando: boolean;
+  /** Falta algo que a tela não resolve sozinha: o botão não registra. */
+  readonly bloqueado?: boolean;
   readonly aoConfirmar: () => void;
 }) {
   return (
@@ -66,7 +70,7 @@ function RodapeDeAcao({
       {erro ? <EstadoDeErro mensagem={erro} /> : null}
       <button
         type="button"
-        disabled={enviando}
+        disabled={enviando || bloqueado}
         onClick={aoConfirmar}
         className={CLASSE_BOTAO_PRIMARIO}
       >
@@ -300,7 +304,8 @@ export function MovimentarCaixaFolha({
   const sangria = movimento === "sangria";
   const [valor, setValor] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [contrapartida, setContrapartida] = useState("");
+  // null = a lojista ainda não mexeu: vale o padrão (Conta bancária).
+  const [contaEscolhida, setContaEscolhida] = useState<string | null>(null);
   const chave = useRef<string | null>(null);
   const [tentou, setTentou] = useState(false);
   function esquecer() {
@@ -315,11 +320,23 @@ export function MovimentarCaixaFolha({
     },
   );
 
+  // O servidor, sem conta, lançaria a contrapartida na Conta bancária: a tela
+  // não oferece "nenhuma" e mostra de antemão para onde o dinheiro vai.
+  const outrasContas = contas.filter((c) => c.ativa && c.id !== contaDoCaixa);
+  const contaPadrao = outrasContas.some((c) => c.id === CONTA_BANCARIA)
+    ? CONTA_BANCARIA
+    : "";
+  const contrapartida = contaEscolhida ?? contaPadrao;
+  const contrapartidaValida = outrasContas.some((c) => c.id === contrapartida);
+  const semContaDeDestino = outrasContas.length === 0;
+
   useEffect(() => {
     aoMudarSujo(
-      valor !== "" || descricao.trim() !== "" || contrapartida !== "",
+      valor !== "" ||
+        descricao.trim() !== "" ||
+        (contaEscolhida !== null && contaEscolhida !== contaPadrao),
     );
-  }, [valor, descricao, contrapartida, aoMudarSujo]);
+  }, [valor, descricao, contaEscolhida, contaPadrao, aoMudarSujo]);
 
   const numero = parseValorBR(valor);
   const erroValor =
@@ -333,11 +350,16 @@ export function MovimentarCaixaFolha({
     numero !== null &&
     Math.round(numero * 100) > Math.round(esperado * 100);
 
-  const outrasContas = contas.filter((c) => c.ativa && c.id !== contaDoCaixa);
+  const erroConta = semContaDeDestino
+    ? `Não há outra conta ativa ${sangria ? "para receber" : "de onde tirar"} esse dinheiro. Crie ou reative uma conta em Contas e categorias antes de registrar.`
+    : tentou && !contrapartidaValida
+      ? `Escolha a conta de ${sangria ? "destino" : "origem"}.`
+      : undefined;
 
   function confirmar() {
     setTentou(true);
     if (numero === null || numero <= 0 || numero > VALOR_MAXIMO) return;
+    if (!contrapartidaValida) return;
     void enviar(async () => {
       // Campos podem mudar, identidade não: o servidor devolve o original
       // ou recusa a divergência, sem gravar uma segunda transferência.
@@ -350,7 +372,7 @@ export function MovimentarCaixaFolha({
         descricao:
           descricao.trim() ||
           (sangria ? "Sangria do caixa" : "Suprimento do caixa"),
-        contaContrapartida: contrapartida || null,
+        contaContrapartida: contrapartida,
       };
       const resultado = await movimentarCaixa(enviada);
       esquecer();
@@ -386,7 +408,7 @@ export function MovimentarCaixaFolha({
             rotulo: "Contrapartida",
             texto:
               contas.find((c) => c.id === enviada.contaContrapartida)?.nome ??
-              "Nenhuma conta da loja",
+              "Conta da loja",
           },
         ],
       });
@@ -411,6 +433,7 @@ export function MovimentarCaixaFolha({
           rotulo={sangria ? "Registrar sangria" : "Registrar suprimento"}
           rotuloEnviando="Registrando…"
           enviando={enviando}
+          bloqueado={semContaDeDestino}
           aoConfirmar={confirmar}
         />
       }
@@ -468,18 +491,25 @@ export function MovimentarCaixaFolha({
         </Campo>
         <Campo
           id="fin-caixa-mov-conta"
-          rotulo={
-            sangria ? "Para onde foi (opcional)" : "De onde veio (opcional)"
+          rotulo={sangria ? "Para onde foi" : "De onde veio"}
+          erro={erroConta}
+          ajuda={
+            sangria
+              ? "Escolha a conta que recebeu o dinheiro. O valor muda de conta, sem virar despesa."
+              : "Escolha a conta de onde veio o dinheiro. O valor muda de conta, sem virar despesa."
           }
-          ajuda="Se saiu para outra conta da loja ou veio dela, escolha-a. O valor muda de conta, sem virar despesa."
         >
           <select
             id="fin-caixa-mov-conta"
             value={contrapartida}
-            onChange={(e) => setContrapartida(e.target.value)}
+            onChange={(e) => setContaEscolhida(e.target.value)}
             className={CLASSE_CAMPO}
           >
-            <option value="">Nenhuma conta da loja</option>
+            {contrapartidaValida || semContaDeDestino ? null : (
+              <option value="" disabled>
+                Escolha uma conta
+              </option>
+            )}
             {outrasContas.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nome}
