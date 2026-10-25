@@ -39,6 +39,12 @@ export interface TravaDeEnvio {
   tentarEntrar: () => boolean;
   /** Reabre a trava. Vai no `finally` de quem entrou, nunca antes. */
   liberar: () => void;
+  /**
+   * Só olha: há um envio em curso? Serve a quem NÃO vai enviar mas precisa
+   * saber (travar o cupom enquanto o pedido sai). Diferente de `isSubmitting`,
+   * que é estado do React e chega um render depois do toque.
+   */
+  estaFechada: () => boolean;
 }
 
 export function criarTravaDeEnvio(): TravaDeEnvio {
@@ -53,5 +59,6 @@ export function criarTravaDeEnvio(): TravaDeEnvio {
     liberar: () => {
       fechada = false;
     },
+    estaFechada: () => fechada,
   };
 }

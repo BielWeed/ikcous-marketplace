@@ -2382,8 +2382,13 @@ export function CheckoutViewDaConta({
   // ANTES DO PRIMEIRO RETURN (regra dos hooks — o eslint pegou a 1ª versão
   // deste efeito depois do return de carregamento).
   const codigoDoCupom = appliedCoupon?.code ?? null;
+  // COMPRA CONCLUÍDA NÃO CONFERE CUPOM (caça 4, C1): fechar o pedido esvazia o
+  // carrinho, e o subtotal 0 faria esta conferência recusar o cupom (mínimo)
+  // ou zerar o desconto — a tela de sucesso perdia o selo "Vantagem Ativa".
+  // O pedido já foi gravado com o desconto que valeu; não há o que conferir.
+  const compraConcluida = showSuccess || aguardandoPagamento || orderId !== "";
   useEffect(() => {
-    if (!codigoDoCupom) return;
+    if (!codigoDoCupom || compraConcluida) return;
     // A conta que PEDIU esta conferência: resposta que chega com outra conta
     // na tela é descartada, e o dono carimbado é quem de fato validou.
     const contaQueConferiu = contaRef.current;
@@ -2428,7 +2433,14 @@ export function CheckoutViewDaConta({
     return () => {
       vivo = false;
     };
-  }, [codigoDoCupom, subtotal, validateCoupon, isOffline, contaDoCheckout]);
+  }, [
+    codigoDoCupom,
+    subtotal,
+    validateCoupon,
+    isOffline,
+    contaDoCheckout,
+    compraConcluida,
+  ]);
   // `contaDoCheckout` nos deps: convidado que entra na conta com o cupom na
   // tela revalida para a conta nova.
   // `isOffline` nos deps é a pílula da re-revisão do PR #374 (ressalva 2):
@@ -3597,7 +3609,14 @@ export function CheckoutViewDaConta({
             : "Confira seus dados e entrega para finalizar"
     : null;
 
+  // CUPOM NÃO MUDA COM O PEDIDO SAINDO (caça 4, C4): o pedido leva o desconto
+  // do instante do toque em "Finalizar"; aplicar ou tirar cupom depois só
+  // mudaria a tela, não o que foi enviado. Olha a trava síncrona, não o estado
+  // (que chega um render depois do toque).
+  const envioEmCurso = () => travaDeEnvioRef.current.estaFechada();
+
   const handleRemoveCoupon = () => {
+    if (envioEmCurso()) return;
     // Quem remove o cupom escolhe: o do rascunho que esperava a conta não volta depois.
     cupomPendenteDoRascunhoRef.current = null;
     cupomConferidoRef.current = null;
@@ -3665,6 +3684,7 @@ export function CheckoutViewDaConta({
   };
 
   const handleApplyCoupon = async (code: string) => {
+    if (envioEmCurso()) return;
     // Toque duplo (ou toque em outro cartão) com uma validação em voo: nada.
     if (aplicacaoDoCupomEmVooRef.current) return;
     // Quem aplica um cupom escolhe: o do rascunho que esperava a conta não o troca depois.
@@ -6314,6 +6334,7 @@ export function CheckoutViewDaConta({
             appliedCoupon={appliedCoupon}
             couponError={couponError}
             aplicando={aplicandoCupom}
+            emEnvio={isSubmitting}
             onApply={handleApplyCoupon}
             onRemove={handleRemoveCoupon}
           />
