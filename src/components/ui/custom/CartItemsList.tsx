@@ -47,10 +47,12 @@ const CartItemCard = memo(function CartItemCard({
     item.product,
     item.variantId,
     item.outrasVariantIds,
+    // Linha sem produto (localStorage antigo) nao tira estoque de ninguem.
     cart.filter(
       (linha) =>
-        linha.product.id !== item.product.id ||
-        chaveDaLinha(linha) !== chaveDaLinha(item),
+        linha?.product &&
+        (linha.product.id !== item.product.id ||
+          chaveDaLinha(linha) !== chaveDaLinha(item)),
     ),
   );
 

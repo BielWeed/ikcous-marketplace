@@ -356,6 +356,7 @@ export function AdminFinanceiroView({
         return (
           <AbrirCaixaFolha
             contas={listaDeContas}
+            aoReconciliar={aoReconciliarCaixa}
             aoFechar={fecharFolha}
             aoSalvar={aoSalvar}
             aoMudarSujo={setSujo}

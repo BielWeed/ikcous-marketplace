@@ -1786,6 +1786,14 @@ export function ehDivergenciaDoCaixa(erro: unknown): boolean {
 }
 
 /**
+ * "Este caixa já está aberto." (23505 de `fin_caixa_abrir`): outro aparelho
+ * abriu antes. O caixa existe; quem tenta abrir precisa ver o caixa aberto.
+ */
+export function ehCaixaJaAberto(erro: unknown): boolean {
+  return codigoEMensagem(erro).codigo === "23505";
+}
+
+/**
  * Traduz a falha de uma RPC `fin_*`. As recusas de negócio das RPCs
  * (`RAISE EXCEPTION` com texto em português: "já existe um caixa aberto",
  * "lançamento realizado não se edita"…) chegam como P0001/22023 e são
