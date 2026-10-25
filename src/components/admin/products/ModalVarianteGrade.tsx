@@ -371,11 +371,19 @@ export function ModalVarianteGrade({
     if (jaEfetivouRef.current) return;
     // O estoque segurado em "Aplicar para todas" também preenche linhas ao
     // salvar: inválido avisa aqui, antes de qualquer linha nascer.
-    const erroDoEstoque = [
-      aplicarEstoque,
-      ...linhasEfetivas.map((linha) => linha.estoque),
-    ]
-      .map(erroDoEstoqueDaVariacao)
+    // O campo "Aplicar para todas" vem primeiro: se o erro está nele, o aviso
+    // diz QUAL campo é (a lojista não apertou Aplicar, então não sabe que o
+    // valor segurado ali também vale ao salvar).
+    const erroDoAplicar = erroDoEstoqueDaVariacao(aplicarEstoque);
+    if (erroDoAplicar) {
+      toast.error(erroDoAplicar, {
+        description:
+          'O erro está no campo de estoque de "Aplicar para todas". Corrija ou apague esse valor.',
+      });
+      return;
+    }
+    const erroDoEstoque = linhasEfetivas
+      .map((linha) => erroDoEstoqueDaVariacao(linha.estoque))
       .find((erro) => erro !== null);
     if (erroDoEstoque) {
       toast.error(erroDoEstoque);
