@@ -1,4 +1,14 @@
 {
+  "1.5.70": {
+    "titulo": "Desfazer no carrinho e aviso de data antiga no Caixa",
+    "novidades": [],
+    "correcoes": [
+      "Carrinho: ao tirar um produto pela lixeira, o aviso agora tem o botão \"Desfazer\" por 6 segundos. Ele devolve o produto com a mesma quantidade e a mesma escolha de opções, se ainda houver estoque. Se você já pôs o mesmo produto de novo ou trocou de conta, nada é devolvido.",
+      "Produto: ao tocar em \"Adicionar\" sem escolher a opção (cor, tamanho), a opção que falta fica em vermelho até você escolher.",
+      "Financeiro: ao lançar algo já pago na conta Caixa com data anterior a hoje (despesa, receita ou transferência), a tela avisa que o valor não entra na conferência do caixa aberto e sugere usar a data de hoje. O lançamento continua podendo ser salvo."
+    ],
+    "melhorias": []
+  },
   "1.5.69": {
     "titulo": "Caixa mais claro, finalização no celular e pequenos acertos",
     "novidades": [],
