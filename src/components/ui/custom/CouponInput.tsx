@@ -9,6 +9,9 @@ interface CouponInputProps {
   error?: string;
   /** Uma validação está em voo — o botão trava (toque duplo não valida duas vezes). */
   aplicando?: boolean;
+  /** O pedido está saindo: aplicar e remover ficam apagados (diferente de
+   *  `aplicando`, não escreve "Aplicando…"). */
+  travado?: boolean;
   /** O número grande do cupom aplicado ("10%", "R$ 15"), quando a lista o conhece. */
   destaque?: string;
 }
@@ -19,6 +22,7 @@ export const CouponInput = memo(function CouponInput({
   appliedCoupon,
   error,
   aplicando = false,
+  travado = false,
   destaque,
 }: CouponInputProps) {
   const [code, setCode] = useState("");
@@ -26,7 +30,7 @@ export const CouponInput = memo(function CouponInput({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (aplicando) return;
+    if (aplicando || travado) return;
     if (code.trim()) {
       onApply(code.trim().toUpperCase());
     }
@@ -76,8 +80,9 @@ export const CouponInput = memo(function CouponInput({
           <button
             type="button"
             onClick={onRemove}
+            disabled={travado}
             aria-label="Remover cupom"
-            className="-ml-2 min-h-11 rounded-lg px-2 text-sm font-semibold text-zinc-700 underline underline-offset-2 transition-colors hover:bg-zinc-100"
+            className="-ml-2 min-h-11 rounded-lg px-2 text-sm font-semibold text-zinc-700 underline underline-offset-2 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Remover
           </button>
@@ -138,7 +143,7 @@ export const CouponInput = memo(function CouponInput({
         />
         <button
           type="submit"
-          disabled={!code.trim() || aplicando}
+          disabled={!code.trim() || aplicando || travado}
           className="flex min-h-[44px] min-w-[70px] shrink-0 items-center justify-center rounded-lg bg-zinc-900 p-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
         >
           {aplicando ? "Aplicando…" : "Aplicar"}

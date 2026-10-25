@@ -421,9 +421,9 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     expect(banco.variacoes).toHaveLength(2);
     await salvar();
     expect(banco.chamadasRpc).toHaveLength(2);
-    expect(
-      banco.chamadasRpc[1].p_variantes.map((v: any) => v.id).sort(),
-    ).toEqual(["v-1", "v-gerada"]);
+    // A nova já tem o id real e nenhuma das duas foi mexida desde a releitura:
+    // nada de variação no segundo salvar (nem uma linha sem id, que duplicaria).
+    expect(banco.chamadasRpc[1].p_variantes).toEqual([]);
     expect(banco.variacoes).toHaveLength(2);
   });
 
@@ -478,9 +478,8 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     await salvar();
     expect(banco.chamadasRpc).toHaveLength(1);
     expect(banco.chamadasRpc[0].p_base_atualizado_em).toBeNull();
-    expect(banco.chamadasRpc[0].p_variantes[0]).not.toHaveProperty(
-      "stock_increment",
-    );
+    // A variação não foi mexida: não viaja, e o estoque dela (9) fica o do banco.
+    expect(banco.chamadasRpc[0].p_variantes).toEqual([]);
     expect(banco.produto.estoque).toBe(9);
     expect(banco.variacoes[0].stock_increment).toBe(9);
   });
@@ -574,7 +573,9 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     ).toBe("9");
     await salvar();
     expect(banco.produto.estoque).toBe(9);
-    expect(banco.filtros[1]).toEqual([["id", "p-1"]]);
+    // Depois da recusa a tela mostra o estoque atual (9); sem nada mudado, o
+    // segundo toque nem faz UPDATE (um UPDATE vazio não é pedido válido).
+    expect(banco.filtros).toHaveLength(1);
     expect(banco.toastError).toHaveBeenCalledTimes(1);
   });
 

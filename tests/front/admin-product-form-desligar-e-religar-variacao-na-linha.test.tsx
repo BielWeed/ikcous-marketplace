@@ -267,10 +267,8 @@ describe("AdminProductFormView — desligar e religar variação na linha", () =
       id: string;
       active: boolean;
     }>;
-    expect(enviadas.map((v) => [v.id, v.active])).toEqual([
-      ["v1", false],
-      ["v2", true],
-    ]);
+    // Só a que ela desligou vai (com active=false); a Azul não foi mexida.
+    expect(enviadas.map((v) => [v.id, v.active])).toEqual([["v1", false]]);
   });
 
   it("variação que já estava desligada ganha o botão Religar, não Desligar", async () => {

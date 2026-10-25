@@ -9,11 +9,15 @@ import {
   lerResultadoDoApagar,
   lerResultadoDoRenome,
   mensagemDaFalhaDeCategoria,
+  slugDaCategoria,
 } from "@/lib/gestao-de-categorias";
 import { supabase } from "@/lib/supabase";
 import type { Category } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+const MENSAGEM_CATEGORIA_JA_EXISTE =
+  "Já existe uma categoria com esse nome (ou muito parecido). Use a que já existe ou escolha outro nome.";
+
 // Module-level cache to persist data across component mounts
 let globalCategoriesCache: Category[] | null = null;
 let categoriesFetchPromise: Promise<Category[]> | null = null;
@@ -305,15 +309,6 @@ export function useCategories() {
     };
   }, [fetchCategories]);
 
-  const generateSlug = (name: string) => {
-    return name
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)+/g, "");
-  };
-
   const addCategory = useCallback(
     async (
       category: Omit<Category, "id" | "createdAt" | "slug">,
@@ -327,7 +322,7 @@ export function useCategories() {
         throw new ErroDeCategoria(reservado);
       }
       const tempId = `temp-${Date.now()}`;
-      const slug = generateSlug(category.name);
+      const slug = slugDaCategoria(category.name);
       const newCategory: Category = {
         id: tempId,
         name: category.name,
@@ -383,6 +378,12 @@ export function useCategories() {
           return reverted;
         });
         console.error("Error adding category:", error);
+        // Nome único e endereço único no banco: o 23505 quer dizer "já existe
+        // uma assim", e a lojista lê isso, não o erro cru.
+        if ((error as { code?: unknown } | null)?.code === "23505") {
+          if (!silent) toast.error(MENSAGEM_CATEGORIA_JA_EXISTE);
+          throw new ErroDeCategoria(MENSAGEM_CATEGORIA_JA_EXISTE, "23505");
+        }
         if (!silent) toast.error("Erro ao criar categoria");
         throw error;
       }

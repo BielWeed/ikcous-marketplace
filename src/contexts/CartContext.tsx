@@ -108,7 +108,13 @@ export interface CartActions {
   /** `variantId` aqui (e em `addToCart`/`updateQuantity`) é a CHAVE da linha:
    *  o id da variação, ou `idA~idB` no produto de duas escolhas separadas
    *  (`chaveDaVariacao`). Com uma escolha só é o id de sempre. */
-  removeFromCart: (productId: string, variantId?: string) => void;
+  removeFromCart: (
+    productId: string,
+    variantId?: string,
+    /** `silencioso`: tirada por conclusão de compra, sem o aviso "Produto
+     *  removido do carrinho" por cima da tela de sucesso. */
+    opcoes?: { silencioso?: boolean },
+  ) => void;
   updateQuantity: (
     productId: string,
     quantity: number,
@@ -1100,7 +1106,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const removeFromCart = useCallback(
-    (productId: string, variantIdInput?: string) => {
+    (
+      productId: string,
+      variantIdInput?: string,
+      opcoes?: { silencioso?: boolean },
+    ) => {
       const chave = normalizarChave(variantIdInput);
       // Record tombstone so offline merge doesn't resurrect this item
       const key = `${productId}-${chave}`;
@@ -1108,7 +1118,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       tombstones.set(key, { key, deletedAt: Date.now() });
       saveTombstones(tombstones);
       setCart((prev) => prev.filter((item) => chaveDoItem(item) !== key));
-      toast.info("Produto removido do carrinho");
+      if (!opcoes?.silencioso) toast.info("Produto removido do carrinho");
     },
     [],
   );

@@ -5,6 +5,11 @@ import {
   esquecerAvaliacoesGuardadas,
   esvaziarAvaliacoesEmMemoria,
 } from "@/lib/cache-de-avaliacoes";
+import {
+  ehLojistaPelaMarcaDoAparelho,
+  esquecerCofreDeQuemSaiu,
+  haMarcaDeLojistaNoAparelho,
+} from "@/lib/cofre-de-quem-saiu";
 import { cpfValido } from "@/lib/cpf";
 import {
   gravarCpfDaConta,
@@ -170,6 +175,11 @@ function clearLocalUserData() {
   // `window`, e assim continua valendo em qualquer ambiente que chame esta
   // função.
   limparCachesDeAdmin();
+  // Caça 4 (A1): o cofre local (IndexedDB) também sobrevive ao "Sair" — cupons
+  // e, para lojista, o catálogo de admin com custo. A marca "é lojista" mora
+  // no `localStorage` e é apagada logo abaixo, por isso é lida AGORA.
+  // Disparar-e-esquecer, nunca lança.
+  esquecerCofreDeQuemSaiu(haMarcaDeLojistaNoAparelho());
   // As avaliações guardadas por produto (mapa em memória; as chaves do
   // `localStorage` caem na varredura abaixo) podem trazer avaliações ainda não
   // aprovadas, com o nome do autor, e sobreviviam ao "Sair".
@@ -884,6 +894,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // e a nova veria nome, avatar e capa de quem saiu.
         setProfile(null);
         limparCachesDeAdmin();
+        // Caça 4 (A1): mesma troca uid→uid — cupons e (se a anterior era
+        // lojista) o catálogo de admin não ficam no cofre local para a próxima.
+        esquecerCofreDeQuemSaiu(ehLojistaPelaMarcaDoAparelho(previousUserId));
         // Avaliações guardadas (inclui as não aprovadas, com nome do autor):
         // memória e chaves do `localStorage`, pois esta troca não passa por
         // `clearLocalUserData`.
