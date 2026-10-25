@@ -1,4 +1,13 @@
 {
+  "1.5.66": {
+    "titulo": "Dois acertos: carrinho e abertura do Caixa",
+    "novidades": [],
+    "correcoes": [
+      "O carrinho não trava mais quando um item antigo guardado no aparelho veio incompleto: os outros itens continuam aparecendo normalmente.",
+      "No Caixa do painel, se o caixa já tiver sido aberto em outro aparelho, a tela agora se atualiza e mostra o caixa aberto, com o aviso \"Este caixa já está aberto.\". O valor digitado na abertura não é registrado nesse caso."
+    ],
+    "melhorias": []
+  },
   "1.5.65": {
     "titulo": "Perfil, carrinho e pedidos renovados; Caixa na frente do Financeiro",
     "novidades": [
