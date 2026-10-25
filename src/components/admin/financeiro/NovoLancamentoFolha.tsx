@@ -1,4 +1,5 @@
 import { gerarUuidV4 as gerarChaveDaTentativa } from "@/lib/uuid-v4";
+import { AlertTriangle } from "lucide-react";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -12,6 +13,7 @@ import {
   type FormularioDoLancamento,
   MAXIMO_DE_PARCELAS,
   TAMANHO_MAXIMO_DA_DESCRICAO,
+  ehDataIso,
   formatarBRL,
   formatarData,
   formularioInicialDoLancamento,
@@ -22,8 +24,11 @@ import {
   valorDaParcela,
 } from "@/lib/financeiro";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
+import { classeDoTexto } from "@/lib/tons-de-estado";
+import { cn } from "@/lib/utils";
 import {
   CONTA_BANCARIA,
+  CONTA_CAIXA_DA_LOJA,
   type CategoriaFinanceira,
   type ContaFinanceira,
   type DataIso,
@@ -117,6 +122,15 @@ export function NovoLancamentoFolha({
   const transferencia = form.tipo === "transferencia";
   const previsto = !transferencia && form.situacao === "previsto";
   const receita = form.tipo === "entrada";
+  // O servidor só liga ao caixa aberto o que foi pago/recebido HOJE na conta Caixa;
+  // com data anterior o valor mexe no saldo da conta, mas fica fora da conferência.
+  // Só avisa (lançar coisa antiga é legítimo); `ehDataIso` ignora o campo apagado.
+  const foraDaConferenciaDoCaixa =
+    !transferencia &&
+    form.situacao === "realizado" &&
+    form.contaId === CONTA_CAIXA_DA_LOJA &&
+    ehDataIso(form.dataRealizacao) &&
+    form.dataRealizacao < hoje;
 
   const categoriasDoTipo = useMemo(
     () =>
@@ -514,6 +528,24 @@ export function NovoLancamentoFolha({
             escolhida.
           </p>
         )}
+        {foraDaConferenciaDoCaixa ? (
+          <p
+            role="status"
+            className={cn(
+              "-mt-2 flex items-start gap-2 rounded-xl p-3 text-xs",
+              classeDoTexto("atencao"),
+            )}
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0"
+            />
+            <span>
+              Este valor não entra na conferência do caixa aberto. Se o dinheiro
+              saiu ou entrou na gaveta hoje, use a data de hoje.
+            </span>
+          </p>
+        ) : null}
 
         {previsto ? (
           <Campo
