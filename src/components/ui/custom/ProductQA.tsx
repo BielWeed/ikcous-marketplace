@@ -57,8 +57,25 @@ export function ProductQA({
     };
   }, [productId, getQuestionsByProduct, subscribeToQuestions]);
 
+  // Caça 4 (V3): trava de duplo envio. O ref vale já no segundo toque do mesmo
+  // instante (o estado do React ainda não mudou); o estado só serve para
+  // desligar o botão na tela.
+  const perguntaEmVooRef = useRef(false);
+  const [enviandoPergunta, setEnviandoPergunta] = useState(false);
+
   const handleAsk = async () => {
-    if (!newQuestion.trim()) return;
+    if (!newQuestion.trim() || perguntaEmVooRef.current) return;
+    perguntaEmVooRef.current = true;
+    setEnviandoPergunta(true);
+    try {
+      await enviarPergunta();
+    } finally {
+      perguntaEmVooRef.current = false;
+      setEnviandoPergunta(false);
+    }
+  };
+
+  const enviarPergunta = async () => {
     // addQuestion devolve null quando o envio falha (o hook trata o erro
     // com toast e NÃO lança): limpar o campo incondicionalmente apagaria o
     // texto que a cliente acabou de escrever — em rede fraca ela perdia a
@@ -158,7 +175,7 @@ export function ProductQA({
             />
             <button
               onClick={handleAsk}
-              disabled={!newQuestion.trim()}
+              disabled={!newQuestion.trim() || enviandoPergunta}
               className="absolute right-1 top-1 flex size-11 items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 disabled:opacity-30"
               title="Enviar pergunta"
               aria-label="Enviar pergunta"
