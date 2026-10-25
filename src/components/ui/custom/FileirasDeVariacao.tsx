@@ -19,10 +19,14 @@ export function FileirasDeVariacao({
   fileiras,
   escolha,
   onEscolher,
+  pendentes = [],
 }: {
   fileiras: FileiraDeVariacao[];
   escolha: Record<string, string>;
   onEscolher: (nome: string, valor: string) => void;
+  /** Nomes dos grupos que a pessoa tentou comprar sem escolher: o "Escolha"
+   *  da linha vira cor de alerta até ela escolher. */
+  pendentes?: readonly string[];
 }) {
   const selecionadas = new Map(Object.entries(escolha));
   const idBase = useId();
@@ -32,11 +36,14 @@ export function FileirasDeVariacao({
         const fileiraDeCor = /^(cor|cores|color)$/i.test(nome.trim());
         const selecionada = selecionadas.get(nome);
         const idNome = `${idBase}-${indice}`;
+        const idEscolha = `${idBase}-escolha-${indice}`;
+        const faltaEscolher = !selecionada && pendentes.includes(nome);
         return (
           <div
             key={nome}
             role="group"
             aria-labelledby={idNome}
+            aria-describedby={faltaEscolher ? idEscolha : undefined}
             className="min-w-0"
           >
             <div className="mb-2 flex items-baseline justify-between gap-3">
@@ -47,9 +54,14 @@ export function FileirasDeVariacao({
                 {nome}
               </span>
               <span
+                id={idEscolha}
                 className={cn(
                   "min-w-0 break-words text-right text-[13px] font-semibold",
-                  selecionada ? "text-foreground" : "text-muted-foreground",
+                  selecionada && "text-foreground",
+                  !selecionada &&
+                    (faltaEscolher
+                      ? "text-red-700 dark:text-red-400"
+                      : "text-muted-foreground"),
                 )}
               >
                 {selecionada ?? "Escolha"}
