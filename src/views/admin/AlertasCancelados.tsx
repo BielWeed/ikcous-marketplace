@@ -129,6 +129,9 @@ export function AlertasCancelados({
   const [perguntaAberta, setPerguntaAberta] = useState(false);
   const raizRef = useRef<HTMLDivElement>(null);
   const alavancaRef = useRef<HTMLButtonElement>(null);
+  // O botão da linha que abriu a pergunta: o AlertDialog não tem gatilho, então
+  // o Radix não sabe para onde devolver o foco e ele cairia no body.
+  const origemDaPerguntaRef = useRef<HTMLElement | null>(null);
 
   const temDinheiroPreso = pagoCanceladoCount > 0;
   // Os antigos pendentes (dinheiro a devolver ou mercadoria que não voltou,
@@ -437,7 +440,8 @@ export function AlertasCancelados({
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => {
+                        onClick={(evento) => {
+                          origemDaPerguntaRef.current = evento.currentTarget;
                           setRetornoParaConfirmar({
                             id: pedido.id,
                             numero: pedido.id.slice(-6).toUpperCase(),
@@ -671,7 +675,16 @@ export function AlertasCancelados({
           (devolver_estoque) e carimba o retorno; um segundo toque não soma de
           novo. */}
       <AlertDialog open={perguntaAberta} onOpenChange={setPerguntaAberta}>
-        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
+        <AlertDialogContent
+          onCloseAutoFocus={(evento) => {
+            // Devolve o foco ao botão da linha; se a linha saiu da lista
+            // (pedido confirmado), ao botão que abre a lista.
+            evento.preventDefault();
+            const origem = origemDaPerguntaRef.current;
+            (origem?.isConnected ? origem : alavancaRef.current)?.focus();
+          }}
+          className="max-w-md rounded-3xl border border-admin-border bg-zinc-950"
+        >
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black tracking-tight text-white">
               O produto do pedido #{retornoParaConfirmar?.numero} voltou?

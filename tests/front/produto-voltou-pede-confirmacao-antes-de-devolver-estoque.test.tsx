@@ -205,4 +205,29 @@ describe("'O produto voltou' pede confirmação antes de devolver o estoque", ()
     expect(pergunta()).toBeNull();
     expect(aoConfirmar).not.toHaveBeenCalled();
   });
+
+  it("depois de 'Voltar' (e de Escape), o foco volta ao botão da linha, não ao body", async () => {
+    await montar([PEDIDO_A, PEDIDO_B]);
+    const [, segundo] = botoesProdutoVoltou();
+    await clicar(segundo);
+
+    await clicar(botao(document.body, "Voltar"));
+    expect(pergunta()).toBeNull();
+    // O Radix devolve o foco num timer: espera ele, sem sleep fixo.
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(botoesProdutoVoltou()[1]),
+    );
+
+    // Mesmo caminho pelo teclado.
+    await clicar(botoesProdutoVoltou()[0]);
+    await act(async () => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(pergunta()).toBeNull();
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(botoesProdutoVoltou()[0]),
+    );
+  });
 });
