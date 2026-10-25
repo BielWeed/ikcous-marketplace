@@ -129,8 +129,9 @@ export function AbrirCaixaFolha({
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
-  const nomeDaConta =
-    contas.find((c) => c.id === CONTA_CAIXA_DA_LOJA)?.nome ?? "Caixa da loja";
+  const contaDoCaixa = contas.find((c) => c.id === CONTA_CAIXA_DA_LOJA);
+  const nomeDaConta = contaDoCaixa?.nome ?? "Caixa da loja";
+  const saldoDoSistema = contaDoCaixa?.saldo ?? null;
   const [valor, setValor] = useState("");
   const [tentou, setTentou] = useState(false);
   const { enviando, erro, enviar } = useEnvio(undefined, async (falha) => {
@@ -153,6 +154,13 @@ export function AbrirCaixaFolha({
       : tentou && numero !== null && numero > VALOR_MAXIMO
         ? "Valor acima do limite."
         : undefined;
+  const diferencaNaAbertura =
+    saldoDoSistema !== null &&
+    numero !== null &&
+    numero >= 0 &&
+    numero <= VALOR_MAXIMO
+      ? diferencaDoFechamento(saldoDoSistema, numero)
+      : null;
 
   function confirmar() {
     setTentou(true);
@@ -216,6 +224,47 @@ export function AbrirCaixaFolha({
         <p className="text-xs text-zinc-400">
           Conta: <strong className="text-zinc-300">{nomeDaConta}</strong>
         </p>
+        {saldoDoSistema !== null ? (
+          <dl className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <dt className="text-zinc-400">O sistema tem na gaveta</dt>
+            <dd className="text-xl font-bold">
+              <Dinheiro valor={saldoDoSistema} />
+            </dd>
+          </dl>
+        ) : null}
+        {diferencaNaAbertura && diferencaNaAbertura.situacao !== "bateu" ? (
+          <p
+            role="status"
+            className={cn(
+              "flex items-start gap-2 rounded-xl p-3 text-xs",
+              classeDoTexto("atencao"),
+            )}
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0"
+            />
+            <span>
+              {diferencaNaAbertura.situacao === "quebra" ? (
+                <>
+                  Faltam{" "}
+                  <Dinheiro valor={Math.abs(diferencaNaAbertura.diferenca)} />{" "}
+                  em relação ao sistema. Se o caixa já foi fechado antes, a
+                  diferença fica registrada como quebra de caixa e pesa no
+                  resultado. Se você tirou esse dinheiro da gaveta, confira se
+                  registrou a saída.
+                </>
+              ) : (
+                <>
+                  Sobram{" "}
+                  <Dinheiro valor={Math.abs(diferencaNaAbertura.diferenca)} />{" "}
+                  em relação ao sistema. A sobra fica registrada como entrada
+                  fora do lucro.
+                </>
+              )}
+            </span>
+          </p>
+        ) : null}
       </div>
     </FolhaFinanceira>
   );
@@ -400,13 +449,9 @@ export function MovimentarCaixaFolha({
             />
             <span>
               É mais do que o esperado na gaveta (<Dinheiro valor={esperado} />
-              ). Confira a contagem antes de registrar.
+              ). O sistema não registra uma sangria maior que o esperado:
+              confira a contagem.
             </span>
-          </p>
-        ) : null}
-        {passaDoEsperado ? (
-          <p className="text-xs text-zinc-400">
-            O aviso não impede o registro.
           </p>
         ) : null}
         <Campo id="fin-caixa-mov-descricao" rotulo="Descrição">

@@ -446,6 +446,50 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(folha()).toBeNull();
   });
 
+  it("abrir caixa mostra o que o sistema tem e avisa da quebra antes de gravar", async () => {
+    await clicar(botaoEm(hospedeiro, "Abrir caixa"));
+    const abertura = folha() as HTMLElement;
+    // Conta Caixa da loja do cenário: R$ 150,00 no sistema.
+    expect(normalizar(abertura.textContent)).toContain(
+      "O sistema tem na gaveta",
+    );
+    expect(normalizar(abertura.textContent)).toMatch(/R\$\s?150,00/);
+    // Sem digitar nada, nada a avisar.
+    expect(abertura.querySelector('[role="status"]')).toBeNull();
+
+    await digitar("fin-caixa-abertura", "10000");
+    const falta = normalizar(
+      abertura.querySelector('[role="status"]')?.textContent,
+    );
+    expect(falta).toMatch(/Faltam R\$\s?50,00/);
+    expect(falta).toContain("quebra de caixa");
+    expect(rpcFalso).not.toHaveBeenCalledWith(
+      "fin_caixa_abrir",
+      expect.anything(),
+    );
+
+    await digitar("fin-caixa-abertura", "20000");
+    const sobra = normalizar(
+      abertura.querySelector('[role="status"]')?.textContent,
+    );
+    expect(sobra).toMatch(/Sobram R\$\s?50,00/);
+    expect(sobra).not.toContain("quebra de caixa");
+
+    await digitar("fin-caixa-abertura", "15000");
+    expect(abertura.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("sangria acima do esperado não promete que o registro passa", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Sangria"));
+    await digitar("fin-caixa-mov-valor", "50000");
+    const texto = normalizar(folha()!.textContent);
+    expect(texto).toContain(
+      "O sistema não registra uma sangria maior que o esperado",
+    );
+    expect(texto).not.toContain("não impede o registro");
+  });
+
   it("aviso de sangria acima do esperado usa âmbar sem bloco pintado", async () => {
     await abrirSessao();
     await clicar(botaoEm(hospedeiro, "Sangria"));
