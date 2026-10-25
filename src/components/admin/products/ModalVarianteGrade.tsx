@@ -5,6 +5,7 @@ import {
 } from "@/components/admin/products/LinhasDaGrade";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
+import { erroDoEstoqueDaVariacao } from "@/utils/estoque-da-variacao";
 import {
   type AtributoDaGrade,
   MAX_ATRIBUTOS_DA_GRADE,
@@ -172,8 +173,10 @@ function valoresDoGrupo(grupo: GrupoNoForm, variantes: ProductVariant[]) {
   ];
 }
 
+// Chega aqui já validado por `erroDoEstoqueDaVariacao` (inteiro, zero ou mais);
+// vazio vale 0.
 const estoqueDaLinha = (bruto: string): number =>
-  Number.parseInt(bruto.replace(/\D/g, "")) || 0;
+  Number.parseInt(bruto.trim(), 10) || 0;
 
 export function ModalVarianteGrade({
   aberto,
@@ -311,7 +314,12 @@ export function ModalVarianteGrade({
   };
 
   const aplicarParaTodas = () => {
-    const estoqueAplicado = aplicarEstoque.replace(/\D/g, "");
+    const erroDoEstoque = erroDoEstoqueDaVariacao(aplicarEstoque);
+    if (erroDoEstoque) {
+      toast.error(erroDoEstoque);
+      return;
+    }
+    const estoqueAplicado = aplicarEstoque.trim();
     setLinhas((prev) =>
       prev.map((linha) => ({
         ...linha,
@@ -361,6 +369,18 @@ export function ModalVarianteGrade({
 
   const efetivar = () => {
     if (jaEfetivouRef.current) return;
+    // O estoque segurado em "Aplicar para todas" também preenche linhas ao
+    // salvar: inválido avisa aqui, antes de qualquer linha nascer.
+    const erroDoEstoque = [
+      aplicarEstoque,
+      ...linhasEfetivas.map((linha) => linha.estoque),
+    ]
+      .map(erroDoEstoqueDaVariacao)
+      .find((erro) => erro !== null);
+    if (erroDoEstoque) {
+      toast.error(erroDoEstoque);
+      return;
+    }
     const identidades = linhas.map((linha) => ({
       name: linha.name,
       value: linha.value,

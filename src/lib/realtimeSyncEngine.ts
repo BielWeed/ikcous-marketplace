@@ -21,6 +21,10 @@
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { DataVault, type StoreName } from "@/lib/dataVault";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import {
+  geracaoDoCofre,
+  invalidarGravacoesEmVoo,
+} from "@/lib/geracao-do-cofre";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
@@ -228,6 +232,11 @@ export const TABLE_CONFIGS: TableConfig[] = [
 let _channel: RealtimeChannel | null = null;
 let _bcListener: ((event: MessageEvent) => void) | null = null;
 let _isCatchingUp = false;
+// Geração (src/lib/geracao-do-cofre.ts) da rodada que detém a trava acima: uma
+// rodada de geração antiga (o motor parou ou o "Sair" esqueceu o cofre) não
+// segura a trava contra a rodada da sessão nova, e o `finally` dela não solta
+// a trava que já é da outra.
+let _geracaoDaRodada = 0;
 // Só vale para a consulta em andamento: a próxima rodada reconfere ausências.
 let _produtosTocados: Set<string> | null = null;
 // Produtos cujo detalhe da rodada foi descartado porque o realtime os tocou no
@@ -519,6 +528,12 @@ export const RealtimeSyncEngine = {
    * Stop all realtime subscriptions and BroadcastChannel listeners.
    */
   stop(): void {
+    // K1: qualquer rodada de catchUp que ainda espera a rede ou o cofre passa
+    // a ser de uma sessão que acabou -- ela se descarta em vez de gravar (o
+    // "Sair" de lojista esvazia o cofre; a resposta atrasada o regravava com
+    // o custo dos produtos). A rodada da sessão seguinte, que `start()` dispara
+    // logo depois, nasce na geração nova e grava normalmente.
+    invalidarGravacoesEmVoo();
     if (_channel) {
       console.log("[RealtimeSyncEngine] Stopping leader realtime sync...");
       supabase.removeChannel(_channel).catch(() => {});
@@ -787,13 +802,30 @@ export const RealtimeSyncEngine = {
    * Run delta synchronization / catch-up reconciliation with Supabase.
    */
   async catchUp(vault: DataVault, isAdmin: boolean): Promise<void> {
-    if (_isCatchingUp) return;
+    // K1: a geração é anotada AQUI, antes de qualquer espera. Depois de cada
+    // espera e antes de cada escrita no cofre, `caducou()` confere; se o motor
+    // parou ou o "Sair" esqueceu o cofre no meio, a rodada se descarta (volta
+    // sem gravar e sem avisar a tela). A rodada de uma geração antiga não
+    // segura a trava contra a da sessão nova: sem isso, o `start()` da
+    // sessão seguinte seria barrado e ficaria sem rodada até o próximo
+    // gatilho.
+    const geracao = geracaoDoCofre();
+    if (_isCatchingUp && _geracaoDaRodada === geracao) return;
     _isCatchingUp = true;
+    _geracaoDaRodada = geracao;
     _produtosTocados = new Set();
+    const caducou = (): boolean => {
+      if (geracaoDoCofre() === geracao) return false;
+      console.log(
+        "[RealtimeSyncEngine] catchUp descartado: o motor parou ou o cofre foi esquecido (Sair) com a rodada em voo.",
+      );
+      return true;
+    };
 
     try {
       // A reabertura também fica sob finally para não prender a rodada se falhar.
       vault = await cofreVivo(vault);
+      if (caducou()) return;
       console.log("[RealtimeSyncEngine] 🔄 Running catchUp/reconciliation...");
       const tableSourceConfig = isAdmin ? "store_config" : "v_store_config";
       const productSource = isAdmin ? "produtos" : "vw_produtos_public";
@@ -817,6 +849,7 @@ export const RealtimeSyncEngine = {
           supabase.from("banners").select("*").order("order"),
           productsQuery,
         ]);
+      if (caducou()) return;
 
       // Log queries with errors so they don't fail silently
       if (configResult.error) {
@@ -858,6 +891,7 @@ export const RealtimeSyncEngine = {
             rawConfig,
             null,
           );
+          if (caducou()) return;
           bc?.postMessage({
             type: "db_change",
             table: "store_config",
@@ -878,6 +912,7 @@ export const RealtimeSyncEngine = {
           );
           await vault.replaceAll("categories", mappedCats);
           await vault.setLastSync("categories");
+          if (caducou()) return;
           bc?.postMessage({
             type: "db_change_bulk",
             table: "categorias",
@@ -906,6 +941,7 @@ export const RealtimeSyncEngine = {
             );
           await vault.replaceAll("banners", mappedBanners);
           await vault.setLastSync("banners");
+          if (caducou()) return;
           bc?.postMessage({
             type: "db_change_bulk",
             table: "banners",
@@ -946,6 +982,7 @@ export const RealtimeSyncEngine = {
           .map((p) => p.id);
         for (const id of deletedIds) {
           // Outro evento pode chegar enquanto as exclusões anteriores aguardam IDB.
+          if (caducou()) return;
           if (_produtosTocados.has(id)) continue;
           await vault.deleteById("products", id);
           // Delete variants for deleted product
@@ -954,6 +991,7 @@ export const RealtimeSyncEngine = {
             "by_product_id",
             id,
           );
+          if (caducou()) return;
           for (const v of productVariants) {
             await vault.deleteById("product_variants", v.id);
           }
@@ -964,6 +1002,7 @@ export const RealtimeSyncEngine = {
             old: { id },
           });
         }
+        if (caducou()) return;
         if (deletedIds.length > 0) {
           await vault.setLastSync("products");
           await vault.setLastSync("product_variants");
@@ -1083,6 +1122,9 @@ export const RealtimeSyncEngine = {
               detailQuery = detailQuery.is("deleted_at", null);
             }
             const { data: rawDoLote, error: erroDoLote } = await detailQuery;
+            // K1: a resposta (com custo, no ramo admin) chegou depois do Sair
+            // ou da parada do motor -- nenhum lote dela vai ao cofre.
+            if (caducou()) return;
             // Laudo #2: o catchup de detalhes não pode engolir falha em
             // silêncio — loga, conta o lote como perdido e segue para o
             // próximo (-955): um lote que falha não derruba os que chegaram.
@@ -1127,6 +1169,9 @@ export const RealtimeSyncEngine = {
 
             await vault.putMany("products", mappedProducts);
             await vault.setLastSync("products");
+            // O Sair pode cair enquanto o cofre grava os produtos: as
+            // variações (e o aviso às outras abas) não vão atrás.
+            if (caducou()) return;
             for (const p of produtosParaGravar) {
               if (_produtosTocados?.has(p.id)) {
                 _produtosParaReconciliar.add(p.id);
@@ -1146,6 +1191,9 @@ export const RealtimeSyncEngine = {
               );
               await vault.putMany("product_variants", mappedVariants);
               await vault.setLastSync("product_variants");
+              // O aviso às outras abas leva os produtos (com custo) e elas
+              // gravariam no cofre -- depois do Sair, nada disso sai.
+              if (caducou()) return;
             }
 
             // Broadcast bulk update to other tabs: só o que não foi tocado.
@@ -1181,8 +1229,13 @@ export const RealtimeSyncEngine = {
           new Error("Unknown error during catch-up (null/undefined rejection)"),
       );
     } finally {
-      _produtosTocados = null;
-      _isCatchingUp = false;
+      // Só solta o que é desta rodada: se a de uma geração nova já assumiu a
+      // trava (e o seu conjunto de produtos tocados), este `finally` tardio
+      // não pode derrubá-la.
+      if (_geracaoDaRodada === geracao) {
+        _produtosTocados = null;
+        _isCatchingUp = false;
+      }
     }
   },
 
