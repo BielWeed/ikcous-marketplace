@@ -1,4 +1,5 @@
 import { DataVault, type StoreName } from "@/lib/dataVault";
+import { invalidarGravacoesEmVoo } from "@/lib/geracao-do-cofre";
 
 /**
  * O que o "Sair" (e a troca direta de conta) esquece no cofre local — o
@@ -20,7 +21,14 @@ import { DataVault, type StoreName } from "@/lib/dataVault";
  */
 export function esquecerCofreDeQuemSaiu(eraLojista: boolean): void {
   const gavetas: StoreName[] = ["coupons"];
-  if (eraLojista) gavetas.push("products", "product_variants");
+  if (eraLojista) {
+    gavetas.push("products", "product_variants");
+    // K1: uma rodada de sincronização que já estava a caminho (catálogo de
+    // admin, com custo) terminaria DEPOIS da limpeza abaixo e regravaria tudo.
+    // O aviso é síncrono, antes de qualquer espera: na troca direta de conta o
+    // motor não para e só este aviso alcança a rodada em voo.
+    invalidarGravacoesEmVoo();
+  }
   void (async () => {
     try {
       const vault = await DataVault.init();
