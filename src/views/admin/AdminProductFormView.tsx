@@ -50,6 +50,7 @@ import { soFotosReais } from "@/lib/foto-do-produto";
 import {
   ErroDeCategoria,
   categoriaExisteNaLista,
+  categoriaParecida,
   mesmaCategoria,
 } from "@/lib/gestao-de-categorias";
 import {
@@ -726,6 +727,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  // "Criar categoria" em andamento: o botão fica desligado e um segundo toque
+  // (no mesmo instante, antes de a tela se atualizar) não cria outra. O `ref`
+  // fecha a janela entre o toque e a tela refletir o estado.
+  const [criandoCategoria, setCriandoCategoria] = useState(false);
+  const criandoCategoriaRef = useRef(false);
   // A lojista renomeou ou apagou a categoria que está escolhida AQUI: o campo
   // acompanha. O banco já trocou o nome no produto salvo; sem isto, salvar com o
   // nome velho no campo devolveria o produto à categoria que não existe mais.
@@ -1893,7 +1899,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     };
 
     const sanitizedVarPrice = cleanNumberString(variantFormData.priceOverride);
-    const sanitizedVarStock = variantFormData.stockIncrement.replace(/\D/g, "");
+    // O sinal de menos era arrancado em silêncio ("-5" virava 5, e o estoque
+    // aparecia a mais). Estoque é número inteiro, zero ou mais: o que não for
+    // isso avisa e não cria a variação.
+    const textoDoEstoque = variantFormData.stockIncrement.trim();
+    if (textoDoEstoque.startsWith("-")) {
+      toast.error(
+        "O estoque da variação não pode ser negativo. Digite 0 ou mais.",
+      );
+      return;
+    }
+    if (textoDoEstoque !== "" && !/^\d+$/.test(textoDoEstoque)) {
+      toast.error(
+        "Digite o estoque da variação só com números inteiros (sem vírgula nem ponto).",
+      );
+      return;
+    }
+    const sanitizedVarStock = textoDoEstoque;
 
     // Zero não é preço próprio (a máscara de moeda nunca esvazia: o campo
     // apagado chega como "0.00" e a loja cobraria R$ 0,00). Só a variação que
@@ -2121,12 +2143,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // Primeiro campo com erro que BLOQUEIA o salvar, na ordem em que a tela os
   // mostra (básico, depois "Custo e lucro", depois "Avançado"). O AVISO de
   // custo maior que o preço não entra: não bloqueia. Mesma lista do `isValid`.
+  // Promoção ligada e o "De:" vazio: o salvar gravaria o produto SEM promoção
+  // (preço original nulo) e diria "Salvo". Bloqueia e diz o que fazer.
+  const promocaoSemPrecoOriginal =
+    isPromoActive && String(formData.originalPrice ?? "").trim() === "";
+
   const idDoPrimeiroCampoComErro = (): string | null => {
     if (priceError) return "product-sale-price";
     if (stockError) return "product-stock";
     if (costError && !costError.startsWith("Aviso"))
       return "product-cost-price";
-    if (originalPriceError) return "product-original-price";
+    if (originalPriceError || promocaoSemPrecoOriginal)
+      return "product-original-price";
     if (skuError) return "product-sku";
     if (codigoBarrasError) return "product-codigo-barras";
     if (estoqueMinimoError) return "product-estoque-minimo";
@@ -2650,6 +2678,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     !priceError &&
     (!costError || costError.startsWith("Aviso")) &&
     !originalPriceError &&
+    !promocaoSemPrecoOriginal &&
     !estoqueMinimoError &&
     !stockError;
 
@@ -2676,6 +2705,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               stockError
             ),
             !!productId,
+            promocaoSemPrecoOriginal,
           );
   const botaoDeSalvarDesligado =
     isSubmitting ||
@@ -2845,7 +2875,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         Nova Categoria
                       </h3>
                       <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
-                        Novo setor para organizar a loja
+                        Nova categoria para organizar a loja
                       </p>
                     </div>
                   </div>
@@ -2856,7 +2886,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         htmlFor="cat-name"
                         className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                       >
-                        Nome do Setor / Categoria
+                        Nome da categoria
                       </label>
                       <LocalBufferedInput
                         id="cat-name"
@@ -2888,8 +2918,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </button>
                     <button
                       type="button"
+                      disabled={criandoCategoria}
                       onClick={async () => {
+                        if (criandoCategoriaRef.current) return;
                         if (newCategoryName.trim()) {
+                          // O banco tem nome único e endereço único: "Vestuário"
+                          // e "vestuario" colidem. Avisa ANTES, com o nome da que
+                          // já existe, em vez do erro genérico depois.
+                          const parecida = categoriaParecida(
+                            newCategoryName.trim(),
+                            dbCategories,
+                          );
+                          if (parecida) {
+                            toast.error(
+                              `Já existe uma categoria parecida: ${parecida.name}`,
+                            );
+                            return;
+                          }
+                          criandoCategoriaRef.current = true;
+                          setCriandoCategoria(true);
                           const loadingId = toast.loading(
                             "Criando categoria...",
                           );
@@ -2918,12 +2965,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 : "Erro ao salvar categoria",
                               { id: loadingId },
                             );
+                          } finally {
+                            criandoCategoriaRef.current = false;
+                            setCriandoCategoria(false);
                           }
                         }
                       }}
-                      className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] px-3 text-sm font-bold text-[#211a07]"
+                      className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] px-3 text-sm font-bold text-[#211a07] disabled:opacity-60"
                     >
-                      Criar Setor
+                      Criar categoria
                     </button>
                   </div>
                 </motion.div>
@@ -3987,10 +4037,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
-                        <b className="text-zinc-350">Setor / Categoria:</b>{" "}
-                        Classifique adequadamente para que o produto seja
-                        filtrado na vitrine da loja e apareça nos setores
-                        corretos do catálogo.
+                        <b className="text-zinc-350">Categoria:</b> Classifique
+                        adequadamente para que o produto seja filtrado na
+                        vitrine da loja e apareça nas categorias corretas do
+                        catálogo.
                       </span>
                     </li>
                     <li className="flex items-start gap-2.5">

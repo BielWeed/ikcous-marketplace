@@ -14,7 +14,7 @@ export const ESCOLHA_GERENCIAR_CATEGORIAS = "MANAGE_CATEGORIES";
 /**
  * PONTO DE INTEGRAÇÃO DA CATEGORIA no formulário de produto.
  *
- * É o campo "Setor / Categoria" de sempre (um `Select` com as categorias da
+ * É o campo "Categoria" de sempre (um `Select` com as categorias da
  * loja e duas portas: criar e gerenciar), isolado num componente para o
  * seletor novo (galeria de ícones) entrar AQUI sem mexer no resto do
  * formulário. Contrato que o substituto deve manter:
@@ -49,7 +49,7 @@ export function CampoDeCategoria({
         htmlFor="product-category"
         className="ml-1 block text-[11px] text-zinc-400"
       >
-        Setor / Categoria *
+        Categoria *
       </label>
       <div className="group relative">
         <Select
@@ -69,7 +69,7 @@ export function CampoDeCategoria({
             id="product-category"
             className="h-auto min-h-11 w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all hover:border-admin-border-strong hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 [&>svg]:opacity-50"
           >
-            <SelectValue placeholder="Selecionar Setor" />
+            <SelectValue placeholder="Selecionar categoria" />
           </SelectTrigger>
           <SelectContent className="rounded-xl border-admin-border bg-zinc-900/95 p-2 shadow-[0_10px_40px_rgba(0,0,0,0.8)] backdrop-blur-xl">
             {nomes.map((categoria) => (
