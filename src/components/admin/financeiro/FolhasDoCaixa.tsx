@@ -356,7 +356,7 @@ export function MovimentarCaixaFolha({
     Math.round(numero * 100) > Math.round(esperado * 100);
 
   const erroConta = !contasChegaram
-    ? "As contas ainda não carregaram. Feche esta folha e abra de novo em instantes."
+    ? "As contas ainda não carregaram. Aguarde um instante ou atualize a página."
     : semContaDeDestino
       ? `Não há outra conta ativa ${sangria ? "para receber" : "de onde tirar"} esse dinheiro. Crie ou reative uma conta em Contas e categorias antes de registrar.`
       : tentou && !contrapartidaValida
