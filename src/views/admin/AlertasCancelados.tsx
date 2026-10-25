@@ -1,3 +1,13 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import type { EstornoEmCurso } from "@/hooks/useEstornosEmCursoDosPedidos";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
@@ -107,6 +117,16 @@ export function AlertasCancelados({
   onVerPedidos,
 }: AlertasCanceladosProps) {
   const [aberto, setAberto] = useState(false);
+  // "O produto voltou" devolve o estoque, então o toque só abre esta pergunta;
+  // a chamada sai no botão de confirmar. O estado mora AQUI (e não dentro da
+  // lista que abre e fecha): a pergunta precisa sobreviver a qualquer fechamento
+  // da lista. O pedido em pauta fica guardado à parte do "aberta" para o texto
+  // não esvaziar durante a animação de saída.
+  const [retornoParaConfirmar, setRetornoParaConfirmar] = useState<{
+    id: string;
+    numero: string;
+  } | null>(null);
+  const [perguntaAberta, setPerguntaAberta] = useState(false);
   const raizRef = useRef<HTMLDivElement>(null);
   const alavancaRef = useRef<HTMLButtonElement>(null);
 
@@ -126,7 +146,10 @@ export function AlertasCancelados({
   // verdade. `pointerdown` (e não `click`) para fechar ANTES de qualquer
   // outro clique da página surtir efeito.
   useEffect(() => {
-    if (!aberto) return;
+    // Com a pergunta de "O produto voltou" aberta, ela é quem responde ao
+    // toque e ao Escape: a pergunta mora num portal (fora do painel para o
+    // DOM), e sem esta pausa o primeiro toque nela fecharia a lista por baixo.
+    if (!aberto || perguntaAberta) return;
     const clicouFora = (evento: PointerEvent | MouseEvent) => {
       if (
         raizRef.current &&
@@ -150,7 +173,7 @@ export function AlertasCancelados({
       document.removeEventListener("pointerdown", clicouFora);
       document.removeEventListener("keydown", apertouTecla);
     };
-  }, [aberto]);
+  }, [aberto, perguntaAberta]);
 
   if (!temPendencia && !incompleto) return null;
 
@@ -414,7 +437,13 @@ export function AlertasCancelados({
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => onConfirmarRetorno(pedido.id)}
+                        onClick={() => {
+                          setRetornoParaConfirmar({
+                            id: pedido.id,
+                            numero: pedido.id.slice(-6).toUpperCase(),
+                          });
+                          setPerguntaAberta(true);
+                        }}
                         disabled={confirmandoRetornoId === pedido.id}
                         className="h-9 shrink-0 rounded-xl border-emerald-500/30 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
                       >
@@ -634,6 +663,43 @@ export function AlertasCancelados({
           )}
         </div>
       )}
+
+      {/* A pergunta do "O produto voltou". Mesmo molde de "Desfazer o
+          recebimento" (DesfazerRecebimento): "Voltar" em foco, porque a ação
+          padrão é não mexer no estoque. Cada frase é verdade do servidor:
+          `confirmar_retorno_do_produto` devolve os itens do pedido ao estoque
+          (devolver_estoque) e carimba o retorno; um segundo toque não soma de
+          novo. */}
+      <AlertDialog open={perguntaAberta} onOpenChange={setPerguntaAberta}>
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-black tracking-tight text-white">
+              O produto do pedido #{retornoParaConfirmar?.numero} voltou?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
+              O estoque será devolvido: os itens deste pedido voltam para o
+              estoque da loja. Confirme só se a mercadoria já voltou de verdade
+              para a sua mão.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-2 gap-2">
+            {/* O Radix põe o foco no "Cancel" ao abrir: a ação padrão é voltar. */}
+            <AlertDialogCancel className="h-11 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-semibold text-white hover:bg-white/10">
+              Voltar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (retornoParaConfirmar) {
+                  onConfirmarRetorno(retornoParaConfirmar.id);
+                }
+              }}
+              className="h-11 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20"
+            >
+              Sim, o produto voltou
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
