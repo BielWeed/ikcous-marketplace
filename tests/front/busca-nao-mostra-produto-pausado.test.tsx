@@ -125,7 +125,7 @@ describe("SearchView — produto pausado não aparece nos resultados", () => {
     const host = await renderizarBusca();
 
     expect(idsNaTela(host)).toEqual(["vestido-ativo"]);
-    expect(host.textContent).toContain("Encontramos 1 resultados");
+    expect(host.textContent).toMatch(/Encontramos 1 resultado(?!s)/);
     expect(chips(host)).toContain("Vestidos");
     expect(chips(host)).not.toContain("Bolsas");
   });

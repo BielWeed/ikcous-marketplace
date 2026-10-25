@@ -82,6 +82,7 @@ const SearchInput = React.memo(function SearchInput({
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
         placeholder="O que você deseja hoje?"
+        aria-label="Buscar produtos"
         className="h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm transition-all placeholder:text-zinc-400 focus:border-zinc-200 focus:ring-black/5"
       />
     </div>
@@ -345,7 +346,7 @@ export const SearchView = React.memo(function SearchView({
                         { label: "Menor Preço", value: "price_asc" },
                         { label: "Maior Preço", value: "price_desc" },
                         { label: "Mais Novos", value: "newest" },
-                        { label: "Alfabetica", value: "name_asc" },
+                        { label: "Alfabética", value: "name_asc" },
                       ].map((option) => (
                         <button
                           key={option.value}
@@ -420,7 +421,8 @@ export const SearchView = React.memo(function SearchView({
               <div className="flex items-center gap-2">
                 <Sparkles className="size-4 text-zinc-900" />
                 <h2 className="text-xl font-black tracking-tighter">
-                  Encontramos {totalResults} resultados
+                  Encontramos {totalResults}{" "}
+                  {totalResults === 1 ? "resultado" : "resultados"}
                 </h2>
               </div>
             </div>
