@@ -8,7 +8,7 @@
       "Carrinho: quando a entrega é retirar na loja, o resumo diz \"Retirada na loja\" em vez de \"Grátis\", no carrinho e na finalização.",
       "Conta: ao sair, os cupons e o catálogo de lojista deixam de ficar guardados no aparelho. O primeiro endereço só vira o principal depois de a lista de endereços ter sido lida de verdade. O aviso de pergunta respondida abre o produto.",
       "Finalização: o cupom não é conferido de novo depois que o pedido fecha (a tela de sucesso mantém o desconto certo), não dá para aplicar nem tirar cupom enquanto o pedido está sendo enviado, e um endereço apagado passa a usar o endereço principal.",
-      "Painel de produtos: ao editar, só o que foi mudado é enviado, para não desfazer a mudança que outra pessoa acabou de fazer. Promoção ligada sem o preço original (De:) bloqueia o Salvar e explica o motivo. Estoque de variação negativo ou com vírgula é recusado com aviso. Criar categoria não duplica com toque duplo e avisa quando já existe uma parecida. Duplicar um produto atualiza a lista na hora."
+      "Painel de produtos: ao editar, só o que foi mudado é enviado, para não desfazer a mudança que outra pessoa acabou de fazer. Promoção ligada sem o preço original (De:) bloqueia o Salvar e explica o motivo. Ao adicionar uma variação, estoque negativo ou com vírgula é recusado com aviso. Criar categoria não duplica com toque duplo e avisa quando já existe uma parecida. Duplicar um produto atualiza a lista na hora."
     ],
     "melhorias": []
   },
