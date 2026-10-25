@@ -24,6 +24,8 @@ export function motivoDoBloqueioDoProduto(
   campos: CamposObrigatoriosDoProduto,
   temErroNoCampo: boolean,
   editando: boolean,
+  /** Promoção ligada com o "De:" vazio: sem o preço original não há promoção. */
+  promocaoSemPrecoOriginal = false,
 ): string {
   const faltando: string[] = [];
   if (!campos.name) faltando.push("nome");
@@ -35,6 +37,9 @@ export function motivoDoBloqueioDoProduto(
   const verbo = editando ? "salvar" : "publicar";
   if (faltando.length > 0) {
     return `Para ${verbo}, falta preencher: ${faltando.join(", ")}.`;
+  }
+  if (promocaoSemPrecoOriginal) {
+    return "Escreva o preço original (De:) ou desligue a promoção.";
   }
   if (temErroNoCampo) {
     return `Para ${verbo}, corrija os campos que estão com aviso em vermelho.`;

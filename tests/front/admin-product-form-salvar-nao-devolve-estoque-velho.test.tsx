@@ -290,15 +290,10 @@ describe("AdminProductFormView — salvar não devolve o estoque que a tela leu 
     await salvar();
 
     expect(remendoEnviado()).not.toHaveProperty("stock");
-    const enviadas = variacoesEnviadas();
-    expect(enviadas.map((v) => v.id)).toEqual(["v1", "v2"]);
-    for (const v of enviadas) {
-      expect(v).not.toHaveProperty("stockIncrement");
-    }
-    // Mas o resto do cadastro da variação segue indo (o upsert é por linha
-    // inteira): nome, valor e ligada.
-    expect(enviadas[0]).toMatchObject({ name: "Cor", value: "Rosa" });
-    expect(enviadas[0].active).toBe(true);
+    // Variação que a lojista não mexeu nem viaja (o banco regrava a linha
+    // inteira, e o estoque dela é o que a venda acabou de descontar): sem
+    // variação na lista, não há `stockIncrement` que possa voltar velho.
+    expect(variacoesEnviadas()).toEqual([]);
   });
 
   it("variações: o estoque do produto gravado no banco diferente da soma NÃO é regravado só porque a tela somou", async () => {
@@ -334,9 +329,9 @@ describe("AdminProductFormView — salvar não devolve o estoque que a tela leu 
 
     const enviadas = variacoesEnviadas();
     const rosa = enviadas.find((v) => v.id === "v1");
-    const azul = enviadas.find((v) => v.id === "v2");
+    // A Azul não foi mexida: não viaja, e portanto o estoque dela fica o do banco.
+    expect(enviadas.map((v) => v.id)).toEqual(["v1"]);
     expect(rosa?.stockIncrement).toBe(10);
-    expect(azul).not.toHaveProperty("stockIncrement");
     expect(remendoEnviado().stock).toBe(12);
   });
 
@@ -385,8 +380,8 @@ describe("AdminProductFormView — salvar não devolve o estoque que a tela leu 
 
     const nova = variacoesEnviadas().find((v) => v.id.startsWith("temp-"));
     expect(nova?.stockIncrement).toBe(4);
-    const rosa = variacoesEnviadas().find((v) => v.id === "v1");
-    expect(rosa).not.toHaveProperty("stockIncrement");
+    // A Rosa não foi mexida: nem ela nem o estoque dela viajam.
+    expect(variacoesEnviadas().some((v) => v.id === "v1")).toBe(false);
     expect(remendoEnviado().stock).toBe(7);
   });
 });

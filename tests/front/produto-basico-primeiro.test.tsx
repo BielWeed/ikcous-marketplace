@@ -331,15 +331,21 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
         const gravar = productId ? updateProduct : addProduct;
         expect(gravar).toHaveBeenCalledTimes(1);
         expect(productId ? addProduct : updateProduct).not.toHaveBeenCalled();
-        expect(gravar.mock.calls[0][productId ? 1 : 0]).toMatchObject({
-          name: "Produto Teste",
-          price: 10,
-          stock: 5,
-          category: "Geral",
-          isActive: true,
-          freeShipping: false,
-          isBestseller: false,
-        });
+        // Produto novo manda tudo; a edição manda só o que a lojista mudou
+        // (nome, preço e estoque; categoria e chaves ficam como no banco).
+        expect(gravar.mock.calls[0][productId ? 1 : 0]).toMatchObject(
+          productId
+            ? { name: "Produto Teste", price: 10, stock: 5 }
+            : {
+                name: "Produto Teste",
+                price: 10,
+                stock: 5,
+                category: "Geral",
+                isActive: true,
+                freeShipping: false,
+                isBestseller: false,
+              },
+        );
       });
     }
   });

@@ -308,7 +308,9 @@ describe("AdminProductFormView — foto principal na edição e cadastro que nã
       // foto B tenha passado da posição 2 para a 3.
       const variacoesGravadas: { imageUrl?: string }[] =
         mocks.salvarProdutoComGrade.mock.calls[0][2].variantes;
-      expect(variacoesGravadas.map((v) => v.imageUrl)).toEqual([FOTO_B]);
+      // Ela não foi mexida, então nem viaja: no banco ela segue com a foto B
+      // (a ordem das fotos do produto não a muda, o vínculo é pela URL).
+      expect(variacoesGravadas).toEqual([]);
     });
   });
 
