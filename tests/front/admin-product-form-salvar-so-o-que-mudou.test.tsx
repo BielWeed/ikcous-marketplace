@@ -219,8 +219,8 @@ describe("AdminProductFormView — editar manda só o que a lojista mudou", () =
 
   /** O remendo do N-ésimo salvar, sem a lista de variações (que o banco ignora). */
   const remendo = (n = 0) => {
-    const chamada = (salvarProdutoComGrade.mock.calls[n]?.[1] ??
-      updateProduct.mock.calls[n]?.[1]) as Record<string, unknown>;
+    const chamada = (salvarProdutoComGrade.mock.calls.at(n)?.[1] ??
+      updateProduct.mock.calls.at(n)?.[1]) as Record<string, unknown>;
     const { variants: _ignorada, ...resto } = chamada;
     return resto;
   };

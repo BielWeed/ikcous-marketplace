@@ -270,6 +270,20 @@ describe("AdminProductFormView — promoção sem preço original e estoque nega
       expect(String(toastError.mock.calls[0][0])).toMatch(/negativ|menos/i);
     });
 
+    it.each(["2.5", "1e3"])(
+      'digitar "%s" avisa e NÃO cria a variação (antes virava outro número)',
+      async (texto) => {
+        await montar();
+        await abrirNovaVariacao();
+        await digitarCampo("variant-stock", texto);
+        await confirmarVariacao();
+
+        expect(linhasNaTela()).toBe(0);
+        expect(toastError).toHaveBeenCalledTimes(1);
+        expect(String(toastError.mock.calls[0][0])).toMatch(/inteiros/i);
+      },
+    );
+
     it("corrigir para um número válido cria a variação com o estoque certo", async () => {
       await montar();
       await abrirNovaVariacao();
