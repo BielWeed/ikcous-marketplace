@@ -490,6 +490,19 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(abertura.querySelector('[role="status"]')).toBeNull();
   });
 
+  it("a falta na abertura manda registrar uma transferência (com o caixa fechado não há sangria)", async () => {
+    await clicar(botaoEm(hospedeiro, "Abrir caixa"));
+    await digitar("fin-caixa-abertura", "10000");
+    const aviso = normalizar(
+      (folha() as HTMLElement).querySelector('[role="status"]')?.textContent,
+    );
+    expect(aviso).toContain("Faltam");
+    expect(aviso).toContain("transferência do Caixa para essa conta");
+    expect(aviso).toContain("Novo lançamento");
+    expect(aviso).toContain("evita a quebra");
+    expect(aviso).not.toMatch(/sangria|registrou a saída/i);
+  });
+
   it("sangria acima do esperado não promete que o registro passa", async () => {
     await abrirSessao();
     await clicar(botaoEm(hospedeiro, "Sangria"));

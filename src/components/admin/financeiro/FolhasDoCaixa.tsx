@@ -255,8 +255,9 @@ export function AbrirCaixaFolha({
                   <Dinheiro valor={Math.abs(diferencaNaAbertura.diferenca)} />{" "}
                   em relação ao sistema. Se o caixa já foi fechado antes, a
                   diferença fica registrada como quebra de caixa e pesa no
-                  resultado. Se você tirou esse dinheiro da gaveta, confira se
-                  registrou a saída.
+                  resultado. Se esse dinheiro foi para o banco ou outra conta,
+                  registre antes uma transferência do Caixa para essa conta (em
+                  Novo lançamento, escolha Transferência): isso evita a quebra.
                 </>
               ) : (
                 <>
