@@ -68,6 +68,7 @@ import {
   variacoesQueMudaram,
 } from "@/utils/campos-mexidos-do-produto";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
+import { erroDoEstoqueDaVariacao } from "@/utils/estoque-da-variacao";
 import {
   estoqueDoProdutoFoiMexido,
   formComVariacoes,
@@ -1903,16 +1904,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // aparecia a mais). Estoque é número inteiro, zero ou mais: o que não for
     // isso avisa e não cria a variação.
     const textoDoEstoque = variantFormData.stockIncrement.trim();
-    if (textoDoEstoque.startsWith("-")) {
-      toast.error(
-        "O estoque da variação não pode ser negativo. Digite 0 ou mais.",
-      );
-      return;
-    }
-    if (textoDoEstoque !== "" && !/^\d+$/.test(textoDoEstoque)) {
-      toast.error(
-        "Digite o estoque da variação só com números inteiros (sem vírgula nem ponto).",
-      );
+    const erroDoEstoque = erroDoEstoqueDaVariacao(textoDoEstoque);
+    if (erroDoEstoque) {
+      toast.error(erroDoEstoque);
       return;
     }
     const sanitizedVarStock = textoDoEstoque;
