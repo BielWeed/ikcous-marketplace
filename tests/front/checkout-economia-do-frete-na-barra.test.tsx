@@ -328,6 +328,11 @@ describe("CheckoutView — economia do frete e conta visível na barra de baixo"
         return linha.lastElementChild as HTMLElement;
       };
       const entrega = valorDaLinha("Entrega");
+      if (retirada) {
+        // Retirar na loja não é "frete grátis": a conta diz o que acontece.
+        expect(entrega.textContent).toContain("Retirada na loja");
+        expect(entrega.textContent).not.toContain("Grátis");
+      }
       if (gratis) {
         expect(entrega.textContent).toContain("Grátis");
         const riscado = entrega.querySelector(".line-through")!;
@@ -346,6 +351,7 @@ describe("CheckoutView — economia do frete e conta visível na barra de baixo"
         const copia = elemento.cloneNode(true) as HTMLElement;
         copia.querySelectorAll(".line-through").forEach((el) => el.remove());
         if (copia.textContent?.includes("Grátis")) return 0;
+        if (copia.textContent?.includes("Retirada na loja")) return 0;
         const numero = copia.textContent!.match(/R\$\s*([\d.,]+)/)![1];
         return Math.round(
           Number(numero.replaceAll(".", "").replace(",", ".")) * 100,

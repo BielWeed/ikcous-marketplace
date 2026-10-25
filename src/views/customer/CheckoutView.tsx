@@ -6768,6 +6768,8 @@ export function CheckoutViewDaConta({
                               </span>
                               Grátis
                             </>
+                          ) : ehRetirada ? (
+                            "Retirada na loja"
                           ) : (
                             "Grátis"
                           )}
@@ -6895,7 +6897,9 @@ export function CheckoutViewDaConta({
                                   )}
                                   {shipping > 0
                                     ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
-                                    : "Grátis"}
+                                    : ehRetirada
+                                      ? "Retirada na loja"
+                                      : "Grátis"}
                                 </>
                               )}
                             </span>
