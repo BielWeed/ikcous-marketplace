@@ -64,20 +64,10 @@ function listaDoTipo(tipo: TipoDoAtributo | null): readonly string[] {
   return [];
 }
 
-/**
- * O valor digitado que já existe na lista do tipo (cor da paleta, tamanho,
- * voltagem) vira o nome da lista — "azul marinho" → "Azul marinho" — e por isso
- * não duplica a bolinha que já está na tela. Fora da lista, o texto do lojista
- * passa como veio (só sem as pontas).
- */
-export function valorDaPaleta(atributo: string, texto: string): string {
-  const limpo = texto.trim();
-  const chave = dobrar(limpo);
-  return (
-    listaDoTipo(tipoDoNome(atributo)).find((item) => dobrar(item) === chave) ??
-    limpo
-  );
-}
+/** A régua que a grade e a trava de um grupo já usam para dizer "é o mesmo
+ *  valor": sem as pontas e sem diferença de caixa. Acento NÃO se dobra: "Vovó" e
+ *  "Vovô" são valores diferentes. */
+const chave = (texto: string): string => texto.trim().toLocaleLowerCase();
 
 /** Cor clara pede check escuro (e o contrário): o check nunca some na bolinha. */
 function ehClara(hex: string): boolean {
@@ -235,7 +225,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
         : [props.valor]
       : props.selecionados;
   const marcado = (item: string) =>
-    selecionadosDoModo.some((s) => dobrar(s) === dobrar(item));
+    selecionadosDoModo.some((s) => chave(s) === chave(item));
 
   // Trocar de Cor para Tamanho com "Azul" ainda escolhido geraria "Tamanho:
   // Azul". Só vale quando já havia um nome: quem digitou o valor antes de tocar
@@ -268,19 +258,15 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
     if (nome !== grafia) trocarDeTipo(grafia);
   };
 
-  // O valor que o produto já grava vence o da paleta: "azul" gravado + toque na
-  // bolinha Azul = "azul". Fora disso, a paleta ("azul marinho" → "Azul marinho").
+  // O que o lojista TOCA (bolinha, tamanho, chip) usa a grafia que o produto já
+  // grava: "azul" gravado + toque na bolinha Azul = "azul". O que ele DIGITA
+  // nunca é trocado: texto digitado grava exatamente o que foi digitado.
   const valoresGravados =
     props.modo === "unico"
       ? (props.valoresEmUso ?? [])
       : props.chips.filter((chip) => chip.usado).map((chip) => chip.valor);
-  const casarValor = (texto: string): string => {
-    const doTipo = valorDaPaleta(nome, texto);
-    return (
-      valoresGravados.find((gravado) => dobrar(gravado) === dobrar(doTipo)) ??
-      doTipo
-    );
-  };
+  const casarValor = (item: string): string =>
+    valoresGravados.find((gravado) => chave(gravado) === chave(item)) ?? item;
   const escolher = (item: string) => {
     const valor = casarValor(item);
     if (props.modo === "unico") props.onValor(valor);
@@ -309,7 +295,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
           (chip) =>
             chip.usado ||
             !listaDoTipo(tipo).some(
-              (item) => dobrar(item) === dobrar(chip.valor),
+              (item) => chave(item) === chave(chip.valor),
             ),
         )
       : [];
@@ -561,10 +547,10 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
           type="text"
           aria-label={`Valor do atributo ${numero}`}
           value={props.valor}
-          // Só o que o lojista de fato mudou é reescrito: focar e sair de
-          // "azul" não vira "Azul" nem marca a variação como alterada.
+          // Grava o digitado, sem trocar nada. Só o que o lojista de fato mudou é
+          // reescrito: focar e sair do campo não marca a variação como alterada.
           onFlush={(texto) => {
-            if (texto !== props.valor) props.onValor(casarValor(texto));
+            if (texto !== props.valor) props.onValor(texto);
           }}
           className={CAMPO}
           placeholder={PLACEHOLDER[tipo ?? "Outro"]}

@@ -916,13 +916,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         : ["Cor", "Tamanho", "Voltagem"],
     ),
   ).filter(Boolean);
-  // Os valores que o produto JÁ grava para um atributo ("azul", em "cor"): o
-  // seletor casa o que o lojista toca ou digita com essa grafia, porque a loja
-  // compara o texto exato e "azul" + "Azul" viram duas cores.
+  // Os valores que OUTRAS linhas do produto já gravam para um atributo ("azul",
+  // em "cor"): ao TOCAR uma bolinha, o seletor usa essa grafia, porque a loja
+  // compara o texto exato e "azul" + "Azul" viram duas cores. A linha em edição
+  // não conta (senão não haveria caminho para corrigir a caixa dela).
   const valoresGravadosDoAtributo = (atributo: string): string[] => {
     const chave = atributo.trim().toLowerCase();
     if (chave === "") return [];
     return formData.variants
+      .filter((v) => !editingVariant || v.id !== editingVariant.id)
       .flatMap((v) => dividirEmAtributos(v.name, v.value))
       .filter((par) => par.name.trim().toLowerCase() === chave)
       .map((par) => par.value.trim())

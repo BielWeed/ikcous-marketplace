@@ -5,7 +5,6 @@ import {
 import {
   SeletorDeAtributo,
   tipoDoNome,
-  valorDaPaleta,
 } from "@/components/admin/products/SeletorDeAtributo";
 import type { ProductVariant } from "@/types";
 import { erroDoEstoqueDaVariacao } from "@/utils/estoque-da-variacao";
@@ -241,15 +240,7 @@ export function ModalVarianteGrade({
   };
 
   const adicionarValorDigitado = (grupo: GrupoNoForm) => {
-    // O digitado que já existe na paleta casa pelo nome dela ("azul marinho" →
-    // "Azul marinho"), e não vira um segundo valor igual.
-    // E o valor que o produto já grava vence a paleta: com "azul" gravado,
-    // digitar "AZUL" escolhe "azul" (a loja compara o texto exato).
-    const daPaleta = valorDaPaleta(grupo.nome, grupo.rascunho);
-    const gravado = valoresDoGrupo(grupo, variantesExistentes).find(
-      (chip) => chaveMinuscula(chip.valor) === chaveMinuscula(daPaleta),
-    );
-    const valor = gravado?.valor ?? daPaleta;
+    const valor = grupo.rascunho.trim();
     if (valor === "") return;
     if (valor.includes("/")) {
       toast.error(

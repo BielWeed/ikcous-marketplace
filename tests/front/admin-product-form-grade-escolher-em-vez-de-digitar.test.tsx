@@ -206,26 +206,26 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
     });
   }
 
-  it("tocar as bolinhas escolhe as cores; digitar uma que já existe na paleta casa com ela e NÃO duplica", async () => {
+  it("tocar as bolinhas escolhe as cores; o digitado grava como foi digitado, e o mesmo texto (em outra caixa) NÃO duplica", async () => {
     await abrirGrade();
     await tocar(botaoDoAtributo(0, "Cor"));
 
-    // Digitado em minúscula e sem acento, ANTES de tocar nada: vira o nome da
-    // paleta (a loja desenha a bolinha pelo nome), e a bolinha fica marcada.
+    // Digitado em minúscula, ANTES de tocar nada: grava exatamente o digitado
+    // (texto digitado nunca é trocado) e a bolinha da mesma cor fica marcada.
     await digitarCampo("grade-valor-0", "azul marinho");
     await tocar(porRotulo("Adicionar valor do atributo 1"));
-    expect(selecionadas()).toEqual(["Azul marinho"]);
+    expect(selecionadas()).toEqual(["azul marinho"]);
     expect(porRotulo("Azul marinho")?.getAttribute("aria-pressed")).toBe(
       "true",
     );
     await digitarCampo("grade-valor-0", "lilas");
     await tocar(porRotulo("Adicionar valor do atributo 1"));
-    expect(selecionadas()).toEqual(["Azul marinho", "Lilás"]);
+    expect(selecionadas()).toEqual(["azul marinho", "lilas"]);
 
     await tocar(porRotulo("Preto"));
     await digitarCampo("grade-valor-0", "AZUL MARINHO");
     await tocar(porRotulo("Adicionar valor do atributo 1"));
-    expect(selecionadas()).toEqual(["Azul marinho", "Lilás", "Preto"]);
+    expect(selecionadas()).toEqual(["azul marinho", "lilas", "Preto"]);
 
     // Uma cor fora da paleta entra como valor livre, uma vez só.
     await digitarCampo("grade-valor-0", "Sálvia");
@@ -233,8 +233,8 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
     await digitarCampo("grade-valor-0", "sálvia");
     await tocar(porRotulo("Adicionar valor do atributo 1"));
     expect(selecionadas()).toEqual([
-      "Azul marinho",
-      "Lilás",
+      "azul marinho",
+      "lilas",
       "Preto",
       "Sálvia",
     ]);
@@ -324,7 +324,7 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
     expect(linhasDaGrade()).toEqual(["Rosa"]);
   });
 
-  it("produto que já tem a cor 'azul' (minúscula): tocar a bolinha Azul ou digitar 'AZUL' escolhe 'azul', nunca um segundo 'Azul'", async () => {
+  it("produto que já tem a cor 'azul' (minúscula): tocar a bolinha Azul escolhe 'azul', nunca um segundo 'Azul'; o digitado não é trocado", async () => {
     await abrirGrade([
       {
         id: "v1",
@@ -337,12 +337,13 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
     ]);
     await tocar(porRotulo("Azul"));
     expect(selecionadas()).toEqual(["azul"]);
-    // Tocar de novo tira; digitar em outra caixa também casa com o gravado.
+    // Tocar de novo tira.
     await tocar(porRotulo("Azul"));
     expect(selecionadas()).toEqual([]);
+    // Digitado grava como foi digitado (a dedupe é a de sempre, por caixa).
     await digitarCampo("grade-valor-0", "AZUL");
     await tocar(porRotulo("Adicionar valor do atributo 1"));
-    expect(selecionadas()).toEqual(["azul"]);
+    expect(selecionadas()).toEqual(["AZUL"]);
     const chips = [
       ...document.querySelectorAll('[data-testid="chip-do-produto"]'),
     ].map((c) => c.textContent?.replace(/\s+/g, " ").trim());

@@ -480,8 +480,69 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
       campo.blur();
     });
     expect(valorDoCampo("variant-value")).toBe("azul");
-    await clicarTexto("Salvar");
+    // "Salvar variação" (o do modal), não "Salvar" (o do produto, que o `includes`
+    // acharia primeiro): é este clique que regravaria o valor.
+    await clicarTexto("Salvar variação");
+    expect(toastError).not.toHaveBeenCalled();
     expect(variantesNaTela()).toEqual(["Cor: azul"]);
+  });
+
+  async function digitarNoCampoESair(id: string, texto: string) {
+    const campo = document.getElementById(id) as HTMLInputElement;
+    await act(async () => {
+      campo.focus();
+    });
+    await digitar(id, texto);
+    await act(async () => {
+      campo.blur();
+    });
+  }
+
+  it("editar 'Estampa: Vovo' digitando 'Vovô' grava 'Vovô' e o campo mostra o mesmo", async () => {
+    await montar([linhaAntiga("Estampa", "Vovo")]);
+    await abrirEdicaoDaLinha("Vovo");
+    await digitarNoCampoESair("variant-value", "Vovô");
+    expect(valorDoCampo("variant-value")).toBe("Vovô");
+    await clicarTexto("Salvar variação");
+    expect(variantesNaTela()).toEqual(["Estampa: Vovô"]);
+  });
+
+  it("nova variação 'Vovô' com 'Vovó' já gravado grava 'Vovô' (texto digitado nunca é trocado)", async () => {
+    await montar([linhaAntiga("Estampa", "Vovó")]);
+    await abrirNovaVariacao();
+    await tocarNaPeca(0, "Estampa");
+    await digitarNoCampoESair("variant-value", "Vovô");
+    expect(valorDoCampo("variant-value")).toBe("Vovô");
+    await clicarTexto("Salvar variação");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual(["Estampa: Vovó", "Estampa: Vovô"]);
+  });
+
+  it("editar 'Cor: azul' digitando 'Azul' corrige só a caixa: grava 'Azul'", async () => {
+    await montar([linhaAntiga("Cor", "azul")]);
+    await abrirEdicaoDaLinha("azul");
+    await digitarNoCampoESair("variant-value", "Azul");
+    await clicarTexto("Salvar variação");
+    expect(variantesNaTela()).toEqual(["Cor: Azul"]);
+  });
+
+  it("editar 'Cor: azul' e tocar a bolinha Azul grava 'Azul': o próprio valor da linha não conta como 'em uso'", async () => {
+    await montar([linhaAntiga("Cor", "azul")]);
+    await abrirEdicaoDaLinha("azul");
+    await clicarRotulo("Azul");
+    expect(valorDoCampo("variant-value")).toBe("Azul");
+    await clicarTexto("Salvar variação");
+    expect(variantesNaTela()).toEqual(["Cor: Azul"]);
+  });
+
+  it("editar uma linha e tocar a bolinha Azul quando OUTRA linha grava 'azul' continua gravando 'azul'", async () => {
+    await montar([
+      linhaAntiga("Cor", "azul"),
+      { ...linhaAntiga("Cor", "Rosa"), id: "v2" },
+    ]);
+    await abrirEdicaoDaLinha("Rosa");
+    await clicarRotulo("Azul");
+    expect(valorDoCampo("variant-value")).toBe("azul");
   });
 
   it("todo botão do modal com contorno tem border-solid (o reset global do botão apaga o contorno)", async () => {

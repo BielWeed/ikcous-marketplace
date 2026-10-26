@@ -7,7 +7,6 @@
 import {
   SeletorDeAtributo,
   tipoDoNome,
-  valorDaPaleta,
 } from "@/components/admin/products/SeletorDeAtributo";
 import { PALETA_DE_CORES } from "@/utils/cor-da-variacao";
 import { useState } from "react";
@@ -121,22 +120,6 @@ describe("tipoDoNome — o tipo selecionado é DERIVADO do nome gravado", () => 
     expect(tipoDoNome("Material")).toBe("Outro");
     // Composto legado ("Cor / Tamanho" numa linha só) nunca vira Cor por engano.
     expect(tipoDoNome("Cor / Tamanho")).toBe("Outro");
-  });
-});
-
-describe("valorDaPaleta — o valor digitado que já existe na paleta casa e não duplica", () => {
-  it("devolve o nome da paleta (caixa e acento), ou o texto como veio", () => {
-    expect(valorDaPaleta("Cor", "azul marinho")).toBe("Azul marinho");
-    expect(valorDaPaleta("Cor", "  PRETO ")).toBe("Preto");
-    expect(valorDaPaleta("Cor", "lilas")).toBe("Lilás");
-    expect(valorDaPaleta("Tamanho", "pp")).toBe("PP");
-    expect(valorDaPaleta("Tamanho", "unico")).toBe("Único");
-    expect(valorDaPaleta("Voltagem", "bivolt")).toBe("Bivolt");
-    // Fora da paleta: o texto do lojista, intocado (só sem as pontas).
-    expect(valorDaPaleta("Cor", "Espacial Grey")).toBe("Espacial Grey");
-    // Cor da paleta num atributo que não é cor: não se mexe.
-    expect(valorDaPaleta("Material", "preto")).toBe("preto");
-    expect(valorDaPaleta("", "preto")).toBe("preto");
   });
 });
 
@@ -378,13 +361,14 @@ describe("SeletorDeAtributo — cor (modo único)", () => {
     expect(campo("variant-value")?.value).toBe("Espacial Grey");
   });
 
-  it("digitar um nome que já é da paleta (em outra caixa) casa com a bolinha, sem duplicar", async () => {
+  it("o texto digitado grava EXATAMENTE o que foi digitado; a bolinha da paleta só marca (sem trocar a caixa)", async () => {
     const aoMudar = vi.fn();
     await act(async () => {
       raiz.render(<Unico nomeInicial="Cor" aoMudar={aoMudar} />);
     });
     await digitarEEsperar("variant-value", "azul marinho");
-    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "Azul marinho");
+    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "azul marinho");
+    expect(campo("variant-value")?.value).toBe("azul marinho");
     expect(porRotulo("Azul marinho")?.getAttribute("aria-pressed")).toBe(
       "true",
     );
@@ -754,7 +738,7 @@ describe("SeletorDeAtributo — o VALOR já gravado vence o da paleta", () => {
     expect(porRotulo("Azul")?.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("digitar 'AZUL' num produto que já tem 'azul' também usa 'azul'", async () => {
+  it("o texto DIGITADO nunca é coagido: 'AZUL' com 'azul' gravado grava 'AZUL'", async () => {
     const aoMudar = vi.fn();
     await act(async () => {
       raiz.render(
@@ -762,7 +746,46 @@ describe("SeletorDeAtributo — o VALOR já gravado vence o da paleta", () => {
       );
     });
     await digitarEEsperar("variant-value", "AZUL");
-    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "azul");
+    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "AZUL");
+    expect(campo("variant-value")?.value).toBe("AZUL");
+  });
+
+  it("digitar 'Vovô' com 'Vovó' gravado grava 'Vovô' (acento não se dobra, nada se troca em silêncio)", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <Unico
+          nomeInicial="Estampa"
+          valoresEmUso={["Vovó"]}
+          aoMudar={aoMudar}
+        />,
+      );
+    });
+    await digitarEEsperar("variant-value", "Vovô");
+    expect(aoMudar).toHaveBeenLastCalledWith("Estampa", "Vovô");
+    expect(campo("variant-value")?.value).toBe("Vovô");
+  });
+
+  it("tocar a bolinha compara só a CAIXA: com 'lilas' gravado, tocar Lilás grava 'Lilás' (acento diferente é outro valor)", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <Unico nomeInicial="Cor" valoresEmUso={["lilas"]} aoMudar={aoMudar} />,
+      );
+    });
+    await clicar(porRotulo("Lilás"));
+    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "Lilás");
+  });
+
+  it("sem valor gravado igual, tocar a bolinha grava o nome da paleta", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <Unico nomeInicial="Cor" valoresEmUso={["Rosa"]} aoMudar={aoMudar} />,
+      );
+    });
+    await clicar(porRotulo("Azul"));
+    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "Azul");
   });
 
   it("focar e sair do campo SEM editar não troca 'azul' por 'Azul' nem avisa o pai", async () => {
