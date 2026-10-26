@@ -199,8 +199,14 @@ module.exports = [
     // 26/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
     // 484 -> 488 kB na 1.5.79 (categoria em galeria com icones e as correcoes da
     // tela de produto: rascunho, Voltar das janelas, textos). Medido 484,02 kB.
+    // 26/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 488 -> 490 kB no lote de correcoes do painel (PR #1134) junto com a tela de
+    // produto (#1131). Comportamento real, sem dependencia nova: a folha do
+    // Financeiro pergunta antes de descartar e o Voltar do celular nao perde o
+    // rascunho, relatorios e avaliacoes corretos, textos e alvos de toque. Medido
+    // com o merge: base sozinha 487,20 kB; com o lote 488,31 kB (CI: 488,34 kB).
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "488 kB",
+    limit: "490 kB",
     webpack: false,
     running: false,
   },
