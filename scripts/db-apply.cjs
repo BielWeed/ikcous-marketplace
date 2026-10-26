@@ -78,6 +78,33 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261390: o lucro estimado do Inicio (painel_inicio) conta o MES INTEIRO, do dia 1 ao ultimo dia, previstos inclusos, a conta do "Mes
+  // atual" do Financeiro. Muda SO a janela do fin_dre do lucro: a variavel v_mes_fim e o fin_dre(v_mes_inicio, v_mes_fim). O resto do corpo
+  // e o da 20261228000000 (o corte na mesma hora da semana passada, a regra de estoque baixo e as duas travas de admin sobrevivem). A consulta
+  // 97a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento (inclusive fevereiro e meses de 30 e 31 dias).
+  "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql": {
+    funcao: "painel_inicio",
+    esperado: [
+      { texto: "v_mes_fim date;", vezes: 1 },
+      {
+        texto: "v_mes_fim := (v_mes_inicio + interval '1 month')::date - 1;",
+        vezes: 1,
+      },
+      {
+        texto:
+          "v_lucro := (public.fin_dre(v_mes_inicio, v_mes_fim) ->> 'lucro_liquido')::numeric;",
+        vezes: 1,
+      },
+      {
+        texto:
+          "AND (pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
+        vezes: 1,
+      },
+      { texto: "<= COALESCE(p.estoque_minimo, 5))", vezes: 1 },
+      { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {

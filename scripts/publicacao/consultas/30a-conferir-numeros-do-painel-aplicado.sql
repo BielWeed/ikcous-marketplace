@@ -18,6 +18,10 @@
 --                SUCESSORA 20261232000000 (a grade do CRM: o mesmo corpo com UMA linha trocada, a ancora do
 --                periodo; lote 33): a linha aceita os DOIS e, aceito o da sucessora, o `vivo` mostra o
 --                `esperado` (quem distingue os dois e a 33a). Corpo estranho segue mostrando o md5 dele.
+--                O painel_inicio tambem pode estar no corpo da SUCESSORA 20261390000000 (o lucro do Inicio
+--                conta o mes inteiro: o mesmo corpo com a janela do lucro ate o ultimo dia do mes; lote 97): a
+--                linha aceita os DOIS e, aceito o da sucessora, o `vivo` mostra o `esperado` (quem distingue os
+--                dois e a 97a). O marcador do corte na mesma hora segue no corpo da sucessora.
 --   * marcador -- 'sim' se o corpo traz o corte na mesma hora (`::time <= v_hora`, que so existe nos
 --                corpos novos): leitura humana do mesmo fato do md5. No crm_visao, tambem a CTE `turma`
 --                (a turma de vendas da taxa de devolucao).
@@ -83,7 +87,8 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'painel_inicio: corpo e o da 20261228000000, com a semana passada cortada na mesma hora (md5)',
          'ad5620273997ba9266f240f272bf399b',
-         COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'painel'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m = 'b4aa318b777824bd49aab4175d9133f8' THEN 'ad5620273997ba9266f240f272bf399b' ELSE f.m END
+                     FROM fn f WHERE f.chave = 'painel'), 'AUSENTE')
   UNION ALL
   SELECT 'painel_inicio: o corpo traz o corte na mesma hora',
          'sim',

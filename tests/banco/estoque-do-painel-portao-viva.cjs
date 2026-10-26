@@ -1274,6 +1274,12 @@ async function main() {
         "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql",
         "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
       ],
+      // A 20261390 (o lucro do Inicio conta o mes inteiro): painel_inicio sobre o corpo da 28 (cadeia 99 -> 12 -> 28 -> 390). A 17a
+      // aceita o corpo dela (LF e CRLF) ao lado do da 12 e do da 28; o rollback dela devolve o corpo da 28 (o molde, abaixo, desfaz e mede).
+      [
+        "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql",
+        "public.painel_inicio()",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

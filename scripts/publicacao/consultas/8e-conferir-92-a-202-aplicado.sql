@@ -25,7 +25,8 @@
 -- apply da sucessora. Hoje são treze funções (treze migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
---                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
+--                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora)
+--                                e, DEPOIS dela, 20261390000000 (o lucro do início conta o mês inteiro);
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo)
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
 --                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda);
@@ -141,6 +142,7 @@ WITH corpos AS (
     ('get_admin_analytics_v2', '0a5f8c75bbeeda3777a6a7326a0e281c', '20261214000000'),
     ('crm_visao', 'c33073503fccc6caa5f1085265501eae', '20261227000000'),
     ('painel_inicio', 'ad5620273997ba9266f240f272bf399b', '20261228000000'),
+    ('painel_inicio', 'b4aa318b777824bd49aab4175d9133f8', '20261390000000'),
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
     ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),

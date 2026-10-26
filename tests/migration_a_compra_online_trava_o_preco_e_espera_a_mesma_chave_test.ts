@@ -300,7 +300,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
     "a 81a entra uma vez",
   );
   assertEquals(
-    canais.provasDeObjetos.slice(-11).map((p) => p.consulta),
+    canais.provasDeObjetos.slice(-12).map((p) => p.consulta),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
@@ -313,8 +313,9 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado",
       "90a-conferir-busca-do-painel-por-codigo-aplicado",
       "91a-conferir-o-preco-do-produto-deixa-historico-aplicado",
+      "97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado",
     ],
-    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a, a 90a e a 91a sucedem a 81a no fim, sem reordenar lotes anteriores",
+    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a, a 90a, a 91a e a 97a sucedem a 81a no fim, sem reordenar lotes anteriores",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(

@@ -321,6 +321,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/busca-do-painel-por-codigo-viva.cjs",
     // 20261386: o preco do produto deixa historico (trava de 5 s sem nada pela metade, a janela do salvamento no meio da migration, backfill sem data inventada, 12 caminhos do gatilho, mutantes, ACL/RLS por papel, rollbacks, consultas 91a/91b).
     "tests/banco/o-preco-do-produto-deixa-historico-viva.cjs",
+    // 20261390: o lucro estimado do Inicio conta o mes inteiro (igual ao Financeiro; fevereiro, 30 e 31 dias, virada de ano, controle com o corpo anterior, dados que ja existiam, pre-voo, rollback byte a byte, atomicidade, consultas 97a/97b e portoes 8e/17a/30a).
+    "tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -442,6 +444,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/busca-do-painel-por-codigo-viva.cjs",
     // 20261386: o preco do produto deixa historico (trava de 5 s sem nada pela metade, a janela do salvamento no meio da migration, backfill sem data inventada, 12 caminhos do gatilho, mutantes, ACL/RLS por papel, rollbacks, consultas 91a/91b).
     "tests/banco/o-preco-do-produto-deixa-historico-viva.cjs",
+    // 20261390: o lucro estimado do Inicio conta o mes inteiro (igual ao Financeiro; fevereiro, 30 e 31 dias, virada de ano, controle com o corpo anterior, dados que ja existiam, pre-voo, rollback byte a byte, atomicidade, consultas 97a/97b e portoes 8e/17a/30a).
+    "tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

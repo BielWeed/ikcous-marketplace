@@ -258,6 +258,8 @@ on:
           - 90b-antes-busca-do-painel-por-codigo-base-vigente
           - 91a-conferir-o-preco-do-produto-deixa-historico-aplicado
           - 91b-antes-o-preco-do-produto-deixa-historico-ausente
+          - 97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado
+          - 97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

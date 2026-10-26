@@ -2651,7 +2651,17 @@ const ROL_DA_91B = [
   "produtos: id uuid e preco_venda numeric existem e a tabela tem RLS ligada",
   "rls_admin_atual() existe com o corpo da 20261197000000 (md5) e e executavel pelo authenticated",
 ];
+// Lote 97 (20261390000000, o lucro do Inicio conta o mes inteiro: painel_inicio redefinida, so a janela do lucro). A 97a e a 97b
+// tem o mesmo rol; a 97a espera o corpo da 20261390000000 e a 97b o da 20261228000000.
+const ROL_DA_97 = [
+  "controle: funcoes de public visiveis a este papel",
+  "painel_inicio: corpo exato (md5)",
+  "painel_inicio: assinatura e atributos conhecidos",
+  "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado": ROL_DA_97,
+  "97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente": ROL_DA_97,
   "90a-conferir-busca-do-painel-por-codigo-aplicado": [
     "controle: funcoes de public visiveis a este papel",
     "get_admin_products_paged: corpo exato (md5)",

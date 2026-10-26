@@ -79,6 +79,10 @@ const RB27 = lerMig(`rollback-manual-${ARQ27}`);
 const RB28 = lerMig(`rollback-manual-${ARQ28}`);
 const MIG32 = lerMig(ARQ32);
 const RB32 = lerMig(`rollback-manual-${ARQ32}`);
+// A SUCESSORA do painel_inicio (20261390, o lucro do Inicio conta o mes inteiro), por cima da 28.
+const ARQ390 = "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql";
+const MIG390 = lerMig(ARQ390);
+const RB390 = lerMig(`rollback-manual-${ARQ390}`);
 const emCRLF = (s) => s.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
 const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 
@@ -103,6 +107,7 @@ const CORPO = {
   paiNovo: corpoDe(MIG28, "painel_inicio"),
   paiVigente: corpoDe(RB28, "painel_inicio"),
   crmSucessora: corpoDe(MIG32, "crm_visao"),
+  paiSucessora: corpoDe(MIG390, "painel_inicio"),
 };
 const H = {
   crmNovo: md5(CORPO.crmNovo),
@@ -110,6 +115,7 @@ const H = {
   paiNovo: md5(CORPO.paiNovo),
   paiVigente: md5(CORPO.paiVigente),
   crmSucessora: md5(CORPO.crmSucessora),
+  paiSucessora: md5(CORPO.paiSucessora),
 };
 
 const CRM = "public.crm_visao(date,date)";
@@ -183,6 +189,11 @@ const desfazSucessora = async (c) => {
     "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.crm_visao(date,date)')",
   );
   if (r.rows[0] && r.rows[0].h === H.crmSucessora) await c.query(RB32);
+  // E a sucessora do painel_inicio (a 20261390) sai antes: o preflight da 28 e o rollback dela so aceitam o corpo da 28 ou o anterior.
+  const p = await c.query(
+    "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.painel_inicio()')",
+  );
+  if (p.rows[0] && p.rows[0].h === H.paiSucessora) await c.query(RB390);
 };
 const depois = async (c) => {
   await desfazSucessora(c);
@@ -208,6 +219,12 @@ const so28 = async (c) => {
 const comSucessora = async (c) => {
   await depois(c);
   await c.query(MIG32);
+};
+
+// AS DUAS + A SUCESSORA do painel_inicio (a 20261390000000, por cima do corpo da 28)
+const comSucessoraDoPainel = async (c) => {
+  await depois(c);
+  await c.query(MIG390);
 };
 
 const reprovadas = (linhas) =>
@@ -249,6 +266,17 @@ prova(
     assert.equal(H.paiVigente, "f11d22d076c59ab54d1beb280954dd15");
     assert.equal(H.paiNovo, "ad5620273997ba9266f240f272bf399b");
     assert.equal(H.crmSucessora, "0dfda3ea5129c6f8aabfcf0052fd2936");
+    assert.equal(H.paiSucessora, "b4aa318b777824bd49aab4175d9133f8");
+    assert.ok(
+      SQL[A].includes(`'${H.paiSucessora}'`),
+      "30a: md5 da sucessora do painel_inicio",
+    );
+    assert.ok(!SQL[B].includes(H.paiSucessora), "30b nao cita a sucessora");
+    assert.ok(
+      MIG390.includes(`'${H.paiNovo}', '${H.paiSucessora}'`) &&
+        RB390.includes(`'${H.paiNovo}', '${H.paiSucessora}'`),
+      "a 390 e o rollback dela citam (vigente = o da 28, desta = o da 390)",
+    );
     assert.ok(
       SQL[A].includes(`'${H.crmSucessora}'`),
       "30a: md5 da sucessora do crm_visao",
@@ -403,6 +431,61 @@ prova(
       await assert.rejects(
         () => C.query(MIG32),
         /B1_BASELINE_DIVERGENT: o corpo vivo de public\.crm_visao\(date,date\) ainda é o da 20261199000000/,
+      );
+    } finally {
+      await C.query("ROLLBACK");
+    }
+  },
+);
+
+prova(
+  "SUCESSORA (20261390): com o lucro do Inicio do mes inteiro por cima da 28, a 30a segue POSITIVA e mostra o esperado no vivo; a 30b reprova as mesmas 4 linhas; corpo estranho por cima da sucessora reprova o md5 e mostra o md5 dele; desfazer a sucessora volta ao estado de antes; o marcador do corte na mesma hora segue no corpo",
+  async () => {
+    const s = await noEstado(comSucessoraDoPainel, [A, B]);
+    assert.deepEqual(reprovadas(s[A]), [], "30a toda ok com a sucessora");
+    assert.deepEqual(
+      reprovadas(s[B]),
+      [B_CRM_MD5, B_CRM_MARC, B_PAI_MD5, B_PAI_MARC].sort(),
+    );
+    // aceito o da sucessora, o vivo mostra o esperado (o da 28); o marcador e a ACL seguem
+    assert.equal(s[A].find((l) => l.item === A_PAI_MD5).vivo, H.paiNovo);
+    assert.equal(s[A].find((l) => l.item === A_PAI_MARC).vivo, "sim");
+    assert.equal(
+      s[A].find((l) => l.item === A_PAI_ACL).vivo,
+      "PUBLIC=nao anon=nao authenticated=sim service_role=sim",
+    );
+    // corpo estranho por cima da sucessora (1 byte a mais): reprova SO o md5 e o vivo e o md5 DELE
+    const estranho = await noEstado(
+      async (c) => {
+        await comSucessoraDoPainel(c);
+        await c.query(FUNCOES.pai.cria(`${CORPO.paiSucessora} `, ATRIBUTOS));
+        await guarda(doProc(PAI, "right(prosrc, 1) = ' '"));
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(estranho[A]), [A_PAI_MD5]);
+    assert.equal(
+      estranho[A].find((l) => l.item === A_PAI_MD5).vivo,
+      md5(`${CORPO.paiSucessora} `),
+      "corpo estranho mostra o md5 dele, nao o esperado",
+    );
+    // a sucessora desfeita (o rollback-manual dela): volta ao corpo da 28, 30a segue positiva
+    const desfeita = await noEstado(
+      async (c) => {
+        await comSucessoraDoPainel(c);
+        await c.query(RB390);
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(desfeita[A]), []);
+    assert.equal(desfeita[A].find((l) => l.item === A_PAI_MD5).vivo, H.paiNovo);
+    // e a sucessora SEM a 28 no ar (corpo da 12) nao existe: o pre-voo recusa, entao nao ha estado a medir
+    await C.query("BEGIN");
+    try {
+      await antes(C);
+      await assert.rejects(
+        () => C.query(MIG390),
+        /B1_BASELINE_DIVERGENT: corpo vivo de public\.painel_inicio\(\) /,
       );
     } finally {
       await C.query("ROLLBACK");
