@@ -146,7 +146,6 @@ export function FolhaDeNovaCategoria({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        aria-labelledby="titulo-da-categoria"
         // O véu do painel NÃO pode ser `bg-black/50`: nos temas Claro e
         // Confortável a regra gerada troca essa classe pelo fundo opaco do
         // painel e o formulário por trás some. rgb() escapa da troca.
@@ -173,10 +172,7 @@ export function FolhaDeNovaCategoria({
           </div>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <SheetTitle
-                id="titulo-da-categoria"
-                className="text-[22px] font-bold leading-7 tracking-tight text-foreground"
-              >
+              <SheetTitle className="text-[22px] font-bold leading-7 tracking-tight text-foreground">
                 Nova categoria
               </SheetTitle>
               <SheetDescription className="mt-0.5 text-[13px] text-muted-foreground">

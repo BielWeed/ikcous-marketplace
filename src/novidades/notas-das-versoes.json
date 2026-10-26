@@ -8,7 +8,7 @@
     "correcoes": [
       "Painel, produto: o texto Categoria * não fica mais por cima do texto Escolher categoria.",
       "Painel: o campo de categoria e o seletor de período do Financeiro mostram seta para a direita, porque abrem uma folha e não uma lista para baixo.",
-      "Painel e loja: as listas que abrem no lugar passam a virar a seta ao abrir (busca de produto do balcão, privacidade dos clientes, ver mais pedidos e endereços, privacidade e meus dados, códigos e câmera do produto).",
+      "Painel e loja: nas listas que abrem no lugar (busca de produto do balcão, privacidade dos clientes, ver mais pedidos e endereços, privacidade e meus dados, códigos e câmera do produto), a seta aparece para baixo e vira para cima ao abrir.",
       "Painel: os atalhos que levam a um pedido ou a uma devolução dentro do app mostram seta para a direita, em vez do símbolo de abrir fora do app.",
       "Painel, produto: o botão Salvar da edição mostra um visto, em vez de um lápis."
     ],

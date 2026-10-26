@@ -105,10 +105,14 @@ const botaoPorRotulo = (rotulo: string) =>
   document.querySelector(`button[aria-label="${rotulo}"]`) as
     | HTMLButtonElement
     | undefined;
+// O Radix liga o título à janela sozinho (aria-labelledby gerado): acha-se a
+// folha pelo título "Nova categoria" que ela mesma mostra.
 const folha = () =>
-  document.querySelector(
-    '[role="dialog"][aria-labelledby="titulo-da-categoria"]',
-  ) as HTMLElement | null;
+  ([...document.querySelectorAll('[role="dialog"]')].find((d) =>
+    [...d.querySelectorAll("h2")].some(
+      (h) => h.textContent?.trim() === "Nova categoria",
+    ),
+  ) ?? null) as HTMLElement | null;
 
 describe("AdminProductFormView — folha de 'Nova categoria'", () => {
   let raiz: Root;
@@ -189,7 +193,11 @@ describe("AdminProductFormView — folha de 'Nova categoria'", () => {
 
     const f = folha();
     expect(f).not.toBeNull();
-    expect(f?.querySelector("#titulo-da-categoria")?.textContent).toBe(
+    expect(f?.querySelector("h2")?.textContent).toBe("Nova categoria");
+    // O título está ligado à janela (leitor de tela) sem id escrito à mão.
+    const idDoTitulo = f?.getAttribute("aria-labelledby");
+    expect(idDoTitulo).toBeTruthy();
+    expect(document.getElementById(idDoTitulo ?? "")?.textContent).toBe(
       "Nova categoria",
     );
     // A galeria de ícones está na folha, já aberta.
