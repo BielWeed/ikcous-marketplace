@@ -34,7 +34,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 /**
- * Modal "Nova variante em grade" — o lojista escolhe as camadas (Cor, Tamanho,
+ * Modal "Nova variante em grade" — o lojista escolhe as camadas (Tamanho, Cor,
  * Material: até 3), o sistema gera TODAS as combinações de uma vez e ele
  * ajusta preço, estoque e SKU de cada linha antes de confirmar.
  *
@@ -140,10 +140,12 @@ const SUBSTANTIVOS = new Map<string, [string, string]>([
 const contagemComSubstantivo = (n: number, nome: string): string =>
   `${n} ${(SUBSTANTIVOS.get(tipoDoNome(nome) ?? "") ?? ["valor", "valores"]).at(n === 1 ? 0 : 1)}`;
 
-/** Os tipos que um atalho "+ Tamanho / + Voltagem / + Outro" pode criar. */
-const TIPOS_DOS_ATALHOS = ["Tamanho", "Voltagem", "Outro"] as const;
+/** Os tipos que um atalho "+ Tamanho / + Cor / + Voltagem / + Outro" pode
+ *  criar (os que nenhum cartão usa ainda), na ordem das peças. */
+const TIPOS_DOS_ATALHOS = ["Tamanho", "Cor", "Voltagem", "Outro"] as const;
 const EXEMPLO_DO_ATALHO = new Map<string, string>([
   ["Tamanho", "ex.: P, M, G"],
+  ["Cor", "ex.: Azul, Preto"],
   ["Voltagem", "ex.: 110 V, 220 V"],
 ]);
 
@@ -527,7 +529,7 @@ export function ModalVarianteGrade({
       onClick={() => criarAtalho(tipo)}
       className={cn(
         "min-h-11 rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-4 font-bold text-zinc-300 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95",
-        grande ? "flex-1 py-3 text-base" : "text-sm",
+        grande ? "min-w-[7rem] flex-1 py-3 text-base" : "text-sm",
       )}
     >
       + {tipo}
@@ -590,7 +592,7 @@ export function ModalVarianteGrade({
               {passo === 1 && !grupoUnicoEmUso && (
                 <p className="text-sm leading-relaxed text-zinc-400">
                   {
-                    "Escolha o que muda no produto. Para cor e tamanho juntos, toque em '+ Adicionar outro atributo'."
+                    "Escolha o que muda no produto. Para tamanho e cor juntos, toque em '+ Adicionar outro atributo'."
                   }
                 </p>
               )}
@@ -666,9 +668,10 @@ export function ModalVarianteGrade({
                 ) : (
                   <div className="space-y-3">
                     <p className="text-sm text-zinc-400">
-                      Este produto também varia em outra coisa? Ex.: tamanho.
+                      Este produto também varia em outra coisa? Ex.:{" "}
+                      {tiposEmUso.includes("Tamanho") ? "cor" : "tamanho"}.
                     </p>
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
                       {atalhosLivres
                         .filter((tipo) => tipo !== "Outro")
                         .map((tipo) => botaoDoAtalho(tipo, true))}

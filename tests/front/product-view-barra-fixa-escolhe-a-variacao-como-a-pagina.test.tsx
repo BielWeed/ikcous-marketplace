@@ -16,6 +16,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product, ProductVariant } from "@/types";
+import { opcaoDaVariacao } from "./helpers/opcao-da-variacao";
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -282,12 +283,12 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     expect(adicionarAoCarrinho).not.toHaveBeenCalled();
     const folha = document.querySelector('[role="dialog"]')!;
     expect(folha).not.toBeNull();
-    await tocar(folha.querySelector('button[aria-label="Azul"]'));
-    expect(
-      (folha.querySelector('button[aria-label="M"]') as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    await tocar(folha.querySelector('button[aria-label="P"]'));
+    await tocar(opcaoDaVariacao(folha, "Azul"));
+    // M existe em outra cor (Preto / M): fica apagado, mas tocável.
+    const m = opcaoDaVariacao(folha, "M") as HTMLButtonElement;
+    expect(m.disabled).toBe(false);
+    expect(m.classList.contains("border-dashed")).toBe(true);
+    await tocar(opcaoDaVariacao(folha, "P"));
     expect(folha.textContent).toContain("R$ 25,00");
     await tocar(
       [...folha.querySelectorAll("button")].find(
@@ -311,7 +312,7 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
       ["B", "M", "Listrada"],
     ],
   ])(
-    "a folha permite sair da combinação A/P e comprar B/M em %s",
+    "tocar em B/M com A/P escolhido troca a combinação sem travar, em %s",
     async (name, primeira, segunda, escolhasA, escolhasB) => {
       await montar(
         blusa([
@@ -321,27 +322,28 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
       );
       await comprarPelaBarra();
       const folha = document.querySelector('[role="dialog"]')!;
-      const opcao = (valor: string) =>
-        folha.querySelector<HTMLButtonElement>(
-          `button[aria-label="${valor}"]`,
-        )!;
+      const opcao = (valor: string) => opcaoDaVariacao(folha, valor)!;
       const adicionar = () =>
         [...folha.querySelectorAll("button")].find(
           (b) => b.textContent === "Adicionar ao Carrinho",
         );
       for (const valor of escolhasA) await tocar(opcao(valor));
+      // B / M existe em outra combinação: os valores de B ficam apagados,
+      // mas tocáveis (não travados).
       for (const valor of escolhasB) {
-        expect(opcao(valor).disabled).toBe(true);
-        await tocar(opcao(valor));
-        expect(opcao(valor).getAttribute("aria-pressed")).toBe("false");
+        expect(opcao(valor).disabled).toBe(false);
+        expect(opcao(valor).classList.contains("border-dashed")).toBe(true);
       }
+      // Tocar no primeiro valor de B solta tudo o que deixou de combinar:
+      // nenhum valor de A fica marcado e nada é comprável pela metade.
+      await tocar(opcao(escolhasB[0]));
+      expect(opcao(escolhasB[0]).getAttribute("aria-pressed")).toBe("true");
       for (const valor of escolhasA) {
-        await tocar(opcao(valor));
         expect(opcao(valor).getAttribute("aria-pressed")).toBe("false");
       }
       await tocar(adicionar());
       expect(adicionarAoCarrinho).not.toHaveBeenCalled();
-      for (const valor of escolhasB) await tocar(opcao(valor));
+      for (const valor of escolhasB.slice(1)) await tocar(opcao(valor));
       expect(folha.textContent).toContain("R$ 25,00");
       await tocar(adicionar());
       expect(adicionarAoCarrinho).toHaveBeenCalledExactlyOnceWith(
@@ -361,14 +363,14 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     );
     await comprarPelaBarra();
     const folha = document.querySelector('[role="dialog"]')!;
-    await tocar(folha.querySelector('button[aria-label="Azul"]'));
-    await tocar(folha.querySelector('button[aria-label="M"]'));
+    await tocar(opcaoDaVariacao(folha, "Azul"));
+    await tocar(opcaoDaVariacao(folha, "M"));
     const grupoDasOpcoes = folha.querySelector('[role="group"]');
     expect(grupoDasOpcoes).not.toBeNull();
     expect(grupoDasOpcoes!.textContent).not.toContain("15 disponíveis");
-    expect(
-      folha.querySelector('button[aria-label="Azul"]')?.getAttribute("title"),
-    ).not.toContain("15 un.");
+    expect(opcaoDaVariacao(folha, "Azul")?.getAttribute("title")).not.toContain(
+      "15 un.",
+    );
     const mais = folha.querySelector(
       'button[aria-label="Aumentar quantidade"]',
     );
@@ -479,25 +481,52 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     }
   });
 
-  it("trocar para uma cor sem o tamanho escolhido limpa o tamanho, não compra combinação inexistente", async () => {
+  it("com Azul e P escolhidos, tocar na Preta (só existe em M) escolhe a Preta e solta o P: nunca compra combinação inexistente", async () => {
     await montar(
       blusa([
         { ...cor("azul-p", "Azul / P", 2), name: "Cor / Tamanho" },
         { ...cor("preto-m", "Preto / M", 4), name: "Cor / Tamanho" },
+        { ...cor("branco-g", "Branco / G", 0), name: "Cor / Tamanho" },
       ]),
     );
-    await tocar(hospedeiro.querySelector('button[aria-label="Azul"]'));
-    await tocar(hospedeiro.querySelector('button[aria-label="P"]'));
-    expect(barra()?.textContent).toContain("Azul · P");
-    await tocar(hospedeiro.querySelector('button[aria-label="Preto"]'));
-    expect(
-      hospedeiro
-        .querySelector('button[aria-label="P"]')
-        ?.getAttribute("aria-pressed"),
-    ).toBe("false");
-    expect(barra()?.textContent).toContain("Escolher cor e tamanho");
+    const botao = (rotulo: string) => opcaoDaVariacao(hospedeiro, rotulo);
+    // A barra e a folha seguem a ordem das fileiras: o tamanho vem primeiro.
+    expect(barra()?.textContent).toContain("Escolher tamanho e cor");
+    await tocar(botao("Azul"));
+    await tocar(botao("P"));
+    expect(barra()?.textContent).toContain("P · Azul");
+    // Apagada pela combinação, mas tocável; Branco/G está esgotado de vez.
+    expect(botao("Preto")?.disabled).toBe(false);
+    expect(botao("Preto")?.classList.contains("border-dashed")).toBe(true);
+    expect(botao("Branco")?.disabled).toBe(true);
+    expect(botao("G")?.disabled).toBe(true);
+    await tocar(botao("Branco"));
+    expect(botao("Branco")?.getAttribute("aria-pressed")).toBe("false");
+    expect(barra()?.textContent).toContain("P · Azul");
+
+    await tocar(botao("Preto"));
+    expect(botao("Preto")?.getAttribute("aria-pressed")).toBe("true");
+    expect(botao("Azul")?.getAttribute("aria-pressed")).toBe("false");
+    expect(botao("P")?.getAttribute("aria-pressed")).toBe("false");
+    // O P agora é que está apagado (Preto / P não existe), mas M está livre.
+    expect(botao("P")?.classList.contains("border-dashed")).toBe(true);
+    expect(botao("M")?.classList.contains("line-through")).toBe(false);
+    expect(barra()?.textContent).toContain("Escolher tamanho e cor");
     await comprarPelaBarra();
     expect(adicionarAoCarrinho).not.toHaveBeenCalled();
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+
+    const folha = document.querySelector('[role="dialog"]')!;
+    await tocar(opcaoDaVariacao(folha, "M"));
+    await tocar(
+      [...folha.querySelectorAll("button")].find(
+        (b) => b.textContent === "Adicionar ao Carrinho",
+      ),
+    );
+    expect(adicionarAoCarrinho).toHaveBeenCalledExactlyOnceWith(
+      1,
+      "preto-m",
+      "Cor / Tamanho: Preto / M",
+    );
   });
 });

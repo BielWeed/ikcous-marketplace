@@ -128,10 +128,10 @@ async function montarCorETamanho() {
 }
 
 describe("passo 1 da grade — ajuda e cartões numerados", () => {
-  it("abre com o texto de ajuda que ensina a juntar cor e tamanho", async () => {
+  it("abre com o texto de ajuda que ensina a juntar tamanho e cor", async () => {
     await abrir();
     expect(corpo()).toContain(
-      "Escolha o que muda no produto. Para cor e tamanho juntos, toque em '+ Adicionar outro atributo'.",
+      "Escolha o que muda no produto. Para tamanho e cor juntos, toque em '+ Adicionar outro atributo'.",
     );
   });
 
@@ -239,6 +239,29 @@ describe("passo 1 da grade — '+ Adicionar outro atributo' e atalhos", () => {
     );
     expect(botaoExato("+ Outro")).toBeTruthy();
     expect(corpo()).not.toContain("Sugestão:");
+  });
+
+  it("só com Tamanho (o primeiro cartão do lojista): oferece Cor (com exemplo), Voltagem e Outro, e o exemplo da pergunta é a cor", async () => {
+    await abrir();
+    await tocarPeca(0, "Tamanho");
+    expect(corpo()).toContain(
+      "Este produto também varia em outra coisa? Ex.: cor.",
+    );
+    expect(texto(botaoPorTexto("+ Cor"))).toBe("+ Cor ex.: Azul, Preto");
+    expect(botaoPorTexto("+ Voltagem")).toBeTruthy();
+    expect(botaoExato("+ Outro")).toBeTruthy();
+    expect(botaoPorTexto("+ Tamanho")).toBeUndefined();
+    await tocar(botaoPorTexto("+ Cor"));
+    expect(texto(cartao(1))).toContain("2 · Cor");
+    expect(botaoDoAtributo(1, "Cor").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("os tipos dos cartões 1 e 2 aparecem na ordem Tamanho, Cor, Voltagem, Outro", async () => {
+    await abrir();
+    const rotulos = [
+      ...(cartao(0)?.querySelectorAll('[role="group"] > button') ?? []),
+    ].map((b) => b.textContent);
+    expect(rotulos).toEqual(["Tamanho", "Cor", "Voltagem", "Outro"]);
   });
 
   it("'+ Tamanho' cria o cartão 2 JÁ em Tamanho; depois só sobram os tipos livres, em 'Sugestão:'", async () => {
@@ -369,6 +392,22 @@ describe("passo 1 da grade — faixa RESUMO", () => {
     expect(texto(botaoPorTexto("Gerar"))).toBe("Gerar 3 combinações");
   });
 
+  it.each([
+    ["Cor / Tamanho", "Preto / M", "Cor", "Tamanho"],
+    ["Tamanho / Cor", "M / Preto", "Tamanho", "Cor"],
+  ])(
+    "completar grade abre os cartões na ORDEM JÁ GRAVADA do produto (%s)",
+    async (nome, valor, primeiro, segundo) => {
+      await abrir({
+        existentes: [linha(nome, valor)],
+        grupoUnicoEmUso: nome,
+        sugestoes: [nome],
+      });
+      expect(texto(cartao(0))).toContain(`1 · ${primeiro}`);
+      expect(texto(cartao(1))).toContain(`2 · ${segundo}`);
+    },
+  );
+
   it("sem nada escolhido, ou com um atributo ainda vazio, pede ao menos uma opção em cada", async () => {
     await abrir();
     await tocarPeca(0, "Cor");
@@ -490,7 +529,7 @@ describe("passo 1 da grade — achados da revisão", () => {
 
   it("produto que já grava um grupo não recebe a ajuda que manda juntar atributos", async () => {
     await abrir({ grupoUnicoEmUso: "Cor" });
-    expect(corpo()).not.toContain("Para cor e tamanho juntos");
+    expect(corpo()).not.toContain("Para tamanho e cor juntos");
   });
 
   it("dois cartões com o mesmo nome: o resumo avisa e o botão não promete número", async () => {

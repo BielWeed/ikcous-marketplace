@@ -1,4 +1,5 @@
 import type { ProductVariant } from "@/types";
+import { posicaoDoAtributo } from "./atributos-da-variacao";
 import { dividirEmAtributos } from "./variante-composta";
 
 export interface EixoDaVariacao {
@@ -61,7 +62,13 @@ export function criarEixosDaVariacao(
       })),
     };
   });
-  return { grupos, eixos: grupos.flatMap((g) => g.eixos) };
+  // A ordem de EXIBIÇÃO é a da página do produto (Tamanho/Voltagem, Cor, outros).
+  // Só a lista plana `eixos` muda: `chave`, `indice` e a ordem dos `grupos`
+  // seguem a gravação, porque é deles que saem o id e a chave do carrinho.
+  const eixos = grupos
+    .flatMap((g) => g.eixos)
+    .sort((a, b) => posicaoDoAtributo(a.nome) - posicaoDoAtributo(b.nome));
+  return { grupos, eixos };
 }
 export function disponibilidadeDoValor(
   modelo: ModeloDeEixos,
@@ -100,6 +107,9 @@ export function preselecionarCor(
   escolhas: Map<string, string>,
 ) {
   const depois = new Map(escolhas);
+  // Com Tamanho/Voltagem na frente (como na página), nada é pré-marcado: a cor
+  // vem DEPOIS de quem escolheu o tamanho.
+  if (modelo.eixos.some((e) => posicaoDoAtributo(e.nome) === 0)) return depois;
   for (const e of modelo.eixos) {
     if (!eixoEhCor(e) || depois.has(e.chave)) continue;
     const valor = e.valores.find(

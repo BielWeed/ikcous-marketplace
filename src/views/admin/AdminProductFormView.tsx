@@ -100,6 +100,8 @@ import {
 } from "@/utils/um-grupo-de-variacao";
 import {
   type ParDeAtributo,
+  SEPARADOR_DE_ATRIBUTOS,
+  alinharPelaOrdemGravada,
   dividirEmAtributos,
   juntarAtributos,
   validarAtributos,
@@ -931,11 +933,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       .filter((valor) => valor !== "");
   };
   const produtoTemGrupoDemais = temGrupoDemais(formData.variants);
-  // O exemplo do "+ Atributo": a outra metade da dupla mais comum.
+  // O exemplo do "+ Atributo": a outra metade da dupla mais comum. O tamanho
+  // vem primeiro; quem já tem o tamanho recebe a cor como sugestão.
   const exemploDoProximoAtributo =
-    tipoDoNome(variantFormData.pares.at(-1)?.name ?? "") === "Cor"
-      ? "Tamanho"
-      : "Cor";
+    tipoDoNome(variantFormData.pares.at(-1)?.name ?? "") === "Tamanho"
+      ? "Cor"
+      : "Tamanho";
 
   useEffect(() => {
     formData.images.forEach((url) => {
@@ -1892,8 +1895,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // grava name="Cor / Tamanho", value="Branca / PP", com o estoque deste
     // formulário — a branca PP tem o estoque DELA. Um par só sai cru, igual
     // ao caso simples de hoje. Ver `variante-composta.ts`.
+    // Produto que já grava "Cor / Tamanho": montar Tamanho e depois Cor grava
+    // na ordem antiga (a trava abaixo compara o nome inteiro e NÃO muda).
+    const gruposDasOutras = gruposDeVariacao(
+      formData.variants.filter((v) => v.id !== editingVariant?.id),
+    );
     const { name: nomeComposto, value: valorComposto } = juntarAtributos(
-      variantFormData.pares,
+      alinharPelaOrdemGravada(
+        variantFormData.pares,
+        gruposDasOutras.length === 1 ? gruposDasOutras[0] : undefined,
+      ),
     );
 
     // Um grupo por produto. Com dois, o estoque passa a ser somado em dobro, o
@@ -1909,10 +1920,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     );
     if (trava.bloqueia) {
       toast.error(`Este produto já usa "${trava.grupoEmUso}"`, {
-        description:
-          "Cada produto aceita um tipo de variação só. Para vender cor e " +
-          "tamanho juntos, crie as opções combinadas dentro do mesmo tipo " +
-          '(ex: "Rosa P", "Rosa M") — assim o estoque e o pedido saem certos.',
+        description: trava.grupoEmUso.includes(SEPARADOR_DE_ATRIBUTOS)
+          ? `Cada produto aceita um conjunto de atributos só. Para criar outra opção, use os mesmos atributos das que já existem (${trava.grupoEmUso}).`
+          : "Cada produto aceita um tipo de variação só. Para vender cor e " +
+            "tamanho juntos, crie as opções combinadas dentro do mesmo tipo " +
+            '(ex: "Rosa P", "Rosa M") — assim o estoque e o pedido saem certos.',
         duration: 10000,
       });
       return;
@@ -3045,7 +3057,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
                   <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
                     {/* O que muda nesta variação. Cada par é uma dimensão
-                        (Cor, Tamanho…) que o lojista ESCOLHE tocando; "+
+                        (Tamanho, Cor…) que o lojista ESCOLHE tocando; "+
                         Atributo" empilha outra e as duas viram UMA combinação
                         com estoque próprio — ver `variante-composta.ts`. O que
                         é gravado segue sendo o nome e o valor em texto. */}
@@ -4297,7 +4309,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 cor="border-admin-border bg-admin-raised text-zinc-300"
                 resumo={
                   formData.variants.length === 0
-                    ? "Cor, tamanho ou voltagem — opcional"
+                    ? "Tamanho, cor ou voltagem — opcional"
                     : `${variacoesAtivas} ativas · ${formData.stock} un. · ${formData.variants.length - variacoesAtivas} offline`
                 }
                 abertaInicial={formData.variants.length > 0}
@@ -4407,10 +4419,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         <div className="space-y-3 rounded-2xl border border-admin-border bg-zinc-950/40 p-4">
                           <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                             Variações permitem vender o mesmo produto com
-                            diferentes opções — cor, tamanho, voltagem. Cada
+                            diferentes opções — tamanho, cor, voltagem. Cada
                             produto aceita{" "}
                             <b className="text-zinc-350">um tipo só</b>: para
-                            vender cor e tamanho juntos, combine os dois no
+                            vender tamanho e cor juntos, combine os dois no
                             valor da opção (ex: Nome: <i>Modelo</i>, Valores:{" "}
                             <i>Rosa P</i>, <i>Rosa M</i>).
                           </p>
