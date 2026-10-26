@@ -1,4 +1,19 @@
 {
+  "1.5.87": {
+    "titulo": "Avisos, lista de clientes e telas da loja mais certos",
+    "novidades": [],
+    "correcoes": [
+      "Loja, avisos: quem acabou de criar a conta não vê mais campanhas antigas no sino, o aviso de pagamento confirmado aparece na aba Avisos e quem ainda não entrou na conta recebe o convite para entrar. A pergunta que você está digitando num produto não se perde quando o app se atualiza.",
+      "Avisos no celular: o aviso de um pedido vale por 24 horas, para não chegar um \"em preparo\" de ontem, e um aviso novo do mesmo pedido substitui o anterior em vez de empilhar.",
+      "Loja: os pontos das ofertas têm 44 px de toque, os selos dos produtos quebram a linha em vez de cortar, os avisos de tela ficam mais tempo e as janelas rolam em celulares pequenos. Vários textos miúdos ficaram mais legíveis.",
+      "Painel, Avisar clientes: aparece \"Ligar avisos neste aparelho\", a lista de aparelhos passa de mil sem cortar, e um título ou mensagem só de espaços é barrado.",
+      "Painel, Clientes: a lista não repete uns clientes e esconde outros quando muitos estão empatados. A busca do CRM acha a cliente pelo telefone mesmo com +55.",
+      "Painel, ficha do cliente: o Voltar leva de volta à tela de onde você veio, cliente que não existe mais diz \"Cliente não encontrado\", a página do CRM se ajusta quando a lista encolhe e as datas saem em português.",
+      "Painel, perguntas e avaliações: responder uma pergunta ignora espaços sobrando e a resposta rápida de avaliação soma ao que você já escreveu em vez de apagar.",
+      "Painel, vitrines, cupons e frete: não dá mais para renomear uma vitrine para vazio, o limite de uso do cupom precisa ser um número inteiro de até 2.000.000.000, o valor do frete grátis tem teto e os avisos de salvar ficam mais tempo na tela."
+    ],
+    "melhorias": []
+  },
   "1.5.86": {
     "titulo": "Conta, envio, Balcão e vitrine mais honestos, com limites contra abuso",
     "novidades": [],
