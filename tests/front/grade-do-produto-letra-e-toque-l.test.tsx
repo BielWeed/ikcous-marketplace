@@ -73,7 +73,7 @@ describe("Grade do produto — letra e toque (onda L)", () => {
     }
   });
 
-  it('o botão "+ Atributo" tem 44px de altura', () => {
+  it('o botão "+ Adicionar outro atributo" tem 44px de altura', () => {
     const botao = literalComMarcas(semComentarios(ler(MODAL)), [
       "border-dashed",
       "px-5 py-3",

@@ -11,6 +11,7 @@ import {
   type LinhaProntaDaGrade,
   ModalVarianteGrade,
 } from "@/components/admin/products/ModalVarianteGrade";
+import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 const { toastErro } = vi.hoisted(() => ({ toastErro: vi.fn() }));
 vi.mock("sonner", () => ({
@@ -56,9 +57,11 @@ function digitar(el: HTMLInputElement, valor: string) {
     el.blur();
   });
 }
-function botao(texto: string): HTMLButtonElement {
+function botao(texto: string | RegExp): HTMLButtonElement {
   const achado = [...document.body.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").trim().startsWith(texto),
+    typeof texto === "string"
+      ? (b.textContent ?? "").trim().startsWith(texto)
+      : casaOTexto(b.textContent, texto),
   );
   if (!achado) throw new Error(`botão não achado: ${texto}`);
   return achado;
@@ -92,7 +95,7 @@ function abrirNoPasso2() {
       ),
     );
   }
-  clicar(botao("Gerar grade"));
+  clicar(botao(BOTAO_GERAR_GRADE));
 }
 
 const entregue = () => onEfetivar.mock.calls.at(-1)?.[0] ?? [];

@@ -21,6 +21,7 @@ import {
   atributoMarcado,
   escolherAtributo,
 } from "./helpers/atributo-da-variacao";
+import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 const fetchProduct = vi.fn();
 const upsertVariants = vi.fn().mockResolvedValue(undefined);
@@ -100,13 +101,13 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function botaoPorTexto(raiz: ParentNode, texto: string) {
+function botaoPorTexto(raiz: ParentNode, texto: string | RegExp) {
   return [...raiz.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+    casaOTexto(b.textContent, texto),
   ) as HTMLButtonElement | undefined;
 }
 
-function clicarObrigatorio(texto: string) {
+function clicarObrigatorio(texto: string | RegExp) {
   const botao = botaoPorTexto(document.body, texto);
   if (!botao) throw new Error(`Botão "${texto}" não está na tela.`);
   botao.click();
@@ -232,7 +233,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
       clicarPorRotulo("Adicionar valor do atributo 1");
     });
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Adicionar outro atributo");
     });
     await escolherAtributo(1, "Tamanho", "grade-nome-1", digitarCampo);
     await digitarCampo("grade-valor-1", "PP");
@@ -249,7 +250,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
     });
 
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
 
     // Passo 2 — 6 novas, as 0 existentes não são tocadas, e sem SKU base
@@ -328,7 +329,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
       clicarPorRotulo("Adicionar valor do atributo 1");
     });
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     expect(linhasDaGrade()).toHaveLength(1);
 
@@ -365,7 +366,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
     expect(toastError.mock.calls[0][0]).toContain('"/"');
     // O valor recusado não virou chip selecionado.
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     expect(toastError.mock.calls[1]?.[0] ?? "").toContain("ao menos um valor");
   });
@@ -480,7 +481,7 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
       clicarPorRotulo("Adicionar valor do atributo 2");
     });
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     expect(linhasDaGrade()).toEqual(["Amarela / P"]);
     // Aplicar para todas: a linha nova nasce com o estoque do lote.
@@ -561,7 +562,7 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
       clicarPorRotulo("Adicionar valor do atributo 2");
     });
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     // BLU + AMA + P colide com o SKU que a linha já gravada usa.
     await digitarCampo("grade-sku-base", "blu");
@@ -603,7 +604,7 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
       clicarPorRotulo("Adicionar valor do atributo 2");
     });
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     await digitarCampo("grade-sku-base", "blu");
 
@@ -644,7 +645,7 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
     });
     // Mas misturar com Tamanho viraria o segundo grupo que mente no estoque.
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Adicionar outro atributo");
     });
     // O seletor já não oferece a peça Tamanho a um produto que usa Cor; o
     // caminho que sobra é o "Outro" (nome livre), e a trava recusa igual.
@@ -656,13 +657,13 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
       clicarPorRotulo("Adicionar valor do atributo 2");
     });
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
 
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(toastError.mock.calls[0][0]).toContain('Este produto já usa "Cor"');
     // Ficou no passo 1 — nada foi gerado nem convertido.
-    expect(botaoPorTexto(document.body, "Gerar grade")).toBeDefined();
+    expect(botaoPorTexto(document.body, BOTAO_GERAR_GRADE)).toBeDefined();
     expect(linhasDaGrade()).toEqual([]);
   });
 
@@ -692,7 +693,7 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
       clicarPorRotulo("Adicionar valor do atributo 1");
     });
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     await act(async () => {
       clicarObrigatorio("Salvar 1 variação");
