@@ -18,6 +18,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 const fetchProduct = vi.fn();
 const upsertVariants = vi.fn().mockResolvedValue(undefined);
@@ -95,13 +96,13 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function botaoPorTexto(raiz: ParentNode, texto: string) {
+function botaoPorTexto(raiz: ParentNode, texto: string | RegExp) {
   return [...raiz.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+    casaOTexto(b.textContent, texto),
   ) as HTMLButtonElement | undefined;
 }
 
-function clicarObrigatorio(texto: string) {
+function clicarObrigatorio(texto: string | RegExp) {
   const botao = botaoPorTexto(document.body, texto);
   if (!botao) throw new Error(`Botão "${texto}" não está na tela.`);
   botao.click();
@@ -288,7 +289,7 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
     });
 
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     expect(linhasDaGrade()).toEqual(["Branca / GG"]);
     expect(
@@ -346,7 +347,7 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
     });
 
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
 
     // "Branca / P" já existe (mesmo inativa) — nada a criar, nada reativado.

@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherAtributo } from "./helpers/atributo-da-variacao";
+import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 const mocks = vi.hoisted(() => ({
   addProduct: vi.fn(),
@@ -90,9 +91,9 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function clicarObrigatorio(texto: string) {
+function clicarObrigatorio(texto: string | RegExp) {
   const botao = [...document.body.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+    casaOTexto(b.textContent, texto),
   ) as HTMLButtonElement | undefined;
   if (!botao) throw new Error(`Botão "${texto}" não está na tela.`);
   botao.click();
@@ -206,7 +207,7 @@ describe("AdminProductFormView — grade: preço apagado não zera as linhas", (
       });
     }
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
   }
 

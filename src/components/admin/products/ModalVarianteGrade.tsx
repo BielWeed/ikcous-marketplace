@@ -6,12 +6,14 @@ import {
   SeletorDeAtributo,
   tipoDoNome,
 } from "@/components/admin/products/SeletorDeAtributo";
+import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
 import { erroDoEstoqueDaVariacao } from "@/utils/estoque-da-variacao";
 import {
   type AtributoDaGrade,
   MAX_ATRIBUTOS_DA_GRADE,
   MAX_LINHAS_DA_GRADE,
+  contarCombinacoesDaGrade,
   gerarGrade,
   primeiroSkuEmColisao,
   skusDaGrade,
@@ -112,10 +114,12 @@ interface GrupoNoForm {
   /** Valores digitados nesta abertura (novos ou usados), para os chips. */
   adicionados: string[];
   rascunho: string;
+  /** Nasceu do atalho "+ Outro": abre com o campo do nome aberto. */
+  outro: boolean;
 }
 
 let contadorDeGrupos = 0;
-const grupoNovo = (nome = ""): GrupoNoForm => {
+const grupoNovo = (nome = "", outro = false): GrupoNoForm => {
   contadorDeGrupos += 1;
   return {
     chave: `grupo-${contadorDeGrupos}`,
@@ -123,8 +127,25 @@ const grupoNovo = (nome = ""): GrupoNoForm => {
     selecionados: [],
     adicionados: [],
     rascunho: "",
+    outro,
   };
 };
+
+/** "3 cores", "1 tamanho": o substantivo do tipo, no singular ou no plural. */
+const SUBSTANTIVOS = new Map<string, [string, string]>([
+  ["Cor", ["cor", "cores"]],
+  ["Tamanho", ["tamanho", "tamanhos"]],
+  ["Voltagem", ["voltagem", "voltagens"]],
+]);
+const contagemComSubstantivo = (n: number, nome: string): string =>
+  `${n} ${(SUBSTANTIVOS.get(tipoDoNome(nome) ?? "") ?? ["valor", "valores"]).at(n === 1 ? 0 : 1)}`;
+
+/** Os tipos que um atalho "+ Tamanho / + Voltagem / + Outro" pode criar. */
+const TIPOS_DOS_ATALHOS = ["Tamanho", "Voltagem", "Outro"] as const;
+const EXEMPLO_DO_ATALHO = new Map<string, string>([
+  ["Tamanho", "ex.: P, M, G"],
+  ["Voltagem", "ex.: 110 V, 220 V"],
+]);
 
 const chaveMinuscula = (texto: string): string =>
   texto.trim().toLocaleLowerCase();
@@ -443,9 +464,72 @@ export function ModalVarianteGrade({
   const precoDoProdutoValido =
     precoDoProdutoNumero > 0 ? precoDoProdutoNumero : undefined;
 
-  // O exemplo do "+ Atributo": a outra metade da dupla mais comum.
-  const exemploDoProximoAtributo =
-    tipoDoNome(grupos.at(-1)?.nome ?? "") === "Cor" ? "Tamanho" : "Cor";
+  // A conta ao vivo do passo 1: só as combinações NOVAS (as que já existem não
+  // contam, como em `gerarGrade`). O botão e o resumo leem os mesmos números.
+  const { porAtributo, novas } = contarCombinacoesDaGrade(
+    grupos.map((g) => ({ name: g.nome, valores: g.selecionados })),
+    variantesExistentes.map((v) => ({ name: v.name, value: v.value })),
+  );
+  const varios = grupos.length > 1;
+  const faltaEscolher = porAtributo.some((n) => n === 0);
+  const passouDoLimite =
+    !faltaEscolher && variantesExistentes.length + novas > MAX_LINHAS_DA_GRADE;
+  const palavraDoTotal = (n: number) =>
+    varios
+      ? n === 1
+        ? "combinação"
+        : "combinações"
+      : n === 1
+        ? "opção"
+        : "opções";
+  const rotuloDoGerar =
+    faltaEscolher || passouDoLimite || novas === 0
+      ? "Gerar grade"
+      : `Gerar ${novas} ${palavraDoTotal(novas)}`;
+
+  // Atalhos para o segundo atributo: só os tipos que nenhum cartão usa ainda. Um
+  // produto que já grava um grupo não ganha atalho: a trava de um grupo por
+  // produto recusaria o "Gerar".
+  const tiposEmUso = grupos.map((g) =>
+    g.outro ? "Outro" : tipoDoNome(g.nome),
+  );
+  const atalhosLivres = TIPOS_DOS_ATALHOS.filter(
+    (t) => !tiposEmUso.includes(t),
+  );
+  const mostrarAtalhos =
+    !grupoUnicoEmUso &&
+    tiposEmUso.some(Boolean) &&
+    grupos.length < MAX_ATRIBUTOS_DA_GRADE &&
+    atalhosLivres.length > 0;
+  const criarAtalho = (tipo: (typeof TIPOS_DOS_ATALHOS)[number]) =>
+    setGrupos((prev) => [
+      ...prev,
+      tipo === "Outro" ? grupoNovo("", true) : grupoNovo(tipo),
+    ]);
+  const botaoDoAtalho = (
+    tipo: (typeof TIPOS_DOS_ATALHOS)[number],
+    grande: boolean,
+  ) => (
+    <button
+      key={tipo}
+      type="button"
+      onClick={() => criarAtalho(tipo)}
+      className={cn(
+        "min-h-11 rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-4 font-bold text-zinc-300 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95",
+        grande ? "flex-1 py-3 text-base" : "text-sm",
+      )}
+    >
+      + {tipo}
+      {grande && EXEMPLO_DO_ATALHO.has(tipo) && (
+        <>
+          {" "}
+          <span className="block text-xs font-normal text-zinc-500">
+            {EXEMPLO_DO_ATALHO.get(tipo)}
+          </span>
+        </>
+      )}
+    </button>
+  );
 
   const titulo =
     variantesExistentes.length > 0
@@ -492,6 +576,14 @@ export function ModalVarianteGrade({
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              {passo === 1 && (
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  {
+                    "Escolha o que muda no produto. Para cor e tamanho juntos, toque em '+ Adicionar outro atributo'."
+                  }
+                </p>
+              )}
+
               {passo === 1 &&
                 grupos.map((grupo, indice) => (
                   <div
@@ -503,14 +595,16 @@ export function ModalVarianteGrade({
                       numero={indice + 1}
                       idDoNome={`grade-nome-${indice}`}
                       idDoValor={`grade-valor-${indice}`}
-                      titulo={
-                        indice === 0
-                          ? "O que muda neste produto?"
-                          : "O que mais muda?"
-                      }
                       nome={grupo.nome}
                       onNome={(nome) => atualizarGrupo(grupo.chave, { nome })}
                       sugestoes={sugestoesDeAtributo}
+                      iniciarEmOutro={grupo.outro}
+                      tiposOcupados={grupos.flatMap((outro) => {
+                        const tipo = tipoDoNome(outro.nome);
+                        return outro.chave === grupo.chave || !tipo
+                          ? []
+                          : [tipo];
+                      })}
                       selecionados={grupo.selecionados}
                       chips={valoresDoGrupo(grupo, variantesExistentes).map(
                         (chip) => ({ valor: chip.valor, usado: chip.usado }),
@@ -545,18 +639,80 @@ export function ModalVarianteGrade({
                 <button
                   type="button"
                   onClick={() => setGrupos((prev) => [...prev, grupoNovo()])}
-                  className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-5 py-3 text-sm font-bold text-zinc-400 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95"
+                  className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-5 py-3 text-sm font-bold text-zinc-300 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95"
                 >
-                  + Atributo (ex.: {exemploDoProximoAtributo})
+                  + Adicionar outro atributo
                 </button>
               )}
 
+              {passo === 1 &&
+                mostrarAtalhos &&
+                (varios ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-zinc-500">Sugestão:</span>
+                    {atalhosLivres.map((tipo) => botaoDoAtalho(tipo, false))}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-zinc-400">
+                      Este produto também varia em outra coisa? Ex.: tamanho.
+                    </p>
+                    <div className="flex gap-3">
+                      {atalhosLivres
+                        .filter((tipo) => tipo !== "Outro")
+                        .map((tipo) => botaoDoAtalho(tipo, true))}
+                    </div>
+                    {atalhosLivres.includes("Outro") &&
+                      botaoDoAtalho("Outro", false)}
+                  </div>
+                ))}
+
               {passo === 1 && (
-                <p className="px-2 text-center text-xs leading-relaxed text-zinc-500">
-                  As combinações que já existem não são recriadas. Até{" "}
-                  {MAX_ATRIBUTOS_DA_GRADE} atributos e {MAX_LINHAS_DA_GRADE}{" "}
-                  linhas.
-                </p>
+                <div
+                  data-testid="resumo-da-grade"
+                  className="space-y-1.5 rounded-[22px] border border-solid border-amber-400/30 bg-admin-surface p-4"
+                >
+                  <p className="text-[11px] font-black tracking-widest text-amber-400">
+                    RESUMO
+                  </p>
+                  {faltaEscolher ? (
+                    <p className="text-base text-zinc-300">
+                      Escolha pelo menos uma opção em cada atributo.
+                    </p>
+                  ) : (
+                    <>
+                      {varios && (
+                        <p className="text-sm text-zinc-400">
+                          {porAtributo
+                            .map((n, i) =>
+                              contagemComSubstantivo(
+                                n,
+                                grupos.at(i)?.nome ?? "",
+                              ),
+                            )
+                            .join(" × ")}
+                        </p>
+                      )}
+                      <p className="text-2xl font-bold text-foreground">
+                        {varios
+                          ? ""
+                          : `${contagemComSubstantivo(porAtributo.at(0) ?? 0, grupos.at(0)?.nome ?? "")} `}
+                        = {novas} {palavraDoTotal(novas)}
+                      </p>
+                      {passouDoLimite && (
+                        <p className="text-sm text-red-300">
+                          Passou do limite de {MAX_LINHAS_DA_GRADE} combinações:
+                          tire alguma opção.
+                        </p>
+                      )}
+                      <p className="text-xs leading-relaxed text-zinc-400">
+                        Cada {varios ? "combinação" : "opção"} terá o seu
+                        próprio estoque. No próximo passo você coloca a
+                        quantidade de cada uma.
+                      </p>
+                    </>
+                  )}
+                </div>
               )}
 
               {passo === 2 && (
@@ -615,7 +771,7 @@ export function ModalVarianteGrade({
                   onClick={gerar}
                   className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-sm font-bold text-[#211a07]"
                 >
-                  Gerar grade
+                  {rotuloDoGerar}
                 </button>
               ) : (
                 <button
