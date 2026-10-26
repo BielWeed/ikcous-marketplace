@@ -462,8 +462,13 @@ export function AdminPdvView({
                 : null,
             p_cliente_nome:
               estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
+            // Avulso e CADASTRADO mandam o WhatsApp: o recibo liga o "Enviar
+            // por WhatsApp" a partir do que o banco gravou aqui. Sem cliente,
+            // ou cadastrado sem WhatsApp no perfil, vai null.
             p_cliente_whatsapp:
-              estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
+              estado.cliente.tipo === "sem_cliente"
+                ? null
+                : estado.cliente.whatsapp,
             p_desconto: estado.desconto,
             p_total_esperado: totalDaVenda(estado),
             p_observacao:

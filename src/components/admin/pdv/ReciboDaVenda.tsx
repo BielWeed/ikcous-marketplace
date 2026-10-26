@@ -69,7 +69,8 @@ function construirOrderParaImpressao(recibo: ReciboDaVendaRegistrada): Order {
   return {
     id: recibo.orderId,
     customer: {
-      name: nomeDoCliente(recibo.cliente),
+      // Sem cliente o papel não leva nome (nem "CLIENTE: Venda no balcão").
+      name: recibo.cliente.tipo === "sem_cliente" ? "" : recibo.cliente.nome,
       whatsapp: whatsappDoCliente(recibo.cliente) ?? "",
     },
     items: recibo.itens.map((item) => ({
@@ -127,7 +128,7 @@ export function ReciboDaVenda({
     <div className="pdv-receipt">
       <div className="pdv-layer-heading">
         <h2>{anulada ? "Venda anulada" : "Venda registrada"}</h2>
-        <p className="pdv-muted">3 · Recibo</p>
+        <p className="pdv-muted">Recibo</p>
       </div>
       <div className="pdv-card pdv-stack">
         <div className="pdv-heading">
