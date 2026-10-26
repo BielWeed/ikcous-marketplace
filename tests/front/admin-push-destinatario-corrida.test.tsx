@@ -67,15 +67,26 @@ vi.mock("@/lib/supabase", () => ({
             limit: () => Promise.resolve({ data: [], error: null }),
           }),
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
     },
-    rpc: (nome: string, args: { p_segment: string }) =>
-      nome === "get_segmented_push_targets"
-        ? buscarAlvos(args)
-        : Promise.resolve({ data: 0, error: null }),
+    rpc: (...a: any[]) => {
+      // O envio lê os aparelhos em páginas de 1.000 (`.order().range()`).
+      const r = Reflect.apply(
+        (nome: string, args: { p_segment: string }) =>
+          nome === "get_segmented_push_targets"
+            ? buscarAlvos(args)
+            : Promise.resolve({ data: 0, error: null }),
+        null,
+        a,
+      );
+      return Object.assign(r, { order: () => r, range: () => r });
+    },
   },
 }));
 

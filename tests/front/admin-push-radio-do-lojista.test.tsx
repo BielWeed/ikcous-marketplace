@@ -94,7 +94,10 @@ vi.mock("@/lib/supabase", () => ({
             limit: () => Promise.resolve({ data: [], error: null }),
           }),
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
@@ -493,7 +496,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     // A chave de avisos de compras está escondida (não promete o que a loja
     // não faz — ver admin-push-nao-promete-avisos-de-compras); o que mora no
     // Ajustes aberto é o botão de teste.
-    expect(texto()).toContain("Testar Recebimento Neste Aparelho");
+    expect(texto()).toContain("Ligar avisos neste aparelho");
     expect(
       hospedeiro.querySelector("#realtime-sales-alerts-switch"),
     ).toBeNull();

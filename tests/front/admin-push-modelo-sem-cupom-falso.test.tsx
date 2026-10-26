@@ -110,24 +110,35 @@ vi.mock("@/lib/supabase", () => ({
             limit: () => Promise.resolve({ data: [], error: null }),
           }),
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
     },
-    rpc: (nome: string) => {
-      const alvos = [
-        { user_id: "u1", endpoint: "e1", p256dh: "p1", auth: "a1" },
-        { user_id: "u2", endpoint: "e2", p256dh: "p2", auth: "a2" },
-        { user_id: "u3", endpoint: "e3", p256dh: "p3", auth: "a3" },
-      ];
-      if (nome === "get_segmented_push_count") {
-        return Promise.resolve({ data: alvos.length, error: null });
-      }
-      if (nome === "get_segmented_push_targets") {
-        return Promise.resolve({ data: alvos, error: null });
-      }
-      return Promise.resolve({ data: null, error: new Error("rpc?") });
+    rpc: (...a: any[]) => {
+      // O envio lê os aparelhos em páginas de 1.000 (`.order().range()`).
+      const r = Reflect.apply(
+        (nome: string) => {
+          const alvos = [
+            { user_id: "u1", endpoint: "e1", p256dh: "p1", auth: "a1" },
+            { user_id: "u2", endpoint: "e2", p256dh: "p2", auth: "a2" },
+            { user_id: "u3", endpoint: "e3", p256dh: "p3", auth: "a3" },
+          ];
+          if (nome === "get_segmented_push_count") {
+            return Promise.resolve({ data: alvos.length, error: null });
+          }
+          if (nome === "get_segmented_push_targets") {
+            return Promise.resolve({ data: alvos, error: null });
+          }
+          return Promise.resolve({ data: null, error: new Error("rpc?") });
+        },
+        null,
+        a,
+      );
+      return Object.assign(r, { order: () => r, range: () => r });
     },
     functions: { invoke: invokeSendPush },
   },
