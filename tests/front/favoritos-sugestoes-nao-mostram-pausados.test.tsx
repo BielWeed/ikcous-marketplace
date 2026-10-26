@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Defeito reportado pelo Gabriel em 01/09: com a lista de favoritos vazia,
-// a seção "Destaques da Loja / Mais Amados da Loja" mostrava produtos
+// a seção "Destaques da Loja / Alguns produtos da loja" mostrava produtos
 // PAUSADOS no painel admin.
 //
 // O mecanismo: as sugestões usam a lista `products` do contexto sem
@@ -118,6 +118,6 @@ describe("FavoritesView — sugestões não anunciam produto pausado", () => {
     const texto = await renderizar();
 
     expect(texto).not.toContain("Bolsa Pausada Um");
-    expect(texto).not.toContain("Mais Amados da Loja");
+    expect(texto).not.toContain("Alguns produtos da loja");
   });
 });

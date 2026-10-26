@@ -426,7 +426,9 @@ export const FavoritesView = React.memo(function FavoritesView({
         {suggestedProducts.length > 0 && (
           <div className="mx-4 mt-4 border-t border-border pt-6">
             <div className="mb-4">
-              <h3 className="text-base font-bold">Mais Amados da Loja</h3>
+              {/* UI-191 (G7): são só os 4 primeiros produtos ativos -- "Mais
+                  Amados" afirmava um ranking que a loja não mede. */}
+              <h3 className="text-base font-bold">Alguns produtos da loja</h3>
               <p className="text-xs text-muted-foreground">
                 Toque no coração para salvar nos seus favoritos.
               </p>
