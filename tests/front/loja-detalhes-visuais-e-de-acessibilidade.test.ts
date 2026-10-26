@@ -12,6 +12,7 @@ const FONTES = import.meta.glob<string>(
     "/src/components/ui/sonner.tsx",
     "/src/components/ui/dialog.tsx",
     "/src/components/ui/custom/GlobalErrorBoundary.tsx",
+    "/src/components/ui/custom/ImageAdjuster.tsx",
     "/src/components/ui/custom/PremiumOffers.tsx",
     "/src/components/ui/custom/ProductCard.tsx",
     "/src/components/ui/custom/CartReminder.tsx",
@@ -48,6 +49,7 @@ describe("anel de carregando", () => {
     "/src/App.tsx",
     "/src/components/ui/custom/GlobalErrorBoundary.tsx",
     "/src/views/customer/CheckoutView.tsx",
+    "/src/components/ui/custom/ImageAdjuster.tsx",
     "/src/views/customer/ProductView.tsx",
   ])("%s não usa border-3, que não existe no Tailwind 3.4", (arquivo) => {
     expect(fonte(arquivo)).not.toMatch(/\bborder-3\b/);
@@ -127,6 +129,12 @@ describe("selos do card de produto", () => {
     expect(card).toMatch(
       /flex min-w-0 max-w-full items-center gap-1 rounded-md border border-emerald-100\/50/,
     );
+  });
+  it("a frase do selo quebra em duas linhas em vez de ser cortada", () => {
+    expect(card).toMatch(
+      /<span className="min-w-0 break-words leading-tight">\s*\{fraseDoSelo\}/,
+    );
+    expect(card).not.toMatch(/<span className="truncate">\s*\{fraseDoSelo\}/);
   });
 });
 
@@ -248,7 +256,7 @@ describe("janelas de confirmação ficam acima da barra de baixo", () => {
         const cabeca = codigo.slice(inicio, inicio + 420);
         if (
           cabeca.includes('overlayClassName="z-[130]"') &&
-          cabeca.includes("z-[130]")
+          cabeca.split("z-[130]").length - 1 >= 2
         )
           achados++;
         de = i + ancora.length;

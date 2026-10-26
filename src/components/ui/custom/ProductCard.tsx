@@ -994,7 +994,9 @@ export const ProductCard = memo(function ProductCard({
                 {fraseDoSelo && (
                   <div className="flex min-w-0 max-w-full items-center gap-1 rounded-md border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-800">
                     <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
-                    <span className="truncate">{fraseDoSelo}</span>
+                    <span className="min-w-0 break-words leading-tight">
+                      {fraseDoSelo}
+                    </span>
                   </div>
                 )}
               </div>
