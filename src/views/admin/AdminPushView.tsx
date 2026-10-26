@@ -1198,7 +1198,7 @@ export const AdminPushView = memo(function AdminPushView({
               <div className="relative min-w-0">
                 {/* `-m-1 p-1`: respiro para o anel de foco do teclado não ser cortado
                     pela rolagem, sem empurrar o layout. */}
-                <div className="-m-1 flex gap-2 overflow-x-auto p-1 pb-2 pr-6">
+                <div className="relative -m-1 flex gap-2 overflow-x-auto p-1 pb-2 pr-6">
                   {/* Os textos dos modelos moram em `lib/modelos-de-campanha.ts`:
                       nenhum traz código de cupom, percentual, valor ou prazo
                       inventado — onde vai o cupom da lojista fica o MARCADOR, e o
@@ -1454,7 +1454,7 @@ export const AdminPushView = memo(function AdminPushView({
                     data-testid="carrossel-publico"
                     role="group"
                     aria-label="Escolha quem recebe a mensagem"
-                    className="-m-1 flex snap-x snap-mandatory scroll-pl-1 gap-2 overflow-x-auto p-1 pb-2 pr-6"
+                    className="relative -m-1 flex snap-x snap-mandatory scroll-pl-1 gap-2 overflow-x-auto p-1 pb-2 pr-6"
                   >
                     {[
                       {
