@@ -992,9 +992,11 @@ export const ProductCard = memo(function ProductCard({
                 promessa por valor de compra mora no `FreeShippingBlock`
                 (Home), que compara contra o carrinho de verdade. */}
                 {fraseDoSelo && (
-                  <div className="flex shrink-0 items-center gap-1 rounded-md border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
+                  <div className="flex min-w-0 max-w-full items-center gap-1 rounded-md border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-800">
                     <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
-                    <span className="truncate">{fraseDoSelo}</span>
+                    <span className="min-w-0 break-words leading-tight">
+                      {fraseDoSelo}
+                    </span>
                   </div>
                 )}
               </div>
@@ -1125,7 +1127,7 @@ export const ProductCard = memo(function ProductCard({
                   {discount > 0 && (
                     <span
                       className={cn(
-                        "shrink-0 select-none whitespace-nowrap rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
+                        "shrink-0 select-none whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider",
                         CLASSE_SELO_DESCONTO,
                       )}
                     >
@@ -1133,7 +1135,7 @@ export const ProductCard = memo(function ProductCard({
                     </span>
                   )}
                   {product.isBestseller && (
-                    <span className="flex shrink-0 select-none items-center gap-0.5 whitespace-nowrap rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700">
+                    <span className="flex shrink-0 select-none items-center gap-0.5 whitespace-nowrap rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-700">
                       <Flame className="size-2.5 shrink-0 fill-orange-500/20 text-orange-500" />
                       <span>EM ALTA</span>
                     </span>

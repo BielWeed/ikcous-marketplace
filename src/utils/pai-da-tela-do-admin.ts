@@ -90,6 +90,17 @@ export function paiDaTelaDoAdmin(
     return origem;
   }
 
+  // Ficha do cliente: tem várias portas (aba Clientes, CRM, Privacidade). O
+  // Voltar leva à tela de onde a pessoa veio; sem origem do admin, Clientes.
+  if (
+    view === "admin-user-detail" &&
+    origem != null &&
+    origem !== "admin-user-detail" &&
+    origem.startsWith("admin-")
+  ) {
+    return origem;
+  }
+
   switch (view) {
     case "admin-coupon-form":
       return "admin-coupons";

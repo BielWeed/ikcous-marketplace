@@ -66,7 +66,10 @@ vi.mock("@/lib/supabase", () => ({
             limit: () => Promise.resolve({ data: [], error: null }),
           }),
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
@@ -189,7 +192,7 @@ describe("Avisar clientes — não promete o que a loja não faz", () => {
     expect(hospedeiro.querySelector("#push-body")).not.toBeNull();
 
     await abrirAjustes();
-    expect(texto()).toContain("Testar Recebimento Neste Aparelho");
+    expect(texto()).toContain("Ligar avisos neste aparelho");
   });
 
   it("abrir a tela e o Ajustes não grava realTimeSalesAlerts: o valor guardado fica como estava", async () => {

@@ -1286,6 +1286,17 @@ async function main() {
         "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql",
         "public.painel_inicio()",
       ],
+      // A 20261392 (a lista de clientes nao repete ninguem entre as paginas) e a 20261392100000 (a busca do CRM acha o
+      // numero com o +55): get_admin_customers_paged sobre o corpo da 230 e crm_clientes sobre o da 231, duas funcoes de
+      // fora destas tres que a 17a nao le. Os rollbacks delas devolvem os corpos da 230 e da 231.
+      [
+        "20261392000000_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas.sql",
+        "public.get_admin_customers_paged(text,text,text,integer,integer)",
+      ],
+      [
+        "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql",
+        "public.crm_clientes(text,text,integer,integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

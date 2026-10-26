@@ -183,50 +183,61 @@ vi.mock("@/lib/supabase", () => ({
             limit: () => Promise.resolve({ data: [], error: null }),
           }),
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
     },
-    rpc: (nome: string, args: { p_segment: string }) => {
-      // Lote 2 (laudo 29/08, achado config 18): a MEDIÇÃO usa
-      // `get_segmented_push_count` (número); o ENVIO continua na
-      // `get_segmented_push_targets` (linhas com credencial). O dublê
-      // responde às duas com a MESMA população: os cenários de envio deste
-      // arquivo são medidos pela count e enviados pela targets.
-      if (
-        nome !== "get_segmented_push_targets" &&
-        nome !== "get_segmented_push_count"
-      ) {
-        return Promise.resolve({
-          data: null,
-          error: new Error("rpc desconhecida"),
-        });
-      }
-      const seg = args.p_segment;
-      const contagemDoSegmento = () => {
-        if (seg === "vip" || seg === "inactive" || seg === "new") {
-          // Indexar por `args.p_segment` (MemberExpression), não por `seg`
-          // (Identifier isolado): mesmo padrão do arquivo irmão
-          // (`admin-push-view-contadores.test.tsx:100`), que não dispara
-          // `security/detect-object-injection` — a regra só olha a FORMA da
-          // expressão, não o tipo já estreitado pelo `if` acima.
-          return estadoDoBanco.porSegmento[args.p_segment] ?? [];
-        }
-        if (seg === "all") {
-          return estadoDoBanco.alvosDoSegmentoTodos;
-        }
-        // Qualquer outro valor é tratado, no banco real, como UUID de cliente
-        // específico (`get_segmented_push_targets`, caso 1).
-        return estadoDoBanco.alvosDoClienteEspecifico;
-      };
-      if (nome === "get_segmented_push_count") {
-        return Promise.resolve({
-          data: contagemDoSegmento().length,
-          error: null,
-        });
-      }
-      return Promise.resolve({ data: contagemDoSegmento(), error: null });
+    rpc: (...a: any[]) => {
+      // O envio lê os aparelhos em páginas de 1.000 (`.order().range()`).
+      const r = Reflect.apply(
+        (nome: string, args: { p_segment: string }) => {
+          // Lote 2 (laudo 29/08, achado config 18): a MEDIÇÃO usa
+          // `get_segmented_push_count` (número); o ENVIO continua na
+          // `get_segmented_push_targets` (linhas com credencial). O dublê
+          // responde às duas com a MESMA população: os cenários de envio deste
+          // arquivo são medidos pela count e enviados pela targets.
+          if (
+            nome !== "get_segmented_push_targets" &&
+            nome !== "get_segmented_push_count"
+          ) {
+            return Promise.resolve({
+              data: null,
+              error: new Error("rpc desconhecida"),
+            });
+          }
+          const seg = args.p_segment;
+          const contagemDoSegmento = () => {
+            if (seg === "vip" || seg === "inactive" || seg === "new") {
+              // Indexar por `args.p_segment` (MemberExpression), não por `seg`
+              // (Identifier isolado): mesmo padrão do arquivo irmão
+              // (`admin-push-view-contadores.test.tsx:100`), que não dispara
+              // `security/detect-object-injection` — a regra só olha a FORMA da
+              // expressão, não o tipo já estreitado pelo `if` acima.
+              return estadoDoBanco.porSegmento[args.p_segment] ?? [];
+            }
+            if (seg === "all") {
+              return estadoDoBanco.alvosDoSegmentoTodos;
+            }
+            // Qualquer outro valor é tratado, no banco real, como UUID de cliente
+            // específico (`get_segmented_push_targets`, caso 1).
+            return estadoDoBanco.alvosDoClienteEspecifico;
+          };
+          if (nome === "get_segmented_push_count") {
+            return Promise.resolve({
+              data: contagemDoSegmento().length,
+              error: null,
+            });
+          }
+          return Promise.resolve({ data: contagemDoSegmento(), error: null });
+        },
+        null,
+        a,
+      );
+      return Object.assign(r, { order: () => r, range: () => r });
     },
     functions: { invoke: invokeSendPush },
   },
@@ -546,7 +557,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
       const { supabase } = await import("@/lib/supabase");
       const original = supabase.rpc;
       (supabase as any).rpc = vi.fn(
-        async (nome: string, args: { p_segment: string }) => {
+        (nome: string, args: { p_segment: string }) => {
           if (
             (nome === "get_segmented_push_targets" ||
               nome === "get_segmented_push_count") &&
@@ -554,7 +565,14 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
           ) {
             // A medição agora usa a count — as DUAS falham para este
             // cliente, que é o cenário (o banco não conseguiu medir).
-            return { data: null, error: new Error("falhou") };
+            const falha = Promise.resolve({
+              data: null,
+              error: new Error("falhou"),
+            });
+            return Object.assign(falha, {
+              order: () => falha,
+              range: () => falha,
+            });
           }
           return (original as any)(nome, args);
         },

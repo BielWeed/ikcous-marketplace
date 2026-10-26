@@ -75,11 +75,16 @@ vi.mock("@/lib/supabase", () => ({
         return {
           select: () => ({
             eq: () => ({
-              order: () =>
-                Promise.resolve({
-                  data: [{ id: "p1", nome: "Tênis Veloz" }],
-                  error: null,
+              // `.order("nome").order("id").range()`: o desempate por id.
+              order: () => ({
+                order: () => ({
+                  range: () =>
+                    Promise.resolve({
+                      data: [{ id: "p1", nome: "Tênis Veloz" }],
+                      error: null,
+                    }),
                 }),
+              }),
             }),
           }),
         };
@@ -90,7 +95,10 @@ vi.mock("@/lib/supabase", () => ({
             limit: () => Promise.resolve({ data: [], error: null }),
           }),
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
@@ -318,7 +326,7 @@ describe("AdminPushView — tela organizada e compacta", () => {
     }
     expect(hospedeiro.querySelector("#push-destination")).toBeNull();
     expect(texto()).not.toContain("Nenhuma mensagem enviada até agora");
-    expect(texto()).not.toContain("Testar Recebimento Neste Aparelho");
+    expect(texto()).not.toContain("Ligar avisos neste aparelho");
 
     await act(async () => {
       destino.click();
@@ -337,7 +345,7 @@ describe("AdminPushView — tela organizada e compacta", () => {
     await act(async () => {
       ajustes.click();
     });
-    expect(texto()).toContain("Testar Recebimento Neste Aparelho");
+    expect(texto()).toContain("Ligar avisos neste aparelho");
   });
 
   it("o botão diz 'Enviar agora para N aparelhos' (N do público escolhido) e avisa que não dá para desfazer", async () => {
