@@ -19,6 +19,9 @@ import type { Order } from "@/types";
 
 interface EstornoCardProps {
   order: Order;
+  /** Sem internet, as ações que falam com o servidor ficam desligadas, como
+   * nos outros cartões da ficha (etiqueta, rastreio). */
+  isOffline?: boolean;
 }
 
 const VALOR_MINIMO = 0.01;
@@ -180,7 +183,10 @@ function estadoDoCartao(
   return "normal";
 }
 
-export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
+export function EstornoCard({
+  order,
+  isOffline = false,
+}: Readonly<EstornoCardProps>) {
   const {
     linhas,
     pago,
@@ -266,7 +272,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
     : disponivel;
 
   const botaoDesabilitado =
-    estado !== "normal" ? true : enviando || !campoValido;
+    estado !== "normal" ? true : enviando || isOffline || !campoValido;
 
   async function pedirConfirmacaoEEnviar(amount: number) {
     const confirmado = globalThis.confirm(
@@ -315,6 +321,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
           <Button
             type="button"
             variant="outline"
+            className="min-h-11"
             disabled={botaoDesabilitado}
             aria-disabled={botaoDesabilitado}
             onClick={() => pedirConfirmacaoEEnviar(valorAlvo)}
@@ -386,7 +393,8 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
                   type="button"
                   variant="link"
                   size="sm"
-                  disabled={enviando}
+                  className="min-h-11"
+                  disabled={enviando || isOffline}
                   onClick={() => pedirConfirmacaoEEnviar(linha.amount)}
                 >
                   Tentar de novo
@@ -397,7 +405,8 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
                   type="button"
                   variant="link"
                   size="sm"
-                  disabled={enviando}
+                  className="min-h-11"
+                  disabled={enviando || isOffline}
                   onClick={() =>
                     confirmouPorForaAposEspera(formatCurrency(linha.amount)) &&
                     registrarPorForaAposEspera(linha.id)
