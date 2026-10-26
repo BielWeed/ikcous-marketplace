@@ -46,10 +46,12 @@ vi.mock("@/hooks/useOrders", () => ({
     fetchUserOrders: vi.fn().mockResolvedValue([pedido]),
     updateOrderStatus: updateOrderStatusMock,
   }),
+  ErroCancelamentoNaoConcluido: class extends Error {},
 }));
-vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: { id: "user-1" } }),
-}));
+// Mesmo objeto a cada chamada: usuário novo a cada render refaz os efeitos da
+// tela (a conferência de avaliações do pedido entregue) sem parar.
+const usuario = { id: "user-1" };
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: usuario }) }));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: { enableReviews: false, whatsappNumber: "34999999999" },
@@ -59,7 +61,10 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({
-        eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }),
+        eq: () => ({
+          in: () => Promise.resolve({ data: [], error: null }),
+          order: () => Promise.resolve({ data: [], error: null }),
+        }),
       }),
     }),
   },
@@ -254,6 +259,108 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
       });
     } finally {
       estilo.mockRestore();
+    }
+  });
+
+  async function renderizarDeNovo() {
+    await act(async () => {
+      raiz.render(
+        <OrderDetailsView
+          orderId="pedido-cancelar"
+          onBack={() => {}}
+          onNavigate={() => {}}
+        />,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+
+  it("pedido que deixa de ser cancelável fecha a caixa, sem frase falsa de dinheiro", async () => {
+    // Pago e já enviado; com a caixa aberta a loja marca como entregue.
+    pedidoAtual = {
+      ...pedido,
+      status: "shipping",
+      updatedAt: new Date(30_000).toISOString(),
+    };
+    await renderizarDeNovo();
+    await abrirACaixa();
+    expect(caixa()).not.toBeNull();
+
+    pedidoAtual = {
+      ...pedido,
+      status: "delivered",
+      updatedAt: new Date(60_000).toISOString(),
+    };
+    // Registra tudo que a caixa chegou a mostrar na virada, mesmo por um
+    // único render que ninguém chegaria a ver: o texto de dinheiro de um
+    // pedido entregue não pode aparecer nem de passagem.
+    const textosVistos: string[] = [];
+    const vigia = new MutationObserver((registros) => {
+      for (const r of registros) {
+        if (r.type === "characterData")
+          textosVistos.push(r.target.textContent ?? "");
+        for (const no of Array.from(r.addedNodes))
+          textosVistos.push(no.textContent ?? "");
+      }
+    });
+    vigia.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+    await renderizarDeNovo();
+    vigia.disconnect();
+    expect(textosVistos.join("|")).not.toContain("volta sozinho");
+
+    // O botão "Cancelar Pedido" sumiu e a caixa foi junto.
+    expect(botao(hospedeiro, "Cancelar Pedido")).toBeUndefined();
+    expect(caixa()).toBeNull();
+    expect(document.body.textContent).not.toContain("volta sozinho");
+
+    // E não fica "armada": se o pedido voltasse a ser cancelável, a caixa
+    // não reabre sozinha.
+    pedidoAtual = {
+      ...pedido,
+      status: "shipping",
+      updatedAt: new Date(120_000).toISOString(),
+    };
+    await renderizarDeNovo();
+    expect(botao(hospedeiro, "Cancelar Pedido")).toBeDefined();
+    expect(caixa()).toBeNull();
+    expect(updateOrderStatusMock).not.toHaveBeenCalled();
+  });
+
+  it("cancelamento que falhou: tocar em 'Cancelar Pedido' de novo reabre a caixa e o 2º 'sim' cancela", async () => {
+    updateOrderStatusMock
+      .mockRejectedValueOnce(new Error("falhou"))
+      .mockResolvedValue(undefined);
+    const erroNoConsole = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      await abrirACaixa();
+      await act(async () => {
+        botao(caixa()!, "Cancelar pedido")!.click();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(updateOrderStatusMock).toHaveBeenCalledTimes(1);
+      expect(caixa()).toBeNull();
+
+      // O pedido segue cancelável e o botão voltou: nova tentativa.
+      await abrirACaixa();
+      expect(caixa()).not.toBeNull();
+      await act(async () => {
+        botao(caixa()!, "Cancelar pedido")!.click();
+        await Promise.resolve();
+      });
+      expect(updateOrderStatusMock).toHaveBeenCalledTimes(2);
+    } finally {
+      erroNoConsole.mockRestore();
     }
   });
 

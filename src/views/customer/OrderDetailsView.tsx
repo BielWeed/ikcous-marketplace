@@ -474,6 +474,24 @@ export function OrderDetailsView({
   // na tela de um pedido que já saiu.
   const [perguntandoCancelar, setPerguntandoCancelar] = useState(false);
 
+  // O MESMO critério mostra o botão "Cancelar Pedido" e mantém a caixa aberta.
+  // Exige sessão: o convidado chega aqui pelo fallback de sessionStorage e
+  // update_order_status_atomic recusa chamador sem auth.uid() (PEDIDO-010,
+  // #115). 'pending'/'processing'/'shipping': o divisor da regra do Gabriel
+  // (24/08/2026) é se o produto SAIU, não se foi pago -- 'delivered' fica fora,
+  // é devolução, outro assunto.
+  const podeCancelarPedido =
+    Boolean(user) &&
+    order !== null &&
+    ["pending", "processing", "shipping"].includes(order.status);
+
+  // Se o pedido deixa de ser cancelável com a caixa aberta (a loja marcou como
+  // entregue), a caixa fecha junto com o botão e a pergunta é DESARMADA: sem
+  // isso ela reabriria sozinha se o pedido voltasse a ser cancelável.
+  useEffect(() => {
+    if (!podeCancelarPedido) setPerguntandoCancelar(false);
+  }, [podeCancelarPedido]);
+
   const textoDoCancelamentoDe = (pedido: Order): string => {
     // Regra do Gabriel (24/08/2026): o botão "Cancelar Pedido" aparece para
     // pedido 'pending', 'processing' OU 'shipping' com usuário logado — o
@@ -1761,24 +1779,23 @@ export function OrderDetailsView({
               'pending'/'processing'/'shipping': o divisor da regra do
               Gabriel (24/08/2026) é se o produto SAIU, não se foi pago —
               'delivered' fica fora, é devolução, outro assunto. */}
-          {["pending", "processing", "shipping"].includes(order.status) &&
-            user && (
-              <button
-                onClick={handleCancelOrder}
-                disabled={isCancelling}
-                className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
-              >
-                <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
-                  {isCancelling ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <XCircle className="size-4" />
-                  )}
-                </span>
-                {isCancelling ? "Processando" : "Cancelar Pedido"}
-                <ChevronRight className="ml-auto size-4 flex-shrink-0 text-red-200" />
-              </button>
-            )}
+          {podeCancelarPedido && (
+            <button
+              onClick={handleCancelOrder}
+              disabled={isCancelling}
+              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+            >
+              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                {isCancelling ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <XCircle className="size-4" />
+                )}
+              </span>
+              {isCancelling ? "Processando" : "Cancelar Pedido"}
+              <ChevronRight className="ml-auto size-4 flex-shrink-0 text-red-200" />
+            </button>
+          )}
         </motion.div>
       </div>
 
@@ -1928,7 +1945,7 @@ export function OrderDetailsView({
       </AlertDialog>
 
       <AlertDialog
-        open={perguntandoCancelar}
+        open={perguntandoCancelar && podeCancelarPedido}
         onOpenChange={setPerguntandoCancelar}
       >
         <AlertDialogContent
@@ -1938,7 +1955,11 @@ export function OrderDetailsView({
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar este pedido?</AlertDialogTitle>
             <AlertDialogDescription aria-live="polite">
-              {order ? textoDoCancelamentoDe(order) : null}
+              {/* Pedido que não é mais cancelável não ganha frase sobre o
+                  dinheiro, nem no render em que a caixa está fechando. */}
+              {order && podeCancelarPedido
+                ? textoDoCancelamentoDe(order)
+                : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
