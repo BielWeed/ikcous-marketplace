@@ -399,7 +399,7 @@ const FRASE_DO_AXIOMA: ReadonlyMap<string, string> = new Map([
   ["price_not_numeric", "o preço precisa ser um número"],
   ["stock_not_numeric", "o estoque precisa ser um número"],
   ["cost_price_not_numeric", "o preço de custo precisa ser um número"],
-  ["original_price_not_numeric", "o preço original precisa ser um número"],
+  ["original_price_not_numeric", "o preço de antes precisa ser um número"],
   ["price_non_negative", "o preço não pode ser negativo"],
   ["stock_limit_exceeded", "o estoque não pode passar de 10.000 unidades"],
   ["stock_negative", "o estoque não pode ser negativo"],
@@ -407,7 +407,7 @@ const FRASE_DO_AXIOMA: ReadonlyMap<string, string> = new Map([
   ["cost_price_negative", "o preço de custo não pode ser negativo"],
   [
     "original_price_must_be_greater_than_promo_price",
-    "o preço original (De:) precisa ser maior que o preço de venda (Por:)",
+    'o preço de antes ("De") precisa ser maior que o preço de venda',
   ],
   [
     "variant_price_override_negative",

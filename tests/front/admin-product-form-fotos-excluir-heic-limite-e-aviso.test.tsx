@@ -10,7 +10,8 @@
 //     cada foto) e o de 10 fotos recusava tudo. Agora entram as que cabem e o
 //     aviso diz quantas ficaram de fora.
 //  4. "Deslize para o lado" aparecia com 2 fotos (que já cabem) e piscava
-//     para sempre.
+//     para sempre. Hoje só aparece quando a faixa de miniaturas REALMENTE
+//     rola de lado (não cabe), e não pisca.
 import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -192,11 +193,19 @@ describe("AdminProductFormView — lista de fotos", () => {
     await enviar([1, 2, 3, 4, 5].map((n) => foto(`f${n}.jpg`)));
     expect(fotosNaTela()).toEqual([1, 2, 3, 4, 5].map(url));
 
-    const excluir = [
-      ...document.body.querySelectorAll<HTMLButtonElement>(
-        'button[title="Excluir"]',
-      ),
-    ][1];
+    // As ações são da foto EM FOCO: toca na miniatura da foto 2 para focá-la.
+    await act(async () => {
+      document.body
+        .querySelectorAll<HTMLButtonElement>(
+          '[aria-label="Galeria de fotos do produto"] button[aria-pressed]',
+        )[1]
+        .click();
+    });
+    const excluirDaTela = document.body.querySelectorAll<HTMLButtonElement>(
+      'button[title="Excluir"]',
+    );
+    expect(excluirDaTela).toHaveLength(1);
+    const excluir = excluirDaTela[0];
     await act(async () => {
       excluir.click();
       excluir.click();
@@ -251,16 +260,41 @@ describe("AdminProductFormView — lista de fotos", () => {
     expect(textoDosAvisos()).toMatch(/1 foto ficou de fora/);
   });
 
-  it("o aviso 'Deslize' só aparece com 3 fotos ou mais, e não pisca", async () => {
-    await montar();
-    await enviar([foto("a.jpg"), foto("b.jpg")]);
-    expect(document.body.textContent).not.toContain("Deslize para o lado");
+  it("o aviso 'Deslize' só aparece quando a faixa de miniaturas realmente rola de lado, e não pisca", async () => {
+    // O jsdom não mede largura: a faixa "não cabe" quando o dublê diz que
+    // o conteúdo (900) é maior que a caixa (262).
+    let faixaNaoCabe = false;
+    const ehFaixa = (el: Element) =>
+      el.getAttribute("aria-label") === "Galeria de fotos do produto";
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get() {
+        return ehFaixa(this) && faixaNaoCabe ? 900 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return ehFaixa(this) && faixaNaoCabe ? 262 : 0;
+      },
+    });
+    try {
+      await montar();
+      await enviar([foto("a.jpg"), foto("b.jpg"), foto("c.jpg")]);
+      // Cabem todas: nada para deslizar, nada de aviso (antes saía com 3).
+      expect(document.body.textContent).not.toContain("Deslize para o lado");
 
-    await enviar([foto("c.jpg")]);
-    const aviso = [...document.body.querySelectorAll("span")].find((s) =>
-      s.textContent?.includes("Deslize para o lado"),
-    );
-    expect(aviso).toBeDefined();
-    expect(aviso?.className).not.toContain("animate-pulse");
+      faixaNaoCabe = true;
+      await enviar([foto("d.jpg")]);
+      const aviso = [...document.body.querySelectorAll("span")].find((s) =>
+        s.textContent?.includes("Deslize para o lado"),
+      );
+      expect(aviso).toBeDefined();
+      expect(aviso?.className).not.toContain("animate-pulse");
+    } finally {
+      // Remove o dublê e volta ao getter do próprio jsdom.
+      Reflect.deleteProperty(HTMLElement.prototype, "scrollWidth");
+      Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
+    }
   });
 });

@@ -90,6 +90,23 @@
   box-shadow: none;
 }
 
+/* Só o fundo precisa vencer o seletor geral (`:is(.produto-formulario, …)
+   :is(input:not(…):not(…), …)`, especificidade 0,3,1): com os mesmos `:not`
+   daqui a regra passa dele e o cinza "elevado" deixa de aparecer como uma caixa
+   dentro do cartão do campo (muito visível no tema claro). O padding e a altura
+   ficam na regra de cima, de propósito: subir a especificidade deles passaria
+   por cima das folgas próprias do preço, do estoque e do custo; o raio também
+   fica (o anel de foco acompanha o raio do campo). */
+.produto-formulario
+  .produto-campo
+  :is(
+    input:not([type="checkbox"]):not([type="file"]),
+    textarea,
+    [role="combobox"]
+  ) {
+  background: transparent;
+}
+
 /* O botão da categoria não é input: sem isto o rótulo flutuante "Categoria *"
    ficava por baixo de "Escolher categoria". */
 .produto-formulario .produto-campo > #product-category {
@@ -246,6 +263,38 @@
   color: var(--lit-t-fda4af, #fda4af);
 }
 
+/* Um aviso de erro em vermelho NUNCA aparece cortado: o resumo comum fica numa
+   linha com reticências, mas o aviso desce para a linha de baixo e quebra o
+   quanto precisar (a classe `truncate` do resumo vem do primitivo, por isso o
+   `white-space` também é refeito no span de dentro). */
+.produto-secao-aviso > section > button > span {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.produto-secao-aviso > section > button > span > span {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.produto-secao-aviso > section > button > span > span:not(:first-child) {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.produto-secao-aviso
+  > section
+  > button
+  > span
+  > span:not(:first-child)::before {
+  content: none;
+}
+
 :where(.produto-modal) button {
   min-height: 44px;
   min-width: 44px;
@@ -336,7 +385,49 @@
   min-height: 44px;
 }
 
-/* Topo: o anel "N/5" (cinza sem nada pronto, esmeralda com algum, verde cheio
+/* Topo que cola no alto e encolhe ao rolar (`data-compacto`, ver
+   `useTopoCompacto`). A altura da LINHA é fixa nos dois estados: o que muda é
+   só a letra do título, a escala do anel e a cor da borda de baixo, então nada
+   do que vem depois se mexe. */
+.produto-topo {
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease;
+}
+
+.produto-topo-linha {
+  min-height: 64px;
+}
+
+.produto-topo h1 {
+  font-size: 22px;
+  transition: font-size 0.2s ease;
+}
+
+.produto-topo .produto-anel {
+  transition: transform 0.2s ease;
+}
+
+.produto-topo[data-compacto="true"] {
+  border-bottom-color: hsl(var(--admin-border));
+}
+
+.produto-topo[data-compacto="true"] h1 {
+  font-size: 18px;
+}
+
+.produto-topo[data-compacto="true"] .produto-anel {
+  transform: scale(0.84);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .produto-topo,
+  .produto-topo h1,
+  .produto-topo .produto-anel {
+    transition: none;
+  }
+}
+
+/* Anel "N/5" (cinza sem nada pronto, esmeralda com algum, verde cheio
    com todos) e a barra fina contínua de 4 px. A cor do arco vem do texto do
    próprio anel (`text-emerald-300`, que o tema do painel já ajusta). */
 .produto-anel {
@@ -477,6 +568,104 @@
 
 .produto-fotos > div > p {
   text-align: center;
+}
+
+/* Com fotos: a foto em foco, grande (4:5), com as ações DELA ao lado; embaixo a
+   faixa de miniaturas de 50 px (cada uma um botão de 50 px, acima dos 44 de
+   toque), que rola de lado quando as fotos não cabem. */
+.produto-fotos-cheio {
+  min-width: 0;
+}
+
+.produto-foto-foco {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+}
+
+.produto-foto-foco-coluna {
+  min-width: 0;
+}
+
+.produto-foto-foco-imagem {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border: 1px solid hsl(var(--admin-border-strong));
+  border-radius: 18px;
+  background: hsl(var(--admin-raised));
+}
+
+.produto-foto-foco-imagem > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* O selo fica em cima da FOTO (não do fundo do tema): fundo escuro e letra
+   branca fixos nos três temas, por isso o branco é escrito como `rgb()` e não
+   como o hex que a guarda de "texto claro solto" procura. */
+.produto-foto-selo {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.66);
+  color: rgb(255 255 255);
+  line-height: 1.4;
+}
+
+.produto-foto-foco-acoes {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.produto-fotos-faixa {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.produto-fotos-faixa > button {
+  width: 50px;
+  height: 50px;
+  flex: none;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: hsl(var(--admin-raised));
+  cursor: pointer;
+}
+
+.produto-fotos-faixa > button[aria-pressed="true"] {
+  border-color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-fotos-faixa > button > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.produto-fotos-enviando {
+  display: flex;
+  width: 50px;
+  height: 50px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed hsl(var(--admin-border-strong));
+  border-radius: 12px;
 }
 
 .produto-formulario .produto-secao .produto-campo {

@@ -147,6 +147,17 @@ describe("mensagemAmigavelErroProduto — as causas de INSERT/UPDATE em vw_produ
     );
   });
 
+  it("as frases do preço de antes usam o nome que a tela usa ('Preço de antes (\"De\")'), nunca 'preço original'", () => {
+    const erro = new Error(
+      "Validação de Produto Falhou: Axiom violation: original_price_not_numeric, Axiom violation: original_price_must_be_greater_than_promo_price",
+    );
+    const msg = mensagemAmigavelErroProduto(erro, "atualizar");
+    expect(msg).toBe(
+      'Validação de Produto Falhou: o preço de antes precisa ser um número; o preço de antes ("De") precisa ser maior que o preço de venda.',
+    );
+    expect(msg.toLowerCase()).not.toContain("original");
+  });
+
   it("erro técnico cru do PostgREST: frase genérica de acordo com a ação, nunca o texto técnico", () => {
     const erroTecnico = {
       code: "23514",

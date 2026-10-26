@@ -9,7 +9,7 @@
 //      adicionar fotos (galeria com fotos) com `size-11`;
 //   d. "Tentar de novo" / "Remover" da foto com falha e "Recarregar" do erro de
 //      carga com `min-h-11`;
-//   e. chip de atributo e "+ Atributo" do modal de variante com `min-h-11`;
+//   e. chip de atributo e "+ Outra coisa que muda" do modal de variante com `min-h-11`;
 //   f. os botões editar/ligar/excluir da lista de variações (`VariantItem`) com
 //      `size-11` e os `aria-label`/`title` que o teste de ligar/desligar lê;
 //   g. "Ver app" (ao lado da ação principal) com 44px e letra de 14px.
@@ -132,15 +132,15 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     }
   });
 
-  it("e. o seletor de atributo e o '+ Atributo' do modal de variante com min-h-11", () => {
+  it("e. o seletor de atributo e o '+ Outra coisa que muda' do modal de variante com min-h-11", () => {
     // As sugestões digitáveis viraram as peças de toque do `SeletorDeAtributo`
     // (a medida de 44px delas é provada em grade-do-produto-letra-e-toque-l):
     // aqui só se confere que o modal as usa e leva o que o produto já usa.
     expect(FONTE).toContain("<SeletorDeAtributo");
     expect(FONTE).toContain("sugestoes={suggestedAttributes}");
 
-    // a última ocorrência é o texto do botão (as anteriores são comentários)
-    const posicaoTexto = FONTE.lastIndexOf("+ Atributo");
+    // a última ocorrência é o texto do botão (as anteriores são a definição)
+    const posicaoTexto = FONTE.lastIndexOf("{rotuloDoMaisUmAtributo}");
     expect(posicaoTexto).toBeGreaterThan(-1);
     const maisAtributo = tagAPartirDe(
       FONTE.lastIndexOf("<button", posicaoTexto),
