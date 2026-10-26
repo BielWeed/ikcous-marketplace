@@ -1,4 +1,17 @@
 {
+  "1.5.77": {
+    "titulo": "Tamanho, voltagem, capacidade e material tão fáceis de escolher quanto a cor",
+    "novidades": [
+      "Painel, variações: Tamanho, Voltagem, Capacidade e Material agora têm botões prontos, como a Cor já tinha. Tamanho traz as abas Roupas (PP a XG e Único), Números (34 a 56) e Calçados (33 a 44); Voltagem traz 110V, 220V e Bivolt; Capacidade traz Armazenamento (16 GB a 1 TB) e Volume (50 ml a 2 L); Material traz os tecidos e acabamentos mais comuns. Basta tocar, sem digitar."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "Painel, variações: ao criar um atributo você escolhe entre Tamanho, Cor, Voltagem, Capacidade, Material ou Outro, e cada um mostra a contagem do que já marcou. Ao criar várias variações de uma vez, Marcar todos e Limpar poupam toques, e o valor que você digita continua do jeito que digitou.",
+      "Painel, variações: se o produto já tem o valor gravado de outro jeito (por exemplo \"128gb\"), tocar no botão equivalente usa o que já está gravado, em vez de criar uma segunda opção.",
+      "Painel, variações: o seletor cabe em celulares estreitos, e as abas podem ser trocadas pelas setas do teclado.",
+      "Loja: Capacidade (ou Armazenamento e Memória) aparece antes da cor, na mesma ordem do tamanho."
+    ]
+  },
   "1.5.76": {
     "titulo": "Tamanho primeiro, depois a cor, na escolha do produto",
     "novidades": [],
