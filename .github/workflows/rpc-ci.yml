@@ -204,8 +204,6 @@ on:
       - "scripts/publicacao/consultas/97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente.sql"
       - "scripts/publicacao/consultas/98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado.sql"
       - "scripts/publicacao/consultas/98b-antes-a-foto-da-devolucao-e-a-pergunta-tem-teto-base-vigente.sql"
-      - "scripts/publicacao/consultas/99a-conferir-ninguem-grava-evento-de-analise-aplicado.sql"
-      - "scripts/publicacao/consultas/99b-antes-ninguem-grava-evento-de-analise-base-vigente.sql"
       - "scripts/publicacao/consultas/100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado.sql"
       - "scripts/publicacao/consultas/100b-antes-o-financeiro-descreve-a-venda-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -381,8 +379,6 @@ on:
       - "scripts/publicacao/consultas/97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente.sql"
       - "scripts/publicacao/consultas/98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado.sql"
       - "scripts/publicacao/consultas/98b-antes-a-foto-da-devolucao-e-a-pergunta-tem-teto-base-vigente.sql"
-      - "scripts/publicacao/consultas/99a-conferir-ninguem-grava-evento-de-analise-aplicado.sql"
-      - "scripts/publicacao/consultas/99b-antes-ninguem-grava-evento-de-analise-base-vigente.sql"
       - "scripts/publicacao/consultas/100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado.sql"
       - "scripts/publicacao/consultas/100b-antes-o-financeiro-descreve-a-venda-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -571,9 +567,7 @@ jobs:
       - name: Prova viva do teto da foto da devolucao e da pergunta (20261391000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-foto-da-devolucao-e-a-pergunta-tem-teto-viva.cjs
-      - name: Prova viva de que ninguem grava evento de analise pela API (20261391100000)
-        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
-        run: node tests/banco/rodar-isolado.cjs tests/banco/ninguem-grava-evento-de-analise-pela-api-viva.cjs
+      # 99 reservada para a migration de analytics_events, guardada no ramo fix-199-abuso-do-banco ate o dono aprovar.
       - name: Prova viva da descricao da venda do balcao no Financeiro (20261391200000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-financeiro-descreve-a-venda-do-balcao-viva.cjs
