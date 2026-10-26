@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const ler = (caminho: string) =>
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do próprio repositório, montado de import.meta.url
   readFileSync(new URL(`../../${caminho}`, import.meta.url), "utf8");
 
 describe("textos pequenos e cinza claro da conta", () => {

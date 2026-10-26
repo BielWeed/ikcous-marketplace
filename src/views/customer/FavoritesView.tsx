@@ -68,11 +68,11 @@ interface Secao {
   itens: Product[];
 }
 
-const ROTULO_ORDEM: Record<string, string> = {
-  menor: "Menor preço",
-  maior: "Maior preço",
-  nome: "A–Z",
-};
+const ROTULO_ORDEM = new Map([
+  ["menor", "Menor preço"],
+  ["maior", "Maior preço"],
+  ["nome", "A–Z"],
+]);
 
 export const FavoritesView = React.memo(function FavoritesView({
   favorites,
@@ -493,7 +493,7 @@ export const FavoritesView = React.memo(function FavoritesView({
             aria-current={ordem !== "original" ? "true" : undefined}
           >
             <ArrowDownUp aria-hidden="true" className="size-4" />
-            {ordem === "original" ? "Ordem" : ROTULO_ORDEM[ordem]}
+            {ROTULO_ORDEM.get(ordem) ?? "Ordem"}
             <select
               aria-label="Ordem dos favoritos"
               className="absolute inset-0 size-full cursor-pointer opacity-0"
