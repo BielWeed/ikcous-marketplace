@@ -455,6 +455,7 @@ describe("painel de devoluções — liberar vínculo reverso preso (achado 1, r
       });
     });
     await clicar(botao("Gerar código de postagem"));
+    await clicar(botao("Confirmar e gerar")); // compra: confirmação em linha
 
     // O bloco reaparece para B...
     expect(hospedeiro.textContent).toContain("me-rev-NOVO-B");
