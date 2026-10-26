@@ -99,7 +99,10 @@ module.exports = [
     // 572 -> 576 kB na 1.5.62 (sete telas no estilo Tinta: endereco, conta, privacidade,
     // sobre a loja, notificacoes e o seletor de variantes). Medido na integracao:
     // 572,28 kB, 284 B acima do teto anterior; o painel ficou em 473,01 kB (cabe em 476).
-    limit: "576 kB",
+    // 25/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 576 -> 580 kB na 1.5.74 (acessibilidade da loja: rotulos, avisos falados, alvos
+    // de toque e o CEP do convidado). Medido 576,02 kB: 20 B acima do teto anterior.
+    limit: "580 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem

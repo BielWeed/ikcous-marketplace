@@ -120,7 +120,7 @@ const CartItemCard = memo(function CartItemCard({
                 onRemove(item.product.id, chaveDaVariacao);
               }}
               className="relative -mr-1 -mt-0.5 flex size-7 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors before:absolute before:-inset-2 before:content-[''] hover:text-red-600 active:scale-90 dark:hover:text-red-400"
-              aria-label="Remover item"
+              aria-label={`Remover ${item.product.name}`}
             >
               <Trash2 className="size-[18px]" />
             </button>
@@ -180,6 +180,7 @@ const CartItemCard = memo(function CartItemCard({
                 onUpdateQuantity(item.product.id, qty, chaveDaVariacao)
               }
               size="pill"
+              produto={item.product.name}
             />
           </div>
         </div>
