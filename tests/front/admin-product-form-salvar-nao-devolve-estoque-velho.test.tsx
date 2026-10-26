@@ -204,7 +204,7 @@ describe("AdminProductFormView — salvar não devolve o estoque que a tela leu 
   }
 
   async function salvar() {
-    const botao = botaoPorTexto("Salvar");
+    const botao = botaoPorTexto("Salvar alterações");
     if (!botao) throw new Error("O botão Salvar não está na tela.");
     await act(async () => {
       botao.click();

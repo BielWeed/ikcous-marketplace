@@ -256,7 +256,7 @@ describe("AdminProductFormView — código automático e Na loja", () => {
     });
   }
   const publicar = () => clicarNaBarra("Publicar");
-  const salvarEdicao = () => clicarNaBarra("Salvar");
+  const salvarEdicao = () => clicarNaBarra("Salvar alterações");
 
   const ligado = (rotulo: string) =>
     chave(rotulo)?.getAttribute("aria-checked");
@@ -407,11 +407,11 @@ describe("AdminProductFormView — código automático e Na loja", () => {
   });
 
   describe("seção Na loja", () => {
-    it("fica depois de Avançado, fechada, com o resumo do que está valendo", async () => {
+    it("fica depois de Códigos e câmera, fechada, com o resumo do que está valendo", async () => {
       await montar();
       expect(estaAberta("Na loja")).toBe(false);
       expect(
-        secao("Avançado").compareDocumentPosition(secao("Na loja")) &
+        secao("Códigos e câmera").compareDocumentPosition(secao("Na loja")) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).not.toBe(0);
       expect(secao("Na loja").textContent).toContain("Aparece na loja");

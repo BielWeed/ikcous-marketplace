@@ -10,6 +10,10 @@ import { CampoDeCategoria } from "@/components/admin/products/CampoDeCategoria";
 import { CodigoDoProduto } from "@/components/admin/products/CodigoDoProduto";
 import { DicaExpansivel } from "@/components/admin/products/DicaExpansivel";
 import { InterruptorDoProduto } from "@/components/admin/products/InterruptorDoProduto";
+import {
+  AnelDoProgresso,
+  BarraDoProgresso,
+} from "@/components/admin/products/ProgressoDoProduto";
 import { SecaoDoProduto } from "@/components/admin/products/SecaoDoProduto";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import "@/components/admin/products/formulario-produto.css";
@@ -85,6 +89,8 @@ import {
 } from "@/utils/grade-de-combinacoes";
 import {
   camposQueFaltam,
+  fraseCurtaDoBloqueio,
+  fraseCurtaDoEnvioDeFotos,
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
 } from "@/utils/motivo-do-bloqueio-do-produto";
@@ -111,7 +117,6 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
-  Barcode,
   Camera,
   Check,
   ChevronDown,
@@ -128,9 +133,6 @@ import {
   Power,
   Scissors,
   ShieldCheck,
-  ShoppingBag,
-  Smartphone,
-  Store,
   Trash2,
 } from "lucide-react";
 import React, {
@@ -2400,7 +2402,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   // Primeiro campo com erro que BLOQUEIA o salvar, na ordem em que a tela os
   // mostra (básico, com a promoção logo abaixo de preço e estoque; depois
-  // "Custo e lucro", depois "Avançado"). O AVISO de
+  // "Custo e lucro", depois "Códigos e câmera"). O AVISO de
   // custo maior que o preço não entra: não bloqueia. Mesma lista do `isValid`.
   // Promoção ligada e o "De:" vazio: o salvar gravaria o produto SEM promoção
   // (preço original nulo) e diria "Salvo". Bloqueia e diz o que fazer.
@@ -2968,6 +2970,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // impede publicar por validação/envio de foto. Offline tem banner próprio.
   // Enquanto envia foto, a frase é a do envio; passado o envio, a de
   // validação -- e uma foto que FALHOU nunca entra aqui (não bloqueia).
+  const temErroNoCampo = !!(
+    skuError ||
+    codigoBarrasError ||
+    priceError ||
+    (costError && !costError.startsWith("Aviso")) ||
+    originalPriceError ||
+    estoqueMinimoError ||
+    stockError
+  );
   const motivoDoBloqueio: string | null = isOffline
     ? null
     : isImageUploading
@@ -2976,18 +2987,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         ? null
         : motivoDoBloqueioDoProduto(
             formData,
-            !!(
-              skuError ||
-              codigoBarrasError ||
-              priceError ||
-              (costError && !costError.startsWith("Aviso")) ||
-              originalPriceError ||
-              estoqueMinimoError ||
-              stockError
-            ),
+            temErroNoCampo,
             !!productId,
             promocaoSemPrecoOriginal,
           );
+  // A mesma causa, em poucas palavras, para a linha única da barra de baixo.
+  const fraseCurtaDaBarra = isImageUploading
+    ? fraseCurtaDoEnvioDeFotos(progressoDoEnvio, isUploadingAdjusted)
+    : fraseCurtaDoBloqueio(formData, temErroNoCampo, promocaoSemPrecoOriginal);
   const botaoDeSalvarDesligado =
     isSubmitting ||
     showSuccess ||
@@ -3140,6 +3147,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const avisoDeCusto =
     costError && !costError.startsWith("Aviso") ? costError : "";
   const avisoAvancado = skuError || codigoBarrasError || estoqueMinimoError;
+
+  // O "?" do guia de fotos: mora na linha da dica quando o cartão está vazio e
+  // no canto do cartão quando há fotos (nunca os dois ao mesmo tempo).
+  const botaoGuiaDeFotos = (classe: string) => (
+    <button
+      type="button"
+      onClick={() => setShowPhotoGuide((prev) => !prev)}
+      aria-label="Guia de Fotos do Produto"
+      title="Ajuda / Guia de Fotos"
+      className={cn("min-h-11 min-w-11", classe)}
+    >
+      <HelpCircle className="size-5" />
+    </button>
+  );
 
   return (
     <div className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12">
@@ -3665,30 +3686,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onEfetivar={handleEfetivarGrade}
       />
 
-      <header className="sticky top-0 z-30 bg-admin-bg/95 px-5 py-4 backdrop-blur-md">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+      <header className="sticky top-0 z-30 bg-admin-bg/95 px-5 pb-3 pt-4 backdrop-blur-md">
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="min-w-0 flex-1 [&_h1>span>span]:not-italic [&_h1>span]:whitespace-normal [&_h1]:text-[22px] [&_h1]:normal-case [&_h1]:leading-tight">
             <AdminPageHeader
               titulo={`${productId ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-product-form"].toLowerCase()}`}
             />
-            <div
-              className="produto-progresso mt-4 flex gap-2"
-              aria-hidden="true"
-            >
-              {[1, 2, 3, 4, 5].map((etapa) => (
-                <span
-                  key={etapa}
-                  className={
-                    etapa <= preenchidos ? "produto-etapa-preenchida" : ""
-                  }
-                />
-              ))}
-            </div>
             <p
               data-testid="progresso-do-produto"
-              className="mt-2 text-xs text-zinc-400"
+              className="mt-1 text-xs text-zinc-400"
             >
-              {preenchidos} de 5 preenchidos
+              {preenchidos} de 5 essenciais prontos
               {avisoDeCusto ||
               originalPriceError ||
               avisoAvancado ||
@@ -3698,15 +3706,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 : ""}
             </p>
           </div>
+          <AnelDoProgresso preenchidos={preenchidos} total={5} />
           <button
             type="button"
             onClick={() => setShowHelpModal(true)}
             aria-label="Como cadastrar um produto"
             title="Guia de Cadastro e Ajuda"
-            className="flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 text-zinc-300"
+            className="flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-solid border-admin-border bg-zinc-900 text-zinc-300"
           >
             <HelpCircle className="size-5" />
           </button>
+        </div>
+        <div className="mx-auto mt-3 max-w-3xl">
+          <BarraDoProgresso preenchidos={preenchidos} total={5} />
         </div>
       </header>
 
@@ -3755,14 +3767,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <div className="w-full">
               {formData.images.length === 0 ? (
                 <div className="produto-fotos-vazio">
-                  {/* Falso positivo: o label TEM texto visível ("Adicionar
-                    Fotos do Produto" e a instrução de arrastar), e o input
-                    com o id casado está dentro dele. A regra só olha
-                    `depth: 2` por padrão e o texto está em label > div >
-                    div > p. Pôr `aria-label` aqui resolveria o lint e
-                    pioraria a acessibilidade: substituiria esse texto rico
-                    pelo rótulo curto no nome acessível. */}
-                  {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                  {/* A CAPA: o quadrado grande é o mesmo `<label>` de sempre
+                    (aponta para o input de galeria, que fica SEM `capture`) e
+                    leva o arraste de arquivos. O label TEM texto visível ("Capa") e o
+                    input casado está dentro dele: pôr `aria-label` aqui
+                    pioraria a acessibilidade, trocando esse texto pelo rótulo
+                    curto no nome acessível. */}
                   <label
                     htmlFor="product-image-upload"
                     onDragOver={(e) => {
@@ -3782,36 +3792,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       await processAndUploadImages(files);
                     }}
                     className={cn(
-                      "produto-fotos-envio w-full flex flex-col items-center justify-center cursor-pointer transition-all group/upload relative overflow-hidden select-none",
+                      "produto-fotos-envio relative flex cursor-pointer select-none flex-col items-center justify-center gap-1 overflow-hidden transition-all",
                       isDragging
-                        ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+                        ? "border-emerald-500 bg-emerald-500/10"
                         : "border-admin-border bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
                       (isSubmitting || isImageUploading) &&
                         "opacity-40 pointer-events-none",
                     )}
                   >
-                    <div className="relative z-10 flex flex-col items-center space-y-2 px-4 pt-4 text-center">
-                      <div className="flex size-14 items-center justify-center rounded-2xl border border-admin-border bg-zinc-950/80 text-zinc-400 shadow-xl transition-all duration-300 group-hover/upload:scale-110 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500">
-                        <Camera className="size-6" />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs font-black uppercase tracking-widest text-zinc-300 transition-colors group-hover/upload:text-emerald-400">
-                          {isDragging
-                            ? "Solte para enviar!"
-                            : "Adicionar Fotos do Produto"}
-                        </p>
-                        <p className="text-xs text-zinc-400">
-                          Até 10 · a primeira é a principal · opcional
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-2 text-[11px] font-black uppercase tracking-wider text-zinc-650">
-                        <span>Proporção ideal: 4:5</span>
-                        <span className="size-1 rounded-full bg-zinc-700" />
-                        <span>Máx: 10 fotos</span>
-                        <span className="size-1 rounded-full bg-zinc-700" />
-                        <span>Até 12 MB cada</span>
-                      </div>
-                    </div>
+                    <span className="sr-only">
+                      Adicionar fotos do produto.{" "}
+                    </span>
+                    <Plus aria-hidden="true" className="size-7" />
+                    <span className="text-sm font-medium">
+                      {isDragging ? "Solte aqui" : "Capa"}
+                    </span>
                     <input
                       id="product-image-upload"
                       name="product-images"
@@ -3823,43 +3818,58 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       disabled={isSubmitting || isImageUploading}
                     />
                   </label>
-                  {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`, fora
-                  do label de cima. O input de galeria (acima) fica SEM
-                  `capture` de propósito — com `capture` o celular deixa de
-                  oferecer a galeria e só abre a câmera. Os dois chamam o
-                  MESMO `handleImageUpload`: a origem do arquivo (câmera ou
-                  galeria) não muda o que a tela faz com ele. */}
-                  <label
-                    htmlFor="product-image-capture"
-                    className={cn(
-                      "produto-fotos-camera flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-admin-border bg-zinc-900/30 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
-                      (isSubmitting || isImageUploading) &&
-                        "opacity-40 pointer-events-none",
+                  {/* Só o contorno de onde as próximas fotos vão aparecer. */}
+                  <div className="produto-fotos-miniaturas" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <div className="produto-fotos-dica">
+                    <p className="min-w-0 flex-1 text-[11px] text-zinc-400">
+                      Até 10 · a primeira é a capa
+                    </p>
+                    {botaoGuiaDeFotos(
+                      "-mx-1.5 -my-3.5 flex size-11 shrink-0 items-center justify-center rounded-full text-zinc-400",
                     )}
-                  >
-                    <Camera className="size-4" />
-                    Tirar Foto
-                    <input
-                      id="product-image-capture"
-                      name="product-image-capture"
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                      disabled={isSubmitting || isImageUploading}
-                    />
-                  </label>
-                  <label
-                    htmlFor="product-image-upload"
-                    className={cn(
-                      "produto-fotos-galeria flex min-h-11 cursor-pointer items-center justify-center rounded-full border border-admin-border-strong px-4 text-sm font-bold",
-                      (isSubmitting || isImageUploading) &&
-                        "opacity-40 pointer-events-none",
-                    )}
-                  >
-                    Galeria
-                  </label>
+                  </div>
+                  <div className="produto-fotos-botoes">
+                    {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`,
+                    fora do label da capa. O input de galeria fica SEM
+                    `capture` de propósito — com `capture` o celular deixa de
+                    oferecer a galeria e só abre a câmera. Os dois chamam o
+                    MESMO `handleImageUpload`: a origem do arquivo (câmera ou
+                    galeria) não muda o que a tela faz com ele. */}
+                    <label
+                      htmlFor="product-image-capture"
+                      className={cn(
+                        "produto-fotos-camera flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center whitespace-nowrap rounded-full px-3 text-[13px] font-bold transition-all",
+                        (isSubmitting || isImageUploading) &&
+                          "opacity-40 pointer-events-none",
+                      )}
+                    >
+                      Tirar foto
+                      <input
+                        id="product-image-capture"
+                        name="product-image-capture"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                        disabled={isSubmitting || isImageUploading}
+                      />
+                    </label>
+                    <label
+                      htmlFor="product-image-upload"
+                      className={cn(
+                        "produto-fotos-galeria flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border border-solid border-admin-border-strong px-3 text-[13px] font-bold",
+                        (isSubmitting || isImageUploading) &&
+                          "opacity-40 pointer-events-none",
+                      )}
+                    >
+                      Galeria
+                    </label>
+                  </div>
                 </div>
               ) : (
                 <div className="relative w-full">
@@ -4020,13 +4030,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <label
                   htmlFor="product-image-capture"
                   className={cn(
-                    "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-3 py-3 text-sm font-bold text-white cursor-pointer",
+                    "produto-fotos-camera flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-full px-3 text-[13px] font-bold",
                     (isSubmitting || isImageUploading) &&
                       "opacity-40 pointer-events-none",
                   )}
                   title="Tirar Foto"
                 >
-                  <Camera className="size-5" /> Tirar Foto
+                  <Camera className="size-5" /> Tirar foto
                   <input
                     id="product-image-capture"
                     name="product-image-capture"
@@ -4041,13 +4051,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <label
                   htmlFor="product-image-upload"
                   className={cn(
-                    "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-3 py-3 text-sm font-bold text-white cursor-pointer",
+                    "produto-fotos-galeria flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-solid border-admin-border-strong px-3 text-[13px] font-bold",
                     (isSubmitting || isImageUploading) &&
                       "opacity-40 pointer-events-none",
                   )}
                   title="Adicionar Mais Imagens"
                 >
-                  <Plus className="size-5" /> Adicionar Mais Imagens
+                  <Plus className="size-5" /> Mais fotos
                   <input
                     id="product-image-upload"
                     name="product-images"
@@ -4061,19 +4071,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </label>
               </div>
             )}
-            <p className="mt-3 text-[11px] text-zinc-400">
-              Máx. 10 fotos · 12 MB cada. A ordem não muda por arraste.
-            </p>
+            {formData.images.length > 0 && (
+              <p className="mt-3 text-[11px] text-zinc-400">
+                Máx. 10 fotos · 12 MB cada. A ordem não muda por arraste.
+              </p>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={() => setShowPhotoGuide((prev) => !prev)}
-            aria-label="Guia de Fotos do Produto"
-            title="Ajuda / Guia de Fotos"
-            className="absolute right-2 top-2 flex size-11 min-h-11 min-w-11 items-center justify-center rounded-full text-zinc-400"
-          >
-            <HelpCircle className="size-5" />
-          </button>
+          {formData.images.length > 0 &&
+            botaoGuiaDeFotos(
+              "absolute right-2 top-2 flex size-11 items-center justify-center rounded-full text-zinc-400",
+            )}
         </section>
 
         {/* Guide Section */}
@@ -4122,21 +4129,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         </AnimatePresence>
 
         {/* Content Section */}
-        <section className="produto-dados space-y-4">
+        <section className="produto-dados space-y-2">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10">
-              <Info className="size-5 text-blue-500" />
-            </div>
-            <h3 className="text-base font-bold text-white">
-              Dados do Produto
-              <span className="mt-1 block text-xs font-normal text-zinc-400">
-                Preencha os 5 campos com *
-              </span>
-            </h3>
+            <h2 className="produto-rotulo-secao">Essencial</h2>
             <button
               type="button"
               onClick={() => toggleHelp("productData")}
-              className="ml-auto flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-2xl border border-admin-border bg-admin-raised text-zinc-300 active:scale-95"
+              className="-my-3 ml-auto flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full text-zinc-300 active:scale-95"
               title="Ajuda / Guia de Dados do Produto"
               aria-label="Guia de Cadastro e Informações"
             >
@@ -4203,8 +4202,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <span>
                         <b className="text-zinc-350">Código interno:</b>{" "}
                         Referência sua, livre de repetir — útil para controle e
-                        identificação ágil (fica em Avançado). Quem precisa ser
-                        único é o código interno de cada variação.
+                        identificação ágil (fica em Códigos e câmera). Quem
+                        precisa ser único é o código interno de cada variação.
                       </span>
                     </li>
                     <li className="flex items-start gap-2.5">
@@ -4283,7 +4282,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   setFormData((prev) => ({ ...prev, description: val }))
                 }
                 placeholder="Conte como é o produto..."
-                rows={6}
+                rows={3}
                 className="w-full resize-none rounded-2xl border border-admin-border bg-zinc-950/50 px-4 py-3.5 text-sm font-medium leading-relaxed text-zinc-300 transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-3xl sm:px-6 sm:py-5"
               />
             </div>
@@ -4443,6 +4442,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 cima; este bloco ocupa a linha inteira logo abaixo deles. O
                 estado (`isPromoActive`), o `id` e a validação
                 (`originalPriceError`) são os de sempre: só mudou de lugar. */}
+            <h2 className="produto-rotulo-secao col-span-2 -mb-1 mt-3">
+              Promoção
+            </h2>
             <div className="col-span-2 space-y-3">
               <label
                 htmlFor="product-promo-active"
@@ -4593,15 +4595,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 DEPOIS que o produto chegou — `formData.variants` já está
                 cheio na primeira montagem. Produto com variações abre
                 expandido; sem variações, fechado. */}
+            <h2 className="produto-rotulo-secao col-span-2 -mb-1 mt-3">
+              Mais detalhes
+            </h2>
             <div className="col-span-2">
               <SecaoDoProduto
                 key={chaveDasVariacoes}
                 titulo="Variações"
-                icone={Layers}
-                cor="border-admin-border bg-admin-raised text-zinc-300"
                 resumo={
                   formData.variants.length === 0
-                    ? "Tamanho, cor ou voltagem — opcional"
+                    ? "tamanho, cor, voltagem"
                     : `${variacoesAtivas} ${variacoesAtivas === 1 ? "ativa" : "ativas"} · ${formData.stock} un. · ${formData.variants.length - variacoesAtivas} ${formData.variants.length - variacoesAtivas === 1 ? "desligada" : "desligadas"}`
                 }
                 abertaInicial={formData.variants.length > 0}
@@ -4797,21 +4800,207 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               </SecaoDoProduto>
             </div>
 
+            <div className="col-span-2">
+              {/* Custo e lucro (H1): o Preço de venda subiu para o básico; aqui
+            ficam só o custo e a análise de lucro (a promoção De/Por, que o
+            CLIENTE vê, mora junto do Preço de venda). MONTADA e
+            FECHADA; um erro de validação dentro dela a abre sozinha. O AVISO
+            de custo maior que o preço não é erro (não bloqueia o salvar), por
+            isso não força a abertura. */}
+              <SecaoDoProduto
+                titulo="Custo e lucro"
+                aviso={avisoDeCusto}
+                resumo={
+                  priceVal > 0 && costPriceVal > 0
+                    ? `Lucro ${formatCurrency(priceVal - costPriceVal)} · margem ${percentualComUmaCasa(marginPct)}`
+                    : "opcional"
+                }
+                temErro={!!costError && !costError.startsWith("Aviso")}
+              >
+                <div className="relative space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleHelp("productPricing")}
+                        className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
+                        title="Ajuda / Guia de Precificação"
+                      >
+                        {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                            expandedHelp.productPricing
+                              ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                              : "bg-zinc-950/50 border-admin-border text-zinc-400",
+                          )}
+                        >
+                          ?
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Pricing Guide Section */}
+                  <AnimatePresence>
+                    {expandedHelp.productPricing && (
+                      <AdminHelpModal
+                        isOpen={true}
+                        onClose={() => toggleHelp("productPricing")}
+                        title="Guia de Custos e Margens"
+                        icon={DollarSign}
+                      >
+                        <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
+                          <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
+                            Configure os preços de forma estratégica. O sistema
+                            calcula a lucratividade automaticamente em tempo
+                            real.
+                          </p>
+                          <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Preço de Custo (Opcional):
+                                </b>{" "}
+                                O valor total que você pagou para adquirir ou
+                                fabricar o produto. Esse dado é estritamente
+                                confidencial e é usado apenas pelo sistema para
+                                calcular a margem e o lucro exibidos abaixo.
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">Preço de Venda:</b>{" "}
+                                O preço final cobrado do cliente. Pense em
+                                embutir custos fixos, impostos e taxas para
+                                manter sua operação saudável.
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Painel de Lucratividade:
+                                </b>{" "}
+                                O sistema analisa a diferença entre o preço de
+                                venda e o preço de custo. É recomendada uma
+                                margem de lucro de pelo menos 30%. Abaixo disso
+                                aparece “Lucro baixo”; com custo igual ao preço,
+                                “Sem lucro”; com custo maior que o preço,
+                                “Prejuízo”.
+                              </span>
+                            </li>
+                          </ul>
+                        </div>
+                      </AdminHelpModal>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="produto-campo space-y-1.5">
+                      <label
+                        htmlFor="product-cost-price"
+                        className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                      >
+                        Preço de Custo
+                      </label>
+                      <div className="group relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                          R$
+                        </span>
+                        <LocalBufferedInput
+                          id="product-cost-price"
+                          aria-invalid={
+                            !!costError && !costError.startsWith("Aviso")
+                          }
+                          aria-describedby={
+                            costError ? "product-cost-error" : undefined
+                          }
+                          name="costPrice"
+                          mask="currency"
+                          zeroVazio
+                          value={formData.costPrice}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({ ...prev, costPrice: val }))
+                          }
+                          className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                        />
+                      </div>
+                      {costError && (
+                        <span
+                          id="product-cost-error"
+                          className={cn(
+                            "text-[11px] font-bold mt-1 ml-1 block",
+                            costError.includes("Aviso")
+                              ? "text-amber-500"
+                              : "text-red-500",
+                          )}
+                        >
+                          {costError}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {priceVal > 0 && costPriceVal > 0 && (
+                    <div className="space-y-4 rounded-[20px] border border-admin-border bg-admin-raised p-4">
+                      <div
+                        className={cn(
+                          "flex flex-wrap items-end justify-between gap-3",
+                          corDoLucro,
+                        )}
+                      >
+                        <div>
+                          <p className="text-xs text-zinc-400">
+                            Lucro por unidade
+                          </p>
+                          <p className="mt-1 text-xl font-bold tabular-nums">
+                            {formatCurrency(priceVal - costPriceVal)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-zinc-400">Margem</p>
+                          <p className="mt-1 text-xl font-bold tabular-nums">
+                            {percentualComUmaCasa(marginPct)}
+                          </p>
+                        </div>
+                      </div>
+                      <div
+                        className="h-2 overflow-hidden rounded-full bg-zinc-800"
+                        aria-hidden="true"
+                      >
+                        <div
+                          className={`h-full rounded-full ${marginPct >= 30 ? "bg-emerald-400" : "bg-orange-400"}`}
+                          style={{
+                            width: `${Math.min(100, Math.max(0, marginPct))}%`,
+                          }}
+                        />
+                      </div>
+                      <p className={`text-xs ${corDoLucro}`}>
+                        Análise do Sistema · {analiseDoLucro}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </SecaoDoProduto>
+            </div>
+
             {/* Peso e medidas (H1): MONTADA e FECHADA. Com entrega local a
                 seção nem existe — como o campo já não existia. */}
             {!isLocalShipping && (
               <div className="col-span-2">
                 <SecaoDoProduto
                   titulo="Peso e medidas"
-                  icone={ShoppingBag}
-                  cor="border-admin-border bg-admin-raised text-zinc-300"
                   resumo={
                     formData.weightKg &&
                     formData.widthCm &&
                     formData.heightCm &&
                     formData.lengthCm
                       ? `${formData.weightKg} kg · ${formData.widthCm} × ${formData.heightCm} × ${formData.lengthCm} cm`
-                      : "Usados para calcular o frete"
+                      : "para o frete"
                   }
                 >
                   <div className="space-y-3">
@@ -4919,394 +5108,223 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </SecaoDoProduto>
               </div>
             )}
-          </div>
-        </section>
-
-        {/* Custo e lucro (H1): o Preço de venda subiu para o básico; aqui
-            ficam só o custo e a análise de lucro (a promoção De/Por, que o
-            CLIENTE vê, mora junto do Preço de venda). MONTADA e
-            FECHADA; um erro de validação dentro dela a abre sozinha. O AVISO
-            de custo maior que o preço não é erro (não bloqueia o salvar), por
-            isso não força a abertura. */}
-        <SecaoDoProduto
-          titulo="Custo e lucro"
-          icone={DollarSign}
-          cor="border-admin-border bg-admin-raised text-zinc-300"
-          aviso={avisoDeCusto}
-          resumo={
-            priceVal > 0 && costPriceVal > 0
-              ? `Lucro ${formatCurrency(priceVal - costPriceVal)} · margem ${percentualComUmaCasa(marginPct)}`
-              : "Custo · opcional"
-          }
-          temErro={!!costError && !costError.startsWith("Aviso")}
-        >
-          <div className="relative space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => toggleHelp("productPricing")}
-                  className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
-                  title="Ajuda / Guia de Precificação"
-                >
-                  {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
-                      expandedHelp.productPricing
-                        ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                        : "bg-zinc-950/50 border-admin-border text-zinc-400",
-                    )}
-                  >
-                    ?
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            {/* Pricing Guide Section */}
-            <AnimatePresence>
-              {expandedHelp.productPricing && (
-                <AdminHelpModal
-                  isOpen={true}
-                  onClose={() => toggleHelp("productPricing")}
-                  title="Guia de Custos e Margens"
-                  icon={DollarSign}
-                >
-                  <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
-                    <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
-                      Configure os preços de forma estratégica. O sistema
-                      calcula a lucratividade automaticamente em tempo real.
-                    </p>
-                    <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
-                      <li className="flex items-start gap-2.5">
-                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                        <span>
-                          <b className="text-zinc-350">
-                            Preço de Custo (Opcional):
-                          </b>{" "}
-                          O valor total que você pagou para adquirir ou fabricar
-                          o produto. Esse dado é estritamente confidencial e é
-                          usado apenas pelo sistema para calcular a margem e o
-                          lucro exibidos abaixo.
-                        </span>
-                      </li>
-                      <li className="flex items-start gap-2.5">
-                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                        <span>
-                          <b className="text-zinc-350">Preço de Venda:</b> O
-                          preço final cobrado do cliente. Pense em embutir
-                          custos fixos, impostos e taxas para manter sua
-                          operação saudável.
-                        </span>
-                      </li>
-                      <li className="flex items-start gap-2.5">
-                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                        <span>
-                          <b className="text-zinc-350">
-                            Painel de Lucratividade:
-                          </b>{" "}
-                          O sistema analisa a diferença entre o preço de venda e
-                          o preço de custo. É recomendada uma margem de lucro de
-                          pelo menos 30%. Abaixo disso aparece “Lucro baixo”;
-                          com custo igual ao preço, “Sem lucro”; com custo maior
-                          que o preço, “Prejuízo”.
-                        </span>
-                      </li>
-                    </ul>
-                  </div>
-                </AdminHelpModal>
-              )}
-            </AnimatePresence>
-
-            <div className="grid grid-cols-1 gap-3">
-              <div className="produto-campo space-y-1.5">
-                <label
-                  htmlFor="product-cost-price"
-                  className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                >
-                  Preço de Custo
-                </label>
-                <div className="group relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
-                    R$
-                  </span>
-                  <LocalBufferedInput
-                    id="product-cost-price"
-                    aria-invalid={!!costError && !costError.startsWith("Aviso")}
-                    aria-describedby={
-                      costError ? "product-cost-error" : undefined
-                    }
-                    name="costPrice"
-                    mask="currency"
-                    zeroVazio
-                    value={formData.costPrice}
-                    onFlush={(val) =>
-                      setFormData((prev) => ({ ...prev, costPrice: val }))
-                    }
-                    className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                  />
-                </div>
-                {costError && (
-                  <span
-                    id="product-cost-error"
-                    className={cn(
-                      "text-[11px] font-bold mt-1 ml-1 block",
-                      costError.includes("Aviso")
-                        ? "text-amber-500"
-                        : "text-red-500",
-                    )}
-                  >
-                    {costError}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {priceVal > 0 && costPriceVal > 0 && (
-              <div className="space-y-4 rounded-[20px] border border-admin-border bg-admin-raised p-4">
-                <div
-                  className={cn(
-                    "flex flex-wrap items-end justify-between gap-3",
-                    corDoLucro,
-                  )}
-                >
-                  <div>
-                    <p className="text-xs text-zinc-400">Lucro por unidade</p>
-                    <p className="mt-1 text-xl font-bold tabular-nums">
-                      {formatCurrency(priceVal - costPriceVal)}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-zinc-400">Margem</p>
-                    <p className="mt-1 text-xl font-bold tabular-nums">
-                      {percentualComUmaCasa(marginPct)}
-                    </p>
-                  </div>
-                </div>
-                <div
-                  className="h-2 overflow-hidden rounded-full bg-zinc-800"
-                  aria-hidden="true"
-                >
-                  <div
-                    className={`h-full rounded-full ${marginPct >= 30 ? "bg-emerald-400" : "bg-orange-400"}`}
-                    style={{
-                      width: `${Math.min(100, Math.max(0, marginPct))}%`,
-                    }}
-                  />
-                </div>
-                <p className={`text-xs ${corDoLucro}`}>
-                  Análise do Sistema · {analiseDoLucro}
-                </p>
-              </div>
-            )}
-          </div>
-        </SecaoDoProduto>
-
-        {/* Avançado (H1): código interno, código de barras e aviso de estoque
+            <div className="col-span-2">
+              {/* Avançado (H1): código interno, código de barras e aviso de estoque
             — raros no dia a dia, mas nada se apaga. MONTADA e FECHADA; erro
             em qualquer um dos três (formato, duplicidade ou número inválido)
             a abre sozinha. */}
-        <SecaoDoProduto
-          titulo="Avançado"
-          icone={Barcode}
-          cor="border-admin-border bg-admin-raised text-zinc-300"
-          aviso={avisoAvancado}
-          resumo={
-            formData.sku
-              ? `${formData.sku} · aviso em ${formData.estoqueMinimo || "5"} un.`
-              : "Código interno, código de barras e aviso de estoque"
-          }
-          temErro={!!skuError || !!codigoBarrasError || !!estoqueMinimoError}
-        >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-            <CodigoDoProduto
-              automatico={skuAutomatico}
-              onAlternar={alternarSkuAutomatico}
-              codigoGerado={codigoAuto}
-              onOutro={gerarOutroSku}
-              valorManual={formData.sku}
-              onManual={(val) => setFormData((prev) => ({ ...prev, sku: val }))}
-              erro={skuError}
-              rotuloDoCampo="Código interno (SKU)"
-            />
-
-            <div className="space-y-1.5 md:space-y-3">
-              <label
-                htmlFor="product-codigo-barras"
-                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+              <SecaoDoProduto
+                titulo="Códigos e câmera"
+                aviso={avisoAvancado}
+                resumo={
+                  formData.sku
+                    ? `${formData.sku} · aviso em ${formData.estoqueMinimo || "5"} un.`
+                    : "Código interno, código de barras e aviso de estoque"
+                }
+                temErro={
+                  !!skuError || !!codigoBarrasError || !!estoqueMinimoError
+                }
               >
-                Código de barras
-              </label>
-              {/* No celular o botão desce para baixo do campo: lado a lado,
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+                  <CodigoDoProduto
+                    automatico={skuAutomatico}
+                    onAlternar={alternarSkuAutomatico}
+                    codigoGerado={codigoAuto}
+                    onOutro={gerarOutroSku}
+                    valorManual={formData.sku}
+                    onManual={(val) =>
+                      setFormData((prev) => ({ ...prev, sku: val }))
+                    }
+                    erro={skuError}
+                    rotuloDoCampo="Código interno (SKU)"
+                  />
+
+                  <div className="space-y-1.5 md:space-y-3">
+                    <label
+                      htmlFor="product-codigo-barras"
+                      className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                    >
+                      Código de barras
+                    </label>
+                    {/* No celular o botão desce para baixo do campo: lado a lado,
                   os 13 dígitos não cabiam (onda J). */}
-              <div className="flex flex-col gap-2 xs:flex-row">
-                <LocalBufferedInput
-                  id="product-codigo-barras"
-                  aria-invalid={!!codigoBarrasError}
-                  aria-describedby={
-                    codigoBarrasError ? "product-barcode-error" : undefined
-                  }
-                  name="product-codigo-barras"
-                  type="text"
-                  inputMode="numeric"
-                  data-testid="codigo-barras-produto"
-                  value={formData.codigoBarras}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      codigoBarras: normalizarCodigoBarras(val),
-                    }))
-                  }
-                  onBlur={(e) =>
-                    aoSairDoCampoDeCodigoDeBarras(e.target.value, "produto")
-                  }
-                  placeholder="Ex: 7891234567890"
-                  className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
-                />
-                {/* C5.3 — some sem câmera: o leitor físico USB digita direto
+                    <div className="flex flex-col gap-2 xs:flex-row">
+                      <LocalBufferedInput
+                        id="product-codigo-barras"
+                        aria-invalid={!!codigoBarrasError}
+                        aria-describedby={
+                          codigoBarrasError
+                            ? "product-barcode-error"
+                            : undefined
+                        }
+                        name="product-codigo-barras"
+                        type="text"
+                        inputMode="numeric"
+                        data-testid="codigo-barras-produto"
+                        value={formData.codigoBarras}
+                        onFlush={(val) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            codigoBarras: normalizarCodigoBarras(val),
+                          }))
+                        }
+                        onBlur={(e) =>
+                          aoSairDoCampoDeCodigoDeBarras(
+                            e.target.value,
+                            "produto",
+                          )
+                        }
+                        placeholder="Ex: 7891234567890"
+                        className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                      />
+                      {/* C5.3 — some sem câmera: o leitor físico USB digita direto
                     no campo acima, sem precisar deste botão. */}
-                {temCameraDisponivel() && (
-                  <button
-                    type="button"
-                    onClick={() => setLeitorAberto("produto")}
-                    className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
-                    title="Ler com a câmera"
-                  >
-                    <Camera className="size-4" />
-                    Ler com a câmera
-                  </button>
-                )}
-              </div>
-              <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400">
-                Opcional. É o código impresso na embalagem; a tela Vender lê ele
-                pela câmera.
-              </span>
-              {codigoBarrasError && (
-                <span
-                  id="product-barcode-error"
-                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
-                >
-                  {codigoBarrasError}
-                </span>
-              )}
-              {!codigoBarrasError && codigoBarrasAvisoRede && (
-                <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
-                  {codigoBarrasAvisoRede}
-                </span>
-              )}
+                      {temCameraDisponivel() && (
+                        <button
+                          type="button"
+                          onClick={() => setLeitorAberto("produto")}
+                          className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
+                          title="Ler com a câmera"
+                        >
+                          <Camera className="size-4" />
+                          Ler com a câmera
+                        </button>
+                      )}
+                    </div>
+                    <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400">
+                      Opcional. É o código impresso na embalagem; a tela Vender
+                      lê ele pela câmera.
+                    </span>
+                    {codigoBarrasError && (
+                      <span
+                        id="product-barcode-error"
+                        className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                      >
+                        {codigoBarrasError}
+                      </span>
+                    )}
+                    {!codigoBarrasError && codigoBarrasAvisoRede && (
+                      <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
+                        {codigoBarrasAvisoRede}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 md:space-y-3">
+                    <label
+                      htmlFor="product-estoque-minimo"
+                      className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                    >
+                      Avisar quando o estoque chegar a
+                    </label>
+                    <LocalBufferedInput
+                      id="product-estoque-minimo"
+                      name="product-estoque-minimo"
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputMode="numeric"
+                      value={formData.estoqueMinimo}
+                      onFlush={(val) =>
+                        setFormData((prev) => ({ ...prev, estoqueMinimo: val }))
+                      }
+                      placeholder="Ex: 5"
+                      aria-invalid={estoqueMinimoError ? true : undefined}
+                      aria-describedby={
+                        estoqueMinimoError
+                          ? "product-estoque-minimo-dica product-estoque-minimo-erro"
+                          : "product-estoque-minimo-dica"
+                      }
+                      className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                    />
+                    <span
+                      id="product-estoque-minimo-dica"
+                      className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400"
+                    >
+                      Vazio usa o padrão (5). Com variações, vale para a soma.
+                    </span>
+                    {estoqueMinimoError && (
+                      <span
+                        id="product-estoque-minimo-erro"
+                        className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                      >
+                        {estoqueMinimoError}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </SecaoDoProduto>
             </div>
 
-            <div className="space-y-1.5 md:space-y-3">
-              <label
-                htmlFor="product-estoque-minimo"
-                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Avisar quando o estoque chegar a
-              </label>
-              <LocalBufferedInput
-                id="product-estoque-minimo"
-                name="product-estoque-minimo"
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                value={formData.estoqueMinimo}
-                onFlush={(val) =>
-                  setFormData((prev) => ({ ...prev, estoqueMinimo: val }))
-                }
-                placeholder="Ex: 5"
-                aria-invalid={estoqueMinimoError ? true : undefined}
-                aria-describedby={
-                  estoqueMinimoError
-                    ? "product-estoque-minimo-dica product-estoque-minimo-erro"
-                    : "product-estoque-minimo-dica"
-                }
-                className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
-              />
-              <span
-                id="product-estoque-minimo-dica"
-                className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400"
-              >
-                Vazio usa o padrão (5). Com variações, vale para a soma.
-              </span>
-              {estoqueMinimoError && (
-                <span
-                  id="product-estoque-minimo-erro"
-                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
-                >
-                  {estoqueMinimoError}
-                </span>
-              )}
-            </div>
-          </div>
-        </SecaoDoProduto>
-
-        {/* Na loja: três chaves que o modelo já tinha e o salvar já gravava
+            <div className="col-span-2">
+              {/* Na loja: três chaves que o modelo já tinha e o salvar já gravava
             (`ativo`, `is_bestseller`, `frete_gratis`) — só não tinham tela.
             MONTADA e FECHADA, como as outras. */}
-        <SecaoDoProduto
-          titulo="Na loja"
-          icone={Store}
-          cor="border-admin-border bg-admin-raised text-zinc-300"
-          resumo={[
-            formData.isActive ? "Aparece na loja" : "Escondido da loja",
-            formData.isBestseller ? "Em destaque" : null,
-            formData.freeShipping ? "Frete grátis" : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        >
-          <div className="space-y-1">
-            <InterruptorDoProduto
-              rotulo="Aparece na loja"
-              descricao="Desligue para guardar o produto sem mostrar aos clientes."
-              ligado={formData.isActive}
-              onAlternar={() =>
-                setFormData((prev) => ({ ...prev, isActive: !prev.isActive }))
-              }
-            />
-            <InterruptorDoProduto
-              rotulo="Em destaque"
-              descricao="Mostra o selo “Em alta” e põe o produto na vitrine de destaques."
-              ligado={formData.isBestseller}
-              onAlternar={() =>
-                setFormData((prev) => ({
-                  ...prev,
-                  isBestseller: !prev.isBestseller,
-                }))
-              }
-            />
-            <InterruptorDoProduto
-              rotulo="Frete grátis neste produto"
-              descricao="Marca o produto para a regra “Só produtos marcados” do frete."
-              ligado={formData.freeShipping}
-              onAlternar={() =>
-                setFormData((prev) => ({
-                  ...prev,
-                  freeShipping: !prev.freeShipping,
-                }))
-              }
-            >
-              {formData.freeShipping && freteDeProdutoSemEfeito ? (
-                <p
-                  data-testid="aviso-frete-por-produto"
-                  role="status"
-                  className="mt-2 flex items-start gap-2 px-1 text-xs text-amber-300"
-                >
-                  <AlertTriangle
-                    aria-hidden="true"
-                    className="mt-0.5 size-4 shrink-0"
+              <SecaoDoProduto
+                titulo="Na loja"
+                resumo={[
+                  formData.isActive ? "Aparece na loja" : "Escondido da loja",
+                  formData.isBestseller ? "Em destaque" : null,
+                  formData.freeShipping ? "Frete grátis" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              >
+                <div className="space-y-1">
+                  <InterruptorDoProduto
+                    rotulo="Aparece na loja"
+                    descricao="Desligue para guardar o produto sem mostrar aos clientes."
+                    ligado={formData.isActive}
+                    onAlternar={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        isActive: !prev.isActive,
+                      }))
+                    }
                   />
-                  Hoje a loja não usa “Só produtos marcados”. A marca fica
-                  guardada, mas só vale quando você escolher essa regra em{" "}
-                  {NOMES_DO_PAINEL["admin-shipping"]}.
-                </p>
-              ) : null}
-            </InterruptorDoProduto>
+                  <InterruptorDoProduto
+                    rotulo="Em destaque"
+                    descricao="Mostra o selo “Em alta” e põe o produto na vitrine de destaques."
+                    ligado={formData.isBestseller}
+                    onAlternar={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        isBestseller: !prev.isBestseller,
+                      }))
+                    }
+                  />
+                  <InterruptorDoProduto
+                    rotulo="Frete grátis neste produto"
+                    descricao="Marca o produto para a regra “Só produtos marcados” do frete."
+                    ligado={formData.freeShipping}
+                    onAlternar={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        freeShipping: !prev.freeShipping,
+                      }))
+                    }
+                  >
+                    {formData.freeShipping && freteDeProdutoSemEfeito ? (
+                      <p
+                        data-testid="aviso-frete-por-produto"
+                        role="status"
+                        className="mt-2 flex items-start gap-2 px-1 text-xs text-amber-300"
+                      >
+                        <AlertTriangle
+                          aria-hidden="true"
+                          className="mt-0.5 size-4 shrink-0"
+                        />
+                        Hoje a loja não usa “Só produtos marcados”. A marca fica
+                        guardada, mas só vale quando você escolher essa regra em{" "}
+                        {NOMES_DO_PAINEL["admin-shipping"]}.
+                      </p>
+                    ) : null}
+                  </InterruptorDoProduto>
+                </div>
+              </SecaoDoProduto>
+            </div>
           </div>
-        </SecaoDoProduto>
+        </section>
         {/* O guia "Como cadastrar um produto" já tem o botão "?" do
             cabeçalho (o mesmo `setShowHelpModal`): aqui só resta o ID. */}
         {productId && (
@@ -5333,7 +5351,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       </AnimatePresence>
 
       <AcaoDaBarra aria-label="Ações do produto">
-        <div className="produto-acoes mx-auto w-full max-w-3xl space-y-2">
+        <div className="produto-acoes mx-auto w-full max-w-3xl space-y-1.5">
           {precisaRecarregar && (
             <p
               data-testid="precisa-recarregar"
@@ -5355,46 +5373,54 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <p
               data-testid="motivo-do-bloqueio"
               role="status"
-              className="produto-status flex items-start gap-2 px-1 text-xs font-medium text-amber-300"
+              className="produto-status flex items-center gap-2 px-1 text-xs font-bold text-amber-300"
             >
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
-              {/* Com erro num CAMPO (e não foto subindo), o motivo vira um botão
-                de texto que leva até o campo — abre a seção recolhida onde o
-                erro ficou escondido e põe o foco nele. O botão de salvar
-                continua desligado; isto só mostra o caminho. */}
+              <AlertTriangle className="size-4 shrink-0 text-amber-400" />
+              {/* UMA frase curta na tela; a frase completa (com a lista do que
+                falta) fica no texto só-para-leitor de tela e no título. Com
+                erro num CAMPO (e não foto subindo), a frase vira um botão que
+                leva até o campo — abre a seção recolhida onde o erro ficou
+                escondido e põe o foco nele. O botão de salvar continua
+                desligado; isto só mostra o caminho. */}
               {!isImageUploading && idDoCampoDoBloqueio() ? (
                 <button
                   type="button"
+                  title={motivoDoBloqueio}
                   onClick={() => {
                     const id = idDoCampoDoBloqueio();
                     if (id) mostrarEFocarCampo(id);
                   }}
-                  className="min-h-11 text-left font-bold underline underline-offset-2"
+                  className="-my-3.5 min-h-11 min-w-0 truncate text-left font-bold"
                 >
-                  {motivoDoBloqueio}
+                  <span className="sr-only">{motivoDoBloqueio}</span>
+                  <span aria-hidden="true">
+                    {fraseCurtaDaBarra} · toque para ver
+                  </span>
                 </button>
               ) : (
-                <span>{motivoDoBloqueio}</span>
+                <span title={motivoDoBloqueio} className="min-w-0 truncate">
+                  <span className="sr-only">{motivoDoBloqueio}</span>
+                  <span aria-hidden="true">{fraseCurtaDaBarra}</span>
+                </span>
               )}
             </p>
           )}
           {!motivoDoBloqueio && !isOffline && !precisaRecarregar && (
             <p
-              className="produto-status flex items-center gap-2 px-1 text-xs text-zinc-400"
+              className="produto-status flex items-center gap-2 px-1 text-xs font-bold text-emerald-300"
               role="status"
             >
-              <span
-                aria-hidden="true"
-                className="size-2 shrink-0 rounded-full bg-emerald-500"
-              />
+              <Check aria-hidden="true" className="size-4 shrink-0" />
               {showSuccess
                 ? "Salvo · voltando à lista"
                 : isSubmitting
                   ? "Salvando alterações…"
-                  : `Pronto para ${productId ? "salvar" : "publicar"} · 5 de 5`}
+                  : productId
+                    ? "Alterações prontas para salvar"
+                    : "Tudo pronto para publicar"}
             </p>
           )}
-          <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             {/* O botão cinza não recebe toque (pointer-events: none): o toque
                 cai neste invólucro e leva ao primeiro campo que falta. Pelo
                 teclado, o caminho é a frase acima (botão de verdade). */}
@@ -5411,7 +5437,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 type="button"
                 onClick={() => handleSubmit()}
                 disabled={botaoDeSalvarDesligado}
-                className="produto-salvar flex min-h-14 w-full min-w-11 items-center justify-center gap-2 rounded-full p-3 text-base font-bold transition-colors disabled:pointer-events-none"
+                className="produto-salvar flex min-h-11 w-full min-w-11 items-center justify-center gap-2 rounded-full px-4 text-base font-bold transition-colors disabled:pointer-events-none"
               >
                 {isSubmitting ? (
                   <>
@@ -5435,7 +5461,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     ) : (
                       <Plus className="size-5" />
                     )}
-                    {productId ? "Salvar" : "Publicar"}
+                    {productId ? "Salvar alterações" : "Publicar"}
                   </>
                 )}
               </button>
@@ -5443,10 +5469,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <button
               type="button"
               onClick={() => setIsPreviewOpen(true)}
-              className="produto-prever flex min-h-14 min-w-11 items-center justify-center gap-2 rounded-full border border-admin-border-strong bg-admin-surface p-3 text-sm font-bold"
+              className="produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-5 text-sm font-bold"
             >
-              <Smartphone className="size-5 shrink-0" />
-              Ver no app
+              Ver app
             </button>
           </div>
         </div>
@@ -5495,8 +5520,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <p className="text-xs text-zinc-400">
                   Nome do produto, descrição detalhada e o{" "}
                   <strong className="text-white">Código interno</strong>{" "}
-                  (referência livre, em Avançado; só o código interno de cada
-                  variação precisa ser único). O{" "}
+                  (referência livre, em Códigos e câmera; só o código interno de
+                  cada variação precisa ser único). O{" "}
                   <strong className="text-white">Código de Barras</strong> é
                   opcional, identifica a embalagem física, precisa ser único no
                   catálogo inteiro e é o que a tela Vender lê no balcão.

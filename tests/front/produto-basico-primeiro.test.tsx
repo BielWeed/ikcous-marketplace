@@ -4,7 +4,7 @@
 //
 //   a. Fotos, Nome, Descrição (obrigatória), Preço de venda, Estoque e
 //      Categoria ficam à vista; "Variações", "Peso e medidas", "Custo e lucro"
-//      e "Avançado" são SecaoRecolhivel FECHADAS mas MONTADAS (`hidden`):
+//      e "Códigos e câmera" são SecaoRecolhivel FECHADAS mas MONTADAS (`hidden`):
 //      nada desmonta, então o que se digita lá dentro não se perde.
 //   b. Erro de validação dentro de seção fechada abre a seção; e submeter com
 //      erro põe o foco no primeiro campo com erro (abrindo a seção que a
@@ -67,7 +67,12 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const SECOES = ["Variações", "Peso e medidas", "Custo e lucro", "Avançado"];
+const SECOES = [
+  "Variações",
+  "Peso e medidas",
+  "Custo e lucro",
+  "Códigos e câmera",
+];
 
 const produtoDoBanco = {
   id: "prod-1",
@@ -258,7 +263,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
 
   describe("barra única acoplada à navegação", () => {
     for (const productId of [undefined, "prod-1"]) {
-      it(`${productId ? "Salvar" : "Publicar"} fica na navegação, neutro, e grava pelo caminho de sempre`, async () => {
+      it(`${productId ? "Salvar alterações" : "Publicar"} fica na navegação, neutro, e grava pelo caminho de sempre`, async () => {
         const nav = document.createElement("nav");
         const prateleira = document.createElement("div");
         nav.dataset.testid = "navegacao-do-teste";
@@ -281,7 +286,9 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
 
         await preencherOBasico();
         const salvar = [...barras[0].querySelectorAll("button")].find(
-          (b) => b.textContent?.trim() === (productId ? "Salvar" : "Publicar"),
+          (b) =>
+            b.textContent?.trim() ===
+            (productId ? "Salvar alterações" : "Publicar"),
         ) as HTMLButtonElement;
         expect(salvar.disabled).toBe(false);
         await act(async () => {
@@ -339,11 +346,11 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       expect(document.querySelector("header")?.contains(publicar[0])).toBe(
         false,
       );
-      expect(barra?.textContent).toContain("Ver no app");
+      expect(barra?.textContent).toContain("Ver app");
       expect(
         document.querySelector('[data-testid="progresso-do-produto"]')
           ?.textContent,
-      ).toContain("0 de 5 preenchidos");
+      ).toContain("0 de 5 essenciais prontos");
       expect(
         document.querySelector('[data-testid="resumo-do-produto"]'),
       ).toBeNull();
@@ -351,7 +358,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       expect(
         document.querySelector('[data-testid="progresso-do-produto"]')
           ?.textContent,
-      ).toContain("5 de 5 preenchidos");
+      ).toContain("5 de 5 essenciais prontos");
       expect(
         document.querySelector('[data-testid="resumo-do-produto"]')
           ?.textContent,
@@ -446,7 +453,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
           "product-length",
         ],
         "Custo e lucro": ["product-cost-price"],
-        Avançado: ["product-sku", "product-codigo-barras"],
+        "Códigos e câmera": ["product-sku", "product-codigo-barras"],
       };
       for (const [titulo, ids] of Object.entries(dentro)) {
         const painel = painelDaSecao(titulo);
@@ -561,7 +568,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
         await esperar(50);
       });
 
-      expect(estaAberta("Avançado")).toBe(true);
+      expect(estaAberta("Códigos e câmera")).toBe(true);
       expect(estaAberta("Custo e lucro")).toBe(true);
       expect(estaAberta("Peso e medidas")).toBe(false);
       expect(estaAberta("Variações")).toBe(false);
@@ -578,25 +585,25 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       expect(estaAberta("Custo e lucro")).toBe(false);
     });
 
-    it("submeter com código interno inválido reabre 'Avançado' e foca o campo; nada é gravado", async () => {
+    it("submeter com código interno inválido reabre 'Códigos e câmera' e foca o campo; nada é gravado", async () => {
       await montar();
       await preencherOBasico();
-      await clicar(botaoDaSecao("Avançado"));
+      await clicar(botaoDaSecao("Códigos e câmera"));
       await digitarCampo("product-sku", "AB!");
       expect(document.body.textContent).toContain(
         "O código interno deve conter apenas letras, números e hífens.",
       );
 
       // A lojista fecha a seção com o erro lá dentro.
-      await clicar(botaoDaSecao("Avançado"));
-      expect(estaAberta("Avançado")).toBe(false);
+      await clicar(botaoDaSecao("Códigos e câmera"));
+      expect(estaAberta("Códigos e câmera")).toBe(false);
 
       await act(async () => {
         submeter();
         await esperar(100);
       });
 
-      expect(estaAberta("Avançado")).toBe(true);
+      expect(estaAberta("Códigos e câmera")).toBe(true);
       expect(document.activeElement).toBe(campo("product-sku"));
       expect(addProduct).not.toHaveBeenCalled();
     });
@@ -767,10 +774,10 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
     it("com erro dentro de seção FECHADA, tocar no motivo abre a seção e foca o campo", async () => {
       await montar();
       await preencherOBasico();
-      await clicar(botaoDaSecao("Avançado"));
+      await clicar(botaoDaSecao("Códigos e câmera"));
       await digitarCampo("product-sku", "AB!");
-      await clicar(botaoDaSecao("Avançado"));
-      expect(estaAberta("Avançado")).toBe(false);
+      await clicar(botaoDaSecao("Códigos e câmera"));
+      expect(estaAberta("Códigos e câmera")).toBe(false);
 
       const rolarParaOCampo = vi.fn();
       campo("product-sku").scrollIntoView = rolarParaOCampo;
@@ -784,7 +791,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
         await esperar(100);
       });
 
-      expect(estaAberta("Avançado")).toBe(true);
+      expect(estaAberta("Códigos e câmera")).toBe(true);
       expect(document.activeElement).toBe(campo("product-sku"));
       expect(rolarParaOCampo).toHaveBeenCalledWith({ block: "center" });
       expect(addProduct).not.toHaveBeenCalled();
@@ -793,7 +800,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
     it("o botão de salvar segue desligado (o motivo não o liga)", async () => {
       await montar();
       await preencherOBasico();
-      await clicar(botaoDaSecao("Avançado"));
+      await clicar(botaoDaSecao("Códigos e câmera"));
       await digitarCampo("product-sku", "AB!");
       const publicar = [...document.querySelectorAll("button")].find((b) =>
         b.textContent?.includes("Publicar"),

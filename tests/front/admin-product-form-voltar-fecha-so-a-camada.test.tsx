@@ -150,7 +150,7 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
     expect(overrideAtual).toBeNull();
 
     await act(async () => {
-      botaoPorTexto("Ver no app")?.click();
+      botaoPorTexto("Ver app")?.click();
     });
 
     expect(previaAberta()).toBe(true);
@@ -165,7 +165,7 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
   it("Voltar do celular (o navegador já fez o pop) fecha a prévia e o formulário continua", async () => {
     await montar();
     await act(async () => {
-      botaoPorTexto("Ver no app")?.click();
+      botaoPorTexto("Ver app")?.click();
     });
     const voltar = vi.spyOn(window.history, "back");
 
@@ -186,7 +186,7 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
   it("fechar pelo botão da prévia devolve a entrada de histórico sem sair da tela", async () => {
     await montar();
     await act(async () => {
-      botaoPorTexto("Ver no app")?.click();
+      botaoPorTexto("Ver app")?.click();
     });
     const voltar = vi.spyOn(window.history, "back");
 
