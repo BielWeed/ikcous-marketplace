@@ -188,31 +188,173 @@ describe("AdminProductFormView — lista de fotos", () => {
   const textoDosAvisos = () =>
     mocks.toastError.mock.calls.map((c) => String(c[0])).join(" | ");
 
-  it("duplo toque em Excluir da foto 2 apaga só ela (sobram 4, a foto 3 segue)", async () => {
+  const miniaturas = () =>
+    document.body.querySelectorAll<HTMLButtonElement>(
+      '[aria-label="Galeria de fotos do produto"] button[aria-pressed]',
+    );
+  // Os botões de ação da foto em foco, na ordem em que aparecem na tela.
+  const acoes = () => [
+    ...document.body.querySelectorAll<HTMLButtonElement>(
+      '[data-testid="foto-em-foco"] button',
+    ),
+  ];
+  const botaoExcluir = () =>
+    document.body.querySelector<HTMLButtonElement>('button[title="Excluir"]');
+  const tocar = (el: HTMLElement | null | undefined) =>
+    act(async () => {
+      el?.click();
+    });
+
+  // O defeito de verdade acontece no celular: o 1º toque termina (a tela é
+  // redesenhada) e SÓ ENTÃO chega o 2º. Dois `click()` dentro de um mesmo
+  // `act` não reproduzem isso: o React ainda não redesenhou entre eles.
+  it("duplo toque em Excluir com a foto do meio em foco apaga só ela (cada toque no seu act)", async () => {
     await montar();
     await enviar([1, 2, 3, 4, 5].map((n) => foto(`f${n}.jpg`)));
     expect(fotosNaTela()).toEqual([1, 2, 3, 4, 5].map(url));
 
-    // As ações são da foto EM FOCO: toca na miniatura da foto 2 para focá-la.
-    await act(async () => {
-      document.body
-        .querySelectorAll<HTMLButtonElement>(
-          '[aria-label="Galeria de fotos do produto"] button[aria-pressed]',
-        )[1]
-        .click();
-    });
-    const excluirDaTela = document.body.querySelectorAll<HTMLButtonElement>(
-      'button[title="Excluir"]',
-    );
-    expect(excluirDaTela).toHaveLength(1);
-    const excluir = excluirDaTela[0];
-    await act(async () => {
-      excluir.click();
-      excluir.click();
-    });
+    await tocar(miniaturas()[1]);
+    expect(
+      document.body.querySelectorAll('button[title="Excluir"]'),
+    ).toHaveLength(1);
+    // Os dois toques usam o botão que está na tela NO MOMENTO de cada toque,
+    // como o dedo faz: o 2º cai no mesmo lugar, onde agora está a foto 3.
+    await tocar(botaoExcluir());
+    await tocar(botaoExcluir());
     await esperar(800);
 
     expect(fotosNaTela()).toEqual([url(1), url(3), url(4), url(5)]);
+  });
+
+  it("duplo toque em Excluir com a capa em foco (o estado de entrada) apaga só ela", async () => {
+    await montar();
+    await enviar([1, 2, 3, 4, 5].map((n) => foto(`f${n}.jpg`)));
+
+    await tocar(botaoExcluir());
+    await tocar(botaoExcluir());
+    await esperar(800);
+
+    expect(fotosNaTela()).toEqual([2, 3, 4, 5].map(url));
+  });
+
+  it("depois do toque o Excluir é um botão NOVO, ligado à foto que sobrou (não reaproveitado)", async () => {
+    await montar();
+    await enviar([1, 2, 3].map((n) => foto(`f${n}.jpg`)));
+
+    const antes = botaoExcluir();
+    await tocar(antes);
+
+    expect(fotosNaTela()).toEqual([url(2), url(3)]);
+    expect(antes?.isConnected).toBe(false);
+    expect(botaoExcluir()).not.toBe(antes);
+  });
+
+  it("depois de excluir, uma segunda exclusão feita com calma (1 toque) apaga a próxima", async () => {
+    await montar();
+    await enviar([1, 2, 3].map((n) => foto(`f${n}.jpg`)));
+
+    await tocar(botaoExcluir());
+    await esperar(800);
+    await tocar(botaoExcluir());
+    await esperar(800);
+
+    expect(fotosNaTela()).toEqual([url(3)]);
+  });
+
+  it("'Tornar principal' + toque no mesmo lugar não apaga a foto que acabou de virar capa", async () => {
+    await montar();
+    await enviar([1, 2, 3, 4, 5].map((n) => foto(`f${n}.jpg`)));
+
+    await tocar(miniaturas()[2]);
+    const lugar = acoes().findIndex((b) =>
+      /Tornar principal/.test(b.getAttribute("aria-label") ?? ""),
+    );
+    expect(lugar).toBeGreaterThanOrEqual(0);
+    await tocar(acoes().at(lugar));
+    expect(fotosNaTela()).toEqual([3, 1, 2, 4, 5].map(url));
+
+    // O 2º toque cai no MESMO lugar da tela, seja o que houver ali agora.
+    await tocar(acoes().at(lugar));
+    expect(fotosNaTela()).toEqual([3, 1, 2, 4, 5].map(url));
+  });
+
+  it("depois de 'Tornar principal' o Excluir não muda de lugar (não sobe para baixo do dedo)", async () => {
+    await montar();
+    await enviar([1, 2, 3].map((n) => foto(`f${n}.jpg`)));
+
+    await tocar(miniaturas()[1]);
+    const lugarDoExcluir = acoes().indexOf(botaoExcluir() as HTMLButtonElement);
+    await tocar(
+      acoes().find((b) =>
+        /Tornar principal/.test(b.getAttribute("aria-label") ?? ""),
+      ),
+    );
+    await esperar(800);
+
+    expect(acoes().indexOf(botaoExcluir() as HTMLButtonElement)).toBe(
+      lugarDoExcluir,
+    );
+  });
+
+  it("depois de excluir, o foco do teclado fica nas ações da foto que sobrou (não cai no <body>)", async () => {
+    await montar();
+    await enviar([1, 2, 3].map((n) => foto(`f${n}.jpg`)));
+    const excluir = botaoExcluir();
+    await act(async () => {
+      excluir?.focus();
+    });
+    expect(document.activeElement).toBe(excluir);
+
+    await tocar(excluir);
+
+    const grupo = document.body.querySelector('[data-testid="foto-em-foco"]');
+    expect(grupo?.contains(document.activeElement)).toBe(true);
+  });
+
+  it("as ações travam por instantes depois de Excluir e 'Tornar principal' (2º toque é ignorado), e voltam depois", async () => {
+    await montar();
+    await enviar([1, 2, 3, 4, 5].map((n) => foto(`f${n}.jpg`)));
+
+    await tocar(miniaturas()[3]);
+    await tocar(
+      acoes().find((b) =>
+        /Tornar principal/.test(b.getAttribute("aria-label") ?? ""),
+      ),
+    );
+    // Logo depois, qualquer ação da foto é ignorada.
+    await tocar(botaoExcluir());
+    expect(fotosNaTela()).toEqual([4, 1, 2, 3, 5].map(url));
+
+    // Passado o instante, 1 toque é 1 toque.
+    await esperar(800);
+    await tocar(botaoExcluir());
+    expect(fotosNaTela()).toEqual([1, 2, 3, 5].map(url));
+  });
+
+  it("enquanto a foto sobe, a faixa diz em palavras (visíveis) o que está acontecendo", async () => {
+    await montar();
+    await enviar([foto("a.jpg")]);
+    let terminar: (urls: string[]) => void = () => {};
+    mocks.uploadProductImages.mockImplementation(
+      () => new Promise<string[]>((r) => (terminar = r)),
+    );
+    await act(async () => {
+      escolherFotos([foto("b.jpg")]);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const estado = document.body.querySelector(
+      '[role="status"].produto-fotos-enviando',
+    );
+    expect(estado).not.toBeNull();
+    const legenda = estado?.querySelector("span");
+    expect(legenda?.textContent).toMatch(/Enviando|Comprimindo/);
+    expect(legenda?.className ?? "").not.toContain("sr-only");
+
+    await act(async () => {
+      terminar([url(2)]);
+      await new Promise((r) => setTimeout(r, 0));
+    });
   });
 
   it("foto HEIC é recusada, nomeada, e não entra na lista", async () => {

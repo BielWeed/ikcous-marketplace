@@ -526,7 +526,7 @@ describe("AdminProductFormView — o que faltava para chegar no desenho", () => 
       );
     });
 
-    it("as ações da foto ficam na ordem Ajustar e Cortar, Tornar principal, Excluir (Excluir por último)", async () => {
+    it("as ações da foto ficam na ordem Ajustar e Cortar, Excluir, Tornar principal (Excluir não se mexe quando a foto vira capa)", async () => {
       await montar(3);
       await tocar(2);
       const acoes = qa<HTMLButtonElement>(
@@ -534,8 +534,8 @@ describe("AdminProductFormView — o que faltava para chegar no desenho", () => 
       ).map((b) => b.getAttribute("title") ?? b.getAttribute("aria-label"));
       expect(acoes).toEqual([
         "Ajustar e Cortar",
-        "Tornar principal: foto 2 de 3",
         "Excluir",
+        "Tornar principal: foto 2 de 3",
       ]);
     });
 

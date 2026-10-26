@@ -235,6 +235,16 @@ function temCameraDisponivel(): boolean {
  */
 const PRAZO_POR_FOTO_MS = 90_000;
 
+/**
+ * Depois de "Excluir" ou "Tornar principal" as ações da foto em foco ficam
+ * travadas por este tempo. As ações são sempre da foto que está em foco, e
+ * depois do 1º toque a foto seguinte passa a ocupar o mesmo lugar da tela: um
+ * 2º toque rápido (toque duplo) cairia no mesmo botão, já ligado à foto nova, e
+ * apagaria uma segunda foto. 400 ms cobre um toque duplo e ainda é curto para
+ * quem quer mesmo excluir a próxima.
+ */
+const TRAVA_DAS_ACOES_DE_FOTO_MS = 400;
+
 /** Uma foto que não subiu: guarda o arquivo para "Tentar de novo". */
 interface FotoComFalha {
   id: string;
@@ -2050,9 +2060,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     [processAndUploadImages, isOffline],
   );
 
+  // Depois de excluir ou de "Tornar principal" o botão tocado é desmontado (a
+  // ação é de outra foto agora): o foco vai para a primeira ação da foto em
+  // foco, em vez de cair no <body> e fazer quem usa teclado ou leitor de tela
+  // perder o lugar.
+  const focarNasAcoesRef = useRef(false);
+
   // Pela foto, não pela posição: no 2º toque rápido o cartão que está saindo
   // ainda existe na tela, e a posição dele já é de outra foto.
   const removeImage = useCallback((imagem: string) => {
+    focarNasAcoesRef.current = true;
     setFormData((prev) => ({
       ...prev,
       images: prev.images.filter((u) => u !== imagem),
@@ -2070,7 +2087,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // mesma posição — a seguinte, ou a anterior quando era a última.
   const fotoEmFocoRef = useRef<HTMLDivElement>(null);
   const faixaDeFotosRef = useRef<HTMLDivElement>(null);
-  const focarNaCapaRef = useRef(false);
+  const travaDasAcoesAteRef = useRef(0);
+  // Chamada no começo de cada ação da foto em foco: `false` = ainda travada
+  // pelo toque anterior, ignore. `travar` liga a trava (ações que mudam a
+  // lista de fotos).
+  const acaoDeFotoLiberada = (travar: boolean) => {
+    const agora = Date.now();
+    if (agora < travaDasAcoesAteRef.current) return false;
+    if (travar)
+      travaDasAcoesAteRef.current = agora + TRAVA_DAS_ACOES_DE_FOTO_MS;
+    return true;
+  };
   const [urlEmFoco, setUrlEmFoco] = useState<string | null>(null);
   const indiceAnteriorDoFocoRef = useRef(0);
   const achadoDoFoco = urlEmFoco ? formData.images.indexOf(urlEmFoco) : 0;
@@ -2109,7 +2136,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   const tornarPrincipal = useCallback((index: number) => {
     if (index <= 0) return;
-    focarNaCapaRef.current = true;
+    focarNasAcoesRef.current = true;
     setFormData((prev) => {
       const [escolhida] = prev.images.slice(index, index + 1);
       if (!escolhida) return prev;
@@ -2120,14 +2147,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     });
     toast.success(`Foto ${index + 1} agora é a principal.`);
   }, []);
-  // O botão tocado some da tela (a foto virou a capa e não tem mais "Tornar
-  // principal"): sem isto o foco cairia no <body> e quem usa teclado ou leitor
-  // de tela perderia o lugar. Vai para a primeira ação da foto em foco.
   useEffect(() => {
-    // Roda quando a ordem muda (`formData.images`); só age se foi "Tornar
-    // principal" quem mudou.
-    if (!focarNaCapaRef.current) return;
-    focarNaCapaRef.current = false;
+    // Roda quando a lista muda (`formData.images`); só age se foi "Excluir" ou
+    // "Tornar principal" quem mudou.
+    if (!focarNasAcoesRef.current) return;
+    focarNasAcoesRef.current = false;
     fotoEmFocoRef.current?.querySelector<HTMLElement>("button")?.focus();
   }, [formData.images]);
 
@@ -3947,68 +3971,84 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       const isCover = indiceEmFoco === 0;
                       return (
                         <>
-                          <div className="produto-foto-foco-coluna">
-                            <div className="produto-foto-foco-imagem">
-                              <img src={image} alt="" />
-                              <div
-                                data-tema-fixo=""
-                                className="produto-foto-selo text-[11px] font-bold"
-                              >
-                                {isCover
-                                  ? "Principal"
-                                  : `Foto ${indiceEmFoco + 1}`}
-                              </div>
-                            </div>
-                            {meta &&
-                              meta.status !== "loading" &&
-                              meta.status !== "erro" && (
-                                <p
-                                  className={`mt-2 text-xs ${meta.status === "warning_aspect" || meta.status === "warning_res" ? "text-orange-300" : "text-zinc-400"}`}
+                          <React.Fragment key={image}>
+                            <div className="produto-foto-foco-coluna">
+                              <div className="produto-foto-foco-imagem">
+                                <img src={image} alt="" />
+                                <div
+                                  data-tema-fixo=""
+                                  className="produto-foto-selo text-[11px] font-bold"
                                 >
-                                  {meta.status === "excellent"
-                                    ? "Excelente!"
-                                    : meta.status === "warning_aspect"
-                                      ? "Ajuste para 4:5."
-                                      : meta.status === "warning_res"
-                                        ? "Resolução baixa."
-                                        : "Boa qualidade."}
-                                  <span className="block text-[11px] text-zinc-400">
-                                    {meta.width} × {meta.height} px
-                                  </span>
-                                </p>
-                              )}
-                          </div>
-                          <div className="produto-foto-foco-acoes">
-                            <button
-                              type="button"
-                              onClick={() => openAdjuster(image, indiceEmFoco)}
-                              className="flex min-h-11 w-full items-center gap-1.5 whitespace-nowrap rounded-xl border border-solid border-admin-border bg-admin-raised px-2.5 text-xs font-bold text-zinc-200"
-                              title="Ajustar e Cortar"
-                            >
-                              <Scissors className="size-4 shrink-0" />
-                              Ajustar e Cortar
-                            </button>
-                            {!isCover && (
+                                  {isCover
+                                    ? "Principal"
+                                    : `Foto ${indiceEmFoco + 1}`}
+                                </div>
+                              </div>
+                              {meta &&
+                                meta.status !== "loading" &&
+                                meta.status !== "erro" && (
+                                  <p
+                                    className={`mt-2 text-xs ${meta.status === "warning_aspect" || meta.status === "warning_res" ? "text-orange-300" : "text-zinc-400"}`}
+                                  >
+                                    {meta.status === "excellent"
+                                      ? "Excelente!"
+                                      : meta.status === "warning_aspect"
+                                        ? "Ajuste para 4:5."
+                                        : meta.status === "warning_res"
+                                          ? "Resolução baixa."
+                                          : "Boa qualidade."}
+                                    <span className="block text-[11px] text-zinc-400">
+                                      {meta.width} × {meta.height} px
+                                    </span>
+                                  </p>
+                                )}
+                            </div>
+                            <div className="produto-foto-foco-acoes">
                               <button
                                 type="button"
-                                onClick={() => tornarPrincipal(indiceEmFoco)}
-                                disabled={isImageUploading || isSubmitting}
-                                aria-label={`Tornar principal: foto ${indiceEmFoco + 1} de ${formData.images.length}`}
-                                className="min-h-11 w-full rounded-xl border border-solid border-admin-border px-2.5 text-xs font-bold text-zinc-200 disabled:opacity-40"
+                                onClick={() => {
+                                  if (!acaoDeFotoLiberada(false)) return;
+                                  openAdjuster(image, indiceEmFoco);
+                                }}
+                                className="flex min-h-11 w-full items-center gap-1.5 whitespace-nowrap rounded-xl border border-solid border-admin-border bg-admin-raised px-2.5 text-xs font-bold text-zinc-200"
+                                title="Ajustar e Cortar"
                               >
-                                Tornar principal
+                                <Scissors className="size-4 shrink-0" />
+                                Ajustar e Cortar
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removeImage(image)}
-                              className="flex min-h-11 w-full items-center gap-1.5 rounded-xl bg-rose-400/10 px-2.5 text-xs font-bold text-rose-300"
-                              title="Excluir"
-                            >
-                              <Trash2 className="size-4 shrink-0" />
-                              Excluir
-                            </button>
-                          </div>
+                              {/* "Excluir" fica SEMPRE no mesmo lugar: "Tornar
+                                principal" (que some quando a foto é a capa)
+                                vem depois dele. Se viesse antes, o Excluir
+                                subiria para baixo do dedo no momento em que
+                                a foto vira capa. */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!acaoDeFotoLiberada(true)) return;
+                                  removeImage(image);
+                                }}
+                                className="flex min-h-11 w-full items-center gap-1.5 rounded-xl bg-rose-400/10 px-2.5 text-xs font-bold text-rose-300"
+                                title="Excluir"
+                              >
+                                <Trash2 className="size-4 shrink-0" />
+                                Excluir
+                              </button>
+                              {!isCover && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!acaoDeFotoLiberada(true)) return;
+                                    tornarPrincipal(indiceEmFoco);
+                                  }}
+                                  disabled={isImageUploading || isSubmitting}
+                                  aria-label={`Tornar principal: foto ${indiceEmFoco + 1} de ${formData.images.length}`}
+                                  className="min-h-11 w-full rounded-xl border border-solid border-admin-border px-2.5 text-xs font-bold text-zinc-200 disabled:opacity-40"
+                                >
+                                  Tornar principal
+                                </button>
+                              )}
+                            </div>
+                          </React.Fragment>
                         </>
                       );
                     })()}
@@ -4036,7 +4076,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     {isUploadingImages && (
                       <div role="status" className="produto-fotos-enviando">
                         <Loader2 className="size-5 animate-spin text-emerald-400" />
-                        <span className="sr-only">
+                        <span>
                           {imageUploadStep === "compressing"
                             ? "Comprimindo..."
                             : "Enviando..."}
