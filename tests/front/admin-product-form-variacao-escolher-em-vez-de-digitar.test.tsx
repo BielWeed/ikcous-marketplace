@@ -6,10 +6,11 @@
 // bolinha. O que é gravado não mudou (o nome do atributo e o nome do valor).
 //
 // Provado aqui, na tela de verdade:
-//   1. as quatro peças aparecem e o campo de nome só existe em "Outro";
+//   1. as seis peças aparecem e o campo de nome só existe em "Outro";
 //   2. Cor + bolinha vira "Cor: Azul marinho" na lista;
 //   3. o estoque anda no + e no −, e o − não passa de zero;
-//   4. produto ANTIGO ("Cor" / "Espacial Grey", ou "Material" / "Algodão")
+//   4. produto ANTIGO ("Cor" / "Espacial Grey", "Material" / "Algodão" ou
+//      "Estampa" / "Listrada")
 //      abre com o tipo certo marcado, o valor preservado, e salvar sem mexer
 //      reproduz a mesma linha;
 //   5. a combinação (Cor E Tamanho) usa o mesmo seletor em cada par;
@@ -221,14 +222,21 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
     imageUrl: undefined,
   });
 
-  it("abre com as quatro peças, nenhuma marcada, e SEM campo de nome", async () => {
+  it("abre com as seis peças, nenhuma marcada, e SEM campo de nome", async () => {
     await montar();
     await abrirNovaVariacao();
 
     expect(document.getElementById("titulo-da-variacao")?.textContent).toBe(
       "Nova variação",
     );
-    for (const peca of ["Cor", "Tamanho", "Voltagem", "Outro"]) {
+    for (const peca of [
+      "Cor",
+      "Tamanho",
+      "Voltagem",
+      "Capacidade",
+      "Material",
+      "Outro",
+    ]) {
       expect(botaoDoAtributo(0, peca).getAttribute("aria-pressed")).toBe(
         "false",
       );
@@ -296,35 +304,142 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
     expect(variantesNaTela()).toEqual(["Cor: Espacial Grey"]);
   });
 
-  it("produto antigo 'Material' / 'Algodão' abre em Outro com os dois textos preservados", async () => {
+  it("produto antigo 'Material' / 'Algodão' abre na peça Material com o botão Algodão marcado e os textos preservados", async () => {
     await montar([linhaAntiga("Material", "Algodão")]);
     await abrirEdicaoDaLinha("Algodão");
 
-    expect(atributoMarcado(0)).toBe("Outro");
-    expect(valorDoCampo("variant-name")).toBe("Material");
+    expect(atributoMarcado(0)).toBe("Material");
+    expect(document.getElementById("variant-name")).toBeNull();
     expect(valorDoCampo("variant-value")).toBe("Algodão");
+    expect(
+      document
+        .querySelector('[aria-label="Material Algodão"]')
+        ?.getAttribute("aria-pressed"),
+    ).toBe("true");
 
     await clicarTexto("Salvar");
     expect(toastError).not.toHaveBeenCalled();
     expect(variantesNaTela()).toEqual(["Material: Algodão"]);
   });
 
-  it("produto que já usa 'Material': o nome vira atalho, sem redigitar", async () => {
+  it("produto antigo 'Estampa' / 'Listrada' (sem peça própria) abre em Outro com os dois textos preservados", async () => {
+    await montar([linhaAntiga("Estampa", "Listrada")]);
+    await abrirEdicaoDaLinha("Listrada");
+
+    expect(atributoMarcado(0)).toBe("Outro");
+    expect(valorDoCampo("variant-name")).toBe("Estampa");
+    expect(valorDoCampo("variant-value")).toBe("Listrada");
+
+    await clicarTexto("Salvar");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual(["Estampa: Listrada"]);
+  });
+
+  it("produto que já usa 'Material': a peça Material já vem escolhível, sem redigitar o nome", async () => {
     await montar([linhaAntiga("Material", "Algodão")]);
     await abrirNovaVariacao();
 
-    const atalho = document.querySelector<HTMLButtonElement>(
-      '[data-testid="atalho-de-atributo"]',
-    );
-    expect(atalho?.textContent).toBe("Material");
-    await act(async () => {
-      atalho?.click();
-    });
+    // Num produto que já tem um grupo só sobram a peça dele e Outro.
+    expect(
+      [...document.querySelectorAll('[role="group"] > button')].map((b) =>
+        b.textContent?.trim(),
+      ),
+    ).toEqual(["Material", "Outro"]);
+    await tocarNaPeca(0, "Material");
     await digitar("variant-value", "Linho");
     await clicarTexto("Salvar variação");
 
     expect(toastError).not.toHaveBeenCalled();
     expect(variantesNaTela()).toEqual(["Material: Algodão", "Material: Linho"]);
+  });
+
+  it("produto que já usa 'Estampa': o nome vira atalho, sem redigitar", async () => {
+    await montar([linhaAntiga("Estampa", "Listrada")]);
+    await abrirNovaVariacao();
+
+    const atalho = document.querySelector<HTMLButtonElement>(
+      '[data-testid="atalho-de-atributo"]',
+    );
+    expect(atalho?.textContent).toBe("Estampa");
+    await act(async () => {
+      atalho?.click();
+    });
+    await digitar("variant-value", "Lisa");
+    await clicarTexto("Salvar variação");
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual(["Estampa: Listrada", "Estampa: Lisa"]);
+  });
+
+  it("Capacidade e Material tocados num produto novo gravam o nome canônico e o botão escolhido", async () => {
+    await montar();
+    await abrirNovaVariacao();
+    await tocarNaPeca(0, "Capacidade");
+    await clicarRotulo("Capacidade 128 GB");
+    expect(valorDoCampo("variant-value")).toBe("128 GB");
+    await clicarTexto("Salvar variação");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual(["Capacidade: 128 GB"]);
+  });
+
+  it("celular 'Memória / Armazenamento' (dois nomes do mesmo tipo): a peça grava um nome em cada par e salvar reproduz a linha", async () => {
+    await montar([
+      {
+        ...linhaAntiga("Memória / Armazenamento", "4 GB / 64 GB"),
+        id: "v-cel",
+      },
+    ]);
+    await abrirNovaVariacao();
+
+    // Os dois nomes do produto viram atalhos com o nome REAL.
+    expect(
+      [...document.querySelectorAll('[data-testid="atalho-de-atributo"]')].map(
+        (a) => a.textContent?.trim(),
+      ),
+    ).toEqual(["Memória", "Armazenamento"]);
+
+    await tocarNaPeca(0, "Capacidade");
+    expect(valorDoCampo("variant-name")).toBeUndefined();
+    await clicarTexto("+ Atributo");
+    await tocarNaPeca(1, "Capacidade");
+
+    // Cada par ficou com um nome: o cartão diz o nome gravado, não "Capacidade".
+    const titulos = [
+      ...document.querySelectorAll('[data-testid^="atributo-"]'),
+    ].map(
+      (c) =>
+        c.querySelector('[role="group"] > button[aria-pressed="true"]')
+          ?.textContent,
+    );
+    expect(titulos).toEqual(["Capacidade", "Capacidade"]);
+    await clicarRotulo("Capacidade 16 GB");
+    await act(async () => {
+      botaoDoAtributo(1, "128 GB").click();
+    });
+    await clicarTexto("Salvar variação");
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual([
+      "Memória / Armazenamento: 4 GB / 64 GB",
+      "Memória / Armazenamento: 16 GB / 128 GB",
+    ]);
+  });
+
+  it("celular 'Memória / Armazenamento': abrir a linha e salvar sem mexer reproduz o mesmo texto", async () => {
+    await montar([
+      {
+        ...linhaAntiga("Memória / Armazenamento", "4 GB / 64 GB"),
+        id: "v-cel",
+      },
+    ]);
+    await abrirEdicaoDaLinha("4 GB / 64 GB");
+    expect(valorDoCampo("variant-value")).toBe("4 GB");
+    expect(valorDoCampo("variant-value-1")).toBe("64 GB");
+    await clicarTexto("Salvar");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual([
+      "Memória / Armazenamento: 4 GB / 64 GB",
+    ]);
   });
 
   it("'Outro' revela o campo do nome: um atributo livre continua possível", async () => {

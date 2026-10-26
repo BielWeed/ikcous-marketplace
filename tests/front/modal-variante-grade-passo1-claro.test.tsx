@@ -455,7 +455,15 @@ describe("passo 1 da grade — faixa RESUMO", () => {
     await escolher(0, "Preto", "Branco", "Cinza", "Azul", "Verde", "Vermelho");
     await tocar(botaoExato("+ Adicionar outro atributo"));
     await tocarPeca(1, "Tamanho");
-    await escolher(1, "PP", "P", "M", "G", "GG", "XG", "34", "36", "38", "40");
+    // 6 tamanhos de roupa na aba Roupas e 4 números na aba Números: a troca de
+    // aba não desmarca nada.
+    await escolher(1, "PP", "P", "M", "G", "GG", "XG");
+    await tocar(
+      [
+        ...(cartao(1)?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []),
+      ].find((a) => texto(a) === "Números"),
+    );
+    await escolher(1, "34", "36", "38", "40");
     expect(texto(resumo())).toContain("= 60 combinações");
     expect(texto(resumo())).not.toContain("Passou do limite");
     expect(texto(botaoPorTexto("Gerar"))).toBe("Gerar 60 combinações");

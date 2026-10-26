@@ -136,17 +136,31 @@ const SUBSTANTIVOS = new Map<string, [string, string]>([
   ["Cor", ["cor", "cores"]],
   ["Tamanho", ["tamanho", "tamanhos"]],
   ["Voltagem", ["voltagem", "voltagens"]],
+  ["Capacidade", ["capacidade", "capacidades"]],
+  ["Material", ["material", "materiais"]],
 ]);
 const contagemComSubstantivo = (n: number, nome: string): string =>
   `${n} ${(SUBSTANTIVOS.get(tipoDoNome(nome) ?? "") ?? ["valor", "valores"]).at(n === 1 ? 0 : 1)}`;
 
-/** Os tipos que um atalho "+ Tamanho / + Cor / + Voltagem / + Outro" pode
- *  criar (os que nenhum cartão usa ainda), na ordem das peças. */
-const TIPOS_DOS_ATALHOS = ["Tamanho", "Cor", "Voltagem", "Outro"] as const;
+/** Os tipos que um atalho "+ Tamanho / + Cor / + Voltagem / + Capacidade /
+ *  + Material / + Outro" pode criar (os que nenhum cartão usa ainda), na ordem
+ *  de prioridade. Só os 3 primeiros livres viram atalho (mais que isso é
+ *  poluição); "+ Outro" vem sempre, porque é a saída para o que não tem peça. */
+const TIPOS_DOS_ATALHOS = [
+  "Tamanho",
+  "Cor",
+  "Voltagem",
+  "Capacidade",
+  "Material",
+  "Outro",
+] as const;
+const MAX_ATALHOS_DE_TIPO = 3;
 const EXEMPLO_DO_ATALHO = new Map<string, string>([
   ["Tamanho", "ex.: P, M, G"],
   ["Cor", "ex.: Azul, Preto"],
   ["Voltagem", "ex.: 110 V, 220 V"],
+  ["Capacidade", "ex.: 64 GB, 1 L"],
+  ["Material", "ex.: Algodão, Couro"],
 ]);
 
 const chaveMinuscula = (texto: string): string =>
@@ -506,9 +520,11 @@ export function ModalVarianteGrade({
   const tiposEmUso = grupos.map(
     (g) => tipoDoNome(g.nome) ?? (g.outro ? "Outro" : null),
   );
-  const atalhosLivres = TIPOS_DOS_ATALHOS.filter(
-    (t) => !tiposEmUso.includes(t),
-  );
+  const tiposLivres = TIPOS_DOS_ATALHOS.filter((t) => !tiposEmUso.includes(t));
+  const atalhosLivres = [
+    ...tiposLivres.filter((t) => t !== "Outro").slice(0, MAX_ATALHOS_DE_TIPO),
+    ...tiposLivres.filter((t) => t === "Outro"),
+  ];
   const mostrarAtalhos =
     !grupoUnicoEmUso &&
     tiposEmUso.some(Boolean) &&
@@ -612,6 +628,9 @@ export function ModalVarianteGrade({
                       onNome={(nome) => atualizarGrupo(grupo.chave, { nome })}
                       sugestoes={sugestoesDeAtributo}
                       iniciarEmOutro={grupo.outro && !tipoDoNome(grupo.nome)}
+                      nomesOcupados={grupos
+                        .filter((outro) => outro.chave !== grupo.chave)
+                        .map((outro) => outro.nome)}
                       tiposOcupados={grupos.flatMap((outro) => {
                         const tipo = tipoDoNome(outro.nome);
                         return outro.chave === grupo.chave || !tipo
@@ -628,6 +647,9 @@ export function ModalVarianteGrade({
                         atualizarGrupo(grupo.chave, { rascunho })
                       }
                       onAdicionar={() => adicionarValorDigitado(grupo)}
+                      onDefinir={(selecionados) =>
+                        atualizarGrupo(grupo.chave, { selecionados })
+                      }
                       onLimpar={() =>
                         atualizarGrupo(grupo.chave, {
                           selecionados: [],
