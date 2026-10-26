@@ -878,7 +878,10 @@ export function ProfileView({
 
       {/* Custom Avatar Sheet/Dialog Modal */}
       <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
-        <DialogContent className="max-w-xs overflow-hidden rounded-[18px] border border-border bg-background p-5 text-foreground sm:max-w-md">
+        <DialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] max-h-[85dvh] max-w-xs overflow-y-auto overflow-x-hidden rounded-[18px] border border-border bg-background p-5 text-foreground sm:max-w-md"
+        >
           <DialogHeader>
             <DialogTitle className="text-center text-base font-bold tracking-tight text-foreground">
               Escolher Avatar ou Foto
@@ -1147,7 +1150,10 @@ export function ProfileView({
 
       {/* Custom Cover Sheet/Dialog Modal */}
       <Dialog open={isCoverModalOpen} onOpenChange={setIsCoverModalOpen}>
-        <DialogContent className="mx-auto w-[90%] max-w-sm overflow-hidden rounded-[18px] border border-border bg-background p-5 text-foreground">
+        <DialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] mx-auto max-h-[85dvh] w-[90%] max-w-sm overflow-y-auto overflow-x-hidden rounded-[18px] border border-border bg-background p-5 text-foreground"
+        >
           <DialogHeader className="space-y-1.5">
             <DialogTitle className="text-base font-bold tracking-tight text-foreground">
               Capa de Fundo

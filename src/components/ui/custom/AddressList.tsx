@@ -100,7 +100,7 @@ function ConfirmaApagarEndereco({
         if (!aberto) onCancelar();
       }}
     >
-      <AlertDialogContent>
+      <AlertDialogContent overlayClassName="z-[130]" className="z-[130]">
         <AlertDialogHeader>
           <AlertDialogTitle>Apagar este endereço?</AlertDialogTitle>
           <AlertDialogDescription>
@@ -359,7 +359,7 @@ export const AddressList = memo(function AddressList({
                       <span
                         className={
                           selectable
-                            ? "mt-1 block text-[11px] font-bold uppercase tracking-widest text-emerald-500"
+                            ? "mt-1 block text-[11px] font-bold uppercase tracking-widest text-emerald-700"
                             : "mt-1 block text-xs font-semibold text-emerald-700"
                         }
                       >

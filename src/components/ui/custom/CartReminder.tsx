@@ -89,7 +89,10 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
   const itemCount = getCartCount();
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(76px+var(--safe-area-bottom,0px))] z-40 flex justify-center px-4 md:bottom-24">
+    <div
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(76px+var(--safe-area-bottom,0px))] z-40 flex justify-center px-4 md:bottom-24"
+    >
       <AnimatePresence>
         {isVisible && (
           <motion.div
@@ -130,7 +133,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             {/* Middle: Compressed Info */}
             <div className="relative z-10 min-w-0 flex-1 py-0.5">
               <div className="mb-0.5 flex items-center gap-1.5">
-                <span className="text-[8px] font-black uppercase tracking-[0.15em] text-emerald-500">
+                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-700">
                   Seu carrinho
                 </span>
                 <div className="size-1 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
@@ -142,7 +145,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                     : `${itemCount} itens no seu carrinho`}
                 </p>
               ) : isSempreGratis ? (
-                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-500">
+                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-700">
                   <Truck className="size-3" />
                   <span>
                     {soLocal
@@ -151,7 +154,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                   </span>
                 </div>
               ) : isFree ? (
-                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-500">
+                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-700">
                   <Truck className="size-3" />
                   <span>
                     Frete Grátis{soLocal ? " na Cidade" : ""} Liberado
@@ -164,7 +167,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                     {formatCurrency(amountToFree)}
                   </span>{" "}
                   para o{" "}
-                  <span className="italic text-emerald-500">
+                  <span className="italic text-emerald-700">
                     Frete Grátis{soLocal ? " na Cidade" : ""}
                   </span>
                 </p>
@@ -174,7 +177,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             {/* Right: Compact Action */}
             <button
               onClick={onAction}
-              className="group/btn flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-[9px] font-black uppercase tracking-wider text-primary-foreground shadow-md transition-all hover:bg-primary/90 active:scale-95"
+              className="group/btn relative flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-[10px] font-black uppercase tracking-wider text-primary-foreground shadow-md transition-all after:absolute after:-inset-x-1 after:-inset-y-1.5 after:content-[''] hover:bg-primary/90 active:scale-95"
             >
               Carrinho
               <ChevronRight className="size-2.5 transition-transform group-hover:translate-x-0.5" />

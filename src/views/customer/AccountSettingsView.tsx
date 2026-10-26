@@ -1179,7 +1179,10 @@ export function AccountSettingsView() {
       </div>
 
       <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
-        <DialogContent className="max-w-xs overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-premium sm:max-w-md">
+        <DialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] max-h-[85dvh] max-w-xs overflow-y-auto overflow-x-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-premium sm:max-w-md"
+        >
           <DialogHeader>
             <DialogTitle className="text-center text-[11px] font-black uppercase tracking-wider text-zinc-900">
               Escolher Avatar ou Foto
@@ -1367,7 +1370,7 @@ export function AccountSettingsView() {
                           </div>
                         </div>
 
-                        <p className="text-center text-[10px] font-semibold leading-relaxed text-zinc-400">
+                        <p className="text-center text-[10px] font-semibold leading-relaxed text-zinc-600">
                           Esta foto é exibida publicamente no marketplace.
                           <br />
                           Você pode trocá-la ou removê-la a qualquer momento.
@@ -1431,7 +1434,7 @@ export function AccountSettingsView() {
                               <p className="text-xs font-bold text-zinc-700">
                                 Enviar foto do dispositivo
                               </p>
-                              <p className="px-4 text-[10px] font-semibold leading-normal text-zinc-400">
+                              <p className="px-4 text-[10px] font-semibold leading-normal text-zinc-600">
                                 Selecione uma imagem para fazer upload. Ela será
                                 redimensionada automaticamente.
                               </p>
@@ -1462,7 +1465,10 @@ export function AccountSettingsView() {
 
       {/* Custom Cover Sheet/Dialog Modal */}
       <Dialog open={isCoverModalOpen} onOpenChange={setIsCoverModalOpen}>
-        <DialogContent className="mx-auto w-[90%] max-w-sm overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 text-slate-800 shadow-2xl">
+        <DialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] mx-auto max-h-[85dvh] w-[90%] max-w-sm overflow-y-auto overflow-x-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 text-slate-800 shadow-2xl"
+        >
           <DialogHeader className="space-y-1.5">
             <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-slate-800">
               <span className="size-1.5 animate-pulse rounded-full bg-secondary" />
@@ -1617,7 +1623,7 @@ export function AccountSettingsView() {
                       <p className="text-[10px] font-black uppercase tracking-wider text-slate-700">
                         Escolher Imagem do Dispositivo
                       </p>
-                      <p className="px-4 text-[8px] font-bold uppercase leading-normal tracking-tight text-slate-400">
+                      <p className="px-4 text-[10px] font-bold uppercase leading-normal tracking-tight text-zinc-600">
                         Formatos aceitos: JPEG e PNG. A imagem será ajustada
                         para a proporção ideal.
                       </p>
