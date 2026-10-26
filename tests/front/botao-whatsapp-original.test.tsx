@@ -159,6 +159,93 @@ describe("BotaoWhatsapp", () => {
     expect(aoClicar).toHaveBeenCalledTimes(1);
   });
 
+  describe("variante só-ícone (somenteIcone)", () => {
+    function montarIcone(props: Record<string, unknown> = {}) {
+      act(() => {
+        raiz.render(
+          createElement(BotaoWhatsapp, {
+            somenteIcone: true,
+            "aria-label": "Falar com a loja no WhatsApp",
+            ...props,
+          }),
+        );
+      });
+      return hospedeiro.querySelector("button") as HTMLButtonElement;
+    }
+
+    it("tem só o glifo OFICIAL (sem rótulo), nome acessível e alvo >= 44 px", () => {
+      const botao = montarIcone();
+      expect(botao.textContent).toBe("");
+      expect(botao.getAttribute("aria-label")).toBe(
+        "Falar com a loja no WhatsApp",
+      );
+      expect(botao.type).toBe("button");
+      const referencia = document.createElement("div");
+      const r2 = createRoot(referencia);
+      act(() => {
+        r2.render(<IconeWhatsapp />);
+      });
+      const oficial = referencia.querySelector("path")?.getAttribute("d");
+      act(() => {
+        r2.unmount();
+      });
+      expect(
+        [...botao.querySelectorAll("svg path")].map((p) => p.getAttribute("d")),
+      ).toEqual([oficial]);
+      expect(botao.querySelector("svg")?.getAttribute("aria-hidden")).toBe(
+        "true",
+      );
+      // quadrado de 44 px (size-11), não a faixa larga de 48 px do botão com rótulo
+      expect(botao.className).toMatch(/(^|\s)size-11(\s|$)/);
+      expect(botao.className).not.toMatch(/(^|\s)w-full(\s|$)/);
+      expect(botao.className).not.toMatch(/(^|\s)h-12(\s|$)/);
+    });
+
+    it("glifo ESCURO sobre o verde: >= 4,5:1 em repouso, hover e pressionado (nunca branco ~2:1)", () => {
+      const classes = montarIcone().className;
+      const glifo = cor(classes, "text");
+      expect(glifo.toUpperCase()).toBe("#0B141A");
+      expect(classes).not.toMatch(/(^|\s)text-white(\s|$)/);
+      for (const [rotulo, fundo] of [
+        ["repouso", cor(classes, "bg")],
+        ["hover", cor(classes, "hover:bg")],
+        ["pressionado", cor(classes, "active:bg")],
+      ] as const) {
+        expect(
+          contraste(glifo, fundo),
+          `${rotulo}: ${glifo} sobre ${fundo}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(cor(classes, "bg")).toBe("#25D366");
+    });
+
+    it("mantém foco visível, hover, pressionado e desabilitado", () => {
+      const classes = montarIcone().className;
+      expect(classes).toContain("focus-visible:ring-2");
+      expect(classes).toContain("focus-visible:ring-ring");
+      expect(classes).toContain("active:scale-");
+      expect(classes).toContain("disabled:opacity-50");
+    });
+
+    it("aceita formato redondo (rounded-full) e tamanho do lugar, sem perder o resto", () => {
+      const botao = montarIcone({ redondo: true, className: "size-[52px]" });
+      expect(botao.className).toContain("rounded-full");
+      expect(botao.className).not.toContain("rounded-2xl");
+      expect(botao.className).toContain("size-[52px]");
+      expect(botao.className).not.toMatch(/(^|\s)size-11(\s|$)/);
+      expect(botao.className).toContain("bg-[#25D366]");
+    });
+
+    it("repassa onClick", () => {
+      const aoClicar = vi.fn();
+      const botao = montarIcone({ onClick: aoClicar });
+      act(() => {
+        botao.click();
+      });
+      expect(aoClicar).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("desabilitado não dispara onClick", () => {
     const aoClicar = vi.fn();
     const botao = montar({ onClick: aoClicar, disabled: true });
@@ -191,7 +278,11 @@ function usos(fonte: string, nome: string) {
     true,
     ts.ScriptKind.TSX,
   );
-  const achados: { temOnClick: boolean; trocaOTipo: boolean }[] = [];
+  const achados: {
+    temOnClick: boolean;
+    trocaOTipo: boolean;
+    somenteIconeSemNome: boolean;
+  }[] = [];
   const tem = (abertura: ts.JsxOpeningLikeElement, nomeDoAtributo: string) =>
     abertura.attributes.properties.some(
       (p) => ts.isJsxAttribute(p) && p.name.getText(sf) === nomeDoAtributo,
@@ -203,6 +294,8 @@ function usos(fonte: string, nome: string) {
         achados.push({
           temOnClick: tem(abertura, "onClick"),
           trocaOTipo: tem(abertura, "type"),
+          somenteIconeSemNome:
+            tem(abertura, "somenteIcone") && !tem(abertura, "aria-label"),
         });
       }
     }
@@ -221,7 +314,7 @@ describe("BotaoWhatsapp só vive onde há AÇÃO de contato, nunca em campo de f
     readFileSync(c, "utf8").includes("<BotaoWhatsapp"),
   );
 
-  it("os 7 pontos de contato por WhatsApp do cliente usam o botão original", () => {
+  it("os 9 pontos de contato por WhatsApp do cliente usam o botão original", () => {
     const esperados = [
       "components/checkout/VerificacaoDoPagamento.tsx",
       "components/politicas/ConteudoDaPolitica.tsx",
@@ -229,6 +322,8 @@ describe("BotaoWhatsapp só vive onde há AÇÃO de contato, nunca em campo de f
       "components/ui/custom/SaidaDaRecusa.tsx",
       "views/customer/AboutStoreView.tsx",
       "views/customer/CheckoutView.tsx",
+      "views/customer/OrderDetailsView.tsx",
+      "views/customer/ProductView.tsx",
       "views/customer/ProfileView.tsx",
     ];
     for (const e of esperados) {
@@ -251,6 +346,10 @@ describe("BotaoWhatsapp só vive onde há AÇÃO de contato, nunca em campo de f
       for (const uso of usos(readFileSync(caminho, "utf8"), caminho)) {
         expect(uso.temOnClick, `${caminho}: sem onClick`).toBe(true);
         expect(uso.trocaOTipo, `${caminho}: troca o type`).toBe(false);
+        expect(
+          uso.somenteIconeSemNome,
+          `${caminho}: botão só de ícone sem aria-label`,
+        ).toBe(false);
       }
     }
   });
