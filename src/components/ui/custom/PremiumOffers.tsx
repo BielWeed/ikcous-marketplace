@@ -307,19 +307,24 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
 
         {/* Hero Offer Pagination Dots (Stripe/Apple Minimalist design) */}
         {sortedOffers.length > 1 && (
-          <div className="mb-1 mt-2 flex items-center justify-center gap-1.5">
+          <div className="mb-1 flex items-center justify-center">
             {sortedOffers.map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => selectHero(idx)}
-                className={cn(
-                  "h-1.5 rounded-full transition-all duration-300 ease-out focus:outline-none",
-                  idx === activeHeroIndex
-                    ? "w-6 bg-primary shadow-sm"
-                    : "w-1.5 bg-zinc-200/80 hover:bg-zinc-400",
-                )}
+                className="group flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
                 aria-label={`Ver oferta ${idx + 1}`}
-              />
+                aria-current={idx === activeHeroIndex ? "true" : undefined}
+              >
+                <span
+                  className={cn(
+                    "h-1.5 rounded-full transition-all duration-300 ease-out",
+                    idx === activeHeroIndex
+                      ? "w-6 bg-primary shadow-sm"
+                      : "w-1.5 bg-zinc-400 group-hover:bg-zinc-500",
+                  )}
+                />
+              </button>
             ))}
           </div>
         )}

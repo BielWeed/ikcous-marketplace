@@ -429,7 +429,10 @@ export function PrivacidadeEMeusDados({
           if (!aberto) fechar();
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] max-h-[85dvh] overflow-y-auto"
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {TEXTOS_DA_CLIENTE.confirmaExcluirTitulo}
@@ -470,7 +473,10 @@ export function PrivacidadeEMeusDados({
           if (!aberto) fechar();
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] max-h-[85dvh] overflow-y-auto"
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {TEXTOS_DA_CLIENTE.confirmaEmailTitulo}

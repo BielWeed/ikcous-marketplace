@@ -5981,7 +5981,7 @@ export function CheckoutViewDaConta({
                 ) : (
                   <p
                     id="ajuda-checkout-cpf"
-                    className="ml-1 mt-1.5 text-[10px] font-medium text-zinc-400"
+                    className="ml-1 mt-1.5 text-[10px] font-medium text-zinc-600"
                   >
                     Exigido pela transportadora para emitir a etiqueta de envio.
                   </p>
@@ -6314,7 +6314,7 @@ export function CheckoutViewDaConta({
                     className="flex min-h-[112px] flex-col items-center justify-center py-8"
                   >
                     <span className="sr-only">Carregando endereços</span>
-                    <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-zinc-900" />
+                    <div className="mb-3 size-6 animate-spin rounded-full border-[3px] border-zinc-100 border-t-zinc-900" />
                     <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                       Sincronizando endereços...
                     </p>
@@ -6786,7 +6786,7 @@ export function CheckoutViewDaConta({
                                 {item.product.name}
                               </p>
                               {item.variantNames && (
-                                <p className="truncate text-[11px] text-zinc-400">
+                                <p className="truncate text-[11px] text-zinc-600">
                                   {item.variantNames}
                                 </p>
                               )}
