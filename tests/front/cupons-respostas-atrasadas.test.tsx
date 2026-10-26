@@ -14,7 +14,11 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({ order: () => consultar() }),
-      update: () => ({ eq: (_coluna: string, id: string) => gravar(id) }),
+      update: () => ({
+        eq: (_coluna: string, id: string) => ({
+          select: async () => ({ data: [{ id }], ...(await gravar(id)) }),
+        }),
+      }),
     }),
   },
 }));
@@ -164,7 +168,8 @@ describe("cupons com respostas fora de ordem", () => {
     await act(async () => {
       await estado.updateCoupon("b", { active: false });
     });
-    expect(estado.loading).toBe(true);
+    // A releitura depois de salvar é silenciosa: não trava a lista.
+    expect(estado.loading).toBe(false);
 
     await act(async () =>
       recente.resolver({ data: linhas(false, false), error: null }),
@@ -177,6 +182,45 @@ describe("cupons com respostas fora de ordem", () => {
     );
     expect(estado.coupons.map((c) => c.active)).toEqual([false, false]);
     expect(cachedCouponsData?.map((c) => c.active)).toEqual([false, false]);
+    expect(estado.loading).toBe(false);
+  });
+
+  it("ligar/desligar: a releitura que vem depois é silenciosa e o 2º toque em seguida grava", async () => {
+    await montar();
+    const releitura = pendente<RespostaDaConsulta>();
+    consultar.mockReturnValueOnce(releitura.promessa);
+
+    await act(async () => {
+      await estado.updateCoupon("a", { active: false });
+    });
+    // Releitura ainda no ar, e a lista NÃO está travada (loading é o que
+    // esmaece e trava a lista inteira na tela).
+    expect(estado.loading).toBe(false);
+
+    await act(async () => {
+      await estado.updateCoupon("b", { active: false });
+    });
+    expect(gravar).toHaveBeenCalledTimes(2);
+
+    await act(async () =>
+      releitura.resolver({ data: linhas(false, false), error: null }),
+    );
+    expect(estado.loading).toBe(false);
+  });
+
+  it("controle: reler à mão (botão Atualizar) continua ligando o loading", async () => {
+    await montar();
+    const releitura = pendente<RespostaDaConsulta>();
+    consultar.mockReturnValueOnce(releitura.promessa);
+    let pronta!: Promise<void>;
+    await act(async () => {
+      pronta = estado.refreshCoupons();
+    });
+    expect(estado.loading).toBe(true);
+    await act(async () => {
+      releitura.resolver({ data: linhas(true, true), error: null });
+      await pronta;
+    });
     expect(estado.loading).toBe(false);
   });
 

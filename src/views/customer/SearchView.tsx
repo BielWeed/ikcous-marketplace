@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sheet";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
+import { useCategories } from "@/hooks/useCategories";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
@@ -226,10 +227,20 @@ export const SearchView = React.memo(function SearchView({
       .slice(0, 4);
   }, [produtosAVenda]);
 
-  // Extract unique categories
+  // Categorias dos filtros: as dos produtos à venda, menos as que a lojista
+  // escondeu (a Home só mostra as ativas). Só tira o que sabe estar escondido:
+  // se a lista de categorias não chegou, os filtros seguem como eram.
+  const { categories } = useCategories();
+  const escondidas = new Set(
+    categories
+      .filter((c) => !c.isActive)
+      .map((c) => c.name.toLowerCase().trim()),
+  );
   const categoriesSet = [
     "Todas",
-    ...Array.from(new Set(produtosAVenda.map((p) => p.category))),
+    ...Array.from(new Set(produtosAVenda.map((p) => p.category))).filter(
+      (nome) => !escondidas.has(nome.toLowerCase().trim()),
+    ),
   ];
 
   // Só filtros — categoria, preço e ordenação. É o handler do "Limpar Tudo"
@@ -251,9 +262,23 @@ export const SearchView = React.memo(function SearchView({
     onQueryChange?.("");
   }, [handleClearFilters, setQuery, onQueryChange]);
 
-  // Initialize query from props if needed
+  // A caixa desta página e a barra do topo são o MESMO termo: digitar aqui
+  // avisa o App, e o que o App devolve (initialQuery) volta para cá.
+  const mudarTermo = useCallback(
+    (termo: string) => {
+      setQuery(termo);
+      onQueryChange?.(termo);
+    },
+    [setQuery, onQueryChange],
+  );
+
+  // Initialize query from props if needed. Termo que já é o desta caixa (o eco
+  // do que foi digitada aqui) não mexe nos filtros: só o topo esvaziar o termo
+  // zera os filtros, como sempre.
+  const queryRef = useRef(query);
+  queryRef.current = query;
   useEffect(() => {
-    if (initialQuery !== undefined) {
+    if (initialQuery !== undefined && initialQuery !== queryRef.current) {
       setQuery(initialQuery);
       if (!initialQuery) {
         handleClearFilters();
@@ -281,7 +306,7 @@ export const SearchView = React.memo(function SearchView({
             >
               <ArrowLeft className="size-5 text-zinc-900" />
             </button>
-            <SearchInput value={query} onChange={setQuery} />
+            <SearchInput value={query} onChange={mudarTermo} />
           </div>
 
           {/* Quick Filters - Pill Style */}
@@ -315,7 +340,7 @@ export const SearchView = React.memo(function SearchView({
 
                 <div className="space-y-8 pb-10">
                   <div>
-                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600">
                       Categorias
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -337,7 +362,7 @@ export const SearchView = React.memo(function SearchView({
                   </div>
 
                   <div>
-                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600">
                       Ordenação
                     </p>
                     <div className="grid grid-cols-2 gap-3">
@@ -496,7 +521,7 @@ export const SearchView = React.memo(function SearchView({
                 curadoria e tendência que a loja não mediu, e em inglês. */}
             <div className="border-t border-zinc-100 pt-10">
               <div className="mb-10 flex flex-col items-center text-center">
-                <span className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">
+                <span className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">
                   Sugestões
                 </span>
                 <h3 className="text-2xl font-black tracking-tighter text-zinc-900">

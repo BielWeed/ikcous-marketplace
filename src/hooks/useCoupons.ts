@@ -149,10 +149,12 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   const [erroDaListagem, setErroDaListagem] = useState<string | null>(null);
   const rodadaRef = useRef(0);
 
-  const fetchCoupons = useCallback(async () => {
+  // `silencioso`: a releitura DEPOIS de salvar/apagar não liga o `loading`,
+  // que esmaece e trava a lista inteira (o 2º toque em seguida se perdia).
+  const fetchCoupons = useCallback(async (silencioso = false) => {
     const rodada = ++rodadaRef.current;
     try {
-      setLoading(true);
+      if (silencioso !== true) setLoading(true);
 
       const { data, error } = await supabase
         .from("coupons")
@@ -337,12 +339,16 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     }
 
     try {
-      const { error } = await supabase
+      // `.select("id")`: o banco responde sucesso com 0 linhas quando a
+      // política de acesso barra o UPDATE (ou o cupom não existe mais).
+      const { data: gravadas, error } = await supabase
         .from("coupons")
         .update(dbUpdates)
-        .eq("id", id);
+        .eq("id", id)
+        .select("id");
 
       if (error) throw error;
+      if (!gravadas?.length) throw new Error("Nenhum cupom foi alterado.");
 
       if (clientes !== undefined) {
         await definirClientesDoCupom(id, clientes);
@@ -352,7 +358,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       }
 
       toast.success("Cupom atualizado");
-      if (autoFetch) fetchCoupons();
+      if (autoFetch) fetchCoupons(true);
     } catch (error) {
       console.error("Error updating coupon:", error);
       // Mesma régua do addCoupon (laudo 0109, A4): trocar o código por um
@@ -376,12 +382,18 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       return;
     }
     try {
-      const { error } = await supabase.from("coupons").delete().eq("id", id);
+      // `.select("id")`: 0 linhas apagadas também vem como sucesso.
+      const { data: apagadas, error } = await supabase
+        .from("coupons")
+        .delete()
+        .eq("id", id)
+        .select("id");
 
       if (error) throw error;
+      if (!apagadas?.length) throw new Error("Nenhum cupom foi apagado.");
 
       toast.success("Cupom removido");
-      if (autoFetch) fetchCoupons();
+      if (autoFetch) fetchCoupons(true);
     } catch (error) {
       console.error("Error deleting coupon:", error);
       // Laudo #2 (L-7): cupom com pedido no histórico é recusado pela FK

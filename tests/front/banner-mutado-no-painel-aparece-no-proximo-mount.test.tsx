@@ -27,6 +27,8 @@ const LINHA_INSERIDA = {
   active: true,
   order: 1,
 };
+// Resposta de UPDATE/DELETE que mexeu numa linha (`.select("id")`).
+const UMA_LINHA = { data: [{ id: "banner-novo" }], error: null };
 
 // Trilha de métodos de cada consulta — para o teste distinguir a consulta de
 // rede da mutação, e provar que a segunda montagem NÃO consultou nada.
@@ -44,7 +46,7 @@ vi.mock("@/lib/supabase", () => ({
       //   fetch:      select("*").order(...)                  → await direto
       //   normalize:  select("id, order").eq().order().order() → await direto
       //   insert:     insert().select().single()               → await direto
-      //   delete:     delete().eq()                            → await direto
+      //   delete:     delete().eq().select("id")               → await direto
       return {
         select: (colunas?: string) => {
           // Só o select("*") de fetchBanners é a "consulta de rede" que o
@@ -70,9 +72,11 @@ vi.mock("@/lib/supabase", () => ({
         },
         delete: () => {
           trilha.push("delete");
-          return { eq: () => Promise.resolve({ error: null }) };
+          return { eq: () => ({ select: () => Promise.resolve(UMA_LINHA) }) };
         },
-        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        update: () => ({
+          eq: () => ({ select: () => Promise.resolve(UMA_LINHA) }),
+        }),
       };
     },
   },
