@@ -913,7 +913,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     new Set(
       gruposJaUsados.length > 0
         ? gruposJaUsados
-        : ["Cor", "Tamanho", "Voltagem"],
+        : ["Cor", "Tamanho", "Voltagem", "Capacidade", "Material"],
     ),
   ).filter(Boolean);
   // Os valores que OUTRAS linhas do produto já gravam para um atributo ("azul",

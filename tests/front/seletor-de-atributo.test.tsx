@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 //
-// O seletor que troca "digitar Cor e Espacial Grey" por TOCAR: quatro peças de
-// tipo (Cor, Tamanho, Voltagem, Outro) e, embaixo, as bolinhas de cor, os
-// tamanhos ou as voltagens. O que é GRAVADO continua sendo o nome do atributo
+// O seletor que troca "digitar Cor e Espacial Grey" por TOCAR: seis peças de
+// tipo (Tamanho, Cor, Voltagem, Capacidade, Material, Outro) e, embaixo, as
+// bolinhas de cor ou os botões do tamanho, da voltagem, da capacidade e do
+// material (as abas e os botões novos: seletor-de-atributo-padronizados). O que é GRAVADO continua sendo o nome do atributo
 // e o nome do valor — o seletor só muda como o lojista chega neles.
 import {
   SeletorDeAtributo,
@@ -110,14 +111,15 @@ function Unico({
 }
 
 describe("tipoDoNome — o tipo selecionado é DERIVADO do nome gravado", () => {
-  it("vazio = nenhum; Cor/Tamanho/Voltagem ignoram caixa e espaço; o resto é Outro", () => {
+  it("vazio = nenhum; os tipos com peça ignoram caixa e espaço; o resto é Outro", () => {
     expect(tipoDoNome("")).toBeNull();
     expect(tipoDoNome("   ")).toBeNull();
     expect(tipoDoNome("Cor")).toBe("Cor");
     expect(tipoDoNome("  cor ")).toBe("Cor");
     expect(tipoDoNome("TAMANHO")).toBe("Tamanho");
     expect(tipoDoNome("Voltagem")).toBe("Voltagem");
-    expect(tipoDoNome("Material")).toBe("Outro");
+    expect(tipoDoNome("Material")).toBe("Material");
+    expect(tipoDoNome("Estampa")).toBe("Outro");
     // Composto legado ("Cor / Tamanho" numa linha só) nunca vira Cor por engano.
     expect(tipoDoNome("Cor / Tamanho")).toBe("Outro");
   });
@@ -144,9 +146,16 @@ describe("SeletorDeAtributo — as peças de tipo", () => {
     const pecas = [
       ...hospedeiro.querySelectorAll('[role="group"] > button[aria-pressed]'),
     ].map((b) => b.textContent);
-    expect(pecas).toEqual(["Tamanho", "Cor", "Voltagem", "Outro"]);
+    expect(pecas).toEqual([
+      "Tamanho",
+      "Cor",
+      "Voltagem",
+      "Capacidade",
+      "Material",
+      "Outro",
+    ]);
     expect(hospedeiro.textContent).toContain(
-      "Toque no que muda neste produto: tamanho, cor, voltagem ou outro.",
+      "Toque no que muda neste produto: tamanho, cor, voltagem, capacidade, material ou outro.",
     );
   });
 
@@ -192,13 +201,13 @@ describe("SeletorDeAtributo — as peças de tipo", () => {
     expect(campo("variant-value")?.value).toBe("Espacial Grey");
   });
 
-  it("nome fora dos três (ex.: Material) abre em 'Outro' com o texto preservado", async () => {
+  it("nome sem peça própria (ex.: Estampa) abre em 'Outro' com o texto preservado", async () => {
     await act(async () => {
-      raiz.render(<Unico nomeInicial="Material" valorInicial="Algodão" />);
+      raiz.render(<Unico nomeInicial="Estampa" valorInicial="Listrada" />);
     });
     expect(peca("Outro")?.getAttribute("aria-pressed")).toBe("true");
-    expect(campo("variant-name")?.value).toBe("Material");
-    expect(campo("variant-value")?.value).toBe("Algodão");
+    expect(campo("variant-name")?.value).toBe("Estampa");
+    expect(campo("variant-value")?.value).toBe("Listrada");
     expect(porRotulo("Azul marinho")).toBeNull();
   });
 
@@ -389,27 +398,15 @@ describe("SeletorDeAtributo — cor (modo único)", () => {
 });
 
 describe("SeletorDeAtributo — tamanho e voltagem (modo único)", () => {
-  it("Tamanho mostra os 13 tamanhos como peças tocáveis", async () => {
+  it("Tamanho abre na aba Roupas com os 7 tamanhos de roupa como peças tocáveis", async () => {
     await act(async () => {
       raiz.render(<Unico nomeInicial="Tamanho" />);
     });
-    for (const t of [
-      "PP",
-      "P",
-      "M",
-      "G",
-      "GG",
-      "XG",
-      "34",
-      "36",
-      "38",
-      "40",
-      "42",
-      "44",
-      "Único",
-    ]) {
+    for (const t of ["PP", "P", "M", "G", "GG", "XG", "Único"]) {
       expect(peca(t), t).toBeTruthy();
     }
+    // Os números moram nas abas Números e Calçados (provado no arquivo das abas).
+    expect(peca("34")).toBeUndefined();
     expect(porRotulo("Azul marinho")).toBeNull();
     await clicar(peca("GG"));
     expect(campo("variant-value")?.value).toBe("GG");
@@ -433,15 +430,18 @@ describe("SeletorDeAtributo — tamanho e voltagem (modo único)", () => {
 
   it("'Outro tamanho? Digite aqui' existe e preserva um valor antigo fora da lista", async () => {
     await act(async () => {
-      raiz.render(<Unico nomeInicial="Tamanho" valorInicial="46" />);
+      raiz.render(<Unico nomeInicial="Tamanho" valorInicial="2 anos" />);
     });
     expect(campo("variant-value")?.getAttribute("placeholder")).toMatch(
       /Outro tamanho/,
     );
-    expect(campo("variant-value")?.value).toBe("46");
-    for (const t of ["PP", "44", "Único"]) {
-      expect(peca(t)?.getAttribute("aria-pressed")).toBe("false");
-    }
+    expect(campo("variant-value")?.value).toBe("2 anos");
+    // Valor que nenhuma lista tem abre na aba Outro: nenhum botão marcado.
+    expect(
+      hospedeiro.querySelectorAll(
+        '[aria-pressed="true"][aria-label^="Tamanho "]',
+      ),
+    ).toHaveLength(0);
   });
 });
 
@@ -583,7 +583,7 @@ describe("SeletorDeAtributo — vários valores (grade)", () => {
 
   it("em 'Outro' só aparece o campo de texto (sem bolinhas nem tamanhos)", async () => {
     await act(async () => {
-      raiz.render(<Multiplo nome="Material" />);
+      raiz.render(<Multiplo nome="Estampa" />);
     });
     expect(peca("Outro")?.getAttribute("aria-pressed")).toBe("true");
     expect(porRotulo("Azul")).toBeNull();
@@ -594,8 +594,8 @@ describe("SeletorDeAtributo — vários valores (grade)", () => {
   });
 });
 
-describe("SeletorDeAtributo — o grupo que o produto já usa (fora de Cor/Tamanho/Voltagem)", () => {
-  it("vira um atalho tocável: um produto que já usa 'Material' não obriga a redigitar", async () => {
+describe("SeletorDeAtributo — o grupo que o produto já usa (sem peça própria)", () => {
+  it("vira um atalho tocável: um produto que já usa 'Estampa' não obriga a redigitar", async () => {
     const aoMudar = vi.fn();
     function ComSugestao() {
       const [nome, setNome] = useState("");
@@ -612,22 +612,22 @@ describe("SeletorDeAtributo — o grupo que o produto já usa (fora de Cor/Taman
           }}
           valor=""
           onValor={() => {}}
-          sugestoes={["Material", "Cor", "cor"]}
+          sugestoes={["Estampa", "Cor", "cor"]}
         />
       );
     }
     await act(async () => {
       raiz.render(<ComSugestao />);
     });
-    // Cor já tem peça própria: só o que NÃO é Cor/Tamanho/Voltagem vira atalho.
+    // Cor já tem peça própria: só o que NÃO tem peça (ex.: Estampa) vira atalho.
     const atalhos = [
       ...hospedeiro.querySelectorAll('[data-testid="atalho-de-atributo"]'),
     ];
-    expect(atalhos.map((a) => a.textContent?.trim())).toEqual(["Material"]);
+    expect(atalhos.map((a) => a.textContent?.trim())).toEqual(["Estampa"]);
     await clicar(atalhos.at(0));
-    expect(aoMudar).toHaveBeenLastCalledWith("Material");
+    expect(aoMudar).toHaveBeenLastCalledWith("Estampa");
     expect(peca("Outro")?.getAttribute("aria-pressed")).toBe("true");
-    expect(campo("variant-name")?.value).toBe("Material");
+    expect(campo("variant-name")?.value).toBe("Estampa");
   });
 
   it("sem sugestão nenhuma não aparece atalho", async () => {
@@ -666,11 +666,18 @@ describe("SeletorDeAtributo — não convida para o que a trava de um grupo por 
     );
   }
 
-  it("sem grupo no produto, as quatro peças aparecem", async () => {
+  it("sem grupo no produto, as seis peças aparecem", async () => {
     await act(async () => {
       raiz.render(<Com sugestoes={[]} />);
     });
-    expect(nomesDasPecas()).toEqual(["Tamanho", "Cor", "Voltagem", "Outro"]);
+    expect(nomesDasPecas()).toEqual([
+      "Tamanho",
+      "Cor",
+      "Voltagem",
+      "Capacidade",
+      "Material",
+      "Outro",
+    ]);
   });
 
   it("produto que já usa 'Cor' (ou 'cor'): sobram Cor e Outro — Tamanho e Voltagem somem", async () => {
@@ -687,15 +694,15 @@ describe("SeletorDeAtributo — não convida para o que a trava de um grupo por 
     expect(nomesDasPecas()).toEqual(["Tamanho", "Cor", "Outro"]);
   });
 
-  it("produto com grupo livre ('Material'): só o atalho dele e Outro", async () => {
+  it("produto com grupo livre ('Estampa'): só o atalho dele e Outro", async () => {
     await act(async () => {
-      raiz.render(<Com sugestoes={["Material"]} />);
+      raiz.render(<Com sugestoes={["Estampa"]} />);
     });
     expect(nomesDasPecas()).toEqual(["Outro"]);
     expect(
       hospedeiro.querySelector('[data-testid="atalho-de-atributo"]')
         ?.textContent,
-    ).toBe("Material");
+    ).toBe("Estampa");
   });
 
   it("o tipo que a linha em edição já tem nunca some, mesmo fora do que o produto usa", async () => {
@@ -824,8 +831,8 @@ describe("SeletorDeAtributo — o VALOR já gravado vence o da paleta", () => {
     await act(async () => {
       raiz.render(
         <Unico
-          nomeInicial="Material"
-          valorInicial="Algodão"
+          nomeInicial="Estampa"
+          valorInicial="Listrada"
           aoMudar={aoMudar}
         />,
       );
@@ -921,7 +928,7 @@ describe("SeletorDeAtributo — telas estreitas e acessibilidade", () => {
           onRascunho={() => {}}
           onAdicionar={() => {}}
           onLimpar={() => {}}
-          sugestoes={["Material"]}
+          sugestoes={["Estampa"]}
           aoRemover={() => {}}
         />,
       );

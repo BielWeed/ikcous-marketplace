@@ -229,6 +229,41 @@ describe("fileiras da variação sem mudar a identidade da linha", () => {
     ]);
     expect(r.fileiras.map((f) => f.nome)).toEqual(["Voltagem", "Cor"]);
   });
+  it("capacidade vem antes da cor (o cliente escolhe os 128 GB e vê as cores que existem nele); material fica depois", () => {
+    const nomesDe = (name: string, value: string) =>
+      fileirasDeVariacao([linha("x", value, 1, name)]).fileiras.map(
+        (f) => f.nome,
+      );
+    expect(nomesDe("Cor / Capacidade", "Preto / 128 GB")).toEqual([
+      "Capacidade",
+      "Cor",
+    ]);
+    // Os apelidos que o lojista já grava valem o mesmo, e o nome é mantido.
+    expect(nomesDe("Cor / armazenamento", "Preto / 128 GB")).toEqual([
+      "armazenamento",
+      "Cor",
+    ]);
+    expect(nomesDe("Material / Cor", "Couro / Preto")).toEqual([
+      "Cor",
+      "Material",
+    ]);
+    expect(
+      nomesDe("Material / Cor / Capacidade", "Couro / Preto / 1 L"),
+    ).toEqual(["Capacidade", "Cor", "Material"]);
+  });
+  it("produto só com capacidade ou só com material continua comprável pela linha inteira", () => {
+    for (const [name, valor] of [
+      ["Capacidade", "64 GB"],
+      ["Memória", "16 GB"],
+      ["Material", "Algodão"],
+    ]) {
+      const r = fileirasDeVariacao([linha("x", valor, 2, name)], {
+        [name]: valor,
+      });
+      expect(r.fileiras.map((f) => f.nome)).toEqual([name]);
+      expect(r.variante?.id).toBe("x");
+    }
+  });
   it("nomes legados em caixa, acento e espaço diferentes são reconhecidos, e o nome gravado é mantido", () => {
     for (const [nome, esperado] of [
       ["COR / tamanho", ["tamanho", "COR"]],

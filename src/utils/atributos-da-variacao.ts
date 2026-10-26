@@ -16,7 +16,13 @@ export function dividirEmAtributos(
   return [{ name, value }];
 }
 
-export type TipoDoAtributo = "Cor" | "Tamanho" | "Voltagem" | "Outro";
+export type TipoDoAtributo =
+  | "Cor"
+  | "Tamanho"
+  | "Voltagem"
+  | "Capacidade"
+  | "Material"
+  | "Outro";
 
 /** Minúscula, sem acento e sem as pontas: "Lilás " e "lilas" são a mesma coisa. */
 export const dobrar = (texto: string): string =>
@@ -30,5 +36,8 @@ export function tipoDoNome(nome: string): TipoDoAtributo | null {
   if (chave === "cor") return "Cor";
   if (chave === "tamanho") return "Tamanho";
   if (chave === "voltagem") return "Voltagem";
+  // Os nomes que o lojista já grava para a mesma coisa ("Memória" no celular).
+  if (/^(capacidade|armazenamento|memoria)$/.test(chave)) return "Capacidade";
+  if (chave === "material") return "Material";
   return "Outro";
 }

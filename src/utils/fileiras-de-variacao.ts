@@ -11,13 +11,15 @@ export interface FileiraDeVariacao {
   valores: { valor: string; disponivel: boolean; estoque: number }[];
 }
 
-/** Quem escolhe o tamanho vê as cores que existem nele: Tamanho (e Voltagem)
- *  vêm antes, a Cor depois e qualquer outro atributo por último. A ordem em que
- *  o produto foi gravado ("Cor / Tamanho") não decide nada aqui; entre iguais
- *  vale a gravação (o sort do JS é estável). */
+/** Quem escolhe o tamanho vê as cores que existem nele: Tamanho (e Voltagem e
+ *  Capacidade, que o cliente também escolhe antes da cor) vêm antes, a Cor
+ *  depois e qualquer outro atributo por último (Material inclusive). A ordem em
+ *  que o produto foi gravado ("Cor / Tamanho") não decide nada aqui; entre
+ *  iguais vale a gravação (o sort do JS é estável). */
 function posicaoDaFileira(nome: string): number {
   const tipo = tipoDoNome(nome);
-  if (tipo === "Tamanho" || tipo === "Voltagem") return 0;
+  if (tipo === "Tamanho" || tipo === "Voltagem" || tipo === "Capacidade")
+    return 0;
   if (tipo === "Cor" || /^(cores|color)$/.test(dobrar(nome))) return 1;
   return 2;
 }
