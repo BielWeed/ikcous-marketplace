@@ -88,10 +88,13 @@ describe("AdminCouponFormView: limite de uso inteiro", () => {
     });
   }
 
-  for (const invalido of ["2.5", "3000000000"]) {
+  for (const [invalido, frase] of [
+    ["2.5", MENSAGEM],
+    ["3000000000", "O limite de uso pode ir até 2.000.000.000"],
+  ] as const) {
     it(`recusa ${invalido} sem salvar`, async () => {
       await limiteESalvar(invalido);
-      expect(toast.error).toHaveBeenCalledWith(MENSAGEM);
+      expect(toast.error).toHaveBeenCalledWith(frase);
       expect(updateCoupon).not.toHaveBeenCalled();
     });
   }

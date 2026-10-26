@@ -320,8 +320,12 @@ function FormularioDoCupom({
 
     // A coluna é inteira (até ~2,1 bilhões): 2.5 ou 3000000000 seriam recusados
     // ou arredondados pelo banco depois do aviso de sucesso.
-    if (!Number.isInteger(usageLimit) || usageLimit > 2_000_000_000) {
+    if (!Number.isInteger(usageLimit)) {
       toast.error("O limite de uso precisa ser um número inteiro");
+      return;
+    }
+    if (usageLimit > 2_000_000_000) {
+      toast.error("O limite de uso pode ir até 2.000.000.000");
       return;
     }
 
