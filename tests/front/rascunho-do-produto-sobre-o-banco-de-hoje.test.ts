@@ -94,6 +94,50 @@ describe("rascunhoSobreOBancoDeHoje", () => {
     expect(bancoMudou).toBe(true);
   });
 
+  it("variação que outra pessoa APAGOU no banco e ela não editou: não volta, e avisa que o banco mudou", () => {
+    // v2 existia na base do rascunho, já não existe no banco de hoje.
+    const banco = { ...base, variants: [variacao("v1", "Rosa")] };
+    const rascunho = {
+      ...base,
+      name: "Outro",
+      variants: [
+        variacao("v1", "Rosa"),
+        variacao("v2", "Azul"),
+        variacao("temp-1", "Verde"),
+      ],
+      baseDoRascunho: base,
+    };
+
+    const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, banco);
+
+    expect(campos.variants.map((v: { id: string }) => v.id)).toEqual([
+      "v1",
+      "temp-1",
+    ]);
+    expect(bancoMudou).toBe(true);
+  });
+
+  it("variação apagada no banco que ELA editou: a do rascunho fica (é decisão dela)", () => {
+    const banco = { ...base, variants: [variacao("v1", "Rosa")] };
+    const editada = variacao("v2", "Azul royal");
+    const rascunho = {
+      ...base,
+      variants: [variacao("v1", "Rosa"), editada],
+      baseDoRascunho: base,
+    };
+
+    const { campos } = rascunhoSobreOBancoDeHoje(rascunho, banco);
+
+    expect(campos.variants).toHaveLength(2);
+    expect(campos.variants[1]).toEqual(editada);
+  });
+
+  it("controle: nenhuma variação apagada no banco — não avisa por causa da grade", () => {
+    const rascunho = { ...base, name: "Outro", baseDoRascunho: base };
+
+    expect(rascunhoSobreOBancoDeHoje(rascunho, base).bancoMudou).toBe(false);
+  });
+
   it("estoque da variação que mudou por venda não conta como 'banco alterado'", () => {
     const banco = {
       ...base,

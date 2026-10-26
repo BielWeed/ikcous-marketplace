@@ -9,7 +9,7 @@
       "Painel, produto: restaurar o rascunho de um produto já cadastrado não desfaz mais o que mudou na loja depois (preço, produto ativo). Volta só o que foi mexido, e a tela avisa quando algo mudou nesse meio tempo.",
       "Painel, produto: um produto que já estava com mais de 10.000 no estoque pode ter só o nome, o preço ou a foto editados, sem a tela travar.",
       "Painel, produto: tocar no preço e sair sem mudar nada não marca mais \"alterações não salvas\".",
-      "Painel, produto: o rascunho guardado é apagado quando o formulário volta a ser igual ao que está na loja.",
+      "Painel, produto: o rascunho que a própria tela guardou é apagado quando o formulário volta a ser igual ao que está na loja.",
       "Painel, produto: apagar uma variação e criar outra com o mesmo código de barras, no mesmo salvamento, não é mais barrado.",
       "Painel, produto: no celular, o botão Voltar fecha só a janela aberta (leitor de código, recorte da foto, prévia ou ajuda) e não sai do cadastro.",
       "Painel, produto: dá para excluir uma foto escolhida por engano; a foto que o aparelho não consegue abrir avisa para salvar de outro jeito; o limite de 12 MB vale por foto e o total não é mais limitado.",
@@ -21,9 +21,9 @@
     "melhorias": [
       "Painel, produto: o texto \"falta preencher\" e o botão cinza de publicar levam direto ao primeiro campo que falta.",
       "Painel, produto: depois de uma falha que pede para recarregar a tela, a barra de baixo diz isso e traz o botão Recarregar, em vez de \"Pronto para salvar\".",
-      "Painel, produto: a análise do lucro tem três faixas em palavras simples (prejuízo, sem lucro, lucro baixo e lucro bom).",
+      "Painel, produto: a análise do lucro diz em palavras simples se o produto está no prejuízo, sem lucro, com lucro baixo (menos de 30%) ou com lucro bom.",
       "Painel, produto: peso acima de 30 kg mostra um aviso lembrando que talvez sejam gramas.",
-      "Painel, produto: o resumo de Custo e lucro fala da promoção quando ela está ligada; o botão de excluir variante usa o vermelho dos outros botões de excluir; textos como \"Offline\" e \"UND\" ficaram \"Desligada\" e \"un.\"."
+      "Painel, produto: enquanto o preço ou o custo não foram preenchidos, o resumo de Custo e lucro fala da promoção, se ela estiver ligada; o botão de excluir variante usa o vermelho dos outros botões de excluir; textos como \"Offline\" e \"UND\" ficaram \"Desligada\" e \"un.\"."
     ]
   },
   "1.5.78": {

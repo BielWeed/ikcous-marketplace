@@ -401,6 +401,77 @@ describe("AdminProductFormView — dados do produto", () => {
       ).toHaveLength(2);
     });
 
+    it("depois de Restaurar e mexer, o salvamento automático mantém a marca: ao reabrir a grade segue pendente e Salvar segue barrado", async () => {
+      await publicarProdutoNovoComGradeQueFalha();
+
+      await restaurar();
+      await mudarNome("Camiseta nova");
+      await esperar(1300);
+
+      // O rascunho regravado ainda carrega a grade E a marca de pendente: a
+      // grade só existe nele, o banco não a tem.
+      const regravado = JSON.parse(armazem.get(CHAVE_EDICAO) as string);
+      expect(regravado.variants).toHaveLength(2);
+      expect(regravado.variacoesPendentes).toBe(true);
+
+      // Sai sem salvar e volta.
+      await desmontar();
+      vi.mocked(toast.info).mockClear();
+      vi.mocked(toast.error).mockClear();
+      onNavigate.mockClear();
+      await montar("p-1");
+
+      const opcoes = perguntaDoRascunho()?.[1] as unknown as {
+        duration?: number;
+      };
+      expect(opcoes.duration).toBe(Number.POSITIVE_INFINITY);
+
+      await salvar();
+      await esperar(1700);
+
+      expect(botaoPorTexto("Salvo")).toBeUndefined();
+      expect(onNavigate).not.toHaveBeenCalledWith(
+        "admin-products",
+        undefined,
+        true,
+      );
+      expect(
+        JSON.parse(armazem.get(CHAVE_EDICAO) as string).variants,
+      ).toHaveLength(2);
+      const erros = vi.mocked(toast.error).mock.calls.map((c) => String(c[0]));
+      expect(
+        erros.some((t) => /variações ainda não foram salvas/i.test(t)),
+      ).toBe(true);
+    });
+
+    it("controle: Restaurar e Salvar com sucesso não deixa o salvamento automático ressuscitar o rascunho", async () => {
+      await publicarProdutoNovoComGradeQueFalha();
+
+      await restaurar();
+      await salvar();
+      await esperar(1300);
+
+      expect(mocks.salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+      expect(armazem.has(CHAVE_EDICAO)).toBe(false);
+    });
+
+    it("controle: Descartar a grade pendente — o que ela mexer depois não carrega a marca", async () => {
+      await publicarProdutoNovoComGradeQueFalha();
+
+      const chamada = perguntaDoRascunho();
+      const opcoes = chamada?.[1] as unknown as {
+        cancel: { onClick: () => void };
+      };
+      await act(async () => {
+        opcoes.cancel.onClick();
+      });
+      await mudarNome("Camiseta nova");
+      await esperar(1300);
+
+      const regravado = JSON.parse(armazem.get(CHAVE_EDICAO) as string);
+      expect(regravado.variacoesPendentes).toBeUndefined();
+    });
+
     it("controle: edição comum com rascunho (sem grade pendente) segue o aviso de 10 s", async () => {
       mocks.fetchProduct.mockResolvedValue(produtoDoBanco());
       armazem.set(CHAVE_EDICAO, JSON.stringify(rascunho({ name: "Outro" })));
@@ -664,6 +735,56 @@ describe("AdminProductFormView — dados do produto", () => {
       );
       expect(mocks.deleteVariants).toHaveBeenCalledWith(["v-x"]);
       expect(mocks.upsertVariants).toHaveBeenCalledTimes(1);
+    });
+
+    it("o código do PRODUTO igual ao de uma variação apagada NESTE salvar segue barrado (o banco ainda vê a variação quando grava o produto)", async () => {
+      vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+      mocks.fetchProduct.mockResolvedValue(
+        produtoDoBanco({
+          stock: 3,
+          variants: [variacao("v-x", "Azul", 3, { codigoBarras: CODIGO })],
+        }),
+      );
+      armazem.set(
+        CHAVE_EDICAO,
+        JSON.stringify(
+          rascunho({
+            codigoBarras: CODIGO,
+            variants: [variacao("v-x", "Azul", 3, { codigoBarras: CODIGO })],
+          }),
+        ),
+      );
+      mocks.rpc.mockResolvedValue({
+        data: {
+          encontrado: true,
+          origem: "variante",
+          produto: { id: "p-1", nome: "Camiseta" },
+          variante: { variant_id: "v-x", nome: "Cor", valor: "Azul" },
+        },
+        error: null,
+      });
+      await montar("p-1");
+      await restaurar();
+
+      const lixeira = document.querySelector(
+        '[aria-label="Excluir variação Azul"]',
+      ) as HTMLButtonElement;
+      await act(async () => {
+        lixeira.click();
+      });
+      await act(async () => {
+        botaoPorTexto("Excluir Variante")?.click();
+      });
+
+      await salvar();
+
+      const erros = vi.mocked(toast.error).mock.calls.map((c) => String(c[0]));
+      expect(erros.some((t) => t.includes("Este código já está em"))).toBe(
+        true,
+      );
+      // Nada foi gravado: nem o produto, nem a exclusão da variação.
+      expect(mocks.updateProduct).not.toHaveBeenCalled();
+      expect(mocks.deleteVariants).not.toHaveBeenCalled();
     });
 
     it("controle: o mesmo código em OUTRA variação que continua existindo segue barrado", async () => {

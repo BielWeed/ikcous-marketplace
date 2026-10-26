@@ -248,14 +248,21 @@ export function rascunhoSobreOBancoDeHoje<R extends Record<string, any>>(
     );
     campos.set(
       "variants",
-      variacoes.map((v: ProductVariant) => {
+      variacoes.flatMap((v: ProductVariant) => {
         const antes = antesPorId.get(v.id);
         const hoje = hojePorId.get(v.id);
-        if (!antes || !hoje || !igual(semEstoque(v), semEstoque(antes))) {
-          return v;
+        const elaEditou = !antes || !igual(semEstoque(v), semEstoque(antes));
+        // Existia na base do rascunho, já não existe no banco e ela não mexeu
+        // nela: outra pessoa a apagou depois. Não volta (restaurá-la a
+        // ressuscitaria) e o aviso de "produto alterado" tem de aparecer. Se
+        // ela a editou, a decisão é dela e a do rascunho fica.
+        if (antes && !hoje && !elaEditou) {
+          bancoMudou = true;
+          return [];
         }
+        if (!antes || !hoje || elaEditou) return [v];
         if (!igual(semEstoque(hoje), semEstoque(antes))) bancoMudou = true;
-        return hoje;
+        return [hoje];
       }),
     );
   }

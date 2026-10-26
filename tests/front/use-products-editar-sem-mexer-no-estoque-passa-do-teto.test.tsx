@@ -14,6 +14,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const banco = vi.hoisted(() => ({
   produto: {} as any,
   rpc: vi.fn(),
+  atualizar: vi.fn(),
   erro: vi.fn(),
   info: vi.fn(),
 }));
@@ -43,11 +44,20 @@ vi.mock("@/lib/supabase", () => ({
     from: () => {
       const consulta: any = {
         eq: () => consulta,
+        select: () => consulta,
+        maybeSingle: async () => ({ data: banco.produto, error: null }),
         is: () => consulta,
         single: async () => ({ data: banco.produto, error: null }),
         in: async () => ({ data: [], error: null }),
       };
-      return { select: () => consulta };
+      return {
+        select: () => consulta,
+        // O caminho ONLINE do `updateProduct` grava com `update(...).eq(...)`.
+        update: (dados: unknown) => {
+          banco.atualizar(dados);
+          return consulta;
+        },
+      };
     },
     storage: { from: () => ({ copy: vi.fn(), getPublicUrl: vi.fn() }) },
   },
@@ -142,4 +152,22 @@ it("controle: updateProduct offline mandando estoque acima de 10.000 continua re
       /stock_limit_exceeded/,
     );
   });
+});
+
+it("updateProduct ONLINE: editar só o nome de um produto com 12.000 gravados passa e grava só o nome", async () => {
+  await act(async () => {
+    await api.updateProduct("p-1", { name: "x" });
+  });
+  expect(banco.erro).not.toHaveBeenCalled();
+  expect(banco.atualizar).toHaveBeenCalledTimes(1);
+  expect(banco.atualizar).toHaveBeenCalledWith({ nome: "x" });
+});
+
+it("controle: updateProduct ONLINE mandando estoque acima de 10.000 continua recusado, antes de gravar", async () => {
+  await act(async () => {
+    await expect(api.updateProduct("p-1", { stock: 12000 })).rejects.toThrow(
+      /stock_limit_exceeded/,
+    );
+  });
+  expect(banco.atualizar).not.toHaveBeenCalled();
 });

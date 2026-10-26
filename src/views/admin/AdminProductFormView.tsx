@@ -911,6 +911,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // salvamento automático não troca o rascunho por um sem a grade.
   const [variacoesPendentes, setVariacoesPendentes] = useState(false);
   const restaurarPendenteRef = useRef<(() => void) | null>(null);
+  // A grade do rascunho pendente AINDA não está no banco, mesmo depois de
+  // "Restaurar" (que só a devolve ao formulário). Enquanto o formulário tiver
+  // variação nova (`temp-…`) vinda dela, o salvamento automático regrava o
+  // rascunho com a marca `variacoesPendentes`; sem isso, sair sem salvar e voltar
+  // (ou tocar Salvar sem restaurar) perdia a grade. Cai ao descartar ou quando a
+  // grade grava (o salvar apaga o rascunho e a tela segue).
+  const gradeDoRascunhoPendenteRef = useRef(false);
   // A chave do rascunho que o salvamento automático gravou NESTA abertura: só
   // ele pode apagá-la ao voltar ao que está no banco (o rascunho que já estava
   // lá antes fica esperando a decisão dela).
@@ -937,8 +944,31 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const camadaAberta =
     leitorAberto !== null || isPreviewOpen || isAdjusterOpen || showHelpModal;
   const entradaDaCamadaRef = useRef(false);
+  // Fechar pelo botão da camada devolve a entrada com `history.back()`, e o
+  // `popstate` dele chega DEPOIS. Se o desvio do Voltar já tivesse sido zerado,
+  // o App trataria esse Voltar como "sair do cadastro" e, com o formulário
+  // mexido, abriria "Alterações Não Salvas" (cujo "Descartar" apaga o rascunho).
+  // Por isso, até o `popstate` chegar fica registrado um desvio de uso único que
+  // só engole esse Voltar e se desfaz. `engolidorRef` guarda qual é o vigente:
+  // o prazo e a reabertura só desfazem ELE, nunca um desvio de camada nova.
+  const engolidorRef = useRef<(() => void) | null>(null);
+  const prazoDoEngolidorRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const onSetBackOverrideRef = useRef(onSetBackOverride);
+  onSetBackOverrideRef.current = onSetBackOverride;
+  const soltarEngolidor = useCallback(() => {
+    if (prazoDoEngolidorRef.current !== null) {
+      clearTimeout(prazoDoEngolidorRef.current);
+      prazoDoEngolidorRef.current = null;
+    }
+    engolidorRef.current = null;
+  }, []);
   useEffect(() => {
     if (camadaAberta) {
+      // Reabriu antes do `popstate` da devolução anterior: o desvio da camada
+      // nova (abaixo) toma o lugar do engolidor, que não pode mais agir.
+      soltarEngolidor();
       if (!entradaDaCamadaRef.current) {
         window.history.pushState(
           { ...window.history.state, modal: "produto" },
@@ -947,15 +977,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         );
         entradaDaCamadaRef.current = true;
       }
-    } else if (entradaDaCamadaRef.current) {
-      entradaDaCamadaRef.current = false;
-      if (window.history.state?.modal === "produto") window.history.back();
-    }
-  }, [camadaAberta]);
-  useEffect(() => {
-    if (!onSetBackOverride) return;
-    if (camadaAberta) {
-      onSetBackOverride(() => () => {
+      onSetBackOverride?.(() => () => {
         // A de cima primeiro: leitor, recorte, prévia, ajuda.
         if (leitorAberto !== null) setLeitorAberto(null);
         else if (isAdjusterOpen) {
@@ -964,15 +986,51 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         } else if (isPreviewOpen) setIsPreviewOpen(false);
         else setShowHelpModal(false);
       });
-    } else onSetBackOverride(null);
-    return () => onSetBackOverride(null);
+      return;
+    }
+    if (entradaDaCamadaRef.current) {
+      entradaDaCamadaRef.current = false;
+      if (window.history.state?.modal === "produto") {
+        // A entrada ainda é nossa: devolvê-la com o desvio que engole o Voltar.
+        if (onSetBackOverride) {
+          const engolidor = () => {
+            soltarEngolidor();
+            onSetBackOverride(null);
+          };
+          engolidorRef.current = engolidor;
+          onSetBackOverride(() => engolidor);
+          // Rede de segurança: se o `popstate` nunca chegar, o engolidor não
+          // pode ficar preso para engolir um Voltar FUTURO.
+          prazoDoEngolidorRef.current = setTimeout(() => {
+            prazoDoEngolidorRef.current = null;
+            if (engolidorRef.current !== engolidor) return;
+            engolidorRef.current = null;
+            onSetBackOverride(null);
+          }, 1500);
+        }
+        window.history.back();
+        return;
+      }
+      // O Voltar físico já consumiu a entrada (e o desvio da camada rodou):
+      // nada a devolver, é só desfazer o desvio.
+    }
+    onSetBackOverride?.(null);
   }, [
     camadaAberta,
     leitorAberto,
     isAdjusterOpen,
     isPreviewOpen,
     onSetBackOverride,
+    soltarEngolidor,
   ]);
+  // Sair da tela: nada de desvio (nem engolidor) sobrando no App.
+  useEffect(
+    () => () => {
+      soltarEngolidor();
+      onSetBackOverrideRef.current?.(null);
+    },
+    [soltarEngolidor],
+  );
 
   const toggleHelp = (key: string) => {
     setExpandedHelp((prev) => ({
@@ -1375,6 +1433,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               );
             };
             setVariacoesPendentes(pendente);
+            gradeDoRascunhoPendenteRef.current = pendente;
             restaurarPendenteRef.current = pendente ? restaurar : null;
             toast.info("Rascunho não salvo encontrado para este produto", {
               description: `Deseja restaurar as alterações que você fez anteriormente?${
@@ -1387,6 +1446,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 label: "Descartar",
                 onClick: () => {
                   setVariacoesPendentes(false);
+                  gradeDoRascunhoPendenteRef.current = false;
                   restaurarPendenteRef.current = null;
                   localStorage.removeItem(draftKey);
                   toast.info("Rascunho descartado.");
@@ -1398,6 +1458,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           } else {
             // Draft matches database state, clean it up
             setVariacoesPendentes(false);
+            gradeDoRascunhoPendenteRef.current = false;
             localStorage.removeItem(draftKey);
           }
         } catch (e) {
@@ -1559,8 +1620,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // de ser duplicado só porque estamos conferindo o campo da VARIAÇÃO
       // (e vice-versa). Ver pdv-c5.json, decisão (c).
       // A variação que ela acabou de apagar nesta tela ainda existe no banco
-      // até o salvar: ela não conta como dona do código (o salvar a apaga antes).
+      // até o salvar. No campo de uma VARIAÇÃO ela não conta como dona do código
+      // (o salvar a apaga antes de gravar as variações). No campo do PRODUTO
+      // conta: a função de salvar grava o produto ANTES de apagar variações, e o
+      // gatilho do banco recusa um código de produto que ainda é de variação.
       if (
+        alvo === "variacao" &&
         resposta.origem === "variante" &&
         deletedVariantIds.includes(resposta.variante?.variant_id ?? "")
       ) {
@@ -1768,11 +1833,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       if (isDirty && draftKey) {
         // Com o carimbo de quando foi guardado: o rascunho vence em 7 dias. Na
         // edição, com o produto-base: restaurar depois só usa o que ela editou.
+        const gradePendente =
+          gradeDoRascunhoPendenteRef.current &&
+          formData.variants.some((v) => v.id.startsWith("temp-"));
         localStorage.setItem(
           draftKey,
-          serializarRascunhoDoProduto(
-            productId ? { ...formData, baseDoRascunho: initialData } : formData,
-          ),
+          serializarRascunhoDoProduto({
+            ...formData,
+            ...(productId ? { baseDoRascunho: initialData } : {}),
+            ...(gradePendente ? { variacoesPendentes: true } : {}),
+          }),
         );
         gravouRascunhoRef.current = draftKey;
       } else if (draftKey && gravouRascunhoRef.current === draftKey) {
@@ -3023,7 +3093,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const costPriceVal = Number.parseFloat(formData.costPrice) || 0;
   const marginPct =
     priceVal > 0 ? ((priceVal - costPriceVal) / priceVal) * 100 : 0;
-  // Três faixas em palavras simples: prejuízo, lucro baixo (< 30%) e lucro bom.
+  // Quatro rótulos em palavras simples: prejuízo, sem lucro, lucro baixo
+  // (< 30%) e lucro bom.
   const [analiseDoLucro, corDoLucro] =
     marginPct < 0
       ? ["Prejuízo", "text-rose-300"]
