@@ -2,7 +2,7 @@
 //
 // Trilha 4 (#104): o bloco "Divisão de Faturamento" tratava falha de RPC e
 // ausência real de dados da mesma forma — as duas caíam no mesmo empty state
-// "Sem Dados Registrados", e o admin concluía que não houve vendas quando na
+// "Sem dados registrados", e o admin concluía que não houve vendas quando na
 // verdade a consulta quebrou. Estes testes provam:
 //
 //   1. com `error` setado, aparece um banner de falha com "tentar de novo",
@@ -85,7 +85,7 @@ describe("StrategicIntelligenceBlocks — erro distinto do vazio (#104)", () => 
     await esperarChartPronto();
     act(() => {});
 
-    expect(hospedeiro.textContent).not.toContain("Sem Dados Registrados");
+    expect(hospedeiro.textContent).not.toContain("Sem dados registrados");
     expect(hospedeiro.textContent).toContain("RPC de categoria quebrada");
 
     const botaoTentar = Array.from(hospedeiro.querySelectorAll("button")).find(
@@ -99,7 +99,7 @@ describe("StrategicIntelligenceBlocks — erro distinto do vazio (#104)", () => 
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it("sem error e sem categorias, continua mostrando 'Sem Dados Registrados'", async () => {
+  it("sem error e sem categorias, continua mostrando 'Sem dados registrados'", async () => {
     const { StrategicIntelligenceBlocks } = await import(
       "@/components/admin/dashboard/StrategicIntelligenceBlocks"
     );
@@ -116,7 +116,7 @@ describe("StrategicIntelligenceBlocks — erro distinto do vazio (#104)", () => 
     await esperarChartPronto();
     act(() => {});
 
-    expect(hospedeiro.textContent).toContain("Sem Dados Registrados");
+    expect(hospedeiro.textContent).toContain("Sem dados registrados");
   });
 
   it("o banner de erro usa classes visuais distintas do empty state (vermelho vs. neutro)", async () => {

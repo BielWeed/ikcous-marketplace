@@ -10,10 +10,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { formatarBRLCompacto, formatarPercentual } from "@/lib/financeiro";
+import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { desdeOPrimeiroDiaDeMovimento } from "@/utils/desde-o-primeiro-dia-de-movimento";
 import {
+  VISAO_SEM_CUSTO,
   avisoProdutosSemCusto,
   produtosSemCusto,
 } from "@/utils/produtos-sem-custo";
@@ -36,9 +39,36 @@ interface OperationalPerformanceChartProps {
   loading: boolean;
   className?: string;
   active?: boolean;
-  /** Atalho "Cadastrar custo" do aviso de produtos sem custo. Sem ele, o
-   * aviso aparece sem o botão. */
-  onNavigate?: (view: View) => void;
+  /** Atalho "Cadastrar custo" do aviso de produtos sem custo (abre a lista de
+   * Produtos na visão "Sem custo"). Sem ele, o aviso aparece sem o botão. */
+  onNavigate?: (view: View, id?: string) => void;
+}
+
+/**
+ * Crescimento do faturamento: os últimos 30 dias contra os 30 anteriores (é o
+ * que a RPC calcula — não muda com os botões 30/90/Tudo, então a legenda não
+ * promete mais que isso). Queda em vermelho e alta em verde, com o sinal
+ * escrito: a cor nunca é a única pista.
+ */
+function SeloDeCrescimento({ valor }: { readonly valor: number }) {
+  const arredondado = Math.round(valor * 10) / 10;
+  return (
+    <div
+      data-selo-de-crescimento=""
+      className="shrink-0 text-right leading-tight"
+    >
+      <p
+        className={cn(
+          "text-[13px] font-extrabold tabular-nums",
+          classeDoTexto(tomDoValor(arredondado)),
+        )}
+      >
+        {arredondado > 0 ? "+" : ""}
+        {formatarPercentual(arredondado)}
+      </p>
+      <p className="text-admin-text-soft text-[11px]">vs. 30 dias antes</p>
+    </div>
+  );
 }
 
 export const OperationalPerformanceChart = memo(
@@ -165,7 +195,9 @@ export const OperationalPerformanceChart = memo(
                 {onNavigate && (
                   <button
                     type="button"
-                    onClick={() => onNavigate("admin-products")}
+                    onClick={() =>
+                      onNavigate("admin-products", VISAO_SEM_CUSTO)
+                    }
                     className="min-h-11 font-bold text-admin-gold"
                   >
                     Cadastrar custo
@@ -179,14 +211,9 @@ export const OperationalPerformanceChart = memo(
             )}
           </div>
           {!loading &&
-            (stats?.growth !== undefined ||
-              stats?.today?.revenueTrend !== undefined) && (
-              <span className="hidden text-[11px] font-bold text-emerald-300 sm:inline">
-                {(stats?.growth ?? stats?.today?.revenueTrend ?? 0) >= 0
-                  ? "+"
-                  : ""}
-                {(stats?.growth ?? stats?.today?.revenueTrend ?? 0).toFixed(1)}%
-              </span>
+            typeof stats?.growth === "number" &&
+            Number.isFinite(stats.growth) && (
+              <SeloDeCrescimento valor={stats.growth} />
             )}
           <ExplicacaoDoRelatorio titulo="Histórico da loja">
             Conta pelo dia em que o pedido foi feito, por isso pode ficar um
@@ -197,7 +224,9 @@ export const OperationalPerformanceChart = memo(
                 {onNavigate && (
                   <button
                     type="button"
-                    onClick={() => onNavigate("admin-products")}
+                    onClick={() =>
+                      onNavigate("admin-products", VISAO_SEM_CUSTO)
+                    }
                     className="min-h-11 font-bold text-admin-gold"
                   >
                     Cadastrar custo
@@ -382,12 +411,8 @@ export const OperationalPerformanceChart = memo(
                       fill: "hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
                       fontWeight: 500,
                     }}
-                    tickFormatter={(val) =>
-                      val >= 1000
-                        ? `R$ ${(val / 1000).toFixed(0)}k`
-                        : `R$ ${val}`
-                    }
-                    width={48}
+                    tickFormatter={formatarBRLCompacto}
+                    width={72}
                     tickCount={3}
                   />
                   <Tooltip
@@ -501,12 +526,8 @@ export const OperationalPerformanceChart = memo(
                       fill: "hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
                       fontWeight: 500,
                     }}
-                    tickFormatter={(val) =>
-                      val >= 1000
-                        ? `R$ ${(val / 1000).toFixed(0)}k`
-                        : `R$ ${val}`
-                    }
-                    width={48}
+                    tickFormatter={formatarBRLCompacto}
+                    width={72}
                     tickCount={3}
                   />
                   <Tooltip

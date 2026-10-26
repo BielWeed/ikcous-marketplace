@@ -363,6 +363,8 @@ export function AdminArea({
                     props={{
                       onNavigate: onNavigate,
                       active: currentView === "admin-products",
+                      // `onNavigate("admin-products", "sem-custo")`: o id é a visão.
+                      visaoInicial: selectedProductId,
                     }}
                   />
                 </DeferredTabContent>
