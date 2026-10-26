@@ -52,6 +52,13 @@ const TEXTO_PAGO_NA_ENTREGA =
 const TEXTO_PAGO_RETIRADA_PRONTA =
   "Este pedido já está pronto para retirar na loja. Se cancelar, a loja cuida do reembolso do seu dinheiro e pode entrar em contato com você. Tem certeza?";
 
+// Pedido que já saiu uma vez, voltou para a loja (ou é retirada na loja) e foi
+// reativado: o produto não está com a cliente, então não há o que devolver, e o
+// servidor não abre devolução automática para ele (o carimbo de envio fica) —
+// a loja devolve o dinheiro à mão. Não promete prazo nem meio.
+const TEXTO_PAGO_LOJA_DEVOLVE =
+  "Você já pagou este pedido. Se cancelar, a loja cuida de devolver o seu dinheiro e pode entrar em contato com você. Tem certeza?";
+
 interface ParametrosConfirmarCancelamento {
   pagamentoJaEntrou: boolean;
   jaFoiEnviado: boolean;
@@ -76,6 +83,17 @@ interface ParametrosConfirmarCancelamento {
    * decisão do executor, não do brief.
    */
   pagamentoNaEntrega?: boolean;
+  /**
+   * `Order.cancelledAfterShipping`: o pedido já saiu uma vez, foi cancelado e
+   * está VIVO de novo (reativado pela loja). Para ele o servidor não abre a
+   * devolução automática: o "volta sozinho" seria falso. Opcional e aditivo
+   * (ausente = como antes; o pedido do convidado por rastreio não traz o campo).
+   */
+  cancelladoAposEnvio?: boolean;
+  /** `Order.returnedToSellerAt`: a loja já recebeu o produto de volta. */
+  produtoJaVoltou?: boolean;
+  /** `Order.retiradaNaLoja`: a cliente buscaria na loja, não há produto a devolver. */
+  retiradaNaLoja?: boolean;
 }
 
 /**
@@ -89,6 +107,9 @@ export function textoConfirmarCancelamento({
   jaFoiEnviado,
   retiradaPronta = false,
   pagamentoNaEntrega = false,
+  cancelladoAposEnvio = false,
+  produtoJaVoltou = false,
+  retiradaNaLoja = false,
 }: ParametrosConfirmarCancelamento): string {
   if (!pagamentoJaEntrou) return TEXTO_NAO_PAGO;
   // Retirada pronta vem ANTES de `jaFoiEnviado` (e, portanto, também antes do
@@ -109,6 +130,14 @@ export function textoConfirmarCancelamento({
   // primeiro) perdia esse aviso.
   if (jaFoiEnviado) return TEXTO_PAGO_JA_ENVIADO;
   if (pagamentoNaEntrega) return TEXTO_PAGO_NA_ENTREGA;
+  // Enviado, cancelado e reativado (status voltou a pending/processing): sem
+  // linha de devolução automática. O que a cliente precisa saber depende de
+  // onde o produto está.
+  if (cancelladoAposEnvio) {
+    return retiradaNaLoja || produtoJaVoltou
+      ? TEXTO_PAGO_LOJA_DEVOLVE
+      : TEXTO_PAGO_JA_ENVIADO;
+  }
   return TEXTO_PAGO_NAO_ENVIADO;
 }
 
