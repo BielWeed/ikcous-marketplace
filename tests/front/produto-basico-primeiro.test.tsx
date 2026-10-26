@@ -445,7 +445,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
           "product-height",
           "product-length",
         ],
-        "Custo e lucro": ["product-cost-price", "product-promo-active"],
+        "Custo e lucro": ["product-cost-price"],
         Avançado: ["product-sku", "product-codigo-barras"],
       };
       for (const [titulo, ids] of Object.entries(dentro)) {
@@ -467,6 +467,11 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       await montar();
       const preco = document.getElementById("product-sale-price");
       expect(preco?.closest("section[aria-label]")).toBeNull();
+      // A promoção (De/Por) também: é a parte que o cliente vê e mora junto do
+      // preço, não no cartão privado de custo.
+      const promocao = document.getElementById("product-promo-active");
+      expect(promocao).not.toBeNull();
+      expect(promocao?.closest("section[aria-label]")).toBeNull();
       expect(
         document
           .getElementById("product-cost-price")
@@ -796,16 +801,21 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       expect(publicar.disabled).toBe(true);
     });
 
-    it("avisa sobre promoção inválida na seção recolhida e junto à publicação", async () => {
+    it("avisa sobre promoção inválida junto do campo (à vista no básico) e junto à publicação", async () => {
       await montar("prod-1");
-      await clicar(botaoDaSecao("Custo e lucro"));
       await clicar(document.getElementById("product-promo-active"));
       await digitarCampo("product-original-price", "100");
-      await clicar(botaoDaSecao("Custo e lucro"));
+      // A promoção mora no básico: o aviso aparece ao lado do campo, sem
+      // seção para abrir, e "Custo e lucro" segue fechada e sem esse aviso.
       expect(estaAberta("Custo e lucro")).toBe(false);
-      expect(botaoDaSecao("Custo e lucro").textContent).toContain(
+      expect(botaoDaSecao("Custo e lucro").textContent).not.toContain(
+        "Preço original",
+      );
+      const aviso = document.getElementById("product-original-error");
+      expect(aviso?.textContent).toContain(
         'Preço original ("De:") deve ser maior',
       );
+      expect(aviso?.closest("[hidden]")).toBeNull();
       const barra = document.querySelector('[aria-label="Ações do produto"]');
       expect(
         barra?.querySelector('[data-testid="motivo-do-bloqueio"]')?.textContent,

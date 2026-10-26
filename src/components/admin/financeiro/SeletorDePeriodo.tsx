@@ -1,4 +1,4 @@
-import { CalendarRange, Check, ChevronDown, ChevronRight } from "lucide-react";
+import { CalendarRange, Check, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -110,7 +110,7 @@ export function SeletorDePeriodo({
         )}
       >
         <span className="min-w-0 break-words">{rotulo}</span>
-        <ChevronDown
+        <ChevronRight
           aria-hidden="true"
           className="size-4 shrink-0 text-zinc-400"
         />

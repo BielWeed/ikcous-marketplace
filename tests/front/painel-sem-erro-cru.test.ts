@@ -79,9 +79,9 @@ const EXCECOES: Excecao[] = [
       "O erro vem de salvarConfigDoCartao (src/lib/config-do-cartao.ts), que lança só frases curadas em português ('Só o administrador da loja pode mudar o cartão pelo app.'); o texto cru do Postgres fica no console lá.",
   },
   {
-    arquivo: "src/views/admin/AdminProductFormView.tsx",
+    arquivo: "src/components/admin/products/FolhaDeNovaCategoria.tsx",
     chamadaContem: "e instanceof ErroDeCategoria",
-    contexto: /await addCategory\(/,
+    contexto: /await adicionar\(/,
     motivo:
       "O ramo só mostra e.message quando o erro é ErroDeCategoria (src/lib/gestao-de-categorias.ts), classe que só nasce com frase em português escrita para a lojista (nome reservado, 'Não foi possível mudar a categoria…' ou mensagemDaFalhaDeCategoria, que troca o texto cru do Postgres por frase nossa); qualquer outro erro cai na frase fixa 'Erro ao salvar categoria'.",
   },
@@ -398,7 +398,7 @@ describe("painel sem erro cru — toast não mostra error.message", () => {
     it("a mensagem de ErroDeCategoria passa no Criar setor; em outro arquivo, não", () => {
       const criarSetor = `
         try {
-          await addCategory({ name: nome, description: "", isActive: true }, true);
+          await adicionar({ name: nome, description: "", isActive: true }, true);
         } catch (e) {
           toast.error(
             e instanceof ErroDeCategoria
@@ -408,20 +408,26 @@ describe("painel sem erro cru — toast não mostra error.message", () => {
           );
         }`;
       expect(
-        acharErroCru(criarSetor, "src/views/admin/AdminProductFormView.tsx"),
+        acharErroCru(
+          criarSetor,
+          "src/components/admin/products/FolhaDeNovaCategoria.tsx",
+        ),
       ).toEqual([]);
       expect(
         acharErroCru(criarSetor, "src/views/admin/AdminOutraView.tsx"),
       ).toHaveLength(1);
     });
 
-    it("em AdminProductFormView, um toast com o erro cru de outro tipo ainda é pego", () => {
+    it("em FolhaDeNovaCategoria, um toast com o erro cru de outro tipo ainda é pego", () => {
       const solto = `
-        try { await addCategory(x, true); } catch (e) {
+        try { await adicionar(x, true); } catch (e) {
           toast.error(e.message);
         }`;
       expect(
-        acharErroCru(solto, "src/views/admin/AdminProductFormView.tsx"),
+        acharErroCru(
+          solto,
+          "src/components/admin/products/FolhaDeNovaCategoria.tsx",
+        ),
       ).toHaveLength(1);
     });
 

@@ -327,7 +327,7 @@ describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
       {
         seletor: '[title="Ajuda / Guia de Precificação"]',
         titulo: "Guia de Custos e Margens",
-        conteudo: "Produto em Promoção",
+        conteudo: "Painel de Lucratividade",
       },
       {
         seletor: '[aria-label="Como cadastrar um produto"]',

@@ -11,7 +11,7 @@ import { useIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { IconeDaCategoria, iconeDaCategoria } from "@/lib/icones-de-categoria";
 import { cn, normalizeText } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
-import { ChevronDown, Pencil, Plus, Search, X } from "lucide-react";
+import { ChevronRight, Pencil, Plus, Search, X } from "lucide-react";
 import { useRef, useState } from "react";
 
 /** Abaixo disto a lista cabe na tela sem buscar: o campo de busca só atrapalharia. */
@@ -174,7 +174,7 @@ export function CampoDeCategoria({
               : "Toque para ver as categorias da loja"}
           </span>
         </span>
-        <ChevronDown
+        <ChevronRight
           aria-hidden="true"
           className="size-5 shrink-0 text-muted-foreground"
         />

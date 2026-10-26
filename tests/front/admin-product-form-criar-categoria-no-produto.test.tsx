@@ -129,6 +129,12 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
     await act(async () => {
       botaoPorTexto("Nova categoria")?.click();
     });
+    // A folha é baixada sob demanda (import dinâmico): espera ela chegar.
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+    }
   }
 
   const botaoCriar = () => botaoPorTexto("Criar categoria");
@@ -136,7 +142,7 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
   it("o modal fala 'categoria', não 'setor'", async () => {
     await abrirNovaCategoria();
 
-    expect(document.body.textContent).toContain("Nova Categoria");
+    expect(document.body.textContent).toContain("Nova categoria");
     expect(botaoCriar()).toBeDefined();
     expect(document.body.textContent).not.toContain("Criar Setor");
     expect(document.body.textContent).not.toContain("Setor / Categoria");
@@ -154,7 +160,7 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
     expect(String(toastError.mock.calls[0][0])).toBe(
       "Já existe uma categoria parecida: Vestuário",
     );
-    // O modal continua aberto com o que ela digitou, para corrigir.
+    // A folha continua aberta com o que ela digitou, para corrigir.
     expect(botaoCriar()).toBeDefined();
   });
 

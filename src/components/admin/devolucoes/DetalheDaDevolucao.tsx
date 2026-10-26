@@ -1,8 +1,8 @@
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
   ChevronLeft,
+  ChevronRight,
   Copy,
-  ExternalLink,
   Loader2,
   RefreshCw,
   X,
@@ -209,8 +209,8 @@ export function DetalheDaDevolucao({
                   onClick={() => onAbrirPedido(detalhe.order_id)}
                   className={BOTAO_SECUNDARIO}
                 >
-                  <ExternalLink className="size-4" />
                   Pedido #{numeroDoPedido(detalhe.order_id)}
+                  <ChevronRight aria-hidden="true" className="size-4" />
                 </button>
                 {whatsapp && (
                   <a
