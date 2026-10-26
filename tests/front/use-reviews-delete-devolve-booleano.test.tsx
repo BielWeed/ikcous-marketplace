@@ -28,7 +28,7 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       delete: () => ({
-        eq: () => Promise.resolve(h.resultadoDelete),
+        eq: () => ({ select: () => Promise.resolve(h.resultadoDelete) }),
       }),
     }),
   },
@@ -104,7 +104,7 @@ describe("useReviews.deleteReview — devolve booleano (laudo 0109, A-10)", () =
   }
 
   it("banco confirma o delete: resolve true e canta sucesso", async () => {
-    h.resultadoDelete = { data: null, error: null };
+    h.resultadoDelete = { data: [{ id: "rev-1" }], error: null };
 
     await montarHook();
     let resposta: boolean | undefined;

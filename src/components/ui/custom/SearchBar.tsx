@@ -333,7 +333,7 @@ export function SearchBar({
               <div className="mb-4 border-b border-zinc-100 pb-3">
                 <div className="mb-2 flex items-center gap-1.5">
                   <Sparkles className="size-3.5 text-amber-500" />
-                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-600">
                     Sugestões de Busca
                   </span>
                 </div>
@@ -358,7 +358,7 @@ export function SearchBar({
               <div className="mb-4 border-b border-zinc-100 pb-3">
                 <div className="mb-2 flex items-center gap-1.5">
                   <Tag className="size-3.5 text-primary" />
-                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-600">
                     Categorias Encontradas
                   </span>
                 </div>
@@ -388,7 +388,7 @@ export function SearchBar({
               <div className="mb-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Search className="size-3.5 text-zinc-700" />
-                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-600">
                     Produtos ({allResults.length})
                   </span>
                 </div>

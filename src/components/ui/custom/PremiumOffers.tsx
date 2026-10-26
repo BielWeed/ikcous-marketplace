@@ -698,7 +698,7 @@ function HeroOfferCard({
               onClick={handleAddToCartClick}
               disabled={product.stock <= 0 || cartStatus !== "idle"}
               className={cn(
-                "flex-grow-2 flex-[2] py-2.5 px-3 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] shadow-sm flex items-center justify-center gap-1.5 border",
+                "flex-grow-2 flex-[2] min-h-11 py-2.5 px-3 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] shadow-sm flex items-center justify-center gap-1.5 border",
                 product.stock <= 0
                   ? "bg-zinc-100 text-zinc-400 border-zinc-200/50 cursor-not-allowed shadow-none"
                   : cartStatus === "success"
@@ -731,7 +731,7 @@ function HeroOfferCard({
                 onClick={handleQuickBuyClick}
                 disabled={product.stock <= 0}
                 className={cn(
-                  "flex-grow-1 flex-[1] py-2.5 px-4 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] border shadow-sm",
+                  "flex-grow-1 flex-[1] min-h-11 py-2.5 px-4 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] border shadow-sm",
                   product.stock <= 0
                     ? "bg-zinc-50 text-zinc-300 border-zinc-100 cursor-not-allowed shadow-none"
                     : "bg-secondary/10 hover:bg-secondary/20 text-primary border-secondary/20",

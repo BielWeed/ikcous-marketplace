@@ -133,4 +133,49 @@ describe("AdminCouponFormView — código do cupom sem acento", () => {
     expect(addCoupon).toHaveBeenCalledTimes(1);
     expect(addCoupon.mock.calls[0][0].code).toBe("VERAO10");
   });
+
+  it("ao sair do campo, ele mostra o código que será gravado (VERAO10), não o que foi digitado", async () => {
+    await abrirTela();
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      campoCodigo().focus();
+    });
+    await act(async () => {
+      setter?.call(campoCodigo(), "verão 10");
+      campoCodigo().dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // Passa o tempo do envio ao formulário (200 ms) com o campo ainda em foco:
+    // enquanto digita, o campo não pode mudar sozinho.
+    await act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 350));
+    });
+    expect(campoCodigo().value).toBe("verão 10");
+
+    await act(async () => {
+      campoCodigo().blur();
+    });
+    expect(campoCodigo().value).toBe("VERAO10");
+  });
+
+  it("ao sair do campo sem mexer, o código antigo VERÃO10 continua escrito como estava", async () => {
+    mockCoupons = [
+      {
+        id: "c1",
+        code: "VERÃO10",
+        type: "percentage",
+        value: 10,
+        usageCount: 3,
+        active: true,
+      },
+    ];
+    await abrirTela("c1");
+    await act(async () => {
+      campoCodigo().focus();
+      campoCodigo().blur();
+    });
+    expect(campoCodigo().value).toBe("VERÃO10");
+  });
 });
