@@ -1,4 +1,12 @@
 {
+  "1.5.82": {
+    "titulo": "Lucro líquido diz o que falta para calcular",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Painel, Produtos: quando o Lucro líquido aparece como Não calculado, o cartão mostra o atalho Informar despesas, que abre a folha onde você digita as despesas previstas. O lucro líquido precisa delas: o app só sabe o custo dos produtos, não as taxas, o frete e os impostos."
+    ]
+  },
   "1.5.81": {
     "titulo": "Avisar clientes não desliza mais para o lado",
     "novidades": [],
