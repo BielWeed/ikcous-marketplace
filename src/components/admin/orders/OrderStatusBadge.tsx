@@ -324,6 +324,20 @@ const PAGO_E_CANCELADO: PaymentStatusEntry = {
 };
 
 /**
+ * Pedido CANCELADO e devolvido por inteiro: caso RESOLVIDO. O dinheiro voltou
+ * ao cliente e o estoque já voltou à prateleira — não há o que fazer, então
+ * sem "precisa de atenção" e sem piscar (o selo de `estornado` pede os dois
+ * porque, num pedido ATIVO, devolução é anomalia). Tom neutro, o mesmo de
+ * `expirado`/`sem_cobranca`.
+ */
+const ESTORNADO_E_CANCELADO: PaymentStatusEntry = {
+  label: "Estornado",
+  color: paymentStatusConfig.expirado.color,
+  bgColor: paymentStatusConfig.expirado.bgColor,
+  borderColor: paymentStatusConfig.expirado.borderColor,
+};
+
+/**
  * D1 do plano (docs/superpowers/plans/2026-09-15-super-atualizacao-do-app.md,
  * seção 6): a venda de balcão grava o MESMO `recebido_na_entrega` — o banco
  * não ganhou um oitavo valor. Só o rótulo muda, e muda aqui, num lugar só.
@@ -354,6 +368,9 @@ function configDoPagamento(
   ) {
     return PAGO_E_CANCELADO;
   }
+  if (key === "estornado" && orderStatus === "cancelled") {
+    return ESTORNADO_E_CANCELADO;
+  }
   if (key === "recebido_na_entrega" && canal === "presencial") {
     return RECEBIDO_NO_BALCAO;
   }
@@ -375,6 +392,7 @@ export function rotuloDoPagamento(
  *
  * `orderStatus` é opcional e só muda alguma coisa nos cruzamentos que pedem
  * atenção hoje: `pago` + `cancelled` e `recebido_na_entrega` + `cancelled`
+ * (e `estornado` + `cancelled`, que é o contrário: caso resolvido)
  * (Task 3b de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md).
  * Todo o resto do Record segue exatamente como antes desta correção.
  */

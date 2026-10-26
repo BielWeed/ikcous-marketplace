@@ -77,8 +77,21 @@ export function textoCancelamentoDoPainel(
   if (cancelarDevolveSozinho(pedido)) {
     return 'Este pedido está PAGO e ainda não saiu para entrega. Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, que devolva o valor ao cliente. NÃO devolva o dinheiro por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Se você já devolveu por fora, toque em "Já estornei no Mercado Pago" na lista "Devolver agora" logo depois de cancelar. Cancelar mesmo assim?';
   }
-  // Pago que NÃO gera a linha automática (já saiu, reativado depois de
-  // enviado, pago na entrega): aqui a frase antiga continua verdadeira.
+  // Pago que JÁ SAIU (em trânsito, ou enviado, cancelado e reativado): o
+  // servidor marca `cancelled_after_shipping` ao cancelar, e o pedido vai
+  // para "Esperando o produto voltar" (AdminOrdersView.baldeDeEstorno) — só
+  // passa para "Devolver agora" depois que o produto volta. O dinheiro sai
+  // depois do produto, e o produto não volta sozinho.
+  if (
+    pedido.payment_status &&
+    PAGOS.has(pedido.payment_status) &&
+    ((pedido.status && EM_ROTA.has(pedido.status)) ||
+      pedido.cancelledAfterShipping === true)
+  ) {
+    return 'Este pedido está PAGO e já saiu para entrega. Cancelar não devolve o dinheiro automaticamente, e o produto não volta por conta própria. O pedido entra na lista "Esperando o produto voltar": combine com o cliente a volta do produto e, depois que ele chegar, devolva o dinheiro. Cancelar mesmo assim?';
+  }
+  // Pago que NÃO gera a linha automática e ainda não saiu (pago na entrega):
+  // aqui a frase antiga continua verdadeira.
   if (pedido.payment_status && PAGOS.has(pedido.payment_status)) {
     return 'Este pedido está PAGO. Cancelar não devolve o dinheiro automaticamente: você precisa combinar a devolução com o cliente, e o pedido entra na lista "Devolver agora" até o estorno ser registrado. Cancelar mesmo assim?';
   }

@@ -58,6 +58,15 @@ export function PushNotificationBanner({
       return;
     }
 
+    // 2-quater. NEM nas telas com barra de ação no rodapé: o formulário de
+    // endereço (Salvar endereço, a 64px do fundo) e o detalhe do pedido
+    // (Publicar Avaliação, na folha da avaliação). A caixa, a 80px do fundo,
+    // cobria esses botões e o toque caía nela.
+    if (currentView === "address-form" || currentView === "order-details") {
+      setIsVisible(false);
+      return;
+    }
+
     // 3. Se ja inscrito, ou permissao negada.
     //
     // "granted" sozinho NAO entra aqui: a permissao e concedida ANTES da
