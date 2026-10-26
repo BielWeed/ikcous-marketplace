@@ -169,34 +169,66 @@
   opacity: 1;
 }
 
+/* Linhas de "Mais detalhes": cartão baixo, título em negrito e a seta à
+   direita. Com a linha fechada o resumo segue o título na MESMA linha
+   ("Variações · tamanho, cor, voltagem"), cortado com reticências se não couber. */
+.produto-rotulo-secao {
+  margin: 0;
+}
+
+.produto-formulario .produto-rotulo-secao {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
+}
+
 .produto-secao {
   border: 1px solid hsl(var(--admin-border));
-  border-radius: 24px;
+  border-radius: 18px;
   background: hsl(var(--admin-surface));
 }
 
 .produto-secao > section > button {
-  min-height: 72px;
-  padding: 12px 16px 12px 68px;
+  min-height: 52px;
+  padding: 8px 16px;
   border: 0;
-  border-radius: 24px;
+  border-radius: 18px;
   background: transparent;
 }
 
 .produto-secao > section > div {
-  padding: 8px 16px 16px;
+  padding: 4px 16px 16px;
+}
+
+.produto-secao > section > button > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.produto-secao > section > button > span > span {
+  display: inline;
+  margin: 0;
 }
 
 .produto-secao > section > button > span > span:first-child {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--lit-t-fafafa, #fafafa);
 }
 
-.produto-secao > section > button > span > span:last-child {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
+.produto-secao > section > button > span > span:not(:first-child) {
+  font-size: 14px;
+  font-weight: 400;
+  color: hsl(var(--admin-text-soft, 240 5% 65%));
+}
+
+.produto-secao > section > button > span > span:not(:first-child)::before {
+  content: " · ";
 }
 
 .produto-secao > section > button > svg {
@@ -210,7 +242,7 @@
   background: var(--lit-b-25171a, #25171a);
 }
 
-.produto-secao-aviso > section > button > span > span:last-child {
+.produto-secao-aviso > section > button > span > span:not(:first-child) {
   color: var(--lit-t-fda4af, #fda4af);
 }
 
@@ -285,98 +317,166 @@
   color: hsl(var(--admin-text-soft, 240 5% 65%));
 }
 
+/* A linha de estado é UMA frase curta (a lista completa fica no nome acessível
+   e no título); o botão dela tem 44 px de toque com a margem negativa do JSX,
+   e a barra inteira fica em ~86 px. */
 .produto-acoes .produto-status {
-  min-height: 20px;
-  line-height: 1.5;
+  min-height: 16px;
+  line-height: 1.3;
+}
+
+.produto-acoes .produto-status > :is(span, button) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .produto-acoes .produto-status button {
   min-height: 44px;
 }
 
-.produto-formulario .produto-progresso > span {
-  height: 6px;
-  flex: 1;
+/* Topo: o anel "N/5" (cinza sem nada pronto, esmeralda com algum, verde cheio
+   com todos) e a barra fina contínua de 4 px. A cor do arco vem do texto do
+   próprio anel (`text-emerald-300`, que o tema do painel já ajusta). */
+.produto-anel {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.produto-anel-svg {
+  width: 44px;
+  height: 44px;
+  transform: rotate(-90deg);
+}
+
+.produto-anel-trilha {
+  stroke: hsl(var(--admin-border-strong));
+  stroke-width: 3;
+}
+
+.produto-anel-arco {
+  stroke: currentcolor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s ease;
+}
+
+.produto-anel[data-estado="completo"] .produto-anel-trilha {
+  stroke: currentcolor;
+}
+
+.produto-anel-texto {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
+.produto-anel[data-estado="completo"] .produto-anel-texto {
+  color: inherit;
+}
+
+.produto-progresso-barra {
+  height: 4px;
+  overflow: hidden;
   border-radius: 999px;
   background: hsl(var(--admin-border));
 }
 
-.produto-formulario .produto-progresso > .produto-etapa-preenchida {
-  background: hsl(var(--admin-text, 0 0% 98%));
+.produto-progresso-barra > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: currentcolor;
+  transition: width 0.25s ease;
 }
 
+/* Cartão de fotos compacto: a CAPA quadrada à esquerda; à direita as
+   miniaturas (só o contorno, no cartão vazio), a frase curta e os botões. */
 .produto-formulario .produto-fotos {
   padding: 12px;
-  border: 1px dashed hsl(var(--admin-border-strong));
-  border-radius: 26px;
+  border: 1px solid hsl(var(--admin-border));
+  border-radius: 22px;
   background: hsl(var(--admin-surface));
 }
 
 .produto-fotos .produto-fotos-vazio {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  max-width: 360px;
-  margin: auto;
+  grid-template-columns: 108px minmax(0, 1fr);
+  grid-template-areas:
+    "capa miniaturas"
+    "capa dica"
+    "capa botoes";
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 4px;
 }
 
 .produto-fotos .produto-fotos-envio {
-  grid-column: 1 / -1;
-  border: 0;
-  background: transparent;
-}
-
-.produto-fotos-envio .size-14 {
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 50%;
-  background: hsl(var(--admin-raised));
-  box-shadow: none;
+  grid-area: capa;
+  width: 108px;
+  height: 108px;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 18px;
   color: hsl(var(--admin-text-soft, 240 5% 65%));
 }
 
-.produto-fotos-envio p:first-child {
-  font-size: 15px;
-  font-weight: 700;
-  color: hsl(var(--admin-text, 0 0% 98%));
+.produto-fotos-miniaturas {
+  display: flex;
+  grid-area: miniaturas;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.produto-fotos-envio .flex-wrap {
-  display: none;
+.produto-fotos-miniaturas > span {
+  flex: 0 1 50px;
+  min-width: 0;
+  aspect-ratio: 1;
+  border: 1px solid hsl(var(--admin-border-strong));
+  border-radius: 12px;
+}
+
+.produto-fotos-dica {
+  display: flex;
+  grid-area: dica;
+  min-width: 0;
+  align-items: center;
+}
+
+.produto-fotos-botoes {
+  display: flex;
+  grid-area: botoes;
+  gap: 6px;
+  min-width: 0;
 }
 
 .produto-fotos .produto-fotos-camera,
-.produto-fotos .produto-fotos-galeria {
+.produto-formulario .produto-fotos .produto-fotos-galeria {
   min-height: 44px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 700;
 }
 
+.produto-formulario .produto-fotos .produto-fotos-galeria {
+  color: hsl(var(--admin-text, 0 0% 98%));
+}
+
 .produto-fotos > div > p {
   text-align: center;
-}
-
-.produto-dados > div:first-child > div:first-child {
-  display: none;
-}
-
-.produto-dados h3 {
-  font-size: 16px;
-}
-
-.produto-dados h3 > span {
-  font-size: 12px;
-}
-
-.produto-formulario .produto-secao > span {
-  left: 16px;
-  top: 16px;
-  width: 40px;
-  height: 40px;
-  border: 0;
-  border-radius: 50%;
 }
 
 .produto-formulario .produto-secao .produto-campo {

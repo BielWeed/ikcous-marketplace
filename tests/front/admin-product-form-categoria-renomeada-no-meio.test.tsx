@@ -205,7 +205,7 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
     await act(async () => {
       await espera(300);
     });
-    const salvar = botaoPorTexto("Salvar");
+    const salvar = botaoPorTexto("Salvar alterações");
     expect(salvar).toBeDefined();
     await act(async () => {
       salvar?.click();

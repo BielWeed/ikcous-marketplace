@@ -4,6 +4,8 @@
 // admin-product-form-variacao-sku-e-publicar-diz-o-que-falta.test.tsx. Aqui,
 // só a frase.
 import {
+  fraseCurtaDoBloqueio,
+  fraseCurtaDoEnvioDeFotos,
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
 } from "@/utils/motivo-do-bloqueio-do-produto";
@@ -91,6 +93,76 @@ describe("motivoDoEnvioDeFotos", () => {
   it("envio do recorte tem frase própria", () => {
     expect(motivoDoEnvioDeFotos({ atual: 1, total: 1 }, true)).toMatch(
       /foto ajustada/,
+    );
+  });
+});
+
+// A barra de baixo mostra UMA frase curta; a frase completa (com a lista do
+// que falta) continua no nome acessível e no título do botão.
+describe("fraseCurtaDoBloqueio", () => {
+  it("formulário vazio: conta os cinco campos", () => {
+    expect(
+      fraseCurtaDoBloqueio(
+        { name: "", description: "", price: "", stock: "", category: "" },
+        false,
+        false,
+      ),
+    ).toBe("Faltam 5 campos");
+  });
+
+  it("falta um só: singular", () => {
+    expect(fraseCurtaDoBloqueio({ ...completo, stock: "" }, false, false)).toBe(
+      "Falta 1 campo",
+    );
+  });
+
+  it("a conta bate com a lista da frase completa", () => {
+    const campos = { ...completo, description: "", category: "" };
+    expect(fraseCurtaDoBloqueio(campos, false, false)).toBe("Faltam 2 campos");
+    expect(motivoDoBloqueioDoProduto(campos, false, false)).toContain(
+      "descrição, categoria",
+    );
+  });
+
+  it("promoção sem preço de antes: nomeia o que falta", () => {
+    expect(fraseCurtaDoBloqueio(completo, false, true)).toBe(
+      "Falta o preço de antes",
+    );
+  });
+
+  it("campo com erro: manda olhar os avisos", () => {
+    expect(fraseCurtaDoBloqueio(completo, true, false)).toBe(
+      "Corrija os avisos em vermelho",
+    );
+  });
+
+  it("falta campo E há erro: o que falta vem primeiro, como na frase completa", () => {
+    expect(fraseCurtaDoBloqueio({ ...completo, name: "" }, true, false)).toBe(
+      "Falta 1 campo",
+    );
+  });
+
+  it("nem falta nem erro conhecido: nunca vazio", () => {
+    expect(fraseCurtaDoBloqueio(completo, false, false)).toBe(
+      "Confira os campos",
+    );
+  });
+});
+
+describe("fraseCurtaDoEnvioDeFotos", () => {
+  it("diz a foto da vez dentro do lote", () => {
+    expect(fraseCurtaDoEnvioDeFotos({ atual: 2, total: 3 }, false)).toBe(
+      "Enviando fotos… (2 de 3)",
+    );
+  });
+
+  it("sem progresso conhecido", () => {
+    expect(fraseCurtaDoEnvioDeFotos(null, false)).toBe("Enviando fotos…");
+  });
+
+  it("envio do recorte tem frase própria", () => {
+    expect(fraseCurtaDoEnvioDeFotos({ atual: 1, total: 1 }, true)).toBe(
+      "Enviando a foto ajustada…",
     );
   });
 });

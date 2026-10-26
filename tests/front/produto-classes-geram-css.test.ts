@@ -25,6 +25,8 @@ const COMPONENTES_NOVOS = [
   "src/components/admin/products/CodigoDoProduto.tsx",
   "src/components/admin/products/DicaExpansivel.tsx",
   "src/components/admin/products/InterruptorDoProduto.tsx",
+  "src/components/admin/products/ProgressoDoProduto.tsx",
+  "src/components/admin/products/SecaoDoProduto.tsx",
 ];
 
 /** Classes que o formulário ganhou direto no JSX (trocas de cor e afins). */
@@ -51,6 +53,30 @@ const CLASSES_DO_FORMULARIO = [
   "invisible",
   "transition-[grid-template-rows]",
   "motion-reduce:transition-none",
+  // Tela compacta (u186): as classes que entraram direto no JSX do formulário
+  // (topo, rótulos de seção, cartão de fotos e a barra de uma linha).
+  "-my-3.5",
+  "-mx-1.5",
+  "-my-3",
+  "-mb-1",
+  "mt-3",
+  "min-w-0",
+  "truncate",
+  "whitespace-nowrap",
+  "text-[13px]",
+  "text-[11px]",
+  "text-amber-400",
+  "border-solid",
+  "border-admin-border-strong",
+  "bg-admin-surface",
+  "bg-admin-bg/95",
+  "grid-cols-[minmax(0,1fr)_auto]",
+  "space-y-1.5",
+  "space-y-2",
+  "sr-only",
+  "px-5",
+  "pb-3",
+  "pt-4",
 ];
 
 /** Classes escritas à mão em CSS próprio (não são utilitários do Tailwind). */
