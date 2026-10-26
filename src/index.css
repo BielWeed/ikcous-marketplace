@@ -1073,6 +1073,17 @@ main {
   transform-style: flat !important;
 }
 
+/* Faixa que rola de lado e leva um texto `sr-only` (só para leitor de tela) dentro:
+   o `sr-only` é `position: absolute`, e sem um ancestral posicionado DENTRO da
+   faixa ele é posicionado em relação a um ancestral de fora — então não é
+   cortado pela faixa e alarga a área rolável da tela inteira (medido em
+   26/10/2026 no Avisar clientes: a tela rolava 359 px para o lado). Tornar a
+   faixa o ponto de referência prende o texto escondido dentro dela. Baixa
+   especificidade (`:where`) para não brigar com `absolute`/`fixed`/`sticky`. */
+:where(.overflow-x-auto):has(.sr-only):not(.absolute, .fixed, .sticky) {
+  position: relative;
+}
+
 /* Lock admin dashboard scroll when help modal is open */
 body.admin-modal-open .admin-scroll-container,
 body.admin-modal-open .active-scroll-container {

@@ -1,4 +1,13 @@
 {
+  "1.5.81": {
+    "titulo": "Avisar clientes não desliza mais para o lado",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Avisar clientes: a tela inteira não desliza mais para o lado sozinha ao mexer nas faixas de modelos prontos e de quem recebe a mensagem.",
+      "Painel e loja: outras faixas que rolam de lado e levam um texto só para leitor de tela também ficam presas dentro da própria faixa, sem alargar a tela."
+    ],
+    "melhorias": []
+  },
   "1.5.80": {
     "titulo": "Nova categoria com ícones, promoção junto do preço e setas certas",
     "novidades": [
