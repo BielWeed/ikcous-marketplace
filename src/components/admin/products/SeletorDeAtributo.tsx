@@ -175,7 +175,7 @@ const CHAMADA = new Map<TipoDoAtributo, [string, string]>([
 
 /** "3 selecionadas" (cores, feminino) · "3 selecionados" (o resto) · "nenhum selecionado". */
 function contagemDosSelecionados(n: number, feminino: boolean): string {
-  if (n === 0) return "nenhum selecionado";
+  if (n === 0) return feminino ? "nenhuma selecionada" : "nenhum selecionado";
   const palavra = feminino ? "selecionada" : "selecionado";
   return `${n} ${palavra}${n === 1 ? "" : "s"}`;
 }

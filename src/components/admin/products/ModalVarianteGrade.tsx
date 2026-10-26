@@ -472,8 +472,19 @@ export function ModalVarianteGrade({
   );
   const varios = grupos.length > 1;
   const faltaEscolher = porAtributo.some((n) => n === 0);
+  // Dois cartões com o mesmo nome (ex.: "Cor" e um "Outro" digitado "cor"): o
+  // gerador recusa, então o resumo não promete número nenhum.
+  const nomeRepetido = grupos
+    .map((g) => chaveMinuscula(g.nome))
+    .find((nome, i, nomes) => nome !== "" && nomes.indexOf(nome) !== i);
+  const grupoRepetido = grupos.find(
+    (g) =>
+      nomeRepetido !== undefined && chaveMinuscula(g.nome) === nomeRepetido,
+  );
   const passouDoLimite =
-    !faltaEscolher && variantesExistentes.length + novas > MAX_LINHAS_DA_GRADE;
+    !faltaEscolher &&
+    !nomeRepetido &&
+    variantesExistentes.length + novas > MAX_LINHAS_DA_GRADE;
   const palavraDoTotal = (n: number) =>
     varios
       ? n === 1
@@ -483,15 +494,15 @@ export function ModalVarianteGrade({
         ? "opção"
         : "opções";
   const rotuloDoGerar =
-    faltaEscolher || passouDoLimite || novas === 0
+    faltaEscolher || nomeRepetido || passouDoLimite || novas === 0
       ? "Gerar grade"
       : `Gerar ${novas} ${palavraDoTotal(novas)}`;
 
   // Atalhos para o segundo atributo: só os tipos que nenhum cartão usa ainda. Um
   // produto que já grava um grupo não ganha atalho: a trava de um grupo por
   // produto recusaria o "Gerar".
-  const tiposEmUso = grupos.map((g) =>
-    g.outro ? "Outro" : tipoDoNome(g.nome),
+  const tiposEmUso = grupos.map(
+    (g) => tipoDoNome(g.nome) ?? (g.outro ? "Outro" : null),
   );
   const atalhosLivres = TIPOS_DOS_ATALHOS.filter(
     (t) => !tiposEmUso.includes(t),
@@ -576,7 +587,7 @@ export function ModalVarianteGrade({
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              {passo === 1 && (
+              {passo === 1 && !grupoUnicoEmUso && (
                 <p className="text-sm leading-relaxed text-zinc-400">
                   {
                     "Escolha o que muda no produto. Para cor e tamanho juntos, toque em '+ Adicionar outro atributo'."
@@ -598,7 +609,7 @@ export function ModalVarianteGrade({
                       nome={grupo.nome}
                       onNome={(nome) => atualizarGrupo(grupo.chave, { nome })}
                       sugestoes={sugestoesDeAtributo}
-                      iniciarEmOutro={grupo.outro}
+                      iniciarEmOutro={grupo.outro && !tipoDoNome(grupo.nome)}
                       tiposOcupados={grupos.flatMap((outro) => {
                         const tipo = tipoDoNome(outro.nome);
                         return outro.chave === grupo.chave || !tipo
@@ -675,7 +686,11 @@ export function ModalVarianteGrade({
                   <p className="text-[11px] font-black tracking-widest text-amber-400">
                     RESUMO
                   </p>
-                  {faltaEscolher ? (
+                  {nomeRepetido ? (
+                    <p className="text-base text-zinc-300">
+                      {`Dois atributos se chamam "${grupoRepetido?.nome.trim() ?? ""}". Troque ou tire um deles.`}
+                    </p>
+                  ) : faltaEscolher ? (
                     <p className="text-base text-zinc-300">
                       Escolha pelo menos uma opção em cada atributo.
                     </p>
@@ -701,8 +716,9 @@ export function ModalVarianteGrade({
                       </p>
                       {passouDoLimite && (
                         <p className="text-sm text-red-300">
-                          Passou do limite de {MAX_LINHAS_DA_GRADE} combinações:
-                          tire alguma opção.
+                          {variantesExistentes.length > 0
+                            ? `O produto já tem ${variantesExistentes.length}; o limite é ${MAX_LINHAS_DA_GRADE} no total. Tire alguma opção.`
+                            : `Passou do limite de ${MAX_LINHAS_DA_GRADE} combinações: tire alguma opção.`}
                         </p>
                       )}
                       <p className="text-xs leading-relaxed text-zinc-400">

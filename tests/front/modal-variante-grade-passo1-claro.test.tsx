@@ -166,7 +166,7 @@ describe("passo 1 da grade — ajuda e cartões numerados", () => {
     const contagem = (i: number) =>
       texto(cartao(i)?.querySelector('[data-testid="contagem-do-atributo"]'));
     await tocarPeca(0, "Cor");
-    expect(contagem(0)).toBe("nenhum selecionado");
+    expect(contagem(0)).toBe("nenhuma selecionada");
     await escolher(0, "Preto");
     expect(contagem(0)).toBe("1 selecionada");
     await escolher(0, "Branco", "Cinza");
@@ -445,5 +445,82 @@ describe("passo 1 da grade — botão 'Gerar N'", () => {
     await tocar(botaoPorTexto("Gerar"));
     expect(toastError).not.toHaveBeenCalled();
     expect(corpo()).toContain("passo 2 de 2 · 9 combinações novas");
+  });
+});
+
+/** Digita no campo do cartão e espera o amortecimento, como o lojista. */
+async function digitar(id: string, valor: string) {
+  await act(async () => {
+    const campo = document.getElementById(id) as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(
+      globalThis.HTMLInputElement.prototype,
+      "value",
+    )?.set?.call(campo, valor);
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 300));
+  });
+}
+
+describe("passo 1 da grade — achados da revisão", () => {
+  it("cartão nascido do '+ Outro' que vira Tamanho: o atalho '+ Tamanho' não volta a ser oferecido", async () => {
+    await abrir();
+    await tocarPeca(0, "Cor");
+    await escolher(0, "Preto");
+    await tocar(botaoExato("+ Outro"));
+    await tocarPeca(1, "Tamanho");
+    expect(botaoExato("+ Tamanho")).toBeUndefined();
+  });
+
+  it("voltar do passo 2 reabre o cartão no tipo que ele tinha (Tamanho), não em 'Outro'", async () => {
+    await abrir();
+    await tocarPeca(0, "Cor");
+    await escolher(0, "Preto");
+    await tocar(botaoExato("+ Outro"));
+    await tocarPeca(1, "Tamanho");
+    await escolher(1, "M");
+    await tocar(botaoPorTexto("Gerar"));
+    expect(corpo()).toContain("passo 2 de 2");
+    await tocar(botaoPorTexto("← Voltar") ?? botaoPorTexto("Voltar"));
+    expect(corpo()).toContain("passo 1 de 2");
+    expect(botaoDoAtributo(1, "Tamanho").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(document.getElementById("grade-nome-1")).toBeNull();
+  });
+
+  it("produto que já grava um grupo não recebe a ajuda que manda juntar atributos", async () => {
+    await abrir({ grupoUnicoEmUso: "Cor" });
+    expect(corpo()).not.toContain("Para cor e tamanho juntos");
+  });
+
+  it("dois cartões com o mesmo nome: o resumo avisa e o botão não promete número", async () => {
+    await abrir();
+    await tocarPeca(0, "Cor");
+    await escolher(0, "Preto");
+    await tocar(botaoExato("+ Outro"));
+    await digitar("grade-nome-1", "cor");
+    await digitar("grade-valor-1", "Liso");
+    await tocar(
+      document.querySelector<HTMLElement>(
+        '[aria-label="Adicionar valor do atributo 2"]',
+      ),
+    );
+    expect(texto(resumo())).toContain("Dois atributos se chamam");
+    expect(texto(resumo())).not.toContain("= 1 combinação");
+    expect(texto(botaoPorTexto("Gerar"))).toBe("Gerar grade");
+  });
+
+  it("o aviso do limite conta o que o produto já tem: 58 existentes + 3 novas", async () => {
+    const existentes = Array.from({ length: 58 }, (_, i) =>
+      linha("Cor", `Cor ${i + 1}`),
+    );
+    await abrir({ existentes });
+    await tocarPeca(0, "Cor");
+    await escolher(0, "Preto", "Branco", "Cinza");
+    expect(texto(resumo())).toContain("= 3 opções");
+    expect(texto(resumo())).toContain(
+      "O produto já tem 58; o limite é 60 no total.",
+    );
+    expect(texto(botaoPorTexto("Gerar"))).toBe("Gerar grade");
   });
 });
