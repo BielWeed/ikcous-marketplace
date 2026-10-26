@@ -34,8 +34,10 @@
 --                                e, DEPOIS dela, 20261382000000 (o resultado mostra tarifa, juro e quebra como despesa);
 --   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável)
 --                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
---   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp);
---   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento);
+--   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp)
+--                                e, DEPOIS dela, 20261392000000 (a lista de clientes não repete ninguém entre as páginas);
+--   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento)
+--                                e, DEPOIS dela, 20261392100000 (a busca do CRM acha o número com o +55);
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita)
 --                                e, DEPOIS dela, 20261249000000 (o motivo do desconto fica na nota privada);
 --   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento);
@@ -146,6 +148,8 @@ WITH corpos AS (
     ('painel_inicio', 'b4aa318b777824bd49aab4175d9133f8', '20261390000000'),
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
+    ('get_admin_customers_paged', '1c71829d75e3d8f17bf7fb01019c05ec', '20261392000000'),
+    ('crm_clientes', '39a2a6de59041e09b6f1e466a6782dca', '20261392100000'),
     ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
     ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa', '20261235000000'),

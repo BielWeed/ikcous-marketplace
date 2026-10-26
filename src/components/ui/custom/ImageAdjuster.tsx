@@ -1177,7 +1177,7 @@ export function ImageAdjuster({
             >
               {loading && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-zinc-950/80">
-                  <span className="border-3 size-8 animate-spin rounded-full border-emerald-500/30 border-t-emerald-500" />
+                  <span className="size-8 animate-spin rounded-full border-[3px] border-emerald-500/30 border-t-emerald-500" />
                   <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
                     Carregando Imagem...
                   </span>

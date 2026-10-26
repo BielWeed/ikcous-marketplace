@@ -104,7 +104,7 @@ describe("AddressList — checkout e carrinho (selectable) desenham como antes",
     );
     expect(selo?.textContent).toBe("Endereço Principal");
     expect(selo?.className).toBe(
-      "mt-1 block text-[11px] font-bold uppercase tracking-widest text-emerald-500",
+      "mt-1 block text-[11px] font-bold uppercase tracking-widest text-emerald-700",
     );
     const detalhes = [...hospedeiro.querySelectorAll("div")].find(
       (d) =>

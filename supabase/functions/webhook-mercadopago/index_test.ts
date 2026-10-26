@@ -830,7 +830,9 @@ Deno.test("log da entrada e da assinatura inválida: ts, x-request-id e v1 trunc
     return new Response("{}", { status: 200 });
   };
   const tsLongo = "1".repeat(300);
-  const v1Longo = "ab".repeat(150);
+  // Lote 204: a porta barata confere o FORMATO do v1 (64 hex, o que um HMAC-SHA256 tem). Um v1 mais longo
+  // morre antes do log da falha, sem nada para cortar; o v1 que chega ao HMAC tem 64, o mesmo teto do corte.
+  const v1Longo = "ab".repeat(32);
   const requestIdLongo = "r".repeat(300);
   const req = requisicao(
     { data: { id: "999" } },
@@ -864,12 +866,11 @@ Deno.test("log da entrada e da assinatura inválida: ts, x-request-id e v1 trunc
     | Record<string, unknown>
     | undefined;
   assertEquals(falha?.ts, tsLongo.slice(0, 64));
-  assertEquals(falha?.v1Recebido, v1Longo.slice(0, 64));
+  assertEquals(falha?.v1Recebido, v1Longo);
   assertEquals(falha?.xRequestId, requestIdLongo.slice(0, 64));
   // Nenhuma linha de log carrega os valores inteiros.
   const texto = JSON.stringify(linhas);
   assertEquals(texto.includes(tsLongo.slice(0, 65)), false);
-  assertEquals(texto.includes(v1Longo.slice(0, 65)), false);
   assertEquals(texto.includes(requestIdLongo.slice(0, 65)), false);
 });
 
@@ -6405,6 +6406,90 @@ Deno.test("MP-W6 — x-signature malformada (sem v1=): 401 sem pagar um SELECT e
   assertEquals(tabelas, []);
   assertEquals(chamouFetch, false);
   assertEquals(registro.chamadasRpc.length, 0);
+});
+
+// MP-W8 (lote 204, 26/10/2026): a porta barata conferia so a PRESENCA de `ts` e `v1`. `ts=1,v1=0` passava por
+// ela e pagava o SELECT em app_settings (e o AES-GCM das credenciais) para so entao o HMAC recusar. Agora a porta
+// confere o FORMATO real do MP: `ts` so digitos (o timestamp da notificacao) e `v1` com exatamente 64 hex
+// minusculos (o `digest('hex')` do HMAC-SHA256; `avaliarAssinatura` compara byte a byte com o hex minusculo, entao
+// nada fora disso jamais passaria). A recusa e' a MESMA (401 "Assinatura invalida."), sem tocar o banco.
+for (
+  const [rotulo, xSignature] of [
+    ["ts=1,v1=0 (v1 curto)", "ts=1,v1=0"],
+    ["v1 com 63 hex", `ts=1730000000,v1=${"a".repeat(63)}`],
+    ["v1 com 65 hex", `ts=1730000000,v1=${"a".repeat(65)}`],
+    ["v1 com 64 caracteres que nao sao hex", `ts=1730000000,v1=${"g".repeat(64)}`],
+    ["v1 hex MAIUSCULO (o HMAC compara com o minusculo)", `ts=1730000000,v1=${"A".repeat(64)}`],
+    ["ts com letra", `ts=17300a0000,v1=${"a".repeat(64)}`],
+    ["ts negativo", `ts=-1730000000,v1=${"a".repeat(64)}`],
+    ["ts decimal", `ts=1730000000.5,v1=${"a".repeat(64)}`],
+    ["ts em notacao cientifica", `ts=1e9,v1=${"a".repeat(64)}`],
+    ["ts com espaco no meio", `ts=1730 000000,v1=${"a".repeat(64)}`],
+  ] as const
+) {
+  Deno.test(`MP-W8 — x-signature fora do formato do MP (${rotulo}): o mesmo 401, sem pagar um SELECT em app_settings`, async () => {
+    const registro = { chamadasRpc: [] };
+    const tabelas: string[] = [];
+    const supabase = contandoFrom(clienteFalso({ rpcResultado: "pago", registro }), tabelas);
+    let chamouFetch = false;
+    const fetchImpl = async (_url: string, _init?: RequestInit) => {
+      chamouFetch = true;
+      return new Response("{}", { status: 200 });
+    };
+    const req = requisicao({ data: { id: "999" } }, { "x-signature": xSignature });
+
+    const resposta = await handler(req, { supabase, fetchImpl });
+
+    assertEquals(resposta.status, 401);
+    assertEquals(await resposta.json(), { error: "Assinatura inválida." });
+    assertEquals(tabelas, []);
+    assertEquals(chamouFetch, false);
+    assertEquals(registro.chamadasRpc.length, 0);
+  });
+}
+
+Deno.test("MP-W8, CONTROLE: x-signature no FORMATO do MP mas com HMAC errado passa da porta (le as credenciais) e o HMAC recusa com o mesmo 401", async () => {
+  const registro = { chamadasRpc: [] };
+  const tabelas: string[] = [];
+  const supabase = contandoFrom(clienteFalso({ rpcResultado: "pago", registro }), tabelas);
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response("{}", { status: 200 });
+  };
+  // ts em milissegundos (o exemplo da documentacao do MP) e 64 hex minusculos: forma certa, assinatura errada.
+  const req = requisicao(
+    { data: { id: "999" } },
+    { "x-signature": `ts=1742505638683,v1=${"0".repeat(64)}`, "x-request-id": "req-123" },
+  );
+
+  const reais = { warn: console.warn };
+  console.warn = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(req, { supabase, fetchImpl });
+  } finally {
+    console.warn = reais.warn;
+  }
+
+  assertEquals(resposta.status, 401);
+  assertEquals(await resposta.json(), { error: "Assinatura inválida." });
+  assertEquals(tabelas, ["app_settings"], "chegou ao HMAC: leu as credenciais uma vez");
+  assertEquals(chamouFetch, false);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("MP-W8, CONTROLE: a assinatura VALIDA (ts em segundos e em milissegundos) continua passando da porta e do HMAC", async () => {
+  for (const ts of [Math.floor(Date.now() / 1000), Date.now()]) {
+    const registro = { chamadasRpc: [] };
+    const tabelas: string[] = [];
+    const supabase = contandoFrom(clienteFalso({ rpcResultado: "pago", registro }), tabelas);
+    const req = await requisicaoAssinada("999", { ts });
+    const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(500, { message: "erro interno" }) });
+    // O MP fora do ar DEPOIS da assinatura: 401 nunca; leu as credenciais.
+    assert(resposta.status !== 401, `ts=${ts}: a assinatura valida nao pode virar 401`);
+    assertEquals(tabelas[0], "app_settings");
+  }
 });
 
 // --- Tarefa mp-6: UMA resolução de credenciais por invocação ---------------

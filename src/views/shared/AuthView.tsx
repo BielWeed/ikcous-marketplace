@@ -499,7 +499,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           >
             <button
               onClick={() => onNavigate("home")}
-              className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-colors hover:text-zinc-900"
+              className="group relative flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-600 transition-colors after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:text-zinc-900"
             >
               <ArrowLeft className="size-3 transition-transform group-hover:-translate-x-1" />
               Explorar marketplace
@@ -834,7 +834,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       }
                       aria-pressed={showPassword}
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-300 transition-colors hover:text-zinc-600"
+                      className="absolute right-3.5 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center text-zinc-500 transition-colors hover:text-zinc-700"
                     >
                       {showPassword ? (
                         <EyeOff className="size-4" />

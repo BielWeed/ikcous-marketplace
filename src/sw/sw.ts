@@ -832,11 +832,21 @@ sw.addEventListener("push", (event: any) => {
   try {
     const payload = event.data.json();
     const title = payload.title || "Novidade!";
+    // Aviso de status do pedido (a send-push grava `data.orderId`): a tag do
+    // pedido faz o aviso novo SUBSTITUIR o anterior do mesmo pedido em vez de
+    // empilhar, e `renotify` faz o aparelho avisar de novo na troca (sem ele a
+    // troca seria silenciosa). Sem pedido (campanha, teste), nada muda.
+    const orderId = payload.data?.orderId;
+    const doPedido =
+      typeof orderId === "string" && orderId !== ""
+        ? { tag: `pedido-${orderId}`, renotify: true }
+        : {};
     const notificar = ({ icon, badge }: { icon: string; badge: string }) => {
       const options = {
         body: payload.body || "",
         icon,
         badge,
+        ...doPedido,
         data: {
           url: payload.url || "/",
           ...payload.data,

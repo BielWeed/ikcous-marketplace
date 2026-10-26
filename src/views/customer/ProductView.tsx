@@ -1394,7 +1394,7 @@ export const ProductView = React.memo(function ProductView({
 
                   {loadingReviews ? (
                     <div className="flex flex-col items-center py-12 text-center">
-                      <div className="border-3 mb-3 size-8 animate-spin rounded-full border-zinc-100 border-t-zinc-950" />
+                      <div className="mb-3 size-8 animate-spin rounded-full border-[3px] border-zinc-100 border-t-zinc-950" />
                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                         Carregando Avaliações...
                       </span>

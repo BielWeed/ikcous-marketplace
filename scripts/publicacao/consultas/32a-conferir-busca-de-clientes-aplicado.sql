@@ -14,6 +14,11 @@
 --
 --   * corpo   -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF): o da 20261230000000
 --                (get_admin_customers_paged) e o da 20261231000000 (crm_clientes).
+--                JA DECIDIDO (26/10/2026): as SUCESSORAS 20261392000000 (get_admin_customers_paged com o desempate
+--                pelo id; lote 101) e 20261392100000 (crm_clientes com o corte do +55; lote 102) redefinem as duas
+--                depois deste lote. Cada linha de md5 aceita o corpo deste lote OU o da sucessora dele e, aceito o
+--                da sucessora, o `vivo` mostra o `esperado` (quem distingue os dois e a 101a/102a). O rol e os
+--                rotulos nao mudam; os marcadores seguem no corpo das sucessoras. Corpo estranho segue mostrando o md5.
 --   * marcador -- 'sim' se o corpo traz a regra nova: na tela Clientes, o calculo dos digitos (`v_search_digitos`)
 --                e o corte do 55 (`IN (12, 13)`); no CRM, o `f_unaccent` sobre o nome. Leitura humana do
 --                mesmo fato do md5.
@@ -69,7 +74,8 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'get_admin_customers_paged: corpo e o da 20261230000000, com a busca por digitos do WhatsApp (md5)',
          'd6c092c3e0d8069891af795147d65e9e',
-         COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'clientes'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m = '1c71829d75e3d8f17bf7fb01019c05ec' THEN 'd6c092c3e0d8069891af795147d65e9e' ELSE f.m END
+                     FROM fn f WHERE f.chave = 'clientes'), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_customers_paged: o corpo traz os digitos do termo e o corte do 55',
          'sim',
@@ -85,7 +91,8 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'crm_clientes: corpo e o da 20261231000000, com nome e e-mail sem acento (md5)',
          '9c4268178a50729b5f7b256b77882585',
-         COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'crm'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m = '39a2a6de59041e09b6f1e466a6782dca' THEN '9c4268178a50729b5f7b256b77882585' ELSE f.m END
+                     FROM fn f WHERE f.chave = 'crm'), 'AUSENTE')
   UNION ALL
   SELECT 'crm_clientes: o corpo ignora o acento do nome',
          'sim',

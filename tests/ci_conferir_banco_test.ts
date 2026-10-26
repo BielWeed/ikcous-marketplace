@@ -2154,6 +2154,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "9c4268178a50729b5f7b256b77882585",
           versao: "20261231000000",
         },
+        // 26/10/2026 (lote 204): a busca do CRM acha o numero com o +55 (a cadeia 99 -> 231 -> 3921).
+        {
+          fn: "crm_clientes",
+          h: "39a2a6de59041e09b6f1e466a6782dca",
+          versao: "20261392100000",
+        },
         {
           fn: "crm_visao",
           h: "c33073503fccc6caa5f1085265501eae",
@@ -2218,6 +2224,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_customers_paged",
           h: "d6c092c3e0d8069891af795147d65e9e",
           versao: "20261230000000",
+        },
+        // 26/10/2026 (lote 204): a lista de clientes nao repete nem esconde ninguem entre as paginas (99 -> 230 -> 392).
+        {
+          fn: "get_admin_customers_paged",
+          h: "1c71829d75e3d8f17bf7fb01019c05ec",
+          versao: "20261392000000",
         },
         // 22/10/2026: o aviso de cancelados antigos conta só pendência real (só o bloco do fora_da_janela muda).
         {

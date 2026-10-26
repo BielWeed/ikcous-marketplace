@@ -487,13 +487,19 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         {/* Activity Tabs */}
         <motion.div variants={itemVariants} className="space-y-4">
           {/* Tab Navigation */}
-          <div className="relative flex border-b border-zinc-100">
+          <div
+            role="tablist"
+            aria-label="Atividade do perfil"
+            className="relative flex border-b border-zinc-100"
+          >
             <button
+              role="tab"
+              aria-selected={activeTab === "reviews"}
               onClick={() => {
                 haptic.light();
                 setActiveTab("reviews");
               }}
-              className={`relative flex-1 pb-3 text-xs font-black uppercase tracking-wider transition-colors ${activeTab === "reviews" ? "text-zinc-950" : "text-zinc-400"}`}
+              className={`relative flex h-11 flex-1 items-center justify-center text-xs font-black uppercase tracking-wider transition-colors ${activeTab === "reviews" ? "text-zinc-950" : "text-zinc-600"}`}
             >
               Avaliações
               {activeTab === "reviews" && (
@@ -505,11 +511,13 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
               )}
             </button>
             <button
+              role="tab"
+              aria-selected={activeTab === "questions"}
               onClick={() => {
                 haptic.light();
                 setActiveTab("questions");
               }}
-              className={`relative flex-1 pb-3 text-xs font-black uppercase tracking-wider transition-colors ${activeTab === "questions" ? "text-zinc-950" : "text-zinc-400"}`}
+              className={`relative flex h-11 flex-1 items-center justify-center text-xs font-black uppercase tracking-wider transition-colors ${activeTab === "questions" ? "text-zinc-950" : "text-zinc-600"}`}
             >
               Perguntas
               {activeTab === "questions" && (

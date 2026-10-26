@@ -130,7 +130,7 @@ function ViewLoadingFallback() {
   if (!isReady) return null;
   return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center space-y-4">
-      <div className="border-3 size-10 animate-spin rounded-full border-zinc-900/10 border-t-zinc-900" />
+      <div className="size-10 animate-spin rounded-full border-[3px] border-zinc-900/10 border-t-zinc-900" />
       <p className="animate-pulse text-sm font-medium text-zinc-500">
         Carregando...
       </p>

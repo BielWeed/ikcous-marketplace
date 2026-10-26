@@ -47,6 +47,7 @@ import { usePagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
 import {
   type PresetFreteGratis,
   presetDoConfig,
+  valorDeFreteEmCentavos,
   valorDoPreset,
 } from "@/lib/presets-de-frete-gratis";
 import { reais, situacaoDaEntrega } from "@/lib/status-da-entrega";
@@ -463,7 +464,8 @@ export const AdminShippingView = memo(function AdminShippingView({
   const soMototaxiPendente =
     mototaxiPendente && !regrasMudaram && !acaoTransportadoras?.mudou;
   const erroLocal =
-    formData.preset === "acima_de_valor" && formData.acimaDe <= 0
+    formData.preset === "acima_de_valor" &&
+    valorDeFreteEmCentavos(formData.acimaDe) <= 0
       ? "Escreva o valor. Para não dar frete grátis, escolha a primeira opção."
       : null;
 
@@ -618,17 +620,20 @@ export const AdminShippingView = memo(function AdminShippingView({
         formData.localCepRange,
       ) ?? formData.localCepRange;
 
+    // Centavos inteiros e dentro da coluna: o enviado tem de ser igual ao
+    // gravado, senão a tela nunca confirma o que salvou.
+    const acimaDeAjustado = valorDeFreteEmCentavos(formData.acimaDe);
     const ehDesconto =
       formDataNacional.estrategia === "desconto_na_mais_barata";
     const nacionalAjustado = {
       estrategia: formDataNacional.estrategia,
       minimo:
         formDataNacional.estrategia === "acima_de_valor" || ehDesconto
-          ? Math.max(0, formDataNacional.minimo)
+          ? valorDeFreteEmCentavos(Math.max(0, formDataNacional.minimo))
           : 0,
       tipoDesconto: ehDesconto ? formDataNacional.tipoDesconto : null,
       valorDesconto: ehDesconto
-        ? Math.max(0, formDataNacional.valorDesconto)
+        ? valorDeFreteEmCentavos(Math.max(0, formDataNacional.valorDesconto))
         : 0,
       alcance: formDataNacional.alcance,
     };
@@ -654,7 +659,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       const salvou = !regrasMudaram
         ? true
         : await updateConfig({
-            freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
+            freeShippingMin: valorDoPreset(formData.preset, acimaDeAjustado),
             shippingCoverage: formData.shippingCoverage,
             localDeliveryFee: Math.max(0, formData.localDeliveryFee),
             localCepRange: alcance,
@@ -691,6 +696,14 @@ export const AdminShippingView = memo(function AdminShippingView({
           ? nacionalAjustado
           : atual,
       );
+      if (acimaDeAjustado !== formData.acimaDe) {
+        // O valor arredondado/limitado é o que ficou gravado: o campo o mostra.
+        setFormData((prev) =>
+          prev.acimaDe === formData.acimaDe
+            ? { ...prev, acimaDe: acimaDeAjustado }
+            : prev,
+        );
+      }
       if (alcance !== alcanceAntes) {
         // O alcance foi regravado: o formulário o acompanha, senão ficaria
         // "diferente do salvo" para sempre — mas só se o campo ainda é o de

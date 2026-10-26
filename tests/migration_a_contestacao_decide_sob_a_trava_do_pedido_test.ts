@@ -329,6 +329,10 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/o-estoque-que-volta-tranca-na-mesma-ordem-viva.cjs",
     // 20261390: o lucro estimado do Inicio conta o mes inteiro (igual ao Financeiro; fevereiro, 30 e 31 dias, virada de ano, controle com o corpo anterior, dados que ja existiam, pre-voo, rollback byte a byte, atomicidade, consultas 97a/97b e portoes 8e/17a/30a).
     "tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs",
+    // 20261392000000 e 20261392100000: a lista de clientes nao repete ninguem entre as paginas (desempate pelo id, duas conexoes com planos
+    // diferentes, controle com o corpo anterior) e a busca do CRM acha o numero com o +55 (bordas do DDD 55, mutantes); rollback e consultas 101/102.
+    "tests/banco/a-lista-de-clientes-nao-repete-ninguem-viva.cjs",
+    "tests/banco/a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -620,6 +624,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // fix-199-abuso-do-banco ate o dono aprovar a migration).
     "tests/banco/a-foto-da-devolucao-e-a-pergunta-tem-teto-viva.cjs",
     "tests/banco/o-financeiro-descreve-a-venda-do-balcao-viva.cjs",
+    // Lote 204: a lista de clientes nao repete ninguem entre as paginas e a busca do CRM acha o numero com o +55.
+    "tests/banco/a-lista-de-clientes-nao-repete-ninguem-viva.cjs",
+    "tests/banco/a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",
