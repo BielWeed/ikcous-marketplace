@@ -484,6 +484,7 @@ export const AdminPushView = memo(function AdminPushView({
             .select("id, nome")
             .eq("ativo", true)
             .order("nome", { ascending: true })
+            .order("id", { ascending: true })
             .range(de, ate),
         );
         if (!error && data) {

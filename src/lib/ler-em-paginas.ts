@@ -18,7 +18,12 @@ export async function lerEmPaginas<T>(
     if (error) return { data: null, error };
     const linhas = data ?? [];
     todas.push(...linhas);
-    if (linhas.length < TAMANHO_DA_PAGINA) break;
+    if (linhas.length < TAMANHO_DA_PAGINA) return { data: todas, error: null };
   }
-  return { data: todas, error: null };
+  // A ultima pagina ainda veio cheia: nao se sabe se acabou. Devolver o pedaco
+  // como se fosse tudo seria o corte silencioso de volta; vira erro.
+  return {
+    data: null,
+    error: new Error("Lista grande demais para ler de uma vez"),
+  };
 }

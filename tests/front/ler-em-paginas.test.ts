@@ -40,4 +40,12 @@ describe("lerEmPaginas", () => {
     expect(data).toBeNull();
     expect(error).toBe(falha);
   });
+  it("se a ultima pagina permitida ainda vem cheia, devolve erro e nao um corte silencioso", async () => {
+    const { data, error } = await lerEmPaginas(async () => ({
+      data: new Array(1000).fill(1),
+      error: null,
+    }));
+    expect(data).toBeNull();
+    expect(error).toBeInstanceOf(Error);
+  });
 });

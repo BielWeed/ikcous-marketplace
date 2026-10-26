@@ -18,10 +18,11 @@ interface NotificationsViewProps {
 
 type TabType = "todas" | "avisos";
 
-// Os tipos que o banco grava de fato: a campanha do painel e as respostas da
-// loja gravam "aviso"; os avisos de pedido (trigger do status) gravam
+// Os tipos que o banco grava de fato: a campanha do painel grava "aviso";
+// as respostas da loja e os avisos de pedido (trigger do status) gravam
 // "info" (em preparo, a caminho), "success" (entregue) e "warning"
-// (cancelado). Todos eles são "avisos" da aba Avisos.
+// (cancelado); o trigger do pagamento grava "pagamento" (confirmado).
+// Todos eles são "avisos" da aba Avisos.
 const TIPOS_DA_ABA_AVISOS = new Set([
   "system",
   "aviso",
@@ -29,6 +30,7 @@ const TIPOS_DA_ABA_AVISOS = new Set([
   "info",
   "success",
   "warning",
+  "pagamento",
 ]);
 
 /**
@@ -226,6 +228,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
         };
       case "success":
       case "sucesso":
+      case "pagamento":
         return {
           icon: Sparkles,
           glyphClass: "text-emerald-700 dark:text-emerald-400",

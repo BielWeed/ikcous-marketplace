@@ -97,6 +97,21 @@ describe("NotificationsView: avisos de pedido e visitante sem conta", () => {
     expect(texto).toContain("Pedido cancelado");
   });
 
+  it("C1: 'Pagamento confirmado' (tipo pagamento) entra na aba Avisos com o glifo de sucesso", async () => {
+    estado.notificacoes = [
+      aviso("p", "Pagamento confirmado", "pagamento", "o1"),
+    ];
+    await renderizar();
+    const glifos = [
+      ...hospedeiro.querySelectorAll('[data-testid="notif-glifo"]'),
+    ].map((g) => g.getAttribute("class") ?? "");
+    expect(glifos[0]).toContain("text-emerald-700");
+    await act(async () => {
+      botao("Avisos")!.click();
+    });
+    expect(hospedeiro.textContent ?? "").toContain("Pagamento confirmado");
+  });
+
   it("C1: 'Pedido entregue' tem o glifo verde de sucesso e 'a caminho' o caminhao azul", async () => {
     estado.notificacoes = [
       aviso("a", "Pedido a caminho", "info", "o1"),
