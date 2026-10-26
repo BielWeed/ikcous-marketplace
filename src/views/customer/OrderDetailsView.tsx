@@ -1315,7 +1315,7 @@ export function OrderDetailsView({
                 onClick={handleCopyTracking}
                 title="Copiar código de rastreio"
                 className={cn(
-                  "flex size-9 flex-shrink-0 items-center justify-center rounded-xl transition-colors active:scale-95",
+                  "relative flex size-9 flex-shrink-0 items-center justify-center rounded-xl transition-colors after:absolute after:-inset-1 after:content-[''] active:scale-95",
                   order.status === "cancelled"
                     ? "bg-white text-zinc-500 hover:text-zinc-900"
                     : // BLOQUEIA B2: ícone em branco sólido — só o fundo
@@ -1335,7 +1335,7 @@ export function OrderDetailsView({
                 rel="noopener noreferrer"
                 title="Rastrear entrega"
                 className={cn(
-                  "flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl px-3.5 text-xs font-bold transition-colors active:scale-95",
+                  "relative flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl px-3.5 text-xs font-bold transition-colors after:absolute after:-inset-y-1 after:inset-x-0 after:content-[''] active:scale-95",
                   order.status === "cancelled"
                     ? "bg-zinc-900 text-white hover:bg-zinc-800"
                     : "bg-white text-zinc-900 hover:bg-white/90",
@@ -1887,7 +1887,7 @@ export function OrderDetailsView({
                   // Laudo 05/09, M5: o nome acessível era "✕" — agora diz
                   // o que fecha.
                   aria-label="Fechar avaliação"
-                  className="flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-650 transition-colors hover:bg-zinc-300 hover:text-zinc-900"
+                  className="relative flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-650 transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-300 hover:text-zinc-900"
                 >
                   ✕
                 </button>
@@ -1915,7 +1915,7 @@ export function OrderDetailsView({
         open={confirmandoDescarteAvaliacao}
         onOpenChange={setConfirmandoDescarteAvaliacao}
       >
-        <AlertDialogContent>
+        <AlertDialogContent overlayClassName="z-[130]" className="z-[130]">
           <AlertDialogHeader>
             <AlertDialogTitle>Descartar o que você escreveu?</AlertDialogTitle>
             <AlertDialogDescription>

@@ -94,7 +94,7 @@ const campanha: Linha = {
   lida: false,
   // MAIS NOVA que os 50 avisos próprios: no código antigo era a primeira
   // vítima do `.limit(50)` único.
-  created_at: new Date(2026, 7, 2, 12, 0).toISOString(),
+  created_at: new Date(Date.now() - 3600000).toISOString(),
 };
 
 beforeEach(() => {

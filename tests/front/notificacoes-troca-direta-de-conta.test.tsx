@@ -81,7 +81,8 @@ function aviso(id: string, usuario: string | null) {
     mensagem: "Seu pedido foi atualizado.",
     tipo: "system",
     lida: false,
-    created_at: "2026-10-16T10:00:00Z",
+    // Relativa: a campanha so vale por 30 dias para quem criou a conta antes.
+    created_at: new Date(Date.now() - 86_400_000).toISOString(),
     dados: usuario ? { order_id: `pedido-${usuario}` } : null,
   };
 }

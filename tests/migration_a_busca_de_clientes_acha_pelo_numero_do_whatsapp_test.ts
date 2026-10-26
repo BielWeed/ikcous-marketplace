@@ -350,7 +350,7 @@ Deno.test("a ordem de desfazer e o aceite (so cresce) estao declarados no cabeca
   assert.ok(sucessoras.includes(NOME));
 });
 
-Deno.test("so a baseline, a 20261199000000 e este par definem get_admin_customers_paged com este contrato; depois da 20261199000000 ninguem mais a redefine alem deste par", () => {
+Deno.test("so a baseline, a 20261199000000 e este par definem get_admin_customers_paged com este contrato; depois da 20261199000000 ninguem mais a redefine alem deste par e da sucessora declarada (20261392000000, o desempate pelo id)", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -363,5 +363,16 @@ Deno.test("so a baseline, a 20261199000000 e este par definem get_admin_customer
       )
     )
       posteriores.push(n);
-  assert.deepEqual(posteriores.sort(), [NOME, `rollback-manual-${NOME}`]);
+  // A sucessora (lote 204) tem o proprio teste: tests/migration_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas_test.ts.
+  const SUCESSORA =
+    "20261392000000_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas.sql";
+  assert.deepEqual(
+    posteriores.sort(),
+    [
+      NOME,
+      SUCESSORA,
+      `rollback-manual-${NOME}`,
+      `rollback-manual-${SUCESSORA}`,
+    ].sort(),
+  );
 });

@@ -523,7 +523,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             <button
               key={sugestao.label}
               type="button"
-              onClick={() => setReplyText(sugestao.text)}
+              onClick={() =>
+                // Não apaga o que a lojista já digitou: a sugestão entra no fim.
+                setReplyText(
+                  replyText.trim()
+                    ? `${replyText.trimEnd()} ${sugestao.text}`
+                    : sugestao.text,
+                )
+              }
               disabled={isOffline || isSubmittingReply}
               className={cn(BOTAO_NEUTRO, "px-2")}
             >

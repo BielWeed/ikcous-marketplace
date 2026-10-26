@@ -2723,7 +2723,29 @@ const ROL_DA_100 = [
   "fin__movimentos: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)",
   "fin__movimentos: sem EXECUTE para PUBLIC, anon ou authenticated",
 ];
+// Lote 101 (20261392000000, a lista de clientes nao repete nem esconde ninguem entre as paginas: get_admin_customers_paged
+// redefinida, so o desempate pelo id no ORDER BY). A 101a e a 101b tem o mesmo rol; a 101a espera o corpo da 20261392000000 e
+// a 101b o da 20261230000000.
+const ROL_DA_101 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_customers_paged: corpo exato (md5)",
+  "get_admin_customers_paged: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions, uma so)",
+  "get_admin_customers_paged: EXECUTE so authenticated e service_role (sem PUBLIC nem anon)",
+];
+// Lote 102 (20261392100000, a busca do CRM acha o numero colado com o +55: crm_clientes redefinida, so o corte do 55 nos
+// digitos da busca). A 102a e a 102b tem o mesmo rol; a 102a espera o corpo da 20261392100000 e a 102b o da 20261231000000.
+const ROL_DA_102 = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm_clientes: corpo exato (md5)",
+  "crm_clientes: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=public, uma so)",
+  "crm_clientes: EXECUTE so authenticated e service_role (sem PUBLIC nem anon)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "101a-conferir-a-lista-de-clientes-nao-repete-ninguem-aplicado": ROL_DA_101,
+  "101b-antes-a-lista-de-clientes-nao-repete-ninguem-base-vigente": ROL_DA_101,
+  "102a-conferir-a-busca-do-crm-acha-o-numero-com-mais-55-aplicado": ROL_DA_102,
+  "102b-antes-a-busca-do-crm-acha-o-numero-com-mais-55-base-vigente":
+    ROL_DA_102,
   "98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado": ROL_DA_98A,
   "98b-antes-a-foto-da-devolucao-e-a-pergunta-tem-teto-base-vigente":
     ROL_DA_98B,

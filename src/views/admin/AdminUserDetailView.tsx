@@ -90,6 +90,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const isOffline = useOnlineStatus();
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [naoEncontrado, setNaoEncontrado] = useState(false);
   const [idCarregado, setIdCarregado] = useState<string | null>(null);
   // Troca de cliente, nova tentativa e desmontagem invalidam respostas antigas.
   const consultaFicha = useRef(0);
@@ -240,6 +241,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     const consulta = ++consultaFicha.current;
     setLoading(true);
     setLoadFailed(false);
+    setNaoEncontrado(false);
     setIdCarregado(null);
     setProfile(null);
     setOrders([]);
@@ -257,6 +259,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       if (error) throw error;
 
       const payload = data as any;
+      // A consulta devolve `profile: null` para um id válido que não existe:
+      // sem isto a tela mostrava uma ficha vazia ("Usuário Não-Nomeado").
+      if (!payload?.profile) {
+        setNaoEncontrado(true);
+        return;
+      }
       setProfile(payload.profile as Profile);
       setOrders(payload.orders?.map(mapOrderFromDB) || []);
       setAddresses(payload.addresses || []);
@@ -647,7 +655,20 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         </div>
       </div>
 
-      {loadFailed && !loading ? (
+      {naoEncontrado && !loading ? (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center bg-admin-bg text-white">
+          <p className="text-sm font-semibold text-zinc-300">
+            Cliente não encontrado
+          </p>
+          <button
+            type="button"
+            onClick={onBack}
+            className="mt-4 min-h-11 rounded-lg border border-admin-border bg-white/5 px-4 text-sm font-semibold text-white hover:border-amber-500/30"
+          >
+            Voltar
+          </button>
+        </div>
+      ) : loadFailed && !loading ? (
         <div className="flex min-h-[60vh] flex-col items-center justify-center bg-admin-bg text-white">
           <p className="text-[11px] font-black uppercase tracking-[0.2em] text-red-400">
             Não foi possível carregar os dados deste cliente
@@ -1609,7 +1630,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             <AlertDialogAction
               onClick={confirmRemoveCartItem}
               disabled={isOffline || !fichaCarregada}
-              className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
+              className="min-h-11 rounded-xl border-0 bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
             >
               Remover Item
             </AlertDialogAction>
@@ -1639,7 +1660,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             <AlertDialogAction
               onClick={confirmClearUserCart}
               disabled={isOffline || !fichaCarregada}
-              className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
+              className="min-h-11 rounded-xl border-0 bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
             >
               Limpar Carrinho
             </AlertDialogAction>

@@ -53,3 +53,17 @@ export function valorDoPreset(
   if (preset === "acima_de_valor") return Math.max(0, acimaDe);
   return 0;
 }
+
+/** Maior valor que cabe na coluna `numeric(10,2)` do frete. */
+export const FRETE_VALOR_MAXIMO = 99_999_999.99;
+
+/**
+ * Valor de frete como o banco guarda: centavos inteiros e dentro da coluna.
+ * "49.999" gravava 50,00 e a tela ficava sem confirmar o que salvou; acima do
+ * máximo a coluna estoura. Arredondar ANTES de enviar faz o enviado ser igual
+ * ao gravado.
+ */
+export function valorDeFreteEmCentavos(valor: number): number {
+  if (!Number.isFinite(valor)) return 0;
+  return Math.min(FRETE_VALOR_MAXIMO, Math.round(valor * 100) / 100);
+}

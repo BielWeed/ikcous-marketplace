@@ -16,7 +16,7 @@ const Toaster = ({ position, ...props }: ToasterProps) => {
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
       position={position || "top-center"}
-      duration={2500}
+      duration={4500}
       // Sonner 2 ignora o `--offset` do style abaixo e, até 600 px de largura,
       // usa `mobileOffset` (padrão 16 px): o aviso do painel ficava em cima do
       // cabeçalho. Só o celular muda; em tela maior o aviso fica onde já estava.

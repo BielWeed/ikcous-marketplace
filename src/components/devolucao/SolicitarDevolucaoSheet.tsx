@@ -682,9 +682,11 @@ function FluxoDaDevolucao({
                       type="button"
                       aria-label="Remover foto"
                       onClick={() => removerFoto(foto.chave)}
-                      className="absolute right-1 top-1 flex size-8 items-center justify-center rounded-full bg-black/60 text-white"
+                      className="absolute right-0 top-0 flex size-11 items-center justify-center text-white"
                     >
-                      <X className="size-4" />
+                      <span className="flex size-8 items-center justify-center rounded-full bg-black/60">
+                        <X className="size-4" />
+                      </span>
                     </button>
                   </div>
                 ))}

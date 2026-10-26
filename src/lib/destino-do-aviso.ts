@@ -91,3 +91,19 @@ export function destinoDaUrl(url: string): DestinoDaUrl {
   }
   return { tipo: "custom", idDoProduto: null, caminho: url };
 }
+
+const NOME_DO_DESTINO = new Map<TipoDeDestino, string>([
+  ["home", "Página inicial da loja"],
+  ["search", "Busca de produtos"],
+  ["cart", "Carrinho"],
+  ["favorites", "Favoritos"],
+  ["orders", "Meus pedidos"],
+  ["profile", "Perfil do cliente"],
+  ["product", "Um produto"],
+]);
+
+/** O nome da tela para mostrar ao lojista no lugar do endereço cru. */
+export function nomeDoDestino(url: string): string {
+  const { tipo } = destinoDaUrl(url);
+  return NOME_DO_DESTINO.get(tipo) ?? `Outra página (${url})`;
+}

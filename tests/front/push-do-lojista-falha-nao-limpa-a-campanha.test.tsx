@@ -101,26 +101,37 @@ vi.mock("@/lib/supabase", () => ({
       return {
         select: () => ({
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
     },
-    rpc: (nome: string) =>
-      Promise.resolve({
-        data:
-          nome === "get_segmented_push_count"
-            ? 1
-            : [
-                {
-                  user_id: "cliente-1",
-                  endpoint: "https://push.example/1",
-                  p256dh: "p1",
-                  auth: "a1",
-                },
-              ],
-        error: null,
-      }),
+    rpc: (...a: any[]) => {
+      // O envio lê os aparelhos em páginas de 1.000 (`.order().range()`).
+      const r = Reflect.apply(
+        (nome: string) =>
+          Promise.resolve({
+            data:
+              nome === "get_segmented_push_count"
+                ? 1
+                : [
+                    {
+                      user_id: "cliente-1",
+                      endpoint: "https://push.example/1",
+                      p256dh: "p1",
+                      auth: "a1",
+                    },
+                  ],
+            error: null,
+          }),
+        null,
+        a,
+      );
+      return Object.assign(r, { order: () => r, range: () => r });
+    },
     functions: { invoke: invokeSendPush },
   },
 }));

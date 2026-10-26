@@ -7,6 +7,8 @@ import { createContext, useContext } from "react";
 // "Tudo em ordem" — zero que quer dizer "não consegui medir".
 export type ValorDoContextoDeNotificacoes = NotificationContextType & {
   erro: string | null;
+  /** Visitante: sem conta (e a conta não está carregando). Opcional. */
+  semConta?: boolean;
 };
 
 export const NotificationContext = createContext<

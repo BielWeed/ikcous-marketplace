@@ -2,6 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { branding } from "@/config/branding";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuestions } from "@/hooks/useQuestions";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { iniciaisDaLoja } from "@/lib/iniciais-da-loja";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -44,6 +45,15 @@ export function ProductQA({
   // Cada edição/abertura é uma intenção nova, mesmo voltando ao mesmo texto.
   const perguntaVersaoRef = useRef(0);
   const respostaVersaoRef = useRef(0);
+
+  // A pergunta (até 500 caracteres) ou a resposta digitada só existe aqui:
+  // instalar uma atualização recarrega o app e a apagaria. Enquanto houver
+  // texto, a atualização espera; ao enviar/limpar/desmontar, a marca sai.
+  const temTexto = newQuestion.trim() !== "" || replyText.trim() !== "";
+  useEffect(() => {
+    if (!temTexto) return;
+    return marcarOperacaoSensivel("pergunta-em-digitacao");
+  }, [temTexto]);
 
   useEffect(() => {
     getQuestionsByProduct(productId);
