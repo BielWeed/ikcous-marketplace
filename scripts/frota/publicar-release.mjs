@@ -612,6 +612,12 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "96b-antes-o-estoque-que-volta-tranca-na-mesma-ordem-base-vigente",
   "97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado",
   "97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente",
+  "98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado",
+  "98b-antes-a-foto-da-devolucao-e-a-pergunta-tem-teto-base-vigente",
+  "99a-conferir-ninguem-grava-evento-de-analise-aplicado",
+  "99b-antes-ninguem-grava-evento-de-analise-base-vigente",
+  "100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado",
+  "100b-antes-o-financeiro-descreve-a-venda-do-balcao-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
