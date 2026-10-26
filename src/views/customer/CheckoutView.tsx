@@ -5789,7 +5789,7 @@ export function CheckoutViewDaConta({
                 {form.formState.errors.name && (
                   <p
                     id="erro-checkout-name"
-                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                   >
                     {form.formState.errors.name.message}
                   </p>
@@ -5840,7 +5840,7 @@ export function CheckoutViewDaConta({
                 {form.formState.errors.whatsapp && (
                   <p
                     id="erro-checkout-tel"
-                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                   >
                     {form.formState.errors.whatsapp.message}
                   </p>
@@ -5896,7 +5896,7 @@ export function CheckoutViewDaConta({
                 {form.formState.errors.cpf ? (
                   <p
                     id="erro-checkout-cpf"
-                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                   >
                     {form.formState.errors.cpf.message}
                   </p>
@@ -5975,7 +5975,7 @@ export function CheckoutViewDaConta({
                   <div className="col-span-3">
                     <label
                       htmlFor="guest-cep"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                     >
                       CEP
                     </label>
@@ -5986,7 +5986,8 @@ export function CheckoutViewDaConta({
                         inputMode="numeric"
                         autoComplete="postal-code"
                         placeholder="00000-000"
-                        disabled={isSearchingCep}
+                        readOnly={isSearchingCep}
+                        aria-busy={isSearchingCep}
                         aria-invalid={
                           form.formState.errors.cep ? true : undefined
                         }
@@ -6042,7 +6043,7 @@ export function CheckoutViewDaConta({
                     {form.formState.errors.cep && (
                       <p
                         id="erro-guest-cep"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                       >
                         {form.formState.errors.cep.message}
                       </p>
@@ -6051,7 +6052,7 @@ export function CheckoutViewDaConta({
                   <div className="col-span-3">
                     <label
                       htmlFor="guest-number"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                     >
                       Número
                     </label>
@@ -6072,7 +6073,7 @@ export function CheckoutViewDaConta({
                     {form.formState.errors.number && (
                       <p
                         id="erro-guest-number"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                       >
                         {form.formState.errors.number.message}
                       </p>
@@ -6081,13 +6082,14 @@ export function CheckoutViewDaConta({
                   <div className="col-span-6">
                     <label
                       htmlFor="guest-street"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                     >
                       Rua
                     </label>
                     <input
                       id="guest-street"
                       {...registrarCampoDoEndereco("street")}
+                      autoComplete="address-line1"
                       placeholder="Nome da rua"
                       aria-invalid={
                         form.formState.errors.street ? true : undefined
@@ -6102,7 +6104,7 @@ export function CheckoutViewDaConta({
                     {form.formState.errors.street && (
                       <p
                         id="erro-guest-street"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                       >
                         {form.formState.errors.street.message}
                       </p>
@@ -6111,13 +6113,14 @@ export function CheckoutViewDaConta({
                   <div className="col-span-6">
                     <label
                       htmlFor="guest-neighborhood"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                     >
                       Bairro
                     </label>
                     <input
                       id="guest-neighborhood"
                       {...registrarCampoDoEndereco("neighborhood")}
+                      autoComplete="address-level3"
                       placeholder="Seu bairro"
                       aria-invalid={
                         form.formState.errors.neighborhood ? true : undefined
@@ -6132,7 +6135,7 @@ export function CheckoutViewDaConta({
                     {form.formState.errors.neighborhood && (
                       <p
                         id="erro-guest-neighborhood"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                       >
                         {form.formState.errors.neighborhood.message}
                       </p>
@@ -6141,13 +6144,14 @@ export function CheckoutViewDaConta({
                   <div className="col-span-3">
                     <label
                       htmlFor="guest-city"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                     >
                       Cidade
                     </label>
                     <input
                       id="guest-city"
                       {...registrarCampoDoEndereco("city")}
+                      autoComplete="address-level2"
                       placeholder="Cidade"
                       // Sem mensagem renderizada para este campo, mas o erro
                       // existe no schema (convidado): `aria-invalid` + foco
@@ -6161,13 +6165,14 @@ export function CheckoutViewDaConta({
                   <div className="col-span-3">
                     <label
                       htmlFor="guest-state"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                     >
                       Estado
                     </label>
                     <input
                       id="guest-state"
                       {...registrarCampoDoEndereco("state")}
+                      autoComplete="address-level1"
                       maxLength={2}
                       placeholder={
                         config.shippingCoverage === "national" ? "UF" : "MG"
@@ -6181,13 +6186,14 @@ export function CheckoutViewDaConta({
                   <div className="col-span-6">
                     <label
                       htmlFor="guest-complement"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                     >
                       Complemento (Opcional)
                     </label>
                     <input
                       id="guest-complement"
                       {...form.register("complement")}
+                      autoComplete="address-line2"
                       placeholder="Apto, Bloco, Fundos, etc."
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />

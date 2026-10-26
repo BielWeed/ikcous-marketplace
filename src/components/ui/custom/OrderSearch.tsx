@@ -303,6 +303,8 @@ export function OrderSearch({
                       <input
                         type="email"
                         required
+                        aria-label="Seu e-mail"
+                        autoComplete="email"
                         placeholder="SEU E-MAIL"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
@@ -315,6 +317,9 @@ export function OrderSearch({
                       <input
                         type="tel"
                         required
+                        aria-label="Seu WhatsApp"
+                        autoComplete="tel"
+                        inputMode="tel"
                         placeholder="SEU WHATSAPP"
                         value={whatsapp}
                         onChange={handleWhatsappChange}
@@ -328,7 +333,8 @@ export function OrderSearch({
                         type="text"
                         required
                         minLength={6}
-                        placeholder="ÚLTIMOS 6 DÍGITOS DO ID DO PEDIDO"
+                        aria-label="Últimos 6 dígitos do ID do pedido"
+                        placeholder="6 FINAIS DO ID DO PEDIDO"
                         value={orderFragment}
                         onChange={(e) => setOrderFragment(e.target.value)}
                         className={campo}
@@ -370,6 +376,7 @@ export function OrderSearch({
                       autoComplete="one-time-code"
                       required
                       maxLength={6}
+                      aria-label="Código de 6 dígitos"
                       placeholder="DIGITE O CÓDIGO DE 6 DÍGITOS"
                       value={otp}
                       onChange={(e) =>

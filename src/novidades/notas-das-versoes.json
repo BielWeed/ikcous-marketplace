@@ -1,4 +1,15 @@
 {
+  "1.5.74": {
+    "titulo": "Loja mais fácil de usar no celular e com leitor de tela",
+    "novidades": [],
+    "correcoes": [
+      "Avisos do topo no celular: quem usa leitor de tela passa a ouvir o aviso completo, e quem enxerga vê o texto em até 2 linhas em vez de cortado em uma.",
+      "Finalizar compra como convidado: ao buscar o endereço pelo CEP o teclado do celular não fecha mais, e o navegador passa a sugerir rua, bairro, cidade, estado e complemento."
+    ],
+    "melhorias": [
+      "Rastrear pedido, login, cadastro, avaliação por estrelas, carrinho e filtros: campos com nome claro, textos mais fortes para ler, botões de 44 px mais fáceis de tocar e o botão de fechar das janelas em português. Ainda não foi testado com leitor de tela de verdade."
+    ]
+  },
   "1.5.73": {
     "titulo": "Variações em grade: cor e tamanho juntos, com a conta na tela",
     "novidades": [],

@@ -735,7 +735,7 @@ export const HomeView = React.memo(function HomeView({
                     }}
                   >
                     <div className="mb-1 border-b border-zinc-50 px-4 py-2">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                      <span className="text-[11px] font-black uppercase tracking-widest text-zinc-600">
                         Ordenar por
                       </span>
                     </div>
@@ -750,10 +750,10 @@ export const HomeView = React.memo(function HomeView({
                             onSortByChange(option.value);
                             setShowSortMenu(false);
                           }}
-                          className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                          className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-[11px] font-black uppercase tracking-widest transition-all ${
                             sortBy === option.value
                               ? "translate-x-1 bg-primary text-primary-foreground"
-                              : "text-zinc-400 hover:bg-zinc-50 hover:text-zinc-900"
+                              : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
                           }`}
                         >
                           <div className="flex items-center gap-3">

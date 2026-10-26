@@ -93,7 +93,7 @@ describe("CartView — a lixeira da linha pede o aviso com Desfazer", () => {
 
   async function tocarNaLixeira() {
     const lixeira = hospedeiro.querySelector<HTMLButtonElement>(
-      'button[aria-label="Remover item"]',
+      'button[aria-label^="Remover "]',
     );
     if (!lixeira) throw new Error("a lixeira da linha não apareceu");
     await act(async () => {
