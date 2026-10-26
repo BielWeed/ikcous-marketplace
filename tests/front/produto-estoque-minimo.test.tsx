@@ -20,9 +20,9 @@
 // Montagem real (react-dom/client + jsdom), mesmo molde de
 // produto-basico-primeiro.test.tsx (LocalBufferedInput tem debounce de 200 ms).
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherCategoriaDoProduto } from "./helpers/escolher-categoria-do-produto";
 
 const addProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -57,38 +57,6 @@ vi.mock("@/contexts/StoreContext", () => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: { rpc: rpcDoSupabase },
-}));
-
-vi.mock("@/components/ui/select", () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    children: ReactNode;
-  }) => (
-    <select
-      id="product-category"
-      data-testid="select-category"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-    >
-      <option value="" />
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectItem: ({
-    value,
-    children,
-  }: {
-    value: string;
-    children: ReactNode;
-  }) => <option value={value}>{children}</option>,
 }));
 
 vi.mock("sonner", () => ({
@@ -237,14 +205,7 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       digitar("product-description", "Descrição de teste");
       digitar("product-sale-price", "1000");
       digitar("product-stock", "5");
-      const categoria = document.querySelector(
-        '[data-testid="select-category"]',
-      ) as HTMLSelectElement;
-      Object.getOwnPropertyDescriptor(
-        globalThis.HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(categoria, "Geral");
-      categoria.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherCategoriaDoProduto("Geral");
       await esperar(300);
     });
   }

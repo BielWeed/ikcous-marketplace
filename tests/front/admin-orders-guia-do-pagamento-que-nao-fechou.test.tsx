@@ -409,7 +409,7 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
       },
       // o campo de estoque do cadastro do produto
       {
-        rotulo: "Quantidade em Estoque",
+        rotulo: "Estoque *",
         arquivo: "src/views/admin/AdminProductFormView.tsx",
       },
     ];
@@ -432,7 +432,7 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     // Rótulos de selo vêm do config do selo (não de cópia).
     expect(texto).toContain("“Estornado”");
     expect(texto).toContain("“Pagamento fora do fluxo”");
-    expect(texto).toContain("“Quantidade em Estoque”");
+    expect(texto).toContain("“Estoque”");
     // Produto COM variações: o campo do produto fica travado (é a soma), então o
     // guia manda abrir a variação, onde o campo se chama só "Quantidade".
     expect(texto).toContain("“Quantidade”");

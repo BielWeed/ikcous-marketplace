@@ -14,10 +14,10 @@
 // @testing-library/react, createRoot + act do React puro, hooks de dados
 // mockados.
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherAtributo } from "./helpers/atributo-da-variacao";
+import { escolherCategoriaDoProduto } from "./helpers/escolher-categoria-do-produto";
 
 const addProduct = vi.fn();
 vi.mock("@/hooks/useProducts", () => ({
@@ -42,33 +42,6 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { shippingCoverage: "national" } }),
-}));
-
-vi.mock("@/components/ui/select", () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    children: ReactNode;
-  }) => (
-    <select
-      data-testid="select-category"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-    >
-      <option value="" />
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectItem: ({ value, children }: { value: string; children: ReactNode }) => (
-    <option value={value}>{children}</option>
-  ),
 }));
 
 const toastError = vi.fn();
@@ -118,15 +91,7 @@ function digitarTextarea(id: string, valor: string) {
 }
 
 function selecionarCategoria(valor: string) {
-  const el = document.querySelector(
-    '[data-testid="select-category"]',
-  ) as HTMLSelectElement;
-  const setter = Object.getOwnPropertyDescriptor(
-    globalThis.HTMLSelectElement.prototype,
-    "value",
-  )?.set;
-  setter?.call(el, valor);
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  escolherCategoriaDoProduto(valor);
 }
 
 const esperarDebounce = () => new Promise((r) => setTimeout(r, 300));

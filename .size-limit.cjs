@@ -193,8 +193,11 @@ module.exports = [
     // 25/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
     // 480 -> 484 kB na 1.5.73 (a tela de criar variacoes em grade passou a explicar
     // cor e tamanho juntos: resumo, atalhos e contagem). Medido 480,36 kB no PR.
+    // 26/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 484 -> 488 kB na 1.5.79 (categoria em galeria com icones e as correcoes da
+    // tela de produto: rascunho, Voltar das janelas, textos). Medido 484,02 kB.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "484 kB",
+    limit: "488 kB",
     webpack: false,
     running: false,
   },

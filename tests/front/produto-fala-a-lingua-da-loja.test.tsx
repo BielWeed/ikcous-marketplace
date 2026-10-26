@@ -379,8 +379,8 @@ describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
   });
 });
 
-describe("PhoneSimulator — aba de avaliações na língua da loja", () => {
-  it("a aba diz 'Avaliações (15)', não 'Reviews (15)'", async () => {
+describe("PhoneSimulator — sem aba de avaliações inventada", () => {
+  it("a prévia não mostra 'Avaliações (15)' nem 'Reviews (15)' (produto novo não tem avaliação)", async () => {
     const { PhoneSimulator } = await import(
       "@/components/admin/PhoneSimulator"
     );
@@ -420,8 +420,9 @@ describe("PhoneSimulator — aba de avaliações na língua da loja", () => {
     const abas = [...document.body.querySelectorAll("button")].map((b) =>
       b.textContent?.trim(),
     );
-    expect(abas).toContain("Avaliações (15)");
+    expect(abas).not.toContain("Avaliações (15)");
     expect(abas).not.toContain("Reviews (15)");
+    expect(abas.some((a) => /avalia|review/i.test(a ?? ""))).toBe(false);
 
     act(() => {
       raiz.unmount();

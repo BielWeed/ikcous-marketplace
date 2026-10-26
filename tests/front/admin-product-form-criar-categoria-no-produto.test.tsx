@@ -4,7 +4,6 @@
 // genérico quando o nome só difere em maiúscula/acento (o banco tem nome único e
 // slug único), e com a palavra 'categoria' em vez de 'setor'.
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -41,33 +40,6 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { shippingCoverage: "national" } }),
-}));
-
-vi.mock("@/components/ui/select", () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    children: ReactNode;
-  }) => (
-    <select
-      data-testid="select-category"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-    >
-      <option value="" />
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectItem: ({ value, children }: { value: string; children: ReactNode }) => (
-    <option value={value}>{children}</option>
-  ),
 }));
 
 const toastError = vi.fn();
@@ -150,15 +122,12 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
         />,
       );
     });
+    // Pelo caminho da lojista: toca no campo e depois em "Nova categoria".
     await act(async () => {
-      const el = document.querySelector(
-        '[data-testid="select-category"]',
-      ) as HTMLSelectElement;
-      Object.getOwnPropertyDescriptor(
-        globalThis.HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(el, "NEW_CATEGORY");
-      el.dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("product-category")?.click();
+    });
+    await act(async () => {
+      botaoPorTexto("Nova categoria")?.click();
     });
   }
 

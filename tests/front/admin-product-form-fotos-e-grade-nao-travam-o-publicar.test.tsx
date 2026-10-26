@@ -18,7 +18,6 @@
 //
 // Mesmo padrão dos testes irmãos: createRoot + act, hooks de dados mockados.
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import {
   type Mock,
@@ -29,6 +28,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { escolherCategoriaDoProduto } from "./helpers/escolher-categoria-do-produto";
 
 const mocks = vi.hoisted(() => ({
   addProduct: vi.fn(),
@@ -68,33 +68,6 @@ vi.mock("@/contexts/StoreContext", () => ({
 
 vi.mock("@/lib/supabase", () => ({ supabase: { rpc: mocks.rpc } }));
 
-vi.mock("@/components/ui/select", () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    children: ReactNode;
-  }) => (
-    <select
-      data-testid="select-category"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-    >
-      <option value="" />
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectItem: ({ value, children }: { value: string; children: ReactNode }) => (
-    <option value={value}>{children}</option>
-  ),
-}));
-
 vi.mock("sonner", () => ({
   toast: {
     info: mocks.toastInfo,
@@ -102,6 +75,7 @@ vi.mock("sonner", () => ({
     error: mocks.toastError,
     warning: vi.fn(),
     loading: vi.fn(),
+    dismiss: vi.fn(),
   },
 }));
 
@@ -141,14 +115,7 @@ function digitarTextarea(id: string, valor: string) {
 }
 
 function selecionarCategoria(valor: string) {
-  const el = document.querySelector(
-    '[data-testid="select-category"]',
-  ) as HTMLSelectElement;
-  Object.getOwnPropertyDescriptor(
-    globalThis.HTMLSelectElement.prototype,
-    "value",
-  )?.set?.call(el, valor);
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  escolherCategoriaDoProduto(valor);
 }
 
 function escolherFotos(arquivos: File[]) {
@@ -514,9 +481,12 @@ describe("AdminProductFormView — foto e grade não prendem a lojista em silên
       await publicarComGradeFalha();
       // O que a lojista tinha na tela incluía uma grade; o banco só tem o produto.
       const rascunho = JSON.parse(armazem.get(CHAVE_EDICAO) as string);
+      // Variação NOVA da lojista: id provisório, como o formulário a guarda. Com
+      // id de verdade que o banco não tem, o rascunho a descartaria (ver
+      // `variacoesDoRascunhoComEstoqueDoBanco`) e não haveria o que oferecer.
       rascunho.variants = [
         {
-          id: "v-1",
+          id: "temp-1",
           productId: "",
           name: "Tamanho",
           value: "M",

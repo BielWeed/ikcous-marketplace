@@ -20,6 +20,26 @@ export interface CamposObrigatoriosDoProduto {
   category: string;
 }
 
+/**
+ * Os obrigatórios que ainda estão vazios, na ordem da tela, cada um com o id do
+ * campo. A frase do bloqueio e o toque que leva ao campo usam ESTA lista: o
+ * texto fala do mesmo campo para onde o toque leva.
+ */
+export function camposQueFaltam(
+  campos: CamposObrigatoriosDoProduto,
+): { nome: string; id: string }[] {
+  const faltam: { nome: string; id: string }[] = [];
+  if (!campos.name) faltam.push({ nome: "nome", id: "product-name" });
+  if (!campos.description)
+    faltam.push({ nome: "descrição", id: "product-description" });
+  if (campos.category === "")
+    faltam.push({ nome: "categoria", id: "product-category" });
+  if (!campos.price)
+    faltam.push({ nome: "preço de venda", id: "product-sale-price" });
+  if (!campos.stock) faltam.push({ nome: "estoque", id: "product-stock" });
+  return faltam;
+}
+
 export function motivoDoBloqueioDoProduto(
   campos: CamposObrigatoriosDoProduto,
   temErroNoCampo: boolean,
@@ -27,12 +47,7 @@ export function motivoDoBloqueioDoProduto(
   /** Promoção ligada com o "De:" vazio: sem o preço original não há promoção. */
   promocaoSemPrecoOriginal = false,
 ): string {
-  const faltando: string[] = [];
-  if (!campos.name) faltando.push("nome");
-  if (!campos.description) faltando.push("descrição");
-  if (campos.category === "") faltando.push("categoria");
-  if (!campos.price) faltando.push("preço de venda");
-  if (!campos.stock) faltando.push("estoque");
+  const faltando = camposQueFaltam(campos).map((c) => c.nome);
 
   const verbo = editando ? "salvar" : "publicar";
   if (faltando.length > 0) {
