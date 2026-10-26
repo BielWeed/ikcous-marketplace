@@ -30,6 +30,7 @@ import {
     montarInsumos,
 } from './configuracao.ts'
 import { tratarAcao } from './acoes.ts'
+import { consumirCotaDaOrigem, mensagemDoLimite } from './limite-por-origem.ts'
 import { aplicarEstrategiaNacional, espelhoLegado, type EstrategiaNacional, subtotalDoCarrinho } from './estrategia-nacional.ts'
 import {
     comRetiradaAnexada,
@@ -741,6 +742,26 @@ const RECOTAR = Symbol('recotar')
 const respostaJson = (conteudo: Record<string, unknown>, status = 200) =>
     new Response(JSON.stringify(conteudo), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
+/**
+ * 429 do limite por origem (E1, 26/10/2026): frase em português simples, `codigo` para o app
+ * reconhecer sem ler texto, e `Retry-After` em segundos (exposto ao navegador via CORS). Não grava
+ * histórico nem cache: recusar não pode alimentar justamente o que o limite protege.
+ */
+function respostaDoLimite(esperarSegundos: number): Response {
+    return new Response(
+        JSON.stringify({ error: mensagemDoLimite(esperarSegundos), codigo: 'muitas_consultas', espereSegundos: esperarSegundos }),
+        {
+            status: 429,
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                'Retry-After': String(esperarSegundos),
+                'Access-Control-Expose-Headers': 'Retry-After',
+            },
+        },
+    )
+}
+
 /** O que a linha do log estruturado sabe dos serviços pedidos, com ou sem a cotação. */
 function servicosPedidosParaOLog(provider: string, credenciais: any, chaves: string[]): string[] | 'legado' {
     const salvos = servicosSalvos(provider, credenciais)
@@ -857,7 +878,9 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
             return respostaJson({ error: 'Carrinho grande demais para calcular o frete.', codigo: 'carrinho_grande_demais' }, 400)
         }
 
-        const pedido = { cleanCep, cart, aceitaRetirada, contratoCliente: body?.contratoCliente }
+        // `cota`: o limite por origem gasta UMA unidade por pedido de cotação, mesmo que a revisão mude e
+        // a passada seja refeita (a recotação fala com a transportadora de novo, mas é a mesma tentativa).
+        const pedido = { cleanCep, cart, aceitaRetirada, contratoCliente: body?.contratoCliente, cabecalhos: req.headers, cota: { consumida: false } }
         // R3-2: a revisão mudou entre a leitura e a gravação? Recota UMA vez;
         // na segunda, `cotarUmaVez` responde como falha de gravação.
         const primeira = await cotarUmaVez(supabaseClient, pedido, false)
@@ -880,7 +903,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
  */
 async function cotarUmaVez(
     supabaseClient: any,
-    pedido: { cleanCep: string; cart: any; aceitaRetirada: boolean; contratoCliente: unknown },
+    pedido: { cleanCep: string; cart: any; aceitaRetirada: boolean; contratoCliente: unknown; cabecalhos: Headers; cota: { consumida: boolean } },
     ultimaTentativa: boolean,
 ): Promise<Response | typeof RECOTAR> {
     const { cleanCep, cart, aceitaRetirada } = pedido
@@ -1161,6 +1184,20 @@ async function cotarUmaVez(
             cotacaoParcial: false,
             revisaoConfig,
         })
+    }
+
+    // 4-ter. LIMITE POR ORIGEM (E1, 26/10/2026). Daqui em diante a passada FALA com a transportadora
+    // (gasta o token da lojista) e grava cache e histórico: é exatamente o que o laço de um abusador
+    // quer repetir. Por isso o limite fica AQUI — depois de tudo que não conta (validação, ação do
+    // painel, entrega local, retirada, acerto do cache) e antes da primeira chamada de rede. Falha do
+    // contador NÃO derruba a cotação (falha aberta, ver `limite-por-origem.ts`).
+    if (!pedido.cota.consumida) {
+        pedido.cota.consumida = true
+        const veredito = await consumirCotaDaOrigem(supabaseClient, pedido.cabecalhos)
+        if (veredito.bloqueado) {
+            console.warn(JSON.stringify({ evento: 'cotacao_barrada_por_limite_de_origem', esperarSegundos: veredito.esperarSegundos }))
+            return respostaDoLimite(veredito.esperarSegundos)
+        }
     }
 
     // 5. Os ligados em PARALELO, cada um isolado, sem retry (A2).

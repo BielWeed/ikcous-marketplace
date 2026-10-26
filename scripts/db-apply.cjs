@@ -78,6 +78,18 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261389: o frete tem limite de cotacoes por origem. A tabela, o ACL e a RLS nao sao conferiveis aqui (so corpo de funcao): a consulta 95a e a
+  // prova viva fazem isso. Aqui: o contador e atomico (UM INSERT ... ON CONFLICT DO UPDATE ... WHERE abaixo do teto), nao grava quando barra e
+  // valida os argumentos (22023); sem o WHERE o teto deixa de existir, sem a validacao um bug da edge vira "sem limite".
+  "20261389000000_o_frete_tem_limite_de_cotacoes_por_origem.sql": {
+    funcao: "frete_consumir_cota",
+    esperado: [
+      { texto: "ON CONFLICT (origem, janela_inicio) DO UPDATE", vezes: 1 },
+      { texto: "WHERE c.chamadas < p_limite", vezes: 1 },
+      { texto: "USING ERRCODE = '22023'", vezes: 1 },
+      { texto: "FOR UPDATE SKIP LOCKED", vezes: 1 },
+    ],
+  },
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {
