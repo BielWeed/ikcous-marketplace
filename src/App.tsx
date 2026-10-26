@@ -847,6 +847,20 @@ const AppContent = () => {
   const [navigationDirection, setNavigationDirection] = useState<
     "forward" | "back" | "none"
   >("forward");
+  // Relógios de 150 ms que devolvem a direção para "forward" depois do Voltar.
+  // Ficam guardados para serem cancelados ao desmontar: sem isso, o relógio
+  // dispara com o app já fechado (nos testes, depois do ambiente desmontado,
+  // e derrubava a rodada com "window is not defined").
+  const directionResetTimersRef = useRef(
+    new Set<ReturnType<typeof setTimeout>>(),
+  );
+  useEffect(() => {
+    const timers = directionResetTimersRef.current;
+    return () => {
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
+    };
+  }, []);
 
   // useAppBadge is now consumed in AppBadgeSynchronizer to avoid root re-renders
 
@@ -2219,10 +2233,12 @@ const AppContent = () => {
       syncWithUrl("popstate");
 
       // Reset to forward for next transitions
-      setTimeout(() => {
+      const resetTimerId = setTimeout(() => {
+        directionResetTimersRef.current.delete(resetTimerId);
         navigationDirectionRef.current = "forward";
         setNavigationDirection("forward");
       }, 150);
+      directionResetTimersRef.current.add(resetTimerId);
     };
 
     globalThis.addEventListener("popstate", handlePopState);
