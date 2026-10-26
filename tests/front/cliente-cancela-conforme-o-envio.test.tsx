@@ -24,6 +24,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Order } from "@/types";
 
+import {
+  desligarCaixaDeCancelamento,
+  ligarCaixaDeCancelamento,
+} from "./duble-caixa-de-cancelamento";
 const pedidoBase: Order = {
   id: "pedido-envio",
   customer: { name: "Cliente Teste", whatsapp: "34999999999" },
@@ -102,6 +106,7 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    ligarCaixaDeCancelamento();
     updateOrderStatusMock.mockClear();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -109,6 +114,7 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
   });
 
   afterEach(() => {
+    desligarCaixaDeCancelamento();
     act(() => {
       raiz.unmount();
     });

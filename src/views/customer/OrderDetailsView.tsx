@@ -465,7 +465,15 @@ export function OrderDetailsView({
     avaliacaoFolhaRef.current?.focus();
   }, [reviewingItem]);
 
-  const handleCancelOrder = async () => {
+  // UI-191 (G10): a pergunta de cancelar é a caixa de confirmação da casa
+  // (AlertDialog), não o `confirm()` do navegador. `textoDoCancelamento` é o
+  // MESMO texto de antes (`textoConfirmarCancelamento`, a fonte única do que
+  // acontece com o dinheiro em cada caso); `null` = pergunta fechada.
+  const [textoDoCancelamento, setTextoDoCancelamento] = useState<string | null>(
+    null,
+  );
+
+  const handleCancelOrder = () => {
     if (!order) return;
     // Regra do Gabriel (24/08/2026): o botão "Cancelar Pedido" aparece para
     // pedido 'pending', 'processing' OU 'shipping' com usuário logado — o
@@ -510,9 +518,14 @@ export function OrderDetailsView({
       retiradaPronta,
       pagamentoNaEntrega,
     });
-    const confirmCancel = globalThis.confirm(textoConfirm);
-    if (!confirmCancel) return;
+    setTextoDoCancelamento(textoConfirm);
+  };
 
+  // O cancelamento de verdade: só roda depois do "sim" na caixa acima, e é
+  // EXATAMENTE o caminho de antes (mesma chamada `updateOrderStatus`, mesmas
+  // guardas de eco e de leitura do servidor) -- só a pergunta mudou de lugar.
+  const executarCancelamento = async () => {
+    if (!order) return;
     cancelandoRef.current = true;
     emitidoDuranteOCancelamentoRef.current = null;
     setIsCancelling(true);
@@ -1896,6 +1909,39 @@ export function OrderDetailsView({
               }}
             >
               Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={textoDoCancelamento !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setTextoDoCancelamento(null);
+        }}
+      >
+        <AlertDialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] sm:max-w-sm"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar este pedido?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {textoDoCancelamento}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11">
+              Manter pedido
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-11"
+              onClick={() => {
+                setTextoDoCancelamento(null);
+                void executarCancelamento();
+              }}
+            >
+              Cancelar pedido
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
