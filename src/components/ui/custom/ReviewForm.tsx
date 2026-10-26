@@ -147,7 +147,7 @@ export function ReviewForm({
                   <Textarea
                     placeholder="Conte-nos os detalhes que lhe surpreenderam..."
                     maxLength={1000}
-                    className="min-h-[110px] resize-none rounded-2xl border-zinc-200/60 bg-zinc-50 p-4 text-xs shadow-none transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:ring-0 md:text-sm"
+                    className="min-h-[110px] resize-none rounded-2xl border-zinc-200/60 bg-zinc-50 p-4 text-base shadow-none transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:ring-0 md:text-sm"
                     {...field}
                     disabled={isSubmitting}
                   />

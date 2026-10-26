@@ -6,7 +6,10 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
 import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
-import { mascaraTelefoneDoCadastro } from "@/lib/telefone-br";
+import {
+  limparTelefoneBrasileiro,
+  mascaraTelefoneDoCadastro,
+} from "@/lib/telefone-br";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
 import {
@@ -298,6 +301,17 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           !password.trim()
         ) {
           toast.error("Preencha todos os campos para o cadastro.");
+          setIsLoading(false);
+          return;
+        }
+        // WhatsApp precisa ser um número de verdade: DDD + 8 ou 9 dígitos (10
+        // ou 11), depois de tirar +55 e o zero de tronco como o checkout.
+        // Antes só se conferia se não estava vazio e "(34) 9999" criava conta.
+        const digitosWhatsapp = limparTelefoneBrasileiro(phone).length;
+        if (digitosWhatsapp !== 10 && digitosWhatsapp !== 11) {
+          toast.error(
+            "Confira o WhatsApp: informe DDD + número, com 10 ou 11 dígitos.",
+          );
           setIsLoading(false);
           return;
         }

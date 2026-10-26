@@ -169,6 +169,11 @@ function fraseSituacaoDoPagamento(order: Order): string {
   // que o dinheiro ENTROU e o pedido morreu (pago, recebido_na_entrega)
   // caíram no ramo de atenção acima; o que chega aqui é "nada entrou, nada
   // se deve" — cobre também o online aguardando num pedido já cancelado.
+  // Cancelado e devolvido por inteiro: caso resolvido (o selo é neutro), e a
+  // frase diz o que aconteceu com o dinheiro em vez de "nada a receber".
+  if (order.status === "cancelled" && order.paymentStatus === "estornado") {
+    return `Estornado · R$ ${valor}`;
+  }
   if (order.status === "cancelled") {
     return "Cancelado · nada a receber";
   }
@@ -981,6 +986,11 @@ function OrderFinanceCard({
       situacao === ROTULO_SEM_VALOR_A_PAGAR ||
       situacao.startsWith("Recebido na entrega") ||
       situacao.startsWith("Recebido no balcão"));
+  // Cancelado e já devolvido: nada pendente, então nem verde nem âmbar.
+  const situacaoResolvida = situacao.startsWith("Estornado ·");
+  let corDaSituacao = "text-amber-400";
+  if (situacaoPositiva) corDaSituacao = "text-emerald-400";
+  else if (situacaoResolvida) corDaSituacao = "text-zinc-400";
 
   return (
     <section
@@ -1006,14 +1016,7 @@ function OrderFinanceCard({
           `truncate` e, dividindo linha com outra coisa, voltava a virar
           "PAGO E CANCELADO — PRECIS…". */}
       <div className="space-y-2">
-        <p
-          className={cn(
-            "text-sm font-medium",
-            situacaoPositiva ? "text-emerald-400" : "text-amber-400",
-          )}
-        >
-          {situacao}
-        </p>
+        <p className={cn("text-sm font-medium", corDaSituacao)}>{situacao}</p>
         <PaymentStatusBadge
           paymentStatus={order.paymentStatus}
           orderStatus={order.status}

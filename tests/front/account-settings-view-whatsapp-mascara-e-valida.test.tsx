@@ -166,6 +166,60 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
     expect(telefone.value).toBe("(34) 3333-4444");
   });
 
+  // +55 e zero de tronco: o checkout e o cadastro já limpam isso
+  // (`limparTelefoneBrasileiro`), mas a tela da conta deixava "+55 34
+  // 99999-8888" e "034 99999-8888" como vieram e o Salvar recusava com
+  // "WhatsApp inválido". Agora a conta limpa do mesmo jeito que o checkout.
+  async function salvarEPegarWhatsappGravado() {
+    const botaoSalvar = localizarBotaoPorTexto("Salvar alterações")!;
+    await act(async () => {
+      botaoSalvar.click();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    return rpc.mock.calls.find(
+      (chamada) => chamada[0] === "update_my_profile_secure",
+    );
+  }
+
+  it("colar '+55 34 99999-8888' limpa o +55 e grava (34) 99999-8888", async () => {
+    await montarComPerfilCarregado();
+    digitar("phone", "+55 34 99999-8888");
+    const telefone = document.getElementById("phone") as HTMLInputElement;
+    expect(telefone.value).toBe("(34) 99999-8888");
+
+    const chamada = await salvarEPegarWhatsappGravado();
+    expect(chamada).toBeTruthy();
+    expect(chamada![1]).toMatchObject({ p_whatsapp: "(34) 99999-8888" });
+  });
+
+  it("colar '034 99999-8888' tira o zero de tronco e grava (34) 99999-8888", async () => {
+    await montarComPerfilCarregado();
+    digitar("phone", "034 99999-8888");
+    const telefone = document.getElementById("phone") as HTMLInputElement;
+    expect(telefone.value).toBe("(34) 99999-8888");
+
+    const chamada = await salvarEPegarWhatsappGravado();
+    expect(chamada).toBeTruthy();
+    expect(chamada![1]).toMatchObject({ p_whatsapp: "(34) 99999-8888" });
+  });
+
+  it("número estrangeiro/longo demais (sem 55) continua cru e é recusado", async () => {
+    await montarComPerfilCarregado();
+    const { toast } = await import("sonner");
+    digitar("phone", "1234567890123");
+    const telefone = document.getElementById("phone") as HTMLInputElement;
+    expect(telefone.value).toBe("1234567890123");
+
+    const chamada = await salvarEPegarWhatsappGravado();
+    expect(chamada).toBeUndefined();
+    expect(toast.error).toHaveBeenCalledWith(
+      "WhatsApp inválido",
+      expect.anything(),
+    );
+  });
+
   // CONTA-09 (BLOQUEIA, auditoria de 26/08/2026, camada 5) — o caminho da
   // DIGITAÇÃO não tinha nenhum teste. `formatarWhatsApp` (@/utils/telefone)
   // faz `.slice(0, 11)` sobre TODOS os dígitos digitados/colados — acima de
@@ -176,21 +230,23 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
   // "+55 34 99999-8888" (DDD 34, número 99999-8888) virava
   // "(55) 34999-9988" — outro número, com "55" (DDD real de Santa
   // Maria/RS) tornando o defeito invisível numa conferência humana.
-  it("CONTA-09: colar número com mais de 11 dígitos NÃO mascara nem trunca — mostra o texto cru", async () => {
+  it("CONTA-09: colar número com mais de 11 dígitos (que não é o +55 do Brasil) NÃO mascara nem trunca — mostra o texto cru", async () => {
     await montarComPerfilCarregado();
 
-    digitar("phone", "+55 34 99999-8888");
+    digitar("phone", "+44 20 7946 0958");
 
     const telefone = document.getElementById("phone") as HTMLInputElement;
-    // Nunca "(55) 34999-9988" (o número fabricado pelo truncamento).
-    expect(telefone.value).toBe("+55 34 99999-8888");
+    // Nunca o número fabricado pelo truncamento. (Desde o item da conta que
+    // limpa o +55 como o checkout, "+55 34 99999-8888" vira (34) 99999-8888;
+    // aqui vale o que NÃO é +55 do Brasil e continua grande demais.)
+    expect(telefone.value).toBe("+44 20 7946 0958");
   });
 
   it("CONTA-09: salvar depois de colar número com mais de 11 dígitos é recusado — nunca grava o número fabricado", async () => {
     await montarComPerfilCarregado();
     const { toast } = await import("sonner");
 
-    digitar("phone", "+55 34 99999-8888");
+    digitar("phone", "+44 20 7946 0958");
 
     const botaoSalvar = localizarBotaoPorTexto("Salvar alterações")!;
     await act(async () => {

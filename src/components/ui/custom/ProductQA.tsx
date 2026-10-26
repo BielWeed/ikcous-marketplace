@@ -138,7 +138,13 @@ export function ProductQA({
   };
 
   const handleNavigateToAuth = () => {
-    globalThis.history.pushState({ view: "auth" }, "", "/auth");
+    // `requested` + `id` fazem o App (destinoPosLogin) devolver a pessoa ao
+    // PRODUTO depois de entrar, em vez de largá-la no Perfil.
+    globalThis.history.pushState(
+      { view: "auth", requested: "product-detail", id: productId },
+      "",
+      "/auth",
+    );
     globalThis.dispatchEvent(new PopStateEvent("popstate"));
   };
 
@@ -172,7 +178,7 @@ export function ProductQA({
               placeholder="Escreva sua dúvida sobre o produto..."
               maxLength={500}
               aria-label="Sua dúvida sobre o produto"
-              className="min-h-[52px] w-full rounded-full border border-border bg-background px-4 py-3 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              className="min-h-[52px] w-full rounded-full border border-border bg-background px-4 py-3 pr-16 text-base text-foreground md:text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <button
               onClick={handleAsk}

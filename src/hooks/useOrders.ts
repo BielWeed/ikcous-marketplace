@@ -2692,15 +2692,30 @@ export function useOrders(
       const jaNaLista = ordersRef.current.some(
         (pedido) => pedido.id === updatedOrder.id,
       );
+      // Filtro de PAGAMENTO ligado (qualquer um) e um pedido que está na lista
+      // passou a outro pagamento: ele sai do recorte. O corte da página é no
+      // front, mas o total, o "1–12 de 15" e o CSV vêm do servidor — sem reler,
+      // ficavam velhos e o próximo pedido não entrava na vaga. `null` conta
+      // como "sem_cobranca", igual ao filtro; evento sem o campo não decide.
+      const filtroDePagamento = isAdmin
+        ? ultimaConsultaAdminRef.current?.[7]
+        : undefined;
+      const saiuDoFiltroDePagamento =
+        Boolean(filtroDePagamento) &&
+        filtroDePagamento !== "all" &&
+        jaNaLista &&
+        updatedOrder.payment_status !== undefined &&
+        (updatedOrder.payment_status ?? "sem_cobranca") !== filtroDePagamento;
       // A RPC existente recompõe página e total quando alguém entra ou sai
       // do recorte. O mesmo debounce do INSERT absorve rajadas de eventos.
       if (
-        (filtroConhecido ||
+        ((filtroConhecido ||
           (isAdmin &&
             ultimaConsultaAdminRef.current?.[7] === "pago" &&
             updatedOrder.payment_status === "pago" &&
             oldOrder?.payment_status !== "pago")) &&
-        (casaStatus ? !jaNaLista : jaNaLista)
+          (casaStatus ? !jaNaLista : jaNaLista)) ||
+        saiuDoFiltroDePagamento
       ) {
         if (debounceRecarregarInsertRef.current) {
           clearTimeout(debounceRecarregarInsertRef.current);

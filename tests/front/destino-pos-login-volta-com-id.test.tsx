@@ -441,4 +441,28 @@ describe("destino pós-login repassa o id do perfil público pedido", () => {
     ).toBeNull();
     expect(globalThis.history.state?.view).toBe("profile");
   });
+  it("visitante que pediu o login pelas perguntas do produto: depois de entrar volta ao PRODUTO, com o id", async () => {
+    await abrir();
+    await act(async () => {
+      globalThis.history.pushState(
+        { view: "auth", requested: "product-detail", id: "produto-A" },
+        "",
+        "/auth",
+      );
+      globalThis.dispatchEvent(
+        new PopStateEvent("popstate", { state: globalThis.history.state }),
+      );
+    });
+    await assentar();
+    expect(globalThis.location.pathname).toBe("/auth");
+
+    await entrar();
+
+    expect(
+      container?.querySelector('[data-testid="tela-produto"]'),
+    ).not.toBeNull();
+    expect(globalThis.location.pathname).toBe("/product-detail");
+    expect(globalThis.location.search).toBe("?id=produto-A");
+    expect(globalThis.history.state?.view).toBe("product-detail");
+  });
 });
