@@ -235,7 +235,12 @@ describe("Favoritos — lista vertical por categoria", () => {
       ordem.value = "nome";
       ordem.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    expect(rotulo().textContent).toContain("Ordem: A–Z");
+    // Só o texto do próprio rótulo (as <option> do select também têm texto).
+    const textoDoRotulo = Array.from(rotulo().childNodes)
+      .filter((no) => no.nodeType === Node.TEXT_NODE)
+      .map((no) => no.textContent)
+      .join("");
+    expect(textoDoRotulo).toBe("A–Z");
     expect(rotulo().getAttribute("aria-current")).toBe("true");
     act(() => {
       ordem.value = "original";

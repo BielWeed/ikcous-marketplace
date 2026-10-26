@@ -493,7 +493,7 @@ export const FavoritesView = React.memo(function FavoritesView({
             aria-current={ordem !== "original" ? "true" : undefined}
           >
             <ArrowDownUp aria-hidden="true" className="size-4" />
-            {ordem === "original" ? "Ordem" : `Ordem: ${ROTULO_ORDEM[ordem]}`}
+            {ordem === "original" ? "Ordem" : ROTULO_ORDEM[ordem]}
             <select
               aria-label="Ordem dos favoritos"
               className="absolute inset-0 size-full cursor-pointer opacity-0"

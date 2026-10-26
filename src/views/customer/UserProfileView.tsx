@@ -126,8 +126,9 @@ function ErroDaLista({ onRetry }: { onRetry: () => void }) {
         Não conseguimos carregar
       </p>
       <button
+        type="button"
         onClick={onRetry}
-        className="mt-3 rounded-full border border-zinc-200 px-5 py-2 text-xs font-bold uppercase tracking-wider text-zinc-900"
+        className="mt-3 rounded-full border border-zinc-200 px-5 py-2 min-h-11 text-xs font-bold uppercase tracking-wider text-zinc-900"
       >
         Tentar de novo
       </button>
