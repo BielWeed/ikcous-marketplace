@@ -2696,7 +2696,55 @@ const ROL_DA_97 = [
   "painel_inicio: assinatura e atributos conhecidos",
   "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
 ];
+// Lote 98 (20261391000000, a foto da devolucao e a pergunta tem teto: ALTER POLICY devolucoes_cliente_insert_policy com o teto de
+// 30 fotos soltas por conta, a funcao devolucao__fotos_soltas_da_conta que conta e o CHECK NOT VALID de 500 caracteres em
+// questions.question). A 98a prova o estado novo; a 98b a condicao EXATA da 20261175000000, a ausencia da funcao e do CHECK.
+// Nenhuma das duas le objeto do bucket nem pergunta.
+const ROL_DA_98A = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "devolucoes_cliente_insert_policy: INSERT so authenticated, na pasta do cliente e com o teto de 30 fotos soltas (condicao da 20261391000000)",
+  "devolucoes: nenhuma outra politica INSERT/ALL alcanca o bucket",
+  "questions: CHECK questions_question_ate_500_caracteres (char_length <= 500) existe",
+  "devolucao__fotos_soltas_da_conta(uuid, integer): corpo da 20261391000000 (md5), sql STABLE SECURITY INVOKER, search_path fixo, EXECUTE so authenticated e service_role",
+];
+const ROL_DA_98B = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "devolucoes_cliente_insert_policy: INSERT so authenticated, na pasta do cliente, condicao EXATA da 20261175000000",
+  "devolucoes: nenhuma outra politica INSERT/ALL alcanca o bucket",
+  "questions: question e text e o CHECK de 500 caracteres ainda NAO existe",
+  "devolucao__fotos_soltas_da_conta: ainda NAO existe",
+];
+// Lote 99 (20261391100000, ninguem grava evento de analise pela API: REVOKE INSERT do authenticated e DROP da politica de INSERT de
+// analytics_events). A 99a prova o estado novo; a 99b a politica EXATA da 20261112000000, o INSERT do authenticated e que nenhuma
+// funcao de public grava na tabela. Nenhuma das duas le evento.
+const ROL_DA_99A = [
+  "controle: catalogo publico visivel",
+  "analytics_events: tabela com RLS ligada e a leitura do admin (analytics_events_select_policy) no lugar",
+  "analytics_events: nenhuma politica de INSERT/ALL",
+  "analytics_events: anon e authenticated sem INSERT (tabela e coluna), service_role com INSERT",
+];
+const ROL_DA_99B = [
+  "controle: catalogo publico visivel",
+  "analytics_events: tabela com RLS ligada e a leitura do admin (analytics_events_select_policy) no lugar",
+  "analytics_events_insert_policy: a da 20261112000000 (INSERT so authenticated, auth.uid() = user_id) e nenhuma outra de INSERT/ALL",
+  "analytics_events: authenticated com INSERT, anon sem, e nenhuma funcao de public grava na tabela",
+];
+// Lote 100 (20261391200000, o Financeiro descreve a venda do balcao como o app mostra: fin__movimentos redefinida, so a coluna
+// descricao). A 100a e a 100b tem o mesmo rol; a 100a espera o corpo da 20261391200000 e a 100b o da 20261177000000.
+const ROL_DA_100 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin__movimentos: corpo exato (md5)",
+  "fin__movimentos: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)",
+  "fin__movimentos: sem EXECUTE para PUBLIC, anon ou authenticated",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado": ROL_DA_98A,
+  "98b-antes-a-foto-da-devolucao-e-a-pergunta-tem-teto-base-vigente":
+    ROL_DA_98B,
+  "99a-conferir-ninguem-grava-evento-de-analise-aplicado": ROL_DA_99A,
+  "99b-antes-ninguem-grava-evento-de-analise-base-vigente": ROL_DA_99B,
+  "100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado": ROL_DA_100,
+  "100b-antes-o-financeiro-descreve-a-venda-do-balcao-base-vigente": ROL_DA_100,
   "97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado": ROL_DA_97,
   "97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente": ROL_DA_97,
   "90a-conferir-busca-do-painel-por-codigo-aplicado": [
