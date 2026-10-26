@@ -1,4 +1,15 @@
 {
+  "1.5.75": {
+    "titulo": "Pedido não sai em dobro ao fechar o app e voltar",
+    "novidades": [],
+    "correcoes": [
+      "Finalizar compra: se a internet cair no momento de enviar e você fechar e abrir o app, ao tocar em Finalizar de novo o app reconhece que é o mesmo pedido e mostra o original, em vez de criar um segundo pedido e baixar o estoque duas vezes. A conferência vale por 30 minutos.",
+      "Finalizar compra: o botão Voltar do celular não sai mais da tela enquanto o pedido está sendo enviado; aparece o aviso \"Aguarde, estamos enviando seu pedido.\". Assim o cupom de uso único não vira um segundo pedido sem desconto.",
+      "Finalizar compra: quem tem conta e está com a sessão vencida não tem mais o pedido enviado como visitante (sem conta e sumido de Meus pedidos). O app avisa \"Sua sessão expirou. Entre de novo para finalizar o pedido.\" e mostra o botão para entrar de novo. Com internet muito ruim, esse aviso também pode aparecer; é só tentar de novo.",
+      "App instalado: quando há uma atualização sendo baixada, o app espera ela terminar antes de guardar a página para usar sem internet."
+    ],
+    "melhorias": []
+  },
   "1.5.74": {
     "titulo": "Loja mais fácil de usar no celular e com leitor de tela",
     "novidades": [],

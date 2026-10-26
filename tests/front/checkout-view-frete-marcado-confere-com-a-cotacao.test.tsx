@@ -20,6 +20,12 @@ const shippingCalculatorProps: Array<{ forcarNovaCotacaoEm?: number }> = [];
 
 // `chaveDoCacheDeFrete` real (o formato da chave é o contrato do envelope);
 // só o COMPONENTE vira dublê neutro.
+// A conferência da sessão antes de enviar (caça 7) tem suíte própria
+// (checkout-pedido-chave-voltar-e-sessao.test.tsx); aqui a sessão está viva.
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+
 vi.mock("@/components/ui/custom/ShippingCalculator", async (importOriginal) => {
   const real =
     await importOriginal<

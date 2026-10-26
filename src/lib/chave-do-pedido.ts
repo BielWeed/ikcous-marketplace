@@ -11,18 +11,30 @@
 // segundo pedido nasce inteiro — estoque e cupom debitados em dobro. Com
 // ela, o servidor reconhece a compra e devolve o pedido original.
 //
-// POR QUE sessionStorage: o recarregar da página é outra retentativa real
-// (pedido gravado, resposta perdida, F5). A chave precisa sobreviver ao
-// remount do CheckoutView. Morar na SESSÃO (e não no localStorage) é o
-// que impede uma compra de amanhã, num carrinho idêntico, herdar a chave
-// de hoje: fechar a aba esquece tudo — e o sucesso esquece na hora.
+// POR QUE localStorage, COM DONO E VALIDADE (caça 7, 26/10/2026): o recarregar
+// da página é uma retentativa real (pedido gravado, resposta perdida, F5) —
+// e FECHAR e abrir o app também. No sessionStorage a chave morria junto com o
+// app, mas o carrinho seguia no localStorage: o cliente apertava Finalizar de
+// novo, a chave girava e nascia o segundo pedido (estoque baixado em dobro). O
+// registro agora mora no localStorage, com duas travas que substituem o
+// "morre ao fechar": o DONO no nome da chave de armazenamento (a troca de
+// conta nunca herda a chave de outra) e a VALIDADE de 30 min gravada no
+// registro (a compra de amanhã, num carrinho idêntico, não herda a de hoje).
+// O sucesso esquece na hora, e o logout/troca de conta apaga o registro.
 //
 // A impressão digital é CANÔNICA (itens ordenados, decimais fixados): a
 // ordem em que o cliente pôs os itens no carrinho não é mudança de compra.
 
+import { PRAZO_DA_RETENTATIVA_MS } from "./pedido-sem-resposta";
 import { gerarUuidV4 as gerarUuidDaCompra } from "./uuid-v4";
 
-const CHAVE_DE_ARMAZENAMENTO = "ikcous-chave-do-pedido";
+/** Prefixo comum dos registros: `<prefixo><id da conta | convidado>`. */
+export const PREFIXO_DA_CHAVE_DO_PEDIDO = "ikcous-chave-do-pedido:";
+const DONO_CONVIDADO = "convidado";
+
+function chaveDeArmazenamento(dono: string | null): string {
+  return `${PREFIXO_DA_CHAVE_DO_PEDIDO}${dono ?? DONO_CONVIDADO}`;
+}
 
 export interface CompraParaImpressao {
   items: ReadonlyArray<{
@@ -89,6 +101,8 @@ export function impressaoDaCompra(compra: CompraParaImpressao): string {
 interface RegistroDaChave {
   impressao: string;
   chave: string;
+  /** Epoch ms em que a chave deixa de valer (criação + 30 min, nunca estendida). */
+  expiraEm: number;
 }
 
 export interface ArmazenamentoSimples {
@@ -104,22 +118,75 @@ export interface GerenciadorDeChaveDaCompra {
   esquecer(): void;
 }
 
+export interface OpcoesDoGerenciadorDeChave {
+  /** Id da conta que compra; `null` (padrão) é o convidado. */
+  dono?: string | null;
+  /** Relógio injetável, para a validade ser testada sem esperar. */
+  agora?: () => number;
+}
+
+/**
+ * O armazenamento da chave é o localStorage. Até o ACESSO a ele pode lançar
+ * (SecurityError, política do navegador): sem armazenamento a chave continua
+ * valendo na instância, e a compra nunca fica presa aqui.
+ */
+export function armazenamentoDaChaveDoPedido(): ArmazenamentoSimples {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    };
+  }
+}
+
+/** Troca de conta: o registro de quem saiu sai junto (o logout varre pelo prefixo). */
+export function esquecerChaveDoPedidoDe(
+  dono: string,
+  armazenamento: ArmazenamentoSimples = armazenamentoDaChaveDoPedido(),
+): void {
+  if (!dono) return;
+  try {
+    armazenamento.removeItem(chaveDeArmazenamento(dono));
+  } catch {
+    // Sem apagar, o registro vence sozinho em 30 min e tem o dono no nome.
+  }
+}
+
 export function criarGerenciadorDeChave(
   armazenamento: ArmazenamentoSimples,
   gerarChave: () => string = gerarUuidDaCompra,
+  opcoes: OpcoesDoGerenciadorDeChave = {},
 ): GerenciadorDeChaveDaCompra {
+  const chaveDoRegistro = chaveDeArmazenamento(opcoes.dono ?? null);
+  const agora = opcoes.agora ?? Date.now;
   let registroCorrente: RegistroDaChave | null = null;
   let podeLerArmazenamento = true;
+
+  // Vencido ou com validade absurda (além do prazo que este código dá) =
+  // registro que não é nosso: não vale.
+  function aindaVale(registro: RegistroDaChave): boolean {
+    const hoje = agora();
+    return (
+      Number.isFinite(registro.expiraEm) &&
+      registro.expiraEm > hoje &&
+      registro.expiraEm <= hoje + PRAZO_DA_RETENTATIVA_MS
+    );
+  }
 
   function lerRegistro(): RegistroDaChave | null {
     if (!podeLerArmazenamento) return null;
     try {
-      const cru = armazenamento.getItem(CHAVE_DE_ARMAZENAMENTO);
+      const cru = armazenamento.getItem(chaveDoRegistro);
       if (!cru) return null;
       const registro = JSON.parse(cru) as RegistroDaChave;
       if (
         typeof registro?.impressao !== "string" ||
-        typeof registro?.chave !== "string"
+        typeof registro?.chave !== "string" ||
+        typeof registro?.expiraEm !== "number" ||
+        !aindaVale(registro)
       ) {
         return null;
       }
@@ -133,8 +200,13 @@ export function criarGerenciadorDeChave(
     chavePara(impressao: string): string {
       // A impressão corrente da instância manda: dentro da mesma página, o
       // que o gerente acabou de decidir não é reaberto com o storage (duas
-      // impressões alternando no mesmo storage trocaria de chave no ar).
-      if (registroCorrente?.impressao === impressao) {
+      // impressões alternando no mesmo storage trocaria de chave no ar). A
+      // validade vale aqui também: o app aberto a noite inteira não reaproveita
+      // a chave de ontem.
+      if (
+        registroCorrente?.impressao === impressao &&
+        aindaVale(registroCorrente)
+      ) {
         return registroCorrente.chave;
       }
 
@@ -145,10 +217,14 @@ export function criarGerenciadorDeChave(
       }
 
       const chave = gerarChave();
-      registroCorrente = { impressao, chave };
+      registroCorrente = {
+        impressao,
+        chave,
+        expiraEm: agora() + PRAZO_DA_RETENTATIVA_MS,
+      };
       try {
         armazenamento.setItem(
-          CHAVE_DE_ARMAZENAMENTO,
+          chaveDoRegistro,
           JSON.stringify(registroCorrente),
         );
         podeLerArmazenamento = true;
@@ -161,7 +237,7 @@ export function criarGerenciadorDeChave(
     esquecer(): void {
       registroCorrente = null;
       try {
-        armazenamento.removeItem(CHAVE_DE_ARMAZENAMENTO);
+        armazenamento.removeItem(chaveDoRegistro);
       } catch {
         // O pedido já nasceu. Não lançar nem reler a chave que ficou para trás.
         podeLerArmazenamento = false;

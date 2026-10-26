@@ -51,6 +51,8 @@ import {
 } from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
+  type GerenciadorDeChaveDaCompra,
+  armazenamentoDaChaveDoPedido,
   criarGerenciadorDeChave,
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
@@ -106,7 +108,10 @@ import {
   lerPedidoSemResposta,
   limparPedidoSemResposta,
 } from "@/lib/pedido-sem-resposta";
-import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
+import {
+  PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+  aguardarComPrazo,
+} from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   type RascunhoDoCheckout,
@@ -123,6 +128,7 @@ import {
   classificarRecusaDoPedido,
 } from "@/lib/recusaDoPedido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import {
   celularBrasileiroCompleto,
@@ -352,6 +358,10 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
   }
   return classificarRecusaDoPedido(error);
 };
+
+/** Sessão do Supabase vencida na hora de finalizar (caça 7): o pedido não sai como anônimo. */
+const MENSAGEM_SESSAO_EXPIRADA =
+  "Sua sessão expirou. Entre de novo para finalizar o pedido.";
 
 /**
  * A frase de quem compra SEM CONTA quando não se sabe se o pedido chegou. É
@@ -1478,11 +1488,28 @@ export function CheckoutViewDaConta({
   // POR COMPRA — impressão digital de itens+frete+cupom+total+CEP — repete
   // a chave na retentativa (rede caiu DEPOIS do commit: o segundo clique
   // legítimo recebe o pedido que JÁ nasceu, não um gêmeo) e esquece no
-  // sucesso. Morando em sessionStorage, sobrevive ao recarregar da página
-  // e morre ao fechar a aba; impressão nova (compra diferente) gira outra.
-  const gerenteDaChaveRef = useRef<ReturnType<
-    typeof criarGerenciadorDeChave
-  > | null>(null);
+  // sucesso. Morando em localStorage, com a conta no nome e 30 min de validade,
+  // sobrevive a recarregar a página E a fechar e abrir o app (caça 7, 26/10);
+  // impressão nova (compra diferente) gira outra.
+  const gerenteDaChaveRef = useRef<{
+    conta: string | null;
+    gerente: GerenciadorDeChaveDaCompra;
+  } | null>(null);
+  // Um gerente por CONTA: o registro leva o dono no nome, e quem compra
+  // (convidado ou conta) decide de qual registro a chave sai.
+  const gerenteDaChaveDe = (conta: string | null) => {
+    if (gerenteDaChaveRef.current?.conta !== conta) {
+      gerenteDaChaveRef.current = {
+        conta,
+        gerente: criarGerenciadorDeChave(
+          armazenamentoDaChaveDoPedido(),
+          undefined,
+          { dono: conta },
+        ),
+      };
+    }
+    return gerenteDaChaveRef.current.gerente;
+  };
   // Sobrevive à recarga: o catálogo pode ter reduzido o carrinho nesse meio-tempo.
   const pedidoCongeladoRef = useRef<PedidoCongelado | null>(pedidoRestaurado);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -2197,6 +2224,7 @@ export function CheckoutViewDaConta({
   // Android fechar o painel em vez de sair da tela de checkout.
   const [isSummaryPanelOpen, setIsSummaryPanelOpen] = useState(false);
   const hasPushedSummaryPanelState = useRef(false);
+  const hasPushedEnvioState = useRef(false);
 
   // A COTAÇÃO DE FRETE VALE PARA UM DESTINO (laudo 31/08, item E —
   // reconciliação de CEP): o frete é cotado no CARRINHO (campo de CEP
@@ -2686,6 +2714,27 @@ export function CheckoutViewDaConta({
     }
   }, [isSummaryPanelOpen]);
 
+  // Voltar durante o ENVIO (caça 7, 26/10/2026): sem isto o Voltar do celular
+  // desmontava a tela com o pedido a caminho, a resposta de sucesso era
+  // descartada (`montadoRef`) e o carrinho seguia cheio — o cupom de uso único
+  // que o 1º pedido gastou mudava a compra e o 2º nascia sem desconto. Mesmo
+  // mecanismo do modal de endereço: uma entrada de guarda no histórico faz o
+  // Voltar cair no override abaixo em vez de sair da página. O teto de 30 s do
+  // envio (`aguardarComPrazo`) garante que a guarda se solta; a entrada que
+  // sobra no histórico depois de uma falha só custa um toque a mais no Voltar.
+  useEffect(() => {
+    if (isSubmitting && !hasPushedEnvioState.current) {
+      globalThis.history.pushState(
+        { modal: "checkout-enviando" },
+        "",
+        globalThis.location.pathname,
+      );
+      hasPushedEnvioState.current = true;
+    } else if (!isSubmitting) {
+      hasPushedEnvioState.current = false;
+    }
+  }, [isSubmitting]);
+
   // Handle back button override for address modal
   useEffect(() => {
     if (isAddressModalOpen) {
@@ -2701,6 +2750,17 @@ export function CheckoutViewDaConta({
       // Sem este ramo, o voltar do Android saía direto para o carrinho vazio,
       // sem aviso, com o pedido reservado e o prazo de 30 minutos correndo.
       onSetBackOverride(() => () => onNavigate("home"));
+    } else if (isSubmitting) {
+      onSetBackOverride(() => () => {
+        // O Voltar já gastou a entrada de guarda: devolve-a, para o próximo
+        // toque também ser retido em vez de sair da tela.
+        globalThis.history.pushState(
+          { modal: "checkout-enviando" },
+          "",
+          globalThis.location.pathname,
+        );
+        toast.info("Aguarde, estamos enviando seu pedido.");
+      });
     } else {
       onSetBackOverride(null);
     }
@@ -2711,6 +2771,7 @@ export function CheckoutViewDaConta({
     isSummaryPanelOpen,
     showSuccess,
     aguardandoPagamento,
+    isSubmitting,
     onSetBackOverride,
     onNavigate,
   ]);
@@ -4109,10 +4170,7 @@ export function CheckoutViewDaConta({
     // O eixo online x entrega é decidido UMA vez e serve à impressão da
     // chave e à escolha da RPC (ressalva da revisão de CheckoutView-1756).
     const ehOnline = paymentMethod === "online";
-    gerenteDaChaveRef.current ??= criarGerenciadorDeChave(
-      globalThis.sessionStorage,
-    );
-    orderData.idempotencyKey = gerenteDaChaveRef.current.chavePara(
+    orderData.idempotencyKey = gerenteDaChaveDe(contaEsperada).chavePara(
       impressaoDaCompra({
         // A impressão enxerga a CHAVE da linha (as duas escolhas), não só o
         // primeiro id que a RPC recebe: sem isso, trocar Azul-P por Azul-M e
@@ -4138,6 +4196,30 @@ export function CheckoutViewDaConta({
         paymentMethod: ehOnline ? "online" : "entrega",
       }),
     );
+
+    // SESSÃO VENCIDA + REDE RUIM (caça 7): o pedido de quem tem conta, enviado
+    // sem sessão, seria gravado como anônimo (sem conta nem endereço) e sumiria
+    // de "Meus pedidos". Confere a sessão que o cliente usa AGORA antes de
+    // enviar. Segue o contrato de `sessaoAindaEhDoDono`: falha ao ler a sessão
+    // (ou demora além do prazo) = NÃO envia — "não sei" nunca vira "pode
+    // enviar". Convidada não tem conta para conferir.
+    if (contaEsperada) {
+      const sessaoVale = await aguardarComPrazo(
+        sessaoAindaEhDoDono(contaEsperada),
+        PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+        () => new Error("A conferência da sessão demorou demais."),
+      ).catch(() => false);
+      if (!sessaoVale) {
+        toast.error(MENSAGEM_SESSAO_EXPIRADA);
+        setRecusaDoUltimoClique({
+          acao: "entrar_na_conta",
+          mensagem: MENSAGEM_SESSAO_EXPIRADA,
+        });
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
+    }
 
     await enviarPedido({
       orderData,
@@ -4167,10 +4249,7 @@ export function CheckoutViewDaConta({
     // Também vale quando a RPC confirmou o pedido, mas a leitura do total
     // falhou: a compra saiu do carrinho, sem autorizar pagamento.
     const limparCompraCriada = () => {
-      gerenteDaChaveRef.current ??= criarGerenciadorDeChave(
-        globalThis.sessionStorage,
-      );
-      gerenteDaChaveRef.current.esquecer();
+      gerenteDaChaveDe(pedido.contaEsperada).esquecer();
       pedidoCongeladoRef.current = null;
       limparPedidoSemResposta();
       limparRascunhoDoCheckout(globalThis.sessionStorage);
