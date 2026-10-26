@@ -38,6 +38,52 @@ const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
 export const TEXTO_REEMBOLSO_NA_FILA =
   "Devolução concluída. O reembolso ficou registrado e o Mercado Pago é acionado em até 10 minutos.";
 
+/** O `status` que a edge `estornar-pagamento` devolve numa resposta 2xx:
+ * `concluido` (200), `falhou`/`recusado` (200) ou `em_processamento` (202).
+ * Nenhum deles chega como `error` no supabase-js — só o corpo diz o que houve. */
+function statusDaEdge(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const status = (data as { status?: unknown }).status;
+  return typeof status === "string" ? status : null;
+}
+
+/** O aviso do reembolso conta o que o Mercado Pago de fato respondeu: só
+ * `concluido` diz "enviado". Sem status legível, não afirma nada. */
+function avisarDesfechoDoReembolso(
+  status: string | null,
+  valor: string,
+  estoque: string,
+) {
+  switch (status) {
+    case "concluido":
+      toast.success(
+        `Devolução concluída. Reembolso de ${valor} enviado ao Mercado Pago.${estoque}`,
+      );
+      return;
+    case "em_processamento":
+      toast.info(
+        `Devolução concluída. O reembolso de ${valor} está em andamento no Mercado Pago. Acompanhe no pedido, em Devolução de dinheiro.${estoque}`,
+      );
+      return;
+    case "falhou":
+      toast.warning(
+        `Devolução concluída, mas o Mercado Pago não conseguiu devolver ${valor}. Abra o pedido, em Devolução de dinheiro, para ver o motivo e tentar de novo.${estoque}`,
+        { duration: 15_000 },
+      );
+      return;
+    case "recusado":
+      toast.warning(
+        `Devolução concluída, mas o Mercado Pago recusou o reembolso de ${valor}. Abra o pedido, em Devolução de dinheiro, para ver o motivo.${estoque}`,
+        { duration: 15_000 },
+      );
+      return;
+    default:
+      toast.info(
+        `Devolução concluída. Não consegui confirmar o reembolso de ${valor} agora. Veja a situação no pedido, em Devolução de dinheiro.${estoque}`,
+      );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Lista do painel
 // ---------------------------------------------------------------------------
@@ -642,16 +688,12 @@ export function useDevolucaoAdmin(
         // Falha aqui NÃO é falha da devolução: a linha está em
         // `order_refunds` e o cron a executa com a mesma idempotência.
         try {
-          const { error } = await supabase.functions.invoke(
+          const { data, error } = await supabase.functions.invoke(
             "estornar-pagamento",
             { body: { refund_id: r.refund_id } },
           );
           if (error) toast.info(TEXTO_REEMBOLSO_NA_FILA + estoque);
-          else {
-            toast.success(
-              `Devolução concluída. Reembolso de ${valor} enviado ao Mercado Pago.${estoque}`,
-            );
-          }
+          else avisarDesfechoDoReembolso(statusDaEdge(data), valor, estoque);
         } catch {
           toast.info(TEXTO_REEMBOLSO_NA_FILA + estoque);
         }

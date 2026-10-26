@@ -731,7 +731,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   {painel === "cancelar"
                     ? "Manter pedido"
                     : painel === "avancar"
-                      ? "Cancelar"
+                      ? "Voltar"
                       : "Ainda não"}
                 </button>
                 <button

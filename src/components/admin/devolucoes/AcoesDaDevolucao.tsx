@@ -8,7 +8,7 @@ import {
   Unlock,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import {
   LocalBufferedInput,
@@ -58,6 +58,57 @@ function pagoPeloApp(detalhe: DevolucaoDetalhe): boolean {
   return (
     p?.payment_method === "online" &&
     (p.payment_status === "pago" || p.payment_status === "pago_apos_expirar")
+  );
+}
+
+/** Confirmação em linha (mesmo desenho da etiqueta de ida): aviso + "Confirmar"
+ * + "Cancelar". Quem chama decide o que a confirmação dispara. */
+function ConfirmacaoDaAcao({
+  testId,
+  aviso,
+  rotuloConfirmar,
+  ocupado,
+  carregando,
+  onConfirmar,
+  onCancelar,
+}: Readonly<{
+  testId: string;
+  aviso: string;
+  rotuloConfirmar: string;
+  ocupado: boolean;
+  carregando: ReactNode;
+  onConfirmar: () => void;
+  onCancelar: () => void;
+}>) {
+  return (
+    <div
+      data-testid={testId}
+      className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3"
+    >
+      <p className="flex items-start gap-2 text-xs font-medium leading-snug text-amber-400">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+        <span>{aviso}</span>
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={ocupado}
+          onClick={onConfirmar}
+          className={cn(BOTAO_PRINCIPAL, "flex-1")}
+        >
+          {carregando ?? <Check className="size-4" />}
+          {rotuloConfirmar}
+        </button>
+        <button
+          type="button"
+          disabled={ocupado}
+          onClick={onCancelar}
+          className={BOTAO_SECUNDARIO}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -121,6 +172,13 @@ export function AcoesDaDevolucao({
   // `true` quando esse id ainda é o vínculo preso na tela.
   const [confirmadoPara, setConfirmadoPara] = useState<string | null>(null);
   const confirmado = confirmadoPara === detalhe.me_reverse_id;
+  // Achados 2 e 6 (caçada de 26/10/2026): o mesmo padrão da etiqueta de ida
+  // (EtiquetaDoPedidoCard) — o 1º toque só ABRE a confirmação, a ação sai no
+  // "Confirmar". Comprar o código com o saldo do Melhor Envio e marcar como
+  // recebida não têm volta num toque só.
+  const [confirmando, setConfirmando] = useState<
+    "etiqueta" | "recebida" | null
+  >(null);
 
   const sujo =
     mensagem.trim() !== "" ||
@@ -376,17 +434,40 @@ export function AcoesDaDevolucao({
                     "O código de postagem já saiu, mas a declaração de conteúdo (DC-e) não veio do Melhor Envio ainda. Busque de novo: não gera compra nova."
                   : "O pedido saiu por etiqueta do Melhor Envio: gere o código de postagem reversa. O cliente leva o pacote a uma agência dos Correios com ele."}
               </p>
-              <button
-                type="button"
-                disabled={ocupado}
-                onClick={() => void ficha.gerarEtiquetaReversa()}
-                className={cn(BOTAO_PRINCIPAL, "w-full")}
-              >
-                {girando("etiqueta") ?? <Tag className="size-4" />}
-                {detalhe.codigo_postagem
-                  ? "Buscar DC-e / conferir código"
-                  : "Gerar código de postagem"}
-              </button>
+              {confirmando === "etiqueta" ? (
+                <ConfirmacaoDaAcao
+                  testId="confirmar-etiqueta-reversa"
+                  aviso="A etiqueta é comprada com o saldo da SUA conta no Melhor Envio."
+                  rotuloConfirmar="Confirmar e gerar"
+                  ocupado={ocupado}
+                  carregando={girando("etiqueta")}
+                  onConfirmar={() => {
+                    setConfirmando(null);
+                    void ficha.gerarEtiquetaReversa();
+                  }}
+                  onCancelar={() => setConfirmando(null)}
+                />
+              ) : (
+                <button
+                  type="button"
+                  disabled={ocupado}
+                  onClick={() => {
+                    // Só quem COMPRA pede confirmação: com o código já gravado
+                    // o botão apenas busca a DC-e e "não gera compra nova".
+                    if (detalhe.codigo_postagem) {
+                      void ficha.gerarEtiquetaReversa();
+                    } else {
+                      setConfirmando("etiqueta");
+                    }
+                  }}
+                  className={cn(BOTAO_PRINCIPAL, "w-full")}
+                >
+                  {girando("etiqueta") ?? <Tag className="size-4" />}
+                  {detalhe.codigo_postagem
+                    ? "Buscar DC-e / conferir código"
+                    : "Gerar código de postagem"}
+                </button>
+              )}
             </div>
           )}
 
@@ -420,17 +501,31 @@ export function AcoesDaDevolucao({
             </div>
           )}
 
-          {acoes.includes("marcar_recebida") && (
-            <button
-              type="button"
-              disabled={ocupado}
-              onClick={() => void ficha.marcarRecebida()}
-              className={cn(BOTAO_PRINCIPAL, "w-full")}
-            >
-              {girando("registrar") ?? <PackageCheck className="size-4" />}
-              Marcar como recebida
-            </button>
-          )}
+          {acoes.includes("marcar_recebida") &&
+            (confirmando === "recebida" ? (
+              <ConfirmacaoDaAcao
+                testId="confirmar-recebida"
+                aviso="Confirma que o produto já chegou na loja? Depois disso a devolução vai para a conferência dos itens e não volta para “a caminho”."
+                rotuloConfirmar="Confirmar recebimento"
+                ocupado={ocupado}
+                carregando={girando("registrar")}
+                onConfirmar={() => {
+                  setConfirmando(null);
+                  void ficha.marcarRecebida();
+                }}
+                onCancelar={() => setConfirmando(null)}
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={ocupado}
+                onClick={() => setConfirmando("recebida")}
+                className={cn(BOTAO_PRINCIPAL, "w-full")}
+              >
+                {girando("registrar") ?? <PackageCheck className="size-4" />}
+                Marcar como recebida
+              </button>
+            ))}
         </div>
       )}
 
