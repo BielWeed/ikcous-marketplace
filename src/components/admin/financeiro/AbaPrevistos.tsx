@@ -1,4 +1,4 @@
-import { CalendarClock, ExternalLink, Plus } from "lucide-react";
+import { CalendarClock, ChevronRight, Plus } from "lucide-react";
 import { useMemo } from "react";
 
 import { usePrevistosFinanceiros } from "@/hooks/useFinanceiro";
@@ -171,8 +171,8 @@ function CartaoDoPrevisto({
               onClick={() => aoAbrirPedido(item.pedidoId ?? "")}
               className={cn(CLASSE_PILULA_SECUNDARIA, "mt-3 w-full gap-2")}
             >
-              <ExternalLink aria-hidden="true" className="size-4 shrink-0" />
               Abrir pedido #{numeroDoPedido(item.pedidoId)}
+              <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
             </button>
           ) : null}
         </>

@@ -2,7 +2,7 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowUpRight,
-  ExternalLink,
+  ChevronRight,
   Lock,
   ReceiptText,
   X,
@@ -124,8 +124,8 @@ export function DetalheDoLancamentoFolha({
                 onClick={() => aoAbrirPedido(linha.pedidoId ?? "")}
                 className={`${CLASSE_BOTAO_PRIMARIO} flex-1`}
               >
-                <ExternalLink aria-hidden="true" className="size-4" />
                 Abrir pedido #{numeroDoPedido(linha.pedidoId)}
+                <ChevronRight aria-hidden="true" className="size-4" />
               </button>
             ) : null}
             {podeMexer && linha.status === "previsto" ? (

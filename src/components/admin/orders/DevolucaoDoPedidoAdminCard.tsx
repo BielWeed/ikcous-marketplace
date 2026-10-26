@@ -1,4 +1,4 @@
-import { ArrowUpRight, RotateCcw } from "lucide-react";
+import { ChevronRight, RotateCcw } from "lucide-react";
 
 import {
   SeloDoStatus,
@@ -105,7 +105,7 @@ export function DevolucaoDoPedidoAdminCard({
                   )}
                 </div>
                 {onAbrirDevolucoes && (
-                  <ArrowUpRight
+                  <ChevronRight
                     className={cn(
                       "size-4 shrink-0 transition-colors group-hover:text-admin-gold",
                       aberta ? "text-admin-gold" : "text-zinc-500",

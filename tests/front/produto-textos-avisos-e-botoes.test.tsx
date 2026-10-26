@@ -10,7 +10,7 @@
 //   6. custo apagado tecla por tecla fica vazio (sem custo), não "0,00"
 //   7. peso acima de 30 kg avisa (suave) que talvez sejam gramas
 //   8. jargão: "offline", "1 ativas", "UND", "ID do Sistema", "banco de dados"
-//   9. o resumo de "Custo e lucro" não diz "só você vê" com promoção ligada
+//   9. o resumo de "Custo e lucro" fala só de custo (a promoção saiu de lá)
 //
 // Montagem real (react-dom/client + jsdom), molde de produto-basico-primeiro.
 import { act } from "react";
@@ -512,19 +512,18 @@ describe("AdminProductFormView — textos, avisos e botões (u179)", () => {
   });
 
   describe("9. resumo de 'Custo e lucro'", () => {
-    it("com a promoção ligada diz que o cliente vê o De/Por (não 'só você vê')", async () => {
+    it("fala só de custo, mesmo com a promoção ligada (a promoção mora junto do preço)", async () => {
       await montar();
-      expect(secao("Custo e lucro").textContent).toContain(
-        "Custo e promoção · opcional",
-      );
+      expect(secao("Custo e lucro").textContent).toContain("Custo · opcional");
       await act(async () => {
         (
           document.getElementById("product-promo-active") as HTMLInputElement
         ).click();
       });
       const texto = secao("Custo e lucro").textContent ?? "";
-      expect(texto).toContain("Promoção");
-      expect(texto).toContain("o cliente vê o preço De/Por");
+      expect(texto).toContain("Custo · opcional");
+      expect(texto).not.toContain("Promoção");
+      expect(texto).not.toContain("De/Por");
       expect(texto).not.toContain("só você vê");
     });
   });
