@@ -1340,6 +1340,42 @@ export function derivarCancelledAfterShipping(
   return valorAtual;
 }
 
+/** O que o pedido tinha no instante em que a atualização otimista o mudou. */
+type RetratoAntesDoOtimista = Pick<
+  Order,
+  "status" | "cancelledAfterShipping" | "updatedAt"
+>;
+
+/**
+ * Desfaz a atualização otimista de `updateOrderStatus` depois que a gravação
+ * FALHOU — só o que ela mesma escreveu (o status e a marca de "já tinha
+ * saído"), e só se o pedido continua como ela o deixou.
+ *
+ * Antes o desfazer devolvia a cópia inteira do pedido tirada antes do clique.
+ * Isso protegia os outros pedidos, mas passava por cima do próprio: o
+ * pagamento confirmado, o cancelamento da cliente ou o status que outra aba
+ * gravou enquanto a gravação estava no ar sumiam da tela, e o painel voltava
+ * a mostrar o pedido como ele era (status errado, data de pagamento perdida).
+ *
+ * A atualização otimista não mexe em `updatedAt`; toda versão que chega do
+ * servidor (realtime ou consulta) traz o dela. Então `updatedAt` diferente
+ * significa "chegou coisa mais nova": a mais nova vale e nada é desfeito.
+ * `status` diferente do otimista diz o mesmo quando a versão não trouxe data.
+ */
+export function desfazerAtualizacaoOtimistaDoPedido(
+  pedido: Order,
+  antes: RetratoAntesDoOtimista,
+  statusOtimista: OrderStatus,
+): Order {
+  if (pedido.updatedAt !== antes.updatedAt) return pedido;
+  if (pedido.status !== statusOtimista) return pedido;
+  return {
+    ...pedido,
+    status: antes.status,
+    cancelledAfterShipping: antes.cancelledAfterShipping,
+  };
+}
+
 /**
  * Estado da conexão realtime do canal de pedidos (auditoria de 26/08/2026,
  * achado do selo "Operações ao Vivo"/"Moderação Ativa" no painel). O
@@ -3208,7 +3244,12 @@ export function useOrders(
       statusEsperado?: OrderStatus,
     ) => {
       const originalOrder = orders.find((pedido) => pedido.id === orderId);
-      let originalCache: Order | undefined;
+      // O retrato do pedido NO INSTANTE em que a atualização otimista o muda
+      // (um para a lista na tela, outro para o cache do módulo, que pode estar
+      // numa versão diferente). É só com ele que a falha desfaz — ver
+      // `desfazerAtualizacaoOtimistaDoPedido`.
+      let retratoNaTela: RetratoAntesDoOtimista | undefined;
+      let retratoNoCache: RetratoAntesDoOtimista | undefined;
       let atualizacaoOtimistaAplicada = false;
       try {
         // Find the order in the current state to check its existing status
@@ -3420,9 +3461,24 @@ export function useOrders(
         }
 
         // Optimistic update
-        originalCache = cachedAdminOrders?.find(
+        const pedidoNoCache = cachedAdminOrders?.find(
           (pedido) => pedido.id === orderId,
         );
+        // `ordersRef` é a lista MAIS RECENTE da tela; `originalOrder` é a do
+        // início da chamada, que pode ter ficado velha durante a releitura.
+        const pedidoNaTela =
+          ordersRef.current.find((pedido) => pedido.id === orderId) ??
+          originalOrder;
+        retratoNoCache = pedidoNoCache && {
+          status: pedidoNoCache.status,
+          cancelledAfterShipping: pedidoNoCache.cancelledAfterShipping,
+          updatedAt: pedidoNoCache.updatedAt,
+        };
+        retratoNaTela = pedidoNaTela && {
+          status: pedidoNaTela.status,
+          cancelledAfterShipping: pedidoNaTela.cancelledAfterShipping,
+          updatedAt: pedidoNaTela.updatedAt,
+        };
         atualizacaoOtimistaAplicada = true;
         cachedAdminOrders = (cachedAdminOrders || []).map((o) => {
           if (o.id === orderId) {
@@ -3554,8 +3610,10 @@ export function useOrders(
       } catch (err: any) {
         console.error("Error updating status:", err);
         // As guardas anteriores à atualização já mostram o próprio aviso.
-        // Na falha da gravação, reverta só este pedido: eventos de outros
-        // pedidos e novas vendas recebidos durante o envio continuam válidos.
+        // Na falha da gravação, reverta só este pedido, e só o que a
+        // atualização otimista escreveu: eventos de outros pedidos, novas
+        // vendas e versões mais novas DESTE pedido recebidas durante o envio
+        // continuam válidos.
         const erroJaTratado =
           err instanceof ErroPedidoMudou ||
           err instanceof ErroReleituraDeStatusFalhou ||
@@ -3564,16 +3622,21 @@ export function useOrders(
           err instanceof ErroFilaOfflineSemSessao ||
           err instanceof ErroCancelamentoNaoConcluido;
         if (!erroJaTratado && atualizacaoOtimistaAplicada) {
-          const pedidoDoCache = originalCache;
-          if (pedidoDoCache && cachedAdminOrders) {
+          const noCache = retratoNoCache;
+          if (noCache && cachedAdminOrders) {
             cachedAdminOrders = cachedAdminOrders.map((pedido) =>
-              pedido.id === orderId ? pedidoDoCache : pedido,
+              pedido.id === orderId
+                ? desfazerAtualizacaoOtimistaDoPedido(pedido, noCache, status)
+                : pedido,
             );
           }
-          if (originalOrder) {
+          const naTela = retratoNaTela;
+          if (naTela) {
             setOrders((atuais) =>
               atuais.map((pedido) =>
-                pedido.id === orderId ? originalOrder : pedido,
+                pedido.id === orderId
+                  ? desfazerAtualizacaoOtimistaDoPedido(pedido, naTela, status)
+                  : pedido,
               ),
             );
           }

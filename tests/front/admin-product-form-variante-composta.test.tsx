@@ -212,7 +212,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
 
     await digitarPar(0, "Cor", "Branca");
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Outra coisa que muda");
     });
 
     await digitarPar(1, "Tamanho", "PP");
@@ -230,20 +230,21 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     expect(document.body.textContent).toContain("3 un.");
   });
 
-  it("o botão '+ Atributo' sugere a outra metade da dupla, com o tamanho primeiro", async () => {
+  it("o botão '+ Outra coisa que muda' só sugere depois de escolher a primeira: a outra metade da dupla", async () => {
     await montar();
     await abrirModal();
     const botaoAtributo = () =>
       [...document.querySelectorAll("button")]
-        .find((b) => b.textContent?.startsWith("+ Atributo"))
+        .find((b) => b.textContent?.startsWith("+ Outra coisa que muda"))
         ?.textContent?.replace(/\s+/g, " ")
         .trim();
-    // Nada escolhido ainda: começa pelo tamanho.
-    expect(botaoAtributo()).toBe("+ Atributo (ex.: Tamanho)");
+    // Nada escolhido ainda: sem exemplo (o "Tamanho" já está à vista nas peças
+    // de cima; sugerir de novo seria repetir o que a lojista acabou de ver).
+    expect(botaoAtributo()).toBe("+ Outra coisa que muda");
     await escolherAtributo(0, "Tamanho", "variant-name", digitar);
-    expect(botaoAtributo()).toBe("+ Atributo (ex.: Cor)");
+    expect(botaoAtributo()).toBe("+ Outra coisa que muda (ex.: Cor)");
     await escolherAtributo(0, "Cor", "variant-name", digitar);
-    expect(botaoAtributo()).toBe("+ Atributo (ex.: Tamanho)");
+    expect(botaoAtributo()).toBe("+ Outra coisa que muda (ex.: Tamanho)");
   });
 
   it("aceita a segunda combinação do MESMO grupo (a trava não confunde combinação com grupo)", async () => {
@@ -252,7 +253,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await abrirModal();
     await digitarPar(0, "Cor", "Branca");
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Outra coisa que muda");
     });
     await digitarPar(1, "Tamanho", "PP");
     await act(async () => {
@@ -262,7 +263,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await abrirModal();
     await digitarPar(0, "Cor", "Branca");
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Outra coisa que muda");
     });
     await digitarPar(1, "Tamanho", "P");
     await digitar("variant-stock", "10");
@@ -283,7 +284,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await abrirModal();
     await digitarPar(0, "Cor", "Branca");
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Outra coisa que muda");
     });
     await digitarPar(1, "Tamanho", "PP");
     await act(async () => {
@@ -298,7 +299,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await abrirModal();
     await digitarPar(0, "Tamanho", "P");
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Outra coisa que muda");
     });
     await digitarPar(1, "Cor", "Branca");
     await digitar("variant-stock", "10");
@@ -321,7 +322,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await abrirModal();
     await digitarPar(0, "Tamanho", "P");
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Outra coisa que muda");
     });
     await escolherAtributo(1, "Material", "variant-name-1", digitar, {
       viaOutro: true,
@@ -368,7 +369,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await abrirModal();
     await digitarPar(0, "Cor", "Branca");
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Outra coisa que muda");
     });
     await escolherAtributo(1, "Tamanho", "variant-name-1", digitar);
     await act(async () => {
@@ -389,7 +390,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await abrirModal();
     await digitarPar(0, "Cor", "Branca");
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Outra coisa que muda");
     });
     await digitarPar(1, "Tamanho", "PP");
 
@@ -417,7 +418,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await abrirModal();
     await digitarPar(0, "Cor", "Branca");
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Outra coisa que muda");
     });
     await digitarPar(1, "Tamanho", "PP");
     await act(async () => {

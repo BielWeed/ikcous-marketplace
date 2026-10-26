@@ -44,7 +44,7 @@ describe("motivoDoBloqueioDoProduto", () => {
 
   it("promoção ligada sem o preço original diz o que fazer", () => {
     expect(motivoDoBloqueioDoProduto(completo, false, true, true)).toBe(
-      "Escreva o preço original (De:) ou desligue a promoção.",
+      'Escreva o preço de antes ("De") ou desligue a promoção.',
     );
   });
 
@@ -132,8 +132,25 @@ describe("fraseCurtaDoBloqueio", () => {
 
   it("campo com erro: manda olhar os avisos", () => {
     expect(fraseCurtaDoBloqueio(completo, true, false)).toBe(
-      "Corrija os avisos em vermelho",
+      "Corrija os avisos",
     );
+  });
+
+  it("toda frase curta cabe numa linha de 320 px com o ' · toque para ver' (medido: até 36 caracteres)", () => {
+    const frases = [
+      fraseCurtaDoBloqueio({ ...completo, name: "" }, false, false),
+      fraseCurtaDoBloqueio({ ...completo, name: "", price: "" }, false, false),
+      fraseCurtaDoBloqueio(
+        { name: "", description: "", price: "", stock: "", category: "" },
+        false,
+        false,
+      ),
+      fraseCurtaDoBloqueio(completo, false, true),
+      fraseCurtaDoBloqueio(completo, true, false),
+    ];
+    for (const frase of frases) {
+      expect(`${frase} · toque para ver`.length, frase).toBeLessThanOrEqual(40);
+    }
   });
 
   it("falta campo E há erro: o que falta vem primeiro, como na frase completa", () => {

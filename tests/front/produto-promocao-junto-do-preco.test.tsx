@@ -312,7 +312,7 @@ describe("AdminProductFormView — promoção junto do preço (u180)", () => {
       expect(previa()).toBeNull();
       expect(
         document.getElementById("product-original-error")?.textContent,
-      ).toBe('Preço original ("De:") deve ser maior que o preço promocional.');
+      ).toBe('Preço de antes ("De") deve ser maior que o preço de venda.');
       expect(campo("product-original-price").getAttribute("aria-invalid")).toBe(
         "true",
       );
@@ -374,7 +374,7 @@ describe("AdminProductFormView — promoção junto do preço (u180)", () => {
       expect(painel.querySelector("#product-promo-active")).toBeNull();
       expect(painel.querySelector("#product-original-price")).toBeNull();
       expect(painel.textContent).not.toContain("Produto em Promoção");
-      expect(painel.textContent).not.toContain("Preço Original");
+      expect(painel.textContent).not.toContain("Preço de antes");
       // O que é de custo segue lá.
       expect(painel.querySelector("#product-cost-price")).not.toBeNull();
     });
@@ -385,7 +385,7 @@ describe("AdminProductFormView — promoção junto do preço (u180)", () => {
       await alternarPromocao();
       await digitarCampo("product-original-price", "5000");
       expect(secao("Custo e lucro").textContent).not.toContain(
-        "Preço original",
+        "Preço de antes",
       );
       expect(document.getElementById("product-original-error")).not.toBeNull();
       // O contador de progresso continua dizendo que há aviso.
@@ -421,7 +421,7 @@ describe("AdminProductFormView — promoção junto do preço (u180)", () => {
       await alternarPromocao();
       expect(publicar.disabled).toBe(true);
       expect(frase()?.textContent).toContain(
-        "Escreva o preço original (De:) ou desligue a promoção",
+        'Escreva o preço de antes ("De") ou desligue a promoção',
       );
 
       const abertasAntes = [

@@ -509,6 +509,11 @@ export function OrderDetailsView({
       jaFoiEnviado,
       retiradaPronta,
       pagamentoNaEntrega,
+      // Enviado, cancelado e reativado: o servidor não abre a devolução
+      // automática para ele, então o texto não pode prometê-la.
+      cancelladoAposEnvio: order.cancelledAfterShipping === true,
+      produtoJaVoltou: Boolean(order.returnedToSellerAt),
+      retiradaNaLoja: order.retiradaNaLoja === true,
     });
     const confirmCancel = globalThis.confirm(textoConfirm);
     if (!confirmCancel) return;

@@ -400,7 +400,7 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
 
     await tocarNaPeca(0, "Capacidade");
     expect(valorDoCampo("variant-name")).toBeUndefined();
-    await clicarTexto("+ Atributo");
+    await clicarTexto("+ Outra coisa que muda");
     await tocarNaPeca(1, "Capacidade");
 
     // Cada par ficou com um nome: o cartão diz o nome gravado, não "Capacidade".
@@ -459,7 +459,7 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
 
     await escolherAtributo(0, "Cor", "variant-name", digitar);
     await clicarRotulo("Azul");
-    await clicarTexto("+ Atributo");
+    await clicarTexto("+ Outra coisa que muda");
     await escolherAtributo(1, "Tamanho", "variant-name-1", digitar);
     await act(async () => {
       botaoDoAtributo(1, "M").click();
@@ -555,7 +555,7 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
     await abrirNovaVariacao();
     await tocarNaPeca(0, "Cor");
     await clicarRotulo("Preto");
-    await clicarTexto("+ Atributo");
+    await clicarTexto("+ Outra coisa que muda");
     await tocarNaPeca(1, "Tamanho");
     await act(async () => {
       botaoDoAtributo(1, "G").click();

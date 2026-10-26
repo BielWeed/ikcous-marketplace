@@ -136,6 +136,7 @@ WITH corpos AS (
     ('update_order_status_atomic', 'c8df4feb3f53b90922a6c8398371e394'),
     ('upsert_store_config', '9c56a9c6953e1d774a1ee97d5d8a7e16')
 ), sucessoras(fn, h, versao) AS (VALUES
+    ('get_admin_orders_paged', 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6', '20261387000000'),
     ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd', '20261380000000'),
     ('fin_caixa_abrir', '28ab512e291378a01d110e298af7a402', '20261370000000'),
     ('painel_inicio', 'f11d22d076c59ab54d1beb280954dd15', '20261212000000'),
