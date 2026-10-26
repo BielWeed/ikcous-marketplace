@@ -68,8 +68,12 @@ export function FileirasDeVariacao({
               </span>
             </div>
             <div className="flex min-w-0 flex-wrap gap-2">
-              {valores.map(({ valor, disponivel }) => {
+              {valores.map(({ valor, disponivel, existe }) => {
                 const ativa = selecionada === valor;
+                // Esgotado de vez: travado. Apagado só pela combinação atual
+                // (existe em outra): apagado, mas tocável -- tocar escolhe o
+                // valor e solta o que deixou de combinar.
+                const apagadoPelaCombinacao = !disponivel && (existe ?? false);
                 const amostra = fileiraDeCor ? coresDoNome(valor) : [];
                 return (
                   <button
@@ -77,14 +81,22 @@ export function FileirasDeVariacao({
                     type="button"
                     aria-label={valor}
                     aria-pressed={ativa}
-                    disabled={!disponivel && !ativa}
-                    title={disponivel ? valor : `${valor} — Esgotado`}
+                    disabled={!disponivel && !apagadoPelaCombinacao && !ativa}
+                    title={
+                      disponivel
+                        ? valor
+                        : apagadoPelaCombinacao
+                          ? `${valor} — Indisponível com a sua escolha`
+                          : `${valor} — Esgotado`
+                    }
                     onClick={() => onEscolher(nome, valor)}
                     className={cn(
                       "flex min-h-11 min-w-11 max-w-full items-center justify-center gap-2 rounded-[14px] border border-solid px-3.5 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-muted/30 disabled:text-muted-foreground",
                       ativa
                         ? "border-foreground bg-foreground text-background"
-                        : "border-border bg-background text-foreground",
+                        : apagadoPelaCombinacao
+                          ? "border-border/60 bg-muted/30 text-muted-foreground"
+                          : "border-border bg-background text-foreground",
                       !disponivel && "line-through",
                     )}
                   >
@@ -104,7 +116,11 @@ export function FileirasDeVariacao({
                       {valor}
                     </span>
                     {!disponivel && (
-                      <span className="sr-only"> (Esgotado)</span>
+                      <span className="sr-only">
+                        {apagadoPelaCombinacao
+                          ? " (Indisponível com a sua escolha)"
+                          : " (Esgotado)"}
+                      </span>
                     )}
                   </button>
                 );

@@ -8,7 +8,16 @@ import {
 
 export interface FileiraDeVariacao {
   nome: string;
-  valores: { valor: string; disponivel: boolean; estoque: number }[];
+  valores: {
+    valor: string;
+    /** Há estoque COM o que já foi escolhido nas outras fileiras. */
+    disponivel: boolean;
+    estoque: number;
+    /** Há estoque em ALGUMA combinação (ignora a escolha atual). Falso =
+     *  esgotado de vez: a tela o trava. Verdadeiro e `disponivel` falso = apagado
+     *  só pela combinação: a tela o apaga mas deixa tocar. Ausente = `disponivel`. */
+    existe?: boolean;
+  }[];
 }
 
 /** Quem escolhe o tamanho vê as cores que existem nele: Tamanho (e Voltagem)
@@ -69,7 +78,12 @@ export function fileirasDeVariacao(
           );
         return soma + (corresponde ? Math.max(0, variante.stockIncrement) : 0);
       }, 0);
-      return { valor, estoque, disponivel: estoque > 0 };
+      const existe = linhas.some(
+        ({ variante, atributos }) =>
+          variante.stockIncrement > 0 &&
+          atributos.some((par) => par.name === nome && par.value === valor),
+      );
+      return { valor, estoque, disponivel: estoque > 0, existe };
     }),
   }));
   fileiras.sort((a, b) => posicaoDaFileira(a.nome) - posicaoDaFileira(b.nome));
@@ -83,4 +97,44 @@ export function fileirasDeVariacao(
       )?.variante
     : undefined;
   return { fileiras, variante };
+}
+
+/**
+ * A escolha que sai de TOCAR num valor (a cliente nunca fica com seleção
+ * incoerente). Devolve `null` se o valor não tem estoque em combinação
+ * nenhuma (esgotado de vez, desligado ou inexistente): a tela não muda.
+ * Valor só apagado pela combinação atual vale: ele entra e as escolhas dos
+ * outros lados são guardadas na ordem das fileiras (Tamanho, Cor, Outro), cada
+ * uma só se ainda combina com tudo que já ficou. Nunca escolhe outra
+ * combinação pela cliente.
+ */
+export function aplicarEscolhaDeVariacao(
+  variantes: ProductVariant[],
+  escolha: Record<string, string>,
+  grupo: string,
+  valor: string,
+): Record<string, string> | null {
+  const { fileiras } = fileirasDeVariacao(variantes, {});
+  const existe = fileiras
+    .find((f) => f.nome === grupo)
+    ?.valores.some((v) => v.valor === valor && (v.existe ?? v.disponivel));
+  if (!existe) return null;
+  const coerente = (candidata: Map<string, string>) =>
+    fileirasDeVariacao(variantes, Object.fromEntries(candidata)).fileiras.every(
+      (f) => {
+        const marcado = candidata.get(f.nome);
+        return (
+          !marcado || f.valores.some((v) => v.valor === marcado && v.disponivel)
+        );
+      },
+    );
+  const anteriores = new Map(Object.entries(escolha));
+  let escolhida = new Map([[grupo, valor]]);
+  for (const { nome } of fileiras) {
+    const anterior = anteriores.get(nome);
+    if (nome === grupo || !anterior) continue;
+    const candidata = new Map(escolhida).set(nome, anterior);
+    if (coerente(candidata)) escolhida = candidata;
+  }
+  return Object.fromEntries(escolhida);
 }
