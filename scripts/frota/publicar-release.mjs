@@ -614,8 +614,7 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente",
   "98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado",
   "98b-antes-a-foto-da-devolucao-e-a-pergunta-tem-teto-base-vigente",
-  "99a-conferir-ninguem-grava-evento-de-analise-aplicado",
-  "99b-antes-ninguem-grava-evento-de-analise-base-vigente",
+  // 99 reservada para a migration de analytics_events, guardada no ramo fix-199-abuso-do-banco ate o dono aprovar.
   "100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado",
   "100b-antes-o-financeiro-descreve-a-venda-do-balcao-base-vigente",
 ]);
