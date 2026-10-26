@@ -264,17 +264,31 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     },
   );
 
-  it("leitura bem-sucedida sem clientes continua mostrando o estado vazio", async () => {
+  it("loja sem nenhum cliente e sem busca diz que ainda não há clientes, não 'revise os filtros'", async () => {
     rpc.mockResolvedValueOnce(sucesso([]));
 
     await abrirTela();
+
+    expect(hospedeiro.textContent).toContain("Nenhum cliente ainda");
+    expect(hospedeiro.textContent).toContain(
+      "Quando alguém criar uma conta na loja, ela aparece aqui.",
+    );
+    expect(hospedeiro.textContent).not.toContain("Revise os filtros");
+    expect(hospedeiro.textContent).not.toContain("Limpar tudo");
+    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Tentar de novo");
+  });
+
+  it("busca sem resultado continua pedindo para revisar a pesquisa", async () => {
+    rpc.mockResolvedValue(sucesso([]));
+    await abrirTela();
+    await buscarMaria();
 
     expect(hospedeiro.textContent).toContain("Nenhum cliente retornado");
     expect(hospedeiro.textContent).toContain(
       "Revise os filtros ou sua pesquisa.",
     );
-    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
-    expect(hospedeiro.textContent).not.toContain("Tentar de novo");
+    expect(hospedeiro.textContent).not.toContain("Nenhum cliente ainda");
   });
 
   it("folha mantém as três ordenações, e limpar no vazio restaura busca e ordem sem mudar o modo", async () => {
