@@ -14,7 +14,8 @@ export interface PedidoCongelado {
 }
 
 const CHAVE = "ikcous-pedido-sem-resposta-v1";
-const PRAZO_MS = 30 * 60_000;
+/** Janela da retentativa da mesma compra; a chave do pedido (chave-do-pedido.ts) vale o mesmo. */
+export const PRAZO_DA_RETENTATIVA_MS = 30 * 60_000;
 
 export function limparPedidoSemResposta(): void {
   try {
@@ -33,7 +34,7 @@ export function lerPedidoSemResposta(): PedidoCongelado | null {
       versao === 1 &&
       Number.isFinite(expiraEm) &&
       expiraEm > Date.now() &&
-      expiraEm <= Date.now() + PRAZO_MS &&
+      expiraEm <= Date.now() + PRAZO_DA_RETENTATIVA_MS &&
       pedido?.semConta === true &&
       pedido.contaEsperada === null &&
       pedido.ehOnline === false &&
@@ -64,7 +65,7 @@ export function guardarPedidoSemResposta(pedido: PedidoCongelado): void {
     globalThis.sessionStorage.setItem(
       CHAVE,
       JSON.stringify(
-        { versao: 1, expiraEm: Date.now() + PRAZO_MS, pedido },
+        { versao: 1, expiraEm: Date.now() + PRAZO_DA_RETENTATIVA_MS, pedido },
         // Mesmo cuidado do rascunho: CPF não vai para storage, nem aninhado.
         (chave, valor) =>
           chave === "cpf" || chave === "cpfParaRpc" ? undefined : valor,

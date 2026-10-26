@@ -62,7 +62,9 @@ Deno.test("SW - a revalidacao NAO grava HTML novo com update pendente (ressalva 
   const inicio = sw.indexOf('event.request.mode === "navigate"');
   const fim = sw.indexOf("// Se for Supabase");
   const trecho = norm(sw.slice(inicio, fim));
-  const posGuard = trecho.indexOf("if (sw.registration.waiting) return;");
+  const posGuard = trecho.indexOf(
+    "if (sw.registration.waiting || sw.registration.installing) return;",
+  );
   const posPut = trecho.indexOf("cache.put(event.request, copy)");
   assert(
     posGuard > -1,

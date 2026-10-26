@@ -334,7 +334,8 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
     expect(clearCart).not.toHaveBeenCalled();
     const chaveDoPrimeiroEnvio = createOrder.mock.calls[0][0].idempotencyKey;
     expect(
-      JSON.parse(sessionStorage.getItem("ikcous-chave-do-pedido")!).chave,
+      JSON.parse(localStorage.getItem("ikcous-chave-do-pedido:convidado")!)
+        .chave,
     ).toBe(chaveDoPrimeiroEnvio);
   });
 
@@ -350,7 +351,7 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
       );
     });
     await preencherEClicarFinalizar(() => {
-      sessionStorage.removeItem("ikcous-chave-do-pedido");
+      localStorage.removeItem("ikcous-chave-do-pedido:convidado");
       vi.stubGlobal("crypto", {
         getRandomValues: (bytes: Uint8Array) => bytes.fill(7),
       });
@@ -373,7 +374,7 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
       );
     });
     await preencherEClicarFinalizar(() => {
-      sessionStorage.removeItem("ikcous-chave-do-pedido");
+      localStorage.removeItem("ikcous-chave-do-pedido:convidado");
       vi.stubGlobal("crypto", {
         getRandomValues: () => {
           throw new Error("Web Crypto indisponível");

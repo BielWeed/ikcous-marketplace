@@ -66,6 +66,12 @@ const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const pagamentoOnlineProps: Array<Record<string, unknown>> = [];
 
+// A conferência da sessão antes de enviar (caça 7) tem suíte própria
+// (checkout-pedido-chave-voltar-e-sessao.test.tsx); aqui a sessão está viva.
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+
 vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
 }));

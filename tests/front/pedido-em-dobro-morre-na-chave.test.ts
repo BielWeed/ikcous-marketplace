@@ -175,7 +175,7 @@ describe("criarGerenciadorDeChave — a chave sobrevive à retentativa e morre n
 
   it("storage corrompido não derruba a compra: nasce chave nova", () => {
     const armazem = storageFake([
-      ["ikcous-chave-do-pedido", "{isso nao e json"],
+      ["ikcous-chave-do-pedido:convidado", "{isso nao e json"],
     ]);
     const gerente = criarGerenciadorDeChave(armazem, chavesSequenciais());
 

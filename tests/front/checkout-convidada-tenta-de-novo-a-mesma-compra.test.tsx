@@ -62,6 +62,12 @@ const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const toastError = vi.fn();
 
+// A conferência da sessão antes de enviar (caça 7) tem suíte própria
+// (checkout-pedido-chave-voltar-e-sessao.test.tsx); aqui a sessão está viva.
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+
 vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
 }));
@@ -347,7 +353,7 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
     expect(clearCart).toHaveBeenCalledTimes(1);
     expect(document.body.textContent).toContain("Pedido Celebrado");
     // A chave cumpriu o papel: a próxima compra nasce com chave nova.
-    expect(sessionStorage.getItem("ikcous-chave-do-pedido")).toBeNull();
+    expect(localStorage.getItem("ikcous-chave-do-pedido:convidado")).toBeNull();
   });
 
   it("o reenvio usa o payload CONGELADO da tentativa sem resposta, mesmo que o carrinho tenha mudado depois", async () => {
@@ -415,7 +421,9 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
         primeiro.idempotencyKey,
       );
       expect(sessionStorage.getItem(registro)).toBeNull();
-      expect(sessionStorage.getItem("ikcous-chave-do-pedido")).toBeNull();
+      expect(
+        localStorage.getItem("ikcous-chave-do-pedido:convidado"),
+      ).toBeNull();
       expect(estado.cart).toEqual([]);
       expect(document.body.textContent).toContain("Pedido Celebrado");
     },
