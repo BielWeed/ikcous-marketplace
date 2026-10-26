@@ -75,12 +75,15 @@ vi.mock("@/lib/supabase", () => ({
         return {
           select: () => ({
             eq: () => ({
+              // `.order("nome").order("id").range()`: o desempate por id.
               order: () => ({
-                range: () =>
-                  Promise.resolve({
-                    data: [{ id: "p1", nome: "Tênis Veloz" }],
-                    error: null,
-                  }),
+                order: () => ({
+                  range: () =>
+                    Promise.resolve({
+                      data: [{ id: "p1", nome: "Tênis Veloz" }],
+                      error: null,
+                    }),
+                }),
               }),
             }),
           }),
