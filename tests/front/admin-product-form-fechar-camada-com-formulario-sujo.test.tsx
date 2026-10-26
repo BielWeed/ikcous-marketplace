@@ -322,9 +322,16 @@ describe("AdminProductFormView — fechar a camada com o formulario ja mexido", 
     }
     // Deixa chegar o que ainda estiver a caminho (a devolucao da entrada que
     // sobrou) antes de conferir o fim.
-    await esperar(100);
+    // O contrato é "acaba zerado": em máquina lenta (CI) o popstate da segunda
+    // devolução chega depois de 100 ms, e a rede de segurança (1,5 s) cobre o
+    // resto. Por isso espera até zerar, com folga acima do prazo da rede.
+    await vi.waitFor(
+      () => {
+        expect(placar.desvioVigente).toBeNull();
+      },
+      { timeout: 4000, interval: 50 },
+    );
     expect(placar.pendenteDeDescarte).toBe(false);
-    expect(placar.desvioVigente).toBeNull();
   });
 
   it("rede de seguranca: se o popstate nunca chegar, o desvio que engole se desfaz sozinho", async () => {
