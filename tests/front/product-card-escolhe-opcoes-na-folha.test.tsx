@@ -943,25 +943,36 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       ],
     });
 
-  it("compacta: só Cor pré-escolhida, tamanho aberto com foco; foto parcial não muda preço do card", async () => {
+  it("compacta: nada vem pré-escolhido, o Tamanho abre primeiro com foco (como a página) e a foto da cor só entra depois de escolhida", async () => {
     await renderizarCard(produtoComposto(), {
       onAddToCartWithVariants: vi.fn(),
     });
     expect(hospedeiro.textContent).toContain("50,00");
     await abrirFolha();
-    expect(linha("Cor").getAttribute("aria-label")).toBe(
-      "Cor: Azul. Toque para trocar",
-    );
+    const ordem = Array.from(
+      folha()!.querySelectorAll<HTMLButtonElement>("button[aria-expanded]"),
+    ).map((b) => b.getAttribute("aria-label")?.split(":")[0]);
+    expect(ordem).toEqual(["Tamanho", "Cor"]);
+    expect(linha("Cor").getAttribute("aria-label")).toBe("Cor: falta escolher");
     expect(linha("Cor").getAttribute("aria-expanded")).toBe("false");
     expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("true");
     expect(document.activeElement).toBe(chip("PP"));
     expect(ctaDaFolha().textContent).toContain("Escolha: Tamanho");
+    const fotoAntes = folha()!.querySelector(
+      '[data-testid="product-card-options-thumbnail"] img',
+    )!;
+    expect(fotoAntes.getAttribute("src")).not.toContain("azul.png");
+    await act(async () => chip("PP").click());
+    expect(linha("Cor").getAttribute("aria-expanded")).toBe("true");
+    expect(ctaDaFolha().textContent).toContain("Escolha: Cor");
     expect(hospedeiro.textContent).toContain("50,00");
+    await act(async () => chip("Azul").click());
     const foto = folha()!.querySelector(
       '[data-testid="product-card-options-thumbnail"] img',
     )!;
     expect(foto.getAttribute("src")).toContain("azul.png");
     expect(foto.getAttribute("style")).toContain("contain");
+    expect(ctaDaFolha().textContent).toContain("60,00");
   });
 
   it("compacta: escolher recolhe e foca CTA com total; tocar marcado não desmarca", async () => {
@@ -972,6 +983,8 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     await abrirFolha();
     await act(async () => chip("M").click());
     expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("false");
+    expect(linha("Cor").getAttribute("aria-expanded")).toBe("true");
+    await act(async () => chip("Azul").click());
     expect(document.activeElement).toBe(ctaDaFolha());
     await act(async () => botaoQuantidade("Aumentar").click());
     expect(ctaDaFolha().textContent).toContain("150,00");
@@ -1009,6 +1022,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     await renderizarCard(produto, { onAddToCartWithVariants: entregar });
     await abrirFolha();
     await act(async () => chip("M").click());
+    await act(async () => chip("Azul").click());
     await renderizarCard(
       {
         ...produto,
@@ -1056,10 +1070,16 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       { onAddToCartWithVariants: entregar },
     );
     await abrirFolha();
+    // Mesma ordem da página: Tamanho, Cor, Manga; nada pré-marcado.
     expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("true");
+    expect(linha("Cor").getAttribute("aria-expanded")).toBe("false");
     expect(linha("Manga").getAttribute("aria-expanded")).toBe("false");
     await act(async () => chip("M").click());
     expect(linha("Tamanho").getAttribute("aria-expanded")).toBe("false");
+    expect(linha("Cor").getAttribute("aria-expanded")).toBe("true");
+    expect(ctaDaFolha().textContent).toContain("Escolha: Cor");
+    await act(async () => chip("Azul").click());
+    expect(linha("Cor").getAttribute("aria-expanded")).toBe("false");
     expect(linha("Manga").getAttribute("aria-expanded")).toBe("true");
     expect(document.activeElement).toBe(chip("Longa"));
     expect(ctaDaFolha().textContent).toContain("Escolha: Manga");
@@ -1110,7 +1130,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  it("compacta: com Cor em segundo lugar, tamanho incompatível fica riscado mas permite trocar", async () => {
+  it("compacta: com a Cor escolhida primeiro, o tamanho incompatível fica riscado mas permite trocar", async () => {
     await renderizarCard(
       criarProduto({
         variants: [
@@ -1129,9 +1149,14 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       { onAddToCartWithVariants: vi.fn() },
     );
     await abrirFolha();
+    // Sem cor escolhida nenhum tamanho está riscado.
+    expect(chip("M").className).not.toContain("line-through");
+    await act(async () => linha("Cor").click());
+    await act(async () => chip("Azul").click());
     expect(chip("M").disabled).toBe(false);
     expect(chip("M").className).toContain("line-through");
     expect(chip("PP").disabled).toBe(false);
+    expect(chip("PP").className).not.toContain("line-through");
   });
 
   it("compacta: sem foto mantém o quadrado com ícone, sem imagem vazia", async () => {
@@ -1298,11 +1323,9 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       await renderizarCard(produto, { onAddToCartWithVariants: entregar });
       await abrirFolha();
       const [cor, tamanho] = valor.split(" / ");
-      if (cor !== "Azul") {
-        await act(async () => linha("Cor").click());
-        await act(async () => chip(cor!).click());
-      }
+      // Como na página: primeiro o tamanho, depois a cor (nada pré-marcado).
       await act(async () => chip(tamanho!).click());
+      await act(async () => chip(cor!).click());
       if (qtd === 2) await act(async () => botaoQuantidade("Aumentar").click());
       await act(async () => ctaDaFolha().click());
       expect(entregar.mock.calls).toEqual([

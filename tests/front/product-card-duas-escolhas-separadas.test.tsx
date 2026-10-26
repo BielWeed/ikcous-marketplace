@@ -166,10 +166,11 @@ describe("ProductCard — cor e tamanho de cadastro antigo viram UMA combinaçã
     });
   }
 
-  it("Azul (pré-escolhida) + M entrega a chave das duas escolhas e os dois nomes", async () => {
+  it("M + Azul (nada pré-escolhido, como na página) entrega a chave das duas escolhas e os dois nomes", async () => {
     await renderizarCard(camiseta(doisGrupos()));
     await abrirFolha();
     await act(async () => chip("M").click());
+    await act(async () => chip("Azul").click());
     await act(async () => cta().click());
 
     expect(entregar).toHaveBeenCalledTimes(1);
@@ -217,6 +218,7 @@ describe("ProductCard — cor e tamanho de cadastro antigo viram UMA combinaçã
       ]),
     );
     await abrirFolha();
+    await act(async () => chip("Azul").click());
     await act(async () => chip("G").click());
 
     // Azul (sem ajuste) é a principal: R$ 50. O R$ 60 do G não é cobrado.

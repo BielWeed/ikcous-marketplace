@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  alinharPelaOrdemGravada,
   dividirEmAtributos,
   juntarAtributos,
   validarAtributos,
@@ -137,5 +138,69 @@ describe("validarAtributos", () => {
     ]);
     expect(erro).toContain("repetido");
     expect(erro).toContain("Cor e Tamanho");
+  });
+});
+
+describe("alinharPelaOrdemGravada", () => {
+  const tamanhoDepoisCor = [
+    { name: "Tamanho", value: "P" },
+    { name: "Cor", value: "Azul" },
+  ];
+  it("reordena para a ordem já gravada e usa a grafia gravada do nome", () => {
+    expect(alinharPelaOrdemGravada(tamanhoDepoisCor, "Cor / Tamanho")).toEqual([
+      { name: "Cor", value: "Azul" },
+      { name: "Tamanho", value: "P" },
+    ]);
+    expect(
+      alinharPelaOrdemGravada(
+        [
+          { name: "TAMANHO", value: "P" },
+          { name: "côr", value: "Azul" },
+        ],
+        "cor / tamanho",
+      ),
+    ).toEqual([
+      { name: "cor", value: "Azul" },
+      { name: "tamanho", value: "P" },
+    ]);
+  });
+  it("par vazio sobrando (clique a mais em '+ Atributo') não impede o alinhamento", () => {
+    expect(
+      alinharPelaOrdemGravada(
+        [...tamanhoDepoisCor, { name: "", value: "" }],
+        "Cor / Tamanho",
+      ),
+    ).toEqual([
+      { name: "Cor", value: "Azul" },
+      { name: "Tamanho", value: "P" },
+    ]);
+  });
+  it("já na ordem gravada, devolve igual", () => {
+    const certa = [...tamanhoDepoisCor].reverse();
+    expect(alinharPelaOrdemGravada(certa, "Cor / Tamanho")).toEqual(certa);
+  });
+  it("outro conjunto de nomes, outra quantidade ou nada gravado: não mexe", () => {
+    expect(alinharPelaOrdemGravada(tamanhoDepoisCor, "Cor / Material")).toBe(
+      tamanhoDepoisCor,
+    );
+    expect(alinharPelaOrdemGravada(tamanhoDepoisCor, "Cor")).toBe(
+      tamanhoDepoisCor,
+    );
+    expect(
+      alinharPelaOrdemGravada(tamanhoDepoisCor, "Cor / Tamanho / Tecido"),
+    ).toBe(tamanhoDepoisCor);
+    expect(alinharPelaOrdemGravada(tamanhoDepoisCor, undefined)).toBe(
+      tamanhoDepoisCor,
+    );
+    expect(alinharPelaOrdemGravada(tamanhoDepoisCor, "")).toBe(
+      tamanhoDepoisCor,
+    );
+  });
+  it("nome repetido nos pares não vira alinhamento (a validação é quem recusa)", () => {
+    const repetido = [
+      { name: "Cor", value: "Azul" },
+      { name: "cor", value: "Preta" },
+    ];
+    expect(alinharPelaOrdemGravada(repetido, "Cor / Tamanho")).toBe(repetido);
   });
 });

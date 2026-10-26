@@ -453,7 +453,8 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
       "cor / tamanho: Preto / G",
     ]);
     const fileiras = await comoAVitrineVe();
-    expect(fileiras.map((f) => f.nome)).toEqual(["cor", "tamanho"]);
+    // Gravado "cor / tamanho", mas a vitrine mostra o tamanho primeiro.
+    expect(fileiras.map((f) => f.nome)).toEqual(["tamanho", "cor"]);
   });
 
   it("produto com a cor 'azul' minúscula: tocar a bolinha Azul grava 'azul', não 'Azul' (uma só cor na vitrine)", async () => {
