@@ -62,24 +62,24 @@ function avisarDesfechoDoReembolso(
       return;
     case "em_processamento":
       toast.info(
-        `Devolução concluída. O reembolso de ${valor} está em andamento no Mercado Pago. Acompanhe no pedido, em Devolução de dinheiro.${estoque}`,
+        `Devolução concluída. O reembolso de ${valor} está em andamento no Mercado Pago. Acompanhe logo abaixo, nesta devolução.${estoque}`,
       );
       return;
     case "falhou":
       toast.warning(
-        `Devolução concluída, mas o Mercado Pago não conseguiu devolver ${valor}. Abra o pedido, em Devolução de dinheiro, para ver o motivo e tentar de novo.${estoque}`,
+        `Devolução concluída, mas o Mercado Pago não conseguiu devolver ${valor}. Logo abaixo, nesta devolução, veja a situação do reembolso e, se aparecer o botão Tentar de novo, toque nele.${estoque}`,
         { duration: 15_000 },
       );
       return;
     case "recusado":
       toast.warning(
-        `Devolução concluída, mas o Mercado Pago recusou o reembolso de ${valor}. Abra o pedido, em Devolução de dinheiro, para ver o motivo.${estoque}`,
+        `Devolução concluída, mas o Mercado Pago recusou o reembolso de ${valor}. Logo abaixo, nesta devolução, veja a situação do reembolso e, se aparecer o botão Tentar de novo, toque nele.${estoque}`,
         { duration: 15_000 },
       );
       return;
     default:
       toast.info(
-        `Devolução concluída. Não consegui confirmar o reembolso de ${valor} agora. Veja a situação no pedido, em Devolução de dinheiro.${estoque}`,
+        `Devolução concluída. Não consegui confirmar o reembolso de ${valor} agora. Veja a situação logo abaixo, nesta devolução.${estoque}`,
       );
   }
 }

@@ -229,13 +229,34 @@ describe("concluir devolução — o aviso do reembolso reflete o status da edge
     },
   );
 
-  it("falhou: manda tentar de novo no pedido", async () => {
-    invoke.mockResolvedValue({ data: { status: "falhou" }, error: null });
-    await concluirComReembolso();
+  // Devolução só existe para pedido ENTREGUE: na ficha do pedido o cartão
+  // "Devolução de dinheiro" fica travado em "Cancele o pedido antes…" e o
+  // "Tentar de novo" dele recusa (beco sem saída que empurra a lojista a
+  // cancelar pedido entregue). A nova tentativa certa é o "Tentar de novo" do
+  // reembolso DESTA devolução, logo abaixo das ações, na mesma tela.
+  it.each(["falhou", "recusado"])(
+    "%s: manda para o 'Tentar de novo' desta devolução, nunca para o pedido",
+    async (status) => {
+      invoke.mockResolvedValue({ data: { status }, error: null });
+      await concluirComReembolso();
 
-    expect(toast.warning).toHaveBeenCalledWith(
-      expect.stringContaining("tentar de novo"),
-      expect.anything(),
+      const [texto] = toast.warning.mock.calls[0] as [string];
+      expect(texto).toContain("Logo abaixo, nesta devolução");
+      expect(texto).toContain("Tentar de novo");
+      expect(texto).not.toMatch(/pedido, em Devolução de dinheiro/);
+      expect(texto).not.toMatch(/Abra o pedido/);
+    },
+  );
+
+  it("em andamento e sem status legível também apontam para esta devolução, não para o pedido", async () => {
+    invoke.mockResolvedValue({
+      data: { status: "em_processamento" },
+      error: null,
+    });
+    await concluirComReembolso();
+    expect(String(toast.info.mock.calls[0][0])).toContain("nesta devolução");
+    expect(String(toast.info.mock.calls[0][0])).not.toContain(
+      "no pedido, em Devolução de dinheiro",
     );
   });
 
