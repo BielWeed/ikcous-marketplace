@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherAtributo } from "./helpers/atributo-da-variacao";
+import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 const addProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -311,7 +312,7 @@ describe("AdminProductFormView — código automático e Na loja", () => {
       ) as HTMLElement,
     );
     const gerar = [...document.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Gerar grade"),
+      casaOTexto(b.textContent, BOTAO_GERAR_GRADE),
     ) as HTMLButtonElement;
     await tocar(gerar);
   }

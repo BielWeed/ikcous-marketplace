@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherAtributo } from "./helpers/atributo-da-variacao";
+import { BOTAO_GERAR_GRADE } from "./helpers/gerar-grade";
 
 const fetchProduct = vi.fn();
 
@@ -110,10 +111,11 @@ function textoDoRotulo(idDoCampo: string): string {
   return rotulo.textContent?.replace(/\s+/g, " ").trim() ?? "";
 }
 
-function botaoComTexto(texto: string): HTMLButtonElement | undefined {
-  return [...document.querySelectorAll("button")].find(
-    (b) => b.textContent?.replace(/\s+/g, " ").trim() === texto,
-  );
+function botaoComTexto(texto: string | RegExp): HTMLButtonElement | undefined {
+  return [...document.querySelectorAll("button")].find((b) => {
+    const t = b.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    return typeof texto === "string" ? t === texto : texto.test(t);
+  });
 }
 
 describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
@@ -292,7 +294,7 @@ describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
       ).click();
     });
     await act(async () => {
-      botaoComTexto("Gerar grade")?.click();
+      botaoComTexto(BOTAO_GERAR_GRADE)?.click();
     });
 
     expect(textoDoRotulo("grade-sku-base")).toMatch(/^Código interno base/);
