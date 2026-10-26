@@ -15,6 +15,7 @@ import {
   BarraDoProgresso,
 } from "@/components/admin/products/ProgressoDoProduto";
 import { SecaoDoProduto } from "@/components/admin/products/SecaoDoProduto";
+import { useTopoCompacto } from "@/components/admin/products/useTopoCompacto";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import "@/components/admin/products/formulario-produto.css";
 import {
@@ -233,6 +234,16 @@ function temCameraDisponivel(): boolean {
  * esperar mais de um minuto e meio por foto antes de ver "Tentar de novo".
  */
 const PRAZO_POR_FOTO_MS = 90_000;
+
+/**
+ * Depois de "Excluir" ou "Tornar principal" as ações da foto em foco ficam
+ * travadas por este tempo. As ações são sempre da foto que está em foco, e
+ * depois do 1º toque a foto seguinte passa a ocupar o mesmo lugar da tela: um
+ * 2º toque rápido (toque duplo) cairia no mesmo botão, já ligado à foto nova, e
+ * apagaria uma segunda foto. 400 ms cobre um toque duplo e ainda é curto para
+ * quem quer mesmo excluir a próxima.
+ */
+const TRAVA_DAS_ACOES_DE_FOTO_MS = 400;
 
 /** Uma foto que não subiu: guarda o arquivo para "Tentar de novo". */
 interface FotoComFalha {
@@ -674,6 +685,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const isOffline = useOnlineStatus();
   const { config } = useStore();
   const isLocalShipping = config?.shippingCoverage === "local";
+  const {
+    marca: marcaDoTopo,
+    topo: topoRef,
+    compacto: topoCompacto,
+  } = useTopoCompacto();
 
   const [isLoading, setIsLoading] = useState(!!productId);
   const [formData, setFormData] = useState({
@@ -744,7 +760,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // Uma variante é UMA OU MAIS duplas atributo+valor ("Cor"+"Branca" ou
   // "Cor"+"Branca" com "Tamanho"+"PP") que viram UMA linha de variante com
   // estoque próprio — ver `variante-composta.ts`. O modal nasce com um par;
-  // "+ Atributo" empilha os demais.
+  // "+ Outra coisa que muda" empilha os demais.
   const [variantFormData, setVariantFormData] = useState<{
     pares: ParNoForm[];
     sku: string;
@@ -1070,12 +1086,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       .filter((valor) => valor !== "");
   };
   const produtoTemGrupoDemais = temGrupoDemais(formData.variants);
-  // O exemplo do "+ Atributo": a outra metade da dupla mais comum. O tamanho
-  // vem primeiro; quem já tem o tamanho recebe a cor como sugestão.
+  // O rótulo do botão que empilha mais uma dimensão. O exemplo é a outra
+  // metade da dupla mais comum e só aparece DEPOIS de a lojista escolher a
+  // primeira (antes disso o "Tamanho" já está à vista nas peças de cima).
+  const nomeDoUltimoAtributo = variantFormData.pares.at(-1)?.name ?? "";
   const exemploDoProximoAtributo =
-    tipoDoNome(variantFormData.pares.at(-1)?.name ?? "") === "Tamanho"
-      ? "Cor"
-      : "Tamanho";
+    tipoDoNome(nomeDoUltimoAtributo) === "Tamanho" ? "Cor" : "Tamanho";
+  const rotuloDoMaisUmAtributo =
+    nomeDoUltimoAtributo.trim() === ""
+      ? "+ Outra coisa que muda"
+      : `+ Outra coisa que muda (ex.: ${exemploDoProximoAtributo})`;
 
   useEffect(() => {
     formData.images.forEach((url) => {
@@ -1742,7 +1762,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     if (isPromoActive && formData.originalPrice && !Number.isNaN(orig)) {
       if (orig <= price) {
         setOriginalPriceError(
-          'Preço original ("De:") deve ser maior que o preço promocional.',
+          'Preço de antes ("De") deve ser maior que o preço de venda.',
         );
       } else {
         setOriginalPriceError("");
@@ -2040,9 +2060,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     [processAndUploadImages, isOffline],
   );
 
+  // Depois de excluir ou de "Tornar principal" o botão tocado é desmontado (a
+  // ação é de outra foto agora): o foco vai para a primeira ação da foto em
+  // foco, em vez de cair no <body> e fazer quem usa teclado ou leitor de tela
+  // perder o lugar.
+  const focarNasAcoesRef = useRef(false);
+
   // Pela foto, não pela posição: no 2º toque rápido o cartão que está saindo
   // ainda existe na tela, e a posição dele já é de outra foto.
   const removeImage = useCallback((imagem: string) => {
+    focarNasAcoesRef.current = true;
     setFormData((prev) => ({
       ...prev,
       images: prev.images.filter((u) => u !== imagem),
@@ -2053,11 +2080,63 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // então "principal" é só "primeira do array". A foto sai do lugar e vai para
   // o começo; as outras mantêm a ordem entre si. Nada é reenviado: as URLs são
   // as mesmas, só a ordem muda.
-  const carrosselDeFotosRef = useRef<HTMLDivElement>(null);
-  const focarNaCapaRef = useRef(false);
+  //
+  // A foto EM FOCO (a grande, com as ações dela) é guardada pela URL, não pela
+  // posição: "Tornar principal" move a foto para o começo e ela continua em
+  // foco sozinha. Se a foto em foco sai da lista (excluída), o foco fica na
+  // mesma posição — a seguinte, ou a anterior quando era a última.
+  const fotoEmFocoRef = useRef<HTMLDivElement>(null);
+  const faixaDeFotosRef = useRef<HTMLDivElement>(null);
+  const travaDasAcoesAteRef = useRef(0);
+  // Chamada no começo de cada ação da foto em foco: `false` = ainda travada
+  // pelo toque anterior, ignore. `travar` liga a trava (ações que mudam a
+  // lista de fotos).
+  const acaoDeFotoLiberada = (travar: boolean) => {
+    const agora = Date.now();
+    if (agora < travaDasAcoesAteRef.current) return false;
+    if (travar)
+      travaDasAcoesAteRef.current = agora + TRAVA_DAS_ACOES_DE_FOTO_MS;
+    return true;
+  };
+  const [urlEmFoco, setUrlEmFoco] = useState<string | null>(null);
+  const indiceAnteriorDoFocoRef = useRef(0);
+  const achadoDoFoco = urlEmFoco ? formData.images.indexOf(urlEmFoco) : 0;
+  const indiceEmFoco =
+    formData.images.length === 0
+      ? 0
+      : achadoDoFoco >= 0
+        ? achadoDoFoco
+        : Math.min(indiceAnteriorDoFocoRef.current, formData.images.length - 1);
+  useEffect(() => {
+    indiceAnteriorDoFocoRef.current = indiceEmFoco;
+    if (formData.images.length === 0) {
+      if (urlEmFoco !== null) setUrlEmFoco(null);
+    } else if (achadoDoFoco < 0) {
+      setUrlEmFoco(formData.images.at(indiceEmFoco) ?? null);
+    }
+  }, [indiceEmFoco, achadoDoFoco, formData.images, urlEmFoco]);
+
+  // A faixa de miniaturas só rola de lado quando as fotos não cabem: a frase
+  // "Deslize para o lado" só aparece nesse caso (antes aparecia com 3 fotos,
+  // mesmo quando todas cabiam).
+  const [faixaRola, setFaixaRola] = useState(false);
+  useEffect(() => {
+    const faixa = faixaDeFotosRef.current;
+    if (!faixa || formData.images.length === 0) {
+      setFaixaRola(false);
+      return;
+    }
+    const medir = () => setFaixaRola(faixa.scrollWidth > faixa.clientWidth + 1);
+    medir();
+    if (typeof ResizeObserver === "undefined") return;
+    const observador = new ResizeObserver(medir);
+    observador.observe(faixa);
+    return () => observador.disconnect();
+  }, [formData.images.length, isUploadingImages]);
+
   const tornarPrincipal = useCallback((index: number) => {
     if (index <= 0) return;
-    focarNaCapaRef.current = true;
+    focarNasAcoesRef.current = true;
     setFormData((prev) => {
       const [escolhida] = prev.images.slice(index, index + 1);
       if (!escolhida) return prev;
@@ -2068,17 +2147,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     });
     toast.success(`Foto ${index + 1} agora é a principal.`);
   }, []);
-  // O botão tocado some da tela (a foto virou a capa e não tem mais "Tornar
-  // principal"): sem isto o foco cairia no <body> e quem usa teclado ou leitor
-  // de tela perderia o lugar.
   useEffect(() => {
-    // Roda quando a ordem muda (`formData.images`); só age se foi "Tornar
-    // principal" quem mudou.
-    if (!focarNaCapaRef.current) return;
-    focarNaCapaRef.current = false;
-    carrosselDeFotosRef.current
-      ?.querySelector<HTMLElement>("[data-foto-principal] button")
-      ?.focus();
+    // Roda quando a lista muda (`formData.images`); só age se foi "Excluir" ou
+    // "Tornar principal" quem mudou.
+    if (!focarNasAcoesRef.current) return;
+    focarNasAcoesRef.current = false;
+    fotoEmFocoRef.current?.querySelector<HTMLElement>("button")?.focus();
   }, [formData.images]);
 
   const atualizarParDeAtributo = (
@@ -3146,7 +3220,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // junto do campo, no básico, e entra à parte na frase "há avisos" do topo.
   const avisoDeCusto =
     costError && !costError.startsWith("Aviso") ? costError : "";
-  const avisoAvancado = skuError || codigoBarrasError || estoqueMinimoError;
+  const avisoDosCodigos = skuError || codigoBarrasError || estoqueMinimoError;
 
   // O "?" do guia de fotos: mora na linha da dica quando o cartão está vazio e
   // no canto do cartão quando há fotos (nunca os dois ao mesmo tempo).
@@ -3289,7 +3363,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       }
                       className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-5 py-3 text-sm font-bold text-zinc-400 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95"
                     >
-                      + Atributo (ex.: {exemploDoProximoAtributo})
+                      {rotuloDoMaisUmAtributo}
                     </button>
 
                     {/* Estoque e preço desta variação. */}
@@ -3297,7 +3371,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <p className="text-base font-bold text-foreground">
                         Estoque e preço
                       </p>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
                         <div className="min-w-0 space-y-1.5">
                           <label
                             htmlFor="variant-stock"
@@ -3686,25 +3760,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onEfetivar={handleEfetivarGrade}
       />
 
-      <header className="sticky top-0 z-30 bg-admin-bg/95 px-5 pb-3 pt-4 backdrop-blur-md">
-        <div className="mx-auto flex max-w-3xl items-center gap-3">
-          <div className="min-w-0 flex-1 [&_h1>span>span]:not-italic [&_h1>span]:whitespace-normal [&_h1]:text-[22px] [&_h1]:normal-case [&_h1]:leading-tight">
+      {/* O topo: a linha do título cola no alto e encolhe ao rolar (só o
+          estilo muda, a altura da linha é a mesma). A conta "N de 5" e a barra
+          fina ficam logo abaixo, no fluxo, e saem da tela rolando. */}
+      <div ref={marcaDoTopo} aria-hidden="true" className="h-0" />
+      <header
+        ref={topoRef}
+        data-compacto={topoCompacto}
+        className="produto-topo sticky top-0 z-30 bg-admin-bg/95 px-5 backdrop-blur-md"
+      >
+        <div className="produto-topo-linha mx-auto flex max-w-3xl items-center gap-3">
+          <div className="min-w-0 flex-1 [&_h1>span>span]:not-italic [&_h1>span]:whitespace-normal [&_h1]:normal-case [&_h1]:leading-tight">
             <AdminPageHeader
               titulo={`${productId ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-product-form"].toLowerCase()}`}
             />
-            <p
-              data-testid="progresso-do-produto"
-              className="mt-1 text-xs text-zinc-400"
-            >
-              {preenchidos} de 5 essenciais prontos
-              {avisoDeCusto ||
-              originalPriceError ||
-              avisoAvancado ||
-              priceError ||
-              stockError
-                ? " · há avisos"
-                : ""}
-            </p>
           </div>
           <AnelDoProgresso preenchidos={preenchidos} total={5} />
           <button
@@ -3717,10 +3786,22 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <HelpCircle className="size-5" />
           </button>
         </div>
-        <div className="mx-auto mt-3 max-w-3xl">
+      </header>
+      <div className="mx-auto max-w-3xl px-5 py-1">
+        <p data-testid="progresso-do-produto" className="text-xs text-zinc-400">
+          {preenchidos} de 5 essenciais prontos
+          {avisoDeCusto ||
+          originalPriceError ||
+          avisoDosCodigos ||
+          priceError ||
+          stockError
+            ? " · há avisos"
+            : ""}
+        </p>
+        <div className="mt-3">
           <BarraDoProgresso preenchidos={preenchidos} total={5} />
         </div>
-      </header>
+      </div>
 
       <motion.form
         variants={containerVariants}
@@ -3746,7 +3827,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           <div className="group/fotos">
             <div
               className={cn(
-                "produto-fotos-titulo flex min-h-16 items-center gap-3 pr-14",
+                "produto-fotos-titulo flex min-h-12 items-center gap-3 pb-2 pr-14",
                 formData.images.length === 0 && "sr-only",
               )}
             >
@@ -3872,118 +3953,140 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   </div>
                 </div>
               ) : (
-                <div className="relative w-full">
-                  {/* Single horizontal scroll carousel for ALL images */}
+                <div className="produto-fotos-cheio">
+                  {/* A foto EM FOCO, grande, com as ações DELA ao lado. A
+                      primeira é a principal (capa da vitrine); tocar numa
+                      miniatura da faixa abaixo muda a foto em foco. */}
                   <div
-                    ref={carrosselDeFotosRef}
+                    ref={fotoEmFocoRef}
+                    role="group"
+                    aria-label={`Foto ${indiceEmFoco + 1} de ${formData.images.length}`}
+                    data-testid="foto-em-foco"
+                    data-foto-principal={indiceEmFoco === 0 ? "" : undefined}
+                    className="produto-foto-foco"
+                  >
+                    {(() => {
+                      const image = formData.images.at(indiceEmFoco) ?? "";
+                      const meta = imageMetadata[image];
+                      const isCover = indiceEmFoco === 0;
+                      return (
+                        <>
+                          <React.Fragment key={image}>
+                            <div className="produto-foto-foco-coluna">
+                              <div className="produto-foto-foco-imagem">
+                                <img src={image} alt="" />
+                                <div
+                                  data-tema-fixo=""
+                                  className="produto-foto-selo text-[11px] font-bold"
+                                >
+                                  {isCover
+                                    ? "Principal"
+                                    : `Foto ${indiceEmFoco + 1}`}
+                                </div>
+                              </div>
+                              {meta &&
+                                meta.status !== "loading" &&
+                                meta.status !== "erro" && (
+                                  <p
+                                    className={`mt-2 text-xs ${meta.status === "warning_aspect" || meta.status === "warning_res" ? "text-orange-300" : "text-zinc-400"}`}
+                                  >
+                                    {meta.status === "excellent"
+                                      ? "Excelente!"
+                                      : meta.status === "warning_aspect"
+                                        ? "Ajuste para 4:5."
+                                        : meta.status === "warning_res"
+                                          ? "Resolução baixa."
+                                          : "Boa qualidade."}
+                                    <span className="block text-[11px] text-zinc-400">
+                                      {meta.width} × {meta.height} px
+                                    </span>
+                                  </p>
+                                )}
+                            </div>
+                            <div className="produto-foto-foco-acoes">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!acaoDeFotoLiberada(false)) return;
+                                  openAdjuster(image, indiceEmFoco);
+                                }}
+                                className="flex min-h-11 w-full items-center gap-1.5 whitespace-nowrap rounded-xl border border-solid border-admin-border bg-admin-raised px-2.5 text-xs font-bold text-zinc-200"
+                                title="Ajustar e Cortar"
+                              >
+                                <Scissors className="size-4 shrink-0" />
+                                Ajustar e Cortar
+                              </button>
+                              {/* "Excluir" fica SEMPRE no mesmo lugar: "Tornar
+                                principal" (que some quando a foto é a capa)
+                                vem depois dele. Se viesse antes, o Excluir
+                                subiria para baixo do dedo no momento em que
+                                a foto vira capa. */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!acaoDeFotoLiberada(true)) return;
+                                  removeImage(image);
+                                }}
+                                className="flex min-h-11 w-full items-center gap-1.5 rounded-xl bg-rose-400/10 px-2.5 text-xs font-bold text-rose-300"
+                                title="Excluir"
+                              >
+                                <Trash2 className="size-4 shrink-0" />
+                                Excluir
+                              </button>
+                              {!isCover && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!acaoDeFotoLiberada(true)) return;
+                                    tornarPrincipal(indiceEmFoco);
+                                  }}
+                                  disabled={isImageUploading || isSubmitting}
+                                  aria-label={`Tornar principal: foto ${indiceEmFoco + 1} de ${formData.images.length}`}
+                                  className="min-h-11 w-full rounded-xl border border-solid border-admin-border px-2.5 text-xs font-bold text-zinc-200 disabled:opacity-40"
+                                >
+                                  Tornar principal
+                                </button>
+                              )}
+                            </div>
+                          </React.Fragment>
+                        </>
+                      );
+                    })()}
+                  </div>
+                  {/* A faixa de miniaturas (50 px): uma por foto, na ordem; a
+                      que está em foco fica marcada. Rola de lado quando as
+                      fotos não cabem. */}
+                  <div
+                    ref={faixaDeFotosRef}
                     role="group"
                     aria-label="Galeria de fotos do produto"
-                    className="scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent flex snap-x flex-row gap-4 overflow-x-auto scroll-smooth px-2 pb-4 pt-2"
+                    className="produto-fotos-faixa"
                   >
-                    <AnimatePresence>
-                      {formData.images.map((image, index) => {
-                        const meta = imageMetadata[image];
-                        const isCover = index === 0;
-                        return (
-                          <motion.div
-                            key={image}
-                            data-foto-principal={isCover ? "" : undefined}
-                            initial={{ scale: 0.8, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.8, opacity: 0 }}
-                            className={cn(
-                              "group/img relative w-[calc(50%-8px)] sm:w-48 shrink-0 snap-start rounded-2xl",
-                            )}
-                          >
-                            <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-admin-border bg-zinc-900">
-                              <img
-                                src={image}
-                                alt=""
-                                className="size-full object-cover transition-transform duration-700 group-hover/img:scale-105"
-                              />
-                            </div>
-                            <div className="mt-3 text-[11px] font-bold text-white">
-                              {isCover ? "Principal" : `Foto ${index + 1}`}
-                            </div>
-                            {meta &&
-                              meta.status !== "loading" &&
-                              meta.status !== "erro" && (
-                                <p
-                                  className={`mt-1 text-xs ${meta.status === "warning_aspect" || meta.status === "warning_res" ? "text-orange-300" : "text-zinc-400"}`}
-                                >
-                                  {meta.status === "excellent"
-                                    ? "Excelente!"
-                                    : meta.status === "warning_aspect"
-                                      ? "Ajuste para 4:5."
-                                      : meta.status === "warning_res"
-                                        ? "Resolução baixa."
-                                        : "Boa qualidade."}
-                                  <span className="block text-[11px] text-zinc-400">
-                                    {meta.width} × {meta.height} px
-                                  </span>
-                                </p>
-                              )}
-                            <details className="mt-3">
-                              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-center rounded-2xl border border-admin-border bg-admin-raised px-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
-                                Opções da foto {index + 1}
-                              </summary>
-                              <div className="mt-2 flex flex-wrap gap-2 rounded-2xl border border-admin-border bg-admin-raised p-2">
-                                <button
-                                  type="button"
-                                  onClick={() => openAdjuster(image, index)}
-                                  className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-admin-surface px-3 text-xs text-zinc-200"
-                                  title="Ajustar e Cortar"
-                                >
-                                  <Scissors className="size-5" />
-                                  Ajustar e Cortar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeImage(image)}
-                                  className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-rose-400/10 px-3 text-xs text-rose-300"
-                                  title="Excluir"
-                                >
-                                  <Trash2 className="size-5" />
-                                  Excluir
-                                </button>
-                                {!isCover && (
-                                  <button
-                                    type="button"
-                                    onClick={() => tornarPrincipal(index)}
-                                    disabled={isImageUploading || isSubmitting}
-                                    aria-label={`Tornar principal: foto ${index + 1} de ${formData.images.length}`}
-                                    className="min-h-11 w-full rounded-xl border border-admin-border px-2.5 text-[11px] font-bold text-zinc-200 disabled:opacity-40"
-                                  >
-                                    Tornar principal
-                                  </button>
-                                )}
-                              </div>
-                            </details>
-                          </motion.div>
-                        );
-                      })}
-
-                      {isUploadingImages && (
-                        <motion.div
-                          key="uploading-shimmer"
-                          initial={{ scale: 0.8, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          exit={{ scale: 0.8, opacity: 0 }}
-                          className="relative flex aspect-[4/5] w-40 shrink-0 animate-pulse snap-start flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-admin-border bg-white/5 sm:w-48"
-                        >
-                          <Loader2 className="size-5 animate-spin text-emerald-400" />
-                          <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                            {imageUploadStep === "compressing"
-                              ? "Comprimindo..."
-                              : "Enviando..."}
-                          </span>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                    {formData.images.map((image, index) => (
+                      <button
+                        key={image}
+                        type="button"
+                        aria-pressed={index === indiceEmFoco}
+                        aria-label={`Ver foto ${index + 1} de ${formData.images.length}${index === 0 ? " (principal)" : ""}`}
+                        onClick={() => setUrlEmFoco(image)}
+                      >
+                        <img src={image} alt="" />
+                      </button>
+                    ))}
+                    {isUploadingImages && (
+                      <div role="status" className="produto-fotos-enviando">
+                        <Loader2 className="size-5 animate-spin text-emerald-400" />
+                        <span>
+                          {imageUploadStep === "compressing"
+                            ? "Comprimindo..."
+                            : "Enviando..."}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  {formData.images.length > 2 && (
-                    <span className="ml-1 mt-1 block flex select-none items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                  {faixaRola && (
+                    <span className="mt-1 flex select-none items-center gap-1.5 text-[11px] font-bold text-zinc-500">
                       ↔ Deslize para o lado para ver mais fotos
                     </span>
                   )}
@@ -4262,7 +4365,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 onFlush={(val) =>
                   setFormData((prev) => ({ ...prev, name: val }))
                 }
-                placeholder="Ex: Camiseta Básica Preta - Tamanho M"
+                placeholder="Ex: Camiseta básica preta"
                 className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 sm:text-base"
               />
             </div>
@@ -5109,13 +5212,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               </div>
             )}
             <div className="col-span-2">
-              {/* Avançado (H1): código interno, código de barras e aviso de estoque
+              {/* Códigos e câmera: código interno, código de barras e aviso de estoque
             — raros no dia a dia, mas nada se apaga. MONTADA e FECHADA; erro
             em qualquer um dos três (formato, duplicidade ou número inválido)
             a abre sozinha. */}
               <SecaoDoProduto
                 titulo="Códigos e câmera"
-                aviso={avisoAvancado}
+                aviso={avisoDosCodigos}
                 resumo={
                   formData.sku
                     ? `${formData.sku} · aviso em ${formData.estoqueMinimo || "5"} un.`
@@ -5437,7 +5540,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 type="button"
                 onClick={() => handleSubmit()}
                 disabled={botaoDeSalvarDesligado}
-                className="produto-salvar flex min-h-11 w-full min-w-11 items-center justify-center gap-2 rounded-full px-4 text-base font-bold transition-colors disabled:pointer-events-none"
+                className="produto-salvar flex min-h-11 w-full min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-base font-bold transition-colors disabled:pointer-events-none"
               >
                 {isSubmitting ? (
                   <>
@@ -5469,7 +5572,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <button
               type="button"
               onClick={() => setIsPreviewOpen(true)}
-              className="produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-5 text-sm font-bold"
+              className="produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold"
             >
               Ver app
             </button>

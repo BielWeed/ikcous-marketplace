@@ -118,11 +118,36 @@ const urlsNaTela = () =>
     ),
   ].map((i) => i.getAttribute("src"));
 
+/** Os botões "Tornar principal" na tela: só a foto EM FOCO tem as ações dela. */
 const botoesTornarPrincipal = () => [
   ...document.querySelectorAll<HTMLButtonElement>(
     'button[aria-label^="Tornar principal"]',
   ),
 ];
+
+/** Toca na miniatura N (1 = a primeira) da faixa: a foto N entra em foco. */
+async function focarFoto(n: number) {
+  const miniaturas = [
+    ...document.querySelectorAll<HTMLButtonElement>(
+      '[aria-label="Galeria de fotos do produto"] button[aria-pressed]',
+    ),
+  ];
+  await act(async () => {
+    miniaturas[n - 1].click();
+  });
+}
+
+/** O "Tornar principal" que cada foto de 1 a `total` oferece ao entrar em foco. */
+async function rotulosDoTornarPrincipalDeCadaFoto(total: number) {
+  const achados: string[][] = [];
+  for (let n = 1; n <= total; n++) {
+    await focarFoto(n);
+    achados.push(
+      botoesTornarPrincipal().map((b) => b.getAttribute("aria-label") ?? ""),
+    );
+  }
+  return achados;
+}
 
 describe("AdminProductFormView — foto principal e reenvio do mesmo arquivo", () => {
   let raiz: Root;
@@ -264,12 +289,8 @@ describe("AdminProductFormView — foto principal e reenvio do mesmo arquivo", (
         "https://cdn/b.jpg",
         "https://cdn/c.jpg",
       ]);
-      expect(
-        botoesTornarPrincipal().map((b) => b.getAttribute("aria-label")),
-      ).toEqual([
-        "Tornar principal: foto 2 de 3",
-        "Tornar principal: foto 3 de 3",
-      ]);
+      // A primeira está em foco e já é a principal: não tem o botão.
+      expect(botoesTornarPrincipal()).toHaveLength(0);
       // O emblema "Principal" é uma folha (sem filhos) e só a primeira tem.
       const emblemas = [...document.querySelectorAll("div")].filter(
         (d) => d.children.length === 0 && d.textContent === "Principal",
@@ -278,7 +299,14 @@ describe("AdminProductFormView — foto principal e reenvio do mesmo arquivo", (
       expect(
         emblemas[0].closest("[data-foto-principal]")?.querySelector("img"),
       ).toHaveProperty("src", "https://cdn/a.jpg");
+      // As outras ganham o botão, com "Foto N de M", ao entrar em foco.
+      expect(await rotulosDoTornarPrincipalDeCadaFoto(3)).toEqual([
+        [],
+        ["Tornar principal: foto 2 de 3"],
+        ["Tornar principal: foto 3 de 3"],
+      ]);
       // Alvo de toque de pelo menos 44px (min-h-11 = 2.75rem = 44px).
+      await focarFoto(3);
       for (const botao of botoesTornarPrincipal()) {
         expect(botao.className).toMatch(/min-h-11/);
         expect(botao.textContent).toMatch(/Tornar principal/);
@@ -289,8 +317,9 @@ describe("AdminProductFormView — foto principal e reenvio do mesmo arquivo", (
       await montarPreenchido();
       await subirFotos("a", "b", "c");
 
+      await focarFoto(3);
       await act(async () => {
-        botoesTornarPrincipal()[1].click();
+        botoesTornarPrincipal()[0].click();
       });
 
       expect(urlsNaTela()).toEqual([
@@ -299,11 +328,10 @@ describe("AdminProductFormView — foto principal e reenvio do mesmo arquivo", (
         "https://cdn/b.jpg",
       ]);
       // A nova capa já não tem o botão; as duas de trás têm, renumeradas.
-      expect(
-        botoesTornarPrincipal().map((b) => b.getAttribute("aria-label")),
-      ).toEqual([
-        "Tornar principal: foto 2 de 3",
-        "Tornar principal: foto 3 de 3",
+      expect(await rotulosDoTornarPrincipalDeCadaFoto(3)).toEqual([
+        [],
+        ["Tornar principal: foto 2 de 3"],
+        ["Tornar principal: foto 3 de 3"],
       ]);
 
       await act(async () => {
@@ -322,6 +350,7 @@ describe("AdminProductFormView — foto principal e reenvio do mesmo arquivo", (
       await montarPreenchido();
       await subirFotos("a", "b");
 
+      await focarFoto(2);
       await act(async () => {
         botoesTornarPrincipal()[0].click();
         await new Promise((r) => setTimeout(r, 1200));
@@ -338,15 +367,18 @@ describe("AdminProductFormView — foto principal e reenvio do mesmo arquivo", (
       await montarPreenchido();
       await subirFotos("a", "b");
 
+      await focarFoto(2);
       await act(async () => {
         botoesTornarPrincipal()[0].click();
       });
 
       const ativo = document.activeElement as HTMLElement;
-      const capa = [...document.querySelectorAll("img")].find(
-        (i) => i.getAttribute("src") === "https://cdn/b.jpg",
-      )?.parentElement?.parentElement;
-      expect(capa).toBeDefined();
+      // A nova capa é a foto em foco, e o foco do teclado cai dentro dela.
+      const capa = document.querySelector('[data-testid="foto-em-foco"]');
+      expect(capa?.querySelector("img")?.getAttribute("src")).toBe(
+        "https://cdn/b.jpg",
+      );
+      expect(capa?.hasAttribute("data-foto-principal")).toBe(true);
       expect(capa?.contains(ativo)).toBe(true);
       expect(ativo).not.toBe(document.body);
     });
@@ -362,6 +394,7 @@ describe("AdminProductFormView — foto principal e reenvio do mesmo arquivo", (
         await new Promise((r) => setTimeout(r, 0));
       });
 
+      await focarFoto(2);
       const botoes = botoesTornarPrincipal();
       expect(botoes).toHaveLength(1);
       expect(botoes[0].disabled).toBe(true);

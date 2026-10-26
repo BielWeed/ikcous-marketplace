@@ -148,7 +148,10 @@ describe("CampoDeCategoria — o campo fechado", () => {
     await montar({ valor: "" });
     const botao = campo();
     expect(texto(botao)).toContain("Escolher categoria");
-    expect(texto(botao)).toContain("Toque para ver as categorias da loja");
+    // Curta de propósito: a dica tem uma linha só, e a frase mais comprida
+    // ("…as categorias da loja") era cortada com reticências a 320 px.
+    expect(texto(botao)).toContain("Toque para ver as categorias");
+    expect(texto(botao)).not.toContain("da loja");
     expect(texto(botao)).not.toContain("Toque para trocar");
     expect(botao.querySelector("svg[data-icone='etiqueta']")).not.toBeNull();
   });

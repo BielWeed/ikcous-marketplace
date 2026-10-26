@@ -816,11 +816,11 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       // seção para abrir, e "Custo e lucro" segue fechada e sem esse aviso.
       expect(estaAberta("Custo e lucro")).toBe(false);
       expect(botaoDaSecao("Custo e lucro").textContent).not.toContain(
-        "Preço original",
+        "Preço de antes",
       );
       const aviso = document.getElementById("product-original-error");
       expect(aviso?.textContent).toContain(
-        'Preço original ("De:") deve ser maior',
+        'Preço de antes ("De") deve ser maior',
       );
       expect(aviso?.closest("[hidden]")).toBeNull();
       const barra = document.querySelector('[aria-label="Ações do produto"]');

@@ -46,7 +46,7 @@ describe("o preco do produto deixa historico (20261386000000)", () => {
     expect(destrutivo, "rollback destrutivo sumiu").not.toBe("");
   });
 
-  it("e' a ultima migration (nenhuma outra tomou o numero ou passou na frente)", () => {
+  it("o numero 20261386000000 pertence a so uma migration (nenhuma outra tomou o numero)", () => {
     const versoes = Object.keys(MIGRATIONS)
       .map((c) => c.split("/").pop() ?? "")
       .filter((n) => /^\d{14}_/.test(n))

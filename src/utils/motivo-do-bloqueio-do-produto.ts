@@ -54,7 +54,7 @@ export function motivoDoBloqueioDoProduto(
     return `Para ${verbo}, falta preencher: ${faltando.join(", ")}.`;
   }
   if (promocaoSemPrecoOriginal) {
-    return "Escreva o preço original (De:) ou desligue a promoção.";
+    return 'Escreva o preço de antes ("De") ou desligue a promoção.';
   }
   if (temErroNoCampo) {
     return `Para ${verbo}, corrija os campos que estão com aviso em vermelho.`;
@@ -77,7 +77,7 @@ export function fraseCurtaDoBloqueio(
   if (faltam === 1) return "Falta 1 campo";
   if (faltam > 1) return `Faltam ${faltam} campos`;
   if (promocaoSemPrecoOriginal) return "Falta o preço de antes";
-  if (temErroNoCampo) return "Corrija os avisos em vermelho";
+  if (temErroNoCampo) return "Corrija os avisos";
   return "Confira os campos";
 }
 
