@@ -176,6 +176,8 @@ function CartaoOfertaDuplo({
     handleFavoriteClick,
     hasActiveVariant,
     precoAntigo,
+    preco,
+    aPartirDe,
   } = useAcoesDaOferta({
     product,
     onToggleFavorite,
@@ -200,8 +202,14 @@ function CartaoOfertaDuplo({
       : cartStatus === "success"
         ? `Adicionado ao carrinho: ${product.name}`
         : `Adicionar ${product.name} ao carrinho`;
-  const textoPreco = formatCurrency(product.price);
-  const textoDe = precoAntigo ? `De ${formatCurrency(precoAntigo)}` : null;
+  const textoPreco = formatCurrency(preco);
+  // UI-191 (G3): opções com preços diferentes -- o preço é o menor delas; a
+  // linha de baixo diz "A partir de" (sem riscado) no lugar do "De".
+  const textoDe = aPartirDe
+    ? "A partir de"
+    : precoAntigo
+      ? `De ${formatCurrency(precoAntigo)}`
+      : null;
   return (
     <article
       data-oferta-lateral-duplo={product.id}
@@ -281,7 +289,10 @@ function CartaoOfertaDuplo({
         {textoDe ? (
           <div
             data-de-oferta
-            className="h-4 truncate pr-12 text-xs leading-4 text-zinc-500 line-through"
+            className={cn(
+              "h-4 truncate pr-12 text-xs leading-4 text-zinc-500",
+              !aPartirDe && "line-through",
+            )}
           >
             {textoDe}
           </div>

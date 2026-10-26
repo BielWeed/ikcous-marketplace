@@ -167,9 +167,16 @@ describe("OrderList — copiar o ID do pedido não mente", () => {
       await Promise.resolve();
     });
 
-    expect(toast.success).toHaveBeenCalledWith("ID do pedido copiado!");
+    expect(toast.success).toHaveBeenCalledWith("Número do pedido copiado");
     expect(toast.error).not.toHaveBeenCalled();
     expect(botaoId()?.textContent).toContain("Copiado!");
+    // UI-191 (G6): copia o que está ESCRITO (#3884BE -> os 6 finais), não o
+    // id interno de 36 caracteres.
+    expect(clipboardWriteText).toHaveBeenCalledTimes(1);
+    expect(clipboardWriteText).toHaveBeenCalledWith(
+      numeroDoPedido(pedidoBase.id),
+    );
+    expect(clipboardWriteText).not.toHaveBeenCalledWith(pedidoBase.id);
   });
 });
 
@@ -260,8 +267,21 @@ describe("OrderDetailsView — copiar id e rastreio não mente", () => {
       await Promise.resolve();
     });
 
-    expect(toast.success).toHaveBeenCalledWith("ID do pedido copiado!");
+    expect(toast.success).toHaveBeenCalledWith("Número do pedido copiado");
     expect(toast.error).not.toHaveBeenCalled();
+    expect(clipboardWriteText).toHaveBeenCalledTimes(1);
+    expect(clipboardWriteText).toHaveBeenCalledWith(
+      numeroDoPedido(pedidoBase.id),
+    );
+    expect(clipboardWriteText).not.toHaveBeenCalledWith(pedidoBase.id);
+  });
+
+  it("o chip do número tem nome falado e área de toque de 44px (visual de 28px + ::after)", async () => {
+    await renderizar();
+    const chip = botaoIdPedido() as HTMLElement;
+    expect(chip.getAttribute("aria-label")).toBe("Copiar número do pedido");
+    expect(chip.className).toContain("after:-inset-y-2");
+    expect(chip.className).toContain("border-solid");
   });
 
   it("copiar rastreio: clipboard recusa não vira sucesso — toast de erro, sem toast de sucesso", async () => {

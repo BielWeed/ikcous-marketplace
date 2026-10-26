@@ -160,6 +160,8 @@ function CartaoOfertaLateral({
     handleFavoriteClick,
     hasActiveVariant,
     precoAntigo,
+    preco,
+    aPartirDe,
   } = useAcoesDaOferta({
     product,
     onToggleFavorite,
@@ -184,11 +186,15 @@ function CartaoOfertaLateral({
       : cartStatus === "success"
         ? `Adicionado ao carrinho: ${product.name}`
         : `Adicionar ${product.name} ao carrinho`;
-  const textoPreco = formatCurrency(product.price);
+  const textoPreco = formatCurrency(preco);
   const textoDe = precoAntigo ? `De ${formatCurrency(precoAntigo)}` : null;
-  const textoEconomia =
-    precoAntigo && discount > 0
-      ? `Economiza ${formatCurrency(precoAntigo - product.price)}`
+  // UI-191 (G3): opções com preços diferentes -- o preço é o menor delas. A
+  // linha de baixo (que some inteira se não couber) diz isso no lugar da
+  // economia, que só vale para a opção mais barata.
+  const textoEconomia = aPartirDe
+    ? "A partir de"
+    : precoAntigo && discount > 0
+      ? `Economiza ${formatCurrency(precoAntigo - preco)}`
       : null;
   const medidas = medidasDoTexto(textoPreco, textoDe, textoEconomia);
   return (

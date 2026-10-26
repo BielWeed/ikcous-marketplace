@@ -20,14 +20,15 @@ interface ProductCarouselProps {
   favorites: string[];
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
-  onAddToCart?: (product: Product) => void;
+  /** Devolve quantas unidades entraram (0 = nada): o card só celebra se entrou. */
+  onAddToCart?: (product: Product) => unknown;
   /** Card inteligente (02/09): presente, o card escolhe opções nele mesmo. */
   onAddToCartWithVariants?: (
     product: Product,
     variantId: string | undefined,
     variantNames: string,
     quantity?: number,
-  ) => void;
+  ) => unknown;
   onQuickBuy?: (product: Product) => void;
   icon?: React.ReactNode;
   accentColor?: string;
@@ -99,9 +100,7 @@ export const ProductCarousel = React.memo(function ProductCarousel({
   );
 
   const handleAddToCart = useCallback(
-    (product: Product) => {
-      onAddToCart?.(product);
-    },
+    (product: Product) => onAddToCart?.(product),
     [onAddToCart],
   );
 
@@ -112,7 +111,12 @@ export const ProductCarousel = React.memo(function ProductCarousel({
       variantNames: string,
       quantity?: number,
     ) => {
-      onAddToCartWithVariants?.(product, variantId, variantNames, quantity);
+      return onAddToCartWithVariants?.(
+        product,
+        variantId,
+        variantNames,
+        quantity,
+      );
     },
     [onAddToCartWithVariants],
   );

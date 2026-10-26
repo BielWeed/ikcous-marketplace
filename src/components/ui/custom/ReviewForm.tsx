@@ -24,6 +24,27 @@ const reviewSchema = z.object({
   comment: z.string(),
 });
 
+/**
+ * Teclado de grupo de opções para as estrelas: a nota para onde a tecla leva
+ * a partir da nota `de`, ou `null` se a tecla não é de navegação.
+ */
+function proximaNota(tecla: string, de: number): number | null {
+  switch (tecla) {
+    case "ArrowRight":
+    case "ArrowUp":
+      return Math.min(de + 1, 5);
+    case "ArrowLeft":
+    case "ArrowDown":
+      return Math.max(de - 1, 1);
+    case "Home":
+      return 1;
+    case "End":
+      return 5;
+    default:
+      return null;
+  }
+}
+
 interface ReviewFormProps {
   productId: string;
   onSuccess?: () => void;
@@ -105,18 +126,47 @@ export function ReviewForm({
                   Sua Nota de Satisfação
                 </FormLabel>
                 <FormControl>
-                  <div className="flex w-fit gap-2 rounded-2xl border border-zinc-200/50 bg-zinc-50 p-2.5">
+                  {/* UI-191 (G9): é UMA escolha entre cinco notas, não cinco
+                      botões que se ligam e desligam. Com `aria-pressed` o leitor
+                      de tela dizia "4 botões pressionados"; como grupo de opções
+                      (radiogroup) diz "4 de 5 estrelas, marcado". Teclado de
+                      grupo de opções: Tab entra na nota marcada (ou na primeira),
+                      as setas trocam a nota, Home/End vão às pontas. O desenho
+                      (estrelas acesas até a nota) não muda. */}
+                  <div
+                    role="radiogroup"
+                    aria-label="Sua nota de satisfação"
+                    className="flex w-fit gap-2 rounded-2xl border border-zinc-200/50 bg-zinc-50 p-2.5"
+                  >
                     {[1, 2, 3, 4, 5].map((star) => (
                       <button
                         key={star}
                         type="button"
+                        role="radio"
                         disabled={isSubmitting}
                         aria-label={`${star} de 5 estrelas`}
-                        aria-pressed={field.value >= star}
+                        aria-checked={field.value === star}
+                        tabIndex={
+                          field.value === star || (!field.value && star === 1)
+                            ? 0
+                            : -1
+                        }
                         className="relative -m-2 p-2.5 transition-all active:scale-90"
                         onMouseEnter={() => setHoverRating(star)}
                         onMouseLeave={() => setHoverRating(0)}
                         onClick={() => field.onChange(star)}
+                        onKeyDown={(e) => {
+                          const alvo = proximaNota(e.key, star);
+                          if (alvo === null) return;
+                          e.preventDefault();
+                          field.onChange(alvo);
+                          e.currentTarget.parentElement
+                            ?.querySelectorAll<HTMLButtonElement>(
+                              '[role="radio"]',
+                            )
+                            .item(alvo - 1)
+                            .focus();
+                        }}
                       >
                         <Star
                           className={cn(

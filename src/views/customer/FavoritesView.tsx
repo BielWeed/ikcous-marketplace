@@ -3,7 +3,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
-import { precoVendido } from "@/lib/preco-vendido";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import "./FavoritesView.css";
 import type { Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -42,7 +42,7 @@ interface FavoritesViewProps {
     quantity?: number,
     variantId?: string,
     variantNames?: string,
-  ) => void;
+  ) => unknown;
 }
 
 /** Quantos itens cada categoria mostra antes de "Ver todos". */
@@ -100,10 +100,9 @@ export const FavoritesView = React.memo(function FavoritesView({
   const { descontos, secoes, total } = useMemo(() => {
     const promocionais = new Set<string>();
     for (const produto of favorites) {
-      if (
-        produto.originalPrice != null &&
-        produto.originalPrice > precoVendido(produto, undefined)
-      ) {
+      // UI-191 (G3): "Com desconto" é o preço de VITRINE (menor das opções à
+      // venda) abaixo do "De" -- o mesmo que o card mostra.
+      if (precoDeVitrine(produto).precoOriginal !== null) {
         promocionais.add(produto.id);
       }
     }
@@ -116,7 +115,7 @@ export const FavoritesView = React.memo(function FavoritesView({
     } else if (ordem !== "original") {
       visiveis.sort(
         (a, b) =>
-          (precoVendido(a, undefined) - precoVendido(b, undefined)) *
+          (precoDeVitrine(a).preco - precoDeVitrine(b).preco) *
           (ordem === "maior" ? -1 : 1),
       );
     }
@@ -316,9 +315,7 @@ export const FavoritesView = React.memo(function FavoritesView({
   // quantidade. Com opções (tamanho/cor), o card abre a folha e entrega
   // variação + quantidade escolhidas.
   const handleAddToCart = useCallback(
-    (product: Product) => {
-      onAddToCart?.(product);
-    },
+    (product: Product) => onAddToCart?.(product),
     [onAddToCart],
   );
   const handleAddToCartWithVariants = useCallback(
@@ -328,7 +325,7 @@ export const FavoritesView = React.memo(function FavoritesView({
       variantNames: string,
       quantity = 1,
     ) => {
-      onAddToCart?.(product, quantity, variantId, variantNames);
+      return onAddToCart?.(product, quantity, variantId, variantNames);
     },
     [onAddToCart],
   );
@@ -429,7 +426,9 @@ export const FavoritesView = React.memo(function FavoritesView({
         {suggestedProducts.length > 0 && (
           <div className="mx-4 mt-4 border-t border-border pt-6">
             <div className="mb-4">
-              <h3 className="text-base font-bold">Mais Amados da Loja</h3>
+              {/* UI-191 (G7): são só os 4 primeiros produtos ativos -- "Mais
+                  Amados" afirmava um ranking que a loja não mede. */}
+              <h3 className="text-base font-bold">Alguns produtos da loja</h3>
               <p className="text-xs text-muted-foreground">
                 Toque no coração para salvar nos seus favoritos.
               </p>

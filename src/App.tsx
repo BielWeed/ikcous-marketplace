@@ -2438,8 +2438,11 @@ const AppContent = () => {
       variantNames?: string,
     ) => {
       console.log("[App-Trace] handleAddToCart Attempt");
-      addToCart(product, quantity, variantId, variantNames);
-      haptic.success();
+      const entrou = addToCart(product, quantity, variantId, variantNames);
+      // Só vibra o "deu certo" se algo entrou: com o estoque já todo no
+      // carrinho a recusa vem como aviso, nunca como comemoração.
+      if (entrou > 0) haptic.success();
+      return entrou;
     },
     [addToCart],
   );
@@ -2758,7 +2761,7 @@ const AppContent = () => {
               index={0}
               activeIndex={activeTabIdx}
             >
-              <LocalErrorBoundary>
+              <LocalErrorBoundary variante="cliente">
                 <DeferredTabContent active={currentView === "home"}>
                   <PreloadedOrLazy
                     component={HomeView}
@@ -2793,7 +2796,7 @@ const AppContent = () => {
               index={1}
               activeIndex={activeTabIdx}
             >
-              <LocalErrorBoundary>
+              <LocalErrorBoundary variante="cliente">
                 <DeferredTabContent active={currentView === "favorites"}>
                   <PreloadedOrLazy
                     component={FavoritesView}
@@ -2823,7 +2826,7 @@ const AppContent = () => {
               index={2}
               activeIndex={activeTabIdx}
             >
-              <LocalErrorBoundary>
+              <LocalErrorBoundary variante="cliente">
                 <DeferredTabContent
                   active={currentView === "cart" || currentView === "orders"}
                 >
@@ -2850,7 +2853,7 @@ const AppContent = () => {
               index={3}
               activeIndex={activeTabIdx}
             >
-              <LocalErrorBoundary>
+              <LocalErrorBoundary variante="cliente">
                 <DeferredTabContent active={currentView === "profile"}>
                   <PreloadedOrLazy
                     component={ProfileView}
@@ -2881,7 +2884,7 @@ const AppContent = () => {
                 index={0}
                 activeIndex={activeTabIdx}
               >
-                <LocalErrorBoundary>
+                <LocalErrorBoundary variante="cliente">
                   <DeferredTabContent active={currentView === "home"}>
                     <PreloadedOrLazy
                       component={HomeView}
@@ -2914,7 +2917,7 @@ const AppContent = () => {
                 index={1}
                 activeIndex={activeTabIdx}
               >
-                <LocalErrorBoundary>
+                <LocalErrorBoundary variante="cliente">
                   <DeferredTabContent active={currentView === "favorites"}>
                     <PreloadedOrLazy
                       component={FavoritesView}
@@ -2942,7 +2945,7 @@ const AppContent = () => {
                 index={2}
                 activeIndex={activeTabIdx}
               >
-                <LocalErrorBoundary>
+                <LocalErrorBoundary variante="cliente">
                   <DeferredTabContent
                     active={currentView === "cart" || currentView === "orders"}
                   >
@@ -2970,7 +2973,7 @@ const AppContent = () => {
                 index={3}
                 activeIndex={activeTabIdx}
               >
-                <LocalErrorBoundary>
+                <LocalErrorBoundary variante="cliente">
                   <DeferredTabContent active={currentView === "profile"}>
                     <PreloadedOrLazy
                       component={ProfileView}

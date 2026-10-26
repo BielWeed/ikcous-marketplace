@@ -1083,7 +1083,11 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(linha("Manga").getAttribute("aria-expanded")).toBe("true");
     expect(document.activeElement).toBe(chip("Longa"));
     expect(ctaDaFolha().textContent).toContain("Escolha: Manga");
-    expect(hospedeiro.textContent).toContain("50,00");
+    // UI-191 (G3): sem escolha completa o card anuncia o preço de VITRINE --
+    // a única opção à venda custa 80, não os 50 do produto-base --, e a
+    // escolha pela metade não o mexe.
+    expect(hospedeiro.textContent).toContain("80,00");
+    expect(hospedeiro.textContent).not.toContain("50,00");
     await act(async () => chip("Longa").click());
     await act(async () => ctaDaFolha().click());
     expect(entregar.mock.calls[0].slice(1)).toEqual([

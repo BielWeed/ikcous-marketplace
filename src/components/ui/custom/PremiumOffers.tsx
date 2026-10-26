@@ -12,6 +12,7 @@ import {
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
 import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -37,7 +38,8 @@ export interface PremiumOffersProps {
   favorites: string[];
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
-  onAddToCart?: (product: Product) => void;
+  /** Devolve quantas unidades entraram (0 = nada): só se entrou há "Salvo!". */
+  onAddToCart?: (product: Product) => unknown;
   onQuickBuy?: (product: Product) => void;
   title?: string;
 }
@@ -331,12 +333,13 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
    ========================================================================== */
 export function ordenarOfertas(products: Product[]) {
   // Determine the Hero Deal: product with the highest percentage discount
-  const offerItems = products.map((p) => {
-    const discount = p.originalPrice
-      ? Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)
-      : 0;
-    return { product: p, discount };
-  });
+  // UI-191 (G3): o desconto sai do preço de VITRINE (o menor entre as opções à
+  // venda), não do preço-base: uma variação esgotada ou com preço próprio não
+  // pode fabricar um "% OFF" que nenhuma opção à venda tem.
+  const offerItems = products.map((p) => ({
+    product: p,
+    discount: precoDeVitrine(p).desconto,
+  }));
 
   // Disponível ANTES de esgotado (a Home já entrega assim, e a faixa não pode
   // desfazer: uma oferta esgotada com desconto maior abriria a faixa antes
@@ -357,7 +360,8 @@ interface HeroOfferCardProps {
   isFavorite: boolean;
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
-  onAddToCart?: (product: Product) => void;
+  /** Devolve quantas unidades entraram (0 = nada): só se entrou há "Salvo!". */
+  onAddToCart?: (product: Product) => unknown;
   onQuickBuy?: (product: Product) => void;
   onMouseEnter?: () => void;
   onTouchStart?: () => void;
@@ -410,9 +414,14 @@ export function useAcoesDaOferta({
 
     if (cartStatus !== "idle") return;
 
+    // Pede ao carrinho ANTES de comemorar: com o estoque já todo lá dentro
+    // nada entra, e "Salvo!"/voo/vibração seriam mentira -- fica só o aviso
+    // de estoque que o carrinho já deu.
+    const entrou = onAddToCart?.(product);
+    if (entrou === 0) return;
+
     haptic.medium();
     setCartStatus("loading");
-    onAddToCart?.(product);
 
     const startEl = (e.currentTarget as HTMLElement) || document.body;
     triggerFlyingCartAnimation(startEl, product.images[0]);
@@ -441,15 +450,15 @@ export function useAcoesDaOferta({
     onToggleFavorite(product);
   };
 
-  const savings = product.originalPrice
-    ? product.originalPrice - product.price
-    : 0;
-  // Mesma condição do ProductCard: "De" só vale se for maior que o atual.
-  const precoAntigo =
-    product.originalPrice && product.originalPrice > product.price
-      ? product.originalPrice
-      : null;
+  // Mesma conta do ProductCard (`precoDeVitrine`): o preço anunciado é o menor
+  // entre as opções à venda; "De" e economia só existem se ele for menor que o
+  // "De" do produto.
+  const vitrine = precoDeVitrine(product);
+  const savings = vitrine.economia;
+  const precoAntigo = vitrine.precoOriginal;
   return {
+    preco: vitrine.preco,
+    aPartirDe: vitrine.aPartirDe,
     cartStatus,
     handleCardClick,
     hasActiveVariant,
@@ -483,6 +492,8 @@ function HeroOfferCard({
     handleFavoriteClick,
     savings,
     precoAntigo,
+    preco,
+    aPartirDe,
   } = useAcoesDaOferta({
     product,
     onProductClick,
@@ -621,13 +632,19 @@ function HeroOfferCard({
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 line-through">
                     De: {formatCurrency(precoAntigo)}
                   </span>
+                  {aPartirDe && (
+                    <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                      A partir de
+                    </span>
+                  )}
                   <span
                     className={cn(
                       "mt-0.5 text-xl font-black leading-none tracking-tighter sm:text-2xl",
                       CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
                     )}
                   >
-                    Por: {formatCurrency(product.price)}
+                    {aPartirDe ? "" : "Por: "}
+                    {formatCurrency(preco)}
                   </span>
                 </div>
               ) : (
@@ -636,8 +653,15 @@ function HeroOfferCard({
                 // não há preço antigo a mostrar --, só o preço atual, no
                 // tamanho do "Por:" acima e na cor do preço simples do
                 // ProductCard (verde é sinal de promoção, e aqui não há).
-                <span className="text-xl font-black leading-none tracking-tighter text-slate-900 sm:text-2xl">
-                  {formatCurrency(product.price)}
+                <span className="flex flex-col">
+                  {aPartirDe && (
+                    <span className="mb-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider text-slate-500">
+                      A partir de
+                    </span>
+                  )}
+                  <span className="text-xl font-black leading-none tracking-tighter text-slate-900 sm:text-2xl">
+                    {formatCurrency(preco)}
+                  </span>
                 </span>
               )}
               {savings > 0 && (
