@@ -1,4 +1,14 @@
 {
+  "1.5.72": {
+    "titulo": "Variações do produto: escolher a cor em vez de digitar",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Produto, variações: ao criar ou editar uma variação, você escolhe o tipo (Cor, Tamanho, Voltagem ou Outro) e toca na cor, no tamanho ou na voltagem, em vez de digitar. As cores aparecem como bolinhas, na mesma ideia que o cliente vê na loja. Ainda dá para digitar uma opção que não está na lista, e o que você digita é gravado do jeito que escreveu.",
+      "Produto, variações: se o produto já usa um nome como \"cor\" ou um valor como \"azul\", ao tocar na peça ou na bolinha o app grava do mesmo jeito que o produto já tem, para a loja não mostrar duas fileiras.",
+      "Produto, variações: a tela ganhou um visual novo: estoque com botões de menos e mais, interruptor para aparecer na loja e a foto da variação em miniaturas."
+    ]
+  },
   "1.5.71": {
     "titulo": "Frete calculado com o peso real em qualquer caso",
     "novidades": [],
