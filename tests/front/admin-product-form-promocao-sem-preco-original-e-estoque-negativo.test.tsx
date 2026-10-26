@@ -193,7 +193,7 @@ describe("AdminProductFormView — promoção sem preço original e estoque nega
       await montar();
       await ligarPromocao();
 
-      expect(botaoPorTexto("Salvar")?.disabled).toBe(true);
+      expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(true);
       expect(motivo()).toContain(
         "Escreva o preço original (De:) ou desligue a promoção",
       );
@@ -205,10 +205,10 @@ describe("AdminProductFormView — promoção sem preço original e estoque nega
       await ligarPromocao();
       await digitarCampo("product-original-price", "7000");
 
-      expect(botaoPorTexto("Salvar")?.disabled).toBe(false);
+      expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(false);
       expect(motivo()).toBe("");
       await act(async () => {
-        botaoPorTexto("Salvar")?.click();
+        botaoPorTexto("Salvar alterações")?.click();
         await new Promise((r) => setTimeout(r, 50));
       });
       expect(updateProduct).toHaveBeenCalledTimes(1);
@@ -221,16 +221,16 @@ describe("AdminProductFormView — promoção sem preço original e estoque nega
     it("desligar a promoção de novo também libera o Salvar", async () => {
       await montar();
       await ligarPromocao();
-      expect(botaoPorTexto("Salvar")?.disabled).toBe(true);
+      expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(true);
       await ligarPromocao();
 
-      expect(botaoPorTexto("Salvar")?.disabled).toBe(false);
+      expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(false);
     });
 
     it("produto que JÁ está em promoção (com 'De:') abre liberado", async () => {
       await montar({ originalPrice: 70 });
 
-      expect(botaoPorTexto("Salvar")?.disabled).toBe(false);
+      expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(false);
     });
   });
 

@@ -193,7 +193,7 @@ describe("AdminProductFormView — produto sem foto não ganha a capa 'Sem Image
     });
   }
 
-  async function salvar(texto = "Salvar") {
+  async function salvar(texto = "Salvar alterações") {
     const botao = botaoPorTexto(texto);
     if (!botao) throw new Error(`O botão ${texto} não está na tela.`);
     await act(async () => {

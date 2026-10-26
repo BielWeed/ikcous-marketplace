@@ -265,16 +265,18 @@ describe("AdminProductFormView — textos, avisos e botões (u179)", () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
       await montar("prod-1");
       await digitarCampo("product-name", "Camiseta nova");
-      expect(barraDeAcoes().textContent).toContain("Pronto para salvar");
+      expect(barraDeAcoes().textContent).toContain(
+        "Alterações prontas para salvar",
+      );
       await act(async () => {
-        botaoPorTexto("Salvar")?.click();
+        botaoPorTexto("Salvar alterações")?.click();
         await esperar(100);
       });
       const texto = barraDeAcoes().textContent ?? "";
       expect(texto).not.toContain("Pronto");
       expect(texto).toContain("Recarregue a tela antes de salvar de novo");
       expect(botaoPorTexto("Recarregar")).toBeDefined();
-      expect(botaoPorTexto("Salvar")?.disabled).toBe(true);
+      expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(true);
     });
   });
 
@@ -404,7 +406,7 @@ describe("AdminProductFormView — textos, avisos e botões (u179)", () => {
       await digitarCampo("product-cost-price", "0,0");
       expect(campoDeCusto().value).toBe("");
       await act(async () => {
-        botaoPorTexto("Salvar")?.click();
+        botaoPorTexto("Salvar alterações")?.click();
         await esperar(100);
       });
       expect(updateProduct).toHaveBeenCalledTimes(1);
@@ -514,14 +516,14 @@ describe("AdminProductFormView — textos, avisos e botões (u179)", () => {
   describe("9. resumo de 'Custo e lucro'", () => {
     it("fala só de custo, mesmo com a promoção ligada (a promoção mora junto do preço)", async () => {
       await montar();
-      expect(secao("Custo e lucro").textContent).toContain("Custo · opcional");
+      expect(secao("Custo e lucro").textContent).toContain("opcional");
       await act(async () => {
         (
           document.getElementById("product-promo-active") as HTMLInputElement
         ).click();
       });
       const texto = secao("Custo e lucro").textContent ?? "";
-      expect(texto).toContain("Custo · opcional");
+      expect(texto).toContain("opcional");
       expect(texto).not.toContain("Promoção");
       expect(texto).not.toContain("De/Por");
       expect(texto).not.toContain("só você vê");

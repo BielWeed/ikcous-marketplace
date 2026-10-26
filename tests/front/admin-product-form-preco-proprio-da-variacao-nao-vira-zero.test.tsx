@@ -321,7 +321,7 @@ describe("AdminProductFormView — preço próprio da variação nunca vira zero
     await salvarVariacao();
 
     const salvar = [...document.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Salvar",
+      (b) => b.textContent?.trim() === "Salvar alterações",
     ) as HTMLButtonElement | undefined;
     expect(salvar).toBeDefined();
     await act(async () => {

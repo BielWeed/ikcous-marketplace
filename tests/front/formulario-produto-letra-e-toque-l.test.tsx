@@ -5,14 +5,14 @@
 //   b. o seletor de setor (`SelectTrigger id="product-category"`) tem `min-h-11`
 //      (o `data-[size=default]:h-9` do ui/select vence o `h-auto`; min-height
 //      vence height);
-//   c. "Tirar Foto" (estado vazio) com `min-h-11`; os botões da câmera e de
+//   c. "Tirar foto" (estado vazio) com `min-h-11`; os botões da câmera e de
 //      adicionar fotos (galeria com fotos) com `size-11`;
 //   d. "Tentar de novo" / "Remover" da foto com falha e "Recarregar" do erro de
 //      carga com `min-h-11`;
 //   e. chip de atributo e "+ Atributo" do modal de variante com `min-h-11`;
 //   f. os botões editar/ligar/excluir da lista de variações (`VariantItem`) com
 //      `size-11` e os `aria-label`/`title` que o teste de ligar/desligar lê;
-//   g. "Ver no app" (botão flutuante) em 11px.
+//   g. "Ver app" (ao lado da ação principal) com 44px e letra de 14px.
 //
 // Estático: o jsdom não aplica CSS; a medida real é do render (ver relatório).
 /* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection, security/detect-unsafe-regex --
@@ -96,7 +96,7 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     expect(gatilho).toContain("min-h-[68px]");
   });
 
-  it("c. 'Tirar Foto' do estado vazio com min-h-11 e 11px; ações da galeria com 44px e largura inteira", () => {
+  it("c. 'Tirar foto' do estado vazio com min-h-11 e 13px; ações da galeria com 44px e largura inteira", () => {
     const rotulosDaCamera = [
       ...FONTE.matchAll(/<label\s+htmlFor="product-image-capture"/g),
     ].map((m) => tagAPartirDe(m.index));
@@ -113,7 +113,7 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     expect(comFotos).toContain("min-h-11");
     expect(comFotos).toContain("w-full");
     expect(vazio).toContain("min-h-11");
-    expect(vazio).toContain("text-[11px]");
+    expect(vazio).toContain("text-[13px]");
 
     const adicionar = tagDe("label", 'title="Adicionar Mais Imagens"');
     expect(adicionar).toContain("min-h-11");
@@ -198,11 +198,9 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     );
   });
 
-  it("g. 'Ver no app' junto da ação principal com 56px e letra de 14px", () => {
-    const posicao = FONTE.indexOf("Ver no app");
-    expect(posicao).toBeGreaterThan(-1);
-    const botao = tagAPartirDe(FONTE.lastIndexOf("<button", posicao));
-    expect(botao).toContain("min-h-14");
+  it("g. 'Ver app' junto da ação principal com 44px e letra de 14px", () => {
+    const botao = tagDe("button", "onClick={() => setIsPreviewOpen(true)}");
+    expect(botao).toContain("min-h-11");
     expect(botao).toContain("text-sm");
   });
 });

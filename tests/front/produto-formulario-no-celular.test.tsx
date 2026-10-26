@@ -274,16 +274,16 @@ describe("Formulário de produto cabe no celular (onda J, J3)", () => {
     }
   }
 
-  describe("a. Salvar/Publicar com alvo de 56px e letra de 16px", () => {
+  describe("a. Salvar/Publicar com alvo de 44px e letra de 16px", () => {
     it.each([
       ["produto novo", undefined, "Publicar"],
-      ["edição", "prod-1", "Salvar"],
+      ["edição", "prod-1", "Salvar alterações"],
     ])("%s", async (_caso, productId, texto) => {
       await montar(productId);
 
       const [botao] = botoes(texto as string);
       expect(botao, `botão ${texto} ausente`).toBeDefined();
-      expect(botao.className).toContain("min-h-14");
+      expect(botao.className).toContain("min-h-11");
       expect(botao.className).toContain("min-w-11");
       expect(botao.className).toContain("text-base");
       expect(botao.className).not.toMatch(LETRA_PEQUENA);
@@ -341,10 +341,10 @@ describe("Formulário de produto cabe no celular (onda J, J3)", () => {
       await montar("prod-1");
       await digitarCampo(ID_ESTOQUE_MINIMO, "3000000000");
 
-      const texto = secao("Avançado").textContent ?? "";
+      const texto = secao("Códigos e câmera").textContent ?? "";
       expect(texto).toContain("Número grande demais. Use um valor menor.");
       expect(texto).not.toContain("2147483647");
-      expect(botoes("Salvar")[0].disabled).toBe(true);
+      expect(botoes("Salvar alterações")[0].disabled).toBe(true);
     });
 
     it.each([
@@ -354,12 +354,12 @@ describe("Formulário de produto cabe no celular (onda J, J3)", () => {
       await montar("prod-1");
       await digitarCampo(ID_ESTOQUE_MINIMO, valor);
 
-      const texto = secao("Avançado").textContent ?? "";
+      const texto = secao("Códigos e câmera").textContent ?? "";
       expect(texto).toContain(
         "Use um número inteiro: 0, 1, 2… (sem vírgula nem sinal de menos).",
       );
       expect(texto).not.toContain("2147483647");
-      expect(botoes("Salvar")[0].disabled).toBe(true);
+      expect(botoes("Salvar alterações")[0].disabled).toBe(true);
     });
   });
 
@@ -386,23 +386,27 @@ describe("Formulário de produto cabe no celular (onda J, J3)", () => {
       }
     });
 
-    it("dicas das fotos em 11px e '12 MB' com espaço", async () => {
+    it("dicas das fotos: a frase curta da capa em 11px", async () => {
       await montar();
 
-      const dica = [...document.querySelectorAll("span")].find(
-        (el) => el.textContent === "Até 12 MB cada",
-      );
-      expect(dica, "dica 'Até 12 MB cada' ausente").toBeDefined();
-      const faixa = dica?.parentElement as HTMLElement;
-      expect(faixa.className).toContain("text-[11px]");
-      expect(faixa.className).not.toMatch(LETRA_PEQUENA);
-
       const orientacao = [...document.querySelectorAll("p")].find((el) =>
-        el.textContent?.includes("a primeira é a principal"),
+        el.textContent?.includes("a primeira é a capa"),
       );
-      expect(orientacao).toBeDefined();
-      expect(orientacao?.className).toContain("text-xs");
+      expect(orientacao, "frase da capa ausente").toBeDefined();
+      expect(orientacao?.textContent).toBe("Até 10 · a primeira é a capa");
+      expect(orientacao?.className).toContain("text-[11px]");
       expect(orientacao?.className).not.toMatch(LETRA_PEQUENA);
+    });
+
+    it("com fotos, os limites dizem '12 MB' (com espaço) em 11px", async () => {
+      fetchProduct.mockResolvedValue({ ...produtoDoBanco, images: [FOTO] });
+      await montar("prod-1");
+      const limites = [...document.querySelectorAll("p")].find((el) =>
+        el.textContent?.includes("12 MB cada"),
+      );
+      expect(limites, "limites das fotos ausentes").toBeDefined();
+      expect(limites?.className).toContain("text-[11px]");
+      expect(limites?.className).not.toMatch(LETRA_PEQUENA);
     });
   });
 });

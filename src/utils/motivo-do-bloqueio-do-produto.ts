@@ -63,6 +63,35 @@ export function motivoDoBloqueioDoProduto(
 }
 
 /**
+ * A mesma conta de `motivoDoBloqueioDoProduto`, em poucas palavras, para a
+ * linha única da barra de baixo. A frase COMPLETA (com a lista do que falta)
+ * continua no nome acessível e no título da barra: esta é só o que cabe na
+ * tela do celular. A ordem das causas é a da frase completa.
+ */
+export function fraseCurtaDoBloqueio(
+  campos: CamposObrigatoriosDoProduto,
+  temErroNoCampo: boolean,
+  promocaoSemPrecoOriginal = false,
+): string {
+  const faltam = camposQueFaltam(campos).length;
+  if (faltam === 1) return "Falta 1 campo";
+  if (faltam > 1) return `Faltam ${faltam} campos`;
+  if (promocaoSemPrecoOriginal) return "Falta o preço de antes";
+  if (temErroNoCampo) return "Corrija os avisos em vermelho";
+  return "Confira os campos";
+}
+
+/** A versão curta de `motivoDoEnvioDeFotos`, para a linha única da barra. */
+export function fraseCurtaDoEnvioDeFotos(
+  progresso: { atual: number; total: number } | null,
+  ajustando: boolean,
+): string {
+  if (ajustando) return "Enviando a foto ajustada…";
+  if (!progresso) return "Enviando fotos…";
+  return `Enviando fotos… (${progresso.atual} de ${progresso.total})`;
+}
+
+/**
  * A frase de quando o botão está desligado porque há foto subindo. Sem ela o
  * botão ficava cinza sem explicação enquanto a compressão/o upload rodavam
  * (relato de cliente em rede lenta, 03/10/2026). `progresso` é a foto da vez

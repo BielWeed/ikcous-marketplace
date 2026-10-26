@@ -1,4 +1,14 @@
 {
+  "1.5.83": {
+    "titulo": "Tela de produto mais limpa, com barra de baixo fina",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Painel, produto: o topo ficou compacto, com o andamento do cadastro em um anel de 0 a 5 e uma barra fina embaixo do título. As seções agora se chamam Essencial, Promoção e Mais detalhes.",
+      "Painel, produto: a barra de baixo (Publicar ou Salvar alterações e Ver app) ficou bem mais fina e deixa mais campos à vista. Ela diz em uma linha o que falta, e o toque leva ao campo.",
+      "Painel, produto: o cartão de fotos vazio mostra a capa, o limite de 10 fotos e os botões Tirar foto e Galeria. A opção Avançado passou a se chamar Códigos e câmera."
+    ]
+  },
   "1.5.82": {
     "titulo": "Lucro líquido diz o que falta para calcular",
     "novidades": [],

@@ -179,7 +179,7 @@ describe("AdminProductFormView — limpar campo persiste como null (#96)", () =>
     );
     expect(barra).not.toBeNull();
     const botao = [...barra!.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Salvar",
+      (b) => b.textContent?.trim() === "Salvar alterações",
     ) as HTMLButtonElement;
     expect(botao).toBeDefined();
     expect(botao.disabled).toBe(false);

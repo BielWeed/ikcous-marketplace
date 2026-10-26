@@ -183,7 +183,7 @@ describe("AdminProductFormView — editar manda só o que a lojista mudou", () =
   }
 
   async function salvar() {
-    const botao = botaoPorTexto("Salvar");
+    const botao = botaoPorTexto("Salvar alterações");
     if (!botao) throw new Error("O botão Salvar não está na tela.");
     await act(async () => {
       botao.click();

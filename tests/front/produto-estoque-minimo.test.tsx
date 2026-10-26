@@ -4,9 +4,9 @@
 //
 // O limiar de estoque baixo de cada produto (`produtos.estoque_minimo`) já
 // existia no banco e nos avisos do Início, mas a lojista não tinha onde
-// escolhê-lo. O campo mora na seção "Avançado" do formulário de produto:
+// escolhê-lo. O campo mora na seção "Códigos e câmera" do formulário de produto:
 //
-//   a. existe, montado e fechado dentro de "Avançado", com a ajuda dizendo que
+//   a. existe, montado e fechado dentro de "Códigos e câmera", com a ajuda dizendo que
 //      vazio usa o padrão (5) e que, com variações, vale para a soma;
 //   b. produto com 8 mostra 8; produto com 0 mostra 0 (zero é escolha, não
 //      ausência); produto sem valor mostra vazio;
@@ -224,12 +224,12 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
     });
   }
 
-  describe("a. o campo existe, no Avançado", () => {
-    it("fica montado dentro da seção 'Avançado' (fechada), como número inteiro >= 0", async () => {
+  describe("a. o campo existe, em Códigos e câmera", () => {
+    it("fica montado dentro da seção 'Códigos e câmera' (fechada), como número inteiro >= 0", async () => {
       await montar();
 
       expect(campo(), "campo #product-estoque-minimo ausente").not.toBeNull();
-      const painelId = secao("Avançado")
+      const painelId = secao("Códigos e câmera")
         .querySelector("button")
         ?.getAttribute("aria-controls");
       expect(document.getElementById(painelId ?? "")?.contains(campo())).toBe(
@@ -246,14 +246,14 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
 
       const rotulo = document.querySelector(`label[for="${ID}"]`);
       expect(rotulo?.textContent).toContain("Avisar quando o estoque chegar a");
-      expect(secao("Avançado").textContent).toContain(
+      expect(secao("Códigos e câmera").textContent).toContain(
         "Vazio usa o padrão (5). Com variações, vale para a soma.",
       );
     });
 
     it("o resumo da seção passa a falar do aviso de estoque", async () => {
       await montar();
-      expect(secao("Avançado").textContent).toContain(
+      expect(secao("Códigos e câmera").textContent).toContain(
         "Código interno, código de barras e aviso de estoque",
       );
     });
@@ -363,7 +363,7 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
         await montar("prod-1");
         await digitarCampo(ID, texto);
 
-        expect(secao("Avançado").textContent).toContain(mensagem);
+        expect(secao("Códigos e câmera").textContent).toContain(mensagem);
         expect(botao("Salvar").disabled).toBe(true);
 
         await act(async () => {
@@ -377,11 +377,11 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       },
     );
 
-    it("o erro abre a seção 'Avançado' sozinho", async () => {
+    it("o erro abre a seção 'Códigos e câmera' sozinho", async () => {
       await montar("prod-1");
       await digitarCampo(ID, "-3");
 
-      const cabecalho = secao("Avançado").querySelector(
+      const cabecalho = secao("Códigos e câmera").querySelector(
         "button",
       ) as HTMLButtonElement;
       expect(cabecalho.getAttribute("aria-expanded")).toBe("true");
@@ -392,7 +392,9 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       await digitarCampo(ID, "-3");
       await digitarCampo(ID, "4");
 
-      expect(secao("Avançado").textContent).not.toContain(MENSAGEM_NAO_INTEIRO);
+      expect(secao("Códigos e câmera").textContent).not.toContain(
+        MENSAGEM_NAO_INTEIRO,
+      );
       expect(botao("Salvar").disabled).toBe(false);
     });
 
@@ -400,10 +402,12 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       await montar("prod-1");
       await digitarCampo(ID, "2147483647");
 
-      expect(secao("Avançado").textContent).not.toContain(
+      expect(secao("Códigos e câmera").textContent).not.toContain(
         MENSAGEM_GRANDE_DEMAIS,
       );
-      expect(secao("Avançado").textContent).not.toContain(MENSAGEM_NAO_INTEIRO);
+      expect(secao("Códigos e câmera").textContent).not.toContain(
+        MENSAGEM_NAO_INTEIRO,
+      );
       await salvarEdicao();
       expect(updateProduct).toHaveBeenCalledTimes(1);
       expect(updateProduct.mock.calls[0][1].estoqueMinimo).toBe(2147483647);

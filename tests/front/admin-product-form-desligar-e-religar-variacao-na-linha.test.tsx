@@ -252,7 +252,7 @@ describe("AdminProductFormView — desligar e religar variação na linha", () =
     expect(linhasNaTela()).toHaveLength(2);
 
     const salvar = [...document.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Salvar",
+      (b) => b.textContent?.trim() === "Salvar alterações",
     ) as HTMLButtonElement | undefined;
     expect(salvar).toBeDefined();
     await act(async () => {
