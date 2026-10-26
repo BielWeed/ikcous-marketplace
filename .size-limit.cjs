@@ -105,7 +105,11 @@ module.exports = [
     // 26/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
     // 580 -> 584 kB na 1.5.80 (setas e icones certos em varias telas da loja). Medido no CI
     // 580,05 kB: 46 B acima do teto anterior; na maquina deu 579,63 kB (ruido de hash).
-    limit: "584 kB",
+    // 26/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 584 -> 588 kB para os lotes 201-205 da Caca 7 (vitrine: selos, pontos das ofertas,
+    // dialogos e avisos da cliente). Medido no CI com o merge: 584,01 kB (lote do painel
+    // sozinho) e 584,28 kB (lote da vitrine sozinho); juntos passam de 584 kB.
+    limit: "588 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
@@ -205,8 +209,11 @@ module.exports = [
     // Financeiro pergunta antes de descartar e o Voltar do celular nao perde o
     // rascunho, relatorios e avaliacoes corretos, textos e alvos de toque. Medido
     // com o merge: base sozinha 487,20 kB; com o lote 488,31 kB (CI: 488,34 kB).
+    // 26/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 490 -> 494 kB para os lotes 202-205 da Caca 7 (avisos, clientes, cadastros do
+    // painel). Medido no CI com o merge: 489,58 kB com so um lote, folga de 420 B.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "490 kB",
+    limit: "494 kB",
     webpack: false,
     running: false,
   },

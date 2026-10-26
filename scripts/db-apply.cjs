@@ -170,9 +170,6 @@ const VERIFICACOES = {
       { texto: "LIMIT p_teto", vezes: 1 },
     ],
   },
-  // 20261391100000 (ninguem grava evento de analise pela API) NAO entra aqui: e so REVOKE + DROP POLICY, e o db-apply so confere
-  // marcador dentro de corpo de funcao -- sai PULADA por desenho. A consulta 99a e a prova viva fazem a conferencia.
-  //
   // 20261391200000: o Financeiro descreve a venda do balcao como o app mostra. fin__movimentos muda SO a coluna descricao (numero em
   // maiuscula, balcao sem repetir 'Venda no balcão', venda do balcao anulada pelo app); as duas linhas de dinheiro que a 1b confere
   // para a 20261177000000 continuam UMA vez cada. A consulta 100a confere o corpo exato (md5), os atributos e a ACL.
