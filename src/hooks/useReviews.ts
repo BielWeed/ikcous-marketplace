@@ -670,10 +670,12 @@ export function useReviews() {
   // Item 8 do laudo de 29/08: a fila de moderação é REAL — aprovar publica
   // a avaliação pendente (a recusa continua sendo o apagar de sempre).
   const aprovarReview = useCallback(
-    async (reviewId: string) => {
+    async (reviewId: string): Promise<boolean> => {
+      // Devolve true só quando o banco confirmou a publicação; false em falha
+      // (o toast de erro sai daqui). Sem o retorno, a tela vibrava "sucesso".
       if (!isAdmin) {
         toast.error("Permissão negada");
-        return;
+        return false;
       }
       try {
         const { error } = await supabase
@@ -689,9 +691,11 @@ export function useReviews() {
           ),
         );
         toast.success("Avaliação publicada.");
+        return true;
       } catch (error) {
         console.error("Error approving review:", error);
         toast.error("Erro ao publicar avaliação.");
+        return false;
       }
     },
     [isAdmin],

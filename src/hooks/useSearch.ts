@@ -1,4 +1,5 @@
 import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import type { Product } from "@/types";
 import { useMemo, useState } from "react";
 import { useDebounce } from "./useDebounce";
@@ -45,10 +46,11 @@ export function useSearch(products: Product[]) {
         }
 
         switch (sort) {
+          // Ordena pelo preço que o card ANUNCIA (menor das opções à venda).
           case "price_asc":
-            return a.price - b.price;
+            return precoDeVitrine(a).preco - precoDeVitrine(b).preco;
           case "price_desc":
-            return b.price - a.price;
+            return precoDeVitrine(b).preco - precoDeVitrine(a).preco;
           case "name_asc":
             return a.name.localeCompare(b.name);
           case "newest":

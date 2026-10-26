@@ -15,6 +15,10 @@ import {
 } from "vitest";
 
 import { FolhaFinanceira } from "@/components/admin/financeiro/FolhaFinanceira";
+import {
+  ContextoDoDescarte,
+  type EstadoDoDescarte,
+} from "@/components/admin/financeiro/descarte";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -35,17 +39,29 @@ let agora = 0;
 let aoFechar: Mock<() => void>;
 let descritorAltura: PropertyDescriptor | undefined;
 
-function montar(props: { fecharBloqueado?: boolean } = {}) {
+function montar(
+  props: { fecharBloqueado?: boolean } = {},
+  descarte?: EstadoDoDescarte,
+) {
+  const folha = (
+    <FolhaFinanceira
+      titulo="Novo lançamento"
+      aoFechar={aoFechar}
+      rodape={<button type="button">Salvar lançamento</button>}
+      {...props}
+    >
+      <input aria-label="Valor" />
+    </FolhaFinanceira>
+  );
   act(() => {
     raiz.render(
-      <FolhaFinanceira
-        titulo="Novo lançamento"
-        aoFechar={aoFechar}
-        rodape={<button type="button">Salvar lançamento</button>}
-        {...props}
-      >
-        <input aria-label="Valor" />
-      </FolhaFinanceira>,
+      descarte ? (
+        <ContextoDoDescarte.Provider value={descarte}>
+          {folha}
+        </ContextoDoDescarte.Provider>
+      ) : (
+        folha
+      ),
     );
   });
 }
@@ -256,5 +272,43 @@ describe("FolhaFinanceira — um único fechar visível", () => {
     const veu = document.querySelector('[data-slot="sheet-overlay"]');
     expect(veu?.className).not.toContain("bg-black/50");
     expect(veu?.className).toContain("bg-[rgb(0_0_0/0.5)]");
+  });
+
+  it("com algo escrito o arrasto vira pergunta: a folha volta ao lugar, não desce inteira", () => {
+    montar(
+      {},
+      {
+        sujo: true,
+        perguntando: false,
+        aoContinuar: vi.fn(),
+        aoDescartar: vi.fn(),
+      },
+    );
+    const alvo = regiaoDeArrasto();
+    ponteiro(alvo, "pointerdown", 100, 0);
+    ponteiro(alvo, "pointermove", 400, 300);
+    ponteiro(alvo, "pointerup", 400, 300);
+    expect(aoFechar).toHaveBeenCalledTimes(1);
+    expect(folha().style.transform).toBe("");
+  });
+
+  it("com a pergunta na tela só ela responde: o resto da folha fica inerte e sem arrasto", () => {
+    const aoContinuar = vi.fn();
+    const aoDescartar = vi.fn();
+    montar({}, { sujo: true, perguntando: true, aoContinuar, aoDescartar });
+    const pergunta = document.querySelector('[role="alertdialog"]');
+    expect(pergunta?.textContent).toContain("Descartar o que você escreveu?");
+    expect(
+      document.querySelector("[data-folha-arraste]")?.hasAttribute("inert"),
+    ).toBe(true);
+    expect(document.querySelector("input")?.closest("[inert]")).not.toBeNull();
+    const alvo = regiaoDeArrasto();
+    expect(alvo.className).not.toContain("touch-none");
+    const botoes = [...(pergunta?.querySelectorAll("button") ?? [])];
+    expect(document.activeElement).toBe(botoes[0]);
+    act(() => botoes[1]?.click());
+    expect(aoDescartar).toHaveBeenCalledTimes(1);
+    act(() => botoes[0]?.click());
+    expect(aoContinuar).toHaveBeenCalledTimes(1);
   });
 });

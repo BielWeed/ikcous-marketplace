@@ -78,6 +78,104 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261387: a busca de pedido pelo numero nao vira busca de telefone (get_admin_orders_paged). Os dois gates de admin, a regra "so e telefone
+  // o que parece telefone" (a variavel e a condicao nos DOIS blocos: contagem e pagina) e o pedido do numero primeiro ficam no corpo; o resto
+  // e o da 20261199. A consulta 92a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261387000000_a_busca_de_pedido_pelo_numero_nao_vira_busca_de_telefone.sql":
+    {
+      funcao: "get_admin_orders_paged",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto: "v_parece_telefone := v_clean_search ~ '^[+]?[0-9() .-]+$';",
+          vezes: 1,
+        },
+        {
+          texto: "v_parece_telefone AND length(v_search_digitos) >= 4",
+          vezes: 2,
+        },
+        {
+          texto: "AND upper(right(o.id::TEXT, 6)) = upper(v_clean_search)",
+          vezes: 1,
+        },
+      ],
+    },
+  // 20261389100000: devolver_estoque tranca as linhas do pedido na ordem global da compra (variacoes por id, depois produtos por id) antes de
+  // creditar. O credito e' o da 20261175000000, sem mexer: a guarda do carimbo (UMA vez por pedido) e os dois UPDATE (variacao OU produto) ficam
+  // com a contagem exata. Sem o ORDER BY de cada grupo, ou sem um dos dois grupos, o deadlock com a compra volta (a prova viva mede).
+  "20261389100000_o_estoque_que_volta_tranca_na_mesma_ordem_da_compra.sql": {
+    funcao: "devolver_estoque",
+    esperado: [
+      { texto: "AND stock_returned_at IS NULL", vezes: 1 },
+      { texto: "ORDER BY v.id", vezes: 1 },
+      { texto: "ORDER BY p.id", vezes: 1 },
+      { texto: "PERFORM 1", vezes: 2 },
+      { texto: "SET stock_increment = stock_increment + v_credito", vezes: 1 },
+      { texto: "SET estoque = estoque + v_credito", vezes: 1 },
+    ],
+  },
+  // 20261389: o frete tem limite de cotacoes por origem. A tabela, o ACL e a RLS nao sao conferiveis aqui (so corpo de funcao): a consulta 95a e a
+  // prova viva fazem isso. Aqui: o contador e atomico (UM INSERT ... ON CONFLICT DO UPDATE ... WHERE abaixo do teto), nao grava quando barra e
+  // valida os argumentos (22023); sem o WHERE o teto deixa de existir, sem a validacao um bug da edge vira "sem limite".
+  "20261389000000_o_frete_tem_limite_de_cotacoes_por_origem.sql": {
+    funcao: "frete_consumir_cota",
+    esperado: [
+      { texto: "ON CONFLICT (origem, janela_inicio) DO UPDATE", vezes: 1 },
+      { texto: "WHERE c.chamadas < p_limite", vezes: 1 },
+      { texto: "USING ERRCODE = '22023'", vezes: 1 },
+      { texto: "FOR UPDATE SKIP LOCKED", vezes: 1 },
+    ],
+  },
+  // 20261390: o lucro estimado do Inicio (painel_inicio) conta o MES INTEIRO, do dia 1 ao ultimo dia, previstos inclusos, a conta do "Mes
+  // atual" do Financeiro. Muda SO a janela do fin_dre do lucro: a variavel v_mes_fim e o fin_dre(v_mes_inicio, v_mes_fim). O resto do corpo
+  // e o da 20261228000000 (o corte na mesma hora da semana passada, a regra de estoque baixo e as duas travas de admin sobrevivem). A consulta
+  // 97a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento (inclusive fevereiro e meses de 30 e 31 dias).
+  "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql": {
+    funcao: "painel_inicio",
+    esperado: [
+      { texto: "v_mes_fim date;", vezes: 1 },
+      {
+        texto: "v_mes_fim := (v_mes_inicio + interval '1 month')::date - 1;",
+        vezes: 1,
+      },
+      {
+        texto:
+          "v_lucro := (public.fin_dre(v_mes_inicio, v_mes_fim) ->> 'lucro_liquido')::numeric;",
+        vezes: 1,
+      },
+      {
+        texto:
+          "AND (pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
+        vezes: 1,
+      },
+      { texto: "<= COALESCE(p.estoque_minimo, 5))", vezes: 1 },
+      { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+    ],
+  },
+  // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
+  // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
+  "20261386000000_o_preco_do_produto_deixa_historico.sql": {
+    funcao: "registrar_historico_de_preco",
+    esperado: [
+      { texto: "IF NEW.preco_venda IS NULL THEN", vezes: 1 },
+      {
+        texto:
+          "NEW.id, NEW.preco_venda, NULL, clock_timestamp(), auth.uid(), 'cadastro'",
+        vezes: 1,
+      },
+      {
+        texto: "ELSIF NEW.preco_venda IS DISTINCT FROM OLD.preco_venda THEN",
+        vezes: 1,
+      },
+      {
+        texto:
+          "NEW.id, NEW.preco_venda, OLD.preco_venda, clock_timestamp(), auth.uid(), 'mudanca'",
+        vezes: 1,
+      },
+    ],
+  },
   // 20261385: a busca de produtos do painel (get_admin_products_paged) acha pelo codigo de barras do produto e da variacao ativa e
   // pelo SKU da variacao ativa. O filtro entra IGUAL nos dois blocos (total_count e pagina): cada marcador vale 2 vezes. O resto e o
   // corpo da 20261381. A consulta 90a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.

@@ -24,6 +24,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Order } from "@/types";
 
+import {
+  desligarCaixaDeCancelamento,
+  ligarCaixaDeCancelamento,
+} from "./duble-caixa-de-cancelamento";
 const pedidoBase: Order = {
   id: "pedido-envio",
   customer: { name: "Cliente Teste", whatsapp: "34999999999" },
@@ -102,6 +106,7 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    ligarCaixaDeCancelamento();
     updateOrderStatusMock.mockClear();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -109,6 +114,7 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
   });
 
   afterEach(() => {
+    desligarCaixaDeCancelamento();
     act(() => {
       raiz.unmount();
     });
@@ -236,6 +242,56 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     expect(textoDaTela).toContain(
       "Devolução: a loja faz depois de receber o produto de volta.",
     );
+  });
+
+  it("pedido enviado, cancelado e REATIVADO pela loja (processing): a pergunta não promete devolução automática", async () => {
+    // O servidor não abre a devolução automática para pedido que já saiu uma
+    // vez (`NOT v_cancelled_after_shipping`): o "volta sozinho" era falso.
+    const confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "processing",
+      paymentStatus: "pago",
+      cancelledAfterShipping: true,
+    };
+
+    await renderizar();
+    await act(async () => {
+      botaoCancelar()?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    const texto = confirmMock.mock.calls[0][0] as string;
+    expect(texto).not.toMatch(/volta sozinho/i);
+    expect(texto).toContain("devolver o produto à loja");
+  });
+
+  it("o mesmo pedido, com o produto já de volta na loja: a loja cuida do dinheiro e ninguém manda devolver produto", async () => {
+    const confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "processing",
+      paymentStatus: "pago",
+      cancelledAfterShipping: true,
+      returnedToSellerAt: "2026-10-20T12:00:00.000Z",
+    };
+
+    await renderizar();
+    await act(async () => {
+      botaoCancelar()?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    const texto = confirmMock.mock.calls[0][0] as string;
+    expect(texto).not.toMatch(/volta sozinho/i);
+    expect(texto).not.toContain("devolver o produto");
+    expect(texto).toContain("devolver o seu dinheiro");
   });
 
   it("pedido entregue (delivered): o botão Cancelar NÃO aparece", async () => {

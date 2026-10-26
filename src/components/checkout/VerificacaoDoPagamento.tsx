@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useOrders } from "@/hooks/useOrders";
 import { AlertCircle, Check, Clock, Loader2, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -537,13 +538,9 @@ export function VerificacaoDoPagamento({
         </>
       )}
       {situacao.tipo === "sem_registro" && onFalarComALoja && (
-        <Button
-          onClick={onFalarComALoja}
-          variant="outline"
-          className="w-full rounded-xl"
-        >
+        <BotaoWhatsapp onClick={onFalarComALoja} className="rounded-xl">
           Falar com a loja
-        </Button>
+        </BotaoWhatsapp>
       )}
       {podeVerificarDeNovo && !esgotouOsToques && (
         <Button

@@ -48,7 +48,7 @@ interface SearchViewProps {
     quantity?: number,
     variantId?: string,
     variantNames?: string,
-  ) => void;
+  ) => unknown;
 }
 
 interface SearchInputProps {
@@ -148,9 +148,7 @@ export const SearchView = React.memo(function SearchView({
   // quantidade. Com opções (tamanho/cor), o card abre a folha e entrega
   // variação + quantidade escolhidas.
   const handleAddToCart = useCallback(
-    (product: Product) => {
-      onAddToCart?.(product);
-    },
+    (product: Product) => onAddToCart?.(product),
     [onAddToCart],
   );
   const handleAddToCartWithVariants = useCallback(
@@ -160,7 +158,7 @@ export const SearchView = React.memo(function SearchView({
       variantNames: string,
       quantity = 1,
     ) => {
-      onAddToCart?.(product, quantity, variantId, variantNames);
+      return onAddToCart?.(product, quantity, variantId, variantNames);
     },
     [onAddToCart],
   );
@@ -493,16 +491,19 @@ export const SearchView = React.memo(function SearchView({
               </Button>
             </div>
 
-            {/* Trending Recommendations */}
+            {/* Sugestões: são só 4 produtos da loja (os com estoque primeiro) --
+                UI-191 (G7): nada de "Editor's Choice"/"Trending", que afirmam
+                curadoria e tendência que a loja não mediu, e em inglês. */}
             <div className="border-t border-zinc-100 pt-10">
               <div className="mb-10 flex flex-col items-center text-center">
                 <span className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">
-                  Editor's Choice
+                  Sugestões
                 </span>
                 <h3 className="text-2xl font-black tracking-tighter text-zinc-900">
                   {/* Nome do banco primeiro, branding.json como fallback —
                       mesma preferência do Header e da Home. */}
-                  Trending na {config.storeName?.trim() || branding.appName}
+                  Alguns produtos da{" "}
+                  {config.storeName?.trim() || branding.appName}
                 </h3>
               </div>
               <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">

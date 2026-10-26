@@ -34,6 +34,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Order, PaymentStatus } from "@/types";
 
+import {
+  desligarCaixaDeCancelamento,
+  ligarCaixaDeCancelamento,
+} from "./duble-caixa-de-cancelamento";
 const pedidoBase: Order = {
   id: "pedido-cancelar",
   customer: { name: "Cliente Teste", whatsapp: "34999999999" },
@@ -105,6 +109,7 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
   let confirmMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    ligarCaixaDeCancelamento();
     updateOrderStatusMock.mockClear();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -112,6 +117,7 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
   });
 
   afterEach(() => {
+    desligarCaixaDeCancelamento();
     act(() => {
       raiz.unmount();
     });

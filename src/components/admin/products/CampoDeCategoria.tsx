@@ -169,9 +169,7 @@ export function CampoDeCategoria({
             id="product-category-dica"
             className="block truncate text-xs text-muted-foreground"
           >
-            {comEscolha
-              ? "Toque para trocar"
-              : "Toque para ver as categorias da loja"}
+            {comEscolha ? "Toque para trocar" : "Toque para ver as categorias"}
           </span>
         </span>
         <ChevronRight

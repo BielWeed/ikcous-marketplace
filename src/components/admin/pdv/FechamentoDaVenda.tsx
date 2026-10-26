@@ -219,7 +219,7 @@ export function FechamentoDaVenda({
           <div role="alert" className="pdv-notice">
             <p className="pdv-heading">
               <WifiOff aria-hidden="true" className="pdv-icon pdv-red" />
-              Sem internet. Venda salva.
+              Sem internet. A venda ainda não foi registrada.
             </p>
             <p className="pdv-muted">
               Sem internet agora. A venda fica salva aqui; registre a venda

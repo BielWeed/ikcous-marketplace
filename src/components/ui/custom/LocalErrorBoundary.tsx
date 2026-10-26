@@ -2,7 +2,7 @@ import { AdminErrorState } from "@/components/admin/AdminErrorState";
 import { Button } from "@/components/ui/button";
 import { tentarDeNovoAbaQueNaoBaixou } from "@/lib/recarga-de-aba-que-falhou";
 import { ehErroDeChunk } from "@/lib/recuperacao-chunk";
-import { RefreshCcw, WifiOff } from "lucide-react";
+import { CircleAlert, RefreshCcw, WifiOff } from "lucide-react";
 import { Component, createRef } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 
@@ -10,6 +10,13 @@ interface Props {
   children: ReactNode;
   fallback?: ReactNode;
   onReset?: () => void;
+  /**
+   * Quem está olhando. `"painel"` (padrão) é o cartão escuro do lojista, com os
+   * "detalhes técnicos". `"cliente"` é a tela da LOJA: texto de cliente em
+   * português simples, visual da loja e NENHUM rastro técnico visível a quem
+   * compra (a pilha do erro continua só no console).
+   */
+  variante?: "painel" | "cliente";
 }
 
 interface State {
@@ -144,6 +151,38 @@ export class LocalErrorBoundary extends Component<Props, State> {
                 Tentar de novo
               </Button>
             )}
+          </div>
+        );
+      }
+
+      if (this.props.variante === "cliente") {
+        // Mesma pele do aviso de "tela que não baixou" acima: só tokens do
+        // tema, porque a loja pode estar em tema claro ou escuro.
+        return (
+          <div
+            role="alert"
+            className="flex w-full flex-col items-center justify-center gap-4 p-8 text-center duration-300 animate-in fade-in"
+          >
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <CircleAlert className="size-7" aria-hidden="true" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-base font-semibold text-foreground">
+                Algo deu errado nesta tela
+              </h3>
+              <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
+                Não foi culpa sua. Tente de novo; se continuar, feche e abra o
+                app.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={this.handleReset}
+              className="h-12 rounded-full px-8 font-bold tracking-wide"
+            >
+              <RefreshCcw className="mr-2 size-4" aria-hidden="true" />
+              Tentar de novo
+            </Button>
           </div>
         );
       }

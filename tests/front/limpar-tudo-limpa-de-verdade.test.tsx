@@ -236,9 +236,13 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 describe("CartView — Limpar Tudo limpa de verdade", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
+  // UI-191 (G10): a pergunta de esvaziar é a caixa de confirmação da casa
+  // (AlertDialog), não o `confirm()` do navegador. O espião do `confirm` fica
+  // para provar que o navegador NÃO é mais chamado.
   let confirmSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    confirmSpy = vi.spyOn(globalThis, "confirm").mockReturnValue(true);
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -268,6 +272,21 @@ describe("CartView — Limpar Tudo limpa de verdade", () => {
     return hospedeiro;
   }
 
+  const botaoDoDialogo = (rotulo: string) =>
+    Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        '[role="alertdialog"] button',
+      ),
+    ).find((b) => b.textContent === rotulo);
+
+  async function responderAoDialogo(rotulo: "Esvaziar carrinho" | "Manter") {
+    const botao = botaoDoDialogo(rotulo);
+    if (!botao) throw new Error(`Botão "${rotulo}" não apareceu no diálogo`);
+    await act(async () => {
+      botao.click();
+    });
+  }
+
   async function clicarLimparTudo(hospedeiro: HTMLDivElement) {
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
       (b) => b.textContent === "Limpar Tudo",
@@ -280,7 +299,6 @@ describe("CartView — Limpar Tudo limpa de verdade", () => {
   }
 
   it("com itens no carrinho, confirmar Limpar Tudo esvazia o carrinho de verdade", async () => {
-    confirmSpy = vi.spyOn(globalThis, "confirm").mockReturnValue(true);
     const host = await renderizarCarrinho();
 
     // A âncora: o item aparece antes de limpar.
@@ -288,16 +306,21 @@ describe("CartView — Limpar Tudo limpa de verdade", () => {
     expect(host.querySelector('[data-testid="carrinho-vazio"]')).toBeNull();
 
     await clicarLimparTudo(host);
+    // Só a pergunta abriu: nada saiu do carrinho antes do "sim".
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="itens"]')).not.toBeNull();
+    await responderAoDialogo("Esvaziar carrinho");
 
     expect(host.querySelector('[data-testid="carrinho-vazio"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="itens"]')).toBeNull();
+    expect(confirmSpy).not.toHaveBeenCalled();
   });
 
   it("o rastreio de convidado sobrevive a Limpar Tudo", async () => {
-    confirmSpy = vi.spyOn(globalThis, "confirm").mockReturnValue(true);
     const host = await renderizarCarrinho();
 
     await clicarLimparTudo(host);
+    await responderAoDialogo("Esvaziar carrinho");
 
     expect(sessionStorage.getItem("guest_tracked_orders")).toBe(
       JSON.stringify([{ id: "pedido-convidado-1" }]),
@@ -305,15 +328,17 @@ describe("CartView — Limpar Tudo limpa de verdade", () => {
   });
 
   it("controle negativo: cancelar a confirmação mantém o carrinho intacto", async () => {
-    confirmSpy = vi.spyOn(globalThis, "confirm").mockReturnValue(false);
     const host = await renderizarCarrinho();
 
     await clicarLimparTudo(host);
+    await responderAoDialogo("Manter");
 
     // Sem confirmação, nada deveria ter sido apagado — prova que o efeito
     // medido no primeiro teste vem da confirmação, não de um clique cru.
     expect(host.querySelector('[data-testid="carrinho-vazio"]')).toBeNull();
     expect(host.querySelector('[data-testid="itens"]')).not.toBeNull();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(confirmSpy).not.toHaveBeenCalled();
   });
 });
 

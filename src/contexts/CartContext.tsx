@@ -41,6 +41,96 @@ import { z } from "zod";
 
 const MAX_ITEM_QUANTITY = 500; // Nuclear deterrent against inflation
 
+/**
+ * A regra única de "somar uma unidade ao carrinho", SEM efeito colateral: o
+ * mesmo cálculo serve para dizer à vitrine quantas unidades entraram (antes de
+ * o React processar o estado) e para o próprio estado. Com duas escolhas
+ * separadas vale o menor estoque, já descontado o que as OUTRAS linhas levam
+ * da mesma variação.
+ */
+function somarAoCarrinho(
+  prev: CartItem[],
+  product: Product,
+  qToAdd: number,
+  variantId: string | undefined,
+  outrasVariantIds: string[],
+  variantNames: string | undefined,
+): { cart: CartItem[]; entrou: number; aviso: string | null } {
+  const chaveDaNova = chaveDoItem({ product, variantId, outrasVariantIds });
+  const existingIndex = prev.findIndex(
+    (item) => chaveDoItem(item) === chaveDaNova,
+  );
+  const availableStock = estoqueDaLinha(
+    product,
+    variantId,
+    outrasVariantIds,
+    prev.filter((item) => chaveDoItem(item) !== chaveDaNova),
+  );
+
+  if (availableStock <= 0) {
+    return { cart: prev, entrou: 0, aviso: "Este produto está esgotado." };
+  }
+
+  if (existingIndex > -1) {
+    const existing = prev[existingIndex];
+    const nextQuantity = Math.min(
+      existing.quantity + qToAdd,
+      availableStock,
+      MAX_ITEM_QUANTITY,
+    );
+    let aviso: string | null = null;
+    if (
+      nextQuantity === availableStock &&
+      existing.quantity + qToAdd > availableStock
+    ) {
+      aviso = `Apenas ${availableStock} unidades disponíveis em estoque.`;
+    } else if (
+      nextQuantity === MAX_ITEM_QUANTITY &&
+      existing.quantity + qToAdd > MAX_ITEM_QUANTITY
+    ) {
+      console.error(
+        `[CartContext-STOP] 🛑 QUANTITY CAP REACHED for ${product.id}.`,
+      );
+    }
+    const cart = [...prev];
+    cart[existingIndex] = {
+      ...existing,
+      // O produto que chega é o ATUAL (a cliente acabou de vê-lo na
+      // vitrine). Manter a cópia do dia em que o item entrou prendia o
+      // carrinho no preço velho: somar a quantidade não o corrigia.
+      product,
+      quantity: nextQuantity,
+      lastModifiedAt: Date.now(),
+    };
+    return {
+      cart,
+      entrou: Math.max(nextQuantity - existing.quantity, 0),
+      aviso,
+    };
+  }
+
+  const validatedQuantity = Math.min(qToAdd, availableStock, MAX_ITEM_QUANTITY);
+  return {
+    cart: [
+      ...prev,
+      {
+        product,
+        quantity: validatedQuantity,
+        variantId,
+        ...(outrasVariantIds.length > 0 ? { outrasVariantIds } : {}),
+        variantNames,
+        // Carimbo da mutação para a resolução de conflito offline
+        lastModifiedAt: Date.now(),
+      },
+    ],
+    entrou: validatedQuantity,
+    aviso:
+      qToAdd > availableStock
+        ? `Apenas ${availableStock} unidades disponíveis.`
+        : null,
+  };
+}
+
 const cartItemSchema = z.object({
   // K2 (caça 4): sem `id` de produto a linha sumia da lista (a tela só desenha
   // linhas com id) mas seguia no total e na contagem -- a cliente pagaria por
@@ -108,12 +198,16 @@ export interface CartState {
 }
 
 export interface CartActions {
+  /** Devolve QUANTAS unidades entraram de fato (0 = nada entrou: estoque já
+   *  todo no carrinho ou esgotado). Quem celebra a adição ("Salvo!", voo da
+   *  bolinha, vibração, aviso falado) olha esse número -- celebrar sem ele
+   *  era mentir quando a recusa vinha do estoque. */
   addToCart: (
     product: Product,
     quantity?: number,
     variantId?: string,
     variantNames?: string,
-  ) => void;
+  ) => number;
   /** `variantId` aqui (e em `addToCart`/`updateQuantity`) é a CHAVE da linha:
    *  o id da variação, ou `idA~idB` no produto de duas escolhas separadas
    *  (`chaveDaVariacao`). Com uma escolha só é o id de sempre. */
@@ -1028,94 +1122,32 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         `[CartContext-Trace] 🛒 addToCart confirmed for ${product.id}.`,
       );
 
-      setCart((prev) => {
-        const chaveDaNova = chaveDoItem({
-          product,
-          variantId,
-          outrasVariantIds,
-        });
-        const existingIndex = prev.findIndex(
-          (item) => chaveDoItem(item) === chaveDaNova,
-        );
-
-        // Enforce stock limit (com duas escolhas, vale o menor estoque, já
-        // descontado o que as OUTRAS linhas levam da mesma variação)
-        const availableStock = estoqueDaLinha(
-          product,
-          variantId,
-          outrasVariantIds,
-          prev.filter((item) => chaveDoItem(item) !== chaveDaNova),
-        );
-
-        if (availableStock <= 0) {
-          toast.error("Este produto está esgotado.");
-          return prev;
-        }
-
-        if (existingIndex > -1) {
-          const existing = prev[existingIndex];
-          console.log(
-            `[CartContext-Trace] ➕ Updating existing item. Current: ${existing.quantity}, Adding: ${qToAdd}`,
-          );
-          const nextQuantity = Math.min(
-            existing.quantity + qToAdd,
-            availableStock,
-            MAX_ITEM_QUANTITY,
-          );
-
-          if (
-            nextQuantity === availableStock &&
-            existing.quantity + qToAdd > availableStock
-          ) {
-            toast.error(
-              `Apenas ${availableStock} unidades disponíveis em estoque.`,
-            );
-          } else if (
-            nextQuantity === MAX_ITEM_QUANTITY &&
-            existing.quantity + qToAdd > MAX_ITEM_QUANTITY
-          ) {
-            console.error(
-              `[CartContext-STOP] 🛑 QUANTITY CAP REACHED for ${product.id}.`,
-            );
-          }
-
-          const newCart = [...prev];
-          newCart[existingIndex] = {
-            ...existing,
-            // O produto que chega é o ATUAL (a cliente acabou de vê-lo na
-            // vitrine). Manter a cópia do dia em que o item entrou prendia o
-            // carrinho no preço velho: somar a quantidade não o corrigia.
+      // O resultado sai AGORA, do carrinho que a pessoa vê (o estado do React só
+      // se resolve depois): a vitrine precisa saber já se algo entrou. O
+      // `cartRef` é adiantado para o toque seguinte, ainda no mesmo instante,
+      // enxergar este -- o efeito do `cart` o realinha com o estado de verdade.
+      const previsto = somarAoCarrinho(
+        cartRef.current,
+        product,
+        qToAdd,
+        variantId,
+        outrasVariantIds,
+        variantNames,
+      );
+      if (previsto.aviso) toast.error(previsto.aviso);
+      cartRef.current = previsto.cart;
+      setCart(
+        (prev) =>
+          somarAoCarrinho(
+            prev,
             product,
-            quantity: nextQuantity,
-            lastModifiedAt: Date.now(),
-          };
-          return newCart;
-        }
-
-        console.log("[CartContext-Trace] ✨ Adding new item to cart.");
-        const validatedQuantity = Math.min(
-          qToAdd,
-          availableStock,
-          MAX_ITEM_QUANTITY,
-        );
-
-        if (qToAdd > availableStock) {
-          toast.error(`Apenas ${availableStock} unidades disponíveis.`);
-        }
-
-        // Stamp mutation timestamp for offline conflict resolution
-        return [
-          ...prev,
-          {
-            product,
-            quantity: validatedQuantity,
+            qToAdd,
             variantId,
-            ...(outrasVariantIds.length > 0 ? { outrasVariantIds } : {}),
+            outrasVariantIds,
             variantNames,
-            lastModifiedAt: Date.now(),
-          },
-        ];
-      });
+          ).cart,
+      );
+      return previsto.entrou;
     },
     [user],
   );

@@ -248,7 +248,7 @@ describe("AdminQAView — 'Pergunta excluída' só comemora se excluiu de verdad
     });
 
     expect(toastError).toHaveBeenCalledWith(
-      expect.stringContaining("Nao foi possivel excluir"),
+      expect.stringContaining("Não foi possível excluir"),
     );
   });
 });

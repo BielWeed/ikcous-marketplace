@@ -28,6 +28,12 @@ export function produtoSemCustoEmEstoque(produto: {
   return produto.isActive && produto.costPrice == null && produto.stock > 0;
 }
 
+/**
+ * O `id` com que `onNavigate("admin-products", ...)` pede a lista de Produtos
+ * já na visão "Sem custo" (o mesmo jeito de `abaInicial` no Financeiro).
+ */
+export const VISAO_SEM_CUSTO = "sem-custo";
+
 /** "1 produto sem custo cadastrado ficou fora do lucro." (plural certo). */
 export function avisoProdutosSemCusto(quantidade: number): string {
   return quantidade === 1

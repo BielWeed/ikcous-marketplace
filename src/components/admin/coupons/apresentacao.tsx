@@ -3,6 +3,10 @@ import type { LucideIcon } from "lucide-react";
 export const FOCO =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
 export const SECUNDARIO = `inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-admin-border-strong bg-admin-raised px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-admin-hover disabled:bg-admin-surface disabled:text-zinc-400 ${FOCO}`;
+// Excluir de verdade: vermelho do mesmo conjunto que o painel já usa nos botões
+// de perigo (Categorias, Devoluções). `border-solid` porque o index.css zera a
+// borda de todo `<button>`.
+export const PERIGO = `inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-solid border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20 disabled:opacity-50 ${FOCO}`;
 export const PRIMARIO = `inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] px-4 py-3 text-base font-bold text-[#1B1300] shadow-lg shadow-yellow-500/10 disabled:from-admin-raised disabled:to-admin-raised disabled:text-zinc-400 disabled:shadow-none ${FOCO}`;
 export const CAMPO =
   "h-12 w-full min-w-0 rounded-2xl border-admin-border-strong bg-admin-raised text-base text-zinc-50 placeholder:text-zinc-400 focus-visible:ring-sky-300 disabled:opacity-100 disabled:text-zinc-400";

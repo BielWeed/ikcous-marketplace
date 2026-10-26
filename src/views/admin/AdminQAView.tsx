@@ -364,7 +364,7 @@ export const AdminQAView = memo(function AdminQAView({
       // acontecia, nenhum aviso aparecia e o dialogo ficava aberto. Ela
       // nao tinha como saber se falhou ou se o clique nao pegou.
       toast.error(
-        "Nao foi possivel excluir a pergunta. Tente de novo em instantes.",
+        "Não foi possível excluir a pergunta. Tente de novo em instantes.",
       );
       setConfirmDeleteId(null);
       return;
@@ -583,7 +583,7 @@ export const AdminQAView = memo(function AdminQAView({
                 disabled={isOffline}
                 onClick={() => setConfirmDeleteId(q.id)}
                 aria-label="Excluir pergunta"
-                title="Excluir Pergunta"
+                title="Excluir pergunta"
                 className={BOTAO_DE_ICONE_EXCLUIR}
               >
                 <Trash2 aria-hidden="true" className="size-5" />

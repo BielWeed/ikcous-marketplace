@@ -120,10 +120,13 @@ describe("tela do lucro avisa produtos sem custo", () => {
     return hospedeiro.textContent ?? "";
   }
 
-  async function montaTop(s: DashboardStats) {
+  async function montaTop(
+    s: DashboardStats,
+    onNavigate: (v: any, id?: string) => void = () => {},
+  ) {
     await act(async () => {
       raiz.render(
-        <TopProductsList stats={s} loading={false} onNavigate={() => {}} />,
+        <TopProductsList stats={s} loading={false} onNavigate={onNavigate} />,
       );
     });
     return hospedeiro.textContent ?? "";
@@ -185,7 +188,7 @@ describe("tela do lucro avisa produtos sem custo", () => {
       );
     });
 
-    it("o atalho leva à lista de produtos", async () => {
+    it("o atalho leva à lista de produtos já na visão 'Sem custo'", async () => {
       const ir = vi.fn();
       await montaGrafico(stats({ productsWithoutCost: 2 }), ir);
       const link = Array.from(
@@ -195,7 +198,8 @@ describe("tela do lucro avisa produtos sem custo", () => {
       await act(async () => {
         link?.click();
       });
-      expect(ir).toHaveBeenCalledWith("admin-products");
+      expect(ir).toHaveBeenCalledTimes(1);
+      expect(ir).toHaveBeenCalledWith("admin-products", "sem-custo");
     });
 
     it.each([["3"], [null], [-2], [Number.NaN], [1.5], [{}]])(
@@ -244,6 +248,34 @@ describe("tela do lucro avisa produtos sem custo", () => {
       );
       expect(texto).not.toContain(FRASE_ANTIGA);
       expect(texto).not.toContain(FRASE_NOVA);
+    });
+
+    it("tocar num produto do ranking abre o formulário DAQUELE produto", async () => {
+      const ir = vi.fn();
+      await montaTop(stats({}, true), ir);
+      const linha = Array.from(
+        hospedeiro.querySelectorAll<HTMLButtonElement>("ol button"),
+      ).find((b) => b.textContent?.includes("Camisa"));
+      expect(linha).toBeTruthy();
+      await act(async () => {
+        linha?.click();
+      });
+      expect(ir).toHaveBeenCalledTimes(1);
+      expect(ir).toHaveBeenCalledWith("admin-product-form", "p1");
+    });
+
+    it("'Cadastrar custo' abre a lista já na visão 'Sem custo'", async () => {
+      const ir = vi.fn();
+      await montaTop(stats({ productsWithoutCost: 2 }, true), ir);
+      const link = Array.from(
+        hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
+      ).find((b) => b.textContent?.includes("Cadastrar custo"));
+      expect(link).toBeTruthy();
+      await act(async () => {
+        link?.click();
+      });
+      expect(ir).toHaveBeenCalledTimes(1);
+      expect(ir).toHaveBeenCalledWith("admin-products", "sem-custo");
     });
 
     it("lista cheia e campo ausente: sem aviso", async () => {

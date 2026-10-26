@@ -70,6 +70,9 @@ const {
 } = require("./ex-admin-resto-do-painel-posterior.cjs");
 const { DEFINIR_CARGO } = require("./definir-cargo-posterior.cjs");
 const {
+  PRECO_HISTORICO,
+} = require("./o-preco-do-produto-deixa-historico-posterior.cjs");
+const {
   desfazerBuscaDoPainelNaTransacao,
 } = require("./busca-do-painel-por-codigo-posterior.cjs");
 
@@ -404,6 +407,10 @@ const POSTERIORES_A_97 = [
   // 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira gatilho, funcoes e politicas e DEIXA as tabelas.
   // Definicao unica em tests/banco/definir-cargo-posterior.cjs. No FIM da lista de proposito.
   DEFINIR_CARGO,
+  // 20261386000000: a politica de leitura de produto_historico_preco cita rls_admin_atual(): sem esta entrada o rollback da 97
+  // recusa (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira gatilho, funcao e politica e DEIXA a tabela.
+  // Definicao unica em tests/banco/o-preco-do-produto-deixa-historico-posterior.cjs. No FIM da lista de proposito.
+  PRECO_HISTORICO,
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar
