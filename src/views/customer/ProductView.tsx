@@ -3,9 +3,9 @@ import {
   CONTAINER_DO_COMPUTADOR,
   ROTULO_NO_COMPUTADOR,
 } from "@/components/desktop/medidas";
-import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { LinkDeTrocas } from "@/components/politicas/LinksDasPoliticas";
 import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
+import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { FileirasDeVariacao } from "@/components/ui/custom/FileirasDeVariacao";
 import { FolhaDeOpcoes } from "@/components/ui/custom/FolhaDeOpcoes";
 import { GaleriaDoProduto } from "@/components/ui/custom/GaleriaDoProduto";
@@ -1100,19 +1100,19 @@ export const ProductView = React.memo(function ProductView({
               sem cadastro ele SOME, nunca aponta para número inventado
               (laudo caça-bugs 30/08 + decisão do Gabriel no mesmo dia). */}
               {lojaTemWhatsapp(config.whatsappNumber) && (
-                <button
+                <BotaoWhatsapp
+                  somenteIcone
+                  redondo
                   onClick={handleWhatsApp}
                   title="Dúvidas no WhatsApp"
                   aria-label="Dúvidas no WhatsApp"
                   className={cn(
-                    "order-3 flex size-[52px] shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white transition-opacity hover:opacity-90",
+                    "order-3 size-[52px]",
                     // Altura do CTA no desktop: os dois botões da linha de
                     // cima ficam alinhados (48px) em vez de 44 vs 48.
                     "lg:size-12",
                   )}
-                >
-                  <IconeWhatsapp className="size-6" />
-                </button>
+                />
               )}
 
               <button

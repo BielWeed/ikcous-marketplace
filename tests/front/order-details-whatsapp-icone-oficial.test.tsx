@@ -88,12 +88,9 @@ describe("pedido do cliente — contato com o glifo oficial do WhatsApp", () => 
     );
     expect(topo).not.toBeNull();
     expect(rodape).toBeDefined();
-    expect(topo?.classList.contains("bg-zinc-100")).toBe(true);
-    expect(topo?.classList.contains("border-zinc-200")).toBe(true);
-    expect(topo?.classList.contains("hover:bg-zinc-200")).toBe(true);
-    expect(
-      rodape?.querySelector("span")?.classList.contains("bg-zinc-100"),
-    ).toBe(true);
+    // desenho original do WhatsApp (verde oficial, glifo escuro) nos dois
+    expect(topo?.classList.contains("bg-[#25D366]")).toBe(true);
+    expect(rodape?.classList.contains("bg-[#25D366]")).toBe(true);
     for (const botao of [topo, rodape]) {
       expect(botao?.matches(".bg-muted, .border-border")).toBe(false);
       expect(botao?.querySelector(".bg-muted, .border-border")).toBeNull();

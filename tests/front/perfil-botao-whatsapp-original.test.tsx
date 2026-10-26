@@ -14,6 +14,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 
 const config: { whatsappNumber: string | null } = {
   whatsappNumber: "34999999999",
@@ -191,8 +192,12 @@ describe("Perfil — o botão de WhatsApp do pedido é o original do WhatsApp", 
       string,
     ];
     expect(url.startsWith("https://wa.me/5534999999999?text=")).toBe(true);
-    expect(decodeURIComponent(url.split("?text=")[1] ?? "")).toMatch(
-      /^Olá! Tenho uma dúvida sobre meu pedido #.+\.$/,
+    // O texto TEM de levar o número do pedido deste cartão (6 últimos
+    // caracteres do id, em maiúsculas). Antes o padrão /#.+\./ aceitava
+    // qualquer id: trocar order.id por 'x' não derrubava o teste.
+    expect(numeroDoPedido(pedido.id)).toBe("L-0001");
+    expect(decodeURIComponent(url.split("?text=")[1] ?? "")).toBe(
+      `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(pedido.id)}.`,
     );
     expect(alvo).toBe("_blank");
     expect(recursos).toBe("noopener,noreferrer");

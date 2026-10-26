@@ -15,29 +15,52 @@ import type * as React from "react";
  * Só para botão que ABRE o WhatsApp. Rótulo de dado ("Seu WhatsApp") e campo de
  * formulário NÃO usam este componente.
  *
+ * Variante `somenteIcone` (quadrado de 44 px, ou `redondo`): para o lugar onde
+ * só cabe o glifo ao lado de outro controle.
+ *
  * Quem usa passa o MESMO handler que o botão antigo tinha — o componente não
  * abre link nenhum. `className` do chamador vence o padrão (twMerge): serve
  * para altura/largura/posição do lugar onde o botão mora.
  */
+type PropsBase = Omit<React.ComponentProps<"button">, "type"> & {
+  type?: "button" | "submit" | "reset";
+};
+
+/**
+ * Dois jeitos de usar: com rótulo (padrão) ou SÓ O ÍCONE. No só-ícone o
+ * `aria-label` é obrigatório (o botão não tem texto, então sem ele o leitor de
+ * tela diria apenas "botão") e `redondo` troca os cantos da loja por círculo.
+ * O glifo continua ESCURO (#0B141A) sobre o verde: o branco antigo dava ~2:1.
+ */
+type Props =
+  | (PropsBase & { somenteIcone?: false; redondo?: never })
+  | (PropsBase & {
+      somenteIcone: true;
+      redondo?: boolean;
+      "aria-label": string;
+    });
+
 export function BotaoWhatsapp({
   className,
   children,
   type = "button",
+  somenteIcone,
+  redondo,
   ...props
-}: Omit<React.ComponentProps<"button">, "type"> & {
-  type?: "button" | "submit" | "reset";
-}) {
+}: Props) {
   return (
     <button
       type={type}
       className={cn(
-        "flex h-12 w-full items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-[#25D366] px-4 text-base font-semibold text-[#0B141A] shadow-sm transition-[background-color,transform] duration-150 hover:bg-[#20C25E] active:scale-[0.98] active:bg-[#1DAE55] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
+        "flex items-center justify-center whitespace-nowrap bg-[#25D366] font-semibold text-[#0B141A] shadow-sm transition-[background-color,transform] duration-150 hover:bg-[#20C25E] active:scale-[0.98] active:bg-[#1DAE55] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
+        somenteIcone ? "size-11 shrink-0" : "h-12 w-full gap-2 px-4 text-base",
+        somenteIcone && redondo ? "rounded-full" : "rounded-2xl",
         className,
       )}
       {...props}
     >
       <IconeWhatsapp className="size-5 shrink-0" />
-      {children}
+      {somenteIcone ? null : children}
     </button>
   );
 }
