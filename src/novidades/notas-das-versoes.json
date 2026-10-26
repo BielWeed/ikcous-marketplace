@@ -1,4 +1,20 @@
 {
+  "1.5.86": {
+    "titulo": "Conta, envio, Balcão e vitrine mais honestos, com limites contra abuso",
+    "novidades": [],
+    "correcoes": [
+      "Loja, Conta: o perfil público de outra cliente não diz mais \"nenhuma avaliação\" quando a consulta falhou. Salvar o nome atualiza o Perfil mesmo se o CPF der erro, escolher a mesma foto de novo funciona, foto ilegível mostra aviso e editar um endereço que já não existe explica o que houve.",
+      "Loja, busca: a caixa da página e a do topo passaram a ser o mesmo termo, os filtros não mostram categorias desligadas pela lojista e os botões de comprar têm 44 px de altura.",
+      "Painel, devolução e reembolso: o aviso depois de pedir o reembolso diz o que o Mercado Pago de fato respondeu (concluído, em andamento, recusado ou falhou). Gerar o código de postagem de volta e marcar a devolução como recebida pedem confirmação, e erro de internet vira frase em português.",
+      "Painel, Balcão: Enviar por WhatsApp funciona para a cliente cadastrada. Se a internet cair, a tela não afirma que a venda não foi registrada, porque ela pode ter entrado. O recibo em papel não imprime mais Frete R$ 0,00 e mostra a forma de pagamento.",
+      "Painel, vitrine, cupons, banners e avaliações: o painel não diz \"salvo\" quando nada foi gravado. Cupom com validade que já passou pergunta antes de salvar, e o Desconto médio só conta cupons ativos.",
+      "Painel, Financeiro: o extrato descreve a venda do balcão como o app mostra, com o número do pedido de 6 caracteres e \"Venda do balcão anulada\" quando ela foi anulada."
+    ],
+    "melhorias": [
+      "Cada conta pode enviar até 30 fotos soltas de devolução (a foto que já virou devolução não conta) e as perguntas novas sobre produto têm no máximo 500 caracteres.",
+      "O aviso de novo pedido para a lojista não devolve mais a mensagem interna quando dá erro."
+    ]
+  },
   "1.5.85": {
     "titulo": "Botão original do WhatsApp também no pedido e na tela do produto",
     "novidades": [],
