@@ -419,6 +419,24 @@ describe("4. tocar usa a grafia gravada, mesmo com acento e espaço diferentes",
     expect(aoAlternar).toHaveBeenCalledWith("128gb");
   });
 
+  it("produto legado com '1 L' e '1L' gravados: o toque desmarca o que está marcado, não marca o gêmeo", async () => {
+    const aoAlternar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <Grade
+          chips={[
+            { valor: "1 L", usado: true },
+            { valor: "1L", usado: true },
+          ]}
+          selecionadosIniciais={["1L"]}
+          aoAlternar={aoAlternar}
+        />,
+      );
+    });
+    await clicar(valor("1 L"));
+    expect(aoAlternar).toHaveBeenCalledWith("1L");
+  });
+
   it("Marcar todos usa a grafia gravada com acento/espaço diferentes", async () => {
     const aoDefinir = vi.fn();
     await act(async () => {

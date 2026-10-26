@@ -501,8 +501,10 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
     props.modo === "unico"
       ? (props.valoresEmUso ?? [])
       : [
-          ...props.chips.filter((chip) => chip.usado).map((chip) => chip.valor),
+          // O já marcado vem primeiro: com "1 L" e "1L" gravados, o toque acha o
+          // valor marcado e o desmarca, em vez de marcar o "gêmeo".
           ...props.selecionados,
+          ...props.chips.filter((chip) => chip.usado).map((chip) => chip.valor),
         ];
   const casarValor = (item: string): string =>
     valoresGravados.find((gravado) => chave(gravado) === chave(item)) ?? item;
