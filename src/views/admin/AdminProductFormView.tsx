@@ -2544,6 +2544,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       toast.error(
         "As variações ainda não foram salvas. Restaure o rascunho para tentar de novo.",
         {
+          duration: 10000,
           action: {
             label: "Restaurar",
             onClick: () => restaurarPendenteRef.current?.(),
