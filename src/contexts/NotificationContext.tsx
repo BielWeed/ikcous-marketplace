@@ -20,6 +20,25 @@ function chaveEstadoLocalDaCampanha(userId: string): string {
   return `notificacoes-campanha-estado:${userId}`;
 }
 
+// Campanha "para todos" é uma linha só, sem dono: sem filtro de data, cliente
+// NOVA abriria o app e veria até 20 campanhas antigas como "não lidas" (com
+// cupom vencido), e o contador as contaria. Vale só a que saiu DEPOIS de a
+// conta existir e nos últimos 30 dias.
+const JANELA_DA_CAMPANHA_MS = 30 * 24 * 60 * 60 * 1000;
+
+function campanhaValeParaACliente(
+  criadaEm: string,
+  contaCriadaEm: string | undefined,
+  agora: number,
+): boolean {
+  const criada = new Date(criadaEm).getTime();
+  if (Number.isNaN(criada) || criada < agora - JANELA_DA_CAMPANHA_MS) {
+    return false;
+  }
+  const conta = contaCriadaEm ? new Date(contaCriadaEm).getTime() : Number.NaN;
+  return Number.isNaN(conta) || criada >= conta;
+}
+
 interface EstadoLocalDaCampanha {
   lidas: Set<string>;
   ocultas: Set<string>;
@@ -61,7 +80,7 @@ function persistirEstadoLocalDaCampanha(
 export function NotificationProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { user } = useAuth();
+  const { user, loading: carregandoConta } = useAuth();
   const { isLeader } = useLeaderElection();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -162,7 +181,9 @@ export function NotificationProvider({
 
         const data = [
           ...(dosProprios.data || []),
-          ...(deCampanha.data || []),
+          ...(deCampanha.data || []).filter((c) =>
+            campanhaValeParaACliente(c.created_at, user.created_at, now),
+          ),
         ].sort(
           (a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -413,6 +434,7 @@ export function NotificationProvider({
       unreadCount,
       loading,
       erro,
+      semConta: !user && !carregandoConta,
       markAsRead,
       markAllAsRead,
       deleteNotification,
@@ -423,6 +445,8 @@ export function NotificationProvider({
       unreadCount,
       loading,
       erro,
+      user,
+      carregandoConta,
       markAsRead,
       markAllAsRead,
       deleteNotification,

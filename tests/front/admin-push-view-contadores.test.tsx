@@ -85,7 +85,10 @@ vi.mock("@/lib/supabase", () => ({
             limit: () => Promise.resolve({ data: [], error: null }),
           }),
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
