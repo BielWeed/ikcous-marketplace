@@ -300,7 +300,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
     "a 81a entra uma vez",
   );
   assertEquals(
-    canais.provasDeObjetos.slice(-18).map((p) => p.consulta),
+    canais.provasDeObjetos.slice(-17).map((p) => p.consulta),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
@@ -318,10 +318,9 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado",
       "97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado",
       "98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado",
-      "99a-conferir-ninguem-grava-evento-de-analise-aplicado",
       "100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado",
     ],
-    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a, a 90a, a 91a, a 92a, a 95a, a 96a, a 97a, a 98a, a 99a e a 100a sucedem a 81a no fim, sem reordenar lotes anteriores",
+    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a, a 90a, a 91a, a 92a, a 95a, a 96a, a 97a, a 98a e a 100a (a 99 reservada para a migration de analytics_events, guardada no ramo fix-199-abuso-do-banco ate o dono aprovar) sucedem a 81a no fim, sem reordenar lotes anteriores",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(
